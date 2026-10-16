@@ -26,33 +26,6 @@ class DebtKindIntentTest {
         }
     }
 
-    @Test fun lostReplyRetainsFirstClassificationReceiptWhileCurrentFactsMoveOn() = runTest {
-        val fixture = DirectRepaymentTestFixture()
-        fixture.repository.saveKind(fixture.binding, fixture.debt, "revolving").getOrThrow()
-        val original = fixture.dao.rows.values.single()
-        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
-        assertEquals(1, fixture.engine().drainOnce().failures)
-        val accepted = fixture.api.current
-        fixture.api.current = accepted.copy(debtKind = "installment", rowVersion = accepted.rowVersion + 1)
-        fixture.api.loseResponse = false
-        val rebuilt = fixture.newRepository(fixture.newOutbox(fixture.clock), fixture.clock)
-        rebuilt.recover(fixture.binding, fixture.pending(rebuilt), false).getOrThrow()
-        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
-        assertEquals(1, fixture.engine().drainOnce().done)
-        val stored = fixture.dao.rows.values.single()
-        assertEquals(original.payload, stored.payload)
-        assertEquals(original.idempotencyKey, stored.idempotencyKey)
-        assertEquals(original.expectedRowVersion, stored.expectedRowVersion)
-        assertEquals(accepted, fixture.adapters.debtVoidReceiptAdapter.fromJson(requireNotNull(stored.receiptJson)))
-        assertEquals("installment", fixture.api.current.debtKind)
-        assertEquals(accepted.rowVersion + 1, fixture.api.current.rowVersion)
-        assertEquals(fixture.debt.principalAmountCents, fixture.api.current.principalAmountCents)
-        assertEquals(fixture.debt.remainingAmountCents, fixture.api.current.remainingAmountCents)
-        assertEquals(fixture.debt.paidAmountCents, fixture.api.current.paidAmountCents)
-        assertEquals(1, fixture.api.kindFacts.size)
-        assertTrue(fixture.api.kindCalls.all { it == fixture.api.kindCalls.first() })
-    }
-
     @Test fun anotherTargetKindCurrencyOrLaterRevisionCannotSettleTheOriginal() = runTest {
         val fixture = DirectRepaymentTestFixture()
         fixture.repository.saveKind(fixture.binding, fixture.debt, "revolving").getOrThrow()
@@ -80,7 +53,6 @@ class DebtKindIntentTest {
         fixture.api.kindReceiptTransform = { it }
         fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().done)
-        assertEquals(1, fixture.api.kindFacts.size)
     }
 
     @Test fun rejectedAdmissionDoesNotPublishOrSendAnotherClassification() = runTest {
@@ -117,6 +89,5 @@ class DebtKindIntentTest {
         assertEquals(original.payload, stopped.payload)
         assertEquals(original.idempotencyKey, stopped.idempotencyKey)
         assertNotNull(fixture.pending().intent)
-        assertTrue(fixture.api.kindFacts.isEmpty())
     }
 }

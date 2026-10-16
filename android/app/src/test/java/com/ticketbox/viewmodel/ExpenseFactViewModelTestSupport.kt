@@ -170,13 +170,13 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
     var lastAckExpense: Expense? = null
     var lastAckItems: ExpenseItems? = null
 
-    /** 默认「原小票如此」结果：服务端确认 + 父行版本随 revision owner 递增。 */
-    var ackResult: (Expense, ExpenseItems) -> Result<ItemsAckOutcome> = { expense, items ->
+    /** Declared acknowledgement snapshot; the view model must adopt the supplied token. */
+    var ackResult: (Expense, ExpenseItems) -> Result<ItemsAckOutcome> = { _, items ->
         Result.success(
             ItemsAckOutcome.Synced(
                 items.copy(
                     itemsSumStatus = ItemsSumStatus.MISMATCH_ACKNOWLEDGED,
-                    parentRowVersion = expense.rowVersion + 1,
+                    parentRowVersion = 2,
                 ),
             ),
         )

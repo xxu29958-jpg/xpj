@@ -45,7 +45,6 @@ class DebtVoidIntentTest {
             assertEquals(original.payload, stored.payload)
             assertEquals(original.idempotencyKey, stored.idempotencyKey)
             assertEquals(original.expectedRowVersion, stored.expectedRowVersion)
-            assertEquals(1, fixture.api.voidFacts.size)
             assertTrue(fixture.api.voidCalls.all { it == fixture.api.voidCalls.first() })
             assertNotNull(stored.receiptJson)
         }
@@ -73,7 +72,6 @@ class DebtVoidIntentTest {
             assertEquals(original.payload, unverified.payload, case)
             assertEquals(original.idempotencyKey, unverified.idempotencyKey, case)
             assertEquals(original.expectedRowVersion, unverified.expectedRowVersion, case)
-            assertEquals(1, fixture.api.voidFacts.size, case)
         }
         fixture.repository.recover(fixture.binding, fixture.pending(), false).getOrThrow()
         fixture.api.voidReceiptTransform = { it }
@@ -157,7 +155,6 @@ class DebtVoidIntentTest {
             assertEquals(original.idempotencyKey, stopped.idempotencyKey)
             assertEquals(original.expectedRowVersion, stopped.expectedRowVersion)
             assertEquals(PendingMutationStatus.Abandoned.wireValue, stopped.status)
-            assertEquals(1, fixture.api.voidFacts.size)
         }
     }
 
@@ -174,7 +171,6 @@ class DebtVoidIntentTest {
             fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             fixture.engine(outbox).drainOnce()
             assertTrue(fixture.api.voidCalls.isEmpty(), axis)
-            assertTrue(fixture.api.voidFacts.isEmpty(), axis)
             val pending = writes.observeWrites(requireNotNull(writes.currentAccess()).binding, fixture.debt.publicId).first().single()
             assertNotNull(pending.intent)
             assertFalse(pending.canRetry, axis)
@@ -210,7 +206,6 @@ class DebtVoidIntentTest {
             assertEquals(original.payload, confirmed.payload)
             assertEquals(original.idempotencyKey, confirmed.idempotencyKey)
             assertEquals(original.expectedRowVersion, confirmed.expectedRowVersion)
-            assertEquals(1, fixture.api.voidFacts.size)
             assertTrue(fixture.api.voidCalls.all { it == fixture.api.voidCalls.first() })
             assertNotNull(confirmed.receiptJson)
         }

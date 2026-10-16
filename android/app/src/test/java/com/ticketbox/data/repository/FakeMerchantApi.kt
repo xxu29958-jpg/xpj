@@ -38,17 +38,20 @@ internal class FakeMerchantApi : MerchantApi {
     )
     var merchantCatalogUpdateFailure: Throwable? = null
     var merchantAliasesFailure: Throwable? = null
+    val catalogCreateResponse = fakeMerchantCatalogDto("catalog-created", "蓝瓶咖啡", "active")
+    var catalogUpdateResponse = fakeMerchantCatalogDto("catalog-1", "星巴克", "hidden").copy(rowVersion = 2)
+    val catalogDeleteResponse = fakeMerchantCatalogDto("catalog-1", "星巴克", "active")
+        .copy(deletedAt = "2026-05-13T00:10:00Z", rowVersion = 2)
+    var catalogMergeResponse = MerchantCatalogMergeDto(
+        fakeMerchantCatalogDto("catalog-1", "星巴克", "merged").copy(mergedIntoPublicId = "catalog-2", rowVersion = 2),
+        fakeMerchantCatalogDto("catalog-2", "蓝瓶咖啡", "active").copy(rowVersion = 5), "alias-created-by-merge")
 
     override suspend fun merchantCatalog(includeHidden: Boolean): MerchantCatalogListDto =
         MerchantCatalogListDto(items = merchantCatalogItems)
 
     override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest, idempotencyKey: String): MerchantCatalogDto {
         merchantCatalogCreateRequests += request
-        return fakeMerchantCatalogDto(
-            publicId = "catalog-created",
-            displayName = request.displayName.trim(),
-            status = request.status,
-        ).also { merchantCatalogItems = merchantCatalogItems + it }
+        return catalogCreateResponse.also { merchantCatalogItems = merchantCatalogItems + it }
     }
 
     override suspend fun updateMerchantCatalog(
@@ -59,12 +62,8 @@ internal class FakeMerchantApi : MerchantApi {
         merchantCatalogPatchTargets += publicId
         merchantCatalogUpdateRequests += request
         merchantCatalogUpdateFailure?.let { throw it }
-        return fakeMerchantCatalogDto(
-            publicId = publicId,
-            displayName = request.displayName ?: "星巴克",
-            status = request.status ?: "active",
-        ).copy(rowVersion = request.expectedRowVersion + 1)
-            .also { result -> merchantCatalogItems = merchantCatalogItems.map { if (it.publicId == publicId) result else it } }
+        return catalogUpdateResponse.also { result ->
+            merchantCatalogItems = merchantCatalogItems.map { if (it.publicId == result.publicId) result else it } }
     }
 
     override suspend fun deleteMerchantCatalog(
@@ -74,12 +73,8 @@ internal class FakeMerchantApi : MerchantApi {
     ): MerchantCatalogDto {
         merchantCatalogDeleteTargets += publicId
         merchantCatalogDeleteRequests += request
-        return fakeMerchantCatalogDto(
-            publicId = publicId,
-            displayName = "星巴克",
-            status = "active",
-        ).copy(deletedAt = "2026-05-13T00:10:00Z", rowVersion = request.expectedRowVersion + 1)
-            .also { merchantCatalogItems = merchantCatalogItems.filterNot { it.publicId == publicId } }
+        return catalogDeleteResponse.also { result ->
+            merchantCatalogItems = merchantCatalogItems.filterNot { it.publicId == result.publicId } }
     }
 
     override suspend fun mergeMerchantCatalog(
@@ -89,23 +84,8 @@ internal class FakeMerchantApi : MerchantApi {
     ): MerchantCatalogMergeDto {
         merchantCatalogMergeTargets += sourcePublicId
         merchantCatalogMergeRequests += request
-        return MerchantCatalogMergeDto(
-            source = fakeMerchantCatalogDto(
-                publicId = sourcePublicId,
-                displayName = "星巴克",
-                status = "merged",
-            ).copy(
-                mergedIntoPublicId = request.targetPublicId,
-                rowVersion = request.expectedRowVersion + 1,
-            ),
-            target = fakeMerchantCatalogDto(
-                publicId = request.targetPublicId,
-                displayName = "蓝瓶咖啡",
-                status = "active",
-            ).copy(rowVersion = request.targetRowVersion + 1),
-            createdAliasPublicId = if (request.aliasPolicy == "create_source_alias") "alias-created-by-merge" else null,
-        ).also { result -> merchantCatalogItems = merchantCatalogItems.map {
-            when (it.publicId) { sourcePublicId -> result.source; request.targetPublicId -> result.target; else -> it } } }
+        return catalogMergeResponse.also { result -> merchantCatalogItems = merchantCatalogItems.map {
+            when (it.publicId) { result.source.publicId -> result.source; result.target.publicId -> result.target; else -> it } } }
     }
 
     override suspend fun merchantAliases(): MerchantAliasListDto {

@@ -52,7 +52,8 @@ class SavedQueryNavigationTest {
     @get:Rule val compose = createComposeRule()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private var query = SavedViewDto("household-query", "每月日用", 4, "current", null, "", "daily", "日用", "CNY", null, "便利店", "购物")
-    private val receipts = mutableMapOf<String, SavedViewDto>()
+    private val response = query.copy(name = "每月家庭日用", rowVersion = 5)
+    private val updates = mutableListOf<Pair<String, SavedViewUpdateRequestDto>>()
     private val keys = mutableListOf<String>()
     private var readFailure = false
     private lateinit var harness: FactEntryNavigationHarness
@@ -103,7 +104,10 @@ class SavedQueryNavigationTest {
         compose.onNode(hasText("核实原提交") and hasClickAction()).performClick()
         waitFor("已取得原提交的首次结果。")
         assertEquals(listOf(originalKey, originalKey), keys)
-        assertEquals(1, receipts.size)
+        assertEquals(updates.first(), updates.last())
+        assertEquals("household-query", updates.first().first)
+        assertEquals(4L, updates.first().second.expectedRowVersion)
+        assertEquals("每月家庭日用", updates.first().second.name)
         assertEquals("后来人工条件", query.name)
         compose.onNode(hasText("完成并读取当前查询") and hasClickAction()).performClick()
         waitFor("后来人工条件")
@@ -136,12 +140,9 @@ class SavedQueryNavigationTest {
         }
         override suspend fun updateSavedView(publicId: String, request: SavedViewUpdateRequestDto, idempotencyKey: String): SavedViewDto {
             keys += idempotencyKey
-            val replay = receipts[idempotencyKey]
-            if (replay != null) return replay
-            assertEquals(query.rowVersion, request.expectedRowVersion)
-            query = query.copy(name = request.name, queryText = request.queryText, rowVersion = query.rowVersion + 1)
-            receipts[idempotencyKey] = query
-            throw IOException("accepted reply lost")
+            updates += publicId to request
+            if (keys.size == 1) throw IOException("accepted reply lost")
+            return response
         }
     }
 

@@ -70,8 +70,10 @@ class MerchantManagementContinuationTest {
     private val creationKeys = mutableListOf<String>()
     private val commandKeys = CopyOnWriteArrayList<String>()
     private val deletes = CopyOnWriteArrayList<MerchantCatalogDeleteRequest>()
-    private val catalogReceipts = mutableMapOf<String, MerchantCatalogDto>()
-    private val mergeReceipts = mutableMapOf<String, MerchantCatalogMergeDto>()
+    private var catalogResponse: MerchantCatalogDto? = null
+    private var mergeResponse: MerchantCatalogMergeDto? = null
+    private var updateFailure: Exception? = null
+    private var mergeFailure: Exception? = null
     @Volatile private var loseCommandReply = false
     @Volatile private var reject = true
     @Volatile private var catalog: MerchantCatalogDto? = null
@@ -95,7 +97,7 @@ class MerchantManagementContinuationTest {
                 creationKeys += idempotencyKey
                 catalogRequests += request
                 if (reject) throw unavailable()
-                return MerchantCatalogDto("travel-shop", request.displayName, request.displayName, "active",
+                return MerchantCatalogDto("travel-shop", "九月差旅商家", "九月差旅商家", "active",
                     usageCount = 0, createdAt = "2026-09-30T00:00:00Z", updatedAt = "2026-09-30T00:00:00Z", rowVersion = 1)
                     .also { catalog = it }
             }
@@ -104,9 +106,7 @@ class MerchantManagementContinuationTest {
                 creationKeys += idempotencyKey
                 aliasRequests += request
                 if (reject) throw unavailable()
-                val canonical = requireNotNull(request.canonicalMerchant)
-                val original = requireNotNull(request.alias)
-                return MerchantAliasDto("travel-alias", canonical, canonical, original, original, true,
+                return MerchantAliasDto("travel-alias", "差旅商家", "差旅商家", "PAY-差旅原始商家", "PAY-差旅原始商家", true,
                     "2026-09-30T00:00:00Z", "2026-09-30T00:00:00Z", 1).also { alias = it }
             }
 
@@ -118,57 +118,30 @@ class MerchantManagementContinuationTest {
                 val key = requireNotNull(idempotencyKey)
                 commandKeys += key
                 updates += request
-                catalogReceipts[key]?.let { return it }
-                assertEquals(catalog?.publicId, publicId)
+                assertEquals("existing", publicId)
                 if (reject) throw unavailable()
-                val current = requireNotNull(catalog)
-                if (mergeTarget != null && request.displayName?.trim() == mergeTarget?.displayName) throw HttpException(Response.error<Any>(409,
-                    """{"error":"state_conflict","conflict_merchant_public_id":"target","conflict_merchant_row_version":11,"conflict_merchant_display_name":"目标商家","conflict_merchant_status":"active","conflict_merchant_deleted":false}"""
-                        .toResponseBody("application/json".toMediaType())))
-                if (request.expectedRowVersion != current.rowVersion) throw HttpException(Response.error<Any>(409,
-                    """{"error":"state_conflict","message":"商家已被其他设备修改。"}"""
-                        .toResponseBody("application/json".toMediaType())))
-                val receipt = current.copy(displayName = request.displayName?.trim() ?: current.displayName,
-                    status = request.status ?: current.status, rowVersion = current.rowVersion + 1)
-                catalog = receipt
-                catalogReceipts[key] = receipt
+                updateFailure?.let { throw it }
                 if (loseCommandReply) throw IOException("Reply lost after acceptance")
-                return receipt
+                return requireNotNull(catalogResponse)
             }
 
             override suspend fun deleteMerchantCatalog(publicId: String, request: MerchantCatalogDeleteRequest, idempotencyKey: String?): MerchantCatalogDto {
                 val key = requireNotNull(idempotencyKey)
                 commandKeys += key
                 deletes += request
-                catalogReceipts[key]?.let { return it }
-                val original = requireNotNull(catalog)
-                assertEquals(original.publicId, publicId)
-                assertEquals(original.rowVersion, request.expectedRowVersion)
-                val receipt = original.copy(deletedAt = "2026-10-08T00:00:00Z", rowVersion = original.rowVersion + 1)
-                catalog = receipt
-                catalogReceipts[key] = receipt
+                assertEquals("existing", publicId)
                 if (loseCommandReply) throw IOException("Reply lost after acceptance")
-                return receipt
+                return requireNotNull(catalogResponse)
             }
 
             override suspend fun mergeMerchantCatalog(sourcePublicId: String, request: MerchantCatalogMergeRequest, idempotencyKey: String): MerchantCatalogMergeDto {
                 commandKeys += idempotencyKey
                 merges += request
-                mergeReceipts[idempotencyKey]?.let { return it }
-                val source = requireNotNull(catalog)
-                val target = requireNotNull(mergeTarget)
-                assertEquals(source.publicId, sourcePublicId)
-                assertEquals(target.publicId, request.targetPublicId)
-                if (request.expectedRowVersion != source.rowVersion || request.targetRowVersion != target.rowVersion) {
-                    throw HttpException(Response.error<Any>(409, """{"error":"state_conflict"}""".toResponseBody("application/json".toMediaType())))
-                }
-                catalog = source.copy(status = "merged", mergedIntoPublicId = target.publicId, rowVersion = source.rowVersion + 1)
-                mergeTarget = target.copy(rowVersion = target.rowVersion + 1)
-                val receipt = MerchantCatalogMergeDto(requireNotNull(catalog), requireNotNull(mergeTarget),
-                    if (request.aliasPolicy == "create_source_alias") "created-alias" else null)
-                mergeReceipts[idempotencyKey] = receipt
+                assertEquals("existing", sourcePublicId)
+                assertEquals("target", request.targetPublicId)
+                mergeFailure?.let { throw it }
                 if (loseCommandReply) throw IOException("Reply lost after acceptance")
-                return receipt
+                return requireNotNull(mergeResponse)
             }
         }
     }
@@ -343,9 +316,12 @@ class MerchantManagementContinuationTest {
         assertEquals("原商家", catalog?.displayName)
 
         reject = false
+        catalogResponse = requireNotNull(catalog).copy(displayName = "改名后的商家", rowVersion = 8)
+        catalog = catalogResponse
         compose.onNodeWithText(context.getString(R.string.merchant_command_verify))
             .performTouchInput { click() }
-        compose.waitUntil(5_000) { catalog?.displayName == "改名后的商家" }
+        compose.waitUntil(5_000) { updates.size == 2 && compose.onAllNodesWithText(
+            context.getString(R.string.merchant_catalog_rename_dialog_title)).fetchSemanticsNodes().isEmpty() }
         compose.waitForIdle()
         compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_title)).assertDoesNotExist()
         clickText(R.string.merchant_catalog_section_list)
@@ -368,6 +344,8 @@ class MerchantManagementContinuationTest {
         compose.onNode(hasSetTextAction() and hasText("原商家")).performTextReplacement("  我的原稿名称  ")
         closeSoftKeyboard()
         catalog = requireNotNull(catalog).copy(displayName = "另一台设备的名称", rowVersion = 8)
+        updateFailure = HttpException(Response.error<Any>(409,
+            """{"error":"state_conflict","message":"商家已被其他设备修改。"}""".toResponseBody("application/json".toMediaType())))
         compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_confirm))
             .assertIsEnabled().performTouchInput { click() }
         compose.waitUntil(5_000) { updates.size == 1 }
@@ -390,9 +368,13 @@ class MerchantManagementContinuationTest {
         assertEquals("另一台设备的名称", catalog?.displayName)
         saveConsumerArtPreview("merchant-rename-reviewed",
             requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        updateFailure = null
+        catalogResponse = requireNotNull(catalog).copy(displayName = "我的原稿名称", rowVersion = 9)
+        catalog = catalogResponse
         compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_confirm))
             .assertIsEnabled().performTouchInput { click() }
-        compose.waitUntil(5_000) { catalog?.displayName == "我的原稿名称" }
+        compose.waitUntil(5_000) { updates.size == 2 && compose.onAllNodesWithText(
+            context.getString(R.string.merchant_catalog_rename_dialog_title)).fetchSemanticsNodes().isEmpty() }
         assertEquals(listOf(7L, 8L), updates.map { it.expectedRowVersion })
         assertEquals("existing", catalog?.publicId)
         assertEquals(9L, catalog?.rowVersion)
@@ -432,6 +414,8 @@ class MerchantManagementContinuationTest {
         clickText(R.string.merchant_catalog_merge_alias_policy_none)
         catalog = requireNotNull(catalog).copy(displayName = "他端修改的原商家", rowVersion = 8)
         mergeTarget = requireNotNull(mergeTarget).copy(displayName = "他端修改的目标", rowVersion = 12)
+        mergeFailure = HttpException(Response.error<Any>(409,
+            """{"error":"state_conflict"}""".toResponseBody("application/json".toMediaType())))
         compose.onNode(hasText(context.getString(R.string.merchant_catalog_merge_dialog_confirm)) and hasAnyAncestor(isDialog())).performTouchInput { click() }
         waitForText(R.string.merchant_command_rejected)
         saveConsumerArtPreview("merchant-merge-conflict-before",
@@ -453,8 +437,10 @@ class MerchantManagementContinuationTest {
             .performScrollTo().assertIsDisplayed()
         saveConsumerArtPreview("merchant-merge-reviewed",
             requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        mergeFailure = null
+        declareMergeResponse(9, 13)
         compose.onNode(hasText(context.getString(R.string.merchant_catalog_merge_dialog_confirm)) and hasAnyAncestor(isDialog())).assertIsEnabled().performTouchInput { click() }
-        compose.waitUntil(5_000) { catalog?.status == "merged" }
+        compose.waitUntil(5_000) { merges.size == 2 && compose.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty() }
         assertEquals(listOf(7L, 8L), merges.map { it.expectedRowVersion })
         assertEquals(listOf(11L, 12L), merges.map { it.targetRowVersion })
         assertTrue(merges.all { it.targetPublicId == "target" && it.aliasPolicy == "none" && !it.rewriteHistoricalExpenses })
@@ -463,6 +449,9 @@ class MerchantManagementContinuationTest {
 
     @Test fun suggestedMergeCanReturnToOriginalRenameAndCloseAfterAcceptance() {
         prepareMerge()
+        updateFailure = HttpException(Response.error<Any>(409,
+            """{"error":"state_conflict","conflict_merchant_public_id":"target","conflict_merchant_row_version":11,"conflict_merchant_display_name":"目标商家","conflict_merchant_status":"active","conflict_merchant_deleted":false}"""
+                .toResponseBody("application/json".toMediaType())))
         clickText(R.string.merchant_catalog_card_action_rename)
         compose.onNode(hasSetTextAction() and hasText("原商家")).performTextReplacement("  目标商家  ")
         closeSoftKeyboard()
@@ -483,9 +472,10 @@ class MerchantManagementContinuationTest {
         compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_confirm)).performTouchInput { click() }
         waitForText(R.string.merchant_catalog_merge_dialog_title)
         clickText(R.string.merchant_catalog_merge_alias_policy_none)
+        declareMergeResponse(9, 12)
         compose.onNode(hasText(context.getString(R.string.merchant_catalog_merge_dialog_confirm)) and hasAnyAncestor(isDialog()))
             .performTouchInput { click() }
-        compose.waitUntil(5_000) { catalog?.status == "merged" && compose.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(5_000) { merges.size == 1 && compose.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty() }
         assertEquals(1, merges.size)
         assertEquals(2, updates.size)
         assertEquals(listOf(7L, 8L), updates.map { it.expectedRowVersion })
@@ -541,6 +531,14 @@ class MerchantManagementContinuationTest {
             compose.onNodeWithText("目标商家").performScrollTo().performTouchInput { click() }
             clickText(R.string.merchant_catalog_merge_alias_policy_none)
         }
+        when (kind) {
+            MerchantDraftKind.Rename -> catalogResponse = requireNotNull(catalog).copy(displayName = "原来想改的名称", rowVersion = 8)
+            MerchantDraftKind.Visibility -> catalogResponse = requireNotNull(catalog).copy(status = "hidden", rowVersion = 8)
+            MerchantDraftKind.Delete -> catalogResponse = requireNotNull(catalog).copy(deletedAt = "2026-10-08T00:00:00Z", rowVersion = 8)
+            MerchantDraftKind.Merge -> declareMergeResponse(8, 12)
+            else -> error("Unsupported declared command")
+        }
+        if (kind != MerchantDraftKind.Merge) catalog = catalogResponse
         loseCommandReply = true
         compose.onNode(hasText(context.getString(confirm)) and hasAnyAncestor(isDialog())).performTouchInput { click() }
         waitForText(R.string.merchant_command_verify)
@@ -565,6 +563,7 @@ class MerchantManagementContinuationTest {
         InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 5_000)
         saveConsumerArtPreview("merchant-original-${kind.name.lowercase()}",
             requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+        loseCommandReply = false
         compose.onNode(hasText(context.getString(R.string.merchant_command_verify)) and hasAnyAncestor(isDialog()))
             .assertIsEnabled().performTouchInput { click() }
         compose.waitUntil(5_000) { compose.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty() }
@@ -574,10 +573,25 @@ class MerchantManagementContinuationTest {
         assertEquals(listOf(commandKeys.first(), commandKeys.first()), commandKeys)
         assertEquals(if (kind == MerchantDraftKind.Merge) null else later, catalog)
         assertEquals(laterTarget, mergeTarget)
-        assertEquals(1, catalogReceipts.size + mergeReceipts.size)
-        if (updates.isNotEmpty()) assertEquals(updates.first(), updates.last())
-        if (deletes.isNotEmpty()) assertEquals(deletes.first(), deletes.last())
-        if (merges.isNotEmpty()) assertEquals(merges.first(), merges.last())
+        if (updates.isNotEmpty()) {
+            assertEquals(updates.first(), updates.last())
+            assertEquals(7L, updates.first().expectedRowVersion)
+        }
+        if (deletes.isNotEmpty()) {
+            assertEquals(deletes.first(), deletes.last())
+            assertEquals(7L, deletes.first().expectedRowVersion)
+        }
+        if (merges.isNotEmpty()) {
+            assertEquals(merges.first(), merges.last())
+            assertEquals(7L, merges.first().expectedRowVersion)
+            assertEquals(11L, merges.first().targetRowVersion)
+        }
+    }
+
+    private fun declareMergeResponse(sourceVersion: Long, targetVersion: Long) {
+        catalog = requireNotNull(catalog).copy(status = "merged", mergedIntoPublicId = "target", rowVersion = sourceVersion)
+        mergeTarget = requireNotNull(mergeTarget).copy(rowVersion = targetVersion)
+        mergeResponse = MerchantCatalogMergeDto(requireNotNull(catalog), requireNotNull(mergeTarget), null)
     }
 
     private fun prepareMerge() {

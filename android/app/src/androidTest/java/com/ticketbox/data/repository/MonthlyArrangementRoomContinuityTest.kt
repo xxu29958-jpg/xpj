@@ -63,8 +63,9 @@ class MonthlyArrangementRoomContinuityTest {
     private var loseAck = true
     private var conflict = false
     private var fact: MonthlyArrangementDto? = null
-    private val revisions = mutableListOf<MonthlyArrangementDto>()
-    private val receipts = mutableMapOf<String, MonthlyArrangementDto>()
+    private var saveResponse = MonthlyArrangementDto("owner", "2026-09", "JPY", 1200, 300, 1, "2026-09-27T00:00:00Z")
+    private var historyResponse = historyOf(saveResponse)
+    private val historyPages = mutableMapOf<Long, MonthlyArrangementHistoryDto>()
     private val snapshots = mutableMapOf<String, String>()
     private val calls = mutableListOf<Pair<MonthlyArrangementSaveRequest, String>>()
     private val api = object : ApiService by arrangementProxy<ApiService>({ error("Unexpected API method $it") }) {
@@ -78,24 +79,19 @@ class MonthlyArrangementRoomContinuityTest {
         override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): MonthlyArrangementHistoryDto {
             readFailure?.let { throw it }
             if (offline) throw ConnectException("offline")
-            val matching = revisions.filter { it.month == month && (beforeVersion == null || it.rowVersion < beforeVersion) }
-                .sortedByDescending { it.rowVersion }
-            val items = matching.take(limit).map { MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
-                it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents) }
-            return MonthlyArrangementHistoryDto(session.value.identity.ledgerId, month, items,
-                if (matching.size > limit) items.last().rowVersion else null)
+            return if (beforeVersion == null) historyResponse else historyPages.getValue(beforeVersion)
         }
         override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementSaveRequest, idempotencyKey: String): MonthlyArrangementDto {
             calls += request to idempotencyKey
-            receipts[idempotencyKey]?.let { return it }
+            assertEquals("2026-09", month)
             if (conflict) throw HttpException(Response.error<MonthlyArrangementDto>(409,
                 """{"error":"state_conflict","message":"另一端已修改安排。"}""".toResponseBody()))
-            val accepted = MonthlyArrangementDto("owner", month, request.homeCurrencyCode, request.savingsTargetCents,
-                request.reservedBufferCents, (request.expectedRowVersion ?: 0) + 1, "2026-09-27T00:00:00Z")
-            receipts[idempotencyKey] = accepted; fact = accepted
-            revisions += accepted
-            if (loseAck) throw IOException("lost ACK after server commit")
-            return accepted
+            fact = saveResponse
+            if (loseAck) {
+                loseAck = false
+                throw IOException("lost ACK after server commit")
+            }
+            return saveResponse
         }
     }
     private val provider = ApiServiceProvider(object : ApiServiceFactory {
@@ -113,6 +109,9 @@ class MonthlyArrangementRoomContinuityTest {
             { key, stamp -> snapshots[key] = stamp }, coordinator)
     }
     private fun binding() = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
+    private fun historyOf(vararg values: MonthlyArrangementDto) = MonthlyArrangementHistoryDto(
+        "owner", "2026-09", values.map { MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
+            it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents) }, null)
     private suspend fun drain() = OutboxDrainEngine(outbox, listOf(SaveMonthlyArrangementDispatcher({ api },
         adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter)), now = clock::millis).drainOnce()
     @After fun close() { db?.close(); context.deleteDatabase(name); LocalSettingsStore(settingsContext).clear() }
@@ -148,7 +147,7 @@ class MonthlyArrangementRoomContinuityTest {
         requireNotNull(db).openHelper.writableDatabase.execSQL("DROP TRIGGER fail_monthly_snapshot_delete")
         offline = false
         fact = requireNotNull(fact).copy(rowVersion = 2, savingsTargetCents = 2600)
-        revisions += requireNotNull(fact)
+        historyResponse = historyOf(requireNotNull(fact), saveResponse)
         val authorized = repository.arrangement(original, "2026-09").getOrThrow()
         val authorizedHistory = repository.arrangementHistory(original, "2026-09").getOrThrow()
         assertFalse(authorized.fromCache)
@@ -184,7 +183,7 @@ class MonthlyArrangementRoomContinuityTest {
         assertEquals(403, (repository.arrangement(original, "2026-09").exceptionOrNull() as RepositoryException).httpStatusCode)
         readFailure = null
         fact = requireNotNull(fact).copy(rowVersion = 2, savingsTargetCents = 2600)
-        revisions += requireNotNull(fact)
+        historyResponse = historyOf(requireNotNull(fact), saveResponse)
         val current = repository.arrangement(original, "2026-09")
         val history = repository.arrangementHistory(original, "2026-09")
         assertEquals("Current and history GETs are usable even when the denied cache cannot be cleared or replaced",
@@ -339,6 +338,7 @@ class MonthlyArrangementRoomContinuityTest {
         val accepted = repository.observeArrangements(original).first().single { it.row.id == first }
         assertTrue(accepted.isConfirmed)
         repository = reopen()
+        saveResponse = saveResponse.copy(savingsTargetCents = 1800, rowVersion = 2)
         val second = repository.enqueueArrangement(original, "2026-09",
             MonthlyArrangementSaveRequest("JPY", 1800, 300, 1)).getOrThrow()
         assertNotEquals(first, second)
@@ -346,16 +346,15 @@ class MonthlyArrangementRoomContinuityTest {
         assertTrue(repository.enqueueArrangement(original, "2026-09",
             MonthlyArrangementSaveRequest("JPY", 2000, 300, 1)).isFailure)
         assertEquals(1, drain().done)
-        assertEquals(2L, fact?.rowVersion)
-        assertEquals(1800L, fact?.savingsTargetCents)
         val rows = repository.observeArrangements(original).first()
         assertEquals(2, rows.size)
         assertTrue(rows.all { it.isConfirmed })
         assertEquals(accepted, rows.single { it.row.id == first })
+        assertEquals(2L, rows.single { it.row.id == second }.receipt?.rowVersion)
+        assertEquals(1800L, rows.single { it.row.id == second }.receipt?.savingsTargetCents)
         assertNotEquals(calls[0].second, calls[1].second)
         assertNull(calls[0].first.expectedRowVersion)
         assertEquals(1L, calls[1].first.expectedRowVersion)
-        assertEquals(2, receipts.size)
     }
     @Test fun confirmedSecondSaveRemainsVisibleInOfflineHistoryWithoutChangingTheOriginalReceipts() = runBlocking {
         loseAck = false
@@ -368,9 +367,13 @@ class MonthlyArrangementRoomContinuityTest {
         assertEquals(listOf(1L), firstRead.response.items.map { it.rowVersion })
         assertNotNull(firstRead.fetchedAt)
         assertTrue(firstRead.receiptVersions.isEmpty())
+        historyPages[2] = historyResponse
         repository.arrangementHistory(original, "2026-09", beforeVersion = 2).getOrThrow()
         val queriedPage = requireNotNull(db).monthlyArrangementCacheDao()
             .read(monthlyArrangementPersistentBindingKey(original), "2026-09", "history:0")
+        val firstResponse = saveResponse
+        saveResponse = firstResponse.copy(savingsTargetCents = 1800, reservedBufferCents = 400, rowVersion = 2)
+        historyResponse = historyOf(saveResponse, firstResponse)
         repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1800, 400, 1)).getOrThrow()
         assertEquals(1, drain().done)
         val originalReceipts = requireNotNull(db).pendingMutationDao().allRows()
@@ -426,7 +429,8 @@ class MonthlyArrangementRoomContinuityTest {
         // Another device saved v2: this device has neither that receipt nor a refreshed history page.
         val remote = requireNotNull(fact).copy(rowVersion = 2, savingsTargetCents = 1500)
         fact = remote
-        revisions += remote
+        historyPages[3] = historyOf(remote, saveResponse)
+        saveResponse = saveResponse.copy(savingsTargetCents = 1800, reservedBufferCents = 400, rowVersion = 3)
         repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1800, 400, 2)).getOrThrow()
         assertEquals(1, drain().done)
         val originalReceipts = requireNotNull(db).pendingMutationDao().allRows()
@@ -461,7 +465,7 @@ class MonthlyArrangementRoomContinuityTest {
         assertEquals(key, requireNotNull(db).pendingMutationDao().allRows().single().idempotencyKey)
         assertEquals(1, drain().done)
         assertEquals(calls.first(), calls.last())
-        assertEquals(1, receipts.size)
+        assertEquals(MonthlyArrangementSaveRequest("JPY", 1200, 300), calls.first().first)
         val completed = repository.observeArrangements(original).first().single { it.row.id == id }
         assertTrue(completed.isConfirmed)
         // Last successful GET was unconfigured; delivered original receipt must win after offline reopen.

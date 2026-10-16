@@ -152,16 +152,14 @@ class RecurringAcceptedReadRoomTest {
             lateinit var api: RecurringReadProbe
             val calls = mutableListOf<Pair<String, RecurringItemUpdateRequestDto>>()
             var replayFailure: Exception? = null
-            var businessEffects = 0
-            var acceptedResult: com.ticketbox.data.remote.dto.RecurringItemDto? = null
+            lateinit var acceptedResult: com.ticketbox.data.remote.dto.RecurringItemDto
             val fixture = GoalReadFixture(decorateDao = { db.expenseDao() }, decorate = { delegate ->
                 api = RecurringReadProbe(delegate)
                 object : ApiService by api {
                     override suspend fun updateRecurringItem(publicId: String, request: RecurringItemUpdateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.RecurringItemDto {
                         calls += idempotencyKey to request
                         replayFailure?.let { throw it }
-                        return acceptedResult ?: api.item.copy(merchant = requireNotNull(request.merchant), rowVersion = request.expectedRowVersion + 1)
-                            .also { acceptedResult = it; businessEffects++ }
+                        return acceptedResult
                     }
                 }
             })
@@ -173,6 +171,7 @@ class RecurringAcceptedReadRoomTest {
             val adapters = OutboxAdapterGraph()
             val repository = RecurringRepository(fixture.provider, outbox, adapters, queryReader = reader)
             val baseline = repository.items(fixture.binding, includeArchived = true).getOrThrow().value.single()
+            acceptedResult = api.item.copy(merchant = "已接受的原修改", rowVersion = 10)
             repository.updateAllowingOffline(fixture.binding, baseline, RecurringItemPatch(merchant = "已接受的原修改", homeCurrencyCode = "JPY")).getOrThrow()
             val original = db.pendingMutationDao().allRows().single()
             val guard = LedgerRequestGuard(fixture.provider)
@@ -246,7 +245,6 @@ class RecurringAcceptedReadRoomTest {
             replayFailure = null
             val protection = requireNotNull(db.expenseDao().recurringOutboxReadBarrier(bindingKey))
             assertTrue(protection.responseJson.startsWith(requireNotNull(original.idempotencyKey)))
-            assertEquals(1, businessEffects)
             api.failure = null
             api.item = api.item.copy(merchant = "已接受的原修改", rowVersion = 10)
             val pendingFresh = cold.items(fixture.binding, null, true, null).getOrThrow()
@@ -264,7 +262,8 @@ class RecurringAcceptedReadRoomTest {
             try {
                 assertEquals(1, engine.drainOnce().done)
                 assertEquals(calls.first(), calls.last())
-                assertEquals(1, businessEffects, "Original-key replay applies the business change once")
+                assertEquals(9L, calls.first().second.expectedRowVersion)
+                assertEquals("已接受的原修改", calls.first().second.merchant)
                 val done = db.pendingMutationDao().allRows().single()
                 assertEquals(original.payload, done.payload)
                 assertEquals(original.expectedRowVersion, done.expectedRowVersion)

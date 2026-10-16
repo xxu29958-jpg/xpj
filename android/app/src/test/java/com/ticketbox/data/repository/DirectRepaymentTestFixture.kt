@@ -57,15 +57,12 @@ internal data class OriginalRepaymentCall(val target: String, val request: Repay
 
 internal class RepaymentResponseLossProbe : ApiService by FakeApiService(mutableListOf(), 0) {
     val calls = mutableListOf<OriginalRepaymentCall>()
-    val facts = mutableMapOf<String, Pair<RepaymentCreateRequestDto, DebtRepaymentReceiptDto>>()
     var loseResponse = true
     var refusal: Pair<Int, String>? = null
     var receiptTransform: (DebtRepaymentReceiptDto) -> DebtRepaymentReceiptDto = { it }
     var voidReceiptTransform: (DebtDto) -> DebtDto = { it }
     val voidCalls = mutableListOf<Triple<String, Any, String>>()
-    val voidFacts = mutableMapOf<String, Pair<Any, DebtDto>>()
     val kindCalls = mutableListOf<Triple<String, com.ticketbox.data.remote.dto.DebtKindSetRequestDto, String>>()
-    val kindFacts = mutableMapOf<String, Pair<com.ticketbox.data.remote.dto.DebtKindSetRequestDto, DebtDto>>()
     var kindReceiptTransform: (DebtDto) -> DebtDto = { it }
     var current = DebtDto(
         publicId = "d1", ledgerId = "owner", direction = "i_owe", counterpartyType = "external",
@@ -89,10 +86,11 @@ internal class RepaymentResponseLossProbe : ApiService by FakeApiService(mutable
         val key = requireNotNull(idempotencyKey)
         kindCalls += Triple(publicId, request, key)
         refusal?.let { (status, code) -> throw repaymentRefusal(status, code) }
-        kindFacts[key]?.let { (original, receipt) -> check(original == request); return kindReceiptTransform(receipt) }
         current = kindResponse
-        kindFacts[key] = request to current
-        if (loseResponse) throw IOException("Synthetic lost reply after classification commit")
+        if (loseResponse) {
+            loseResponse = false
+            throw IOException("Synthetic lost reply after classification commit")
+        }
         return kindReceiptTransform(current)
     }
 
@@ -105,10 +103,11 @@ internal class RepaymentResponseLossProbe : ApiService by FakeApiService(mutable
     private fun commitVoid(publicId: String, request: Any, key: String, response: DebtDto): DebtDto {
         voidCalls += Triple(publicId, request, key)
         refusal?.let { (status, code) -> throw repaymentRefusal(status, code) }
-        voidFacts[key]?.let { (original, receipt) -> check(original == request); return voidReceiptTransform(receipt) }
         current = response
-        voidFacts[key] = request to current
-        if (loseResponse) throw IOException("Synthetic response loss after void commit")
+        if (loseResponse) {
+            loseResponse = false
+            throw IOException("Synthetic response loss after void commit")
+        }
         return voidReceiptTransform(current)
     }
 
@@ -117,15 +116,13 @@ internal class RepaymentResponseLossProbe : ApiService by FakeApiService(mutable
         val key = requireNotNull(idempotencyKey)
         calls += OriginalRepaymentCall(publicId, request, key)
         refusal?.let { (status, code) -> throw repaymentRefusal(status, code) }
-        facts[key]?.let { (original, receipt) ->
-            check(request == original)
-            return receiptTransform(receipt)
-        }
         repaymentRefusalsByKey[key]?.let { (status, code) -> throw repaymentRefusal(status, code) }
         current = repaymentDebt
         val receipt = repaymentResponse
-        facts[key] = request to receipt
-        if (loseResponse) throw IOException("Synthetic lost response after repayment commit")
+        if (loseResponse) {
+            loseResponse = false
+            throw IOException("Synthetic lost response after repayment commit")
+        }
         return receiptTransform(receipt)
     }
 }

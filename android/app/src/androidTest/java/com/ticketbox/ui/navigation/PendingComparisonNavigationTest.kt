@@ -48,6 +48,8 @@ class PendingComparisonNavigationTest {
     @get:Rule val compose = createComposeRule()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private lateinit var reference: ExpenseDto
+    private lateinit var decisionResponse: ExpenseDto
+    private val decisions = mutableListOf<Triple<String, ExpenseStateTokenRequest, String?>>()
     private lateinit var api: ApiService
     private val mounted = mutableStateOf(true)
     private lateinit var outer: NavHostController
@@ -59,10 +61,8 @@ class PendingComparisonNavigationTest {
             }
             override suspend fun expenseThumbnail(id: Long) = delegate.expenseImage(id)
             override suspend fun markNotDuplicate(id: String, request: ExpenseStateTokenRequest, idempotencyKey: String?): ExpenseDto {
-                val original = delegate.expense(id.toLong())
-                check(request.expectedRowVersion == original.rowVersion && !idempotencyKey.isNullOrBlank())
-                return original.copy(duplicateStatus = "none", duplicateOfId = null, rowVersion = original.rowVersion + 1)
-                    .also { harness.fixture.network.current = it }
+                decisions += Triple(id, request, idempotencyKey)
+                return decisionResponse.also { harness.fixture.network.current = it }
             }
         }.also { api = it }
     }
@@ -120,6 +120,9 @@ class PendingComparisonNavigationTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.pending_duplicate_sheet_title)).fetchSemanticsNodes().isEmpty() }
         assertEquals("none", harness.fixture.network.current.duplicateStatus)
         assertEquals("pending", harness.fixture.network.current.status)
+        assertEquals("42", decisions.single().first)
+        assertEquals(7L, decisions.single().second.expectedRowVersion)
+        assertEquals(row["idempotencyKey"], decisions.single().third)
         assertEquals("confirmed", reference.status)
         assertEquals(2850L, harness.fixture.network.current.originalAmountMinor)
         assertEquals(2850L, reference.originalAmountMinor)
@@ -133,6 +136,7 @@ class PendingComparisonNavigationTest {
             merchant = "本次便利店", duplicateStatus = "suspected", duplicateOfId = 20L,
             originalCurrencyCode = "JPY", originalAmountMinor = 2850, originalCurrency = "JPY", originalAmount = "2850",
             imagePath = "controlled/current.png")
+        decisionResponse = harness.fixture.network.current.copy(duplicateStatus = "none", duplicateOfId = null, rowVersion = 8)
         reference = harness.fixture.network.current.copy(id = 20L, publicId = "comparison-reference", merchant = "参考便利店",
             status = "confirmed", duplicateStatus = "none", duplicateOfId = null, confirmedAt = "2026-09-06T00:00:00Z")
     }

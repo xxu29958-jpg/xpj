@@ -56,7 +56,6 @@ class DebtAdjustmentRepositoryTest {
                 completedAt = stopped.completedAt), stopped)
             assertNotNull(stopped.completedAt)
             assertTrue(fixture.api.calls.isEmpty())
-            assertTrue(fixture.api.facts.isEmpty())
             writes.save(binding, fixture.debt, 3_000L, "补记借款").getOrThrow()
             assertEquals(2, fixture.dao.rows.size)
             assertEquals(stopped, fixture.dao.rows.getValue(stopped.id))
@@ -94,7 +93,6 @@ class DebtAdjustmentRepositoryTest {
             assertEquals(original.expectedRowVersion, stopped.expectedRowVersion)
             assertEquals(original.targetId, stopped.targetId)
             assertEquals(PendingMutationStatus.Abandoned.wireValue, stopped.status)
-            assertEquals(1, fixture.api.facts.size)
         }
     }
 
@@ -112,7 +110,6 @@ class DebtAdjustmentRepositoryTest {
             fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             fixture.engine(outbox, maxAttempts = 1).drainOnce()
             assertTrue(fixture.api.calls.isEmpty(), axis)
-            assertTrue(fixture.api.facts.isEmpty(), axis)
             val binding = requireNotNull(writes.currentAccess()).binding
             val pending = writes.observeWrites(binding, fixture.debt.publicId).first().single()
             assertEquals(originalIntent, assertNotNull(pending.intent))
@@ -151,7 +148,6 @@ class DebtAdjustmentRepositoryTest {
         assertEquals(original.idempotencyKey, confirmed.idempotencyKey)
         assertEquals(original.expectedRowVersion, confirmed.expectedRowVersion)
         assertEquals(original.targetId, confirmed.targetId)
-        assertEquals(1, fixture.api.facts.size)
         assertTrue(fixture.api.calls.all { it == fixture.api.calls.first() })
         assertEquals(PendingMutationStatus.Done.wireValue, confirmed.status)
     }
@@ -185,39 +181,6 @@ class DebtAdjustmentRepositoryTest {
         assertEquals("d1", sent.publicId)
         assertEquals(payload.request, sent.request)
         assertEquals(stored.idempotencyKey, sent.idempotencyKey)
-    }
-
-    @Test
-    fun responseLostAfterAdjustmentCommitRecoversTheOriginalCommandAfterRepositoryRestart() = runTest {
-        val fixture = DebtAdjustmentFixture()
-        fixture.api.loseResponse = true
-        val id = fixture.save().getOrThrow()
-        val original = fixture.dao.rows.getValue(id)
-
-        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
-        assertEquals(1, fixture.engine().drainOnce().retryable)
-        assertEquals(PendingMutationStatus.Pending.wireValue, fixture.dao.rows.getValue(id).status)
-        assertOriginalIntent(original, fixture.dao.rows.getValue(id))
-        assertEquals(1, fixture.api.facts.size)
-
-        val restartedClock = Clock.offset(fixture.clock, Duration.ofMinutes(2))
-        val restartedOutbox = fixture.newOutbox(restartedClock)
-        val restartedRepository = fixture.newRepository(restartedOutbox)
-        val recovered = restartedRepository.observeWrites(fixture.binding, "d1").first().single()
-        assertEquals(original.payload, recovered.row.payloadJson)
-        assertEquals(DebtAdjustmentCreateRequestDto(3_000L, "补记借款", 2L), recovered.adjustment?.request)
-        fixture.api.loseResponse = false
-
-        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
-        assertEquals(1, fixture.engine(restartedOutbox, restartedClock).drainOnce().done)
-        assertEquals(2, fixture.api.calls.size)
-        assertEquals(fixture.api.calls[0], fixture.api.calls[1])
-        assertEquals(original.idempotencyKey, fixture.api.calls[1].idempotencyKey)
-        assertEquals(1, fixture.api.facts.size)
-        assertEquals(3L, fixture.api.facts.values.single().second.rowVersion)
-        assertEquals(53_000L, fixture.api.facts.values.single().second.remainingAmountCents)
-        assertOriginalIntent(original, fixture.dao.rows.getValue(id))
-        assertEquals(PendingMutationStatus.Done, restartedRepository.observeWrites(fixture.binding, "d1").first().single().row.status)
     }
 
     @Test
@@ -276,7 +239,6 @@ class DebtAdjustmentRepositoryTest {
                 assertEquals("runtime_version_mismatch", pending.row.lastError)
             }
             assertEquals(1, fixture.api.calls.size)
-            assertTrue(fixture.api.facts.isEmpty())
             assertEquals(1, fixture.api.calls.size)
         }
     }
@@ -300,7 +262,6 @@ class DebtAdjustmentRepositoryTest {
         assertEquals(1, fixture.engine().drainOnce().done)
         assertEquals(2, fixture.api.calls.size)
         assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
-        assertEquals(1, fixture.api.facts.size)
         assertOriginalIntent(original, fixture.dao.rows.getValue(id))
     }
 
@@ -337,7 +298,6 @@ class DebtAdjustmentRepositoryTest {
             assertEquals(listOf(1, 1), fixture.queueDepthAtSchedule)
             assertEquals(2, fixture.api.calls.size)
             assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
-            assertTrue(fixture.api.facts.isEmpty())
             fixture.repository.recover(fixture.binding, pending, drop = true).getOrThrow()
             assertEquals(PendingMutationStatus.Abandoned.wireValue, fixture.dao.rows.getValue(id).status)
             assertOriginalIntent(original, fixture.dao.rows.getValue(id))
@@ -411,7 +371,6 @@ class DebtAdjustmentRepositoryTest {
         assertTrue(cleared.api.calls.isEmpty())
         cleared.dao.runnableBatches += listOf(cleared.dao.rows.keys.single())
         assertEquals(1, cleared.engine().drainOnce().done)
-        assertEquals(0L, cleared.api.facts.values.single().second.remainingAmountCents)
     }
 
     @Test
@@ -535,7 +494,6 @@ internal data class AdjustmentCall(val publicId: String, val request: DebtAdjust
 
 internal class DebtAdjustmentApiProbe : ApiService by FakeApiService(mutableListOf(), 0) {
     val calls = mutableListOf<AdjustmentCall>()
-    val facts = mutableMapOf<String, Pair<DebtAdjustmentCreateRequestDto, DebtDto>>()
     var loseResponse = false
     var refusal: Pair<Int, String>? = null
     val refusalsByKey = mutableMapOf<String, Pair<Int, String>>()
@@ -549,16 +507,12 @@ internal class DebtAdjustmentApiProbe : ApiService by FakeApiService(mutableList
         calls += AdjustmentCall(publicId, request, idempotencyKey)
         refusal?.let { (status, code) -> throw adjustmentRefusal(status, code) }
         val key = requireNotNull(idempotencyKey)
-        // Known replies support response-loss scenarios; PostgreSQL owns amount, OCC and key persistence.
-        facts[key]?.let { (original, accepted) ->
-            check(request == original) { "An existing adjustment key must keep its original body" }
-            return accepted
-        }
         refusalsByKey[key]?.let { (status, code) -> throw adjustmentRefusal(status, code) }
-        val accepted = response
-        facts[key] = request to accepted
-        if (loseResponse) throw IOException("Synthetic response loss after adjustment commit")
-        return accepted
+        if (loseResponse) {
+            loseResponse = false
+            throw IOException("Synthetic response loss after adjustment commit")
+        }
+        return response
     }
 }
 

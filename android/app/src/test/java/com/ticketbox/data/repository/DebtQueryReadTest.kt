@@ -635,7 +635,10 @@ private class DebtReadApi(memberDebt: Boolean = false) : ApiService by FakeApiSe
     }
     override suspend fun setDebtKind(publicId: String, request: DebtKindSetRequestDto, idempotencyKey: String?): DebtDto {
         commands++
-        val accepted = readDebt().copy(publicId = publicId, rowVersion = request.expectedRowVersion + 1, debtKind = request.debtKind)
+        assertEquals("jpy-debt", publicId)
+        assertEquals(4L, request.expectedRowVersion)
+        assertEquals("installment", request.debtKind)
+        val accepted = readDebt().copy(rowVersion = 5, debtKind = "installment")
         if (acceptBeforeFailure || commandFailure == null) detail = { accepted }
         commandReplyGate?.invoke()
         commandFailure?.let { throw it }
@@ -645,7 +648,9 @@ private class DebtReadApi(memberDebt: Boolean = false) : ApiService by FakeApiSe
         request: MemberRepaymentProposalConfirmRequestDto, idempotencyKey: String?): DebtDto {
         check(proposalPublicId == "original-proposal" && !idempotencyKey.isNullOrBlank())
         commands++
-        val accepted = originalDebt.copy(publicId = publicId, rowVersion = request.expectedRowVersion + 1,
+        assertEquals("jpy-debt", publicId)
+        assertEquals(4L, request.expectedRowVersion)
+        val accepted = originalDebt.copy(rowVersion = 5,
             remainingAmountCents = 600, paidAmountCents = 600)
         if (acceptBeforeFailure || commandFailure == null) detail = { accepted }
         commandReplyGate?.invoke()

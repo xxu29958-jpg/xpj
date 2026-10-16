@@ -35,11 +35,18 @@ class GoalQueryCommandRoomTest {
                 return originalGoal()
             }
             override suspend fun archiveGoal(publicId: String, timezone: String?) = originalGoal().copy(status = "archived", rowVersion = 3)
-            override suspend fun updateGoal(publicId: String, request: GoalUpdateRequestDto, idempotencyKey: String?, timezone: String?) =
-                originalGoal().copy(targetAmountCents = request.targetAmountCents, rowVersion = request.expectedRowVersion + 1)
-            override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?) =
-                originalGoal().copy(publicId = "created-goal", name = request.name, month = request.month,
-                    category = request.category, targetAmountCents = request.targetAmountCents, rowVersion = 1)
+            override suspend fun updateGoal(publicId: String, request: GoalUpdateRequestDto, idempotencyKey: String?, timezone: String?): GoalDto {
+                assertEquals("goal-jpy", publicId)
+                assertEquals(2L, request.expectedRowVersion)
+                assertEquals(2400L, request.targetAmountCents)
+                return originalGoal().copy(targetAmountCents = 2400, rowVersion = 3)
+            }
+            override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto {
+                assertEquals("新目标", request.name)
+                assertEquals("2026-09", request.month)
+                assertEquals(2400L, request.targetAmountCents)
+                return originalGoal().copy(publicId = "created-goal", name = "新目标", targetAmountCents = 2400, rowVersion = 1)
+            }
         }.also { service = it }
     }
 

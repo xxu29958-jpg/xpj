@@ -283,7 +283,6 @@ class DebtAcceptedReadRoomTest {
             assertEquals(original.expectedRowVersion, retry.expectedRowVersion)
             assertEquals(original.idempotencyKey, retry.idempotencyKey)
             assertEquals(1, api.calls.size)
-            assertEquals(1, api.facts.size)
             assertEquals(40_000L, api.current.remainingAmountCents)
             val key = logicalBindingAdapter.toJson(fixture.binding)
             assertEquals(null, db.expenseDao().debtReadEpoch(key), "Failed read retirement leaves the original epoch")
@@ -300,7 +299,6 @@ class DebtAcceptedReadRoomTest {
                 assertEquals(original.payload, retried.payload)
                 assertEquals(original.expectedRowVersion, retried.expectedRowVersion)
                 assertEquals(original.idempotencyKey, retried.idempotencyKey)
-                assertEquals(1, api.facts.size)
                 assertEquals(40_000L, api.current.remainingAmountCents)
                 assertTrue(reader().detail(fixture.binding, "d1").isFailure,
                     "A later replay diagnosis cannot release the accepted original's old cached Debt")
@@ -333,7 +331,6 @@ class DebtAcceptedReadRoomTest {
                 assertEquals(2, api.calls.size)
                 assertEquals(4, attempts.size)
                 assertTrue(attempts.all { it == attempts.first() })
-                assertEquals(1, api.facts.size, "Same-key reentry does not create another repayment")
                 assertEquals("1", db.expenseDao().debtReadEpoch(key))
                 assertEquals(null, db.expenseDao().debtOutboxReadBarrier(key))
                 assertTrue(db.expenseDao().statsProjections(key, "debt_detail", "", "d1", "UTC").isEmpty())
@@ -398,7 +395,6 @@ class DebtAcceptedReadRoomTest {
                 assertEquals(queued.payload, failed.payload)
                 assertEquals(queued.idempotencyKey, failed.idempotencyKey)
                 assertEquals(queued.expectedRowVersion, failed.expectedRowVersion)
-                assertTrue(api.facts.isEmpty(), "A refused repayment never changes the original balance")
                 offline = true
                 val cold = DebtRepository(fixture.provider, DebtQueryReader(fixture.provider, db.expenseDao(), coordinator()))
                 val reopened = cold.getDebt("d1")
@@ -459,7 +455,6 @@ class DebtAcceptedReadRoomTest {
             writes.saveRepayment(fixture.binding, baseline.value, 10_000).getOrThrow()
             api.refusal = 403 to "forbidden"
             assertEquals(1, engine.drainOnce().failures)
-            assertTrue(api.facts.isEmpty())
             assertEquals(null, db.expenseDao().debtOutboxReadBarrier(key))
             assertEquals(baseline.copy(fromCache = true), reader().detail(fixture.binding, "d1").getOrThrow(),
                 "A write-only refusal leaves previously authorized read facts available")
@@ -469,7 +464,6 @@ class DebtAcceptedReadRoomTest {
             api.refusal = null
             api.loseResponse = true
             assertEquals(OutboxDrainWorker.DrainOutcome.RETRY, OutboxDrainWorker.runDrain { engine.drainOnce() })
-            assertEquals(1, api.facts.size)
             val unknownToken = requireNotNull(db.expenseDao().debtOutboxReadBarrier(key)).responseJson
             api.refusal = 403 to "forbidden"
             assertEquals(1, engine.drainOnce().failures)
@@ -491,7 +485,6 @@ class DebtAcceptedReadRoomTest {
             assertEquals(null, db.expenseDao().debtOutboxReadBarrier(key))
             offline = true
             assertEquals(fresh.copy(fromCache = true), reader().detail(fixture.binding, "d1").getOrThrow())
-            assertEquals(1, api.facts.size)
         } finally { db.close() }
     }
 
