@@ -278,8 +278,8 @@ def test_version_contract_crosses_backend_desktop_and_packaging() -> None:
 
 
 def test_real_desktop_backend_consumers_require_the_native_postgres_lane() -> None:
+    _assert_path_scopes(("desktop/tests/_edge_cdp.py",), "postgres", "desktop", "windows")
     for path in (
-        "desktop/tests/_edge_cdp.py",
         "desktop/tests/_real_backend.py",
         "desktop/tests/_real_backend_helper.py",
         "desktop/tests/test_web_bff_edge_e2e.py",

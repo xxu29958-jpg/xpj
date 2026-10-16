@@ -328,6 +328,7 @@ _EXACT_SCOPE_RULES = {
     ),
     **dict.fromkeys(_FROZEN_DESKTOP_FILES, ("desktop", "windows")),
     **dict.fromkeys(_DESKTOP_BACKEND_CONSUMER_FILES, ("desktop", "windows")),
+    "desktop/tests/_edge_cdp.py": ("postgres", "desktop", "windows"),
     "backend/tests/test_web_edge_runtime_contract.py": ("postgres", "desktop"),
     "backend/tests/fixtures/bulk_bar_announcement_contract.html": ("postgres", "desktop"),
     "backend/tests/fixtures/bulk_bar_empty_reload_contract.html": ("postgres", "desktop"),
