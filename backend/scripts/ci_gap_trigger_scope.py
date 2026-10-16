@@ -48,14 +48,22 @@ _FULL_PATHS = {
 _ALWAYS_ON_CONTRACT_PATHS = {
     # Navigation output is consumed by the resident repository-weight checks.
     "backend/scripts/engineering_task_map.py",
+    # These audits run in release_audit; they do not build or execute Android.
+    "backend/scripts/_audit_android_alpha_ratchet.py",
+    "backend/scripts/_audit_android_outbox_dispatcher_coverage.py",
+    "backend/scripts/_audit_android_presentation_copy.py",
+    "backend/scripts/_audit_android_session_binding_contract.py",
+    # Consumers live in contract_tests and run in the resident contracts job.
+    "backend/tests/_infra/ci_gap.py",
+    "backend/tests/_infra/ci_gap_action_pins.py",
+    "backend/tests/_infra/ci_gap_installer.py",
+    "backend/tests/_infra/ci_gap_powershell_ast.py",
+    "backend/tests/_infra/ci_gap_release_scope.py",
 }
 _ALWAYS_ON_CONTRACT_PREFIXES = ("backend/contract_tests/",)
 _FULL_PREFIXES = (".github/workflows/", ".gitea/workflows/")
 _CI_POLICY_PREFIXES = (
     "backend/scripts/ci_gap_",
-    "backend/tests/test_ci_gap_",
-    "backend/tests/test_audit_ci_gap",
-    "backend/tests/_infra/ci_gap_",
 )
 _DOC_PREFIXES = ("docs/", ".agents/", ".claude/")
 _DOC_FILES = {

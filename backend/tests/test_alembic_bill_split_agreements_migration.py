@@ -20,7 +20,7 @@ from app.models import (
 )
 from tests._infra.c07_money_migration import reset_schema, run_alembic, seed_owner
 from tests._infra.currency import activate_test_currency_authority
-from tests.test_bill_split_agreement_models import proposal_values
+from tests.bill_split_test_support import proposal_values
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 _PARENT = "20260920_0002"
