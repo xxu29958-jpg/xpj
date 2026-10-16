@@ -19,6 +19,7 @@ from app.services.currency_binding_service import authorize_currency_metadata_wr
 from app.services.file_service import resolve_upload_path_for_tenant, save_upload_bytes
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
+from tests.original_test_support import _bill, _financial_snapshot
 
 pytestmark = pytest.mark.real_db
 
@@ -66,29 +67,6 @@ def test_manual_bill_accepts_first_original_without_another_fact_and_replays_its
         assert cleaned.deleted_images == 0
         assert resolve_upload_path_for_tenant(db.get(Expense, expense_id).image_path, "owner").is_file()
     assert _financial_snapshot(expense_id) == before
-
-
-def _bill(client, identity, *, legacy=False):
-    response = client.post("/api/expenses/manual", headers=identity.app_headers, json={
-        "client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 1234,
-    })
-    assert response.status_code == 200, response.text
-    expense_id = response.json()["id"]
-    saved = save_upload_bytes(PNG_BYTES, tenant_id="owner", filename="receipt.png", content_type="image/png")
-    with SessionLocal() as db:
-        authorize_currency_metadata_write(db)
-        expense = db.get(Expense, expense_id)
-        expense.image_path = saved.relative_path
-        expense.image_hash = "legacy" if legacy else saved.image_hash
-        db.commit()
-    return expense_id, saved, resolve_upload_path_for_tenant(saved.relative_path, "owner")
-
-
-def _financial_snapshot(expense_id):
-    with SessionLocal() as db:
-        row = db.get(Expense, expense_id)
-        return {key: getattr(row, key) for key in ("id", "public_id", "amount_cents", "original_amount_minor",
-            "original_currency_code", "home_currency_code", "expense_time", "accounting_date", "fact_revision")}
 
 
 def test_reviewed_legacy_baseline_and_original_receipt_survive_later_file_damage(client, identity):

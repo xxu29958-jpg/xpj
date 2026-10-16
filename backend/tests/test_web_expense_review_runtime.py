@@ -49,6 +49,7 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 from tests import test_web_edge_runtime_contract as browser_runtime
 from tests import test_web_first_original as original_tests
+from tests._infra.assets import _camera_jpeg
 from tests._web_native_form_support import hidden_post_forms
 from tests.web_expense_fact_test_support import confirmation_actor
 from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
@@ -107,7 +108,7 @@ def test_manual_original_follows_its_creation_receipt_without_losing_file_or_rec
         return receipt
 
     monkeypatch.setattr(web_expense_create, "create_manual_expense", create)
-    sample = base64.b64encode(original_tests._camera_jpeg()).decode()
+    sample = base64.b64encode(_camera_jpeg()).decode()
     probe = (Path(__file__).parent / "fixtures/manual_original_probe.js").read_text(encoding="utf-8")
 
     @case.client.app.middleware("http")
@@ -1177,7 +1178,7 @@ def test_fx_action_checks_original_binding_and_keeps_inputs_and_confirmation_bas
 @pytest.mark.parametrize("external_preview", [False, True])
 def test_selected_original_requires_confirmation_and_retains_exact_file_after_reload(first_original_web, tmp_path, external_preview):
     case = first_original_web
-    sample_bytes = original_tests._camera_jpeg()
+    sample_bytes = _camera_jpeg()
     if external_preview:
         import pillow_heif
         from PIL import Image

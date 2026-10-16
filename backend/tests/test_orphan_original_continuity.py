@@ -17,18 +17,9 @@ from app.services.currency_binding_service import authorize_currency_metadata_wr
 from app.services.file_service import resolve_upload_path_for_tenant, upload_reference_for_path
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
-from tests._infra.env import TEST_UPLOAD_DIR
+from tests.original_test_support import _old_file
 
 pytestmark = pytest.mark.real_db
-
-
-def _old_file(name: str, *, tenant_id="owner") -> Path:
-    path = TEST_UPLOAD_DIR / tenant_id / "2026" / "01" / name
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(PNG_BYTES)
-    old = (now_utc() - timedelta(days=2)).timestamp()
-    os.utime(path, (old, old))
-    return path
 
 
 def _manual(client, identity):

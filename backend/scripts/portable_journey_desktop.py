@@ -20,7 +20,7 @@ from scripts.planning_journey_android import wait_for
 def desktop_browser(browser, backend_url, ledger_id, evidence):
     from playwright.sync_api import Error as PlaywrightError
 
-    from tests.test_desktop_web_bridge_session import _mint_principal
+    from tests.desktop_activation_support import _mint_principal
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "desktop"))
     from backend_manager.control_server import ControlServer

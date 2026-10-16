@@ -23,7 +23,7 @@ from app.services import attachment_cleanup_service as cleanup
 from app.services import file_service, manual_expense_draft_presenter, original_command_service
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
-from tests.test_original_replenishment_admission import _camera_jpeg
+from tests._infra.assets import _camera_jpeg
 from tests.web_expense_fact_test_support import confirmation_actor
 from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
 from tests.web_expense_fact_test_support import confirmation_web as confirmation_web
