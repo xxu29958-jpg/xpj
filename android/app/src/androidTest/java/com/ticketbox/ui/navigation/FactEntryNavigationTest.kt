@@ -117,7 +117,7 @@ class FactEntryNavigationTest {
             val confirmed = com.ticketbox.data.remote.dto.ExpenseRevisionDto("history-confirmed", 1, "confirmed", "首次确认",
                 emptyList(), after = mapOf("original_currency_code" to "CNY", "original_amount_minor" to amount),
                 createdAt = "2026-10-03T04:35:00Z")
-            harness.fixture.network.historyOverride = listOf(
+            harness.fixture.network.history = listOf(
                 confirmed.copy(publicId = "history-refund", offsetPublicId = "refund-1", changeKind = "created",
                     reason = "退回一份", createdAt = "2026-10-03T06:10:00Z",
                     after = mapOf("kind" to "refund", "original_currency_code" to "CNY", "original_amount_minor" to 2000L,

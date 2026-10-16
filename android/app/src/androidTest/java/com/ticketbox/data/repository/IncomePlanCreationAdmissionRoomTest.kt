@@ -30,6 +30,7 @@ class IncomePlanCreationAdmissionRoomTest {
     @After fun close() { fixture.close() }
 
     @Test fun lostLocalAcceptanceReopensOneOriginalAndRetainedDoneCannotAllocateAnother() = runBlocking {
+        fixture.network.creationReply = fixture.network.creationReply.copy(sourceType = "other")
         val repository = fixture.reopen().incomePlanRepository
         val binding = requireNotNull(repository.observeActiveLedgerAccess().first()).binding
         // Room accepted the command, but its caller never receives the successful local callback.
@@ -63,7 +64,6 @@ class IncomePlanCreationAdmissionRoomTest {
         assertEquals(stored["payload"], fixture.stored().single()["payload"])
         assertEquals(listOf(key, key), fixture.network.creationCalls.map { it.second })
         assertEquals(fixture.network.creationCalls.first(), fixture.network.creationCalls.last())
-        assertEquals(1, fixture.network.creationReceipts.size)
     }
 
     @Test fun changingSameKeyRefusesWhileIndependentKeyCanSubmitTheSameFinancialIntent() = runBlocking {

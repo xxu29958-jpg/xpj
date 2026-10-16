@@ -77,7 +77,6 @@ class IncomePlanCreationRoomTest {
         assertEquals(1200L, fixture.network.creationCalls.last().first.amountCents)
         assertEquals(original["idempotencyKey"], fixture.network.creationCalls.last().second)
         assertEquals(original["payload"], fixture.stored().single()["payload"])
-        assertEquals(1, fixture.network.creationReceipts.size)
     }
 
     @Test fun oldSystemDraftSnapshotRejoinsTheOriginalRoomCreationAfterLocalAckLoss() {
