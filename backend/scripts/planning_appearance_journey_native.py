@@ -85,7 +85,7 @@ def read_domains(native, images):
             native.reveal_any(choice)
             previous = saved_background(native)
             native.click(choice, bottom=True)
-            wait_for(lambda description=description: native.has(description), "The immersion choice did not reach the UI")
+            native.reveal_any(description)
             wait_for(lambda previous=previous: saved_background(native) != previous, "The immersion choice was not persisted")
             selected = saved_background(native)
             for domain, slug in (("收件", "inbox"), ("流水", "ledger"), ("往来", "obligations"),
