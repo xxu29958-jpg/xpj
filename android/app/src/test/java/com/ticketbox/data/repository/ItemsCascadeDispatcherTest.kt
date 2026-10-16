@@ -57,7 +57,7 @@ class ItemsCascadeDispatcherTest {
             assertEquals(2L, following.expectedRowVersion)
             assertEquals("following-key", following.idempotencyKey)
             assertEquals(followingPayload, following.payload)
-            assertEquals(listOf("original-key" to 1L, "following-key" to 2L), api.receivedIntents)
+            assertEquals(listOf<Pair<String?, Long>>("original-key" to 1L, "following-key" to 2L), api.receivedIntents)
         }
     }
 
