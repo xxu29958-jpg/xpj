@@ -72,7 +72,7 @@ def test_fresh_install_publishes_binding_only_after_health(tmp_path: Path) -> No
     assert stores.read_active() is not None
     assert stores.read_active().phase == "committed"
     assert stores.history == []
-    assert adapters.apply_order() == list(APPLY_SEQUENCE)
+    assert adapters.applied == list(APPLY_SEQUENCE)
     assert operation_store_order == ["fresh-preflight", "prepare"]
     assert stores.binding_publish_count == 1
     assert stores.fresh_inputs_check_count == 1
@@ -551,7 +551,7 @@ def test_inspect_does_not_mutate(tmp_path: Path) -> None:
     stores = MemoryStores(adapters, request.app_dir, request.data_root)
     inspect = inspect_machine(stores.as_lifecycle_stores(), request)
     assert inspect.ok
-    assert adapters.apply_order() == []
+    assert adapters.applied == []
     assert stores.read() is None
     assert stores.read_active() is None
 
