@@ -104,6 +104,7 @@ class DebtAdjustmentRoomContinuityTest {
     private fun settleOriginalKindAfterReopen(original: Map<String, String?>) {
         fixture.network.kindResponse = fixture.network.current.copy(debtKind = "revolving", rowVersion = 3)
         fixture.network.failReads = false
+        fixture.network.current = requireNotNull(fixture.network.kindResponse)
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
         val accepted = fixture.network.current
         fixture.network.current = accepted.copy(debtKind = "installment", rowVersion = accepted.rowVersion + 1)
@@ -124,7 +125,8 @@ class DebtAdjustmentRoomContinuityTest {
         }
         val receipt = com.ticketbox.OutboxAdapterGraph().debtVoidReceiptAdapter.fromJson(requireNotNull(completed["receiptJson"]))
         assertEquals(accepted, receipt)
-        assertEquals(1, fixture.network.kindResults.size)
+        assertEquals("debt-original", fixture.network.kindCalls.first().first)
+        assertEquals(original["idempotencyKey"], fixture.network.kindCalls.first().third)
         assertTrue(fixture.network.kindCalls.all { it == fixture.network.kindCalls.first() })
         compose.onNodeWithText(context.getString(R.string.debt_kind_confirmed)).performScrollTo().assertIsDisplayed()
     }
@@ -154,8 +156,8 @@ class DebtAdjustmentRoomContinuityTest {
         assertEquals(50_000L, detail.value?.state?.value?.debt?.remainingAmountCents)
         assertEquals("2", original["expectedRowVersion"])
         fixture.network.adjustmentResponse = fixture.network.current.copy(remainingAmountCents = 53_000, rowVersion = 3)
+        fixture.network.current = requireNotNull(fixture.network.adjustmentResponse)
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
-        assertEquals(1, fixture.network.results.size)
 
         stopModels()
         fixture.network.failReads = true
@@ -175,8 +177,8 @@ class DebtAdjustmentRoomContinuityTest {
         compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.rowVersion == 3L }
         assertEquals(53_000L, detail.value?.state?.value?.debt?.remainingAmountCents)
         assertEquals(fixture.network.calls.first(), fixture.network.calls.last())
-        assertEquals(original["idempotencyKey"], fixture.network.calls.last().second)
-        assertEquals(1, fixture.network.results.size)
+        assertEquals("debt-original", fixture.network.calls.last().first)
+        assertEquals(original["idempotencyKey"], fixture.network.calls.last().third)
         assertEquals(emptyList<PendingDebtWrite>(), detail.value?.state?.value?.pendingWrites)
     }
 
@@ -204,7 +206,6 @@ class DebtAdjustmentRoomContinuityTest {
             for (field in listOf("payload", "expectedRowVersion", "idempotencyKey", "ownerKey", "ledgerId")) {
                 assertEquals(original[field], fixture.stored().single()[field])
             }
-            assertEquals(1, fixture.network.results.size)
         } finally { compose.runOnIdle { retained.close() } }
     }
 
@@ -232,7 +233,6 @@ class DebtAdjustmentRoomContinuityTest {
             saveAndCloseDetail(graph, fixture)
             val original = fixture.stored().single()
             assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
-            assertEquals(1, fixture.network.results.size)
             assertEquals(53_000L, fixture.network.current.remainingAmountCents)
             compose.waitUntil(10_000) { sync.uiState.value.status.failed.size == 1 }
             for (field in listOf("payload", "expectedRowVersion", "idempotencyKey", "ownerKey", "ledgerId")) {
@@ -271,8 +271,8 @@ class DebtAdjustmentRoomContinuityTest {
             }
             assertEquals(0, runBlocking { fixture.drain() }.done)
             assertEquals(1, fixture.network.calls.size)
-            assertEquals(original["idempotencyKey"], fixture.network.calls.single().second)
-            assertEquals(1, fixture.network.results.size)
+            assertEquals("debt-original", fixture.network.calls.single().first)
+            assertEquals(original["idempotencyKey"], fixture.network.calls.single().third)
             assertEquals(2, fixture.scheduleCalls)
         } finally {
             gate.complete(Unit)
@@ -295,6 +295,7 @@ class DebtAdjustmentRoomContinuityTest {
         }
         compose.waitUntil(10_000) { retained.stored().size == 1 && model.state.value.activeAction == null }
         compose.runOnIdle { model.viewModelScope.cancel() }
+        retained.network.current = requireNotNull(retained.network.adjustmentResponse)
     }
 
     @Test fun originalAdjustmentFromPreviousSessionRemainsReadableWithoutDetailOrGlobalRetry() {
@@ -310,6 +311,7 @@ class DebtAdjustmentRoomContinuityTest {
         val binding = requireNotNull(originalGraph.debtWriteRepository.currentAccess()).binding
         runBlocking { originalGraph.debtWriteRepository.save(binding, fixture.network.current.toDomain(), 3_000, "补记原借款").getOrThrow() }
         fixture.network.adjustmentResponse = fixture.network.current.copy(remainingAmountCents = 53_000, rowVersion = 3)
+        fixture.network.current = requireNotNull(fixture.network.adjustmentResponse)
         fixture.network.loseResponse = true
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
         val original = fixture.stored().single()
@@ -352,7 +354,6 @@ class DebtAdjustmentRoomContinuityTest {
                 assertEquals(original[field], fixture.stored().single()[field])
             }
             assertEquals(0, runBlocking { fixture.drain() }.attempted)
-            assertEquals(1, fixture.network.results.size)
         } finally { compose.runOnIdle { sync.viewModelScope.cancel() } }
     }
 

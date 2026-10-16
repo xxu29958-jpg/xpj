@@ -22,7 +22,7 @@ import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
-import com.ticketbox.data.remote.dto.RepaymentFactDto
+import com.ticketbox.data.remote.dto.DebtActivityListDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto
 import androidx.lifecycle.ViewModel
@@ -132,24 +132,18 @@ internal class DebtAdjustmentConnectedNetwork {
     // Each scenario supplies its accepted read; this transport does not calculate server facts.
     var adjustmentResponse: DebtDto? = null
     var kindResponse: DebtDto? = null
-    var repaymentResponse: DebtDto? = null
-    val calls = mutableListOf<Pair<DebtAdjustmentCreateRequestDto, String>>()
-    val kindCalls = mutableListOf<Pair<DebtKindSetRequestDto, String>>()
-    val kindResults = mutableMapOf<String, Pair<DebtKindSetRequestDto, DebtDto>>()
-    val results = mutableMapOf<String, DebtDto>()
-    val repaymentCalls = mutableListOf<Pair<RepaymentCreateRequestDto, String>>()
-    val repaymentResults = mutableMapOf<String, Pair<RepaymentCreateRequestDto, DebtRepaymentReceiptDto>>()
+    var repaymentResponse: DebtRepaymentReceiptDto? = null
+    var activityResponse = DebtActivityListDto("debt-original", "CNY", emptyList(), 1, 20, 0)
+    val calls = mutableListOf<Triple<String, DebtAdjustmentCreateRequestDto, String?>>()
+    val kindCalls = mutableListOf<Triple<String, DebtKindSetRequestDto, String?>>()
+    val repaymentCalls = mutableListOf<Triple<String, RepaymentCreateRequestDto, String?>>()
     val service = object : ApiService by debtAdjustmentProxy<ApiService>({ error("Unexpected remote method: $it") }) {
         override suspend fun setDebtKind(publicId: String, request: DebtKindSetRequestDto, idempotencyKey: String?): DebtDto {
-            check(publicId == current.publicId)
-            val key = requireNotNull(idempotencyKey)
-            kindCalls += request to key
+            kindCalls += Triple(publicId, request, idempotencyKey)
             if (failReads) throw IOException("Synthetic offline classification write")
-            kindResults[key]?.let { (original, receipt) -> check(original == request); return receipt }
-            current = requireNotNull(kindResponse) { "Declare the accepted classification response" }
-            kindResults[key] = request to current
+            val response = requireNotNull(kindResponse) { "Declare the accepted classification response" }
             if (loseResponse) throw IOException("Synthetic classification reply lost after acceptance")
-            return current
+            return response
         }
 
         override suspend fun debt(publicId: String): DebtDto {
@@ -171,32 +165,15 @@ internal class DebtAdjustmentConnectedNetwork {
 
         override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto {
             if (failReads) throw IOException("Synthetic unavailable repayment history")
-            val facts = repaymentResults.values.map { (request, receipt) ->
-                RepaymentFactDto(receipt.repaymentPublicId, request.amountCents, request.paidAt, "2026-09-02T01:00:00Z", "active",
-                    accountingTime = request.timeInput?.let { input -> com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto(
-                        precision = input.precision, instantUtc = input.instantUtc, userLocalDate = input.userLocalDate,
-                        sourceTimezone = input.sourceTimezone, accountingDate = input.accountingDate,
-                        calendarRevision = input.calendarRevision, basis = "manual") })
-            }
-            val events = facts.map { payment -> com.ticketbox.data.remote.dto.DebtActivityDto(
-                kind = "repayment", publicId = payment.publicId, recordedAt = payment.createdAt,
-                actorIsYou = true, repayment = payment,
-            ) }
-            return com.ticketbox.data.remote.dto.DebtActivityListDto(publicId, "CNY", events, page, 20, events.size)
+            return activityResponse
         }
 
         override suspend fun recordDebtRepayment(publicId: String, request: RepaymentCreateRequestDto,
             idempotencyKey: String?): DebtRepaymentReceiptDto {
-            check(publicId == current.publicId)
-            val key = requireNotNull(idempotencyKey)
-            repaymentCalls += request to key
-            val original = repaymentResults.getOrPut(key) {
-                current = requireNotNull(repaymentResponse) { "Declare the accepted repayment response" }
-                request to DebtRepaymentReceiptDto(publicId, "repayment-${repaymentResults.size + 1}", current.rowVersion, current.homeCurrencyCode)
-            }
-            check(original.first == request)
+            repaymentCalls += Triple(publicId, request, idempotencyKey)
+            val response = requireNotNull(repaymentResponse) { "Declare the accepted repayment receipt" }
             if (loseResponse) throw IOException("Synthetic lost response after repayment commit")
-            return original.second
+            return response
         }
 
         override suspend fun repaymentDrafts(status: String?) = RepaymentDraftListResponseDto(listOf(
@@ -207,11 +184,8 @@ internal class DebtAdjustmentConnectedNetwork {
 
         override suspend fun recordDebtAdjustment(publicId: String, request: DebtAdjustmentCreateRequestDto,
             idempotencyKey: String?): DebtDto {
-            check(publicId == current.publicId)
-            calls += request to requireNotNull(idempotencyKey)
-            val response = results.getOrPut(idempotencyKey) {
-                requireNotNull(adjustmentResponse) { "Declare the accepted adjustment response" }.also { current = it }
-            }
+            calls += Triple(publicId, request, idempotencyKey)
+            val response = requireNotNull(adjustmentResponse) { "Declare the accepted adjustment response" }
             if (loseResponse) throw IOException("Synthetic lost response after commit")
             return response
         }

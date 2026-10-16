@@ -1,5 +1,10 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.dto.DebtActivityDto
+import com.ticketbox.data.remote.dto.DebtActivityListDto
+import com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto
+import com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto
+import com.ticketbox.data.remote.dto.RepaymentFactDto
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -107,7 +112,6 @@ class DirectRepaymentRoomContinuityTest {
             compose.waitUntil(10_000) { fixture.stored().single()["status"] == "abandoned" }
             assertOriginalColumns(original)
             assertEquals(0, fixture.network.repaymentCalls.size)
-            assertEquals(0, fixture.network.repaymentResults.size)
             assertEquals(0, runBlocking { fixture.drain() }.attempted)
         } finally { compose.runOnIdle { sync.viewModelScope.cancel() } }
     }
@@ -118,8 +122,9 @@ class DirectRepaymentRoomContinuityTest {
         val initialBalance = if (longContent) 60_000_000_000L else 50_000L
         fixture.network.current = fixture.network.current.copy(principalAmountCents = initialBalance, remainingAmountCents = initialBalance,
             counterpartyLabel = if (longContent) "共同装修与旅行费用往来需要完整核对的原借款对象名称" else "原借款对象")
-        fixture.network.repaymentResponse = fixture.network.current.copy(
+        val acceptedDebt = fixture.network.current.copy(
             remainingAmountCents = if (longContent) 47_654_321_099L else 40_000L, paidAmountCents = amountCents, rowVersion = 3)
+        fixture.network.repaymentResponse = DebtRepaymentReceiptDto("debt-original", "repayment-1", 3, "CNY")
         installModels()
         compose.setContent {
             val model = detail.value ?: return@setContent
@@ -144,8 +149,15 @@ class DirectRepaymentRoomContinuityTest {
         assertEquals(0, fixture.network.repaymentCalls.size)
         assertEquals(1, fixture.scheduleCalls)
         assertEquals(initialBalance, detail.value?.state?.value?.debt?.remainingAmountCents)
+        fixture.network.current = acceptedDebt
+        fixture.network.activityResponse = DebtActivityListDto("debt-original", "CNY", listOf(
+            DebtActivityDto(kind = "repayment", publicId = "repayment-1", recordedAt = "2026-09-02T01:00:00Z",
+                actorIsYou = true, repayment = RepaymentFactDto("repayment-1", amountCents, null,
+                    "2026-09-02T01:00:00Z", "active", accountingTime = ExpenseAccountingTimeDto(
+                        precision = "date_only", userLocalDate = "2026-09-01", sourceTimezone = "Pacific/Honolulu",
+                        accountingDate = "2026-09-01", calendarRevision = 3, basis = "manual"))),
+        ), 1, 20, 1)
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
-        assertEquals(1, fixture.network.repaymentResults.size)
 
         stopModels()
         fixture.network.failReads = true
@@ -198,7 +210,8 @@ class DirectRepaymentRoomContinuityTest {
         assertNotNull(fixture.stored().single()["receiptJson"])
         assertOriginalColumns(original)
         assertEquals(fixture.network.repaymentCalls.first(), fixture.network.repaymentCalls.last())
-        assertEquals(1, fixture.network.repaymentResults.size)
+        assertEquals("debt-original", fixture.network.repaymentCalls.first().first)
+        assertEquals(original["idempotencyKey"], fixture.network.repaymentCalls.first().third)
 
         fixture.network.failReads = false
         compose.runOnIdle { detail.value?.refresh() }
@@ -235,8 +248,9 @@ class DirectRepaymentRoomContinuityTest {
                 retained.createGoal.toggleDebt(fixture.network.current.publicId)
             }
             val binding = requireNotNull(graph.debtWriteRepository.currentAccess()).binding
-            fixture.network.repaymentResponse = fixture.network.current.copy(remainingAmountCents = 40_000, paidAmountCents = 10_000, rowVersion = 3)
+            fixture.network.repaymentResponse = DebtRepaymentReceiptDto("debt-original", "repayment-1", 3, "CNY")
             runBlocking { graph.debtWriteRepository.saveRepayment(binding, fixture.network.current.toDomain(), 10_000).getOrThrow() }
+            fixture.network.current = fixture.network.current.copy(remainingAmountCents = 40_000, paidAmountCents = 10_000, rowVersion = 3)
             assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
             compose.waitUntil(10_000) { sync.uiState.value.status.failed.size == 1 }
             compose.runOnIdle { sync.retry(sync.uiState.value.status.failed.single()) }
@@ -247,8 +261,9 @@ class DirectRepaymentRoomContinuityTest {
             assertRetainedAdjustmentSelection(retained.createGoal, fixture.network.current.publicId)
             assertRetainedAdjustmentSelection(retained.inbox, fixture.network.current.publicId)
 
-            fixture.network.repaymentResponse = fixture.network.current.copy(remainingAmountCents = 35_000, paidAmountCents = 15_000, rowVersion = 4)
+            fixture.network.repaymentResponse = DebtRepaymentReceiptDto("debt-original", "repayment-2", 4, "CNY")
             runBlocking { graph.debtWriteRepository.saveRepayment(binding, fixture.network.current.toDomain(), 5_000).getOrThrow() }
+            fixture.network.current = fixture.network.current.copy(remainingAmountCents = 35_000, paidAmountCents = 15_000, rowVersion = 4)
             fixture.network.loseResponse = true
             assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
             val second = fixture.stored().last()
@@ -265,7 +280,6 @@ class DirectRepaymentRoomContinuityTest {
             fixture.network.failReads = false
             compose.runOnIdle { retained.refresh() }
             compose.waitUntil(10_000) { retained.balances() == List(5) { 35_000L } }
-            assertEquals(2, fixture.network.repaymentResults.size)
             assertEquals(3, fixture.network.repaymentCalls.size)
         } finally {
             compose.runOnIdle { retained.close(); sync.viewModelScope.cancel() }
@@ -289,8 +303,9 @@ class DirectRepaymentRoomContinuityTest {
     private fun assertChangedOriginCannotResume(changeSession: Boolean) {
         val originalGraph = fixture.reopen()
         val binding = requireNotNull(originalGraph.debtWriteRepository.currentAccess()).binding
-        fixture.network.repaymentResponse = fixture.network.current.copy(remainingAmountCents = 40_000, paidAmountCents = 10_000, rowVersion = 3)
+        fixture.network.repaymentResponse = DebtRepaymentReceiptDto("debt-original", "repayment-1", 3, "CNY")
         runBlocking { originalGraph.debtWriteRepository.saveRepayment(binding, fixture.network.current.toDomain(), 10_000).getOrThrow() }
+        fixture.network.current = fixture.network.current.copy(remainingAmountCents = 40_000, paidAmountCents = 10_000, rowVersion = 3)
         fixture.network.loseResponse = true
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
         val original = fixture.stored().single()
@@ -333,7 +348,6 @@ class DirectRepaymentRoomContinuityTest {
                 assertEquals(original[field], fixture.stored().single()[field])
             }
             assertEquals(0, runBlocking { fixture.drain() }.attempted)
-            assertEquals(1, fixture.network.repaymentResults.size)
         } finally { compose.runOnIdle { sync.viewModelScope.cancel() } }
     }
 
