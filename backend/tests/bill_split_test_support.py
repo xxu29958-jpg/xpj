@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import Account, AuthToken, BillSplitInvitation, Debt, Device, Expense, Ledger, LedgerMember, Repayment
 from app.schemas._bill_split_change import BillSplitChangeAcceptRequest, BillSplitChangeCreateRequest
+from app.services import bill_split_service as bsplit
 from app.services.bill_split_service._agreement_commands import accept_bill_split_change, create_bill_split_change
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
@@ -252,3 +253,58 @@ def proposal_values(**changes):
         "reason": "Review source refund", "status": "pending", "created_at": now,
         "expires_at": now + timedelta(days=7), **changes,
     }
+
+
+def _seed_personal_ledger(*, name: str, ledger_id: str) -> int:
+    """A new account that owns its own personal ledger (the bill-split receiver)."""
+    with SessionLocal() as db:
+        account = Account(display_name=name)
+        db.add(account)
+        db.flush()
+        db.add(Ledger(ledger_id=ledger_id, name=f"{name} 的账本", owner_account_id=account.id))
+        db.flush()
+        adopt_ledger_calendar(db, ledger_id=ledger_id, timezone_name="Asia/Shanghai")
+        db.add(LedgerMember(ledger_id=ledger_id, account_id=account.id, role="owner"))
+        db.commit()
+        return account.id
+
+
+def _mint_app_token(*, account_id: int, ledger_id: str) -> str:
+    """Mint an app-scope AuthToken for an EXISTING account in ``ledger_id``.
+
+    The account must already be a ``LedgerMember`` of ``ledger_id`` (role resolves
+    the AuthContext). Mirrors ``debt_proposal_helpers._mint_member_actor`` but for
+    a pre-existing account rather than a freshly created one.
+    """
+    with SessionLocal() as db:
+        device = Device(account_id=account_id, device_name="pytest-xledger", platform="android")
+        db.add(device)
+        db.flush()
+        token = new_session_token()
+        db.add(
+            AuthToken(
+                token_hash=hash_secret(token),
+                account_id=account_id,
+                device_id=device.id,
+                ledger_id=ledger_id,
+                scope="app",
+            )
+        )
+        db.commit()
+        return token
+
+
+def _accept_into(public_id: str, receiver_account_id: int, target_ledger_id: str) -> None:
+    with SessionLocal() as db:
+        bsplit.accept_invitation(
+            db,
+            public_id=public_id,
+            accepting_account_id=receiver_account_id,
+            target_ledger_id=target_ledger_id,
+        )
+
+
+def _debt_public_id_for(invitation_public_id: str) -> str:
+    debts = _debts_for(invitation_public_id)
+    assert len(debts) == 1
+    return debts[0].public_id
