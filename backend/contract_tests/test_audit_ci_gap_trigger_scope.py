@@ -39,6 +39,7 @@ jobs:
       android_apk: ${{ steps.scope.outputs.android_apk }}
       android_connected: ${{ steps.scope.outputs.android_connected }}
       windows: ${{ steps.scope.outputs.windows }}
+      windows_build: ${{ steps.scope.outputs.windows_build }}
       postgres_matrix: ${{ steps.scope.outputs.postgres_matrix }}
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
