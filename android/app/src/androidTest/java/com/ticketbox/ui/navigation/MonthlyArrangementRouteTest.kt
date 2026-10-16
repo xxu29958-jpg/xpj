@@ -16,6 +16,10 @@ import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.remote.dto.ExchangeRateDto
+import com.ticketbox.data.remote.dto.DiscretionaryResponseDto
+import com.ticketbox.data.remote.dto.MonthlyArrangementDto
+import com.ticketbox.data.remote.dto.MonthlyArrangementHistoryItemDto
+import com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -48,13 +52,23 @@ class MonthlyArrangementRouteTest {
     @Test fun trialIsNotSavedAndExplicitSaveSurvivesReopenAlongsideANewerDraft() {
         fixture.latest = ExchangeRateDto("rate", "CNY", "JPY", fixture.rateDate, "20", "manual",
             "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1)
+        fixture.inputReply = fixture.inputReply.copy(
+            breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000, 0),
+            missingRates = emptyList(), plannedTotalCents = 4000)
+        val month = fixture.inputReply.month
+        val first = MonthlyArrangementDto("rate-ledger", month, "JPY", 3000, 500, 1, "2026-09-27T00:00:00Z")
+        val second = first.copy(savingsTargetCents = 8000, rowVersion = 2)
         show()
         waitForInput()
         capture("arrangement-entry")
         edit("arrangement_savings", "3000")
         edit("arrangement_buffer", "500")
+        fixture.trialReply = fixture.inputReply.copy(isTrial = true, arrangementCurrencyCode = "JPY",
+            breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 3000, 500, 3500, 0), plannedTotalCents = 7500)
         tap("arrangement_trial")
         assertTextDisplayed(context.getString(R.string.arrangement_trial_basis))
+        assertEquals(month to mapOf("home_currency_code" to "JPY", "savings_target_cents" to "3000",
+            "reserved_buffer_cents" to "500"), fixture.trialRequests.single())
         assertNull(fixture.arrangement)
         assertTrue(runBlocking { fixture.rows().isEmpty() })
         tap("arrangement_save")
@@ -65,17 +79,26 @@ class MonthlyArrangementRouteTest {
         assertEquals(500L, intent.request.reservedBufferCents)
         assertEquals(0L, row.expectedRowVersion)
         assertNull(fixture.arrangement)
+        fixture.arrangementReply = first
+        fixture.historyItems = listOf(MonthlyArrangementHistoryItemDto(1, first.updatedAt, "JPY", 3000, 500))
+        fixture.inputReply = requireNotNull(fixture.trialReply).copy(isTrial = false)
         assertEquals(1, runBlocking { fixture.drain().done })
+        assertEquals(Triple(month, MonthlyArrangementSaveRequest("JPY", 3000, 500, null), row.idempotencyKey),
+            fixture.arrangementWrites.single())
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.arrangement_confirmed))).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(3000L, fixture.arrangement?.savingsTargetCents)
         compose.onNodeWithText(context.getString(R.string.arrangement_history)).performScrollTo().performClick()
         assertTextDisplayed(context.getString(R.string.arrangement_history_revision, 1L))
         androidx.test.espresso.Espresso.pressBack()
         edit("arrangement_savings", "8000")
+        fixture.trialReply = fixture.inputReply.copy(isTrial = true, savedArrangement = first,
+            breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 8000, 500, 0, 1500), plannedTotalCents = 12500)
         tap("arrangement_trial")
         val shortfall = context.getString(R.string.arrangement_shortfall,
             formatDisplayAmount(1500L, CurrencyDisplay.forRecord("JPY")))
         assertTextDisplayed(shortfall)
+        assertEquals(month to mapOf("home_currency_code" to "JPY", "savings_target_cents" to "8000",
+            "reserved_buffer_cents" to "500"), fixture.trialRequests.last())
         capture("arrangement-trial")
         assertEquals(3000L, fixture.arrangement?.savingsTargetCents)
         compose.runOnIdle { mounted.value = false; models.viewModelStore.clear() }
@@ -91,7 +114,12 @@ class MonthlyArrangementRouteTest {
         val next = runBlocking { fixture.rows().single { it.id != row.id } }
         assertEquals(1L, next.expectedRowVersion)
         assertNotEquals(row.idempotencyKey, next.idempotencyKey)
+        fixture.arrangementReply = second
+        fixture.historyItems = listOf(MonthlyArrangementHistoryItemDto(2, second.updatedAt, "JPY", 8000, 500)) + fixture.historyItems
+        fixture.inputReply = requireNotNull(fixture.trialReply).copy(isTrial = false)
         assertEquals(1, runBlocking { fixture.drain().done })
+        assertEquals(Triple(month, MonthlyArrangementSaveRequest("JPY", 8000, 500, 1), next.idempotencyKey),
+            fixture.arrangementWrites.last())
         assertEquals(8000L, fixture.arrangement?.savingsTargetCents)
         assertEquals(2L, fixture.arrangement?.rowVersion)
         assertEquals(2, fixture.arrangementWrites.size)
