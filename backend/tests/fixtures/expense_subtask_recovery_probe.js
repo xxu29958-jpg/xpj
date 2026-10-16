@@ -34,6 +34,7 @@
   };
   const post = path => originalFetch("/web/subtask-probe/" + path, {method: "POST"});
   const ready = current => wait(() => current?.expenseReviewContinuity && !button(current).disabled, "command did not become available");
+  const readyMain = () => wait(() => main()?.expenseReviewContinuity && !field(main(), "merchant").readOnly, "main draft unavailable");
   const pending = current => wait(() => current.dataset["expense" + (current === form("ack") ? "ack" : current === form("items") ? "items" : "splits") + "DraftPhase"] !== "editing" && !button(current).disabled, "original result was not retained");
   const submit = current => current.requestSubmit(button(current));
   const stage = state.stage;
@@ -53,7 +54,7 @@
   async function retainAndSubmitRows() {
     if (stage === "start") {
       await ready(form("items")); await ready(form("splits"));
-      await wait(() => main().expenseReviewContinuity && !field(main(), "merchant").readOnly, "main draft unavailable");
+      await readyMain();
       put(main(), "merchant", "原核对商家");
       field(main(), "merchant").addEventListener("blur", event => event.target.dispatchEvent(new Event("change", {bubbles: true})), {once: true});
       field(main(), "merchant").focus();
@@ -68,6 +69,7 @@
     }
     if (stage === "restored") {
       await ready(form("items")); await ready(form("splits"));
+      await readyMain();
       check(value(main(), "merchant") === "原核对商家" && value(form("items"), "item_amount_yuan") === "0005.00" &&
         value(form("splits"), "split_note") === "原拆账填写", "raw independent drafts were lost on refresh");
       state.raw_restored = true; put(form("items"), "item_amount_yuan", "5.00");
@@ -77,6 +79,7 @@
   async function inspectAndReplayItems() {
     if (stage === "unknown") {
       const items = form("items"); await ready(items);
+      await ready(form("splits")); await readyMain();
       check(JSON.stringify(basis(items)) === JSON.stringify(state.items), "unknown original borrowed a later version or key");
       check(JSON.stringify(basis(main())) === JSON.stringify(state.main) && JSON.stringify(basis(form("splits"))) === JSON.stringify(state.splits), "another task changed original basis");
       state.stage = "inspect"; save(); items.querySelector("[data-subtask-current]").click(); return;
@@ -96,6 +99,7 @@
   async function resolveSplitConflict() {
     if (stage === "replayed") {
       const splits = form("splits"); await ready(splits);
+      await readyMain();
       check(value(form("items"), "item_name") === "后来明细" && value(main(), "merchant") === "原核对商家", "replay replaced peer facts or another draft");
       submit(splits); await pending(splits);
       check(splits.dataset.expensesplitsDraftPhase === "blocked", "stale split was not rejected");
@@ -115,6 +119,7 @@
   async function saveReviewedSplit() {
     if (stage === "prepared") {
       const splits = form("splits"); await ready(splits);
+      await readyMain();
       check(value(splits, "expected_row_version") === "6" && value(splits, "idempotency_key") !== state.splits.idempotency_key &&
         value(splits, "draft_ref") === state.splits.draft_ref && value(splits, "split_note") === "原拆账填写", "explicit review lost input or failed to prepare a new command");
       state.reviewed_new_key = true;
@@ -122,7 +127,7 @@
       state.other_original_preserved = true; state.stage = "saved"; save(); submit(splits); return;
     }
     if (stage === "saved") {
-      await wait(() => main().expenseReviewContinuity && !field(main(), "merchant").readOnly, "main draft did not resume after subtask save");
+      await readyMain();
       check(value(main(), "merchant") === "原核对商家", "successful subtask removed main input");
       go("shelf", "/web/pending?ledger_id=owner&filter=ready"); return;
     }
