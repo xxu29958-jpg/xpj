@@ -365,6 +365,19 @@ def _discover_edge() -> str:
     pytest.skip("real Web consumer gate requires Microsoft Edge")
 
 
+def _discover_database_browser() -> str:
+    """Run database-backed Web journeys in the existing PostgreSQL lane."""
+    if sys.platform == "win32":
+        return _discover_edge()
+    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser"):
+        candidate = shutil.which(name)
+        if candidate:
+            return candidate
+    if os.environ.get("CI"):
+        pytest.fail("PostgreSQL Web journeys require an installed Chromium browser")
+    pytest.skip("PostgreSQL Web journeys require an installed Chromium browser")
+
+
 def _edge_cdp() -> ModuleType:
     """Reuse only Desktop's dependency-free Edge transport, not its product fixture."""
     global _EDGE_CDP

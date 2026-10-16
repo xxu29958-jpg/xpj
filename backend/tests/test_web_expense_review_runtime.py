@@ -58,7 +58,7 @@ first_original_web = original_tests.first_original_web
 
 @pytest.fixture
 def slow_confirmation_script(monkeypatch):
-    browser_runtime._discover_edge()
+    browser_runtime._discover_database_browser()
     respond = StaticFiles.get_response
     pending = True
 
@@ -975,7 +975,7 @@ def test_current_fact_returns_to_original_review_and_receipt_without_replacing_l
 
 
 def _run_review_page(client, tmp_path, path, *, width=393):
-    edge = browser_runtime._discover_edge()
+    edge = browser_runtime._discover_database_browser()
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
