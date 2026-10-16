@@ -34,7 +34,7 @@ from app.services.bill_split_service import (
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
-from tests.test_bill_split import _split_headers
+from tests.bill_split_test_support import _split_headers
 
 
 def _owner_account_id() -> int:

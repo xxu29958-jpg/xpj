@@ -17,8 +17,8 @@ from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.services.identity_service import hash_secret, new_session_token
 from tests._web_native_form_support import hidden_post_forms
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
+from tests.bill_split_test_support import _make_expense_for_owner, _seed_receiver
 from tests.debt_proposal_helpers import _idem, _member_headers, _propose
-from tests.test_bill_split import _make_expense_for_owner, _seed_receiver
 
 
 @pytest.fixture

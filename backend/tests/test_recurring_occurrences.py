@@ -11,8 +11,7 @@ from app.database import SessionLocal
 from app.models import LedgerMember
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.income_plan_service import create_income_plan
-from tests.test_bill_split import _seed_receiver
-from tests.test_bill_split_security_regressions import _bearer_for_account_ledger
+from tests.bill_split_test_support import _bearer_for_account_ledger, _seed_receiver
 
 
 def _create_series(client: TestClient, identity) -> dict:

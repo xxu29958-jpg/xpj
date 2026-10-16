@@ -7,8 +7,8 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from tests._runtime_protocol import negotiated_headers
+from tests.bill_split_test_support import _seed_receiver, _split_headers
 from tests.expense_correction_support import idem, manual_confirmed
-from tests.test_bill_split import _seed_receiver, _split_headers
 
 
 def _seed_usd_rate(client: TestClient, identity, rate_date: str, rate: str, *, expected_row_version: int = 0) -> dict:

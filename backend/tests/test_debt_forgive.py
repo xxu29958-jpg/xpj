@@ -30,6 +30,7 @@ from app.database import SessionLocal
 from app.models import Debt, DebtForgiveness, MemberRepaymentProposal, Repayment
 from app.services.time_service import now_utc
 from tests._runtime_protocol import current_protocol_headers
+from tests.bill_split_test_support import _create_invited_split as _invite
 from tests.debt_proposal_helpers import (
     _create_external_debt,
     _create_member_debt,
@@ -37,7 +38,6 @@ from tests.debt_proposal_helpers import (
     _mint_member_actor,
     _propose,
 )
-from tests.test_bill_split_debt_linkage import _invite
 from tests.test_member_repayment_proposal_cross_ledger import (
     _accept_into,
     _debt_public_id_for,

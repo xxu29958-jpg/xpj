@@ -8,7 +8,6 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import update
-from test_web_bill_split import _make_owner_expense, _owner_account_id, _seed_receiver
 
 from app.database import SessionLocal
 from app.main import app
@@ -18,6 +17,9 @@ from app.services import bill_split_service as bsplit
 from app.services.identity_service import hash_secret, new_session_token
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
+from tests.bill_split_test_support import _make_web_expense as _make_owner_expense
+from tests.bill_split_test_support import _owner_account_id
+from tests.bill_split_test_support import _seed_web_receiver as _seed_receiver
 
 
 def _mint_receiver_web_session(*, account_id: int, ledger_id: str) -> str:

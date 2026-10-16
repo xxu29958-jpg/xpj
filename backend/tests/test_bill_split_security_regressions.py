@@ -11,7 +11,6 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import (
-    AuthToken,
     BillSplitInvitation,
     Device,
     Expense,
@@ -21,39 +20,15 @@ from app.models import (
     LedgerMember,
 )
 from app.services import bill_split_service as bsplit
-from app.services.identity_service import hash_secret, new_session_token
 from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
-from tests._runtime_protocol import current_protocol_headers
-from tests.test_bill_split import (
+from tests.bill_split_test_support import (
+    _bearer_for_account_ledger,
     _make_expense_for_owner,
     _owner_account_id,
     _seed_receiver,
     _split_headers,
 )
-
-
-def _bearer_for_account_ledger(account_id: int, ledger_id: str) -> dict[str, str]:
-    with SessionLocal() as db:
-        device = Device(
-            account_id=account_id,
-            device_name="pytest-bill-split",
-            platform="android",
-        )
-        db.add(device)
-        db.flush()
-        token = new_session_token()
-        db.add(
-            AuthToken(
-                token_hash=hash_secret(token),
-                account_id=account_id,
-                device_id=device.id,
-                ledger_id=ledger_id,
-                scope="app",
-            )
-        )
-        db.commit()
-    return current_protocol_headers({"Authorization": f"Bearer {token}"})
 
 
 def _expense_snapshot(expense_id: int, tenant_id: str) -> dict[str, object]:
