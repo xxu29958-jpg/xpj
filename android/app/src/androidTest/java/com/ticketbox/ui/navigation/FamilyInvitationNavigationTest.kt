@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
@@ -118,7 +119,13 @@ class FamilyInvitationNavigationTest {
         assertEquals(false, model.uiState.value.invitationsFresh)
         compose.onNodeWithText("重新读取已发邀请").performScrollTo().performClick()
         compose.waitUntil(5_000) { model.uiState.value.invitationsFresh && model.uiState.value.invitations.single().revokedAt != null }
-        compose.onNodeWithText("只读 · 已撤销").performScrollTo().assertIsDisplayed()
+        try {
+            compose.onNodeWithText("只读 · 已撤销").performScrollTo().assertIsDisplayed()
+        } catch (failure: AssertionError) {
+            println(compose.onNodeWithText("只读 · 已撤销").printToString())
+            captureReferenceLibraryStep(compose, context, "family-invitation-read-failure")
+            throw failure
+        }
         compose.onNodeWithText("复制").assertDoesNotExist()
         assertEquals(listOf(original.publicId), revokes.toList())
         captureReferenceLibraryStep(compose, context, "family-invitation-revoked")
