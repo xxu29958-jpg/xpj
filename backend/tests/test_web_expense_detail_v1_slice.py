@@ -23,6 +23,7 @@ from app.services.expense_split_service import replace_expense_splits
 from app.services.receipt_item_service import replace_expense_items
 from app.services.time_service import now_utc
 from tests._web_native_form_support import hidden_post_forms
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 @pytest.fixture()
@@ -75,14 +76,6 @@ def _owner_member_id() -> int:
         )
         assert member is not None
         return member.id
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 def test_web_expense_edit_routes_have_single_owner() -> None:
@@ -314,7 +307,7 @@ def test_pending_subtask_conflict_keeps_original_rows_until_explicit_review(web_
     assert rows[0]["amount_cents"] == 990
     assert rows[0]["name" if section == "items" else "note"] == fields.get("item_name", fields.get("split_note"))[0]
     assert "return_filter=ready" in saved.headers["location"]
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
     revoked = web_client.post(target, data={**prepared, **fields, "review_latest": "true"})
     assert revoked.status_code == 403
     assert web_client.get(root_url, headers=identity.app_headers).json() == after
@@ -472,7 +465,7 @@ def test_web_detail_rows_do_not_change_confirm_stats_or_export(web_client: TestC
 def test_web_detail_rows_are_read_only_for_viewer(web_client: TestClient) -> None:
     expense_id = _seed_pending_expense()
     _seed_detail_rows(expense_id)
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     page = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert page.status_code == 200

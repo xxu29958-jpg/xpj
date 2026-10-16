@@ -11,11 +11,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
-from app.models import LedgerMember, RecurringItem
+from app.models import RecurringItem
 from app.schemas import RecurringCandidateConfirmRequest
 from app.services.recurring_candidate_confirmation_service import (
     confirm_recurring_candidate as confirm_recurring_candidate_service,
 )
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -134,14 +135,6 @@ def _confirm_candidate(
     )
     assert response.status_code == 200, response.json()
     return response.json()
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 def _assert_permission_denied(response, *, label: str) -> None:
@@ -461,7 +454,7 @@ def test_candidate_recurring_rejects_cross_key_rename_without_reopening_claimed_
 def test_viewer_cannot_mutate_recurring_items(client: TestClient, *, identity) -> None:
     item = _confirm_candidate(client, identity=identity)
     public_id = item["public_id"]
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     create_response = client.post(
         "/api/recurring/from-candidate?timezone=UTC",

@@ -93,3 +93,22 @@ def _mint_foreign_ledger_invitation(role: str = "member") -> tuple[str, str]:
             auth=None,
         )
     return ledger_id, invitation.invite_token
+
+
+def set_owner_ledger_role(role: str) -> None:
+    with SessionLocal() as db:
+        member = db.scalar(
+            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
+        )
+        assert member is not None
+        member.role = role
+        db.commit()
+
+
+def demote_owner_ledger_members_to_viewer() -> None:
+    with SessionLocal() as db:
+        members = db.scalars(select(LedgerMember).where(LedgerMember.ledger_id == "owner")).all()
+        assert members
+        for member in members:
+            member.role = "viewer"
+        db.commit()

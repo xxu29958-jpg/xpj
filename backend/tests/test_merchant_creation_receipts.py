@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import ApiIdempotencyKey
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def _payload(kind, name="Original store"):
@@ -114,13 +115,11 @@ def test_creation_with_unverifiable_receipt_requires_review(client, identity, ki
 
 @pytest.mark.parametrize("kind", ["catalog", "aliases"])
 def test_creation_receipt_cannot_bypass_revoked_write_permission(client, identity, kind):
-    from tests._infra.merchant_catalog import demote_owner_ledger_to_viewer
-
     path = f"/api/merchants/{kind}"
     headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
     first = client.post(path, headers=headers, json=_payload(kind))
     assert first.status_code == 201, first.text
-    demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
     assert client.post(path, headers=headers, json=_payload(kind)).status_code == 403
 
 

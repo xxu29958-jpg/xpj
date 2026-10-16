@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import LedgerMember, RecurringItem
+from app.models import RecurringItem
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.merchant_service import normalize_merchant
 from app.services.time_service import now_utc
@@ -84,16 +84,6 @@ def seed_observed_item(
         db.commit()
         db.refresh(item)
         return item.public_id
-
-
-def demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 def first_recurring_public_id() -> str:

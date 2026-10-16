@@ -15,6 +15,7 @@ from app.errors import AppError
 from app.models import ApiIdempotencyKey, Expense, LedgerMember, RuleApplicationBatch
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.rule_application_service import _commands
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def _expense(status: str) -> int:
@@ -129,7 +130,6 @@ def test_application_fact_and_original_receipt_commit_together(client, identity,
 @pytest.mark.parametrize("status", ["pending", "confirmed"])
 def test_public_web_application_binding_csrf_and_current_permission_guard_original_receipt(client, identity, status):
     from app.routes.web_auth import SESSION_COOKIE_NAME
-    from tests._infra.merchant_catalog import demote_owner_ledger_to_viewer
     from tests._web_native_form_support import hidden_post_forms
     from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
 
@@ -164,5 +164,5 @@ def test_public_web_application_binding_csrf_and_current_permission_guard_origin
         public_id = result["receipt"]["application_public_id"]
         rollback_page = web.get(f"/web/rules/applications/{public_id}/rollback?ledger_id=owner")
         assert rollback_page.status_code == 200 and "回退允许的 1 笔" in rollback_page.text
-        demote_owner_ledger_to_viewer()
+        set_owner_ledger_role("viewer")
         assert web.post(action, data=fields, headers=headers).status_code == 403

@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import CsvImportBatch, CsvImportRow, Expense, LedgerMember
+from app.models import CsvImportBatch, CsvImportRow, Expense
 from app.services.csv_import_batch_service import (
     apply_csv_import_batch,
     create_csv_import_batch,
@@ -26,14 +26,6 @@ def _csv_bytes(row_count: int) -> BytesIO:
     lines = ["amount_yuan,merchant,category,note"]
     lines.extend(f"{index}.00,Merchant {index},餐饮,note {index}" for index in range(1, row_count + 1))
     return BytesIO(("\n".join(lines) + "\n").encode("utf-8"))
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 @pytest.mark.large_dataset

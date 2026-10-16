@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from sqlalchemy import event, select
+from sqlalchemy import event
 
 from app.database import SessionLocal, engine
-from app.models import Expense, LedgerMember
+from app.models import Expense
 from app.money_contract import MONEY_AGGREGATE_MAX
 from app.routes._web_report_money_views import six_month_average_amount_yuan
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
@@ -20,6 +20,7 @@ from tests._reports_overview_contracts import (
     fetch_reports_overview_contract,
     seed_reports_overview_contract,
 )
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def _manual_expense(
@@ -76,14 +77,6 @@ def _insert_expense(
         if _calendar_expense.status == "confirmed":
             refresh_legacy_expense_time(db, _calendar_expense)
         db.add(_calendar_expense)
-        db.commit()
-
-
-def _set_owner_ledger_role(role: str) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = role
         db.commit()
 
 
@@ -155,7 +148,7 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
     ]
     assert "交通店" not in str(payload["merchant_ranking"])
 
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     csv_response = client.get(
         "/api/reports/overview.csv?"
         "month=2026-05&timezone=UTC&granularity=week&merchant_category=餐饮"
@@ -302,7 +295,7 @@ def test_reports_overview_month_granularity_and_viewer_read(
         category="生活",
         expense_time="2026-05-03T00:00:00Z",
     )
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
 
     response = client.get(
         "/api/reports/overview?month=2026-05&timezone=UTC&granularity=month",

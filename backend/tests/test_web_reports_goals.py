@@ -10,13 +10,11 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
-from app.database import SessionLocal
 from app.main import app
-from app.models import LedgerMember
 from app.routes.web_app import _require_local as _web_require_local
 from tests._web_native_form_support import hidden_post_forms, open_creation_form
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 @pytest.fixture()
@@ -47,14 +45,6 @@ def _create_expense(
         },
     )
     assert response.status_code == 200, response.text
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 def test_web_reports_and_goals_remote_return_403(client: TestClient) -> None:
@@ -349,7 +339,7 @@ def test_web_goals_create_archive_and_viewer_guard(web_client: TestClient, *, id
     archived_page = web_client.get("/web/goals?ledger_id=owner&month=2026-05&include_archived=true")
     assert "已归档" in archived_page.text
 
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
     viewer_page = web_client.get("/web/goals?ledger_id=owner&month=2026-05&include_archived=true")
     assert viewer_page.status_code == 200
     assert "只读角色" in viewer_page.text

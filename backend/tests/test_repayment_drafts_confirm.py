@@ -31,22 +31,13 @@ from app.services import debt_service
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import ensure_utc, now_utc
 from tests._runtime_protocol import negotiated_headers
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
 
 def _idem(app_headers: dict[str, str]) -> dict[str, str]:
     return {**app_headers, "Idempotency-Key": str(uuid4())}
-
-
-def _set_owner_ledger_role(role: str) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = role
-        db.commit()
 
 
 def _create_debt(client: TestClient, identity, *, principal_amount_cents: int = 50000) -> dict:
@@ -242,7 +233,7 @@ def test_confirm_already_confirmed_with_new_key_is_conflict(client: TestClient, 
 def test_confirm_viewer_is_403(client: TestClient, *, identity) -> None:
     debt = _create_debt(client, identity, principal_amount_cents=10000)
     draft = _create_draft(client, identity, amount_cents=1000)
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     response = _confirm(client, identity, draft["public_id"], debt)
     assert response.status_code == 403, response.json()
     assert response.json()["message"] == VIEWER_WRITE_MESSAGE

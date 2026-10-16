@@ -7,13 +7,12 @@ import re
 import pytest
 from _web_native_form_support import hidden_post_forms
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import LedgerMember
 from app.routes import web_common
 from app.routes.web_app import _require_local as _web_require_local
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 WEB_CARD_KEYS = [
     "monthly_spend",
@@ -47,14 +46,6 @@ def _dashboard_form_payload(
         "card_position": [str(index) for index, _key in enumerate(ordered_keys)],
         "visible_key": [key for key in ordered_keys if key not in hidden_keys],
     }
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 def test_web_dashboard_cards_remote_returns_403(client: TestClient) -> None:
@@ -142,7 +133,7 @@ def test_web_dashboard_uses_saved_card_layout_and_reset(web_client: TestClient) 
 
 
 def test_web_dashboard_cards_viewer_can_read_but_not_save(web_client: TestClient) -> None:
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     page = web_client.get("/web/dashboard/cards?ledger_id=owner")
     assert page.status_code == 200

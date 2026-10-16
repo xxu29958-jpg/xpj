@@ -6,13 +6,13 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Expense, LedgerMember
+from app.models import Expense
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.time_service import now_utc
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -71,14 +71,6 @@ def _insert_expense(
         if _calendar_expense.status == "confirmed":
             refresh_legacy_expense_time(db, _calendar_expense)
         db.add(_calendar_expense)
-        db.commit()
-
-
-def _set_owner_ledger_role(role: str) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = role
         db.commit()
 
 
@@ -275,7 +267,7 @@ def test_goals_permissions_and_ledger_isolation(client: TestClient, *, identity)
     assert owner_reads_gray_goal.status_code == 404
     assert owner_reads_gray_goal.json()["error"] == "goal_not_found"
 
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     viewer_read = client.get("/api/goals?month=2026-05", headers=identity.app_headers)
     assert viewer_read.status_code == 200, viewer_read.json()
     assert [item["name"] for item in viewer_read.json()["items"]] == ["Owner Goal"]

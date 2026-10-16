@@ -10,10 +10,8 @@ from api_contract_helpers import (
     upload_png,
 )
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
-from app.database import SessionLocal
-from app.models import LedgerMember
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def _create_pending_expense(
@@ -108,14 +106,6 @@ def _recognize_receipt_items(
     response = recognize_text_api(client, expense_id, headers=identity.app_headers, raw_text=raw_text)
     assert response.status_code == 200, response.json()
     return response.json()
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 def test_expense_items_replace_read_and_reconcile_with_parent_amount(client: TestClient, *, identity) -> None:
@@ -354,7 +344,7 @@ def test_expense_items_are_tenant_isolated_and_viewer_can_only_read(client: Test
     assert owner_cross_read.status_code == 404
     assert owner_cross_read.json()["error"] == "expense_not_found"
 
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
     viewer_read = client.get(f"/api/expenses/{owner_expense_id}/items", headers=identity.app_headers)
     assert viewer_read.status_code == 200, viewer_read.json()
     assert [item["name"] for item in viewer_read.json()["items"]] == ["拿铁", "三明治", "优惠"]
