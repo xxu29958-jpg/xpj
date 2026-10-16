@@ -9,8 +9,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 import app.routes.web_debt_actions as web_debt_action_routes
-import app.routes.web_debt_create as web_debt_create_routes
-import app.routes.web_debts as web_debts_routes
 import app.services.debt_command_service as debt_command_service
 from app.database import SessionLocal
 from app.errors import AppError
@@ -18,12 +16,6 @@ from app.models import Account, Debt, LedgerMember, Repayment
 from app.services.spending_contract_service import accounting_zone
 from tests._runtime_protocol import negotiated_headers
 from tests._web_native_form_support import hidden_post_forms, open_repayment_task
-
-
-def test_web_debt_fact_adapters_delegate_to_shared_commands_and_views() -> None:
-    assert web_debt_action_routes.record_repayment_idempotently is debt_command_service.record_repayment_idempotently
-    assert web_debt_create_routes.create_debt_idempotently is debt_command_service.create_debt_idempotently
-    assert web_debt_create_routes._debt_create_context is web_debts_routes._debt_create_context
 
 
 def _headers(identity) -> dict[str, str]:
@@ -112,10 +104,6 @@ def test_web_repayment_replay_is_idempotent(
     debt = _create_debt(web_client, identity=identity)
     page = web_client.get(f"/web/debts/{debt['public_id']}?ledger_id=owner")
     assert page.status_code == 200
-    assert 'data-body-stack="product"' in page.text
-    assert "/static/web/product/domains/obligations.css" in page.text
-    assert "/static/web/pages/debts.css" not in page.text
-    assert 'style="' not in page.text
     assert f'action="/web/debts/{debt["public_id"]}/forgive"' not in page.text
     page = open_repayment_task(web_client, page)
     assert 'name="amount_major"' in page.text

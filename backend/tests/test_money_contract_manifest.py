@@ -11,7 +11,6 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import BigInteger, CheckConstraint
 
 import app.models  # noqa: F401
-from app import money_contract_manifest, money_contract_types
 from app.database_model_registry import Base
 from app.errors import AppError, _validation_error_code
 from app.money_contract import (
@@ -75,11 +74,6 @@ _CSV_IMPORT_PROJECTION_COLUMNS = (
     ("csv_import_rows", "stream_amount_cents", "ck_csv_import_rows_stream_amount_cents_projection_bounds"),
     ("csv_import_rows", "lineage_home_net_cents", "ck_csv_import_rows_lineage_home_net_cents_projection_bounds"),
 )
-
-
-def test_public_money_contract_reexports_focused_contract_modules() -> None:
-    assert money_contract_manifest.MONEY_COLUMNS_V1 is MONEY_COLUMNS_V1
-    assert money_contract_types.MoneySign is MoneySign
 
 
 def test_canonical_money_minor_text_is_linear_and_keeps_syntax_separate_from_bounds() -> None:

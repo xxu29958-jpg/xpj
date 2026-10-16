@@ -7,11 +7,8 @@
 
 from __future__ import annotations
 
-import os
-import time
 from datetime import datetime
 from decimal import Decimal
-from pathlib import Path
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -93,13 +90,3 @@ def create_pending_upload(client: TestClient, *, identity) -> int:
     )
     assert resp.status_code == 200, resp.text
     return int(resp.json()["id"])
-
-
-def write_fake_dumps(directory: Path) -> tuple[Path, Path]:
-    older = directory / "ticketbox-2026-07-01.dump"
-    newer = directory / "ticketbox-2026-07-20.dump"
-    older.write_bytes(b"not-a-real-dump")
-    newer.write_bytes(b"also-not-a-real-dump")
-    old_time = time.time() - 86400 * 10
-    os.utime(older, (old_time, old_time))
-    return older, newer
