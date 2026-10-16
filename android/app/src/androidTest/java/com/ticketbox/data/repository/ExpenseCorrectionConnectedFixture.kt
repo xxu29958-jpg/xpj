@@ -172,10 +172,6 @@ internal class ExpenseCorrectionConnectedFixture(
             while (cursor.moveToNext()) add(cursor.columnNames.mapIndexed { index, column -> column to cursor.getString(index) }.toMap())
         } }
 
-    suspend fun publishExpense(ledgerId: String, expense: ExpenseDto) {
-        requireNotNull(database).expenseDao().applyServerExpense(ledgerId, expense.toEntity(ledgerId))
-    }
-
     fun blockBudgetReadDeletion(block: Boolean) {
         requireNotNull(database).openHelper.writableDatabase.execSQL(if (block)
             "CREATE TRIGGER fail_budget_read_delete BEFORE DELETE ON stats_projection_cache " +
@@ -258,6 +254,10 @@ internal class CorrectionConnectedNetwork {
     val expenseReads = CopyOnWriteArrayList<Long>()
     val occurrenceReads = CopyOnWriteArrayList<Pair<String, String>>()
     val editCalls = CopyOnWriteArrayList<String>()
+    val patchCalls = CopyOnWriteArrayList<Triple<String, ExpenseUpdateRequest, String?>>()
+    val confirmCalls = CopyOnWriteArrayList<Triple<String, ExpenseStateTokenRequest, String?>>()
+    var patchReply: ExpenseDto? = null
+    var confirmReply: ExpenseDto? = null
     val imageReads = CopyOnWriteArrayList<Long>()
     val originalHealthReads = CopyOnWriteArrayList<Long>()
     var beforeOriginalHealthResponse: (suspend () -> Unit)? = null
@@ -305,17 +305,14 @@ internal class CorrectionConnectedNetwork {
             return listOf(current).filter { it.status == "pending" }
         }
         override suspend fun updateExpense(id: String, request: ExpenseUpdateRequest, idempotencyKey: String?): ExpenseDto {
-            check(id == current.id.toString() && request.expectedRowVersion == current.rowVersion)
-            check(!idempotencyKey.isNullOrBlank())
+            patchCalls += Triple(id, request, idempotencyKey)
             editCalls += "save"
-            return current.copy(rowVersion = current.rowVersion + 1).also { current = it }
+            return requireNotNull(patchReply).also { current = it }
         }
         override suspend fun confirmExpense(id: String, request: ExpenseStateTokenRequest, idempotencyKey: String?): ExpenseDto {
-            check(id == current.id.toString() && request.expectedRowVersion == current.rowVersion)
-            check(!idempotencyKey.isNullOrBlank())
+            confirmCalls += Triple(id, request, idempotencyKey)
             editCalls += "confirm"
-            return current.copy(status = "confirmed", rowVersion = current.rowVersion + 1,
-                confirmedAt = "2026-09-07T00:00:00Z").withConfirmationReceipt().also { current = it }
+            return requireNotNull(confirmReply).also { current = it }
         }
         override suspend fun expenseThumbnail(id: Long): Response<ResponseBody> = Response.error(404,
             """{"error":"not_found","message":"图片不存在。"}""".toResponseBody("application/json".toMediaType()))

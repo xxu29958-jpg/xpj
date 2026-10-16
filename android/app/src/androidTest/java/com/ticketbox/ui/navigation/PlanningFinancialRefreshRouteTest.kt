@@ -31,6 +31,7 @@ import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.repository.withConfirmationReceipt
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.IncomePlanListResponseDto
 import com.ticketbox.domain.model.AppSkin
@@ -62,9 +63,6 @@ class PlanningFinancialRefreshRouteTest {
             status = "pending", confirmedAt = null, homeCurrency = "JPY",
             originalCurrency = "JPY", originalCurrencyCode = "JPY", originalAmountMinor = 400, amountCents = 400,
         )
-        transport.confirmedAmount = { harness.fixture.network.current.let {
-            if (it.status == "confirmed") requireNotNull(it.amountCents) else 0L
-        } }
     }
 
     @After fun close() {
@@ -115,8 +113,9 @@ class PlanningFinancialRefreshRouteTest {
         field.assertTextEquals("3000.00")
 
         // Another client changes the budget while this device retains its original edit basis.
-        transport.budgetEditedElsewhere = true
-        confirmExpenseFromInbox()
+        transport.reply = transport.reply.copy(totalAmountCents = 4800, flexBudgetCents = 4800,
+            remainingAmountCents = 4800, rowVersion = 2)
+        confirmExpenseFromInbox(remaining = 4400)
         switchDomain(PrimaryDomain.Plans)
 
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
@@ -159,6 +158,7 @@ class PlanningFinancialRefreshRouteTest {
         fixture.network.correctionReply = fixture.network.correctionReply.copy(expense =
             fixture.network.current.copy(rowVersion = 8, factRevision = 4, amountCents = 800, originalAmountMinor = 800))
         fixture.network.loseResponse = false
+        transport.reply = transport.reply.copy(spentAmountCents = 400, remainingAmountCents = 2000)
         showPlans()
         waitForText("¥2,000")
         compose.onNodeWithText("¥2,000").assertIsDisplayed()
@@ -173,6 +173,7 @@ class PlanningFinancialRefreshRouteTest {
         }
         val original = fixture.stored().single()
         assertEquals("pending", original["status"])
+        transport.reply = transport.reply.copy(spentAmountCents = 800, remainingAmountCents = 1600)
         assertEquals(1, runBlocking { fixture.drain().done })
         assertEquals("done", fixture.stored().single()["status"])
         for (column in listOf("payload", "idempotencyKey", "expectedRowVersion", "ledgerId", "ownerKey")) {
@@ -217,7 +218,11 @@ class PlanningFinancialRefreshRouteTest {
         compose.waitForIdle()
     }
 
-    private fun confirmExpenseFromInbox() {
+    private fun confirmExpenseFromInbox(remaining: Long = 2000) {
+        val network = harness.fixture.network
+        network.patchReply = network.current.copy(rowVersion = 8)
+        network.confirmReply = network.current.copy(status = "confirmed", rowVersion = 9,
+            confirmedAt = "2026-09-07T00:00:00Z").withConfirmationReceipt()
         switchDomain(PrimaryDomain.Inbox)
         compose.runOnIdle { outer.openExpense(42L) }
         val confirm = context.getString(R.string.expense_edit_confirm_button)
@@ -226,7 +231,17 @@ class PlanningFinancialRefreshRouteTest {
         compose.waitUntil(5_000) {
             harness.fixture.stored().any { it["type"] == PendingMutationType.ConfirmExpense.wireValue }
         }
+        transport.reply = transport.reply.copy(spentAmountCents = 400, remainingAmountCents = remaining)
         runBlocking { harness.fixture.drainExpenseLifecycle() }
+        val commands = completedExpenseCommands()
+        val patch = commands.single { it.type == PendingMutationType.PatchExpense.wireValue }
+        val confirmCommand = commands.single { it.type == PendingMutationType.ConfirmExpense.wireValue }
+        assertEquals("42", network.patchCalls.single().first)
+        assertEquals(7L, network.patchCalls.single().second.expectedRowVersion)
+        assertEquals(patch.idempotencyKey, network.patchCalls.single().third)
+        assertEquals("42", network.confirmCalls.single().first)
+        assertEquals(8L, network.confirmCalls.single().second.expectedRowVersion)
+        assertEquals(confirmCommand.idempotencyKey, network.confirmCalls.single().third)
         waitForText(context.getString(R.string.expense_confirmation_title))
         compose.onNodeWithText(context.getString(R.string.expense_confirmation_return)).performClick()
         compose.waitUntil(5_000) { harness.fixture.network.current.status == "confirmed" &&
@@ -248,20 +263,17 @@ class PlanningFinancialRefreshRouteTest {
 
 private class PlanningBudgetTransport {
     val reads = CopyOnWriteArrayList<String>()
-    var confirmedAmount: () -> Long = { 0L }
-    var budgetEditedElsewhere = false
+    var reply = BudgetMonthlyDto(ledgerId = "correction-ledger", month = YearMonth.now().toString(), configured = true,
+        totalAmountCents = 2400, rolloverAmountCents = 0, fixedAmountCents = 0, nonMonthlyAmountCents = 0,
+        flexBudgetCents = 2400, spentAmountCents = 0, excludedAmountCents = 0,
+        remainingAmountCents = 2400, overspentAmountCents = 0, excludedCategories = emptyList(),
+        excludedBreakdown = emptyList(), categoryBudgets = emptyList(), updatedAt = "2026-09-12T00:00:00Z",
+        rowVersion = 1, homeCurrencyCode = "JPY")
 
     fun wrap(delegate: ApiService): ApiService = object : ApiService by delegate {
         override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto {
             reads += month
-            val total = if (budgetEditedElsewhere) 4800L else 2400L
-            val spent = confirmedAmount()
-            return BudgetMonthlyDto(ledgerId = "correction-ledger", month = month, configured = true,
-                totalAmountCents = total, rolloverAmountCents = 0, fixedAmountCents = 0, nonMonthlyAmountCents = 0,
-                flexBudgetCents = total, spentAmountCents = spent, excludedAmountCents = 0,
-                remainingAmountCents = total - spent, overspentAmountCents = 0, excludedCategories = emptyList(),
-                excludedBreakdown = emptyList(), categoryBudgets = emptyList(), updatedAt = "2026-09-12T00:00:00Z",
-                rowVersion = if (budgetEditedElsewhere) 2 else 1, homeCurrencyCode = "JPY")
+            return reply.copy(month = month)
         }
 
         override suspend fun listIncomePlans(status: String) = IncomePlanListResponseDto(

@@ -42,11 +42,13 @@ import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.ui.components.displayTime
 import com.ticketbox.ui.screens.expense.TAG_TAGS_FIELD
 import com.ticketbox.R
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.originalPayloadAdapter
 import com.ticketbox.data.repository.originalReceiptAdapter
 import com.ticketbox.data.repository.UploadIntentFileStore
+import com.ticketbox.data.repository.withConfirmationReceipt
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto
@@ -258,6 +260,9 @@ class FactEntryNavigationTest {
 
     @Test fun confirmedReceiptCompletesTheEditorAndRefreshesInboxAfterExplicitReturn() {
         harness.fixture.network.current = harness.fixture.network.current.copy(status = "pending", confirmedAt = null)
+        harness.fixture.network.patchReply = harness.fixture.network.current.copy(rowVersion = 8)
+        harness.fixture.network.confirmReply = harness.fixture.network.current.copy(status = "confirmed", rowVersion = 9,
+            confirmedAt = "2026-09-07T00:00:00Z").withConfirmationReceipt()
         installMainGraph()
         compose.runOnIdle { outer.navigate(expenseRoute(42L)) }
         val confirm = context.getString(R.string.expense_edit_confirm_button)
@@ -487,6 +492,9 @@ class FactEntryNavigationTest {
         val patch = org.json.JSONObject(requireNotNull(patchRow["payload"]))
         assertEquals(tags, patch.getString("tags"))
         assertEquals((before.rowVersion + 1).toString(), patchRow["expectedRowVersion"])
+        network.patchReply = network.current.copy(rowVersion = 9, tags = tags)
+        network.confirmReply = network.current.copy(status = "confirmed", rowVersion = 10, tags = tags,
+            confirmedAt = "2026-09-20T02:00:00Z").withConfirmationReceipt()
         drainAdmittedConfirm()
         waitForText(context.getString(R.string.expense_confirmation_title))
         assertEquals(listOf("save", "confirm"), network.editCalls)
@@ -498,6 +506,9 @@ class FactEntryNavigationTest {
     @Test fun confirmedReceiptDoesNotReturnToPendingWhenTheRefreshFails() {
         val network = harness.fixture.network
         network.current = network.current.copy(status = "pending", confirmedAt = null)
+        network.patchReply = network.current.copy(rowVersion = 8)
+        network.confirmReply = network.current.copy(status = "confirmed", rowVersion = 9,
+            confirmedAt = "2026-09-07T00:00:00Z").withConfirmationReceipt()
         network.stopPendingReadsAfterConfirm = true
         installMainGraph()
         waitForText(requireNotNull(network.current.merchant))
@@ -757,7 +768,17 @@ class FactEntryNavigationTest {
         compose.waitUntil(5_000) {
             harness.fixture.stored().any { it["type"] == PendingMutationType.ConfirmExpense.wireValue }
         }
+        val patch = harness.fixture.stored().single { it["type"] == PendingMutationType.PatchExpense.wireValue }
+        val confirm = harness.fixture.stored().single { it["type"] == PendingMutationType.ConfirmExpense.wireValue }
         runBlocking { harness.fixture.drainExpenseLifecycle() }
+        val network = harness.fixture.network
+        val patchRequest = requireNotNull(OutboxAdapterGraph().patchExpenseAdapter.fromJson(requireNotNull(patch["payload"])))
+            .copy(expectedRowVersion = requireNotNull(patch["expectedRowVersion"]).toLong())
+        assertEquals(Triple("42", patchRequest, patch["idempotencyKey"]), network.patchCalls.single())
+        assertEquals("42", network.confirmCalls.single().first)
+        assertEquals(requireNotNull(network.patchReply).rowVersion, network.confirmCalls.single().second.expectedRowVersion)
+        assertEquals(confirm["idempotencyKey"], network.confirmCalls.single().third)
+        assertTrue(!network.confirmCalls.single().third.isNullOrBlank())
     }
 
     private fun waitForText(text: String) {
