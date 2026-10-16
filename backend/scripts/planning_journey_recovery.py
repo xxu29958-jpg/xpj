@@ -36,6 +36,14 @@ class PlanningRecovery:
         path = f"/web/{family}/{self.facts()[kind + '_id']}/edit"
         page = self.page
         form = open_web_editor(page, self.base_url, self.ledger_id, path)
+        form.evaluate("""form => {
+          window.__journeyEvents=[];
+          for (const kind of ['input','change','blur','pointerdown','pointerup','click','submit','invalid']) {
+            form.addEventListener(kind,event => window.__journeyEvents.push({kind,
+              tag:event.target.tagName,name:event.target.name || '',disabled:event.target.disabled || false,
+              phase:form.dataset.incomeDraftPhase || form.dataset.goalDraftPhase || ''}),true);
+          }
+        }""")
         form.locator(f'[name="{field}"]').fill(amount)
         original = {name: form.locator(f'[name="{name}"]').input_value()
                     for name in ("idempotency_key", "expected_row_version", field)}
@@ -52,7 +60,14 @@ class PlanningRecovery:
 
         page.route("**" + path, lose_reply)
         form.locator('button[type="submit"]').first.click()
-        page.get_by_text("暂未收到保存回执。", exact=False).wait_for()
+        try:
+            page.get_by_text("暂未收到保存回执。", exact=False).wait_for()
+        finally:
+            import json
+            (self.evidence / f"{kind}-submission-events.json").write_text(json.dumps({
+                "events": page.evaluate("window.__journeyEvents"), "delivered": len(delivered),
+                "valid": form.evaluate("form => [...form.elements].filter(e=>e.willValidate).map(e=>({name:e.name,valid:e.validity.valid}))"),
+            }, indent=2), encoding="utf-8")
         assert delivered == [self.facts()[kind + "_id"]]
         revisions = self.facts()[kind + "_revisions"]
         page.unroute("**" + path, lose_reply)
