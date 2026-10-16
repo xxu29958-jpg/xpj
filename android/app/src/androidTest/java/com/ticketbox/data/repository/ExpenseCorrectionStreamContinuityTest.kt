@@ -37,6 +37,8 @@ class ExpenseCorrectionStreamContinuityTest {
             fixture.network.loseResponse = false
             val originalExpense = fixture.network.current.copy(expenseTime = "2026-09-01T04:00:00Z")
             fixture.network.current = originalExpense
+            fixture.network.correctionReply = fixture.network.correctionReply.copy(expense =
+                originalExpense.copy(rowVersion = 8, factRevision = 4, expenseTime = "2026-10-02T04:00:00Z"))
             fixture.network.confirmedStreamItems = { root -> rootStream(root,
                 if (root.rowVersion == originalExpense.rowVersion) "2026-09-01" else "2026-10-02").let(::listOf) }
             repository.syncConfirmed().getOrThrow()
@@ -52,6 +54,8 @@ class ExpenseCorrectionStreamContinuityTest {
             }
 
             assertEquals(1, fixture.drain().done)
+            assertEquals(7L, fixture.network.calls.single().first.expectedRowVersion)
+            assertEquals("2026-10-02T04:00:00Z", fixture.network.calls.single().first.expenseTime.value)
             val pending = repository.observeCorrections().first().corrections.single()
             assertTrue(pending.delivered)
             assertTrue("An incoming stream rejected by Room cannot satisfy the receipt", pending.refreshRequired)
@@ -85,6 +89,9 @@ class ExpenseCorrectionStreamContinuityTest {
             val newDate = YearMonth.parse(oldDate.take(7)).plusMonths(1).atDay(2).toString()
             val originalExpense = fixture.network.current.copy(expenseTime = "${oldDate}T04:00:00Z")
             fixture.network.current = originalExpense
+            fixture.network.correctionReply = fixture.network.correctionReply.copy(expense =
+                originalExpense.copy(rowVersion = 8, factRevision = 4, amountCents = 1400,
+                    originalAmountMinor = 1400, expenseTime = "${newDate}T04:00:00Z"))
             fixture.network.loseResponse = false
             val unaffected = untouchedRefundStream(originalExpense, oldDate)
             fixture.network.confirmedStreamItems = { current ->
@@ -119,6 +126,9 @@ class ExpenseCorrectionStreamContinuityTest {
                 assertEquals("Original command $column", original[column], stored[column])
             }
             assertEquals(requireNotNull(delivered.intent).request to original["idempotencyKey"], fixture.network.calls.single())
+            assertEquals(7L, fixture.network.calls.single().first.expectedRowVersion)
+            assertEquals(1_400L, fixture.network.calls.single().first.originalAmountMinor)
+            assertEquals("${newDate}T04:00:00Z", fixture.network.calls.single().first.expenseTime.value)
             assertEquals(otherBefore, fixture.expenseDao.findByServerId("untouched-ledger", 501L))
             val published = awaitCorrectedStream(ledger, originalExpense.id, newDate)
             assertPublishedLedger(context.resources, published, originalExpense.id, oldDate, newDate)

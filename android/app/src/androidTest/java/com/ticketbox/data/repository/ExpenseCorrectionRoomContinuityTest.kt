@@ -159,7 +159,6 @@ class ExpenseCorrectionRoomContinuityTest {
         assertEquals(1, fixture.schedules)
         assertEquals(1_000L, model.value?.uiState?.value?.expense?.amountCents)
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
-        assertEquals(1, fixture.network.results.size)
         stopModel()
         fixture.network.failReads = true
         installModel()
@@ -307,7 +306,6 @@ class ExpenseCorrectionRoomContinuityTest {
             assertEquals(7L, request.expectedRowVersion)
             assertEquals(original["idempotencyKey"], key)
         }
-        assertTrue(fixture.network.results.isEmpty())
         assertEquals(1_000L, fixture.network.current.amountCents)
         assertEquals(0, fixture.confirmedCallbacks)
         assertEquals(0, fixture.adviceCallbacks)
@@ -327,6 +325,7 @@ class ExpenseCorrectionRoomContinuityTest {
         assertFalse(pending.delivered)
         assertFalse(pending.canRetry)
         assertEquals("旧提交", pending.legacyRequest?.reason)
+        assertEquals(emptyList<Any>(), pending.legacyRequest?.splits)
         assertEquals(original["payload"], fixture.stored().single()["payload"])
         val binding = requireNotNull(observed.access).binding
         assertTrue(repository.recoverCorrection(binding, id, false).isFailure)
@@ -375,7 +374,6 @@ class ExpenseCorrectionRoomContinuityTest {
         fixture.network.loseResponse = false
         fixture.network.failStreamReads = true
         assertEquals(1, fixture.drain().done)
-        assertEquals(1, fixture.network.results.size)
         assertEquals(1_200L, fixture.network.current.amountCents)
         assertEquals(1_000L, repository.fetchExpenseFromLocalCache(42).getOrThrow().amountCents)
         assertEquals("done", fixture.stored().single()["status"])
@@ -410,7 +408,6 @@ class ExpenseCorrectionRoomContinuityTest {
         }
         assertEquals("done", fixture.stored().single()["status"])
         assertEquals(1, fixture.network.calls.size)
-        assertEquals(1, fixture.network.results.size)
         assertEquals(0, fixture.drain().done)
     }
 
@@ -425,7 +422,8 @@ class ExpenseCorrectionRoomContinuityTest {
         assertEquals(fixture.network.calls.first(), fixture.network.calls.last())
         assertEquals(original["idempotencyKey"], fixture.network.calls.last().second)
         assertEquals(7L, fixture.network.calls.last().first.expectedRowVersion)
-        assertEquals(1, fixture.network.results.size)
+        assertEquals(1_200L, fixture.network.calls.last().first.originalAmountMinor)
+        assertEquals("核对原小票", fixture.network.calls.last().first.reason)
         assertEquals(1_000L, model.value?.uiState?.value?.expense?.amountCents)
         compose.onNodeWithText("更正已送达；部分事实尚待刷新。").performScrollTo().assertIsDisplayed()
         fixture.network.failReads = false
