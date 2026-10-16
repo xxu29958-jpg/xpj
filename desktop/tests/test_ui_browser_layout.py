@@ -200,6 +200,13 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
         ledgerOptionCount: document.getElementById("ledgerSelect").options.length
       }});
       const taskRequests = [];
+      render({{...healthy, public_connectivity: {{...healthy.public_connectivity,
+        service: "running", connector: "healthy",
+        detail_rows: [{{label: "Windows 服务", state: "unknown", text: "服务身份等待确认"}},
+          {{label: "Cloudflare Edge", state: "degraded", text: "连接观察已过期"}}]
+      }}}});
+      const projectedRows = [...$("publicConnectivityDetails").children]
+        .map(row => [...row.children].map(cell => cell.textContent));
       const actionable = {{...healthy, service_controls_available: true,
         iphone_upload_state: "configured_unverified"}};
       window.fetch = async (url, options = {{}}) => {{
@@ -347,7 +354,7 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
       document.body.setAttribute(
         "data-behavior-probe",
         JSON.stringify({{
-          taskRequests, logSafety, logReplacement, localOnlyDetail, recovery,
+          taskRequests, projectedRows, logSafety, logReplacement, localOnlyDetail, recovery,
           checking,
           offline,
           statusNon2xx,
@@ -430,6 +437,10 @@ def test_manager_offline_state_remains_coherent(tmp_path: Path) -> None:
     probe = _render_behavior_probe(tmp_path)
 
     assert probe["taskRequests"] == ["/api/stop", "/api/open_upload_links", "/api/export_diagnostics"]
+    assert probe["projectedRows"] == [
+        ["Windows 服务", "服务身份等待确认"],
+        ["Cloudflare Edge", "连接观察已过期"],
+    ]
     assert probe["logSafety"] == {
         "text": '<svg onload="window.injectedLog = true"></svg><b>diagnostic</b>',
         "injectedNodes": 0,
@@ -1032,6 +1043,8 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
         pair: displayOf("productPairGroup"),
         manage: displayOf("productManageGroup"),
         importExportDisabled: $("importExportAction").disabled,
+        dataActions: [...$("dataProtectionCard").querySelectorAll("button, a[href], [role=button], input")]
+          .filter(action => action.checkVisibility()).map(action => action.textContent.trim()),
         options: [...$("ledgerSelect").options].map((option) => option.value)
       }};
       paired.importRoute = false;
@@ -1075,6 +1088,7 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
     assert probe["paired"]["manage"] == "flex"
     assert probe["paired"]["importExportDisabled"] is False
     assert probe["paired"]["importRoute"] is True
+    assert probe["paired"]["dataActions"] == ["导入与导出"]
     assert probe["paired"]["options"] == ["owner", "family"]
     assert probe["paired"]["heading"] == "小票夹管理器"
     assert probe["paired"]["helpHidden"] is True

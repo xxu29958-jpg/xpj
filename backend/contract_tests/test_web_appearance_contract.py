@@ -233,6 +233,13 @@ def test_product_css_modules_are_token_driven() -> None:
     ]
 
     static_root = Path(__file__).resolve().parents[1] / "app" / "static"
+    fonts = (static_root / "web/fonts/fonts.css").read_text(encoding="utf-8")
+    tokens = (static_root / "shared/tokens.css").read_text(encoding="utf-8")
+    declared_families = set(re.findall(r"font-family:\s*['\"]([^'\"]+)['\"]", fonts))
+    for token, family in (("font-product", "Ticketbox Sans"), ("font-numeric", "Ticketbox Figures")):
+        consumer = re.search(rf"--{token}:\s*([^;]+);", tokens)
+        assert consumer and family in consumer.group(1), token
+        assert family in declared_families, family
     for path in paths:
         css = (static_root / path.removeprefix("/static/")).read_text(encoding="utf-8")
         assert not re.search(r"#[0-9a-fA-F]{3,8}\b", css), path
