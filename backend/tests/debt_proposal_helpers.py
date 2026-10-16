@@ -16,6 +16,7 @@ from app.models import (
     Debt,
     Device,
     ExchangeRate,
+    Ledger,
     LedgerMember,
 )
 from app.services.currency_binding_service import resolve_write_capability
@@ -196,3 +197,115 @@ def _propose_foreign(
             "paid_at": paid_at,
         },
     )
+
+
+def _owner_account_id() -> int:
+    with SessionLocal() as db:
+        account_id = db.scalar(
+            select(LedgerMember.account_id)
+            .where(LedgerMember.ledger_id == "owner")
+            .order_by(LedgerMember.id.asc())
+            .limit(1)
+        )
+        assert account_id is not None
+        return account_id
+
+
+
+def _record_repayment(
+    client: TestClient,
+    headers: dict[str, str],
+    debt: dict,
+    *,
+    amount_cents: int,
+) -> dict:
+    response = client.post(
+        f"/api/debts/{debt['public_id']}/repayments",
+        headers=_idem(headers),
+        json={
+            "amount_cents": amount_cents,
+            "expected_row_version": debt["row_version"],
+        },
+    )
+    assert response.status_code == 201, response.json()
+    return response.json()
+
+
+
+def _void_repayment(
+    client: TestClient,
+    headers: dict[str, str],
+    debt: dict,
+    *,
+    repayment_public_id: str,
+    reason: str,
+) -> dict:
+    response = client.post(
+        f"/api/debts/{debt['public_id']}/repayment-voids",
+        headers=_idem(headers),
+        json={
+            "repayment_public_id": repayment_public_id,
+            "reason": reason,
+            "expected_row_version": debt["row_version"],
+        },
+    )
+    assert response.status_code == 201, response.json()
+    return response.json()
+
+
+
+def _seed_cross_ledger_member_debt() -> tuple[str, str]:
+    """Return ``(debt_public_id, debtor_token)`` for owner-as-creditor."""
+    creditor_id = _owner_account_id()
+    with SessionLocal() as db:
+        debtor = Account(display_name="跨账本债务人")
+        db.add(debtor)
+        db.flush()
+        ledger_id = f"debtor-{uuid4()}"
+        db.add(
+            Ledger(
+                ledger_id=ledger_id,
+                name="债务人的私人账本",
+                owner_account_id=debtor.id,
+            )
+        )
+        db.add(
+            LedgerMember(
+                ledger_id=ledger_id,
+                account_id=debtor.id,
+                role="owner",
+            )
+        )
+        device = Device(
+            account_id=debtor.id,
+            device_name="pytest-cross-ledger-debtor",
+            platform="android",
+        )
+        db.add(device)
+        db.flush()
+        token = new_session_token()
+        db.add(
+            AuthToken(
+                token_hash=hash_secret(token),
+                account_id=debtor.id,
+                device_id=device.id,
+                ledger_id=ledger_id,
+                scope="app",
+            )
+        )
+        debt = Debt(
+            tenant_id=ledger_id,
+            owner_account_id=debtor.id,
+            created_by_account_id=debtor.id,
+            direction="i_owe",
+            counterparty_type="member",
+            counterparty_account_id=creditor_id,
+            principal_amount_cents=4_000,
+            home_currency_code="CNY",
+            status="open",
+            source_type="bill_split",
+            source_id=str(uuid4()),
+        )
+        db.add(debt)
+        db.commit()
+        return debt.public_id, token

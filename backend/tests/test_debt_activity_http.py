@@ -1,5 +1,8 @@
 """Real command/HTTP journeys; use the existing PostgreSQL test runtime."""
 
+from datetime import date
+from decimal import Decimal
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -7,19 +10,18 @@ from app.database import SessionLocal
 from app.models import Debt, MemberRepaymentProposal, Repayment
 from tests._runtime_protocol import current_protocol_headers
 from tests.debt_proposal_helpers import (
+    _create_external_debt,
     _create_member_debt,
     _idem,
     _member_headers,
     _mint_member_actor,
     _propose,
-)
-from tests.test_debt_repayment_activity import (
-    _create_external_debt,
     _record_repayment,
     _seed_cross_ledger_member_debt,
-    _set_owner_role,
+    _seed_usd_rate,
     _void_repayment,
 )
+from tests.debt_proposal_helpers import _set_owner_ledger_role as _set_owner_role
 
 
 def _activity(client, headers, public_id, **params):
@@ -35,8 +37,11 @@ def _write(client, headers, public_id, action, body):
 
 
 def test_real_commands_survive_in_activity_after_single_and_whole_debt_void(client: TestClient, identity):
-    debt = _create_external_debt(client, identity.app_headers)
-    repaid = _record_repayment(client, identity.app_headers, debt, amount_cents=3_000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10_000)
+    _seed_usd_rate(tenant_id="owner", rate_date=date(2026, 9, 17), rate_to_cny="6")
+    repaid = _write(client, identity.app_headers, debt["public_id"], "repayments", {
+        "original_currency": "USD", "original_amount": "5.00", "paid_at": "2026-09-17T12:00:00Z",
+        "expected_row_version": debt["row_version"]})
     adjusted = _write(client, identity.app_headers, debt["public_id"], "adjustments", {
         "amount_cents": -500, "reason": "Correct original balance", "expected_row_version": repaid["row_version"]})
     restored = _void_repayment(client, identity.app_headers, adjusted,
@@ -54,6 +59,10 @@ def test_real_commands_survive_in_activity_after_single_and_whole_debt_void(clie
     assert by_kind["adjustment"]["reason"] == "Correct original balance"
     payment = by_kind["repayment"]["repayment"]
     assert payment["public_id"] == repaid["repayment_public_id"] and payment["amount_cents"] == 3_000
+    assert payment["original_currency_code"] == "USD" and payment["original_amount_minor"] == 500
+    assert Decimal(payment["exchange_rate_to_cny"]) == 6
+    assert payment["exchange_rate_source"] == "manual"
+    assert payment["paid_at"] == "2026-09-17T12:00:00Z"
     assert payment["status"] == "voided" and payment["void_fact"]["reason"] == "Duplicate transfer"
     assert by_kind["repayment_void"]["repayment"] == payment
     assert by_kind["debt_void"]["amount_cents"] is None
@@ -123,7 +132,7 @@ def test_partial_confirmation_and_forgiveness_preserve_one_payment_and_both_prop
 
 
 def test_activity_viewer_read_auth_bounds_and_stranger_existence_hiding(client: TestClient, identity):
-    debt = _create_external_debt(client, identity.app_headers)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10_000)
     _set_owner_role("viewer")
     body = _activity(client, identity.app_headers, debt["public_id"])
     assert body["total"] == 1 and body["items"][0]["kind"] == "created"
@@ -161,7 +170,7 @@ def test_real_cross_ledger_participant_reads_shared_history_without_private_ledg
 
 
 def test_http_focus_uses_the_actual_repayment_page_and_rejects_foreign_fact(client: TestClient, identity):
-    debt = _create_external_debt(client, identity.app_headers)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10_000)
     current = debt
     payments = []
     for _ in range(4):
@@ -172,7 +181,7 @@ def test_http_focus_uses_the_actual_repayment_page_and_rejects_foreign_fact(clie
     assert payments[0] in [item["public_id"] for item in focused["items"]]
     oldest = _activity(client, identity.app_headers, debt["public_id"], page=3, page_size=2)
     assert oldest["total"] == 5 and [item["kind"] for item in oldest["items"]] == ["created"]
-    other = _create_external_debt(client, identity.app_headers)
+    other = _create_external_debt(client, identity.app_headers, principal_amount_cents=10_000)
     for focus in (payments[0], "missing-repayment"):
         response = client.get(f"/api/debts/{other['public_id']}/activity", headers=identity.app_headers,
             params={"focus_repayment": focus})

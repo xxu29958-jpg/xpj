@@ -2,165 +2,23 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.errors import AppError
 from app.main import app
-from app.models import Account, AuthToken, Debt, Device, Ledger, LedgerMember
 from app.services.debt_service import list_repayment_facts
-from app.services.identity_service import hash_secret, new_session_token
-from tests._runtime_protocol import current_protocol_headers, negotiated_headers
-
-
-def _idem(headers: dict[str, str]) -> dict[str, str]:
-    return {**headers, "Idempotency-Key": str(uuid4())}
-
-
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        account_id = db.scalar(
-            select(LedgerMember.account_id)
-            .where(LedgerMember.ledger_id == "owner")
-            .order_by(LedgerMember.id.asc())
-            .limit(1)
-        )
-        assert account_id is not None
-        return account_id
-
-
-def _create_external_debt(
-    client: TestClient,
-    headers: dict[str, str],
-    *,
-    principal_amount_cents: int = 10_000,
-) -> dict:
-    response = client.post(
-        "/api/debts",
-        headers=negotiated_headers(client, _idem(headers)),
-        json={
-            "home_currency_code": "CNY", "direction": "i_owe",
-            "counterparty_type": "external",
-            "counterparty_label": "测试借款",
-            "principal_amount_cents": principal_amount_cents,
-        },
-    )
-    assert response.status_code == 201, response.json()
-    return response.json()
-
-
-def _record_repayment(
-    client: TestClient,
-    headers: dict[str, str],
-    debt: dict,
-    *,
-    amount_cents: int,
-) -> dict:
-    response = client.post(
-        f"/api/debts/{debt['public_id']}/repayments",
-        headers=_idem(headers),
-        json={
-            "amount_cents": amount_cents,
-            "expected_row_version": debt["row_version"],
-        },
-    )
-    assert response.status_code == 201, response.json()
-    return response.json()
-
-
-def _void_repayment(
-    client: TestClient,
-    headers: dict[str, str],
-    debt: dict,
-    *,
-    repayment_public_id: str,
-    reason: str,
-) -> dict:
-    response = client.post(
-        f"/api/debts/{debt['public_id']}/repayment-voids",
-        headers=_idem(headers),
-        json={
-            "repayment_public_id": repayment_public_id,
-            "reason": reason,
-            "expected_row_version": debt["row_version"],
-        },
-    )
-    assert response.status_code == 201, response.json()
-    return response.json()
-
-
-def _set_owner_role(role: str) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember)
-            .where(LedgerMember.ledger_id == "owner")
-            .order_by(LedgerMember.id.asc())
-            .limit(1)
-        )
-        assert member is not None
-        member.role = role
-        db.commit()
-
-
-def _seed_cross_ledger_member_debt() -> tuple[str, str]:
-    """Return ``(debt_public_id, debtor_token)`` for owner-as-creditor."""
-    creditor_id = _owner_account_id()
-    with SessionLocal() as db:
-        debtor = Account(display_name="跨账本债务人")
-        db.add(debtor)
-        db.flush()
-        ledger_id = f"debtor-{uuid4()}"
-        db.add(
-            Ledger(
-                ledger_id=ledger_id,
-                name="债务人的私人账本",
-                owner_account_id=debtor.id,
-            )
-        )
-        db.add(
-            LedgerMember(
-                ledger_id=ledger_id,
-                account_id=debtor.id,
-                role="owner",
-            )
-        )
-        device = Device(
-            account_id=debtor.id,
-            device_name="pytest-cross-ledger-debtor",
-            platform="android",
-        )
-        db.add(device)
-        db.flush()
-        token = new_session_token()
-        db.add(
-            AuthToken(
-                token_hash=hash_secret(token),
-                account_id=debtor.id,
-                device_id=device.id,
-                ledger_id=ledger_id,
-                scope="app",
-            )
-        )
-        debt = Debt(
-            tenant_id=ledger_id,
-            owner_account_id=debtor.id,
-            created_by_account_id=debtor.id,
-            direction="i_owe",
-            counterparty_type="member",
-            counterparty_account_id=creditor_id,
-            principal_amount_cents=4_000,
-            home_currency_code="CNY",
-            status="open",
-            source_type="bill_split",
-            source_id=str(uuid4()),
-        )
-        db.add(debt)
-        db.commit()
-        return debt.public_id, token
+from tests._runtime_protocol import current_protocol_headers
+from tests.debt_proposal_helpers import (
+    _create_external_debt,
+    _idem,
+    _owner_account_id,
+    _record_repayment,
+    _seed_cross_ledger_member_debt,
+    _void_repayment,
+)
+from tests.debt_proposal_helpers import _set_owner_ledger_role as _set_owner_role
 
 
 def test_route_restores_repayment_history_and_void_fact(
@@ -168,7 +26,7 @@ def test_route_restores_repayment_history_and_void_fact(
     *,
     identity,
 ) -> None:
-    debt = _create_external_debt(client, identity.app_headers)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10_000)
     first = _record_repayment(
         client,
         identity.app_headers,
@@ -276,7 +134,7 @@ def test_viewer_can_read_repayment_facts(
     *,
     identity,
 ) -> None:
-    debt = _create_external_debt(client, identity.app_headers)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10_000)
     _record_repayment(client, identity.app_headers, debt, amount_cents=1_000)
     _set_owner_role("viewer")
 
@@ -293,7 +151,7 @@ def test_external_debt_activity_is_ledger_scoped_and_existence_hidden(
     *,
     identity,
 ) -> None:
-    debt = _create_external_debt(client, identity.app_headers)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10_000)
     _record_repayment(client, identity.app_headers, debt, amount_cents=1_000)
 
     route_response = client.get(
@@ -355,7 +213,7 @@ def test_repayment_activity_requires_auth_and_bounds_page_size(
     *,
     identity,
 ) -> None:
-    debt = _create_external_debt(client, identity.app_headers)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10_000)
 
     unauthenticated = client.get(
         f"/api/debts/{debt['public_id']}/repayments",
