@@ -28,6 +28,7 @@ import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
+import com.ticketbox.data.remote.dto.ReferenceRateDto
 import com.ticketbox.data.repository.LedgerRequestGuard
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
@@ -76,6 +77,8 @@ class ReportRateRecoveryConnectedTest {
         assertTrue(fixture.writes.isEmpty())
         assertTrue(fixture.adviceCalls.isEmpty())
         val readsBefore = fixture.inputReads.size
+        fixture.rateReply = fixture.rateReply.copy(rateDate = "2026-08-05")
+        fixture.latest = fixture.rateReply
         assertEquals(1, runBlocking { fixture.drain().done })
         compose.waitUntil(5_000) { fixture.inputReads.size > readsBefore }
         val accepted = runBlocking { fixture.pending(original.id) }
@@ -119,6 +122,7 @@ class ReportRateRecoveryConnectedTest {
     }
 
     @Test fun reportAcquiresConfiguredReferenceWithRetryWithoutManualEntryOrFinancialSubmission() {
+        fixture.referenceReply = ReferenceRateDto("CNY", "JPY", "2026-08-05", "20", "ecb")
         fixture.referenceUnavailable = true
         show()
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.advice_reference_fetch_date))).fetchSemanticsNodes().isNotEmpty() }
@@ -139,6 +143,7 @@ class ReportRateRecoveryConnectedTest {
     }
 
     @Test fun reportDirectoryFindsExpandedCurrencyAndKeepsOriginalMonthWithoutCreatingFinancialIntent() {
+        fixture.referenceReply = ReferenceRateDto("TWD", "JPY", "2026-09-30", "20", "ecb")
         show(report.copy(sourceCurrencyCode = null, rateDate = null))
         val choice = "USD · 美元"
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(choice)).fetchSemanticsNodes().isNotEmpty() }

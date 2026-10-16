@@ -26,6 +26,7 @@ import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.remote.dto.DiscretionaryResponseDto
 import com.ticketbox.data.repository.LedgerRequestGuard
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
@@ -85,7 +86,12 @@ class BudgetAdviceManualRateRecoveryTest {
         assertEquals(0L, row.expectedRowVersion)
         assertTrue(fixture.writes.isEmpty())
         val readsBefore = fixture.inputReads.size
+        fixture.latest = fixture.rateReply
+        fixture.inputReply = fixture.inputReply.copy(
+            breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000, 0),
+            missingRates = emptyList(), plannedTotalCents = 4000)
         assertEquals(1, runBlocking { fixture.drain().done })
+        assertEquals(fixture.request to row.idempotencyKey, fixture.writes.single())
         compose.waitUntil(5_000) { fixture.inputReads.size > readsBefore }
         waitForText(context.getString(R.string.budget_advice_generate))
         compose.onNodeWithText(context.getString(R.string.arrangement_budget_title)).performScrollTo().assertIsDisplayed()
@@ -125,10 +131,13 @@ class BudgetAdviceManualRateRecoveryTest {
     @Test fun originalRouteReopensRoomAndReplaysOriginalReceiptWithoutOverwritingLaterCanonicalRate() {
         val id = runBlocking { fixture.repository.enqueueRate(fixture.binding, fixture.originalMonth, fixture.request, null).getOrThrow() }
         val original = runBlocking { fixture.rows().single() }
+        fixture.latest = fixture.rateReply
         fixture.loseAck = true
         assertEquals(1, runBlocking { fixture.drain().failures })
         fixture.latest = requireNotNull(fixture.latest).copy(rateToHome = "25", rowVersion = 2)
         fixture.runtimeHome = "CNY"
+        fixture.inputReply = fixture.inputReply.copy(
+            breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000, 0), missingRates = emptyList())
         fixture.reopen()
         assertEquals(original.payload, runBlocking { fixture.rows().single().payload })
         show(id)
