@@ -19,7 +19,7 @@ def test_cross_currency_http_trial_and_ai_share_repaired_report_basis(monkeypatc
     from app.schemas._monthly_arrangement import MonthlyArrangementDto
     from app.services.budget_advisor_service import _inputs_builder as builder
     from app.services.budget_advisor_service import _runner
-    from tests.test_budget_inputs_projection import seed_reads
+    from tests.budget_input_test_support import seed_reads
 
     seed_reads(monkeypatch)
     saved = MonthlyArrangementDto(ledger_id="ledger-a", month="2026-08", home_currency_code="JPY",

@@ -13,8 +13,8 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import LedgerMember
 from app.routes.web_monthly_arrangement import MonthlyArrangementForm, arrangement_payload
+from tests._web_budget_test_support import web_client as web_client
 from tests._web_native_form_support import hidden_post_forms
-from tests.test_web_budgets import web_client as web_client
 
 
 def test_web_cross_currency_posts_preserve_report_source_and_save_intent(monkeypatch):
@@ -33,7 +33,7 @@ def test_web_cross_currency_posts_preserve_report_source_and_save_intent(monkeyp
     from app.services.budget_advisor_service import _inputs_builder as builder
     from app.services.budget_advisor_service import _runner
     from app.services.money_projection_service import ProjectionGap
-    from tests.test_budget_inputs_projection import seed_reads
+    from tests.budget_input_test_support import seed_reads
 
     seed_reads(monkeypatch)
     saved = MonthlyArrangementDto(ledger_id="owner", month="2026-08", home_currency_code="JPY",

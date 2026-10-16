@@ -11,14 +11,14 @@ from app.models import AuthToken, Device, Invitation
 from app.services.identity_service import hash_secret
 from app.services.server_identity_service import read_server_data_identity
 from app.services.time_service import ensure_utc, now_utc
-from tests.pairing_test_support import invitation_accept_payload
-from tests.test_family_ledger_permissions import (
+from tests.family_ledger_test_support import (
     _assert_existing_session_invitation_rows,
     _create_family_ledger,
     _mint_foreign_ledger_invitation,
     _prepare_existing_session_invitation,
     _switch_to,
 )
+from tests.pairing_test_support import invitation_accept_payload
 
 
 @pytest.mark.parametrize("public_origin", ["https://family.example.com", "", "http://localhost:8000"])

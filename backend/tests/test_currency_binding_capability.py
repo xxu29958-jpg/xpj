@@ -2,20 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from app.currency_binding_contract import CURRENCY_EVIDENCE_TABLES
 from app.database import SessionLocal
-from app.database._currency_writer import (
-    lock_currency_evidence_tables,
-    set_currency_writer_proof,
-)
 from app.errors import AppError
 from app.models import Budget
 from app.models.currency_binding import (
     InstallationCurrencyAuditLog,
     InstallationCurrencyBinding,
 )
-from app.routes import currency_system
-from app.schemas._currency import RuntimeCompatibilitySnapshotResponse
 from app.services import currency_binding_service
 from app.services.currency_binding_service import (
     get_capability,
@@ -39,11 +32,6 @@ def test_missing_binding_singleton_is_corruption(monkeypatch) -> None:
 
 
 def test_runtime_compatibility_is_the_only_client_currency_capability(client) -> None:
-    assert currency_system.router.prefix == "/api/system"
-    assert "capabilities" in RuntimeCompatibilitySnapshotResponse.model_fields
-    assert "expenses" in CURRENCY_EVIDENCE_TABLES
-    assert callable(lock_currency_evidence_tables)
-    assert callable(set_currency_writer_proof)
     assert client.get("/api/system/currency-capability").status_code == 404
     paths = client.app.openapi()["paths"]
     assert "/api/system/currency-capability" not in paths

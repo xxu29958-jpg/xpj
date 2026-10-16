@@ -10,20 +10,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.main import app
 from app.models import Budget, LedgerMember
-from app.routes.web_app import _require_local as _web_require_local
 from app.routes.web_budgets import _budget_view, _category_form_rows
 from app.schemas import BudgetCategoryResponse, BudgetMonthlyResponse
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
+from tests._web_budget_test_support import _save_budget
+from tests._web_budget_test_support import web_client as web_client
 from tests._web_native_form_support import hidden_post_forms
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def _demote_owner_ledger_to_viewer() -> None:
@@ -37,25 +30,6 @@ def _demote_owner_ledger_to_viewer() -> None:
 def _owner_budget_total() -> int | None:
     with SessionLocal() as db:
         return db.scalar(select(Budget.total_amount_cents).where(Budget.tenant_id == "owner"))
-
-
-def _save_budget(web_client: TestClient, *, total: str = "1000.00") -> None:
-    response = web_client.post(
-        "/web/budgets/save",
-        data={"home_currency_code": "CNY", "expected_row_version": "null", "idempotency_key": str(uuid4()),
-            "ledger_id": "owner",
-            "month": "2026-05",
-            "total_amount_yuan": total,
-            "rollover_amount_yuan": "50.00",
-            "non_monthly_amount_yuan": "120.00",
-            "excluded_category": ["医疗"],
-            "excluded_categories": "报销",
-            "category_budget_category": ["餐饮", "交通"],
-            "category_budget_amount_yuan": ["100.00", "50.00"],
-        },
-        follow_redirects=False,
-    )
-    assert response.status_code == 303, response.text
 
 
 def test_budget_conflict_keeps_input_and_key_until_explicit_nonwriting_review(web_client, identity):

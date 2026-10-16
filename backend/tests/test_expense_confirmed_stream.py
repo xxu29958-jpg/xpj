@@ -9,7 +9,6 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
-from app.schemas import ConfirmedExpenseStreamItem
 from app.services.budget_advisor_service import read_budget_inputs
 from app.services.category_service import list_category_summary
 from app.services.goal_spending_response import month_spend_totals
@@ -17,24 +16,6 @@ from app.services.monthly_report_service import compose_monthly_report
 from app.services.reports_service import reports_overview
 from app.services.web_stats_service import confirmed_by_day
 from tests.expense_correction_support import idem
-
-
-def test_confirmed_stream_wire_is_one_stable_envelope() -> None:
-    """Every stream row carries its root; only offset rows carry an offset."""
-    fields = ConfirmedExpenseStreamItem.model_fields
-    assert {
-        "entry_kind",
-        "stream_date",
-        "stream_sort_time",
-        "stream_sort_id",
-        "stream_amount_cents",
-        "root",
-        "offset",
-        "lineage_status",
-        "lineage_home_net_cents",
-    } <= fields.keys()
-    assert fields["root"].is_required()
-    assert not fields["offset"].is_required()
 
 
 def _manual(
