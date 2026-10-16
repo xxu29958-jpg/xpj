@@ -31,8 +31,8 @@ jobs:
       - run: pwsh -NoProfile -File distribution/windows/build/check_source_inputs.ps1
       - run: powershell -NoProfile -File scripts/build_backend_exe.ps1 -Clean
       - run: python scripts/check_api_contract.py
-      - run: ruff check app scripts tests packaging/tests
-      - run: python -m compileall app scripts tests packaging/tests
+      - run: ruff check app scripts tests contract_tests packaging/tests
+      - run: python -m compileall app scripts tests contract_tests packaging/tests
       - run: python -m compileall backend_manager tests
       - run: ruff check backend_manager tests
       - run: python -m pytest -q
@@ -96,8 +96,8 @@ jobs:
           powershell -Command Write-Host python scripts\\release_audit.py
           powershell -Command Write-Host python scripts\\smoke_test.py
           powershell -Command Write-Host python scripts\\check_api_contract.py
-          powershell -Command Write-Host ruff check app scripts tests packaging\\tests
-          powershell -Command Write-Host python -m compileall app scripts tests packaging\\tests
+          powershell -Command Write-Host ruff check app scripts tests contract_tests packaging\\tests
+          powershell -Command Write-Host python -m compileall app scripts tests contract_tests packaging\\tests
 """,
         encoding="utf-8",
     )

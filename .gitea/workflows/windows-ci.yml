@@ -88,11 +88,15 @@ jobs:
 
       - name: Compile backend
         working-directory: backend
-        run: .\.ci-venv\Scripts\python.exe -m compileall app scripts tests packaging/tests
+        run: .\.ci-venv\Scripts\python.exe -m compileall app scripts tests contract_tests packaging/tests
 
       - name: Lint backend
         working-directory: backend
-        run: .\.ci-venv\Scripts\ruff.exe check app scripts tests packaging/tests
+        run: .\.ci-venv\Scripts\ruff.exe check app scripts tests contract_tests packaging/tests
+
+      - name: Backend contracts (no database)
+        working-directory: backend
+        run: .\.ci-venv\Scripts\python.exe -m pytest -q contract_tests -p no:cacheprovider
 
       - name: Windows installer safety behavior
         working-directory: backend

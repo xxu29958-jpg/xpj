@@ -290,6 +290,8 @@ def test_real_db_partition_preserves_duplicate_collection_occurrences() -> None:
 
 def _assert_local_verify_uses_postgres_authorities() -> None:
     script = (_ROOT / "scripts" / "verify_project.ps1").read_text(encoding="utf-8-sig")
+    contracts = script.index('@("-m", "pytest", "-q", "contract_tests", "-p", "no:cacheprovider")')
+    assert contracts < script.index('(Join-Path $BackendRoot "scripts\\start_test_pg.ps1")')
     assert '"scripts.run_postgres_pytest_lane"' in script
     assert script.count('"-m",\n        "scripts.run_postgres_pytest_lane"') == 1
     assert script.count('"-m",\n            "scripts.run_postgres_pytest_lane"') == 1
@@ -299,7 +301,7 @@ def _assert_local_verify_uses_postgres_authorities() -> None:
     assert '"test_pg_storage_contract.ps1"' in script
     assert '"test_pg_auth_contract.ps1"' in script
     assert '"scripts\\release_audit.py"' in script
-    assert '"-m", "pytest"' not in script
+    assert script.count('"-m", "pytest"') == 1  # Only the database-free directory bypasses the PG runner.
     assert "C:\\Program Files" not in script
     assert "GetFolderPath" in script
 

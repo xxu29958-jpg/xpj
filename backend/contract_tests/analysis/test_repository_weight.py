@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-ENTRY = Path(__file__).resolve().parents[1] / "scripts" / "_audit_repository_weight.py"
+ENTRY = Path(__file__).resolve().parents[2] / "scripts" / "_audit_repository_weight.py"
 
 
 def git(repo: Path, *arguments: str) -> str:
@@ -94,6 +94,7 @@ def test_whole_repository_totals_use_exact_blobs_and_count_each_file_once(repo, 
         "desktop/backend_manager/app.py": "VALUE = 1\n",
         "distribution/windows/runtime/start.ps1": "# runtime\nWrite-Output 'ready'\n",
         "backend/tests/test_app.py": "assert True\n",
+        "backend/contract_tests/test_contract.py": "assert True\n",
         "backend/packaging/tests/test_build.py": "assert True\n",
         "android/app/src/test/java/Test.kt": "val test = 1\n",
         "android/app/src/androidTest/java/Device.kt": "val device = 1\n",
@@ -116,13 +117,13 @@ def test_whole_repository_totals_use_exact_blobs_and_count_each_file_once(repo, 
     assert report["base"]["sha"] == base
     assert report["current"]["sha"] == head
     assert report["current"]["totals"] == {
-        "production_loc": 12, "test_loc": 6, "tooling_loc": 1,
-        "executable_total": 18, "source_total": 19,
+        "production_loc": 12, "test_loc": 7, "tooling_loc": 1,
+        "executable_total": 19, "source_total": 20,
     }
     assert report["delta"]["production_loc"] == 1
     assert report["current"]["modules"]["Migrations"]["production"] == 1
     assert report["current"]["modules"]["Web"]["production"] == 3
-    assert report["current"]["modules"]["Backend"]["files"] == 3
+    assert report["current"]["modules"]["Backend"]["files"] == 4
     assert report["current"]["languages"]["Kotlin"]["production"] == 3
     assert report["current"]["languages"]["Kotlin"]["test"] == 2
     view = next(row for row in report["current"]["files"] if row["path"].endswith("/View.kt"))

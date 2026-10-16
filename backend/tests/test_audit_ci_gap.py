@@ -46,8 +46,8 @@ jobs:
     env:
       PyTest_AddOpts: "-m job_poison"
     steps:
-      - run: .\\.ci-venv\\Scripts\\python.exe -m compileall app scripts tests packaging/tests
-      - run: .\\.ci-venv\\Scripts\\ruff.exe check app scripts tests packaging/tests
+      - run: .\\.ci-venv\\Scripts\\python.exe -m compileall app scripts tests contract_tests packaging/tests
+      - run: .\\.ci-venv\\Scripts\\ruff.exe check app scripts tests contract_tests packaging/tests
       - env:
           PYTEST_ADDOPTS: ""
         run: .\\.ci-venv\\Scripts\\python.exe -m pytest -q packaging/tests --strict-markers -p no:cacheprovider -o addopts= -m "not xdist_group" -n 2 --dist loadfile --max-worker-restart 0

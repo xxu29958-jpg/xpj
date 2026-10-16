@@ -26,7 +26,8 @@ What this lane counts
   ALLOWLIST. Catches PR-D's ``terminal_flag_flip`` split mechanically:
   the per-code distribution must match baseline; a missed
   reclassification shows up as a mismatch on the specific counter.
-- **backend_pytest_count** — exact count from ``pytest --collect-only``
+- **backend_pytest_count** — exact total from ``pytest --collect-only`` over
+  ``tests`` and the database-free ``contract_tests``
   (NOT regex; regex has built-in error tolerance that would defeat the
   precise-reconciliation purpose).
 - **installer_pytest_count** — exact count from the isolated Windows installer
@@ -180,7 +181,7 @@ def main() -> int:
 
     counts: dict[str, int] = {}
     counts.update(_count_mutate_token_metrics())
-    counts["backend_pytest_count"] = _count_pytest_tests("tests")
+    counts["backend_pytest_count"] = _count_pytest_tests("tests") + _count_pytest_tests("contract_tests")
     counts["installer_pytest_count"] = _count_pytest_tests("packaging/tests")
 
     print("Actuals:")

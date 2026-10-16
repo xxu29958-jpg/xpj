@@ -59,9 +59,11 @@ def test_cheap_contract_failures_precede_expensive_analysis_without_blocking_hea
     assert order.index("API contract") < order.index("CI orchestration contracts")
     fast = steps["CI orchestration contracts"]["run"]
     analysis = steps["CI analysis contracts"]["run"]
-    for test in ("test_repository_weight.py", "test_ci_run_timing.py"):
-        assert test not in fast
-        assert f"tests/{test}" in analysis
+    assert "contract_tests --ignore=contract_tests/analysis" in fast
+    assert "contract_tests/analysis" in analysis
+    for invocation in (fast, analysis):
+        assert "test_" not in invocation
+        assert "--noconftest" not in invocation
     for lane in ("backend_postgres_ordinary", "backend_postgres_real_db", "android_fast", "android_apk_release"):
         assert jobs[lane]["needs"] == "scope"
     # A cheap failure must stay the original error, without an artifact error
