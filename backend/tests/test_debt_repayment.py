@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Account, Debt, LedgerMember
+from app.models import Account, Debt, LedgerMember, Repayment
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 from tests.debt_proposal_helpers import _create_external_debt, _seed_usd_rate
@@ -72,10 +72,12 @@ def _seed_manual_member_debt(*, principal_amount_cents: int = 10000) -> dict:
 
 def test_record_repayment_reduces_remaining_once(client: TestClient, *, identity) -> None:
     debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=50000)
+    headers = _idem(identity.app_headers)
+    payload = {"amount_cents": 20000, "expected_row_version": debt["row_version"]}
     response = client.post(
         f"/api/debts/{debt['public_id']}/repayments",
-        headers=_idem(identity.app_headers),
-        json={"amount_cents": 20000, "expected_row_version": debt["row_version"]},
+        headers=headers,
+        json=payload,
     )
     assert response.status_code == 201, response.json()
     body = response.json()
@@ -85,6 +87,17 @@ def test_record_repayment_reduces_remaining_once(client: TestClient, *, identity
     assert body["repayment_public_id"]
     # The parent Debt row_version bumped once (§2.1).
     assert body["row_version"] == debt["row_version"] + 1
+
+    replay = client.post(f"/api/debts/{debt['public_id']}/repayments", headers=headers, json=payload)
+    assert replay.status_code == 201, replay.json()
+    assert replay.json() == body
+    detail = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers)
+    assert detail.status_code == 200, detail.json()
+    assert detail.json()["remaining_amount_cents"] == 30000
+    with SessionLocal() as db:
+        saved_debt = db.scalar(select(Debt).where(Debt.public_id == debt["public_id"]))
+        repayments = list(db.scalars(select(Repayment).where(Repayment.debt_id == saved_debt.id)))
+        assert [(row.public_id, row.amount_cents) for row in repayments] == [(body["repayment_public_id"], 20000)]
 
 
 def test_repayment_clearing_remaining_latches_cleared(client: TestClient, *, identity) -> None:
@@ -99,29 +112,6 @@ def test_repayment_clearing_remaining_latches_cleared(client: TestClient, *, ide
     assert body["remaining_amount_cents"] == 0
     assert body["paid_amount_cents"] == 10000
     assert body["status"] == "cleared"
-
-
-def test_repayment_idempotent_replay_applies_once(client: TestClient, *, identity) -> None:
-    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=50000)
-    key = str(uuid4())
-    headers = {**identity.app_headers, "Idempotency-Key": key}
-    payload = {"amount_cents": 15000, "expected_row_version": debt["row_version"]}
-
-    first = client.post(f"/api/debts/{debt['public_id']}/repayments", headers=headers, json=payload)
-    assert first.status_code == 201, first.json()
-    assert first.json()["remaining_amount_cents"] == 35000
-    bumped_version = first.json()["row_version"]
-
-    # Same key + same fingerprint → canonical fold, applied once. The parent row
-    # is NOT bumped a second time (§2.1 replay does not bump).
-    replay = client.post(f"/api/debts/{debt['public_id']}/repayments", headers=headers, json=payload)
-    assert replay.status_code == 201, replay.json()
-    assert replay.json()["remaining_amount_cents"] == 35000
-    assert replay.json()["row_version"] == bumped_version
-    assert replay.json()["repayment_public_id"] == first.json()["repayment_public_id"]
-
-    detail = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers)
-    assert detail.json()["remaining_amount_cents"] == 35000
 
 
 def test_repayment_distinct_keys_are_not_deduped(client: TestClient, *, identity) -> None:
