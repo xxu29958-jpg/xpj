@@ -120,7 +120,8 @@ def _assert_windows_build_lane(jobs: dict[str, object]) -> None:
     assert _steps(windows_aggregator)["Enforce Windows release lane results"]["run"] == (
         "python -E -S backend/scripts/verify_scoped_ci_results.py "
         '--label "Windows release packaging" --scope-key WINDOWS_SCOPE '
-        "--lane VNEXT --lane BUILD --source-lane VNEXT --source-lane BUILD"
+        "--lane VNEXT --lane BUILD --source-lane VNEXT --source-lane BUILD "
+        "--lane-scope BUILD=WINDOWS_BUILD_SCOPE"
     )
     windows_steps = _steps(jobs["windows_packaging_build"])
     exact_source = "${{ github.event.pull_request.head.sha || github.sha }}"
@@ -168,7 +169,7 @@ def test_serial_windows_contracts_run_in_the_existing_independent_native_lane() 
     native_steps = _steps(native)
     build_steps = _steps(build)
     assert native["needs"] == build["needs"] == "scope"
-    assert native["if"] == build["if"]
+    assert build["if"] == native["if"].replace("outputs.windows ", "outputs.windows_build ")
     assert native["runs-on"] == "windows-latest"
     assert "continue-on-error" not in native
     assert native_steps["Checkout"]["with"]["ref"] == build_steps["Checkout"]["with"]["ref"]
@@ -195,9 +196,13 @@ def test_serial_windows_contracts_run_in_the_existing_independent_native_lane() 
     assert order.index("Install test dependencies") < order.index("vNext coordinator contracts")
     assert order.index("vNext coordinator contracts") < order.index(cache) < order.index(preparation)
     assert order.index(preparation) < order.index("Windows installer resource-serial behavior")
-    for name in ("vNext coordinator contracts", preparation, "Windows installer resource-serial behavior"):
-        assert "if" not in native_steps[name]
+    assert "if" not in native_steps["vNext coordinator contracts"]
+    for name in (cache, preparation, "Windows installer resource-serial behavior"):
+        assert native_steps[name]["if"] == (
+            "${{ success() && (needs.scope.result != 'success' || needs.scope.outputs.windows_build != 'false') }}"
+        )
         assert "continue-on-error" not in native_steps[name]
+    assert "continue-on-error" not in native_steps["vNext coordinator contracts"]
 
 
 def _assert_backend_required_gate_binds_scope_results_and_exact_checkout_sha() -> None:

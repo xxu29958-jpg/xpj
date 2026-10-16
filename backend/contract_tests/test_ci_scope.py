@@ -57,7 +57,7 @@ def test_backend_and_packaging_changes_compose_scopes() -> None:
     }
 
 
-def test_windows_build_inputs_select_windows_scope() -> None:
+def test_windows_build_inputs_select_windows_scope(tmp_path) -> None:
     _assert_path_scopes(
         (
             "backend/requirements-build.txt",
@@ -76,6 +76,35 @@ def test_windows_build_inputs_select_windows_scope() -> None:
         ),
         "windows",
     )
+    native = ["distribution/windows/tests/test_cli.py", "distribution/windows/tests/fakes.py"]
+    decision = classify_ci_decision(native)
+    assert decision["scopes"] == {name: name == "windows" for name in all_ci_scopes()}
+    assert decision["windows_build"] is False
+    output = tmp_path / "outputs"
+    ci_scope.write_outputs(output, decision["scopes"], decision["android_capabilities"], decision["windows_build"])
+    values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    assert values["windows"] == "true"
+    assert values["windows_build"] == "false"
+    assert "windows_build=false" in ci_scope.render_scope_explanation(decision)
+    # The diff supplies both sides of renames (including a move out of tests).
+    # A removed test still selects its native lane; no current-file lookup.
+    assert classify_ci_decision(["distribution/windows/tests/deleted.py"])["windows_build"] is False
+    for other in (
+        "distribution/windows/lifecycle/ticketbox_lifecycle/cli.py",
+        "distribution/windows/installer/ticketbox.iss",
+        "distribution/windows/build/ticketbox-lifecycle.spec",
+        "distribution/windows/tests/fixture.json",
+        "distribution/windows/tests/../lifecycle/cli.py",
+        "backend/packaging/tests/test_installer.py",
+        "backend/requirements-dev.txt",
+        "backend/scripts/ci_scope.py",
+        ".github/workflows/ci.yml",
+        "docs/README.md",
+        "unknown/file.py",
+    ):
+        assert classify_ci_decision([*native, other])["windows_build"], other
+    assert classify_ci_decision([r"distribution\windows\tests\test_cli.py"])["windows_build"] is False
+    assert classify_ci_decision(["docs/README.md"])["windows_build"] is False
 
 
 def test_backend_runtime_inputs_select_execution_scopes() -> None:
@@ -525,7 +554,7 @@ def test_required_codeql_context_needs_every_analysis_lane() -> None:
 def test_scope_output_derives_postgres_matrix_from_release_policy(tmp_path) -> None:
     output = tmp_path / "github-output"
 
-    ci_scope.write_outputs(output, all_ci_scopes(), {"android_apk": True, "android_connected": True})
+    ci_scope.write_outputs(output, all_ci_scopes(), {"android_apk": True, "android_connected": True}, True)
 
     values = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
     assert json.loads(values["postgres_matrix"]) == json.loads(POSTGRES_RELEASE_POLICY.matrix_json())
@@ -680,7 +709,7 @@ def test_android_pure_test_sources_keep_only_proven_capabilities(root, connected
     assert decision["scopes"] == {name: name == "android" for name in all_ci_scopes()}
     assert decision["android_capabilities"] == {"android_apk": False, "android_connected": connected}
     output = tmp_path / "outputs"
-    ci_scope.write_outputs(output, decision["scopes"], decision["android_capabilities"])
+    ci_scope.write_outputs(output, decision["scopes"], decision["android_capabilities"], decision["windows_build"])
     values = dict(line.split("=", 1) for line in output.read_text().splitlines())
     assert values["android"] == "true"  # Fast, schema/count/static and security stay required.
     assert values["android_apk"] == "false"
@@ -730,3 +759,4 @@ def test_non_pr_qualification_always_requires_full_capabilities(event, monkeypat
     decision = ci_scope.resolve_ci_scope(event, "base", "head")
     assert decision["scopes"] == all_ci_scopes()
     assert all(decision["android_capabilities"].values())
+    assert decision["windows_build"]

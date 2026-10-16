@@ -37,12 +37,14 @@ def changed_paths(base: str, head: str) -> list[str]:
 
 def write_outputs(
     path: Path, scopes: dict[str, bool], android_capabilities: dict[str, bool],
+    windows_build: bool,
 ) -> None:
     with path.open("a", encoding="utf-8", newline="\n") as output:
         for scope in CI_HEAVY_SCOPES:
             output.write(f"{scope}={'true' if scopes[scope] else 'false'}\n")
         for capability in CI_ANDROID_CAPABILITIES:
             output.write(f"{capability}={'true' if android_capabilities[capability] else 'false'}\n")
+        output.write(f"windows_build={'true' if windows_build else 'false'}\n")
         output.write(f"postgres_matrix={POSTGRES_RELEASE_POLICY.matrix_json()}\n")
 
 
@@ -164,6 +166,9 @@ def render_scope_explanation(decision: dict[str, object]) -> str:
     lines = _scope_header(decision)
     lines.extend(_scope_lane_lines(decision))
     lines.extend(_android_capability_lines(decision))
+    lines.append(
+        f"windows_build={str(decision['windows_build']).lower()} ({decision['windows_reason']})"
+    )
     lines.extend(_scope_hit_lines(decision))
     lines.extend(_scope_path_lines(decision))
     return "\n".join(lines) + "\n"
@@ -208,7 +213,7 @@ def main() -> int:
     assert isinstance(scopes, dict)
     capabilities = decision["android_capabilities"]
     assert isinstance(capabilities, dict)
-    write_outputs(args.output, scopes, capabilities)
+    write_outputs(args.output, scopes, capabilities, decision["windows_build"])
     try:
         _write_explanation(args, decision)
     except (OSError, TypeError, ValueError, KeyError) as exc:

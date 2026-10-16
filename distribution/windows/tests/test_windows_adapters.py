@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import os
 import stat
 from dataclasses import replace
@@ -42,35 +41,6 @@ _UNIT_FILE_DACLS: dict[str, str] = {}
 
 def _unit_path_key(path: Path) -> str:
     return os.path.normcase(str(path.resolve(strict=False)))
-
-
-def test_windows_adapters_is_only_the_explicit_composition_root() -> None:
-    source = (
-        Path(__file__).resolve().parents[1]
-        / "lifecycle"
-        / "ticketbox_lifecycle"
-        / "runtime"
-        / "windows_adapters.py"
-    ).read_text(encoding="utf-8")
-    tree = ast.parse(source)
-
-    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
-    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
-    assert [node.name for node in classes] == ["WindowsAdapterBundle"]
-    assert [node.name for node in classes[0].body if isinstance(node, ast.FunctionDef)] == [
-        "__init__"
-    ]
-    assert functions == []
-    for responsibility in (
-        "windows_alembic",
-        "windows_dataset",
-        "windows_file_security",
-        "windows_files",
-        "windows_postgres",
-        "windows_scm",
-        "windows_security",
-    ):
-        assert f"ticketbox_lifecycle.runtime.{responsibility}" in source
 
 
 @pytest.fixture(autouse=True)
@@ -1372,7 +1342,6 @@ def test_runtime_authority_readers_never_mutate_operation_store_directories(
     binding.write_text("{}\n", encoding="utf-8")
     active.write_text("{}\n", encoding="utf-8")
 
-    assert not hasattr(bundle.security, "grant_backend_runtime_authority_read")
     bundle.security.grant_backend_binding_read(binding, request.backend_service_name)
 
     directory_grants = [

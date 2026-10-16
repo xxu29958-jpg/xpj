@@ -95,9 +95,10 @@ _WINDOWS_TERMINAL = GithubTerminalContract(
         "VNEXT",
         "BUILD",
         source_lanes=("VNEXT", "BUILD"),
+        lane_scopes=(("BUILD", "WINDOWS_BUILD_SCOPE"),),
     ),
     shell=None,
-    scope_bindings=(("WINDOWS_SCOPE", "windows"),),
+    scope_bindings=(("WINDOWS_SCOPE", "windows"), ("WINDOWS_BUILD_SCOPE", "windows_build")),
     lane_bindings=(
         ("windows_vnext_lifecycle", "VNEXT"),
         ("windows_packaging_build", "BUILD"),
