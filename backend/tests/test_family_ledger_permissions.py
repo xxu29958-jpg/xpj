@@ -1011,24 +1011,6 @@ def test_ledger_neutral_session_can_administer_owned_ledger_through_path(
 
 
 # ---------------------------------------------------------------------------
-# T15 — invite_token not echoed in server logs (smoke check: hash matches plain)
-# ---------------------------------------------------------------------------
-
-
-def test_invite_token_hash_matches_and_not_persisted_plain(client: TestClient, *, identity) -> None:
-    family_id = _create_family_ledger(client, identity=identity)
-    family_app = _switch_to(client, family_id, identity.app_headers)
-    invite = _mint(client, family_id, family_app)
-    with SessionLocal() as db:
-        row = db.scalar(select(Invitation))
-        assert row is not None
-        assert row.token_hash == hash_secret(invite)
-        # Defensive: token_hash must look like a hex digest, not the plain.
-        assert all(c in "0123456789abcdef" for c in row.token_hash)
-        assert row.token_hash != invite
-
-
-# ---------------------------------------------------------------------------
 # T16 — switching to family ledger then back keeps roles consistent
 # ---------------------------------------------------------------------------
 

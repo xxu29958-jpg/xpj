@@ -72,10 +72,8 @@ def test_reversal_uses_the_real_roots_gross_snapshot_not_zero_stream_contributio
 
 
 def test_purchase_draft_freezes_imported_evidence_without_asserting_provider_authority():
-    apply_snapshot = getattr(exchange_rate_service, "apply_imported_currency_snapshot", None)
-    assert callable(apply_snapshot), "native import has no money-owner admission yet"
     expense = Expense(status="pending")
-    apply_snapshot(expense, _snapshot())
+    exchange_rate_service.apply_imported_currency_snapshot(expense, _snapshot())
     assert expense.status == "pending"
     assert (expense.original_amount_minor, expense.amount_cents) == (2500, 3728)
     assert expense.home_currency_code == "JPY"
@@ -101,9 +99,7 @@ def test_legacy_file_quote_can_be_reviewed_without_rewriting_the_source_evidence
     original_input = dict(row.event_input)
     payload = CsvImportReviewRequest(reason="根据原单补录", manual_exchange_rate="149.12345678",
         exchange_rate_date="2026-05-05")
-    complete = getattr(_review, "_complete_reviewed_quote", None)
-    assert callable(complete), "legacy native files have no quote continuation"
-    complete(row, payload)
+    _review._complete_reviewed_quote(row, payload)
     expense = Expense(status="pending")
     exchange_rate_service.apply_imported_currency_snapshot(expense, row)
     assert (expense.amount_cents, expense.exchange_rate_date) == (3728, date(2026, 5, 5))
@@ -124,10 +120,8 @@ def test_review_cannot_overwrite_the_known_part_of_a_historical_quote(missing):
 
 def test_review_cannot_replace_a_quote_recorded_in_the_file():
     row = CsvImportRow(**vars(_snapshot()))
-    complete = getattr(_review, "_complete_reviewed_quote", None)
-    assert callable(complete)
     with pytest.raises(AppError) as error:
-        complete(row, CsvImportReviewRequest(reason="重新报价", manual_exchange_rate="150",
+        _review._complete_reviewed_quote(row, CsvImportReviewRequest(reason="重新报价", manual_exchange_rate="150",
             exchange_rate_date="2026-05-06"))
     assert error.value.error == "currency_snapshot_invalid"
     assert row.exchange_rate_to_cny == Decimal("149.12345678")
