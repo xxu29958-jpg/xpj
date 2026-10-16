@@ -199,6 +199,53 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
         importExportDisabled: document.getElementById("importExportAction").disabled,
         ledgerOptionCount: document.getElementById("ledgerSelect").options.length
       }});
+      const taskRequests = [];
+      render({{...healthy, public_connectivity: {{...healthy.public_connectivity,
+        service: "running", connector: "healthy",
+        detail_rows: [{{label: "Windows 服务", state: "unknown", text: "服务身份等待确认"}},
+          {{label: "Cloudflare Edge", state: "degraded", text: "连接观察已过期"}}]
+      }}}});
+      const projectedRows = [...$("publicConnectivityDetails").children]
+        .map(row => [...row.children].map(cell => cell.textContent));
+      const actionable = {{...healthy, service_controls_available: true, product_available: true,
+        iphone_upload_state: "configured_unverified"}};
+      window.fetch = async (url, options = {{}}) => {{
+        if (options.method === "POST") taskRequests.push(url);
+        return {{ok: true, status: 200, json: async () =>
+          url === "/api/product/session" ? {{configured: false}} : actionable}};
+      }};
+      render(actionable);
+      await loadProductSession();
+      const taskButtons = ["primaryAction", "androidAction", "iphoneAction", "diagnosticExportAction"]
+        .map(id => $(id)).concat([...document.querySelectorAll("button")]
+          .filter(button => button.textContent.trim() === "系统体检"));
+      for (const button of taskButtons) {{
+        render(actionable);
+        button.click();
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }}
+      const unsafeLog = '<svg onload="window.injectedLog = true"></svg><b>diagnostic</b>';
+      render({{...healthy, log: [unsafeLog]}});
+      const logSafety = {{
+        text: $("log").textContent,
+        injectedNodes: $("log").querySelectorAll("svg, b").length
+      }};
+      render(healthy);
+      const logReplacement = $("log").textContent;
+      const localOnlyDetail = $("serviceDetail").textContent;
+      const recovery = {{}};
+      for (const [field, value] of [["owner_state", "recovery_required"],
+          ["runtime_access_state", "repair_required"]]) {{
+        render({{...healthy, [field]: value}});
+        recovery[field] = {{
+          overall: $("overallText").textContent,
+          detail: $("serviceDetail").textContent,
+          pairingDisabled: $("androidAction").disabled,
+          uploadDisabled: $("iphoneAction").disabled,
+          diagnosticsEnabled: !$("diagnosticExportAction").disabled,
+          dataProtectionVisible: !$("dataProtectionCard").hidden
+        }};
+      }}
       render(healthy);
       healthy.public_connectivity.in_progress = true;
       render(healthy);
@@ -312,6 +359,7 @@ def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
       document.body.setAttribute(
         "data-behavior-probe",
         JSON.stringify({{
+          taskRequests, projectedRows, logSafety, logReplacement, localOnlyDetail, recovery,
           checking,
           offline,
           statusNon2xx,
@@ -392,6 +440,30 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
 def test_manager_offline_state_remains_coherent(tmp_path: Path) -> None:
     probe = _render_behavior_probe(tmp_path)
+
+    assert probe["taskRequests"] == [
+        "/api/stop", "/api/open_pairing", "/api/open_upload_links",
+        "/api/export_diagnostics", "/api/open_diagnostics",
+    ]
+    assert probe["projectedRows"] == [
+        ["Windows 服务", "服务身份等待确认"],
+        ["Cloudflare Edge", "连接观察已过期"],
+    ]
+    assert probe["logSafety"] == {
+        "text": '<svg onload="window.injectedLog = true"></svg><b>diagnostic</b>',
+        "injectedNodes": 0,
+    }
+    assert probe["logReplacement"] == "服务正常。"
+    assert probe["localOnlyDetail"] == "电脑端运行正常；手机连接尚未配置。"
+    for field, overall, guidance in (
+        ("owner_state", "需要恢复身份", "不能自动重建身份"),
+        ("runtime_access_state", "需要修复安装", "重新运行可信安装包"),
+    ):
+        recovery = probe["recovery"][field]
+        assert recovery["overall"] == overall
+        assert guidance in recovery["detail"]
+        assert recovery["pairingDisabled"] and recovery["uploadDisabled"]
+        assert recovery["diagnosticsEnabled"] and recovery["dataProtectionVisible"]
 
     assert probe["checking"] == {
         "refreshDisabled": True,
@@ -979,8 +1051,17 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
         pair: displayOf("productPairGroup"),
         manage: displayOf("productManageGroup"),
         importExportDisabled: $("importExportAction").disabled,
+        dataActions: [...$("dataProtectionCard").querySelectorAll("button, a[href], [role=button], input")]
+          .filter(action => action.checkVisibility()).map(action => action.textContent.trim()),
         options: [...$("ledgerSelect").options].map((option) => option.value)
       }};
+      paired.importRoute = false;
+      window.navigation.addEventListener("navigate", event => {{
+        paired.importRoute = event.destination.url === new URL("/web/import", location.href).href;
+        event.preventDefault();
+      }}, {{once: true}});
+      $("importExportAction").click();
+      await new Promise(resolve => setTimeout(resolve, 0));
       document.body.setAttribute("data-visibility-probe", JSON.stringify({{unpaired, help, paired}}));
     }})();"""
     page = _render_probe_page(tmp_path, f"product-visibility-{width}x{height}.html", script)
@@ -1014,6 +1095,8 @@ def test_product_card_visibility_matrix_is_hidden_authoritative(
     assert probe["paired"]["pair"] == "none"
     assert probe["paired"]["manage"] == "flex"
     assert probe["paired"]["importExportDisabled"] is False
+    assert probe["paired"]["importRoute"] is True
+    assert probe["paired"]["dataActions"] == ["导入与导出"]
     assert probe["paired"]["options"] == ["owner", "family"]
     assert probe["paired"]["heading"] == "小票夹管理器"
     assert probe["paired"]["helpHidden"] is True
