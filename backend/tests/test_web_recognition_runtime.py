@@ -15,7 +15,7 @@ from app.services import expense_ocr_command_service as command
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service import _ocr
 from app.services.ocr_service import OcrResult
-from tests import test_web_expense_review_runtime as review_tests
+from tests import _web_expense_review_test_support as review_tests
 from tests._web_native_form_support import hidden_post_forms
 from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
 from tests.web_expense_fact_test_support import confirmation_web as confirmation_web

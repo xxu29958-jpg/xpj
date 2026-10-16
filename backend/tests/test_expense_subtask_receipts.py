@@ -9,43 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.errors import AppError
-from app.models import ApiIdempotencyKey, Expense, ExpenseItem, ExpenseSplit, LedgerAuditLog, LedgerMember
-from app.routes import expenses
-from app.schemas import ExpenseAcknowledgeItemsMismatchRequest, ExpenseItemReplaceRequest, ExpenseSplitReplaceRequest
-from tests.web_expense_fact_test_support import confirmation_actor
+from app.models import ApiIdempotencyKey
+from tests.web_expense_fact_test_support import _facts, _prepare, _submit
 from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
-
-
-def _submit(db, kind, version, key, *, label="原输入", amount=500):
-    auth = confirmation_actor(db)
-    if kind == "items":
-        route = expenses.put_expense_item_rows
-        payload = ExpenseItemReplaceRequest(expected_row_version=version,
-            items=[{"name": label, "amount_cents": amount, "category": "购物"}])
-    elif kind == "splits":
-        route = expenses.put_expense_split_rows
-        payload = ExpenseSplitReplaceRequest(expected_row_version=version,
-            splits=[{"member_id": db.scalar(select(LedgerMember.id).where(
-                LedgerMember.ledger_id == "owner", LedgerMember.account_id == auth.account_id)),
-                "amount_cents": amount, "note": label}])
-    else:
-        route = expenses.acknowledge_expense_items_mismatch
-        payload = ExpenseAcknowledgeItemsMismatchRequest(expected_row_version=version)
-    return route("42", payload, idempotency_key=key, auth=auth, db=db)
-
-
-def _prepare(db, kind):
-    if kind == "ack":
-        return _submit(db, "items", 4, "seed-mismatch").row_version
-    return 4
-
-
-def _facts(db):
-    expense = db.get(Expense, 42)
-    return (expense.status, expense.row_version, expense.amount_cents, expense.items_sum_status,
-        [(row.name, row.amount_cents) for row in db.scalars(select(ExpenseItem))],
-        [(row.member_id, row.amount_cents, row.note) for row in db.scalars(select(ExpenseSplit))],
-        [(row.action, row.actor_account_id) for row in db.scalars(select(LedgerAuditLog))])
 
 
 @pytest.mark.parametrize("kind", ["items", "splits", "ack"])
