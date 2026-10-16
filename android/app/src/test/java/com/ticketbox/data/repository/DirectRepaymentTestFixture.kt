@@ -74,6 +74,14 @@ internal class RepaymentResponseLossProbe : ApiService by FakeApiService(mutable
         createdAt = "2026-09-01T00:00:00Z", updatedAt = "2026-09-01T00:00:00Z", rowVersion = 1L,
     )
 
+    // These are declared transport outcomes, not a second implementation of debt accounting or OCC.
+    var kindResponse = current.copy(debtKind = "revolving", rowVersion = 2)
+    var voidResponse = current.copy(status = "voided", remainingAmountCents = 0, rowVersion = 2)
+    var repaymentVoidResponse = current.copy(status = "open", rowVersion = 2)
+    var repaymentDebt = current.copy(remainingAmountCents = 40_000, paidAmountCents = 10_000, rowVersion = 2)
+    var repaymentResponse = DebtRepaymentReceiptDto("d1", "repayment-original", 2, "CNY")
+    val repaymentRefusalsByKey = mutableMapOf<String, Pair<Int, String>>()
+
     override suspend fun debt(publicId: String): DebtDto = current
 
     override suspend fun setDebtKind(publicId: String, request: com.ticketbox.data.remote.dto.DebtKindSetRequestDto,
@@ -82,27 +90,23 @@ internal class RepaymentResponseLossProbe : ApiService by FakeApiService(mutable
         kindCalls += Triple(publicId, request, key)
         refusal?.let { (status, code) -> throw repaymentRefusal(status, code) }
         kindFacts[key]?.let { (original, receipt) -> check(original == request); return kindReceiptTransform(receipt) }
-        if (request.expectedRowVersion != current.rowVersion) throw repaymentRefusal(409, "state_conflict")
-        current = current.copy(debtKind = request.debtKind, rowVersion = current.rowVersion + 1)
+        current = kindResponse
         kindFacts[key] = request to current
         if (loseResponse) throw IOException("Synthetic lost reply after classification commit")
         return kindReceiptTransform(current)
     }
 
     override suspend fun voidDebt(publicId: String, request: com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto,
-        idempotencyKey: String?): DebtDto = commitVoid(publicId, request, requireNotNull(idempotencyKey), request.expectedRowVersion)
+        idempotencyKey: String?): DebtDto = commitVoid(publicId, request, requireNotNull(idempotencyKey), voidResponse)
 
     override suspend fun voidDebtRepayment(publicId: String, request: com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto,
-        idempotencyKey: String?): DebtDto = commitVoid(publicId, request, requireNotNull(idempotencyKey), request.expectedRowVersion)
+        idempotencyKey: String?): DebtDto = commitVoid(publicId, request, requireNotNull(idempotencyKey), repaymentVoidResponse)
 
-    private fun commitVoid(publicId: String, request: Any, key: String, version: Long): DebtDto {
+    private fun commitVoid(publicId: String, request: Any, key: String, response: DebtDto): DebtDto {
         voidCalls += Triple(publicId, request, key)
         refusal?.let { (status, code) -> throw repaymentRefusal(status, code) }
         voidFacts[key]?.let { (original, receipt) -> check(original == request); return voidReceiptTransform(receipt) }
-        if (version != current.rowVersion) throw repaymentRefusal(409, "state_conflict")
-        current = if (request is com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto) {
-            current.copy(status = "voided", remainingAmountCents = 0, rowVersion = current.rowVersion + 1)
-        } else current.copy(status = "open", rowVersion = current.rowVersion + 1)
+        current = response
         voidFacts[key] = request to current
         if (loseResponse) throw IOException("Synthetic response loss after void commit")
         return voidReceiptTransform(current)
@@ -117,10 +121,9 @@ internal class RepaymentResponseLossProbe : ApiService by FakeApiService(mutable
             check(request == original)
             return receiptTransform(receipt)
         }
-        if (request.expectedRowVersion != current.rowVersion) throw repaymentRefusal(409, "state_conflict")
-        current = current.copy(remainingAmountCents = current.remainingAmountCents - request.amountCents,
-            paidAmountCents = current.paidAmountCents + request.amountCents, rowVersion = current.rowVersion + 1L)
-        val receipt = DebtRepaymentReceiptDto(publicId, "repayment-original", current.rowVersion, current.homeCurrencyCode)
+        repaymentRefusalsByKey[key]?.let { (status, code) -> throw repaymentRefusal(status, code) }
+        current = repaymentDebt
+        val receipt = repaymentResponse
         facts[key] = request to receipt
         if (loseResponse) throw IOException("Synthetic lost response after repayment commit")
         return receiptTransform(receipt)

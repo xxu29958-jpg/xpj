@@ -39,11 +39,13 @@ class GoalCreationRepositoryTest {
         fixture.create().getOrThrow()
         val original = fixture.pending().row
         fixture.loseAck = true
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().failures)
         val failed = fixture.pending()
         assertTrue(failed.canRetry)
         fixture.loseAck = false
         fixture.repository.recoverCreation(fixture.binding, failed, drop = false).getOrThrow()
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().done)
         val done = fixture.pending()
         assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), fixture.keys)
@@ -58,6 +60,7 @@ class GoalCreationRepositoryTest {
         val fixture = GoalCreationFixture()
         fixture.create().getOrThrow()
         fixture.wrongReceipt = true
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().failures)
         val failed = fixture.pending()
         assertEquals(PendingMutationStatus.Failed, failed.row.status)
@@ -99,6 +102,7 @@ class GoalCreationRepositoryTest {
             val original = fixture.pending().row
             fixture.httpError = HttpException(Response.error<GoalDto>(status,
                 """{"error":"$code","message":"Synthetic refusal"}""".toResponseBody("application/json".toMediaType())))
+            fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine().drainOnce().failures)
             val failed = fixture.pending()
             assertEquals(PendingMutationStatus.Failed, failed.row.status)
@@ -120,6 +124,7 @@ class GoalCreationRepositoryTest {
     @Test fun completedOriginalKeyReturnsItsReceiptWithoutAnotherCreation() = runTest {
         val fixture = GoalCreationFixture()
         val id = fixture.create().getOrThrow()
+        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
         assertEquals(1, fixture.engine().drainOnce().done)
         val original = fixture.pending()
         assertEquals(id, fixture.create().getOrThrow())

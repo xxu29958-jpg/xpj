@@ -37,10 +37,12 @@ class IncomePlanIntentContinuityTest {
         assertEquals("工资", intent.originalLabel)
         assertEquals(120_000L, intent.request.amountCents)
 
+        fixture.dao.runnableBatches += listOf(id)
         assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().retryable)
         assertEquals(original.payload, fixture.dao.rows.getValue(id).payload)
         val october = Clock.offset(fixture.clock, Duration.ofDays(1))
         fixture.api.loseResponse = false
+        fixture.dao.runnableBatches += listOf(id)
         assertEquals(1, fixture.engine(fixture.newOutbox(october), october).drainOnce().done)
         assertEquals(2, fixture.api.calls.size)
         assertEquals(fixture.api.calls.first(), fixture.api.calls.last())
@@ -57,6 +59,7 @@ class IncomePlanIntentContinuityTest {
             val payload = if (legacy) """{"expected_row_version":0,"amount_cents":120000}"""
                 else original.payload.replace("\"revision\":1", "\"revision\":99")
             fixture.dao.rows[id] = original.copy(payload = payload)
+            fixture.dao.runnableBatches += listOf(id)
             assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().failures)
             assertTrue(fixture.api.calls.isEmpty())
             assertEquals(PendingMutationStatus.Failed.wireValue, fixture.dao.rows.getValue(id).status)

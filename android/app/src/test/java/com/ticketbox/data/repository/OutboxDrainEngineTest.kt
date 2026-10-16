@@ -8,7 +8,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -26,7 +25,7 @@ class OutboxDrainEngineTest {
 
     @Test
     fun successfulDispatchMarksRowDone() = runTest {
-        val (engine, outbox) = withDispatcher(StubDispatcher(result = DispatchResult.Success()))
+        val (engine, outbox, dao) = withDispatcher(StubDispatcher(result = DispatchResult.Success()))
         val rowId = outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
@@ -34,6 +33,7 @@ class OutboxDrainEngineTest {
             expectedRowVersion = 1L,
         )
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = engine.drainOnce()
 
         assertEquals(1, summary.attempted)
@@ -43,7 +43,7 @@ class OutboxDrainEngineTest {
 
     @Test
     fun conflictDispatchPutsRowInConflict() = runTest {
-        val (engine, outbox) = withDispatcher(
+        val (engine, outbox, dao) = withDispatcher(
             StubDispatcher(result = DispatchResult.Conflict("账单已在其它端被修改")),
         )
         outbox.enqueue(
@@ -53,6 +53,7 @@ class OutboxDrainEngineTest {
             expectedRowVersion = 1L,
         )
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = engine.drainOnce()
 
         assertEquals(1, summary.conflicts)
@@ -64,7 +65,7 @@ class OutboxDrainEngineTest {
 
     @Test
     fun failureDispatchMarksRowFailed() = runTest {
-        val (engine, outbox) = withDispatcher(
+        val (engine, outbox, dao) = withDispatcher(
             StubDispatcher(result = DispatchResult.Failure("network blip")),
         )
         outbox.enqueue(
@@ -74,6 +75,7 @@ class OutboxDrainEngineTest {
             expectedRowVersion = 1L,
         )
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = engine.drainOnce()
 
         assertEquals(1, summary.failures)
@@ -86,7 +88,7 @@ class OutboxDrainEngineTest {
     fun discardedDispatchMarksRowDoneSilently() = runTest {
         // A positively established terminal result retires the row. Unknown
         // HTTP refusals must never reach the engine as Discarded.
-        val (engine, outbox) = withDispatcher(
+        val (engine, outbox, dao) = withDispatcher(
             StubDispatcher(result = DispatchResult.Discarded("已不存在")),
         )
         outbox.enqueue(
@@ -96,6 +98,7 @@ class OutboxDrainEngineTest {
             expectedRowVersion = 1L,
         )
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = engine.drainOnce()
 
         assertEquals(1, summary.discarded)
@@ -110,7 +113,7 @@ class OutboxDrainEngineTest {
         // will keep failing and eventually surface via retryCount,
         // but a one-off OOM / cancellation shouldn't kick the row
         // out of auto-replay.
-        val (engine, outbox) = withDispatcher(
+        val (engine, outbox, dao) = withDispatcher(
             StubDispatcher(throwError = IllegalStateException("kaboom")),
         )
         outbox.enqueue(
@@ -120,6 +123,7 @@ class OutboxDrainEngineTest {
             expectedRowVersion = 0L,
         )
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = engine.drainOnce()
 
         assertEquals(1, summary.retryable)
@@ -136,7 +140,7 @@ class OutboxDrainEngineTest {
         // it. New behaviour: mark FAILED with a structured
         // ``lastError`` so the row leaves the PENDING queue and
         // the UI can offer "upgrade and retry" or "drop".
-        val (engine, outbox) = withDispatcher(StubDispatcher(result = DispatchResult.Success()))
+        val (engine, outbox, dao) = withDispatcher(StubDispatcher(result = DispatchResult.Success()))
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
@@ -150,6 +154,7 @@ class OutboxDrainEngineTest {
             expectedRowVersion = 0L,
         )
 
+        dao.runnableBatches += dao.rows.keys.toList()
         val summary = engine.drainOnce()
 
         assertEquals(2, summary.attempted)
@@ -164,7 +169,7 @@ class OutboxDrainEngineTest {
     fun retryableFailureKeepsRowPendingForNextDrain() = runTest {
         // [codex P1#3] 5xx / network blip → PENDING, picked up
         // again on the next drainOnce() call.
-        val (engine, outbox) = withDispatcher(
+        val (engine, outbox, dao) = withDispatcher(
             StubDispatcher(result = DispatchResult.RetryableFailure("server 503")),
         )
         outbox.enqueue(
@@ -174,6 +179,7 @@ class OutboxDrainEngineTest {
             expectedRowVersion = 0L,
         )
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val first = engine.drainOnce()
         assertEquals(1, first.retryable)
         val between = outbox.activeForTarget("expense:1").single()
@@ -181,6 +187,7 @@ class OutboxDrainEngineTest {
         assertEquals(1, between.retryCount)
         assertEquals("server 503", between.lastError)
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val second = engine.drainOnce()
         assertEquals(1, second.attempted)
         assertEquals(1, second.retryable)
@@ -193,7 +200,7 @@ class OutboxDrainEngineTest {
         // After A lands, the server moves to T1; B's row must be
         // rewritten to T1 so it doesn't fake-conflict.
         val dispatcher = StubDispatcher(result = DispatchResult.Success(newRowVersion = 2L))
-        val (engine, outbox) = withDispatcher(dispatcher)
+        val (engine, outbox, dao) = withDispatcher(dispatcher)
         outbox.enqueue(
             type = PendingMutationType.PatchExpense,
             targetId = "expense:1",
@@ -207,242 +214,19 @@ class OutboxDrainEngineTest {
             expectedRowVersion = 1L,
         )
 
+        dao.tokenCascadeIds += listOf(secondId)
+        dao.runnableBatches.addAll(listOf(listOf(dao.rows.keys.first()), listOf(secondId)))
         val summary = engine.drainOnce()
 
         assertEquals(2, summary.attempted)
         assertEquals(2, summary.done)
         assertEquals(listOf(1L, 2L), dispatcher.dispatchedRows.map { it.expectedRowVersion })
+        assertEquals("expense:1", dao.tokenCascadeCalls.first().targetId)
+        assertEquals(testOutboxBinding().ownerStorageKey, dao.tokenCascadeCalls.first().ownerKey)
+        assertEquals("owner", dao.tokenCascadeCalls.first().ledgerId)
+        assertEquals(2L, dao.tokenCascadeCalls.first().freshToken)
         assertEquals(secondId, dispatcher.dispatchedRows.last().id)
         assertTrue(outbox.activeForTarget("expense:1").isEmpty())
-    }
-
-    @Test
-    fun successDoesNotRebaseQueuedCompositeCorrection() = runTest {
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val engine = OutboxDrainEngine(
-            outbox,
-            listOf(StubDispatcher(result = DispatchResult.Success(newRowVersion = 8L)),
-                StubDispatcher(result = DispatchResult.Conflict("stale original fact"), type = PendingMutationType.CorrectExpense)),
-        )
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 7L)
-        val payload = """{"expected_row_version":0,"reason":"校正复合事实","original_currency_code":"CNY","original_amount_minor":1200,"items":[{"name":"午餐","amount_cents":1200}],"splits":[{"member_id":7,"amount_cents":1200}]}"""
-        val correctionId = outbox.enqueue(
-            PendingMutationType.CorrectExpense,
-            "expense:1",
-            payload,
-            7L,
-            idempotencyKey = "original-correction-key",
-        )
-        val original = dao.rows.getValue(correctionId)
-
-        val summary = engine.drainOnce()
-
-        assertEquals(1, summary.done)
-        assertEquals(2, summary.attempted, "the correction follows the predecessor using only its original OCC")
-        assertEquals(1, summary.conflicts)
-        val pending = dao.rows.getValue(correctionId)
-        assertEquals(7L, pending.expectedRowVersion, "a predecessor's success cannot authorize correction of an unseen fact version")
-        assertEquals("original-correction-key", pending.idempotencyKey)
-        assertEquals(payload, pending.payload)
-        assertEquals(original.ownerKey, pending.ownerKey)
-        assertEquals(original.ledgerId, pending.ledgerId)
-        assertEquals(PendingMutationStatus.Conflict.wireValue, pending.status)
-    }
-
-    @Test
-    fun voidSuccessCascadesRootTokenWithoutOverwritingAnotherOffsetsOccToken() = runTest {
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val engine = OutboxDrainEngine(
-            outbox,
-            listOf(
-                StubDispatcher(
-                    result = DispatchResult.Success(newRowVersion = 8L),
-                    type = PendingMutationType.VoidExpenseOffset,
-                ),
-            ),
-        )
-        outbox.enqueue(
-            type = PendingMutationType.VoidExpenseOffset,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 2L,
-        )
-        val laterPatchId = outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 7L,
-        )
-        val laterVoidId = outbox.enqueue(
-            type = PendingMutationType.VoidExpenseOffset,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 4L,
-        )
-
-        val summary = engine.drainOnce()
-
-        assertEquals(1, summary.done)
-        assertEquals(8L, dao.rows.getValue(laterPatchId).expectedRowVersion)
-        assertEquals(4L, dao.rows.getValue(laterVoidId).expectedRowVersion)
-    }
-
-    @Test
-    fun sameTargetSerialInsideOneDrain() = runTest {
-        // Each selection takes one sibling; the bounded drain continues only after it settles.
-        val dispatcher = StubDispatcher(result = DispatchResult.Success())
-        val (engine, outbox) = withDispatcher(dispatcher)
-        outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 1L,
-        )
-        outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 1L,
-        )
-
-        val summary = engine.drainOnce()
-        assertEquals(2, summary.attempted)
-        assertEquals(2, summary.done)
-        assertEquals(listOf(1L, 2L), dispatcher.dispatchedRows.map { it.id })
-        assertTrue(outbox.activeForTarget("expense:1").isEmpty())
-    }
-
-    @Test
-    fun blockedTargetsDoNotStarveOtherRunnableTargets() = runTest {
-        // [codex round-3 P2#1] If the first N PENDING rows in
-        // createdAt order all target a CONFLICT-blocked row, the
-        // SQL filter must exclude them BEFORE LIMIT — otherwise
-        // a runnable row for a different target waiting behind
-        // them never enters the drain batch.
-        val (engine, outbox) = withDispatcher(StubDispatcher(result = DispatchResult.Success()))
-        val blockedHead = outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 0L,
-        )
-        outbox.markConflict(blockedHead, "stale")
-        // 30 PENDING rows for the blocked target — under the old
-        // Kotlin-side filter these would have eaten the whole
-        // LIMIT before the runnable row was reached.
-        repeat(30) {
-            outbox.enqueue(
-                type = PendingMutationType.PatchExpense,
-                targetId = "expense:1",
-                payloadJson = "{}",
-                expectedRowVersion = 0L,
-            )
-        }
-        outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:2",
-            payloadJson = "{}",
-            expectedRowVersion = 0L,
-        )
-
-        val summary = engine.drainOnce()
-        // expense:2 runs; the 30 expense:1 PENDING rows wait
-        // behind the CONFLICT head.
-        assertEquals(1, summary.attempted)
-        assertEquals(1, summary.done)
-    }
-
-    @Test
-    fun conflictSiblingBlocksLaterPendingRow() = runTest {
-        // [codex round-2 P1#1] An unresolved CONFLICT for the same
-        // target must hold back later PENDING siblings — otherwise
-        // the user's keep/drop decision races with the auto-replay
-        // of B and the eventual state is non-deterministic.
-        val (engine, outbox) = withDispatcher(StubDispatcher(result = DispatchResult.Success()))
-        val firstId = outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 0L,
-        )
-        outbox.markConflict(firstId, "stale")
-        outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 0L,
-        )
-
-        val summary = engine.drainOnce()
-        assertEquals(0, summary.attempted)
-        // CONFLICT row unchanged; PENDING sibling untouched.
-        val rows = outbox.activeForTarget("expense:1")
-        assertEquals(2, rows.size)
-        assertTrue(rows.any { it.status == PendingMutationStatus.Conflict })
-        assertTrue(rows.any { it.status == PendingMutationStatus.Pending })
-    }
-
-    @Test
-    fun failedSiblingBlocksLaterPendingRow() = runTest {
-        // [codex round-2 P1#1] Same logic for FAILED — user might
-        // manually retry or dismiss; until they do, later siblings
-        // must wait so the chain order is preserved.
-        val (engine, outbox) = withDispatcher(StubDispatcher(result = DispatchResult.Success()))
-        val firstId = outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 0L,
-        )
-        outbox.markFailed(firstId, "bad payload")
-        outbox.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 0L,
-        )
-
-        val summary = engine.drainOnce()
-        assertEquals(0, summary.attempted)
-        val rows = outbox.activeForTarget("expense:1")
-        assertTrue(rows.any { it.status == PendingMutationStatus.Failed })
-        assertTrue(rows.any { it.status == PendingMutationStatus.Pending })
-    }
-
-    @Test
-    fun cancellationDuringDispatchRollsRowBackToPending() = runTest {
-        // [codex round-2 P1#2] CancellationException must propagate
-        // to the caller (WorkManager), and the row must be put back
-        // to PENDING so the next drain after the worker restarts
-        // re-claims it instead of leaving it stuck IN_FLIGHT.
-        //
-        // PR review #3: 改用 revertClaimWithoutAttempt, retryCount 不再因为 cancel 累加,
-        // attemptedAt 抵消回 null。lastError 不写——保留先前任何诊断(本例 row 是新加的,
-        // lastError 一直是 null)。
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val dispatcher = object : OutboxMutationDispatcher {
-            override val type = PendingMutationType.PatchExpense
-            override suspend fun dispatch(row: OutboxRow): DispatchResult {
-                throw kotlinx.coroutines.CancellationException("worker cancelled")
-            }
-        }
-        val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-
-        val thrown = runCatching { engine.drainOnce() }.exceptionOrNull()
-        assertTrue(
-            thrown is kotlinx.coroutines.CancellationException,
-            "CancellationException must propagate, got $thrown",
-        )
-
-        val row = outbox.activeForTarget("expense:1").single()
-        assertEquals(PendingMutationStatus.Pending, row.status)
-        assertEquals(null, row.lastError, "PR review #3: revertClaim 不写 lastError, 先前诊断保留")
-        assertEquals(0, row.retryCount, "PR review #3: cancellation 不算尝试, retryCount 抵消回 0")
-        assertEquals(null, row.attemptedAt, "PR review #3: attemptedAt 也抵消")
     }
 
     @Test
@@ -465,6 +249,7 @@ class OutboxDrainEngineTest {
             status = PendingMutationStatus.InFlight.wireValue,
             attemptedAt = "2026-05-04T11:50:00Z",
         )
+        dao.staleInFlightIds += id
 
         val engine = OutboxDrainEngine(
             outbox,
@@ -476,6 +261,7 @@ class OutboxDrainEngineTest {
             // the test must keep them consistent now that drainOnce reads a clock.)
             now = { now.toEpochMilli() },
         )
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val summary = engine.drainOnce()
 
         // The sweep flips it back to PENDING; the same drainOnce
@@ -489,75 +275,25 @@ class OutboxDrainEngineTest {
     }
 
     @Test
-    fun preClaimedRowIsExcludedFromDispatch() = runTest {
-        // [codex P1#2] Atomic claim. Simulate "another drain already
-        // grabbed this row" by claiming it before drainOnce reads
-        // the batch. The dispatcher must NOT be called.
+    fun refusedClaimDoesNotDispatchOrRewriteTheOriginalAndKeepsAContinuation() = runTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = dao)
-        var calls = 0
-        val dispatcher = object : OutboxMutationDispatcher {
-            override val type = PendingMutationType.PatchExpense
-            override suspend fun dispatch(row: OutboxRow): DispatchResult {
-                calls++
-                return DispatchResult.Success()
-            }
-        }
+        val dispatcher = StubDispatcher()
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        val id = outbox.enqueue(
-            PendingMutationType.PatchExpense,
-            "expense:1",
-            "{}",
-            0L,
-        )
-        // Pre-claim before drainOnce runs.
-        outbox.tryClaim(id)
+        val id = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
+        val original = dao.rows.getValue(id)
+        dao.refusedClaims += id
 
+        dao.runnableBatches.addAll(listOf(listOf(id), emptyList(), listOf(id)))
         val summary = engine.drainOnce()
 
-        assertEquals(0, calls, "dispatcher must not run on a pre-claimed row")
-        // Dequeue filter "skip rows whose target is IN_FLIGHT"
-        // keeps the row out entirely.
-        assertEquals(0, summary.attempted)
-    }
-
-    @Test
-    fun concurrentDrainClaimRaceDispatchesRowOnce() = runTest {
-        // Two drain workers can read the same PENDING batch before
-        // either claims. The DAO-level status predicate must allow
-        // exactly one claim, so only one dispatcher call may happen.
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao = dao)
-        val batchArrivals = AtomicInteger(0)
-        val bothWorkersReadBatch = CompletableDeferred<Unit>()
-        dao.beforeNextRunnableBatchReturn = {
-            if (batchArrivals.incrementAndGet() == 2) {
-                bothWorkersReadBatch.complete(Unit)
-            }
-            bothWorkersReadBatch.await()
-        }
-        val dispatchCalls = AtomicInteger(0)
-        val dispatcher = object : OutboxMutationDispatcher {
-            override val type = PendingMutationType.PatchExpense
-
-            override suspend fun dispatch(row: OutboxRow): DispatchResult {
-                dispatchCalls.incrementAndGet()
-                return DispatchResult.Success()
-            }
-        }
-        val firstEngine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        val secondEngine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
-
-        val first = async { firstEngine.drainOnce() }
-        val second = async { secondEngine.drainOnce() }
-        val summaries = listOf(first.await(), second.await())
-
-        assertEquals(1, dispatchCalls.get(), "row must be dispatched by only one worker")
-        assertEquals(2, summaries.sumOf { it.attempted }, "both workers read the runnable row")
-        assertEquals(1, summaries.sumOf { it.done })
-        assertEquals(1, summaries.sumOf { it.raced })
-        assertTrue(outbox.activeForTarget("expense:1").isEmpty())
+        assertTrue(dispatcher.dispatchedRows.isEmpty())
+        assertEquals(1, summary.attempted)
+        assertEquals(1, summary.raced)
+        assertEquals(0, summary.done)
+        assertEquals(original, dao.rows.getValue(id))
+        assertTrue(summary.continuationRequired)
+        assertEquals(false, summary.anythingChanged)
     }
 
     @Test
@@ -595,6 +331,7 @@ class OutboxDrainEngineTest {
         outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         outbox.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 2L)
 
+        dao.runnableBatches += dao.rows.keys.toList()
         val summary = engine.drainOnce()
 
         assertEquals(1, dispatchCalls, "second row must NOT be dispatched after the boundary")
@@ -653,6 +390,7 @@ class OutboxDrainEngineTest {
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
         outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val drain = async { engine.drainOnce() }
         dispatchEntered.await()
         var clearAllReturned = false
@@ -689,17 +427,20 @@ class OutboxDrainEngineTest {
         outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
 
         // Pass 1: retryCount 0 → 1, attempts=1 < 3, 仍 PENDING
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val first = engine.drainOnce()
         assertEquals(1, first.retryable)
         assertEquals(1, outbox.activeForTarget("expense:1").single().retryCount)
         assertEquals(PendingMutationStatus.Pending, outbox.activeForTarget("expense:1").single().status)
 
         // Pass 2: retryCount 1 → 2, attempts=2 < 3, 仍 PENDING
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         engine.drainOnce()
         assertEquals(2, outbox.activeForTarget("expense:1").single().retryCount)
         assertEquals(PendingMutationStatus.Pending, outbox.activeForTarget("expense:1").single().status)
 
         // Pass 3: retryCount 2 → 3, attempts=3 >= 3 → markFailed
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val third = engine.drainOnce()
         assertEquals(1, third.failures, "exceeding maxAttempts must markFailed, not markRetryable")
         val row = outbox.activeForTarget("expense:1").single()
@@ -709,9 +450,7 @@ class OutboxDrainEngineTest {
             "lastError must encode attempts count + original message; got: ${row.lastError}",
         )
 
-        // Pass 4: row 已 FAILED, dequeueNextRunnable 跳过, drain IDLE
-        val fourth = engine.drainOnce()
-        assertEquals(0, fourth.attempted)
+
     }
 
     @Test
@@ -741,6 +480,7 @@ class OutboxDrainEngineTest {
         // 把它淹没。
         dao.rows[secondId] = dao.rows[secondId]!!.copy(lastError = "server 503")
 
+        dao.runnableBatches += dao.rows.keys.toList()
         val summary = engine.drainOnce()
         assertEquals(1, summary.done, "first row landed before the boundary")
         assertEquals(1, summary.aborted, "second row aborted by epoch check")
@@ -770,10 +510,14 @@ class OutboxDrainEngineTest {
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
         outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
 
+        val originalId = dao.rows.keys.single()
+        dao.rows[originalId] = dao.rows.getValue(originalId).copy(lastError = "original diagnostic")
+
         // 模拟连续 3 次 WorkManager cancel — 每次 drainOnce 都会跑到 dispatch 抛
         // CancellationException, 引擎应该 revertClaim 然后 rethrow。
         repeat(3) {
             assertFailsWith<CancellationException> {
+                dao.runnableBatches += listOf(dao.rows.keys.single())
                 engine.drainOnce()
             }
         }
@@ -784,6 +528,7 @@ class OutboxDrainEngineTest {
         assertEquals(PendingMutationStatus.Pending, row.status)
         assertEquals(0, row.retryCount, "cancellation 不该算一次尝试, 否则 N 次 WorkManager kill 后 max_attempts 假性触发")
         assertEquals(null, row.attemptedAt)
+        assertEquals("original diagnostic", row.lastError)
     }
 
     @Test
@@ -802,7 +547,9 @@ class OutboxDrainEngineTest {
         val rowId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
 
         // Pass 1+2: retryCount 0→1→2, attempts=2 >= 2 → FAILED
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         engine.drainOnce()
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         engine.drainOnce()
         val failed = outbox.activeForTarget("expense:1").single()
         assertEquals(PendingMutationStatus.Failed, failed.status)
@@ -817,6 +564,7 @@ class OutboxDrainEngineTest {
         assertEquals("manual_retry", reset.lastError)
 
         // Pass 3: 新预算, retryCount 0→1, attempts=1 < 2, 仍可继续重试
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val third = engine.drainOnce()
         assertEquals(1, third.retryable, "重置后的 row 必须重新进入重试循环, 不能再被 max_attempts 拦")
         assertEquals(1, outbox.activeForTarget("expense:1").single().retryCount)
@@ -852,12 +600,15 @@ class OutboxDrainEngineTest {
         // Stale row: enqueued, then back-dated a month (far past the 7-day cap).
         val staleId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         dao.rows[staleId] = dao.rows[staleId]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
+        dao.expiredPendingIds += staleId
         // Fresh row, different target — createdAt = now, inside the cap.
         outbox.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 2L)
 
+        dao.runnableBatches += listOf(dao.rows.keys.last())
         val summary = engine.drainOnce()
 
         // Stale row reaped (FAILED, never dispatched); fresh row dispatched + DONE.
+        assertEquals("2026-04-27T12:00:00.000Z", dao.pendingExpiryCutoff)
         assertEquals(1, summary.reaped, "the over-age PENDING row must be reaped")
         assertEquals(1, summary.attempted, "only the fresh row enters the batch")
         assertEquals(1, summary.done)
@@ -895,6 +646,7 @@ class OutboxDrainEngineTest {
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher), now = { now.toEpochMilli() })
         val staleId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
         dao.rows[staleId] = dao.rows[staleId]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
+        dao.expiredPendingIds += staleId
 
         val summary = engine.drainOnce()
 
@@ -907,11 +659,11 @@ class OutboxDrainEngineTest {
 
     private fun withDispatcher(
         dispatcher: OutboxMutationDispatcher,
-    ): Pair<OutboxDrainEngine, OutboxRepository> {
+    ): Triple<OutboxDrainEngine, OutboxRepository, FakePendingMutationDao> {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = dao)
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
-        return engine to outbox
+        return Triple(engine, outbox, dao)
     }
 
 }

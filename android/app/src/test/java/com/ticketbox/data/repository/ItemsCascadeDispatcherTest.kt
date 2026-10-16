@@ -45,6 +45,8 @@ class ItemsCascadeDispatcherTest {
             val followingPayload = itemsAdapter.toJson(ExpenseItemReplaceRequestDto(0, emptyList()))
             val followingId = outbox.enqueue(PendingMutationType.ReplaceItems, "expense:42", followingPayload, 1, "following-key")
 
+            dao.tokenCascadeIds += listOf(followingId)
+            dao.runnableBatches.addAll(listOf(listOf(originalId), listOf(followingId)))
             val result = engine.drainOnce()
 
             assertEquals(1, result.done)

@@ -31,15 +31,15 @@ import kotlin.test.assertTrue
  * These exercise the public surface of [OutboxRepository] against a
  * pure-Kotlin in-memory fake of [PendingMutationDao] — no Room
  * dependency in unit tests, so the suite stays fast and JVM-only.
- * The fake mirrors the DAO's SQL semantics field by field; the
- * "real" DAO behaviour belongs to the instrumented Room tests
+ * Request parameters and recovery decisions stay here; generated DAO query
+ * predicates belong to the instrumented Room tests
  * (``:app:connectedGrayDebugAndroidTest``), which run on the
- * path-filtered emulator lane (android-connected.yml).
+ * path-filtered emulator lane (android-connected-test.yml).
  */
 class OutboxRepositoryTest {
 
     @Test
-    fun enqueueInsertsPendingRowInCausalOrder() = runTest {
+    fun enqueuePersistsOriginalCommandsAndRequestsTheCurrentBoundBatch() = runTest {
         val dao = FakePendingMutationDao()
         val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
 
@@ -56,76 +56,10 @@ class OutboxRepositoryTest {
             expectedRowVersion = 1L,
         )
 
+        dao.runnableBatches += listOf(first, second)
         val runnable = repo.dequeueNextRunnable(limit = 10)
         assertEquals(listOf(first, second), runnable.map { it.id })
         assertEquals(PendingMutationStatus.Pending.wireValue, dao.rows.values.first().status)
-    }
-
-    @Test
-    fun dequeueSkipsRowsForTargetsAlreadyInFlight() = runTest {
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-
-        val first = repo.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 0L,
-        )
-        // Another row for the SAME target — drain must not pick it
-        // up while ``first`` is in flight.
-        val second = repo.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 0L,
-        )
-        // Different target — drain may take it.
-        val third = repo.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:2",
-            payloadJson = "{}",
-            expectedRowVersion = 0L,
-        )
-
-        // Atomic claim flips first PENDING → IN_FLIGHT.
-        assertTrue(repo.tryClaim(first))
-        val runnable = repo.dequeueNextRunnable(limit = 10).map { it.id }
-
-        // ``first`` is IN_FLIGHT so it's no longer PENDING and won't
-        // be re-queued; ``second`` shares its target and must wait;
-        // ``third`` is independent and runs.
-        assertEquals(listOf(third), runnable)
-        assertTrue(second !in runnable)
-    }
-
-    @Test
-    fun dequeueDedupesSameTargetBeforeApplyingLimit() = runTest {
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-
-        val firstSameTarget = repo.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 1L,
-        )
-        repo.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:1",
-            payloadJson = "{}",
-            expectedRowVersion = 1L,
-        )
-        val differentTarget = repo.enqueue(
-            type = PendingMutationType.PatchExpense,
-            targetId = "expense:2",
-            payloadJson = "{}",
-            expectedRowVersion = 1L,
-        )
-
-        val runnable = repo.dequeueNextRunnable(limit = 2).map { it.id }
-
-        assertEquals(listOf(firstSameTarget, differentTarget), runnable)
     }
 
     @Test
@@ -223,68 +157,6 @@ class OutboxRepositoryTest {
     }
 
     @Test
-    fun resolveConflictDropMineDeletesRow() = runTest {
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        repo.markConflict(id, "stale")
-
-        repo.resolveConflict(id, ConflictResolution.DropMine)
-
-        assertTrue(dao.rows[id] == null)
-    }
-
-
-    @Test
-    fun reapExpiredPendingFailsOverAgeRowAndLeavesFreshRowUntouched() = runTest {
-        // ADR-0042 §4.10: a row that has sat PENDING past the age-cap can no
-        // longer trust its idempotency key (server retention ~30d > 7d cap), so it
-        // must be reaped — flipped to FAILED with the outbox_row_expired marker,
-        // NEVER replayed. A fresh PENDING row (well within the cap) is untouched.
-        val dao = FakePendingMutationDao()
-        val now = "2026-05-04T12:00:00Z"
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now))
-
-        val staleId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
-        // Hand-edit createdAt to a month ago — far past the 7-day cap.
-        dao.rows[staleId] = dao.rows[staleId]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
-        // A fresh row enqueued at the fixed clock (createdAt = now) is inside the cap.
-        val freshId = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 1L)
-
-        val nowMillis = Instant.parse(now).toEpochMilli()
-        val reaped = repo.reapExpiredPending(nowMillis)
-
-        assertEquals(1, reaped, "exactly the over-age PENDING row is reaped")
-        val stale = dao.rows[staleId]!!
-        assertEquals(PendingMutationStatus.Failed.wireValue, stale.status)
-        assertEquals("outbox_row_expired", stale.lastError)
-        val fresh = dao.rows[freshId]!!
-        assertEquals(PendingMutationStatus.Pending.wireValue, fresh.status, "fresh row stays PENDING")
-        assertNull(fresh.lastError)
-    }
-
-    @Test
-    fun reapExpiredPendingIgnoresNonPendingRowsEvenWhenOverAge() = runTest {
-        // The DAO guard is status='pending' only: an over-age CONFLICT / FAILED /
-        // IN_FLIGHT row is awaiting the user or mid-send and must NOT be re-stamped
-        // by the reaper. Confirms the reap is scoped to un-dispatched rows.
-        val dao = FakePendingMutationDao()
-        val now = "2026-05-04T12:00:00Z"
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock(now))
-
-        val conflictId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
-        repo.markConflict(conflictId, "stale")
-        dao.rows[conflictId] = dao.rows[conflictId]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
-
-        val reaped = repo.reapExpiredPending(Instant.parse(now).toEpochMilli())
-
-        assertEquals(0, reaped)
-        val row = dao.rows[conflictId]!!
-        assertEquals(PendingMutationStatus.Conflict.wireValue, row.status, "over-age CONFLICT is not reaped")
-        assertEquals("stale", row.lastError)
-    }
-
-    @Test
     fun resolveFailedRetryExpiresOverAgeRowInsteadOfRequeuing() = runTest {
         // ADR-0042 §4.10: the reaper skips non-PENDING rows, so an old FAILED row
         // (max_attempts_exceeded) never carries outbox_row_expired. Retrying it would
@@ -299,8 +171,11 @@ class OutboxRepositoryTest {
         repo.markFailed(id, "max_attempts_exceeded(10/10): server 503")
         dao.rows[id] = dao.rows[id]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
 
+        dao.expiredBoundIds += id
         val changed = repo.resolveFailed(id, FailedResolution.Retry())
 
+        assertEquals(BoundExpiryCall(id, testOutboxBinding().ownerStorageKey, "owner", "failed",
+            "2026-04-27T12:00:00.000Z"), dao.boundExpiryCall)
         assertTrue(changed, "resolving an over-age FAILED row changes it (to expired)")
         val row = dao.rows[id]!!
         assertEquals(PendingMutationStatus.Failed.wireValue, row.status, "stays terminal, not re-queued")
@@ -321,30 +196,16 @@ class OutboxRepositoryTest {
         repo.markConflict(id, "stale token")
         dao.rows[id] = dao.rows[id]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
 
+        dao.expiredBoundIds += id
         val changed = repo.resolveConflict(id, ConflictResolution.KeepMine(freshToken = 9L))
 
+        assertEquals(BoundExpiryCall(id, testOutboxBinding().ownerStorageKey, "owner", "conflict",
+            "2026-04-27T12:00:00.000Z"), dao.boundExpiryCall)
         assertTrue(changed)
         val row = dao.rows[id]!!
         assertEquals(PendingMutationStatus.Failed.wireValue, row.status, "expired, not re-queued to PENDING")
         assertEquals("outbox_row_expired", row.lastError)
         assertEquals(1, scheduled, "Expiring the original must not schedule a replay")
-    }
-
-    @Test
-    fun resolveFailedRetryOnFreshRowRequeuesNormally() = runTest {
-        // Control: a FAILED row inside the cap retries normally (flip to PENDING).
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T12:00:00Z"))
-
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
-        repo.markFailed(id, "transient parse")
-
-        val changed = repo.resolveFailed(id, FailedResolution.Retry())
-
-        assertTrue(changed)
-        val row = dao.rows[id]!!
-        assertEquals(PendingMutationStatus.Pending.wireValue, row.status, "fresh row retries to PENDING")
-        assertEquals("manual_retry", row.lastError)
     }
 
     @Test
@@ -362,28 +223,6 @@ class OutboxRepositoryTest {
         assertNotNull(row)
         assertEquals(PendingMutationStatus.Failed.wireValue, row.status)
         assertNull(row.completedAt)
-    }
-
-    @Test
-    fun resolveFailedRetryWithoutTokenFlipsBackToPending() = runTest {
-        // [codex round-3 P2#2] Without a UI surface, FAILED rows
-        // permanently block same-target later mutations because of
-        // r2#1's NOT EXISTS filter. ``resolveFailed(Retry)`` must
-        // put the row back to PENDING so the next drain re-claims it.
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        repo.markFailed(id, "transient parse")
-
-        repo.resolveFailed(id, FailedResolution.Retry())
-
-        val row = dao.rows[id]!!
-        assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
-        // The row's lastError is replaced by the manual_retry marker so the UI knows it
-        // was user-initiated. snake_case 与 ``recovered_from_stuck_in_flight`` /
-        // ``no_dispatcher_registered:`` / ``session_boundary_aborted`` 等项目内已有
-        // marker 对齐(原 PR review P3 style)。
-        assertEquals("manual_retry", row.lastError)
     }
 
     @Test
@@ -412,114 +251,7 @@ class OutboxRepositoryTest {
     }
 
     @Test
-    fun resolveFailedRetryNoOpsIfRowAlreadyDone() = runTest {
-        // [codex round-4 P2] A stale banner click after some other
-        // surface already retried + DONE this row must NOT flip the
-        // DONE row back to PENDING and trigger a duplicate replay.
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        // Simulate: row was FAILED, another surface retried, drain
-        // ran, server accepted → row is now DONE.
-        dao.rows[id] = dao.rows[id]!!.copy(
-            status = PendingMutationStatus.Done.wireValue,
-            completedAt = "2026-05-04T00:01:00Z",
-        )
-
-        val changed = repo.resolveFailed(id, FailedResolution.Retry())
-
-        // The retry is a no-op because the row is no longer FAILED.
-        assertEquals(false, changed)
-        assertEquals(PendingMutationStatus.Done.wireValue, dao.rows[id]!!.status)
-    }
-
-    @Test
-    fun resolveConflictKeepMineNoOpsIfRowAlreadyPending() = runTest {
-        // Mirror of resolveFailedRetryNoOpsIfRowAlreadyDone — if a
-        // parallel surface already moved the row out of CONFLICT,
-        // a stale banner click is a no-op.
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        repo.markConflict(id, "stale")
-        // Another surface keep-mined first; row is now PENDING.
-        dao.rows[id] = dao.rows[id]!!.copy(
-            status = PendingMutationStatus.Pending.wireValue,
-            expectedRowVersion = 7L,
-            lastError = null,
-        )
-
-        val changed = repo.resolveConflict(
-            id,
-            ConflictResolution.KeepMine(freshToken = 9L),
-        )
-
-        assertEquals(false, changed)
-        // The other surface's fresh token survives.
-        assertEquals(7L, dao.rows[id]!!.expectedRowVersion)
-    }
-
-    @Test
-    fun resolveFailedDropDeletesRow() = runTest {
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        repo.markFailed(id, "user gave up")
-
-        repo.resolveFailed(id, FailedResolution.Drop)
-
-        assertTrue(dao.rows[id] == null)
-    }
-
-    @Test
-    fun activeForTargetExcludesTerminalRows() = runTest {
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-
-        val pendingId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        val doneId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        repo.markDone(doneId)
-        repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 0L)
-
-        val active = repo.activeForTarget("expense:1").map { it.id }
-
-        assertEquals(listOf(pendingId), active)
-    }
-
-    @Test
-    fun observeActiveByTypesReturnsOnlyCurrentBindingRecurringIntents() = runTest {
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val recurringCreate = repo.enqueue(
-            PendingMutationType.CreateRecurringItem,
-            "recurring_item_create:key-1",
-            "{}",
-            0L,
-        )
-        val recurringUpdate = repo.enqueue(
-            PendingMutationType.UpdateRecurringItem,
-            "recurring_item:rec-1",
-            "{}",
-            3L,
-        )
-        repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
-        val doneRecurring = repo.enqueue(
-            PendingMutationType.UpdateRecurringItem,
-            "recurring_item:rec-2",
-            "{}",
-            4L,
-        )
-        repo.markDone(doneRecurring)
-
-        val rows = repo.observeActiveByTypes(
-            setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem),
-        ).first()
-
-        assertEquals(listOf(recurringCreate, recurringUpdate), rows.map { it.id })
-    }
-
-    @Test
-    fun bindingScopedQueueDoesNotDrainRowsFromPreviousLedger() = runTest {
+    fun dequeuePassesTheCurrentBindingWithoutRewritingAnEarlierLedgerOriginal() = runTest {
         val dao = FakePendingMutationDao()
         var binding = testOutboxBinding().copy(serverUrl = "https://old.example.com", ledgerId = "ledger-a")
         val repo = testOutboxRepository(
@@ -542,7 +274,10 @@ class OutboxRepositoryTest {
             expectedRowVersion = 2L,
         )
 
-        val runnable = repo.dequeueNextRunnable(limit = 10).map { it.id }
+        dao.runnableBatches += listOf(newRow)
+        val runnable = repo.dequeueNextRunnable(limit = 10, excludedIds = listOf(oldRow)).map { it.id }
+        assertEquals(RunnableBatchCall(binding.ownerStorageKey, "ledger-b", listOf("in_flight", "conflict", "failed"),
+            10, listOf(oldRow)), dao.batchCalls.single())
 
         assertEquals(listOf(newRow), runnable)
         assertEquals("https://old.example.com", dao.rows[oldRow]?.serverUrl)
@@ -677,33 +412,14 @@ class OutboxRepositoryTest {
     }
 
     @Test
-    fun recoverStaleInFlightScopesToCurrentBindingOnly() = runTest {
+    fun recoverStaleInFlightPassesTheCurrentBindingAndFixedUtcCutoff() = runTest {
         val dao = FakePendingMutationDao()
-        var binding = testOutboxBinding().copy(serverUrl = "https://api.example.com", ledgerId = "active")
-        val repo = testOutboxRepository(
-            dao = dao,
-            clock = fixedClock("2026-05-04T00:00:00Z"),
-            bindingProvider = { binding },
-        )
-        val activeRow = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        dao.rows[activeRow] = dao.rows[activeRow]!!.copy(
-            status = PendingMutationStatus.InFlight.wireValue,
-            attemptedAt = "2026-05-03T00:00:00.000Z",
-        )
-
-        binding = testOutboxBinding().copy(serverUrl = "https://api.example.com", ledgerId = "other")
-        val otherRow = repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 0L)
-        dao.rows[otherRow] = dao.rows[otherRow]!!.copy(
-            status = PendingMutationStatus.InFlight.wireValue,
-            attemptedAt = "2026-05-03T00:00:00.000Z",
-        )
-
-        binding = testOutboxBinding().copy(serverUrl = "https://api.example.com", ledgerId = "active")
-        val recovered = repo.recoverStaleInFlight()
-
-        assertEquals(1, recovered)
-        assertEquals(PendingMutationStatus.Pending.wireValue, dao.rows[activeRow]?.status)
-        assertEquals(PendingMutationStatus.InFlight.wireValue, dao.rows[otherRow]?.status)
+        var binding = testOutboxBinding().copy(ledgerId = "previous")
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"),
+            bindingProvider = { binding })
+        binding = binding.copy(ledgerId = "active")
+        assertEquals(0, repo.recoverStaleInFlight())
+        assertEquals(Triple(binding.ownerStorageKey, "active", "2026-05-03T23:55:00.000Z"), dao.staleRecoveryCall)
     }
 
     @Test

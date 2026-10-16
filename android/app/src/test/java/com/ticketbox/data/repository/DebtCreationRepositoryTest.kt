@@ -61,6 +61,7 @@ class DebtCreationRepositoryTest {
         val receipt = fixture.save(time).getOrThrow()
         val original = fixture.dao.rows.getValue(receipt.intentId)
 
+        fixture.dao.runnableBatches += listOf(receipt.intentId)
         val first = fixture.engine(fixture.outbox, fixture.clock).drainOnce()
 
         assertEquals(1, first.retryable)
@@ -69,6 +70,7 @@ class DebtCreationRepositoryTest {
         val restartedClock = Clock.offset(fixture.clock, Duration.ofMinutes(2))
         val restartedOutbox = fixture.newOutbox(restartedClock)
         fixture.api.loseResponse = false
+        fixture.dao.runnableBatches += listOf(receipt.intentId)
         val second = fixture.engine(restartedOutbox, restartedClock).drainOnce()
 
         assertEquals(1, second.done)
@@ -98,6 +100,7 @@ class DebtCreationRepositoryTest {
         fixture.api.loseResponse = false
         fixture.api.replyHomeCurrency = "JPY"
 
+        fixture.dao.runnableBatches += listOf(receipt.intentId)
         fixture.engine(fixture.outbox, fixture.clock).drainOnce()
 
         val sent = fixture.api.calls.single()
@@ -117,6 +120,7 @@ class DebtCreationRepositoryTest {
         fixture.api.loseResponse = false
         fixture.api.replyHomeCurrency = "JPY"
 
+        fixture.dao.runnableBatches += listOf(receipt.intentId)
         fixture.engine(fixture.outbox, fixture.clock).drainOnce()
 
         val retained = fixture.dao.rows.getValue(receipt.intentId)
@@ -133,6 +137,7 @@ class DebtCreationRepositoryTest {
         val original = fixture.dao.rows.getValue(receipt.intentId)
         fixture.api.loseResponse = false
         fixture.api.replyDate = "2026-02-01"
+        fixture.dao.runnableBatches += listOf(receipt.intentId)
         fixture.engine(fixture.outbox, fixture.clock).drainOnce()
         val retained = fixture.dao.rows.getValue(receipt.intentId)
         assertEquals(PendingMutationStatus.Failed.wireValue, retained.status)
@@ -155,6 +160,7 @@ class DebtCreationRepositoryTest {
             val original = fixture.dao.rows.getValue(receipt.intentId)
             fixture.api.loseResponse = false
             fixture.api.replyTransform = mismatch
+            fixture.dao.runnableBatches += listOf(receipt.intentId)
             fixture.engine(fixture.outbox, fixture.clock).drainOnce()
             val retained = fixture.dao.rows.getValue(receipt.intentId)
             assertEquals(PendingMutationStatus.Failed.wireValue, retained.status)
@@ -233,6 +239,7 @@ class DebtCreationRepositoryTest {
         val unknown = row.copy(payload = fixture.adapters.debtCreateAdapter.toJson(payload.copy(revision = 99)))
         fixture.dao.rows[receipt.intentId] = unknown
 
+        fixture.dao.runnableBatches += listOf(receipt.intentId)
         fixture.engine(fixture.outbox, fixture.clock).drainOnce()
 
         assertTrue(fixture.api.calls.isEmpty())

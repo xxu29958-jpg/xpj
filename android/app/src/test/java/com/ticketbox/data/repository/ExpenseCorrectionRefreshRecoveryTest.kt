@@ -110,7 +110,6 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
         fixture.streamVersions[42L] = 12L
         fixture.repository.syncConfirmed().getOrThrow()
         assertEquals(original.copy(lastError = null), fixture.queue.rows[original.id])
-        assertTrue(fixture.outbox.dequeueNextRunnable().isEmpty())
     }
 
     @Test
@@ -137,7 +136,6 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
         fixture.repository.fetchExpense(42L).getOrThrow()
         assertEquals(13L, fixture.repository.fetchExpenseFromLocalCache(42L).getOrThrow().rowVersion)
         assertEquals(original.copy(lastError = null), fixture.queue.rows[original.id])
-        assertTrue(fixture.outbox.dequeueNextRunnable().isEmpty())
     }
 
     @Test
@@ -178,7 +176,6 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
         assertEquals(11L, fixture.repository.fetchExpense(42L).getOrThrow().rowVersion)
         assertEquals(original.copy(lastError = null), fixture.queue.rows[original.id])
         assertEquals(other, fixture.queue.rows[other.id])
-        assertTrue(fixture.outbox.dequeueNextRunnable().isEmpty())
     }
 
     @Test
@@ -250,7 +247,6 @@ internal class ExpenseCorrectionRefreshRecoveryTest {
         fixture.repository.syncConfirmed().getOrThrow()
         assertEquals("refund", fixture.cache.getConfirmedStreamOffsets("owner").single().publicId)
         assertEquals(original.copy(lastError = null), fixture.queue.rows[original.id])
-        assertTrue(fixture.outbox.dequeueNextRunnable().isEmpty())
     }
 
 

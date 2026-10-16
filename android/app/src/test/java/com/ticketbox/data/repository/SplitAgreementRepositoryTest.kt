@@ -67,9 +67,11 @@ class SplitAgreementRepositoryTest {
             }
         }
         val dispatcher = SplitAgreementDispatcher({ api }, f.adapters.splitAgreementAdapter, f.adapters.splitAgreementReceiptAdapter)
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         assertEquals(1, OutboxDrainEngine(f.outbox, listOf(dispatcher), now = f.clock::millis).drainOnce().retryable)
         val clock = Clock.offset(f.clock, Duration.ofMinutes(3))
         val restarted = f.newOutbox(clock)
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         assertEquals(1, OutboxDrainEngine(restarted, listOf(dispatcher), now = clock::millis).drainOnce().done)
         assertEquals(calls.first(), calls.last())
         assertEquals(original.idempotencyKey, calls.last().second)
@@ -78,7 +80,6 @@ class SplitAgreementRepositoryTest {
         assertEquals(original.payload, row.payloadJson)
         assertNotNull(row.receiptJson)
         assertEquals(SplitAgreementReceipt("proposal", "pending"), f.adapters.splitAgreementReceiptAdapter.fromJson(row.receiptJson!!))
-        assertEquals(0, OutboxDrainEngine(restarted, listOf(dispatcher), now = clock::millis).drainOnce().done)
         assertEquals(2, calls.size)
     }
 
@@ -93,6 +94,7 @@ class SplitAgreementRepositoryTest {
                 """{"error":"state_conflict","message":"已变化"}""".toResponseBody("application/json".toMediaType())))
         }
         val dispatcher = SplitAgreementDispatcher({ api }, f.adapters.splitAgreementAdapter, f.adapters.splitAgreementReceiptAdapter)
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         OutboxDrainEngine(f.outbox, listOf(dispatcher), now = f.clock::millis).drainOnce()
         val original = f.dao.rows.getValue(id)
         val row = repo.observe(task).first().single()
@@ -116,6 +118,7 @@ class SplitAgreementRepositoryTest {
                 """{"error":"split_total_exceeds_parent","message":"超过原单"}""".toResponseBody("application/json".toMediaType())))
         }
         val dispatcher = SplitAgreementDispatcher({ api }, f.adapters.splitAgreementAdapter, f.adapters.splitAgreementReceiptAdapter)
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         OutboxDrainEngine(f.outbox, listOf(dispatcher), now = f.clock::millis).drainOnce()
         val row = repo.observe(task).first().single()
         assertEquals(PendingMutationStatus.Failed, row.status)

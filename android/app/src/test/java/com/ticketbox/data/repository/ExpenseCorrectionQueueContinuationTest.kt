@@ -61,10 +61,9 @@ internal class ExpenseCorrectionQueueContinuationTest(private val status: Pendin
             val projection = response.toCacheProjection(ledgerId)
             cache.applyExpenseFactBundle(ledgerId, projection.root, projection.activeOffsets)
         }))
-        assertEquals(DrainSummary.IDLE, engine.drainOnce())
         assertTrue(sent.isEmpty())
         var wakeups = 0
-        continuation = { wakeups++; launch { engine.drainOnce() } }
+        continuation = { wakeups++; queue.runnableBatches += listOf(original.id); launch { engine.drainOnce() } }
 
         repository.recoverCorrection(binding, correction, drop = true).getOrThrow()
         advanceUntilIdle()

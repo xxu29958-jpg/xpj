@@ -49,6 +49,7 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         engine.onAdviceInputReplaySucceeded = { committedNotifications++ }
 
         // The worker's first read is compatible; negotiation can change before the individual write.
+        dao.runnableBatches += listOf(id)
         OutboxDrainWorker.runCompatibleDrain(
             compatibility = { RuntimeWriteCompatibility.compatible(CURRENT_TICKETBOX_API_VERSION, "1:1:CNY") },
             drain = engine::drainOnce,
@@ -81,6 +82,7 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
 
         transport.accept = true
         assertTrue(outbox.resolveFailed(id, FailedResolution.Retry()))
+        dao.runnableBatches += listOf(id)
         assertEquals(1, engine.drainOnce().done)
         assertEquals(PendingMutationStatus.Done.wireValue, dao.rows.getValue(id).status)
         assertEquals(1, committedNotifications)

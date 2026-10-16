@@ -41,7 +41,6 @@ class ExpenseOffsetPublicationTest {
             fixture.acceptedCreateAndVoidReachTheRealBudgetChecker()
             fixture.notificationFailureCannotRetryAnAcceptedVoid()
             fixture.olderBundleCannotNotifyForARejectedCacheVersion()
-            fixture.oldBindingCannotDispatchOrNotify()
             fixture.cacheFailureCannotPublishANotification()
         } finally {
             database.close()
@@ -74,6 +73,7 @@ private class OffsetPublicationFixture(
                 budget.checker.checkAfterConfirmedWrite(ledgerId)
             }
             val replay = replay(type, response)
+            replay.rows.runnableBatches += listOf(replay.original.id)
             assertEquals(1, replay.engine.drainOnce().done)
             assertEquals(1L, replay.outbox.acceptedReplayRevision.value, "UI refresh is a separate accepted-result consumer")
             assertEquals(1, budget.sourceCalls, "The registered offset publisher must trigger the fresh budget query")
@@ -81,7 +81,6 @@ private class OffsetPublicationFixture(
                 "v1:budget:owner:2026-09"), budget.dispatched.single().key)
             assertEquals(200L, budget.dispatched.single().overspentCents)
             assertOriginalDone(replay)
-            assertEquals(0, replay.engine.drainOnce().attempted)
             assertEquals(1, budget.sourceCalls)
         }
     }
@@ -90,11 +89,11 @@ private class OffsetPublicationFixture(
         var attempts = 0
         container.expenseRepository.onConfirmedCommitted = { attempts++; throw IOException("notification unavailable") }
         val replay = replay(PendingMutationType.VoidExpenseOffset, bundle(++version, voided = true))
+        replay.rows.runnableBatches += listOf(replay.original.id)
         assertEquals(1, replay.engine.drainOnce().done)
         assertEquals(1, attempts)
         assertOriginalDone(replay)
         assertEquals(1L, replay.outbox.acceptedReplayRevision.value)
-        assertEquals(0, replay.engine.drainOnce().attempted)
     }
 
     suspend fun olderBundleCannotNotifyForARejectedCacheVersion() {
@@ -103,23 +102,11 @@ private class OffsetPublicationFixture(
         var attempts = 0
         container.expenseRepository.onConfirmedCommitted = { attempts++ }
         val replay = replay(PendingMutationType.VoidExpenseOffset, bundle(++version, voided = true))
+        replay.rows.runnableBatches += listOf(replay.original.id)
         assertEquals(1, replay.engine.drainOnce().done)
         assertEquals(latest.root.rowVersion, dao.findByServerId("owner", 9)?.rowVersion)
         assertEquals(0, attempts)
         assertOriginalDone(replay)
-    }
-
-    suspend fun oldBindingCannotDispatchOrNotify() {
-        var binding = testOutboxBinding()
-        val replay = replay(PendingMutationType.VoidExpenseOffset, bundle(++version, voided = true)) { binding }
-        var attempts = 0
-        container.expenseRepository.onConfirmedCommitted = { attempts++ }
-        replay.outbox.withBindingTransition { binding = testOutboxBinding(ledgerId = "another-ledger") }
-        request = null
-        assertEquals(0, replay.engine.drainOnce().attempted)
-        assertEquals(null, request)
-        assertEquals(0, attempts)
-        assertEquals(PendingMutationStatus.Pending.wireValue, replay.rows.rows.getValue(replay.original.id).status)
     }
 
     suspend fun cacheFailureCannotPublishANotification() {
@@ -127,6 +114,7 @@ private class OffsetPublicationFixture(
         container.expenseRepository.onConfirmedCommitted = { attempts++ }
         val replay = replay(PendingMutationType.VoidExpenseOffset, bundle(++version, voided = true))
         database.close()
+        replay.rows.runnableBatches += listOf(replay.original.id)
         val result = replay.engine.drainOnce()
         assertEquals(1, result.done)
         assertEquals(0, result.retryable)
@@ -135,16 +123,14 @@ private class OffsetPublicationFixture(
         assertEquals(1L, replay.outbox.acceptedReplayRevision.value)
         assertOriginalDone(replay)
         assertEquals(version, expenseRefreshVersion(replay.rows.rows.getValue(replay.original.id).lastError))
-        assertEquals(0, replay.engine.drainOnce().attempted)
     }
 
     private suspend fun replay(
         type: PendingMutationType,
         response: ExpenseFactBundleDto,
-        binding: () -> OutboxBinding = { testOutboxBinding() },
     ): OffsetReplay {
         val rows = FakePendingMutationDao()
-        val outbox = testOutboxRepository(rows, bindingProvider = binding)
+        val outbox = testOutboxRepository(rows)
         val create = ExpenseOffsetCreateRequestDto(ExpenseOffsetKindDto.Refund, 300, "2026-09-03", "Original refund", 7)
         val isCreate = type == PendingMutationType.CreateExpenseOffset
         val body = if (isCreate) adapters.offsetCreateAdapter.toJson(create) else adapters.offsetVoidAdapter.toJson(

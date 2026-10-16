@@ -146,9 +146,8 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
             ExpenseCorrectionDraft("The receipt is in yen", originalCurrencyCode = CurrencyCode.JPY,
                 originalAmountMinor = 1_000L)).isFailure)
 
-        outbox.cascadeFreshToken(original.targetId, 8L)
         assertEquals(listOf(original), mutationDao.rows.values.toList(),
-            "The original currency-basis OCC, body, binding and key survive subsequent read/token propagation")
+            "Refusing a conflicting correction preserves the original currency-basis OCC, body, binding and key")
     }
 
     @Test
@@ -251,11 +250,13 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
             })
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
 
+        mutationDao.runnableBatches += listOf(original.id)
         assertEquals(1, engine.drainOnce().retryable)
         assertEquals(1, accepted.size)
         assertTrue(dao.getConfirmedStreamOffsets("owner").isEmpty())
         assertEquals(0L, outbox.acceptedReplayRevision.value)
         assertEquals(original.payload, mutationDao.rows.getValue(original.id).payload)
+        mutationDao.runnableBatches += listOf(original.id)
         assertEquals(1, engine.drainOnce().done)
         assertEquals(2, requests.size)
         assertEquals(requests[0], requests[1])
@@ -354,6 +355,7 @@ internal class ExpenseOffsetRepositoryTest : ExpensePendingRepositoryOutboxTestB
                 val projection = dto.toCacheProjection(ledger)
                 dao.applyExpenseFactBundle(ledger, projection.root, projection.activeOffsets)
             })
+        mutationDao.runnableBatches += listOf(original.id)
         assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().done)
         assertEquals(original.idempotencyKey, api.idempotencyKey)
         assertEquals(2L, api.voidRequest?.expectedRowVersion)

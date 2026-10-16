@@ -133,6 +133,7 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
             if (rebindBeforeResponse) beforeRefusal = {
                 fixture.session.rebindToDifferentServerForFixture("https://other.example.com", "other-session-token")
             }
+            pending.runnableBatches += listOf(pending.rows.keys.single())
             assertEquals(1, engine.drainOnce().failures)
             val failed = pending.allRows().single()
             assertEquals(row.idempotencyKey, failed.idempotencyKey)
@@ -199,6 +200,7 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher))
         val malformedId = outbox.enqueue(PendingMutationType.CreateExpense, "expense:local:malformed", "{}", 0,
             idempotencyKey = "malformed-original-key")
+        pending.runnableBatches += listOf(pending.rows.keys.single())
         assertEquals(1, engine.drainOnce().failures)
         assertEquals(0, calls, "Malformed original never reaches the create provider")
         api.failure = ConnectException("offline after an unsent original")
@@ -207,6 +209,7 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
         val refusedId = outbox.enqueue(PendingMutationType.CreateExpense, "expense:local:original-manual-ref", adapter.toJson(request), 0,
             idempotencyKey = "refused-create-key")
         refusal = HttpException(Response.error<Any>(422, "invalid original".toResponseBody()))
+        pending.runnableBatches += listOf(pending.rows.keys.single())
         assertEquals(1, engine.drainOnce().failures)
         assertEquals(0, calls)
         assertEquals(original.copy(fromCache = true), reader.items(fixture.binding, null, true, null).getOrThrow(),
@@ -217,6 +220,7 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
         outbox.enqueue(PendingMutationType.CreateExpense, "expense:local:original-manual-ref", adapter.toJson(request), 0,
             idempotencyKey = "original-create-key")
         val originalRow = pending.allRows().single()
+        pending.runnableBatches += listOf(pending.rows.keys.single())
         assertEquals(1, engine.drainOnce().done)
         val done = pending.allRows().single()
         assertEquals("done", done.status)
@@ -281,6 +285,7 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
                     return DispatchResult.Success(newRowVersion = 4)
                 }
             }
+            pending.runnableBatches += listOf(pending.rows.keys.single())
             assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().done)
             assertEquals("done", pending.allRows().single { it.id == id }.status)
             api.failure = ConnectException("cold offline after accepted $mutationType")

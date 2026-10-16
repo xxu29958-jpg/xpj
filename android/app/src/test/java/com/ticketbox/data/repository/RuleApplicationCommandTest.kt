@@ -36,6 +36,7 @@ class RuleApplicationCommandTest {
             }
         }
         val writer = ApplyConfirmedRulesDispatcher({ api }, f.adapters.ruleApplicationAdapter, f.adapters.ruleApplicationReceiptAdapter, {})
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         assertEquals(1, OutboxDrainEngine(f.outbox, listOf(writer)).drainOnce().failures)
         val retained = f.repository.observeApplications(f.binding).first().single()
         assertEquals(original.payloadJson, retained.row.payloadJson)
@@ -64,6 +65,7 @@ class RuleApplicationCommandTest {
             f.adapters.ruleApplicationReceiptAdapter) { f.repository.refreshAcceptedApplication(it).getOrThrow() }
         val engine = OutboxDrainEngine(f.outbox, listOf(dispatcher), maxAttempts = 1)
         assertEquals(0, server.keys.size)
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         assertEquals(1, engine.drainOnce().failures)
         val failed = f.repository.observeApplications(f.binding).first().single()
         assertEquals("按商家统一分类", failed.original?.reason)
@@ -73,6 +75,7 @@ class RuleApplicationCommandTest {
         server.currentCategory = "医疗"
         server.loseReply = false
         f.repository.recoverApplication(f.binding, failed, false).getOrThrow()
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         assertEquals(1, engine.drainOnce().done)
         val delivered = f.repository.observeApplications(f.binding).first().single()
         assertTrue(delivered.needsRefresh)
@@ -101,6 +104,7 @@ class RuleApplicationCommandTest {
                     """{"error":"preview_stale","message":"Preview changed"}""".toResponseBody("application/json".toMediaType())))
         }
         val dispatcher = ApplyConfirmedRulesDispatcher({ api }, f.adapters.ruleApplicationAdapter, f.adapters.ruleApplicationReceiptAdapter, {})
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         OutboxDrainEngine(f.outbox, listOf(dispatcher)).drainOnce()
         val rejected = f.repository.observeApplications(f.binding).first().single()
         assertEquals("preview_stale", rejected.row.lastError)
@@ -123,6 +127,7 @@ class RuleApplicationCommandTest {
                 idempotencyKey: String?): RuleApplyConfirmedResponseDto = f.api.applyConfirmedRules(request, limit, maxScan, "other-key")
         }
         val dispatcher = ApplyConfirmedRulesDispatcher({ api }, f.adapters.ruleApplicationAdapter, f.adapters.ruleApplicationReceiptAdapter, {})
+        f.dao.runnableBatches += listOf(f.dao.rows.keys.single())
         OutboxDrainEngine(f.outbox, listOf(dispatcher)).drainOnce()
         val pending = f.repository.observeApplications(f.binding).first().single()
         assertFalse(pending.isDone)

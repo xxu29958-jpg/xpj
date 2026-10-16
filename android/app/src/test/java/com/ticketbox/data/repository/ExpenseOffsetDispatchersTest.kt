@@ -70,39 +70,6 @@ class ExpenseOffsetDispatchersTest {
         assertEquals("offset-key", stub.createKey)
     }
 
-    @Test
-    fun createConflictCannotRotateTheOriginalKeyOrParentVersion() = runTest {
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao)
-        val row = createRow()
-        val id = outbox.enqueue(row.type, row.targetId, row.payloadJson, row.expectedRowVersion, row.idempotencyKey)
-        outbox.markConflict(id, "state_conflict")
-        val original = dao.rows.getValue(id)
-
-        assertEquals(false, outbox.resolveConflict(id, ConflictResolution.KeepMine(8)))
-        assertEquals(original, dao.rows.getValue(id))
-        assertEquals(true, outbox.resolveConflict(id, ConflictResolution.DropMine))
-        assertEquals(null, dao.rows[id])
-    }
-
-    @Test
-    fun failedCreateRetainsItsOriginalCommandForRetryAndDrop() = runTest {
-        val dao = FakePendingMutationDao()
-        val outbox = testOutboxRepository(dao)
-        val row = createRow()
-        val id = outbox.enqueue(row.type, row.targetId, row.payloadJson, row.expectedRowVersion, row.idempotencyKey)
-        outbox.markFailed(id, "network unavailable")
-        val original = dao.rows.getValue(id)
-
-        assertEquals(false, outbox.resolveFailed(id, FailedResolution.Retry(freshToken = 8)))
-        assertEquals(original, dao.rows.getValue(id))
-        assertEquals(true, outbox.resolveFailed(id, FailedResolution.Retry()))
-        assertEquals(original.copy(status = "pending", retryCount = 0, lastError = "manual_retry"), dao.rows.getValue(id))
-        outbox.markFailed(id, "network unavailable")
-        assertEquals(true, outbox.resolveFailed(id, FailedResolution.Drop))
-        assertEquals(null, dao.rows[id])
-    }
-
     private class Stub(
         private val createResult: Result<ExpenseFactBundleDto>,
         private val voidResult: Result<ExpenseFactBundleDto>? = null,

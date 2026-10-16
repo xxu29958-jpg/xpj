@@ -10,12 +10,31 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** In-memory [PendingMutationDao] preserving bound FIFO, original row identity and atomic batch changes. */
+/** Stores original commands and explicit query outcomes; generated Room owns queue eligibility. */
 class FakePendingMutationDao : PendingMutationDao {
     val rows: MutableMap<Long, PendingMutationEntity> = Collections.synchronizedMap(linkedMapOf())
+    val runnableBatches = ArrayDeque<List<Long>>()
+    val batchCalls = mutableListOf<RunnableBatchCall>()
+    val tokenCascadeIds = ArrayDeque<List<Long>>()
+    val tokenCascadeCalls = mutableListOf<TokenCascadeCall>()
     var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
     var beforeInsert: (suspend () -> Unit)? = null
     var replacePayloadError: Throwable? = null
+    val refusedClaims = mutableSetOf<Long>()
+    val refusedRecoveries = mutableSetOf<Long>()
+    val refusedStops = mutableSetOf<Long>()
+    val refusedDeletes = mutableSetOf<Long>()
+    val deleteCalls = mutableListOf<DeleteCall>()
+    // Query outcomes are supplied by the scenario; generated Room owns age/status/binding predicates.
+    val expiredPendingIds = mutableListOf<Long>()
+    val expiredBoundIds = mutableSetOf<Long>()
+    val staleInFlightIds = mutableListOf<Long>()
+    var pendingExpiryCutoff: String? = null
+        private set
+    var boundExpiryCall: BoundExpiryCall? = null
+        private set
+    var staleRecoveryCall: Triple<String, String, String>? = null
+        private set
     private var nextId = 1L
     private val creationAcceptance = Mutex()
     private val queueDepth = MutableStateFlow(0)
@@ -73,10 +92,7 @@ class FakePendingMutationDao : PendingMutationDao {
         attemptedAt: String,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.status != fromStatus) return 0
-        if (current.ownerKey != null && runnableRows(
-                current.ownerKey, current.ledgerId, fromStatus, listOf(inFlightStatus, "conflict", "failed"),
-            ).none { it.id == id }) return 0
+        if (refusedClaims.remove(id)) return 0
         rows[id] = current.copy(
             status = inFlightStatus,
             attemptedAt = attemptedAt,
@@ -128,16 +144,11 @@ class FakePendingMutationDao : PendingMutationDao {
         status: String,
         lastError: String,
     ): Int {
-        // Mirrors the DAO SQL: status='pending' AND createdAt < cutoff. createdAt
-        // is a fixed-width ISO string so the lexicographic < matches SQLite, same
-        // as recoverStaleInFlight's attemptedAt comparison. Global (no binding
-        // filter) by design — a stale PENDING row under any binding is a
-        // double-apply risk.
-        val victims = rows.values.filter {
-            it.status == "pending" && it.createdAt < cutoffCreatedAtIso
-        }
-        for (row in victims) {
-            rows[row.id] = row.copy(status = status, lastError = lastError, blocksFollowing = true)
+        pendingExpiryCutoff = cutoffCreatedAtIso
+        val victims = expiredPendingIds.toList()
+        expiredPendingIds.clear()
+        for (id in victims) {
+            rows[id] = rows.getValue(id).copy(status = status, lastError = lastError, blocksFollowing = true)
         }
         if (victims.isNotEmpty()) refreshObservables()
         return victims.size
@@ -150,17 +161,9 @@ class FakePendingMutationDao : PendingMutationDao {
         fromStatus: String,
         cutoffCreatedAtIso: String,
     ): Int {
-        // Mirrors the DAO SQL: id AND status=fromStatus AND createdAt < cutoff.
-        val current = rows[id] ?: return 0
-        if (
-            current.ownerKey != ownerKey ||
-            current.ledgerId != ledgerId ||
-            current.status != fromStatus ||
-            current.createdAt >= cutoffCreatedAtIso
-        ) {
-            return 0
-        }
-        rows[id] = current.copy(status = "failed", lastError = "outbox_row_expired", blocksFollowing = true)
+        boundExpiryCall = BoundExpiryCall(id, ownerKey, ledgerId, fromStatus, cutoffCreatedAtIso)
+        if (!expiredBoundIds.remove(id)) return 0
+        rows[id] = rows.getValue(id).copy(status = "failed", lastError = "outbox_row_expired", blocksFollowing = true)
         refreshObservables()
         return 1
     }
@@ -172,18 +175,11 @@ class FakePendingMutationDao : PendingMutationDao {
         preservedTokenTypes: List<String>,
         freshToken: Long,
     ): Int {
-        val matching = rows.values.filter {
-            it.ownerKey == ownerKey &&
-                it.ledgerId == ledgerId &&
-                it.targetId == targetId &&
-                it.status == PendingMutationStatus.Pending.wireValue &&
-                it.type !in preservedTokenTypes
-        }
-        for (row in matching) {
-            rows[row.id] = row.copy(expectedRowVersion = freshToken)
-        }
-        if (matching.isNotEmpty()) refreshObservables()
-        return matching.size
+        tokenCascadeCalls += TokenCascadeCall(ownerKey, ledgerId, targetId, preservedTokenTypes, freshToken)
+        val ids = tokenCascadeIds.removeFirstOrNull().orEmpty()
+        for (id in ids) rows[id] = rows.getValue(id).copy(expectedRowVersion = freshToken)
+        if (ids.isNotEmpty()) refreshObservables()
+        return ids.size
     }
 
     override suspend fun requeueConflictWithFreshToken(
@@ -194,14 +190,10 @@ class FakePendingMutationDao : PendingMutationDao {
         rotatedIdempotencyKey: String?,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.type in setOf("correct_expense", "create_expense_offset", "upload_screenshot", "create_bill_split_invitation")) return 0
-        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "conflict") return 0
-        // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置, 否则 fake 看不到用户 retry
-        // 重置预算的语义。
+        if (id in refusedRecoveries) return 0
         rows[id] = current.copy(
             status = "pending",
             expectedRowVersion = freshToken,
-            // ADR-0042 §4.8: rotate only key-bearing rows (mirrors the DAO CASE).
             idempotencyKey = if (current.idempotencyKey != null) rotatedIdempotencyKey else null,
             retryCount = 0,
             lastError = null,
@@ -219,14 +211,10 @@ class FakePendingMutationDao : PendingMutationDao {
         rotatedIdempotencyKey: String?,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.type in setOf("correct_expense", "create_expense_offset", "upload_screenshot", "create_bill_split_invitation")) return 0
-        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "failed") return 0
-        // codex P1 #7: 同步真实 DAO 的 retryCount = 0 重置, 否则 fake 看不到用户 retry
-        // 重置预算的语义。
+        if (id in refusedRecoveries) return 0
         rows[id] = current.copy(
             status = "pending",
             expectedRowVersion = freshToken,
-            // ADR-0042 §4.8: rotate only key-bearing rows (mirrors the DAO CASE).
             idempotencyKey = if (current.idempotencyKey != null) rotatedIdempotencyKey else null,
             retryCount = 0,
             lastError = null,
@@ -238,8 +226,7 @@ class FakePendingMutationDao : PendingMutationDao {
 
     override suspend fun retryFailed(id: Long, ownerKey: String, ledgerId: String, nonRetryableUploadErrors: Set<String>): Int {
         val current = rows[id] ?: return 0
-        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != "failed") return 0
-        if (current.type == "upload_screenshot" && current.lastError?.substringBefore(':') in nonRetryableUploadErrors) return 0
+        if (id in refusedRecoveries) return 0
         rows[id] = current.copy(status = "pending", retryCount = 0, lastError = "manual_retry", blocksFollowing = true)
         refreshObservables()
         return 1
@@ -269,14 +256,8 @@ class FakePendingMutationDao : PendingMutationDao {
         ledgerId: String,
         expectedStatus: String,
     ): Int {
-        val current = rows[id] ?: return 0
-        if (
-            current.ownerKey != ownerKey ||
-            current.ledgerId != ledgerId ||
-            current.status != expectedStatus
-        ) {
-            return 0
-        }
+        deleteCalls += DeleteCall(id, ownerKey, ledgerId, expectedStatus)
+        if (id !in rows || id in refusedDeletes) return 0
         rows.remove(id)
         refreshObservables()
         return 1
@@ -290,11 +271,7 @@ class FakePendingMutationDao : PendingMutationDao {
         stoppedAt: String,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != expectedStatus ||
-            current.type !in setOf("record_debt_adjustment", "record_debt_repayment", "void_debt", "void_debt_repayment",
-                "set_debt_kind", "create_goal", "confirm_repayment_draft", "dismiss_repayment_draft") ||
-            current.status !in setOf("failed", "conflict", "pending")
-        ) return 0
+        if (id in refusedStops) return 0
         rows[id] = current.copy(status = "abandoned", completedAt = stoppedAt)
         refreshObservables()
         return 1
@@ -315,28 +292,11 @@ class FakePendingMutationDao : PendingMutationDao {
         limit: Int,
         excludedIds: List<Long>,
     ): List<PendingMutationEntity> {
-        val batch = runnableRows(ownerKey, ledgerId, "pending", unresolvedStatuses)
-            .filterNot { it.id in excludedIds }
-            .take(limit)
+        batchCalls += RunnableBatchCall(ownerKey, ledgerId, unresolvedStatuses.toList(), limit, excludedIds)
+        val batch = (runnableBatches.removeFirstOrNull() ?: emptyList()).map(rows::getValue)
+        check(batch.all { it.status == "pending" }) { "Scenario offered an original that was not pending" }
         beforeNextRunnableBatchReturn?.invoke()
         return batch
-    }
-
-    private fun runnableRows(
-        ownerKey: String, ledgerId: String, pendingStatus: String, unresolvedStatuses: Collection<String>,
-    ): List<PendingMutationEntity> {
-        val boundRows = rows.values.filter { it.ownerKey == ownerKey && it.ledgerId == ledgerId }
-        val unresolvedTargets = boundRows
-            .filter { it.status in unresolvedStatuses && (it.status != "failed" || it.blocksFollowing) }
-            .map { it.targetId }
-            .toSet()
-        return boundRows
-            .filter {
-                it.status == pendingStatus &&
-                    it.targetId !in unresolvedTargets
-            }
-            .sortedWith(compareBy({ it.createdAt }, { it.id }))
-            .distinctBy { it.targetId }
     }
 
     override suspend fun recoverStaleInFlight(
@@ -345,14 +305,11 @@ class FakePendingMutationDao : PendingMutationDao {
         staleCutoffIso: String,
         recoveryMessage: String,
     ): Int {
-        val victims = rows.values.filter {
-            it.ownerKey == ownerKey &&
-                it.ledgerId == ledgerId &&
-                it.status == PendingMutationStatus.InFlight.wireValue &&
-                (it.attemptedAt == null || it.attemptedAt < staleCutoffIso)
-        }
-        for (row in victims) {
-            rows[row.id] = row.copy(status = PendingMutationStatus.Pending.wireValue, lastError = recoveryMessage)
+        staleRecoveryCall = Triple(ownerKey, ledgerId, staleCutoffIso)
+        val victims = staleInFlightIds.toList()
+        staleInFlightIds.clear()
+        for (id in victims) {
+            rows[id] = rows.getValue(id).copy(status = PendingMutationStatus.Pending.wireValue, lastError = recoveryMessage)
         }
         if (victims.isNotEmpty()) refreshObservables()
         return victims.size
@@ -497,3 +454,13 @@ class FakePendingMutationDao : PendingMutationDao {
         queueDepth.value++
     }
 }
+
+data class BoundExpiryCall(val id: Long, val ownerKey: String, val ledgerId: String, val fromStatus: String, val cutoff: String)
+
+data class RunnableBatchCall(val ownerKey: String, val ledgerId: String, val unresolvedStatuses: List<String>,
+    val limit: Int, val excludedIds: List<Long>)
+
+data class TokenCascadeCall(val ownerKey: String, val ledgerId: String, val targetId: String,
+    val preservedTypes: List<String>, val freshToken: Long)
+
+data class DeleteCall(val id: Long, val ownerKey: String, val ledgerId: String, val status: String)

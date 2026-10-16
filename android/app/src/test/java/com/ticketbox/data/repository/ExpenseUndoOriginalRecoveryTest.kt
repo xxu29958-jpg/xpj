@@ -8,13 +8,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ExpenseUndoOriginalRecoveryTest {
-    @Test fun successorCascadeAndExplicitRecoveryCannotRetargetAnUndoToALaterRejection() = runTest {
+    @Test fun explicitRecoveryCannotRetargetAnUndoToALaterRejection() = runTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao)
         val id = outbox.enqueue(PendingMutationType.UndoExpense, "expense:42", "{}", 3, "undo-original")
-        val original = requireNotNull(dao.rows[id])
-        outbox.cascadeFreshToken("expense:42", 7)
-        assertEquals(original, dao.rows[id])
         outbox.markConflict(id, "A later rejection changed the fact")
         val conflicted = requireNotNull(dao.rows[id])
         assertFalse(outbox.resolveConflict(id, ConflictResolution.KeepMine(7)))

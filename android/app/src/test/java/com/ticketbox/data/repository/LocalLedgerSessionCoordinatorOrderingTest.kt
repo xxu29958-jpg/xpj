@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -59,7 +60,8 @@ class LocalLedgerSessionCoordinatorOrderingTest {
         assertEquals("new-token", committed.credential.token)
         assertEquals("new-ledger", committed.identity.ledgerId)
         assertEquals(1, dao.rows.size, "old-session intent must be preserved for explicit recovery")
-        assertEquals(0, outbox.dequeueNextRunnable().size, "new session must not see the old binding")
+        assertEquals(0, outbox.dequeueNextRunnable().size)
+        assertEquals("new-ledger", dao.batchCalls.single().ledgerId)
     }
 
     @Test
@@ -80,6 +82,7 @@ class LocalLedgerSessionCoordinatorOrderingTest {
         )
 
         val restartedOutbox = outboxBoundTo(sessionStore, dao)
+        dao.runnableBatches += listOf(queuedId)
         assertEquals("expense:7", restartedOutbox.dequeueNextRunnable().single().targetId)
         assertEquals("https://api.example.com", dao.rows.getValue(queuedId).serverUrl)
     }
@@ -115,6 +118,7 @@ class LocalLedgerSessionCoordinatorOrderingTest {
             outbox = outbox,
         )
 
+        dao.runnableBatches += listOf(dao.rows.keys.single())
         val drainJob = launch { engine.drainOnce() }
         dispatchStarted.await()
         val transitionJob = launch {
@@ -197,6 +201,8 @@ class LocalLedgerSessionCoordinatorOrderingTest {
 
         assertEquals(1, dao.rows.size, "sign-out must not silently discard a financial intent")
         assertEquals(0, outbox.dequeueNextRunnable().size)
+        assertEquals("", dao.batchCalls.single().ownerKey)
+        assertEquals("", dao.batchCalls.single().ledgerId)
         assertEquals(1, outbox.observeStatus().first().quarantinedCount)
     }
 

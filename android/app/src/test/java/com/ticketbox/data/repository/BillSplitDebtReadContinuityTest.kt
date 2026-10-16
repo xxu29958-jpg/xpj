@@ -97,6 +97,7 @@ private suspend fun GoalReadFixture.acceptOriginal(api: InvitationDebtApi, targe
     stats.acceptBillSplitInvitation(binding, BillSplitAcceptPayload(publicId = "split-jpy", amountCents = 1200,
         homeCurrencyCode = "JPY", senderName = "原拆账发起人", targetLedgerId = target, targetLedgerName = target)).getOrThrow()
     assertEquals(0, api.acceptCalls, "Admission must save the original before sending")
+    pending.runnableBatches += listOf(pending.rows.keys.single())
     return OutboxDrainEngine(outbox, listOf(AcceptBillSplitDispatcher({ api }, adapters.billSplitAcceptAdapter,
         adapters.billSplitAcceptedAdapter)), maxAttempts = 1).drainOnce()
 }

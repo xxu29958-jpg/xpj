@@ -69,6 +69,7 @@ class LedgerRepositoryInvitationOutboxTest {
         assertEquals(ownerBefore, preserved.ownerKey)
         assertEquals("personal", preserved.ledgerId)
         assertTrue(outbox.dequeueNextRunnable().isEmpty())
+        assertEquals(afterSession.identity.ledgerId, mutationDao.batchCalls.single().ledgerId)
     }
 
     private fun acceptedFamilyLedger() = InvitationAcceptResponseDto(

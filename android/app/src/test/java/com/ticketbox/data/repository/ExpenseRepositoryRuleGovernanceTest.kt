@@ -29,7 +29,8 @@ class ExpenseRepositoryRuleGovernanceTest {
         }
         val apiService = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0)
         val tokenStore = TestSessionFixture().apply { saveToken("session-token") }
-        val queue = testOutboxRepository(FakePendingMutationDao())
+        val pending = FakePendingMutationDao()
+        val queue = testOutboxRepository(pending)
         val adapters = com.ticketbox.OutboxAdapterGraph()
         val apiClient = FakeApiServiceFactory(apiService)
         val expenseRepository = com.ticketbox.data.repository.expenseRepositoryFixture(
@@ -58,6 +59,7 @@ class ExpenseRepositoryRuleGovernanceTest {
         assertEquals(listOf(false), apiService.applyConfirmedRequests.map { it.confirm })
         val dispatcher = ApplyConfirmedRulesDispatcher({ apiService }, adapters.ruleApplicationAdapter,
             adapters.ruleApplicationReceiptAdapter) { ruleRepository.refreshAcceptedApplication(it).getOrThrow() }
+        pending.runnableBatches += listOf(pending.rows.keys.single())
         assertEquals(1, OutboxDrainEngine(queue, listOf(dispatcher)).drainOnce().done)
 
         assertTrue(preview.dryRun)

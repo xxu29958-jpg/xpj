@@ -5,7 +5,16 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.Closeable
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -67,9 +76,12 @@ class PendingMutationUploadQueueTest {
             fixture.dao.insertBatch(listOf(conflict, conflict.copy(status = "pending"), busy, busy.copy(status = "pending")))
             fixture.dao.insert(fixture.row("foreign").copy(ownerKey = "other-owner", status = "failed"))
             fixture.dao.insert(fixture.row("other-ledger").copy(ledgerId = "other-ledger", status = "failed"))
+            fixture.dao.insert(fixture.row("foreign-pending").copy(ownerKey = "other-owner", targetId = "upload_batch:foreign"))
+            fixture.dao.insert(fixture.row("other-ledger-pending").copy(ledgerId = "other-ledger", targetId = "upload_batch:foreign"))
+            fixture.dao.insert(fixture.row("unowned-pending").copy(ownerKey = null, targetId = "upload_batch:unowned"))
             val free = fixture.dao.insert(fixture.row("free"))
 
-            assertEquals(listOf(free), runnable(fixture.dao).map { it.id })
+            assertEquals(listOf(free), fixture.dao.nextRunnableBatch(OWNER, LEDGER, UNRESOLVED, 1).map { it.id })
             assertTrue(fixture.dao.allRows().single { it.id == oldIds[0] }.blocksFollowing)
         }
     }
@@ -94,6 +106,8 @@ class PendingMutationUploadQueueTest {
             assertEquals(original.idempotencyKey, earlier.idempotencyKey)
             assertEquals(original.payload, earlier.payload)
             assertEquals(original.expectedRowVersion, earlier.expectedRowVersion)
+            assertEquals(0, fixture.dao.markInFlightIfPending(ids[0], "pending", "in_flight", COMPLETED))
+            assertEquals(earlier, fixture.reopen().allRows().single { it.id == ids[0] })
         }
     }
 
@@ -160,21 +174,96 @@ class PendingMutationUploadQueueTest {
     }
 
     @Test
+    fun recoveryRejectsStaleStatusAndForeignBindingsWithoutChangingTheOriginal() = runBlocking<Unit> {
+        UploadQueueFixture().use { fixture ->
+            val original = fixture.row("original").copy(type = "patch_expense", status = "failed", retryCount = 3)
+            val id = fixture.dao.insert(original)
+            for ((owner, ledger) in listOf("another-owner" to LEDGER, OWNER to "another-ledger")) {
+                assertEquals(0, fixture.dao.retryFailed(id, owner, ledger, NON_RETRYABLE_UPLOAD_ERRORS))
+                assertEquals(0, fixture.dao.requeueFailedWithFreshToken(id, owner, ledger, 8, "replacement"))
+                assertEquals(0, fixture.dao.deleteIfStatus(id, owner, ledger, "failed"))
+            }
+            assertEquals(original.copy(id = id), fixture.reopen().allRows().single())
+            assertEquals(1, fixture.dao.retryFailed(id, OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
+            val retried = fixture.dao.allRows().single()
+            assertEquals(original.copy(id = id, status = "pending", retryCount = 0,
+                lastError = "manual_retry"), retried)
+            assertEquals(0, fixture.dao.retryFailed(id, OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
+            assertEquals(0, fixture.dao.requeueFailedWithFreshToken(id, OWNER, LEDGER, 8, "replacement"))
+            assertEquals(0, fixture.dao.requeueConflictWithFreshToken(id, OWNER, LEDGER, 8, "replacement"))
+            assertEquals(0, fixture.dao.deleteIfStatus(id, OWNER, LEDGER, "failed"))
+            assertEquals(retried, fixture.reopen().allRows().single())
+            fixture.dao.markDone(id, "done", COMPLETED, receiptJson = RECEIPT)
+            val done = fixture.dao.allRows().single()
+            assertEquals(0, fixture.dao.retryFailed(id, OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
+            assertEquals(done, fixture.reopen().allRows().single())
+            val adjustment = original.copy(id = 0, type = "record_debt_adjustment")
+            val adjustmentId = fixture.dao.insert(adjustment)
+            for ((owner, ledger) in listOf("another-owner" to LEDGER, OWNER to "another-ledger")) {
+                assertEquals(0, fixture.dao.abandonOriginalCommand(adjustmentId, owner, ledger, "failed", COMPLETED))
+            }
+            assertEquals(0, fixture.dao.abandonOriginalCommand(adjustmentId, OWNER, LEDGER, "conflict", COMPLETED))
+            assertEquals(adjustment.copy(id = adjustmentId), fixture.dao.allRows().single { it.id == adjustmentId })
+            assertEquals(1, fixture.dao.abandonOriginalCommand(adjustmentId, OWNER, LEDGER, "failed", COMPLETED))
+            val stopped = fixture.reopen().allRows().single { it.id == adjustmentId }
+            assertEquals(adjustment.copy(id = adjustmentId, status = "abandoned", completedAt = COMPLETED), stopped)
+            assertEquals(0, fixture.dao.abandonOriginalCommand(adjustmentId, OWNER, LEDGER, "failed", COMPLETED))
+            for (status in listOf("in_flight", "done")) {
+                val current = adjustment.copy(status = status)
+                val currentId = fixture.dao.insert(current)
+                assertEquals(0, fixture.dao.abandonOriginalCommand(currentId, OWNER, LEDGER, status, COMPLETED))
+                assertEquals(current.copy(id = currentId), fixture.dao.allRows().single { it.id == currentId })
+            }
+        }
+    }
+
+    @Test
     fun bothExpiryPathsRestoreBlockingWithoutDeletingOrRewritingIntent() = runBlocking<Unit> {
         UploadQueueFixture().use { fixture ->
+            val cutoff = "2026-09-01T00:00:00.000Z"
             val pending = fixture.row("pending").copy(blocksFollowing = false)
             val failed = fixture.row("failed").copy(status = "failed", blocksFollowing = false)
-            val ids = fixture.dao.insertBatch(listOf(pending, failed))
-            assertEquals(1, fixture.dao.markExpiredPendingAsFailed("2026-09-01T00:00:00.000Z", "failed", "outbox_row_expired"))
+            val foreign = fixture.row("foreign").copy(ownerKey = "other-owner", ledgerId = "other-ledger")
+            val preserved = listOf(
+                fixture.row("at-cutoff").copy(createdAt = cutoff),
+                fixture.row("busy").copy(status = "in_flight"),
+                fixture.row("conflict").copy(status = "conflict"),
+                fixture.row("done").copy(status = "done", receiptJson = RECEIPT),
+            )
+            val ids = fixture.dao.insertBatch(listOf(pending, failed, foreign) + preserved)
+            val originals = fixture.dao.allRows().associateBy { it.id }
+            assertEquals(2, fixture.dao.markExpiredPendingAsFailed(cutoff, "failed", "outbox_row_expired"))
             assertEquals(0, fixture.dao.expireBoundRowIfStatusAndOverAge(ids[1], "other-owner", LEDGER, "failed", COMPLETED))
+            assertEquals(0, fixture.dao.expireBoundRowIfStatusAndOverAge(ids[1], OWNER, "other-ledger", "failed", COMPLETED))
+            assertEquals(0, fixture.dao.expireBoundRowIfStatusAndOverAge(ids[1], OWNER, LEDGER, "conflict", COMPLETED))
+            assertEquals(0, fixture.dao.expireBoundRowIfStatusAndOverAge(ids[3], OWNER, LEDGER, "pending", cutoff))
             assertEquals(1, fixture.dao.expireBoundRowIfStatusAndOverAge(ids[1], OWNER, LEDGER, "failed", COMPLETED))
 
-            val rows = fixture.reopen().allRows()
-            assertEquals(2, rows.size)
-            assertTrue(rows.all { it.blocksFollowing && it.status == "failed" && it.lastError == "outbox_row_expired" })
-            assertEquals(listOf(pending.payload, failed.payload), rows.map { it.payload })
-            assertEquals(listOf(pending.idempotencyKey, failed.idempotencyKey), rows.map { it.idempotencyKey })
-            assertEquals(listOf(pending.expectedRowVersion, failed.expectedRowVersion), rows.map { it.expectedRowVersion })
+            val stored = fixture.reopen().allRows().associateBy { it.id }
+            assertEquals(originals.keys, stored.keys)
+            for (id in ids.take(3)) assertEquals(originals.getValue(id).copy(
+                blocksFollowing = true, status = "failed", lastError = "outbox_row_expired"), stored[id])
+            for (id in ids.drop(3)) assertEquals(originals[id], stored[id])
+        }
+    }
+
+    @Test
+    fun staleRecoveryPreservesFreshForeignAndNonFlightOriginalsAfterReopen() = runBlocking<Unit> {
+        UploadQueueFixture().use { fixture ->
+            val cutoff = "2026-09-01T00:00:00.000Z"
+            val stale = fixture.row("stale").copy(status = "in_flight", attemptedAt = "2026-08-31T00:00:00.000Z", retryCount = 3)
+            val missingAttempt = stale.copy(idempotencyKey = "missing-attempt", attemptedAt = null)
+            val preserved = listOf(stale.copy(ownerKey = "other-owner"), stale.copy(ledgerId = "other-ledger"),
+                stale.copy(attemptedAt = cutoff), stale.copy(status = "pending"), stale.copy(status = "conflict"))
+            val ids = fixture.dao.insertBatch(listOf(stale, missingAttempt) + preserved)
+            val originals = fixture.dao.allRows().associateBy { it.id }
+
+            assertEquals(2, fixture.dao.recoverStaleInFlight(OWNER, LEDGER, cutoff, "recovered_from_stuck_in_flight"))
+            val stored = fixture.reopen().allRows().associateBy { it.id }
+            assertEquals(originals.keys, stored.keys)
+            for (id in ids.take(2)) assertEquals(originals.getValue(id).copy(
+                status = "pending", lastError = "recovered_from_stuck_in_flight"), stored[id])
+            for (id in ids.drop(2)) assertEquals(originals[id], stored[id])
         }
     }
 
@@ -182,9 +271,10 @@ class PendingMutationUploadQueueTest {
     fun excludingTriedRowsFindsOtherTargetsButDoesNotAdvanceTheirUnresolvedTail() = runBlocking<Unit> {
         UploadQueueFixture().use { fixture ->
             val ids = fixture.dao.insertBatch(listOf(
-                fixture.row("b"), fixture.row("c"), fixture.row("other").copy(targetId = "upload_batch:other"),
+                fixture.row("b"), fixture.row("c"), fixture.row("other").copy(
+                    targetId = "upload_batch:other", createdAt = "2026-07-31T00:00:00.000Z"),
             ))
-            assertEquals(listOf(ids[0], ids[2]), runnable(fixture.dao).map { it.id })
+            assertEquals(listOf(ids[2], ids[0]), fixture.dao.nextRunnableBatch(OWNER, LEDGER, UNRESOLVED, 2).map { it.id })
             val remaining = fixture.dao.nextRunnableBatch(OWNER, LEDGER, UNRESOLVED, 1, listOf(ids[0]))
             assertEquals(listOf(ids[2]), remaining.map { it.id })
             assertEquals(0, fixture.dao.markInFlightIfPending(ids[1], "pending", "in_flight", ATTEMPTED))
@@ -214,6 +304,45 @@ class PendingMutationUploadQueueTest {
             val dao = fixture.reopen()
             assertEquals(preserved.mapIndexed { index, row -> row.copy(id = ids[unfinished.size + index]) }, dao.allRows())
             assertEquals(0, dao.deleteUnfinishedUploadGroup(OWNER, LEDGER, TARGET))
+        }
+    }
+
+    @Test
+    fun boundObservationsRefreshAndQuarantineRemovalPreservesTheCurrentOwnersOriginals() = runBlocking<Unit> {
+        UploadQueueFixture().use { fixture ->
+            val active = listOf("pending", "in_flight", "conflict", "failed")
+            val originals = (active + listOf("done", "abandoned")).map { fixture.row(it).copy(status = it) } + listOf(
+                fixture.row("other-type").copy(type = "patch_expense", targetId = "expense:other"),
+                fixture.row("other-ledger").copy(ledgerId = "other-ledger"),
+                fixture.row("other-owner").copy(ownerKey = "other-owner"),
+                fixture.row("unowned").copy(ownerKey = null),
+            )
+            val ids = fixture.dao.insertBatch(originals)
+            val dao = fixture.dao
+            assertEquals(ids.take(4), dao.activeForTarget(OWNER, LEDGER, TARGET, active).map { it.id })
+            assertEquals(3, dao.observeQueueDepth(OWNER, LEDGER, "pending", "in_flight").first())
+            assertEquals(listOf(ids[2]), dao.observeConflictRows(OWNER, LEDGER, "conflict").first().map { it.id })
+            assertEquals(listOf(ids[3]), dao.observeFailedRows(OWNER, LEDGER, "failed").first().map { it.id })
+            assertEquals(2, dao.observeQuarantinedCount(OWNER).first())
+            assertEquals(ids.size, dao.observeQuarantinedCount(null).first())
+            assertTrue(dao.nextRunnableBatch("", "", UNRESOLVED, 25).isEmpty())
+
+            val initial = CompletableDeferred<Unit>()
+            val updates = async {
+                withTimeout(10_000) {
+                    dao.observeActiveByTypes(OWNER, LEDGER, listOf("upload_screenshot"), active)
+                        .map { rows -> rows.map { it.id } }.distinctUntilChanged()
+                        .onEach { initial.complete(Unit) }.take(2).toList()
+                }
+            }
+            initial.await()
+            dao.markDone(ids[0], "done", COMPLETED, receiptJson = RECEIPT)
+            assertEquals(listOf(ids.take(4), ids.subList(1, 4)), updates.await())
+            val beforeDelete = dao.allRows()
+            assertEquals(2, dao.deleteQuarantined(OWNER))
+            assertEquals(beforeDelete.filter { it.id in ids.take(8) }, fixture.reopen().allRows())
+            assertEquals(0, fixture.dao.observeQuarantinedCount(OWNER).first())
+            assertEquals(0, fixture.dao.deleteQuarantined(OWNER))
         }
     }
 

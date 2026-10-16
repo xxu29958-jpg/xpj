@@ -34,6 +34,7 @@ class OutboxAcceptedReplayTest {
             }
         }
 
+        dao.runnableBatches += listOf(id)
         assertEquals(1, engine.drainOnce().done)
 
         assertEquals(listOf(0L, 1L), observed)
@@ -62,6 +63,7 @@ class OutboxAcceptedReplayTest {
         ).mapIndexed { index, outcome -> enqueue(outbox, "refusal-$index") to outcome }.toMap()
         val probe = ReplayAcceptanceProbe { row -> outcomes.getValue(row.id).first }
 
+        dao.runnableBatches += outcomes.keys.toList()
         val summary = OutboxDrainEngine(outbox, listOf(probe)).drainOnce()
 
         assertEquals(4, summary.attempted)
@@ -90,12 +92,14 @@ class OutboxAcceptedReplayTest {
 
         outbox.withBindingTransition { binding = originalBinding.copy(ledgerId = "another-ledger") }
         assertEquals(0, engine.drainOnce().attempted)
+        assertEquals("another-ledger", dao.batchCalls.first().ledgerId)
         assertTrue(probe.calls.isEmpty())
         assertEquals(0L, outbox.acceptedReplayRevision.value)
         assertEquals(original, dao.rows.getValue(id))
 
         outbox.withBindingTransition { binding = originalBinding }
         assertEquals(0L, outbox.acceptedReplayRevision.value)
+        dao.runnableBatches += listOf(id)
         assertEquals(1, engine.drainOnce().done)
         assertEquals(listOf(id), probe.calls)
         assertEquals(1L, outbox.acceptedReplayRevision.first())

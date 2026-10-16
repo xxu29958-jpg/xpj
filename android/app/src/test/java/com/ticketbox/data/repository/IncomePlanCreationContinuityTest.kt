@@ -24,10 +24,12 @@ class IncomePlanCreationContinuityTest {
         assertTrue(f.keys.isEmpty())
         assertEquals("JPY", f.pending(id).intent?.homeCurrencyCode)
         assertEquals("2026-09", f.pending(id).intent?.request?.intentMonth)
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().failures)
         f.latest = f.latest.copy(amountCents = 9999, status = "archived", rowVersion = 3)
         f.repository.recoverSubmission(f.binding, f.pending(id), false).getOrThrow()
         f.loseAck = false
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().done)
         assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
         assertEquals(original.payload, f.dao.rows.getValue(id).payload)
@@ -40,6 +42,7 @@ class IncomePlanCreationContinuityTest {
         val id = f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow()
         f.loseAck = false
         f.latest = f.latest.copy(homeCurrencyCode = "CNY")
+        f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine().drainOnce().failures)
         assertFalse(f.pending(id).canRetry)
         val row = f.pending(id).row
@@ -90,6 +93,7 @@ class IncomePlanCreationContinuityTest {
         assertEquals(id, f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow())
         f.repository.recoverSubmission(f.binding, f.pending(id), false).getOrThrow()
         f.loseAck = false
+        f.dao.runnableBatches += listOf(id)
         f.engine().drainOnce()
         assertTrue(requireNotNull(f.repository.originalCreation(f.binding, f.creationKey).getOrThrow()).isConfirmed)
         assertEquals(id, f.repository.create(f.binding, f.draft, f.creationKey).getOrThrow())
