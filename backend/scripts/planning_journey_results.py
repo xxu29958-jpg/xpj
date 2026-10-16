@@ -19,6 +19,16 @@ def _hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def execution_identity(apk: Path | None) -> dict:
+    checkout = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    if checkout != os.environ["GITHUB_SHA"]:
+        raise ValueError("Unexpected qualification checkout")
+    return {"group": os.environ["TICKETBOX_JOURNEY_GROUP"], "checkout_sha": checkout,
+        "source_sha": os.environ["TICKETBOX_JOURNEY_SOURCE_SHA"], "run_id": os.environ["GITHUB_RUN_ID"],
+        "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+        "apk_sha256": _hash(apk) if apk and apk.is_file() else None}
+
+
 def validate_business(result: dict, identity: dict) -> None:
     for key in ("group", "checkout_sha", "source_sha", "apk_sha256"):
         if not identity.get(key) or result.get(key) != identity[key]:
@@ -28,19 +38,24 @@ def validate_business(result: dict, identity: dict) -> None:
 
 
 def record_execution(evidence: Path, identity: dict, outcome: str) -> dict:
-    states = {"success": "passed", "failure": "failed", "cancelled": "cancelled", "skipped": "skipped"}
+    states = {"running": "running", "success": "passed", "failure": "failed", "cancelled": "cancelled", "skipped": "skipped"}
     if outcome not in states:
         raise ValueError(f"Unknown execution outcome: {outcome}")
-    report = {**identity, "status": states[outcome], "executed": outcome != "skipped"}
+    path = evidence / "execution-result.json"
+    previous = _read(path) if path.exists() else {}
+    started = previous.get("executed", False) and all(previous.get(key) == value for key, value in identity.items())
+    report = {**identity, "status": states[outcome], "executed": outcome == "running" or started}
     if outcome == "success":
         business = evidence / "business-result.json"
         try:
+            if not report["executed"]:
+                raise ValueError("The business journey never started")
             validate_business(_read(business), identity)
             report["business_result_sha256"] = _hash(business)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             report.update(status="failed", error=str(exc))
     evidence.mkdir(parents=True, exist_ok=True)
-    (evidence / "execution-result.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
 
 
@@ -101,11 +116,7 @@ def main() -> int:
     if checkout != os.environ["GITHUB_SHA"]:
         raise ValueError("Unexpected qualification checkout")
     if args.command == "record":
-        identity = {"group": os.environ["TICKETBOX_JOURNEY_GROUP"], "checkout_sha": checkout,
-            "source_sha": os.environ["TICKETBOX_JOURNEY_SOURCE_SHA"], "run_id": os.environ["GITHUB_RUN_ID"],
-            "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
-            "apk_sha256": _hash(args.apk) if args.apk and args.apk.is_file() else None}
-        report = record_execution(args.evidence, identity, os.environ["JOURNEY_OUTCOME"])
+        report = record_execution(args.evidence, execution_identity(args.apk), os.environ["JOURNEY_OUTCOME"])
     else:
         selection = _read(args.selection)
         if selection["checkout_sha"] != checkout or selection["source_sha"] != os.environ["TICKETBOX_JOURNEY_SOURCE_SHA"]:

@@ -41,11 +41,14 @@ class BackstageJourney:
             form = owner.locator('form[action="/owner/settings/recognition"]')
             form.locator('[name="ocr_provider"]').select_option(provider)
             form.locator('[name="ocr_auto_run"]').set_checked(automatic)
+            form.locator("summary").filter(has_text="债务账单与识别细节").click()
             form.locator('[name="ocr_fallback_provider"]').select_option("empty")
             if provider == "local_llm":
+                form.locator("summary").filter(has_text="其他地址或手动填写").click()
                 form.locator('[name="local_llm_base_url"]').fill("http://127.0.0.1:9/v1")
                 form.locator('[name="local_llm_model"]').fill("intentionally-unreachable")
-            form.get_by_role("button", name="保存识别设置", exact=True).click()
+            # This recovery leg deliberately saves an unreachable model first.
+            form.get_by_role("button", name="仅保存，稍后检查", exact=True).click()
             assert form.locator('[name="ocr_provider"]').input_value() == provider
             self.capture(f"owner-{provider}-{'auto' if automatic else 'manual'}", page=owner)
         finally:

@@ -51,6 +51,28 @@ def _branch_group(node: ast.If) -> str | None:
     return None
 
 
+def _declared_groups(tree: ast.Module) -> list[str]:
+    argument = next(node for node in ast.walk(tree) if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute) and node.func.attr == "add_argument"
+        and node.args and isinstance(node.args[0], ast.Constant) and node.args[0].value == "--group")
+    groups = ast.literal_eval(next(item.value for item in argument.keywords if item.arg == "choices"))
+    if not groups or len(set(groups)) != len(groups) or any(not isinstance(group, str) for group in groups):
+        raise ValueError("The actual journey entry must declare unique groups")
+    return groups
+
+
+def _transport_imports(tree: ast.Module, groups: list[str]) -> dict[str, set[str]]:
+    imports = {group: set() for group in groups}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values, strict=True):
+            group, target = getattr(key, "value", None), getattr(value, "value", None)
+            if group in imports and isinstance(target, str) and target.startswith("scripts.") and ":" in target:
+                imports[group].add(target.split(":", 1)[0])
+    return imports
+
+
 def journey_dependencies(root: Path = ROOT, revision: str = "") -> dict[str, set[str]]:
     @cache
     def read_tree(path: str) -> ast.Module:
@@ -58,25 +80,26 @@ def journey_dependencies(root: Path = ROOT, revision: str = "") -> dict[str, set
         return ast.parse(source)
 
     tree = read_tree(ENTRY)
-    argument = next(node for node in ast.walk(tree) if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute) and node.func.attr == "add_argument"
-        and node.args and isinstance(node.args[0], ast.Constant) and node.args[0].value == "--group")
-    groups = ast.literal_eval(next(item.value for item in argument.keywords if item.arg == "choices"))
-    if not groups or len(set(groups)) != len(groups) or any(not isinstance(group, str) for group in groups):
-        raise ValueError("The actual journey entry must declare unique groups")
+    groups = _declared_groups(tree)
     # Top-level imports are loaded before every group starts, including shared
     # Android navigation, identity/recovery and the sealed database contract.
     common = set().union(*(_imports(node) for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))))
-    modules = {group: set(common) for group in groups}
+    modules = _transport_imports(tree, groups)
+    for imports in modules.values():
+        imports.update(common)
     for node in ast.walk(tree):
         if isinstance(node, ast.If) and (group := _branch_group(node)) in modules:
             modules[group].update(_imports(ast.Module(body=node.body, type_ignores=[])))
-        if isinstance(node, ast.Dict):
-            for key, value in zip(node.keys, node.values, strict=True):
-                if (isinstance(key, ast.Constant) and key.value in modules and isinstance(value, ast.Constant)
-                    and isinstance(value.value, str) and value.value.startswith("scripts.") and ":" in value.value):
-                    modules[key.value].add(value.value.split(":", 1)[0])
     return {group: _dependencies(imports, read_tree) | POLICY for group, imports in modules.items()}
+
+
+def _path_consumers(path: str, previous: dict, current: dict) -> set[str]:
+    consumers = {group for graph in (previous, current) for group, sources in graph.items() if path in sources}
+    if consumers - current.keys():
+        raise ValueError(f"Removed journey groups need an explicit qualification disposition: {sorted(consumers - current.keys())}")
+    if not consumers and path.startswith("backend/scripts/") and ("journey" in path or "planning_notification_" in path):
+        raise ValueError(f"Journey script has no proven consumer: {path}")
+    return consumers
 
 
 def select_groups(paths: list[str], requested: str = "", *, root: Path = ROOT, base: str = "", head: str = "") -> dict:
@@ -90,12 +113,7 @@ def select_groups(paths: list[str], requested: str = "", *, root: Path = ROOT, b
     previous = journey_dependencies(root, base) if base else {}
     selected: set[str] = set()
     for path in paths:
-        consumers = {group for graph in (previous, dependencies) for group, sources in graph.items() if path in sources}
-        if consumers - dependencies.keys():
-            raise ValueError(f"Removed journey groups need an explicit qualification disposition: {sorted(consumers - dependencies.keys())}")
-        if not consumers and path.startswith("backend/scripts/") and ("journey" in path or "planning_notification_" in path):
-            raise ValueError(f"Journey script has no proven consumer: {path}")
-        selected.update(consumers)
+        selected.update(_path_consumers(path, previous, dependencies))
     return {"requested": "automatic", "selected": sorted(selected), "paths": paths, "dependency_base": base, "dependency_head": head,
         "reason": "actual script consumers" if selected else "no journey harness input changed; product qualification is separate"}
 

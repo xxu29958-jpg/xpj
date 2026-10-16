@@ -8,7 +8,6 @@ also prepares a known original and invokes the existing archive command.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import secrets
@@ -22,6 +21,7 @@ from pathlib import Path
 
 from scripts.planning_journey_android import PlanningAndroid, wait_for
 from scripts.planning_journey_recovery import PlanningRecovery
+from scripts.planning_journey_results import execution_identity, record_execution
 from scripts.planning_journey_roles import verify_roles
 from scripts.test_postgres_contract import TEST_POSTGRES_CONTRACT
 from scripts.test_postgres_database import dedicated_test_database_lease
@@ -138,7 +138,7 @@ def _journey(page, native: PlanningAndroid, fixture, evidence: Path):
     native.capture("income-from-web")
     native.click("联动工资")
     native.fill("6000.00", previous=r"5,?000(?:\.00)?")
-    native.click("保存")
+    native.click("保存收入计划")
     wait_for(lambda: _facts(fixture.ledger_id)["income_amount"] == 600000, "The native original submission did not reach PostgreSQL", 90)
 
     facts = _facts(fixture.ledger_id)
@@ -255,16 +255,15 @@ def _run_consumers(args, native, fixture):
         result = None
         try:
             wait_for(_ready, "The real backend did not become ready")
+            execution = execution_identity(args.apk)
+            record_execution(args.evidence, execution, "running")
             result = _browser_run(args, native, fixture)
         finally:
             if result is None:
                 _native_failure(native, native.pairing_code or fixture.pairing_code)
             server.terminate()
             server.wait(timeout=20)
-    result["checkout_sha"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-    result["source_sha"] = os.environ["TICKETBOX_JOURNEY_SOURCE_SHA"]
-    result["apk_sha256"] = hashlib.sha256(args.apk.read_bytes()).hexdigest()
-    result["group"] = args.group
+    result.update(execution)
     (args.evidence / "business-result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(f"The actual Web/native {args.group} journey completed")
 

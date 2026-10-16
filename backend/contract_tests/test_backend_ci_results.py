@@ -23,6 +23,10 @@ def test_journey_qualification_rejects_failed_missing_or_mismatched_actual_resul
         execution = {**identity, "group": group, "apk_sha256": "c" * 64}
         business = {**execution, "verified_leg": "actual group assertions completed"}
         (evidence / "business-result.json").write_text(json.dumps(business), encoding="utf-8")
+        # Emulator installation failure is not a business execution, even if a stale result exists.
+        assert record_execution(evidence, execution, "failure")["executed"] is False
+        assert record_execution(evidence, execution, "success")["status"] == "failed"
+        record_execution(evidence, execution, "running")
         record_execution(evidence, execution, "success")
     assert verify_results(selection, tmp_path, "success")["status"] == "passed"
     evidence = tmp_path / "financial-facts"
@@ -38,6 +42,7 @@ def test_journey_qualification_rejects_failed_missing_or_mismatched_actual_resul
         assert record_execution(evidence, execution, "success")["status"] == "failed"
     different_apk = {**original, "apk_sha256": "d" * 64}
     (evidence / "business-result.json").write_text(json.dumps(different_apk), encoding="utf-8")
+    record_execution(evidence, different_apk, "running")
     record_execution(evidence, different_apk, "success")
     with pytest.raises(ValueError, match="Different APKs"):
         verify_results(selection, tmp_path, "success")
