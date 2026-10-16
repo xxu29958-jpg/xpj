@@ -5,8 +5,8 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import Budget, BudgetCategory, BudgetRevision, Expense
 from tests._local_web_identity_support import installed_web_setup
+from tests._web_budget_test_support import MONTH, _original
 from tests._web_native_form_support import hidden_post_forms
-from tests.test_web_planning_bound_intents import MONTH, _original
 
 
 @pytest.fixture

@@ -16,7 +16,7 @@ from app.schemas import ExpenseUpdateRequest
 from app.services.expense_review_command_service import confirm_expense_submission
 from app.services.expense_service import update_expense
 from tests._web_bulk_test_support import seed_pending_with_amount
-from tests.test_web_transactions_backend import _expense_payload
+from tests.web_expense_fact_test_support import _expense_payload
 
 
 def _save_confirm_data(before: dict) -> dict[str, str]:

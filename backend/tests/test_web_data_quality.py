@@ -1,19 +1,8 @@
 """/web/data-quality page (slice 2 / T20)."""
 from __future__ import annotations
 
-import pytest
 from api_contract_helpers import upload_png
 from fastapi.testclient import TestClient
-
-from app.main import app
-from app.routes.web_app import _require_local as _web_require_local
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def test_web_data_quality_remote_returns_403(client: TestClient) -> None:

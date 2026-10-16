@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 
 from app.models import Expense
 from app.services.currency_binding_service import resolve_write_capability
-from tests import test_web_expense_review_runtime as review_tests
+from tests import _web_expense_review_test_support as review_tests
 from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
 from tests.web_expense_fact_test_support import confirmation_web as confirmation_web
 

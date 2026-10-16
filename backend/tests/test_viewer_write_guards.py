@@ -5,14 +5,11 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.main import app
 from app.models import AuthToken, Expense, LedgerMember
-from app.routes.web_app import _require_local as _web_require_local
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.identity_service import hash_secret
 from app.services.time_service import now_utc
@@ -21,13 +18,6 @@ from tests._runtime_protocol import current_protocol_headers
 from tests.pairing_test_support import invitation_accept_payload
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def _bearer(token: str) -> dict[str, str]:

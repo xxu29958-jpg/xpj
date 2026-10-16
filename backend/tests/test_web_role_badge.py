@@ -4,21 +4,11 @@ from __future__ import annotations
 
 import re
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.main import app
 from app.models import LedgerMember
-from app.routes.web_app import _require_local as _web_require_local
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def _make_ledger_with_role(client: TestClient, role: str, *, identity) -> str:

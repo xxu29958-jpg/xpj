@@ -11,34 +11,9 @@ from app.database import SessionLocal
 from app.models import LedgerMember
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.income_plan_service import create_income_plan
+from tests._web_recurring_test_support import _create_series
+from tests._web_recurring_test_support import _occurrence_payment as _payment
 from tests.bill_split_test_support import _bearer_for_account_ledger, _seed_receiver
-
-
-def _create_series(client: TestClient, identity) -> dict:
-    response = client.post(
-        "/api/recurring/items",
-        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={"home_currency_code": "CNY",
-            "merchant": "房租",
-            "baseline_amount_cents": 10_000,
-            "next_expected_date": "2026-09-05",
-        },
-    )
-    assert response.status_code == 201, response.json()
-    return response.json()
-
-
-def _payment(client: TestClient, identity) -> dict:
-    response = client.post(
-        "/api/expenses/manual", headers=identity.app_headers,
-        json={
-            "client_ref": str(uuid4()),
-            "home_currency_code": "CNY", "amount_cents": 10_000, "merchant": "房租", "category": "餐饮",
-            "expense_time": "2026-09-05T12:00:00Z", "note": "本期完整付款",
-        },
-    )
-    assert response.status_code == 200, response.json()
-    return response.json()
 
 
 def test_recurring_payment_reconciles_reservation_and_replays_once(

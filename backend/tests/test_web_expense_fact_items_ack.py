@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import re
-
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import LedgerMember
+from tests._web_native_form_support import _ack_form_html, _hidden_value
 from tests.expense_correction_support import manual_confirmed
 
 
@@ -28,22 +27,6 @@ def _create_confirmed_items_mismatch(
     )
     assert corrected.status_code == 201, corrected.text
     return expense_id, int(corrected.json()["expense"]["row_version"])
-
-
-def _ack_form_html(page_text: str, expense_id: int) -> str | None:
-    marker = f'action="/web/expenses/{expense_id}/items/acknowledge-mismatch"'
-    if marker not in page_text:
-        return None
-    marker_index = page_text.index(marker)
-    start = page_text.rfind("<form", 0, marker_index)
-    end = page_text.index("</form>", marker_index)
-    return page_text[start:end]
-
-
-def _hidden_value(form_html: str, name: str) -> str:
-    match = re.search(rf'name="{re.escape(name)}" value="([^"]+)"', form_html)
-    assert match is not None
-    return match.group(1)
 
 
 def test_fact_page_renders_acknowledge_action_for_writer(

@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import CsvImportBatch, CsvImportRow, Expense, Ledger, LedgerCalendarRevision
 from app.services.ledger_calendar_service import adopt_ledger_calendar, current_calendar
-from tests.test_csv_financial_events_http import _apply, _batch, _export
+from tests._infra.csv import _apply, _batch, _export
 
 pytestmark = pytest.mark.real_db
 

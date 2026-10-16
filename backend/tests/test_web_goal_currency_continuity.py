@@ -5,7 +5,7 @@ import re
 import pytest
 
 from tests._web_native_form_support import hidden_post_forms, open_creation_form
-from tests.test_web_goal_edit_continuity import _editor, _goal
+from tests.spending_goal_test_support import _editor, _goal
 
 
 def test_jpy_goal_editor_uses_recorded_units_under_cny_runtime(web_client, identity):
@@ -200,7 +200,6 @@ def test_goal_history_missing_recorded_currency_does_not_use_runtime_currency(hi
     history = re.search(r"<main\b[^>]*>([\s\S]*?)</main>", page.text)
     assert history is not None
     assert "CNY" not in history.group(1) and "¥18.00" not in history.group(1)
-
 
 
 def test_goal_editor_history_opens_separately_and_preserves_original_submission():

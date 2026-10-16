@@ -22,9 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
-from app.main import app
 from app.models import ApiIdempotencyKey, Budget, BudgetCategory, CategoryRule, Expense, Goal, Ledger
-from app.routes.web_app import _require_local as _web_require_local
 from app.schemas import ExpenseUpdateRequest
 from app.services import pending_review_bulk_service
 from app.services.category_preference_service import ensure_category_preference_for_name
@@ -40,13 +38,6 @@ from tests._infra.assets import RGBA_PNG_BYTES
 from tests._infra.env import BACKEND_ROOT
 
 # ── Fixtures (mirror tests/test_web_app.py setup) ───────────────────────────
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def _save_pending(

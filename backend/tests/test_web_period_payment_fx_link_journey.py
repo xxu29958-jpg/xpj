@@ -25,7 +25,7 @@ from tests._local_web_identity_support import (
     installed_web_setup,
 )
 from tests._runtime_protocol import current_protocol_headers
-from tests.test_web_recurring_occurrences import _choice_href, _form, _record_payment_href
+from tests._web_recurring_test_support import _choice_href, _form, _record_payment_href
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 

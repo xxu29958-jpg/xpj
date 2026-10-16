@@ -23,16 +23,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
-from app.main import app
 from app.models import RecurringItem
-from app.routes.web_app import _require_local as _web_require_local
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def test_web_recurring_create_persists_manual_item(web_client: TestClient) -> None:

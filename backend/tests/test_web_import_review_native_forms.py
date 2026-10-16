@@ -19,6 +19,7 @@ from app.main import app
 from app.models import CsvImportBatch, Expense, LedgerMember
 from app.services.csv_import_batch_service import _claim_apply_lease
 from app.services.time_service import now_utc
+from tests._infra.csv import _apply_native_csv, _preview_native_csv
 
 
 def test_native_csv_preview_and_apply_preserve_selected_ledger(web_client, identity) -> None:
@@ -103,38 +104,6 @@ def test_native_uncategorized_updates_only_selected_pending_row(web_client, iden
             assert response.json()["amount_cents"] == 1850
         outside_scope = browser.get(f"/api/expenses/{created[0]}", headers=identity.app_headers)
         assert outside_scope.status_code == 404
-
-
-def _preview_native_csv(browser, *, ledger_id, csv_text, file_name="saved.csv") -> tuple[str, str]:
-    page = browser.get("/web/import", params={"ledger_id": ledger_id})
-    assert page.status_code == 200, page.text
-    action = "/web/import/preview"
-    response = browser.post(
-        action,
-        data=hidden_post_forms(page.text)[action],
-        files={"csv_file": (file_name, csv_text.encode(), "text/csv")},
-        headers={"Origin": str(browser.base_url).rstrip("/"), "Referer": str(page.url)},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303, response.text
-    target = urlsplit(response.headers["location"])
-    assert target.path.startswith("/web/import/")
-    assert parse_qs(target.query)["ledger_id"] == [ledger_id]
-    return target.path.rsplit("/", 1)[-1], response.headers["location"]
-
-
-def _apply_native_csv(browser, *, public_id, ledger_id, batch_size=1):
-    page = browser.get(f"/web/import/{public_id}", params={"ledger_id": ledger_id})
-    assert page.status_code == 200, page.text
-    action = f"/web/import/{public_id}/apply"
-    response = browser.post(
-        action,
-        data={**hidden_post_forms(page.text)[action], "batch_size": str(batch_size)},
-        headers={"Origin": str(browser.base_url).rstrip("/"), "Referer": str(page.url)},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303, response.text
-    return response
 
 
 def _batch_href(html: str, public_id: str, ledger_id: str) -> str:

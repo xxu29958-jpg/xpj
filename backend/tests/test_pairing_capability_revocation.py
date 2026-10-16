@@ -8,13 +8,8 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models import Device, PairingCode
 from app.services.identity_service import hash_pairing_code
+from tests._infra.identity import _auth_headers, _devices, _seed_same_account_device, _seed_same_account_device_session
 from tests.pairing_test_support import pairing_payload
-from tests.test_my_devices import (
-    _auth_headers,
-    _devices,
-    _seed_same_account_device,
-    _seed_same_account_device_session,
-)
 
 
 def test_revoking_device_invalidates_existing_recovery_code_and_allows_delete(

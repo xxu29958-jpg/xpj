@@ -13,40 +13,7 @@ from app.database import SessionLocal
 from app.models import BackgroundTask, Expense
 from app.services import background_task_worker
 from app.services.fx_rate_provider import EcbDailyRates, FxFetchError, upsert_fx_rate
-
-
-def _import_foreign_bill(client: TestClient, identity) -> dict:
-    content = (
-        "home_currency_code,amount_cents,original_currency_code,original_amount_minor,expense_time,merchant,category\n"
-        "CNY,,USD,12345,2026-05-03T16:30:00Z,Historical foreign receipt,交通\n"
-    )
-    created = client.post(
-        "/api/imports/csv", headers=identity.app_headers,
-        files={"csv_file": ("foreign.csv", content.encode(), "text/csv")},
-    )
-    assert created.status_code == 201, created.text
-    batch = created.json()
-    assert (batch["valid_rows"], batch["error_rows"]) == (1, 0)
-    endpoint = f"/api/imports/csv/{batch['public_id']}"
-    applied = client.post(f"{endpoint}/apply", headers=identity.app_headers, json={"batch_size": 1})
-    assert applied.status_code == 200, applied.text
-    assert applied.json()["inserted_count"] == 1
-    rows = client.get(f"{endpoint}/rows", headers=identity.app_headers)
-    assert rows.status_code == 200, rows.text
-    row = rows.json()["items"][0]
-    assert row["status"] == "applied"
-    detail = client.get(f"/api/expenses/{row['expense_id']}", headers=identity.app_headers)
-    assert detail.status_code == 200, detail.text
-    bill = detail.json()
-    assert bill["status"] == "pending"
-    assert (bill["home_currency"], bill["original_currency_code"], bill["original_amount_minor"]) == (
-        "CNY", "USD", 12345,
-    )
-    assert bill["expense_time"] == "2026-05-03T16:30:00Z"
-    assert bill["category"] == "交通"
-    assert bill["accounting_time"]["user_local_date"] == "2026-05-03"
-    assert bill["accounting_time"]["accounting_date"] == "2026-05-04"
-    return bill
+from tests._infra.csv import _import_foreign_bill
 
 
 def test_csv_missing_historical_rate_has_a_durable_task_back_to_the_pending_bill(client: TestClient, identity):

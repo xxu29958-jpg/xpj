@@ -6,7 +6,7 @@ from api_contract_helpers import patch_expense
 from fastapi.testclient import TestClient
 
 from tests._web_bulk_test_support import seed_pending_with_amount
-from tests.test_web_transactions_backend import _expense_payload
+from tests.web_expense_fact_test_support import _expense_payload
 
 
 def test_web_currency_conflict_keeps_draft_money_in_its_submitted_currency(

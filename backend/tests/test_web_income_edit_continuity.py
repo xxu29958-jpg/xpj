@@ -8,27 +8,13 @@ import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.main import app
 from app.models import IncomePlanRevision, LedgerMember, MonthlyIncomePlan
-from app.routes import income_plans, web_income_edit, web_income_plans
-from app.routes.web_app import _require_local as _web_require_local
-from app.services import income_plan_service
 from app.services.identity_service import authenticate_web_session_token
 from app.services.manual_expense_draft_presenter import manual_draft_scope
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._runtime_protocol import negotiated_headers
 from tests._web_native_form_support import hidden_post_forms
-
-
-@pytest.fixture()
-def web_income(client, monkeypatch):
-    clock = {"month": "2026-09", "now": datetime(2026, 9, 5, tzinfo=UTC)}
-    monkeypatch.setattr(income_plan_service, "now_utc", lambda: clock["now"])
-    for routes in (income_plans, web_income_edit, web_income_plans):
-        monkeypatch.setattr(routes, "current_ledger_month", lambda _db, *, ledger_id: clock["month"])
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client, clock
-    app.dependency_overrides.pop(_web_require_local, None)
+from tests.income_plan_test_support import web_income as web_income
 
 
 def _create(client, identity):

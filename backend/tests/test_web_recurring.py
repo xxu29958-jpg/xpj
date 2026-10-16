@@ -9,7 +9,6 @@ import re
 from html import unescape
 from uuid import uuid4
 
-import pytest
 from _web_recurring_test_support import (
     create_via_web,
     edit_via_web,
@@ -22,16 +21,7 @@ from _web_recurring_test_support import (
 )
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.routes.web_app import _require_local as _web_require_local
 from tests.family_ledger_test_support import set_owner_ledger_role
-
-
-@pytest.fixture()
-def web_client(client: TestClient) -> TestClient:
-    app.dependency_overrides[_web_require_local] = lambda: None
-    yield client
-    app.dependency_overrides.pop(_web_require_local, None)
 
 
 def test_web_recurring_remote_returns_403(client: TestClient) -> None:

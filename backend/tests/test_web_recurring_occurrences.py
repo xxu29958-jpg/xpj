@@ -9,17 +9,8 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.routes.web_app import _require_local
-from tests.test_recurring_occurrences import _create_series, _payment
-
-
-def _form(body, action):
-    for form in re.findall(r"<form\b[^>]*>.*?</form>", body, flags=re.S):
-        if f'name="action" value="{action}"' in form:
-            return {
-                name: unescape(value)
-                for name, value in re.findall(r'<input\b[^>]*name="([^"]+)"[^>]*value="([^"]*)"', form)
-            }
-    raise AssertionError(f"real {action} form is missing")
+from tests._web_recurring_test_support import _choice_href, _choose, _create_series, _form, _record_payment_href
+from tests._web_recurring_test_support import _occurrence_payment as _payment
 
 
 def _retry_form(body):
@@ -30,17 +21,6 @@ def _retry_form(body):
                 for name, value in re.findall(r'<input\b[^>]*name="([^"]+)"[^>]*value="([^"]*)"', form)
             }
     raise AssertionError("the original proposal retry form is missing")
-
-
-def _choice_href(body, action):
-    return next(unescape(href) for href in re.findall(r'href="([^"]+)"', body)
-        if parse_qs(urlsplit(unescape(href)).query).get("command") == [action])
-
-
-def _choose(client, body, action):
-    page = client.get(_choice_href(body, action))
-    assert page.status_code == 200, page.text
-    return _form(page.text, action)
 
 
 def test_web_association_and_undo_share_the_api_result(client: TestClient, *, identity) -> None:
@@ -76,22 +56,6 @@ def test_web_association_and_undo_share_the_api_result(client: TestClient, *, id
         ).json() == payment
     finally:
         app.dependency_overrides.pop(_require_local, None)
-
-
-def _record_payment_href(html: str, *, series_id: str, period: str, ledger_id: str = "owner") -> str:
-    section = re.search(r'<section\b[^>]*aria-label="记录本期付款"[^>]*>(.*?)</section>', html, flags=re.S)
-    assert section is not None, "An unpaid period must offer a record-this-period payment task"
-    for href in re.findall(r'href="([^"]+)"', section.group(1)):
-        parsed = urlsplit(unescape(href))
-        if parsed.path != "/web/expenses/new":
-            continue
-        query = parse_qs(parsed.query)
-        assert query.get("return_to") == ["recurring_occurrence"]
-        assert query.get("return_recurring_public_id") == [series_id]
-        assert query.get("return_month") == [period]
-        assert query.get("ledger_id") == [ledger_id]
-        return unescape(href)
-    raise AssertionError("The period payment entry must open the existing manual-expense owner")
 
 
 def test_period_payment_entries_and_review_keep_the_original_task(monkeypatch) -> None:
