@@ -3,13 +3,13 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import timedelta
 from io import BytesIO
+from uuid import UUID
 
 import pytest
 from api_contract_helpers import (
     _stored_upload_files,
     make_heic_bytes,
     reject_expense_api,
-    upload_png_as_raw_body,
 )
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -27,18 +27,6 @@ from tests._infra.env import TEST_UPLOAD_RELATIVE
 from tests._infra.upload_link_commit_concurrency import (
     assert_upload_link_commit_races_are_serialized,
 )
-
-
-def test_upload_screenshot_accepts_ios_file_body(client: TestClient, *, identity) -> None:
-    expense_id = upload_png_as_raw_body(client, identity=identity)
-
-    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
-    assert pending.status_code == 200
-    item = next(expense for expense in pending.json() if expense["id"] == expense_id)
-    assert item["status"] == "pending"
-    assert item["image_path"].startswith("uploads/")
-    assert item["image_path"].endswith(".png")
-    assert item["image_hash"]
 
 
 @pytest.mark.real_db
@@ -742,15 +730,31 @@ def test_rejecting_duplicate_original_clears_other_pending_reference(
     assert second_after["duplicate_reason"] is None
 
 
-def test_upload_stores_relative_paths_and_never_confirms(client: TestClient, *, identity) -> None:
+@pytest.mark.parametrize("raw_body", [False, True])
+def test_upload_stores_relative_paths_and_never_confirms(client: TestClient, *, identity, raw_body: bool) -> None:
+    request = {"content": PNG_BYTES} if raw_body else {"files": {"file": ("user-original-name.png", PNG_BYTES, "image/png")}}
     response = client.post(
         identity.upload_url_path,
-        headers=identity.upload_headers,
-        files={"file": ("user-original-name.png", PNG_BYTES, "image/png")},
+        headers={**identity.upload_headers, **({"Content-Type": "image/png"} if raw_body else {})},
+        **request,
     )
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "pending"
+    UUID(payload["public_id"])
+    assert payload["upload_size_bytes"] == len(PNG_BYTES)
+    if payload["thumbnail_path"] is not None:
+        assert payload["thumbnail_path"].startswith("uploads/")
+        assert not any(part in payload["thumbnail_path"] for part in ("..", "\\", ":"))
+    assert "token" not in str(payload).lower() and "E:\\" not in str(payload)
+    assert payload["duration_ms"] >= 0
+    for field in ("total_ms", "body_read_ms" if raw_body else "form_parse_ms", "file_save_ms", "db_create_ms"):
+        assert payload["timing_ms"][field] >= 0
+
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers)
+    assert pending.status_code == 200
+    item = next(expense for expense in pending.json() if expense["id"] == payload["id"])
+    assert item["status"] == "pending" and item["image_path"].endswith(".png") and item["image_hash"]
 
     detail = client.get(f"/api/expenses/{payload['id']}", headers=identity.app_headers)
     assert detail.status_code == 200

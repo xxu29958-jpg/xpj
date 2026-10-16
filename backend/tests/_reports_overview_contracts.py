@@ -3,35 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from api_contract_helpers import manual_expense
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.models import Expense
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.time_service import now_utc
-
-
-def _manual_report_expense(
-    client: TestClient,
-    *,
-    headers: dict[str, str],
-    amount_cents: int,
-    merchant: str,
-    category: str,
-    expense_time: str,
-) -> None:
-    response = client.post(
-        "/api/expenses/manual",
-        headers=headers,
-        json={
-            "client_ref": str(uuid4()),
-            "home_currency_code": "CNY", "amount_cents": amount_cents,
-            "merchant": merchant,
-            "category": category,
-            "expense_time": expense_time,
-        },
-    )
-    assert response.status_code == 200, response.json()
 
 
 def _insert_report_expense(
@@ -77,7 +55,7 @@ def _create_starbucks_alias(client: TestClient, *, identity) -> None:
 
 
 def _seed_current_month_report_expenses(client: TestClient, *, identity) -> None:
-    _manual_report_expense(
+    manual_expense(
         client,
         headers=identity.app_headers,
         amount_cents=1200,
@@ -85,7 +63,7 @@ def _seed_current_month_report_expenses(client: TestClient, *, identity) -> None
         category="餐饮",
         expense_time="2026-05-01T00:30:00Z",
     )
-    _manual_report_expense(
+    manual_expense(
         client,
         headers=identity.app_headers,
         amount_cents=800,
@@ -93,7 +71,7 @@ def _seed_current_month_report_expenses(client: TestClient, *, identity) -> None
         category="吃饭",
         expense_time="2026-05-02T00:30:00Z",
     )
-    _manual_report_expense(
+    manual_expense(
         client,
         headers=identity.app_headers,
         amount_cents=2200,
@@ -101,7 +79,7 @@ def _seed_current_month_report_expenses(client: TestClient, *, identity) -> None
         category="交通",
         expense_time="2026-05-03T00:30:00Z",
     )
-    _manual_report_expense(
+    manual_expense(
         client,
         headers=identity.gray_app_headers,
         amount_cents=9999,

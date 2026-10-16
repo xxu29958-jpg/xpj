@@ -3,8 +3,7 @@
 from uuid import uuid4
 
 from tests._runtime_protocol import negotiated_headers
-from tests.debt_proposal_helpers import _create_member_debt, _member_headers
-from tests.test_debt_repayment import _create_debt
+from tests.debt_proposal_helpers import _create_external_debt, _create_member_debt, _member_headers
 from tests.test_member_repayment_proposal_cross_ledger import _mint_app_token, _seed_personal_ledger
 
 
@@ -28,7 +27,7 @@ def _change_calendar(client, identity, previous_revision):
 
 
 def test_date_only_repayment_replays_original_fact_after_calendar_change(client, identity):
-    debt = _create_debt(client, identity)
+    debt = _create_external_debt(client, identity.app_headers)
     original_time = _date_input(_detail(client, identity.app_headers, debt["public_id"]))
     body = {"amount_cents": 3000, "expected_row_version": debt["row_version"], "time_input": original_time}
     headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}

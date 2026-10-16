@@ -20,7 +20,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Debt, Repayment
-from tests._runtime_protocol import negotiated_headers
+from tests.debt_proposal_helpers import _create_external_debt, _record_repayment
 from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
@@ -28,31 +28,6 @@ VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
 def _idem(app_headers: dict[str, str]) -> dict[str, str]:
     return {**app_headers, "Idempotency-Key": str(uuid4())}
-
-
-def _create_debt(client: TestClient, identity, *, principal_amount_cents: int = 50000) -> dict:
-    response = client.post(
-        "/api/debts",
-        headers=negotiated_headers(client, _idem(identity.app_headers)),
-        json={
-            "home_currency_code": "CNY", "direction": "i_owe",
-            "counterparty_type": "external",
-            "counterparty_label": "信用卡",
-            "principal_amount_cents": principal_amount_cents,
-        },
-    )
-    assert response.status_code == 201, response.json()
-    return response.json()
-
-
-def _record_repayment(client: TestClient, identity, public_id: str, amount_cents: int, version: int) -> dict:
-    response = client.post(
-        f"/api/debts/{public_id}/repayments",
-        headers=_idem(identity.app_headers),
-        json={"amount_cents": amount_cents, "expected_row_version": version},
-    )
-    assert response.status_code == 201, response.json()
-    return response.json()
 
 
 def _repayment_public_ids(public_id: str) -> list[str]:
@@ -63,8 +38,8 @@ def _repayment_public_ids(public_id: str) -> list[str]:
 
 
 def test_void_repayment_reopens_debt_and_keeps_row(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
-    repaid = _record_repayment(client, identity, debt["public_id"], 10000, debt["row_version"])
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
+    repaid = _record_repayment(client, identity.app_headers, debt, amount_cents=10000)
     assert repaid["status"] == "cleared"
     repayment_public_id = repaid["repayment_public_id"]
 
@@ -91,8 +66,8 @@ def test_void_repayment_reopens_debt_and_keeps_row(client: TestClient, *, identi
 
 
 def test_void_repayment_twice_is_already_voided(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
-    repaid = _record_repayment(client, identity, debt["public_id"], 5000, debt["row_version"])
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
+    repaid = _record_repayment(client, identity.app_headers, debt, amount_cents=5000)
     repayment_public_id = repaid["repayment_public_id"]
 
     first = client.post(
@@ -111,7 +86,7 @@ def test_void_repayment_twice_is_already_voided(client: TestClient, *, identity)
 
 
 def test_void_unknown_repayment_is_404(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
     response = client.post(
         f"/api/debts/{debt['public_id']}/repayment-voids",
         headers=_idem(identity.app_headers),
@@ -126,11 +101,9 @@ def test_void_unknown_repayment_is_404(client: TestClient, *, identity) -> None:
 
 
 def test_void_repayment_belonging_to_other_debt_is_404(client: TestClient, *, identity) -> None:
-    debt_a = _create_debt(client, identity, principal_amount_cents=10000)
-    debt_b = _create_debt(client, identity, principal_amount_cents=10000)
-    repaid_b = _record_repayment(
-        client, identity, debt_b["public_id"], 5000, debt_b["row_version"]
-    )
+    debt_a = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
+    debt_b = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
+    repaid_b = _record_repayment(client, identity.app_headers, debt_b, amount_cents=5000)
     other_repayment_public_id = repaid_b["repayment_public_id"]
 
     # Try to void debt_b's repayment via debt_a's path → not found (it does not
@@ -149,7 +122,7 @@ def test_void_repayment_belonging_to_other_debt_is_404(client: TestClient, *, id
 
 
 def test_void_debt_latches_voided_and_drops_from_open_total(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=30000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=30000, counterparty_label='信用卡')
     voided = client.post(
         f"/api/debts/{debt['public_id']}/void",
         headers=_idem(identity.app_headers),
@@ -175,7 +148,7 @@ def test_void_debt_latches_voided_and_drops_from_open_total(client: TestClient, 
 
 
 def test_void_debt_twice_is_already_voided(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
     first = client.post(
         f"/api/debts/{debt['public_id']}/void",
         headers=_idem(identity.app_headers),
@@ -193,7 +166,7 @@ def test_void_debt_twice_is_already_voided(client: TestClient, *, identity) -> N
 
 
 def test_voided_debt_rejects_further_repayment(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
     voided = client.post(
         f"/api/debts/{debt['public_id']}/void",
         headers=_idem(identity.app_headers),
@@ -210,7 +183,7 @@ def test_voided_debt_rejects_further_repayment(client: TestClient, *, identity) 
 
 
 def test_void_debt_requires_reason(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
     response = client.post(
         f"/api/debts/{debt['public_id']}/void",
         headers=_idem(identity.app_headers),
@@ -221,7 +194,7 @@ def test_void_debt_requires_reason(client: TestClient, *, identity) -> None:
 
 
 def test_void_debt_idempotent_replay_applies_once(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
     key = str(uuid4())
     headers = {**identity.app_headers, "Idempotency-Key": key}
     payload = {"reason": "作废", "expected_row_version": debt["row_version"]}
@@ -239,7 +212,7 @@ def test_void_debt_idempotent_replay_applies_once(client: TestClient, *, identit
 
 def test_viewer_cannot_void_debt(client: TestClient, *, identity) -> None:
     # coverage: viewer-write
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
     set_owner_ledger_role("viewer")
     response = client.post(
         f"/api/debts/{debt['public_id']}/void",
@@ -253,7 +226,7 @@ def test_viewer_cannot_void_debt(client: TestClient, *, identity) -> None:
 
 def test_void_routes_unauthenticated_are_401(client: TestClient, *, identity) -> None:
     # coverage: auth-401 — both void routes reject before business logic.
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
     no_auth = {"Idempotency-Key": str(uuid4())}  # no Authorization
 
     repayment_void = client.post(

@@ -30,13 +30,9 @@ from app.services import bill_split_service as bsplit
 from app.services.debt_service import create_bill_split_debt
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.time_service import now_utc
+from tests._infra.identity import seeded_owner_account_id
 from tests.bill_split_test_support import _create_invited_split as _invite
-from tests.bill_split_test_support import (
-    _debts_for,
-    _owner_account_id,
-    _seed_receiver,
-    _split_headers,
-)
+from tests.bill_split_test_support import _debts_for, _seed_receiver, _split_headers
 
 
 def _accept(public_id: str, receiver_account_id: int, target_ledger_id: str = "receiver_b") -> None:
@@ -96,7 +92,7 @@ def test_accept_with_rollout_creates_member_debt(
 ) -> None:
     # §4: accepting creates the receiver's member Debt (i_owe the sender) for the
     # agreed home-currency share, in the same transaction as the receiver expense.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     receiver_id = _seed_receiver()
     public_id = _invite(client, identity, receiver_id, amount_cents=2500)
 
@@ -355,7 +351,7 @@ def test_duplicate_bill_split_debt_source_is_rejected(client: TestClient, *, ide
     # bill-split Debt even if a path ever reached the insert twice. A second
     # create_bill_split_debt for the same invitation public_id raises an
     # IntegrityError (contained in a SAVEPOINT so the outer transaction survives).
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     receiver_id = _seed_receiver(name="B-dup", ledger_id="receiver_dup")
     source_invitation_public_id = str(uuid4())
 

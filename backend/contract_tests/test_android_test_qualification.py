@@ -183,7 +183,7 @@ def test_legacy_scalar_is_only_accepted_for_base_ratchet_migration() -> None:
     }
 
 
-def test_baseline_ratchet_prefers_exact_audit_sha_over_branch_name(
+def test_baseline_comparison_prefers_exact_audit_sha_over_branch_name(
     tmp_path: Path,
 ) -> None:
     repository = tmp_path / "repository"
@@ -193,7 +193,7 @@ def test_baseline_ratchet_prefers_exact_audit_sha_over_branch_name(
     _git(repository, "config", "user.email", "qualification@example.invalid")
     baseline = repository / "android" / "audit" / "test_count_baseline.txt"
     baseline.parent.mkdir(parents=True)
-    baseline.write_text("jvm=1\ninstrumentation=1\n", encoding="utf-8")
+    baseline.write_text("jvm=3\ninstrumentation=3\n", encoding="utf-8")
     _git(repository, "add", ".")
     _git(repository, "commit", "-m", "base")
     base_sha = _git(repository, "rev-parse", "HEAD")
@@ -203,7 +203,7 @@ def test_baseline_ratchet_prefers_exact_audit_sha_over_branch_name(
     _git(repository, "commit", "-m", "head")
     head_sha = _git(repository, "rev-parse", "HEAD")
 
-    current, base, selected_ref = qualification.verify_baseline_ratchet(
+    current, base, selected_ref = qualification.verify_baseline_comparison(
         baseline_path=baseline,
         repository_root=repository,
         environment={
@@ -214,11 +214,11 @@ def test_baseline_ratchet_prefers_exact_audit_sha_over_branch_name(
     )
 
     assert current == {"jvm": 2, "instrumentation": 2}
-    assert base == {"jvm": 1, "instrumentation": 1}
+    assert base == {"jvm": 3, "instrumentation": 3}
     assert selected_ref == base_sha
 
     with pytest.raises(qualification.EvidenceError, match="self-comparison"):
-        qualification.verify_baseline_ratchet(
+        qualification.verify_baseline_comparison(
             baseline_path=baseline,
             repository_root=repository,
             environment={
@@ -237,14 +237,14 @@ def test_baseline_ratchet_prefers_exact_audit_sha_over_branch_name(
         "sibling",
     )
     with pytest.raises(qualification.EvidenceError, match="must be an ancestor"):
-        qualification.verify_baseline_ratchet(
+        qualification.verify_baseline_comparison(
             baseline_path=baseline,
             repository_root=repository,
             environment={"CI": "true", "XPJ_AUDIT_BASE_REF": sibling_sha},
         )
 
 
-def test_baseline_ratchet_rejects_an_unreachable_explicit_sha(
+def test_baseline_comparison_rejects_an_unreachable_explicit_sha(
     tmp_path: Path,
 ) -> None:
     repository = tmp_path / "repository"
@@ -255,7 +255,7 @@ def test_baseline_ratchet_rejects_an_unreachable_explicit_sha(
     baseline.write_text("jvm=1\ninstrumentation=1\n", encoding="utf-8")
 
     with pytest.raises(qualification.EvidenceError, match="is unreachable"):
-        qualification.verify_baseline_ratchet(
+        qualification.verify_baseline_comparison(
             baseline_path=baseline,
             repository_root=repository,
             environment={
@@ -266,7 +266,7 @@ def test_baseline_ratchet_rejects_an_unreachable_explicit_sha(
         )
 
 
-def test_baseline_ratchet_requires_an_exact_ref_in_ci(tmp_path: Path) -> None:
+def test_baseline_comparison_requires_an_exact_ref_in_ci(tmp_path: Path) -> None:
     repository = tmp_path / "repository"
     repository.mkdir()
     baseline = repository / "android" / "audit" / "test_count_baseline.txt"
@@ -277,7 +277,7 @@ def test_baseline_ratchet_requires_an_exact_ref_in_ci(tmp_path: Path) -> None:
         qualification.EvidenceError,
         match="CI requires XPJ_AUDIT_BASE_REF",
     ):
-        qualification.verify_baseline_ratchet(
+        qualification.verify_baseline_comparison(
             baseline_path=baseline,
             repository_root=repository,
             environment={"CI": "true", "GITHUB_EVENT_NAME": "push"},

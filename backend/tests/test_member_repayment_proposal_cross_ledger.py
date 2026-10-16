@@ -42,11 +42,12 @@ from app.models import (
 from app.services import bill_split_service as bsplit
 from app.services.identity_service import hash_secret, new_session_token
 from app.services.ledger_calendar_service import adopt_ledger_calendar
+from tests._infra.identity import seeded_owner_account_id
 from tests._runtime_protocol import current_protocol_headers
 from tests.bill_split_test_support import _create_invited_split as _invite
 
 # Reuse the slice-4 linkage helpers (owner expense → invite → service-level accept).
-from tests.bill_split_test_support import _debts_for, _owner_account_id
+from tests.bill_split_test_support import _debts_for
 
 
 @pytest.fixture
@@ -150,7 +151,7 @@ def test_cross_ledger_creditor_confirms_and_clears_debt(
     # The §5.2 core: the sender (creditor) is NOT a member of the receiver's
     # PRIVATE ledger, yet can confirm the debtor's repayment proposal and clear
     # the obligation. The response is the Debt shell — ledger id redacted.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     receiver_id = _seed_personal_ledger(name="B-priv", ledger_id="receiver_priv")
     public_id = _invite(client, identity, receiver_id, amount_cents=2500)
     _accept_into(public_id, receiver_id, "receiver_priv")
@@ -256,7 +257,7 @@ def test_member_creditor_in_shared_ledger_settles_debt(
     # When the receiver accepts into a SHARED ledger the sender is also a member
     # of, the creditor confirms AS A MEMBER — the same-ledger path. The response
     # keeps the ledger id (not redacted), proving the union's member branch.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     receiver_id = _seed_personal_ledger(name="M", ledger_id="shared_m")
     _add_member(ledger_id="shared_m", account_id=owner_id, role="member")
     public_id = _invite(client, identity, receiver_id, amount_cents=2500)

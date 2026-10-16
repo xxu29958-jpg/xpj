@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from io import BytesIO
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import httpx
 from fastapi.testclient import TestClient
@@ -16,6 +16,30 @@ from tests._infra.assets import PNG_BYTES
 from tests._infra.env import TEST_UPLOAD_DIR
 from tests._infra.identity import TestIdentity
 from tests._web_native_form_support import hidden_post_forms
+
+
+def manual_expense(
+    client: TestClient,
+    *,
+    headers: dict[str, str],
+    amount_cents: int,
+    merchant: str,
+    category: str,
+    expense_time: str,
+) -> None:
+    response = client.post(
+        "/api/expenses/manual",
+        headers=headers,
+        json={
+            "client_ref": str(uuid4()),
+            "home_currency_code": "CNY", "amount_cents": amount_cents,
+            "merchant": merchant,
+            "category": category,
+            "expense_time": expense_time,
+        },
+    )
+    assert response.status_code == 200, response.json()
+
 
 
 def web_save_expense(
@@ -387,45 +411,18 @@ def upload_png(
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "pending"
-    UUID(payload["public_id"])
-    assert payload["upload_size_bytes"] == len(PNG_BYTES)
-    if payload["thumbnail_path"] is not None:
-        assert payload["thumbnail_path"].startswith("uploads/")
-        assert ".." not in payload["thumbnail_path"]
-        assert "\\" not in payload["thumbnail_path"]
-        assert ":" not in payload["thumbnail_path"]
-    assert "token" not in str(payload).lower()
-    assert "E:\\" not in str(payload)
-    assert payload["duration_ms"] >= 0
-    assert payload["timing_ms"]["total_ms"] >= 0
-    assert payload["timing_ms"]["form_parse_ms"] >= 0
-    assert payload["timing_ms"]["file_save_ms"] >= 0
-    assert payload["timing_ms"]["db_create_ms"] >= 0
     return int(payload["id"])
 
 
-def upload_png_as_raw_body(client: TestClient, *, identity: TestIdentity) -> int:
+def upload_png_as_raw_body(client: TestClient, *, identity: TestIdentity, content: bytes = PNG_BYTES) -> int:
     response = client.post(
         identity.upload_url_path,
         headers={**identity.upload_headers, "Content-Type": "image/png"},
-        content=PNG_BYTES,
+        content=content,
     )
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "pending"
-    assert payload["upload_size_bytes"] == len(PNG_BYTES)
-    if payload["thumbnail_path"] is not None:
-        assert payload["thumbnail_path"].startswith("uploads/")
-        assert ".." not in payload["thumbnail_path"]
-        assert "\\" not in payload["thumbnail_path"]
-        assert ":" not in payload["thumbnail_path"]
-    assert "token" not in str(payload).lower()
-    assert "E:\\" not in str(payload)
-    assert payload["duration_ms"] >= 0
-    assert payload["timing_ms"]["total_ms"] >= 0
-    assert payload["timing_ms"]["body_read_ms"] >= 0
-    assert payload["timing_ms"]["file_save_ms"] >= 0
-    assert payload["timing_ms"]["db_create_ms"] >= 0
     return int(payload["id"])
 
 

@@ -5,31 +5,16 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from api_contract_helpers import web_confirm_expense, web_save_expense
+from api_contract_helpers import upload_png_as_raw_body, web_confirm_expense, web_save_expense
 from fastapi.testclient import TestClient
 
+from tests._infra.assets import RGBA_PNG_BYTES
 from tests._runtime_protocol import negotiated_headers
 from tests._web_native_form_support import accounting_time_fields, hidden_post_forms
 
 
-def _create_pending(client: TestClient, *, identity) -> int:
-    """Helper: upload a tiny PNG to the owner ledger so /web/pending sees it."""
-    png = (
-        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
-        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
-        b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
-    )
-    resp = client.post(
-        f"/u/{identity.upload_key}",
-        headers={"Content-Type": "image/png"},
-        content=png,
-    )
-    assert resp.status_code == 200, resp.text
-    return int(resp.json()["id"])
-
-
 def test_web_edit_save_updates_amount(web_client: TestClient, *, identity) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     resp = web_save_expense(
         web_client,
         expense_id,
@@ -44,7 +29,7 @@ def test_web_edit_save_updates_amount(web_client: TestClient, *, identity) -> No
 
 
 def test_web_pending_scores_keep_omission_and_clear_before_confirmation(web_client: TestClient, *, identity) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     fields = {"ledger_id": "owner", "amount_yuan": "12.34", "merchant": "评分原商家", "category": "餐饮", "note": ""}
     saved = web_save_expense(web_client, expense_id, identity=identity,
         data={**fields, "value_score": "4", "regret_score": "3"})
@@ -125,7 +110,7 @@ def test_web_edit_save_sets_expense_time_in_accounting_tz(web_client: TestClient
     The editor uses the captured ledger rule to prefill 20:00, while the pending
     list shows the known 12:00Z instant without claiming a known source zone.
     """
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     resp = web_save_expense(
         web_client,
         expense_id,
@@ -164,7 +149,7 @@ def test_web_edit_save_sets_expense_time_in_accounting_tz(web_client: TestClient
 
 def test_web_edit_save_bad_expense_time_shows_error(web_client: TestClient, *, identity) -> None:
     """An unparseable time flashes the edit error and leaves the row untouched."""
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     resp = web_save_expense(
         web_client,
         expense_id,
@@ -189,7 +174,7 @@ def test_web_edit_save_bad_expense_time_shows_error(web_client: TestClient, *, i
 def test_web_edit_save_sets_and_clears_tags(web_client: TestClient, *, identity) -> None:
     """批1: tags save normalises the comma list; a blank tags field clears them
     (mirrors PATCH /api/expenses — "" clears, omitted leaves untouched)."""
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     saved = web_save_expense(
         web_client,
         expense_id,
@@ -232,7 +217,7 @@ def test_web_edit_save_sets_and_clears_tags(web_client: TestClient, *, identity)
 def test_web_edit_renders_category_datalist_with_used_category(web_client: TestClient, *, identity) -> None:
     """批1: the 分类 input carries a <datalist> seeded with the ledger's used
     categories ∪ defaults, so spelling drift is curbed at the input."""
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     saved = web_save_expense(
         web_client,
         expense_id,
@@ -261,7 +246,7 @@ def test_web_edit_renders_category_datalist_with_used_category(web_client: TestC
 
 
 def test_web_edit_image_uses_skeleton_placeholder(web_client: TestClient, *, identity) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     detail = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert detail.status_code == 200
     assert "data-image-skeleton" in detail.text
@@ -274,7 +259,7 @@ def test_web_edit_image_uses_skeleton_placeholder(web_client: TestClient, *, ide
 
 
 def test_web_save_invalid_amount_shows_error(web_client: TestClient, *, identity) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     resp = web_save_expense(
         web_client,
         expense_id,
@@ -286,7 +271,7 @@ def test_web_save_invalid_amount_shows_error(web_client: TestClient, *, identity
 
 
 def test_web_confirm_without_amount_shows_chinese_error(web_client: TestClient, *, identity) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     resp = web_confirm_expense(web_client, expense_id, identity=identity, follow_redirects=False)
     assert resp.status_code == 422
     assert "请先填写金额" in resp.text
@@ -303,7 +288,7 @@ def test_web_confirm_without_amount_shows_chinese_error(web_client: TestClient, 
     ],
 )
 def test_web_amount_decimal_precision(web_client: TestClient, input_str: str, expected_cents: int, *, identity) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     resp = web_save_expense(
         web_client,
         expense_id,
@@ -321,7 +306,7 @@ def test_web_amount_decimal_precision(web_client: TestClient, input_str: str, ex
 
 @pytest.mark.parametrize("input_str", ["12.345", "0.005"])
 def test_web_amount_over_precision_rejected(web_client: TestClient, input_str: str, *, identity) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     resp = web_save_expense(
         web_client,
         expense_id,
@@ -344,7 +329,7 @@ def test_web_amount_over_precision_rejected(web_client: TestClient, input_str: s
 
 
 def test_web_save_negative_amount_shows_error(web_client: TestClient, *, identity) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     resp = web_save_expense(
         web_client,
         expense_id,
@@ -491,7 +476,7 @@ def test_web_edit_drawer_default_submit_is_save_not_reject(web_client: TestClien
     shim 时首个可见 submit 是「忽略草稿」——在输入框按 Enter 直接软删。"""
     import re
 
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity, content=RGBA_PNG_BYTES)
     drawer = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1")
     assert drawer.status_code == 200
 

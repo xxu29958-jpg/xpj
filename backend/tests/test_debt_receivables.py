@@ -26,13 +26,7 @@ from app.services.debt_service import (
     list_member_receivables_for_account,
 )
 from app.services.time_service import now_utc
-
-
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        owner = db.query(Account).order_by(Account.id.asc()).first()
-        assert owner is not None
-        return owner.id
+from tests._infra.identity import seeded_owner_account_id
 
 
 def _seed_account(display_name: str) -> int:
@@ -88,7 +82,7 @@ def _receivables_for(account_id: int) -> list:
 def test_receivables_endpoint_names_debtor_redacts_ledger(client: TestClient, *, identity) -> None:
     # The core gap-fill: the creditor (owner) sees the cross-ledger member Debt owed to
     # them, named with the DEBTOR's display name, ledger redacted, framed as a receivable.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_account_with_ledger("阿明", "receiver_b")
     public_id = _seed_receivable(creditor_id=owner_id, debtor_id=debtor_id, debtor_ledger="receiver_b")
 
@@ -110,7 +104,7 @@ def test_receivables_endpoint_names_debtor_redacts_ledger(client: TestClient, *,
 def test_receivables_name_fallback_when_display_name_blank(client: TestClient, *, identity) -> None:
     # A blank display name leaves counterparty_label None so the renderers fall back to the
     # generic member label (graceful degrade; display_name is NOT NULL so this is rare).
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_account_with_ledger("   ", "receiver_blank")  # whitespace-only name
     _seed_receivable(creditor_id=owner_id, debtor_id=debtor_id, debtor_ledger="receiver_blank")
 
@@ -122,7 +116,7 @@ def test_receivables_name_fallback_when_display_name_blank(client: TestClient, *
 def test_receivables_excludes_same_ledger_member_debt(client: TestClient, *, identity) -> None:
     # De-dup: a member Debt whose ledger the creditor IS a member of already shows in the
     # creditor's ledger-scoped list_debts, so it must NOT also appear in receivables.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_account("同账本债务人")
     # Debt parked in the OWNER's own ledger (owner is a member) → excluded from receivables.
     _seed_receivable(creditor_id=owner_id, debtor_id=debtor_id, debtor_ledger="owner")
@@ -134,7 +128,7 @@ def test_receivables_excludes_payable_owed_to_me_member(client: TestClient, *, i
     # Robustness: a member Debt with direction='owed_to_me' makes the counterparty the
     # DEBTOR (a payable, "I owe"), not a receivable — the direction='i_owe' filter excludes
     # it even though counterparty==viewer and it is cross-ledger.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_account_with_ledger("反向", "receiver_rev")
     with SessionLocal() as db:
         now = now_utc()
@@ -165,7 +159,7 @@ def test_receivables_excludes_external_debt(client: TestClient, *, identity) -> 
     # An external Debt has no member counterparty (counterparty_account_id is None per
     # ck_debts_member_has_account), so the counterparty_account_id==viewer clause already
     # excludes it — the counterparty_type=='member' filter is belt-and-suspenders here.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     with SessionLocal() as db:
         now = now_utc()
         db.add(
@@ -194,7 +188,7 @@ def test_receivables_excludes_external_debt(client: TestClient, *, identity) -> 
 def test_receivables_excludes_debtor_view(client: TestClient, *, identity) -> None:
     # The DEBTOR listing their receivables sees nothing: the Debt's counterparty is the
     # creditor, not the debtor, so the debtor is never the counterparty-creditor of it.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_account_with_ledger("债务人视角", "receiver_dv")
     _seed_receivable(creditor_id=owner_id, debtor_id=debtor_id, debtor_ledger="receiver_dv")
 
@@ -208,7 +202,7 @@ def test_receivables_requires_auth(client: TestClient) -> None:
 def test_receivables_detail_matches_list_for_creditor(client: TestClient, *, identity) -> None:
     # list↔detail consistency: the cross-ledger creditor's detail (GET /api/debts/{id}) shows
     # the SAME debtor name + redaction as the receivables list, not the generic member label.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_account_with_ledger("一致", "receiver_consistent")
     public_id = _seed_receivable(
         creditor_id=owner_id, debtor_id=debtor_id, debtor_ledger="receiver_consistent"
@@ -228,7 +222,7 @@ def test_participant_detail_for_same_ledger_debtor_names_creditor(
     client: TestClient, *, identity
 ) -> None:
     # Debtors need the known creditor name; their selected ledger remains visible.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_account_with_ledger("自视", "receiver_self")
     public_id = _seed_receivable(creditor_id=owner_id, debtor_id=debtor_id, debtor_ledger="receiver_self")
 
@@ -246,7 +240,7 @@ def test_participant_detail_for_cross_ledger_debtor_names_creditor_without_ledge
     client: TestClient, *, identity
 ) -> None:
     # Both participants share counterparty identity, never the other private ledger.
-    owner_id = _owner_account_id()  # the test owner acts as the cross-ledger DEBTOR here
+    owner_id = seeded_owner_account_id()  # the test owner acts as the cross-ledger DEBTOR here
     creditor_id = _seed_account_with_ledger("外部债权人", "receiver_creditor")
     with SessionLocal() as db:
         now = now_utc()
@@ -285,7 +279,7 @@ def test_participant_detail_for_cross_ledger_creditor_is_enriched(
     # Direct service-level pin of the creditor-IS-enriched detail branch (mirrors the two
     # debtor detail tests): cross-ledger creditor → ledger redacted, viewer_is_debtor False,
     # counterparty_label = the debtor's name. Removing the enrichment leaves the label None.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_account_with_ledger("被看见", "receiver_cred")
     public_id = _seed_receivable(creditor_id=owner_id, debtor_id=debtor_id, debtor_ledger="receiver_cred")
 
@@ -305,7 +299,7 @@ def test_receivables_includes_soft_removed_creditor_receivable(
     # it, so cannot see the Debt via list_debts — the dedup must use ACTIVE membership so the
     # receivable stays visible. Mutation: dropping the disabled_at filter counts the stale
     # membership and wrongly hides this receivable.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_account_with_ledger("阿明", "receiver_b")
     public_id = _seed_receivable(creditor_id=owner_id, debtor_id=debtor_id, debtor_ledger="receiver_b")
     with SessionLocal() as db:
@@ -327,7 +321,7 @@ def test_receivables_names_each_debtor_in_multi_row(client: TestClient, *, ident
     # Two cross-ledger receivables from two distinct debtors: each row carries the CORRECT
     # debtor's name keyed by owner — pins the batched _owner_display_names mapping (a mutation
     # that mis-keys or reuses one name for all rows would fail).
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     ming = _seed_account_with_ledger("阿明", "receiver_b")
     hong = _seed_account_with_ledger("小红", "receiver_c")
     pid_ming = _seed_receivable(creditor_id=owner_id, debtor_id=ming, debtor_ledger="receiver_b")
@@ -345,7 +339,7 @@ def test_receivables_includes_cleared_receivable(client: TestClient, *, identity
     # 'cleared'. A full Repayment fact drives the fold to 0 and the stored status is latched
     # cleared (as lock_and_fold would). Mutation adding `.where(Debt.status=='open')` drops
     # settled history and fails this.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_account_with_ledger("已清", "receiver_cleared")
     public_id = _seed_receivable(creditor_id=owner_id, debtor_id=debtor_id, debtor_ledger="receiver_cleared")
     with SessionLocal() as db:

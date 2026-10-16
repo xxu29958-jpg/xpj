@@ -65,6 +65,13 @@ class TestIdentity:
         return f"/u/{self.tenant_upload_key}"
 
 
+def seeded_owner_account_id() -> int:
+    with SessionLocal() as db:
+        owner = db.query(Account).order_by(Account.id.asc()).first()
+        assert owner is not None
+        return owner.id
+
+
 def seed_identity() -> TestIdentity:
     """Bootstrap owner + per-tenant devices/tokens. DB must already be fresh."""
     with SessionLocal() as db:

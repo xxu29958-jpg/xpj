@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from api_contract_helpers import manual_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import event
 
@@ -21,29 +22,6 @@ from tests._reports_overview_contracts import (
     seed_reports_overview_contract,
 )
 from tests.family_ledger_test_support import set_owner_ledger_role
-
-
-def _manual_expense(
-    client: TestClient,
-    *,
-    headers: dict[str, str],
-    amount_cents: int,
-    merchant: str,
-    category: str,
-    expense_time: str,
-) -> None:
-    response = client.post(
-        "/api/expenses/manual",
-        headers=headers,
-        json={
-            "client_ref": str(uuid4()),
-            "home_currency_code": "CNY", "amount_cents": amount_cents,
-            "merchant": merchant,
-            "category": category,
-            "expense_time": expense_time,
-        },
-    )
-    assert response.status_code == 200, response.json()
 
 
 def _insert_expense(
@@ -99,7 +77,7 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
     identity,
 ) -> None:
     for _ in range(3):
-        _manual_expense(
+        manual_expense(
             client,
             headers=identity.app_headers,
             amount_cents=100,
@@ -107,7 +85,7 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
             category="餐饮",
             expense_time="2026-05-02T00:30:00Z",
         )
-    _manual_expense(
+    manual_expense(
         client,
         headers=identity.app_headers,
         amount_cents=1000,
@@ -115,7 +93,7 @@ def test_reports_merchant_ranking_category_metric_and_csv_export(
         category="吃饭",
         expense_time="2026-05-03T00:30:00Z",
     )
-    _manual_expense(
+    manual_expense(
         client,
         headers=identity.app_headers,
         amount_cents=2000,
@@ -279,7 +257,7 @@ def test_reports_overview_month_granularity_and_viewer_read(
     *,
     identity,
 ) -> None:
-    _manual_expense(
+    manual_expense(
         client,
         headers=identity.app_headers,
         amount_cents=1000,
@@ -287,7 +265,7 @@ def test_reports_overview_month_granularity_and_viewer_read(
         category="生活",
         expense_time="2026-01-03T00:00:00Z",
     )
-    _manual_expense(
+    manual_expense(
         client,
         headers=identity.app_headers,
         amount_cents=5000,

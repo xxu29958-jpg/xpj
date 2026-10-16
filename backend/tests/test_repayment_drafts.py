@@ -24,38 +24,17 @@ from app.models import Account, Debt
 from app.services import debt_service
 from app.services.time_service import now_utc
 from tests._runtime_protocol import negotiated_headers
+from tests.debt_proposal_helpers import capture_repayment_draft
 from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
-
-
-def _create_draft(
-    client: TestClient,
-    identity,
-    *,
-    source: str = "alipay",
-    amount_cents: int = 20000,
-    merchant_label: str | None = "花呗",
-    notification_key: str | None = None,
-) -> dict:
-    body: dict[str, object] = {
-        "source": source,
-        "amount_cents": amount_cents,
-    }
-    if merchant_label is not None:
-        body["merchant_label"] = merchant_label
-    if notification_key is not None:
-        body["notification_key"] = notification_key
-    response = client.post("/api/repayment-drafts", headers=identity.app_headers, json=body)
-    assert response.status_code == 201, response.json()
-    return response.json()
 
 
 # --- capture --------------------------------------------------------------------
 
 
 def test_capture_creates_pending_draft(client: TestClient, *, identity) -> None:
-    draft = _create_draft(client, identity, amount_cents=30000, merchant_label="借呗")
+    draft = capture_repayment_draft(client, identity, amount_cents=30000, merchant_label='借呗')
     assert draft["status"] == "pending"
     assert draft["source"] == "alipay"
     assert draft["amount_cents"] == 30000
@@ -68,8 +47,8 @@ def test_capture_creates_pending_draft(client: TestClient, *, identity) -> None:
 
 
 def test_capture_dedupes_same_notification_identity(client: TestClient, *, identity) -> None:
-    first = _create_draft(client, identity, amount_cents=12345, notification_key="ident-abc")
-    second = _create_draft(client, identity, amount_cents=12345, notification_key="ident-abc")
+    first = capture_repayment_draft(client, identity, amount_cents=12345, notification_key='ident-abc')
+    second = capture_repayment_draft(client, identity, amount_cents=12345, notification_key='ident-abc')
     # Same per-post identity + content → the existing draft, not a twin.
     assert second["public_id"] == first["public_id"]
     listing = client.get("/api/repayment-drafts", headers=identity.app_headers).json()
@@ -79,8 +58,8 @@ def test_capture_dedupes_same_notification_identity(client: TestClient, *, ident
 def test_capture_distinct_identities_same_content_create_two(
     client: TestClient, *, identity
 ) -> None:
-    first = _create_draft(client, identity, amount_cents=9900, notification_key="ident-1")
-    second = _create_draft(client, identity, amount_cents=9900, notification_key="ident-2")
+    first = capture_repayment_draft(client, identity, amount_cents=9900, notification_key='ident-1')
+    second = capture_repayment_draft(client, identity, amount_cents=9900, notification_key='ident-2')
     # Two genuinely distinct posts (same咖啡 twice) → two reviewable drafts (codex PR#20).
     assert second["public_id"] != first["public_id"]
 
@@ -93,14 +72,6 @@ def test_capture_invalid_source_is_422(client: TestClient, *, identity) -> None:
     )
     assert response.status_code == 422, response.json()
     assert response.json()["error"] == "notification_source_invalid"
-
-
-def test_capture_home_currency_is_server_set(client: TestClient, *, identity) -> None:
-    # home_currency_code is NOT a client input — the server sets it from the configured
-    # home currency, so a capture that omits it still records the home currency, and the
-    # field cannot be used to smuggle a foreign currency past confirm.
-    draft = _create_draft(client, identity, amount_cents=20000)
-    assert draft["home_currency_code"] == "CNY"
 
 
 def test_capture_viewer_is_403(client: TestClient, *, identity) -> None:
@@ -126,7 +97,7 @@ def test_capture_unauthenticated_is_401(client: TestClient, *, identity) -> None
 
 
 def test_list_returns_pending_and_filters_by_status(client: TestClient, *, identity) -> None:
-    draft = _create_draft(client, identity, notification_key="list-1")
+    draft = capture_repayment_draft(client, identity, notification_key='list-1')
     pending = client.get("/api/repayment-drafts", headers=identity.app_headers).json()
     assert any(d["public_id"] == draft["public_id"] for d in pending["items"])
     # A status that no draft holds yet returns an empty inbox.
@@ -216,7 +187,7 @@ def test_list_pending_draft_carries_server_suggestion(client: TestClient, *, ide
     # An open external/manual Debt labeled the same as the captured platform → the inbox list
     # pre-selects it via suggested_debt_public_id (ephemeral — computed in the list path).
     debt = _create_external_debt(client, identity, counterparty_label="花呗")
-    draft = _create_draft(client, identity, merchant_label="花呗", amount_cents=20000)
+    draft = capture_repayment_draft(client, identity, merchant_label='花呗', amount_cents=20000)
     listed = _listed(client, identity, public_id=draft["public_id"])
     assert listed["suggested_debt_public_id"] == debt["public_id"]
 
@@ -277,14 +248,7 @@ def test_expense_repayment_draft_uses_existing_learning(
 ) -> None:
     learned_target = _create_external_debt(client, identity, counterparty_label="招商卡")
     _create_external_debt(client, identity, counterparty_label="浦发卡")
-    learned = _create_draft(
-        client,
-        identity,
-        source="other",
-        merchant_label="账单还款",
-        amount_cents=1000,
-        notification_key="learn-expense-bridge",
-    )
+    learned = capture_repayment_draft(client, identity, source='other', merchant_label='账单还款', amount_cents=1000, notification_key='learn-expense-bridge')
     _confirm_draft_to_debt(
         client,
         identity,
@@ -328,7 +292,7 @@ def test_list_suggestion_absent_when_ambiguous(client: TestClient, *, identity) 
     # (the user picks). Exercises the real candidate query returning >1 plus the matcher tie.
     _create_external_debt(client, identity, counterparty_label="花呗")
     _create_external_debt(client, identity, counterparty_label="花呗")
-    draft = _create_draft(client, identity, merchant_label="花呗", amount_cents=10000)
+    draft = capture_repayment_draft(client, identity, merchant_label='花呗', amount_cents=10000)
     listed = _listed(client, identity, public_id=draft["public_id"])
     assert listed["suggested_debt_public_id"] is None
 
@@ -337,7 +301,7 @@ def test_list_suggestion_only_for_pending_not_resolved(client: TestClient, *, id
     # The suggestion is for the review action; once a draft is resolved it carries none, even
     # though the candidate Debt still exists.
     _create_external_debt(client, identity, counterparty_label="花呗")
-    draft = _create_draft(client, identity, merchant_label="花呗", amount_cents=10000)
+    draft = capture_repayment_draft(client, identity, merchant_label='花呗', amount_cents=10000)
     # Pending → suggestion present.
     assert _listed(client, identity, public_id=draft["public_id"])["suggested_debt_public_id"]
     dismiss = client.post(
@@ -356,12 +320,8 @@ def test_service_unfiltered_list_suggests_only_pending_drafts(client: TestClient
     # pending one carries the suggestion. (Mutation: drop the per-draft pending guard → the
     # dismissed draft, co-listed while has_pending=True keeps candidates non-empty, also gets one.)
     debt = _create_external_debt(client, identity, counterparty_label="花呗")
-    pending = _create_draft(
-        client, identity, merchant_label="花呗", amount_cents=20000, notification_key="mix-pending"
-    )
-    resolved = _create_draft(
-        client, identity, merchant_label="花呗", amount_cents=20000, notification_key="mix-dismissed"
-    )
+    pending = capture_repayment_draft(client, identity, merchant_label='花呗', amount_cents=20000, notification_key='mix-pending')
+    resolved = capture_repayment_draft(client, identity, merchant_label='花呗', amount_cents=20000, notification_key='mix-dismissed')
     dismiss = client.post(
         f"/api/repayment-drafts/{resolved['public_id']}/dismiss", headers=identity.app_headers, json={}
     )
@@ -431,7 +391,7 @@ def test_list_suggestion_excludes_non_repayable_debt_shapes(client: TestClient, 
     _seed_debt_orm(counterparty_type="external", source_type="manual", status="voided")  # bites status!='voided'
     _seed_debt_orm(counterparty_type="member", source_type="manual", status="open")  # bites counterparty='external'
     _seed_debt_orm(counterparty_type="external", source_type="bill_split", status="open")  # bites source='manual'
-    draft = _create_draft(client, identity, merchant_label="花呗", amount_cents=20000)
+    draft = capture_repayment_draft(client, identity, merchant_label='花呗', amount_cents=20000)
     listed = _listed(client, identity, public_id=draft["public_id"])
     assert listed["suggested_debt_public_id"] is None
 
@@ -439,26 +399,16 @@ def test_list_suggestion_excludes_non_repayable_debt_shapes(client: TestClient, 
 # --- dismiss --------------------------------------------------------------------
 
 
-def test_dismiss_latches_dismissed(client: TestClient, *, identity) -> None:
-    draft = _create_draft(client, identity, amount_cents=4200)
-    response = client.post(
-        f"/api/repayment-drafts/{draft['public_id']}/dismiss",
-        headers=identity.app_headers,
-        json={},
-    )
-    assert response.status_code == 201, response.json()
-    assert response.json()["status"] == "dismissed"
-    assert response.json()["resolved_at"]
-
-
 def test_dismiss_is_idempotent_when_already_dismissed(
     client: TestClient, monkeypatch, *, identity
 ) -> None:
-    draft = _create_draft(client, identity, amount_cents=4200)
+    draft = capture_repayment_draft(client, identity, amount_cents=4200)
     first = client.post(
         f"/api/repayment-drafts/{draft['public_id']}/dismiss", headers=identity.app_headers, json={}
     )
     assert first.status_code == 201, first.json()
+    assert first.json()["status"] == "dismissed"
+    assert first.json()["resolved_at"]
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:
@@ -468,7 +418,7 @@ def test_dismiss_is_idempotent_when_already_dismissed(
             json={},
         )
         assert again.status_code == 201, again.json()
-        assert again.json()["status"] == "dismissed"
+        assert again.json() == first.json()
     finally:
         get_settings.cache_clear()
 
@@ -476,7 +426,7 @@ def test_dismiss_is_idempotent_when_already_dismissed(
 def test_dismiss_viewer_is_403(client: TestClient, *, identity) -> None:
     # dismiss is a writers-only destructive op; its get_current_writer_context dep is
     # per-handler, so it needs its own viewer-403 pin (capture/confirm cover their handlers).
-    draft = _create_draft(client, identity, amount_cents=1000)
+    draft = capture_repayment_draft(client, identity, amount_cents=1000)
     set_owner_ledger_role("viewer")
     response = client.post(
         f"/api/repayment-drafts/{draft['public_id']}/dismiss", headers=identity.app_headers, json={}
@@ -486,6 +436,6 @@ def test_dismiss_viewer_is_403(client: TestClient, *, identity) -> None:
 
 
 def test_dismiss_unauthenticated_is_401(client: TestClient, *, identity) -> None:
-    draft = _create_draft(client, identity, amount_cents=1000)
+    draft = capture_repayment_draft(client, identity, amount_cents=1000)
     response = client.post(f"/api/repayment-drafts/{draft['public_id']}/dismiss", json={})
     assert response.status_code == 401

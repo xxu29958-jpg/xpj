@@ -35,7 +35,7 @@ from datetime import timedelta
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
-from api_contract_helpers import web_reject_expense, web_undo_expense
+from api_contract_helpers import upload_png_as_raw_body, web_reject_expense, web_undo_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -43,24 +43,13 @@ from app.database import SessionLocal
 from app.models import Expense, LedgerAuditLog
 from app.services.soft_delete_policy import SOFT_DELETE_RETENTION
 from app.services.time_service import now_utc
-from tests._infra.assets import PNG_BYTES
 from tests._web_native_form_support import hidden_post_forms
-
-
-def _create_pending(client: TestClient, *, identity) -> int:
-    resp = client.post(
-        identity.upload_url_path,
-        headers={**identity.upload_headers, "Content-Type": "image/png"},
-        content=PNG_BYTES,
-    )
-    assert resp.status_code == 200, resp.text
-    return int(resp.json()["id"])
 
 
 def test_web_reject_redirects_with_undo_query_and_success_flash(
     web_client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity)
 
     response = web_reject_expense(
         web_client, expense_id, identity=identity, follow_redirects=False
@@ -88,7 +77,7 @@ def test_web_reject_from_recurring_occurrence_returns_to_the_original_period(
 
     series = _create_series(web_client, identity)
     series_id = series["public_id"]
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity)
     snapshot = web_client.get(
         f"/api/expenses/{expense_id}", headers=identity.app_headers
     )
@@ -157,7 +146,7 @@ def test_web_undo_invalid_token_from_recurring_returns_to_the_original_period(
 
     series = _create_series(web_client, identity)
     series_id = series["public_id"]
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity)
     undone = web_client.post(
         f"/web/expenses/{expense_id}/undo",
         data={
@@ -181,7 +170,7 @@ def test_web_undo_invalid_token_from_recurring_returns_to_the_original_period(
 def test_web_pending_renders_undo_banner_in_green_when_success_flash(
     web_client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity)
     rejection = web_reject_expense(
         web_client, expense_id, identity=identity, follow_redirects=False
     )
@@ -210,7 +199,7 @@ def test_web_pending_undo_form_carries_csrf_token(
     # CSRF-exempt at the middleware so a typo like ``value="{{ wrong_var }}"``
     # would never trigger a 403 in unit tests. Pin the field's presence and a
     # non-empty value so a template regression can't ship green.
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity)
     rejection = web_reject_expense(
         web_client, expense_id, identity=identity, follow_redirects=False
     )
@@ -249,7 +238,7 @@ def test_web_pending_drops_undo_for_cross_ledger_expense(
     # the currently-selected ledger (or isn't currently rejected) must not render
     # the misleading "可撤销" banner. The route itself is the source of truth
     # via WHERE tenant_id + status, but the page also stops lying.
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity)
     web_reject_expense(
         web_client, expense_id, identity=identity, follow_redirects=False
     )
@@ -277,7 +266,7 @@ def test_web_pending_drops_undo_for_non_rejected_row(
     # Ownership-check companion: even within the right ledger, a pending row must
     # not surface the undo banner. Either the row was never rejected, or someone
     # else / the same user from another tab already undid it.
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity)
     page = web_client.get(
         f"/web/pending?ledger_id=owner&undo={expense_id}&msg=已忽略&flash_type=success"
     )
@@ -289,7 +278,7 @@ def test_web_pending_drops_undo_for_non_rejected_row(
 def test_web_undo_after_reject_restores_pending_and_writes_audit(
     web_client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity)
     web_reject_expense(
         web_client, expense_id, identity=identity, follow_redirects=False
     )
@@ -320,7 +309,7 @@ def test_web_undo_after_reject_restores_pending_and_writes_audit(
 def test_web_undo_after_window_expires_preserves_original_with_failure(
     web_client: TestClient, *, identity
 ) -> None:
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity)
     web_reject_expense(
         web_client, expense_id, identity=identity, follow_redirects=False
     )
@@ -352,7 +341,7 @@ def test_web_undo_for_pending_row_retains_failed_original(
     web_client: TestClient, *, identity
 ) -> None:
     # Never rejected — undo has nothing to restore.
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity)
     response = web_undo_expense(web_client, expense_id, follow_redirects=False)
     assert response.status_code == 404, response.text
     assert f"/web/expenses/{expense_id}/undo" in hidden_post_forms(response.text)
@@ -376,7 +365,7 @@ def test_web_undo_from_different_ledger_form_preserves_refused_original(
     # with form ledger_id pointing at a different (newly-created) ledger.
     # The atomic UPDATE WHERE tenant_id=<other_ledger> matches zero rows,
     # so the row stays rejected and no audit is written.
-    expense_id = _create_pending(web_client, identity=identity)
+    expense_id = upload_png_as_raw_body(web_client, identity=identity)
     web_reject_expense(
         web_client, expense_id, identity=identity, follow_redirects=False
     )

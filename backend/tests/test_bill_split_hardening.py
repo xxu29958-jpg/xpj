@@ -19,7 +19,8 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
-from tests.bill_split_test_support import _make_expense_for_owner, _owner_account_id, _seed_receiver, _split_headers
+from tests._infra.identity import seeded_owner_account_id
+from tests.bill_split_test_support import _make_expense_for_owner, _seed_receiver, _split_headers
 
 
 def test_invitation_retry_after_peer_acceptance_keeps_the_original_result(
@@ -146,7 +147,7 @@ def test_create_invitation_row_locks_parent_expense(*, identity) -> None:
             blocked.execute(text("SET LOCAL lock_timeout = '500ms'"))
             bsplit.create_invitation(
                 blocked,
-                sender_account_id=_owner_account_id(),
+                sender_account_id=seeded_owner_account_id(),
                 sender_ledger_id="owner",
                 expense_id=expense_id,
                 receiver_account_id=receiver_account_id,
@@ -187,7 +188,7 @@ def test_reaccept_with_different_target_ledger_is_conflict() -> None:
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -253,7 +254,7 @@ def test_foreign_currency_split_lands_received_expense_in_home_currency() -> Non
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -312,7 +313,7 @@ def test_two_sessions_accept_race_creates_single_received_expense(*, identity) -
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -376,7 +377,7 @@ def test_accept_claim_update_is_guarded_by_invited_status(*, identity) -> None:
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
