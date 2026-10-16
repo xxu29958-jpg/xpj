@@ -4,8 +4,8 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import LedgerMember
-from tests.test_web_budgets import _save_budget
-from tests.test_web_budgets import web_client as web_client
+from tests._web_budget_test_support import _save_budget
+from tests._web_budget_test_support import web_client as web_client
 
 
 def test_history_from_budget_page_preserves_viewer_access_and_selected_ledger(web_client):

@@ -112,7 +112,7 @@ def test_jpy_editor_returns_from_rate_repair_to_usd_projection_without_reparsing
     from app.routes.web_budget_fx import _TASK_FIELDS, _task_return
     from app.services.budget_advisor_service import _inputs_builder as builder
     from app.services.money_projection_service import ProjectionGap
-    from tests.test_budget_inputs_projection import seed_reads
+    from tests.budget_input_test_support import seed_reads
 
     seed_reads(monkeypatch)
     saved = SimpleNamespace(home_currency_code="JPY", savings_target_cents=500, reserved_buffer_cents=100, row_version=3)

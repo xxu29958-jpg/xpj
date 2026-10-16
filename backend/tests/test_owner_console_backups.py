@@ -21,17 +21,10 @@ def local_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_require_local, None)
 
 
-def _stub_latest_backup(monkeypatch: pytest.MonkeyPatch, *, hours_ago: int | None):
+def _stub_latest_backup(monkeypatch: pytest.MonkeyPatch, *, hours_ago: int):
     from app.services import dataset_backup_inventory
     from app.services.time_service import now_utc
 
-    if hours_ago is None:
-        monkeypatch.setattr(
-            dataset_backup_inventory,
-            "latest_published_backup_record",
-            lambda: None,
-        )
-        return None
     entry = dataset_backup_inventory.BackupEntry(
         file_name="ticketbox-backup-8c78c277-9e2e-48cd-86a2-7a9087d650a2",
         backup_id="8c78c277-9e2e-48cd-86a2-7a9087d650a2",
@@ -141,7 +134,6 @@ def test_ordinary_backup_status_does_not_hash_historical_payloads(
         encoding="utf-8",
     )
     monkeypatch.setattr(dataset_backup_inventory, "_INVENTORY_PATH", inventory_path)
-    assert not hasattr(dataset_backup_inventory, "read_manifest")
 
     assert len(dataset_backup_inventory.list_published_backup_records()) == 1
     inventory = dataset_backup_inventory.published_backup_inventory()

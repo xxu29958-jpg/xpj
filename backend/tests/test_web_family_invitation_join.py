@@ -19,7 +19,7 @@ from tests._web_public_session_support import (
     mint_session,
     public_client,
 )
-from tests.test_family_ledger_permissions import _mint_foreign_ledger_invitation
+from tests.family_ledger_test_support import _mint_foreign_ledger_invitation
 
 
 def _csrf(html: str) -> str:

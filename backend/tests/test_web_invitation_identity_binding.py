@@ -12,7 +12,7 @@ from app.models import AuthToken, Invitation, LedgerMember
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.services.identity_service import hash_secret
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
-from tests.test_family_ledger_permissions import _mint_foreign_ledger_invitation
+from tests.family_ledger_test_support import _mint_foreign_ledger_invitation
 
 pytestmark = pytest.mark.real_db
 

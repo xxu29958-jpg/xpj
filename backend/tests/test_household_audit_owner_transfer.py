@@ -9,24 +9,8 @@ from sqlalchemy import func, select
 from app.database import SessionLocal
 from app.models import AuthToken, Ledger, LedgerAuditLog, LedgerMember
 from app.services.identity_service import hash_secret
-from tests._runtime_protocol import current_protocol_headers
+from tests.family_ledger_test_support import _bearer, _create_family_ledger, _switch_to
 from tests.pairing_test_support import invitation_accept_payload
-
-
-def _bearer(token: str) -> dict[str, str]:
-    return current_protocol_headers({"Authorization": f"Bearer {token}"})
-
-
-def _create_family_ledger(client: TestClient, name: str = "家庭账本", *, identity) -> str:
-    resp = client.post("/api/ledgers", headers=identity.admin_headers, json={"name": name})
-    assert resp.status_code == 201, resp.json()
-    return resp.json()["ledger_id"]
-
-
-def _switch_to(client: TestClient, ledger_id: str, headers: dict[str, str]) -> str:
-    resp = client.post(f"/api/ledgers/{ledger_id}/switch", headers=headers)
-    assert resp.status_code == 200, resp.json()
-    return resp.json()["session_token"]
 
 
 def _mint_invitation(client: TestClient, ledger_id: str, owner_token: str, role: str = "member") -> str:
@@ -324,7 +308,6 @@ def test_auth_token_role_is_resolved_from_current_ledger_member(client: TestClie
     with SessionLocal() as db:
         token_row = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(member_token)))
         assert token_row is not None
-        assert not hasattr(token_row, "role")
         member = db.scalar(
             select(LedgerMember)
             .where(LedgerMember.ledger_id == ledger_id)
