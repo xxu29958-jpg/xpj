@@ -211,6 +211,7 @@ class RelationshipJourney:
         self.expect("settlement", 0)
 
     def run(self):
+        from scripts.relationship_debt_adjustment import manual_adjustment
         from scripts.relationship_journey_recovery import RelationshipRecovery
         from scripts.relationship_journey_views import goal_entry
 
@@ -234,5 +235,8 @@ class RelationshipJourney:
             assert result["source_amount"] == 10000 and result["expenses"] == 2 and result["offsets"] == 1
             assert (result["original_paid"], result["original_forgiven"], result["return_paid"], result["return_forgiven"]) == (3000, 1000, 200, 100)
             assert result["return_count"] == 1 and result["repayments"] == 2
-            result["verified_leg"] = "Bilateral invitation, repayment, source refund, explicit agreement, return and forgiveness, immutable histories, both clients and recovery"
+            adjustment = manual_adjustment(self)
+            assert self.facts() == result, "The manual adjustment changed the independent bilateral relationship"
+            result["manual_adjustment"] = adjustment
+            result["verified_leg"] = "Bilateral invitation, repayment, source refund, explicit agreement, return and forgiveness, immutable histories, both clients and recovery; native manual adjustment through the production worker"
             return result

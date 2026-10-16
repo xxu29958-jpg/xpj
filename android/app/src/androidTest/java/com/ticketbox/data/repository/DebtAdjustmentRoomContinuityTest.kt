@@ -16,7 +16,6 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.ViewModel
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.domain.model.AppSkin
@@ -26,11 +25,6 @@ import com.ticketbox.viewmodel.DebtAction
 import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.DebtDetailViewModel
-import com.ticketbox.viewmodel.ReceivablesViewModel
-import com.ticketbox.viewmodel.DebtGoalViewModel
-import com.ticketbox.viewmodel.DebtListViewModel
-import com.ticketbox.viewmodel.CreateDebtGoalViewModel
-import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 import com.ticketbox.viewmodel.DebtActivityViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.OutboxRecoveryRepositories
@@ -108,6 +102,7 @@ class DebtAdjustmentRoomContinuityTest {
     }
 
     private fun settleOriginalKindAfterReopen(original: Map<String, String?>) {
+        fixture.network.kindResponse = fixture.network.current.copy(debtKind = "revolving", rowVersion = 3)
         fixture.network.failReads = false
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
         val accepted = fixture.network.current
@@ -158,6 +153,7 @@ class DebtAdjustmentRoomContinuityTest {
         assertEquals(1, fixture.scheduleCalls)
         assertEquals(50_000L, detail.value?.state?.value?.debt?.remainingAmountCents)
         assertEquals("2", original["expectedRowVersion"])
+        fixture.network.adjustmentResponse = fixture.network.current.copy(remainingAmountCents = 53_000, rowVersion = 3)
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
         assertEquals(1, fixture.network.results.size)
 
@@ -185,19 +181,32 @@ class DebtAdjustmentRoomContinuityTest {
     }
 
     @Test
-    fun retainedDebtListRefreshesAfterBackgroundAdjustmentDelivery() = assertRetainedConsumerRefreshes("list")
-
-    @Test
-    fun retainedReceivablesRefreshAfterBackgroundAdjustmentDelivery() = assertRetainedConsumerRefreshes("receivables")
-
-    @Test
-    fun retainedDebtGoalRefreshesAfterBackgroundAdjustmentDelivery() = assertRetainedConsumerRefreshes("goal")
-
-    @Test
-    fun retainedCreateGoalCandidatesRefreshAfterBackgroundAdjustmentDelivery() = assertRetainedConsumerRefreshes("createGoal")
-
-    @Test
-    fun retainedRepaymentDraftTargetsRefreshAfterBackgroundAdjustmentDelivery() = assertRetainedConsumerRefreshes("repaymentDraft")
+    fun retainedConsumersRefreshAfterBackgroundAdjustmentDelivery() {
+        fixture.network.current = fixture.network.current.copy(direction = "owed_to_me")
+        fixture.network.loseResponse = false
+        val graph = fixture.reopen()
+        lateinit var retained: RetainedAdjustmentConsumers
+        compose.runOnIdle { retained = RetainedAdjustmentConsumers(graph) }
+        try {
+            compose.waitUntil(10_000) { retained.balances() == List(5) { 50_000L } }
+            compose.runOnIdle {
+                retained.createGoal.updateName("保留原目标名称")
+                retained.createGoal.toggleDebt(fixture.network.current.publicId)
+            }
+            saveAndCloseDetail(graph, fixture)
+            val original = fixture.stored().single()
+            assertEquals(1, runBlocking { fixture.drain() }.done)
+            assertEquals("done", fixture.stored().single()["status"])
+            compose.waitUntil(10_000) { retained.balances() == List(5) { 53_000L } }
+            assertEquals("list, receivables, goal, create goal and repayment draft", List(5) { 53_000L }, retained.balances())
+            assertRetainedAdjustmentSelection(retained.createGoal, fixture.network.current.publicId)
+            assertRetainedAdjustmentSelection(retained.inbox, fixture.network.current.publicId)
+            for (field in listOf("payload", "expectedRowVersion", "idempotencyKey", "ownerKey", "ledgerId")) {
+                assertEquals(original[field], fixture.stored().single()[field])
+            }
+            assertEquals(1, fixture.network.results.size)
+        } finally { compose.runOnIdle { retained.close() } }
+    }
 
     @Test
     fun globalDropOfUnknownAdjustmentRequiresCanonicalRecoveryForAllRetainedConsumers() {
@@ -271,71 +280,8 @@ class DebtAdjustmentRoomContinuityTest {
         }
     }
 
-    private fun assertRetainedConsumerRefreshes(consumer: String) {
-        val retained = DebtAdjustmentConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext)
-        var model: ViewModel? = null
-        try {
-            if (consumer == "receivables") {
-                retained.network.current = retained.network.current.copy(direction = "owed_to_me")
-            }
-            retained.network.loseResponse = false
-            val graph = retained.reopen()
-            lateinit var balance: () -> Long?
-            compose.runOnIdle {
-                val (created, read) = createRetainedConsumer(graph, consumer)
-                model = created
-                balance = read
-            }
-            compose.waitUntil(10_000) { balance() == 50_000L }
-            compose.runOnIdle {
-                (model as? CreateDebtGoalViewModel)?.apply {
-                    updateName("保留原目标名称")
-                    toggleDebt(retained.network.current.publicId)
-                }
-            }
-            saveAndCloseDetail(graph, retained)
-            val original = retained.stored().single()
-            assertEquals(1, runBlocking { retained.drain() }.done)
-            assertEquals("done", retained.stored().single()["status"])
-            compose.waitUntil(10_000) { balance() == 53_000L }
-            assertEquals(53_000L, balance())
-            assertRetainedAdjustmentSelection(requireNotNull(model), retained.network.current.publicId)
-            assertEquals(1, retained.network.results.size)
-            for (field in listOf("payload", "expectedRowVersion", "idempotencyKey", "ownerKey", "ledgerId")) {
-                assertEquals(original[field], retained.stored().single()[field])
-            }
-        } finally {
-            compose.runOnIdle { model?.viewModelScope?.cancel() }
-            retained.close()
-        }
-    }
-
-
-    private fun createRetainedConsumer(graph: RepositoryGraph, consumer: String): Pair<ViewModel, () -> Long?> = when (consumer) {
-        "list" -> {
-            val model = DebtListViewModel(graph.debtRepository, graph.debtCreationRepository, graph.debtWriteRepository)
-            model to { model.state.value.debts.singleOrNull()?.remainingAmountCents }
-        }
-        "receivables" -> {
-            val model = ReceivablesViewModel(graph.debtRepository, graph.debtWriteRepository)
-            model to { model.state.value.receivables.singleOrNull()?.remainingAmountCents }
-        }
-        "goal" -> {
-            val model = DebtGoalViewModel(graph.reportsRepository, graph.debtWriteRepository)
-            model to { model.state.value.goals.singleOrNull()?.debtRepayment?.linkedDebts?.singleOrNull()?.remainingAmountCents }
-        }
-        "createGoal" -> {
-            val model = CreateDebtGoalViewModel(graph.goalEditRepository, graph.debtRepository, graph.debtWriteRepository)
-            model to { model.state.value.candidates.singleOrNull()?.remainingAmountCents }
-        }
-        "repaymentDraft" -> {
-            val model = RepaymentDraftInboxViewModel(graph.repaymentDraftRepository, graph.debtRepository, graph.debtWriteRepository, graph.repaymentReviewRepository)
-            model to { model.state.value.targetDebts.singleOrNull()?.remainingAmountCents }
-        }
-        else -> error("Unknown retained consumer: $consumer")
-    }
-
     private fun saveAndCloseDetail(graph: RepositoryGraph, retained: DebtAdjustmentConnectedFixture) {
+        retained.network.adjustmentResponse = retained.network.current.copy(remainingAmountCents = 53_000, rowVersion = 3)
         lateinit var model: DebtDetailViewModel
         compose.runOnIdle {
             model = DebtDetailViewModel(graph.debtRepository, graph.debtWriteRepository)
@@ -363,6 +309,7 @@ class DebtAdjustmentRoomContinuityTest {
         val originalGraph = fixture.reopen()
         val binding = requireNotNull(originalGraph.debtWriteRepository.currentAccess()).binding
         runBlocking { originalGraph.debtWriteRepository.save(binding, fixture.network.current.toDomain(), 3_000, "补记原借款").getOrThrow() }
+        fixture.network.adjustmentResponse = fixture.network.current.copy(remainingAmountCents = 53_000, rowVersion = 3)
         fixture.network.loseResponse = true
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
         val original = fixture.stored().single()

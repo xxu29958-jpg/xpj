@@ -129,6 +129,10 @@ internal class DebtAdjustmentConnectedNetwork {
     var readFailure: IOException = IOException("Synthetic unavailable debt read")
     var readGate: CompletableDeferred<Unit>? = null
     var loseResponse = true
+    // Each scenario supplies its accepted read; this transport does not calculate server facts.
+    var adjustmentResponse: DebtDto? = null
+    var kindResponse: DebtDto? = null
+    var repaymentResponse: DebtDto? = null
     val calls = mutableListOf<Pair<DebtAdjustmentCreateRequestDto, String>>()
     val kindCalls = mutableListOf<Pair<DebtKindSetRequestDto, String>>()
     val kindResults = mutableMapOf<String, Pair<DebtKindSetRequestDto, DebtDto>>()
@@ -142,8 +146,7 @@ internal class DebtAdjustmentConnectedNetwork {
             kindCalls += request to key
             if (failReads) throw IOException("Synthetic offline classification write")
             kindResults[key]?.let { (original, receipt) -> check(original == request); return receipt }
-            check(request.expectedRowVersion == current.rowVersion)
-            current = current.copy(debtKind = request.debtKind, rowVersion = current.rowVersion + 1)
+            current = requireNotNull(kindResponse) { "Declare the accepted classification response" }
             kindResults[key] = request to current
             if (loseResponse) throw IOException("Synthetic classification reply lost after acceptance")
             return current
@@ -188,9 +191,7 @@ internal class DebtAdjustmentConnectedNetwork {
             val key = requireNotNull(idempotencyKey)
             repaymentCalls += request to key
             val original = repaymentResults.getOrPut(key) {
-                check(request.expectedRowVersion == current.rowVersion)
-                current = current.copy(remainingAmountCents = current.remainingAmountCents - request.amountCents,
-                    paidAmountCents = current.paidAmountCents + request.amountCents, rowVersion = current.rowVersion + 1)
+                current = requireNotNull(repaymentResponse) { "Declare the accepted repayment response" }
                 request to DebtRepaymentReceiptDto(publicId, "repayment-${repaymentResults.size + 1}", current.rowVersion, current.homeCurrencyCode)
             }
             check(original.first == request)
@@ -209,9 +210,7 @@ internal class DebtAdjustmentConnectedNetwork {
             check(publicId == current.publicId)
             calls += request to requireNotNull(idempotencyKey)
             val response = results.getOrPut(idempotencyKey) {
-                check(request.expectedRowVersion == current.rowVersion)
-                current.copy(remainingAmountCents = current.remainingAmountCents + request.amountCents,
-                    rowVersion = current.rowVersion + 1).also { current = it }
+                requireNotNull(adjustmentResponse) { "Declare the accepted adjustment response" }.also { current = it }
             }
             if (loseResponse) throw IOException("Synthetic lost response after commit")
             return response
