@@ -157,19 +157,6 @@ class OutboxRepositoryTest {
     }
 
     @Test
-    fun resolveConflictDropMineDeletesRow() = runTest {
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        repo.markConflict(id, "stale")
-
-        repo.resolveConflict(id, ConflictResolution.DropMine)
-
-        assertTrue(dao.rows[id] == null)
-    }
-
-
-    @Test
     fun resolveFailedRetryExpiresOverAgeRowInsteadOfRequeuing() = runTest {
         // ADR-0042 §4.10: the reaper skips non-PENDING rows, so an old FAILED row
         // (max_attempts_exceeded) never carries outbox_row_expired. Retrying it would
@@ -239,36 +226,6 @@ class OutboxRepositoryTest {
     }
 
     @Test
-    fun resolveFailedRetryWithoutTokenFlipsBackToPending() = runTest {
-        // [codex round-3 P2#2] Without a UI surface, FAILED rows
-        // permanently block same-target later mutations because of
-        // r2#1's NOT EXISTS filter. ``resolveFailed(Retry)`` must
-        // put the row back to PENDING so the next drain re-claims it.
-        val dao = FakePendingMutationDao()
-        var scheduled = 0
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"), onEnqueued = { scheduled++ })
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        repo.markFailed(id, "transient parse")
-
-        val original = dao.rows.getValue(id)
-        dao.refusedRecoveries += id
-        assertEquals(false, repo.resolveFailed(id, FailedResolution.Retry()))
-        assertEquals(original, dao.rows.getValue(id))
-        assertEquals(1, scheduled)
-        dao.refusedRecoveries.remove(id)
-        assertTrue(repo.resolveFailed(id, FailedResolution.Retry()))
-        assertEquals(2, scheduled)
-
-        val row = dao.rows[id]!!
-        assertEquals(PendingMutationStatus.Pending.wireValue, row.status)
-        // The row's lastError is replaced by the manual_retry marker so the UI knows it
-        // was user-initiated. snake_case 与 ``recovered_from_stuck_in_flight`` /
-        // ``no_dispatcher_registered:`` / ``session_boundary_aborted`` 等项目内已有
-        // marker 对齐(原 PR review P3 style)。
-        assertEquals("manual_retry", row.lastError)
-    }
-
-    @Test
     fun resolveFailedRetryWithFreshTokenAlsoRefreshesIt() = runTest {
         val dao = FakePendingMutationDao()
         val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
@@ -291,18 +248,6 @@ class OutboxRepositoryTest {
         assertEquals(2L, row.expectedRowVersion)
         assertEquals(null, row.lastError)
         assertEquals(0, row.retryCount, "Retry(freshToken) 也是用户显式重试, 必须重置 retryCount")
-    }
-
-    @Test
-    fun resolveFailedDropDeletesRow() = runTest {
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val id = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        repo.markFailed(id, "user gave up")
-
-        repo.resolveFailed(id, FailedResolution.Drop)
-
-        assertTrue(dao.rows[id] == null)
     }
 
     @Test

@@ -244,6 +244,7 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         assertTrue(fixture.outbox.resolveFailed(row.id, FailedResolution.Retry()))
         val retried = fixture.queue.rows.getValue(row.id)
         assertEquals(PendingMutationStatus.Pending.wireValue, retried.status)
+        fixture.queue.refusedDeletes += row.id
         response.complete(harness.confirmedDto())
         operation.join()
         advanceUntilIdle()

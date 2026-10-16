@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 @RunWith(Parameterized::class)
 internal class OutboxRecoveryWakeupTest(private val conflict: Boolean, private val drop: Boolean) {
     @Test
-    fun acceptedRecoveryNotifiesAfterTheConditionalChangeAndStaleRecoveryDoesNot() = runTest {
+    fun acceptedRecoveryNotifiesAfterTheConditionalChangeAndRefusedRecoveryDoesNot() = runTest {
         val dao = FakePendingMutationDao()
         var armed = false
         val notifications = mutableListOf<List<String>>()
@@ -28,6 +28,8 @@ internal class OutboxRecoveryWakeupTest(private val conflict: Boolean, private v
 
         val committed = if (drop) emptyList() else listOf(PendingMutationStatus.Pending.wireValue)
         assertEquals(listOf(committed), notifications, "The recovery owner must publish the committed state")
+        dao.refusedRecoveries += id
+        dao.refusedDeletes += id
         assertFalse(recover(outbox, id))
         assertEquals(listOf(committed), notifications)
     }
