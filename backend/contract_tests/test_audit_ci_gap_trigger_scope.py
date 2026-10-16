@@ -39,6 +39,7 @@ jobs:
       android_apk: ${{ steps.scope.outputs.android_apk }}
       android_connected: ${{ steps.scope.outputs.android_connected }}
       windows: ${{ steps.scope.outputs.windows }}
+      windows_build: ${{ steps.scope.outputs.windows_build }}
       postgres_matrix: ${{ steps.scope.outputs.postgres_matrix }}
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
@@ -343,12 +344,13 @@ def test_fail_closed_scope_job_can_protect_a_heavy_lane(tmp_path: Path) -> None:
     _assert_codeql_terminal_mutations_are_rejected(mod, workflows)
 
 
-@pytest.mark.parametrize("filename,job,output,binding", [
-    ("ci.yml", "android_apk_release", "android_apk", "RELEASE_APK=ANDROID_APK_SCOPE"),
-    ("android-connected-test.yml", "connected_execution", "android_connected", "EXECUTION=ANDROID_CONNECTED_SCOPE"),
+@pytest.mark.parametrize("filename,job,output,binding,scope", [
+    ("ci.yml", "android_apk_release", "android_apk", "RELEASE_APK=ANDROID_APK_SCOPE", "android"),
+    ("android-connected-test.yml", "connected_execution", "android_connected", "EXECUTION=ANDROID_CONNECTED_SCOPE", "android"),
+    ("ci.yml", "windows_packaging_build", "windows_build", "BUILD=WINDOWS_BUILD_SCOPE", "windows"),
 ])
-def test_android_capability_wiring_rejects_partial_or_crossed_connections(
-    tmp_path: Path, filename: str, job: str, output: str, binding: str,
+def test_capability_wiring_rejects_partial_or_crossed_connections(
+    tmp_path: Path, filename: str, job: str, output: str, binding: str, scope: str,
 ) -> None:
     mod = load_ci_gap_audit()
     workflows = tmp_path / ".github" / "workflows"
@@ -357,10 +359,10 @@ def test_android_capability_wiring_rejects_partial_or_crossed_connections(
     target = workflows / filename
     target.write_text(source, encoding="utf-8")
     commands = mod._iter_workflow_run_commands(workflows, protected_only=True)
-    assert any(command.job == job and command.protection_scope == "android" for command in commands)
+    assert any(command.job == job and command.protection_scope == scope for command in commands)
     mutations = [
         source.replace(f"      {output}: ${{{{ steps.scope.outputs.{output} }}}}\n", ""),
-        source.replace(f"outputs.{output} != 'false'", "outputs.android != 'false'"),
+        source.replace(f"outputs.{output} != 'false'", f"outputs.{scope} != 'false'"),
         source.replace(f"--lane-scope {binding}", ""),
         source.replace(f"outputs.{output} }}}}", "outputs.typo }}"),
     ]

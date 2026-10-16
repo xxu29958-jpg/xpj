@@ -361,6 +361,7 @@ def _assert_windows_release_lanes(
     assert "LIFECYCLE_RESULT" not in windows_environment
     assert windows_environment["VNEXT_RESULT"] == "${{ needs.windows_vnext_lifecycle.result }}"
     assert windows_environment["BUILD_RESULT"] == "${{ needs.windows_packaging_build.result }}"
+    assert windows_environment["WINDOWS_BUILD_SCOPE"] == "${{ needs.scope.outputs.windows_build }}"
     maintenance = _steps(jobs["windows_packaging_build"])["Windows database maintenance contract"]["run"]
     assert "tests/test_database_maintenance_entrypoint.py" in maintenance
 
