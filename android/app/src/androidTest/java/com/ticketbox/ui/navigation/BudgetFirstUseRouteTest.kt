@@ -1,5 +1,7 @@
 package com.ticketbox.ui.navigation
 
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.printToString
 import android.content.Context
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsActions
@@ -144,7 +146,15 @@ class BudgetFirstUseRouteTest {
         transport.ledgerId = "another-ledger"
         compose.runOnIdle { harness.fixture.switchLedger() }
         compose.waitUntil(5_000) { transport.readLedgers.lastOrNull() == "another-ledger" }
-        compose.onNodeWithText(text(R.string.budget_editor_total_label)).performScrollTo()
+        try {
+            compose.onNodeWithText(text(R.string.budget_editor_total_label)).performScrollTo()
+        } catch (failure: Throwable) {
+            saveConsumerArtPreview("budget-ledger-failure", requireNotNull(
+                InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
+            val roots = compose.onAllNodes(isRoot(), useUnmergedTree = true)
+            for (index in roots.fetchSemanticsNodes().indices) println(roots[index].printToString())
+            throw failure
+        }
         compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
         assertTrue(transport.writes.isEmpty())
