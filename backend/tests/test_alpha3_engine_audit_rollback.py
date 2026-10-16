@@ -17,48 +17,19 @@ from app.services.rule_application_service import (
     rule_application_change_counts,
 )
 from app.services.time_service import now_utc
-
-
-def _seed_pending_with_merchant(merchant: str) -> int:
-    """Upload a PNG (pending), then patch its merchant to control matching."""
-    # Use a TestClient implicitly via the fixture in the test that calls this helper.
-    raise RuntimeError("call _patch_pending_merchant from a test using `client`")
-
-
-def _set_pending_merchant(client: TestClient, expense_id: int, merchant: str, *, identity) -> None:
-    response = patch_expense(
-        client,
-        expense_id,
-        headers=identity.app_headers,
-        fields={"merchant": merchant, "amount_cents": 3800},
-    )
-    assert response.status_code == 200
-
-
-def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
-    preview = client.post(
-        f"/api/rules/apply-pending/preview?max_scan={max_scan}",
-        headers=identity.app_headers,
-    )
-    assert preview.status_code == 200, preview.json()
-    token = preview.json()["preview_token"]
-    return client.post(
-        f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={"confirm": True, "preview_token": token},
-    )
+from tests.rule_application_test_support import apply_pending_rules, set_pending_merchant
 
 
 def test_rule_application_audit_and_rollback_integration(client: TestClient, *, identity) -> None:
     """Owner API flow: no-op creates no audit, real apply audits, rollback is idempotent."""
     upload_png(client, identity=identity)
-    noop = _apply_pending_rules(client, identity=identity)
+    noop = apply_pending_rules(client, identity=identity)
     assert noop.status_code == 200
     assert noop.json()["changed_count"] == 0
     assert client.get("/api/rules/applications", headers=identity.app_headers).json()["items"] == []
 
     pending_id = upload_png(client, identity=identity)
-    _set_pending_merchant(client, pending_id, "AuditCafe 上海", identity=identity)
+    set_pending_merchant(client, pending_id, "AuditCafe 上海", identity=identity)
     created = client.post(
         "/api/rules/categories",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
@@ -67,7 +38,7 @@ def test_rule_application_audit_and_rollback_integration(client: TestClient, *, 
     assert created.status_code == 200
     rule_id = created.json()["id"]
 
-    applied = _apply_pending_rules(client, identity=identity)
+    applied = apply_pending_rules(client, identity=identity)
     assert applied.status_code == 200
     assert applied.json()["changed_count"] == 1
 
@@ -116,15 +87,15 @@ def test_rule_application_audit_and_rollback_integration(client: TestClient, *, 
 def test_rule_application_rollback_safety_boundaries_integration(client: TestClient, *, identity) -> None:
     """One integration path covers manual edits, cross-ledger hiding, and writer guard."""
     pending_id = upload_png(client, identity=identity)
-    _set_pending_merchant(client, pending_id, "BoundaryCafe", identity=identity)
+    set_pending_merchant(client, pending_id, "BoundaryCafe", identity=identity)
     another_id = upload_png(client, identity=identity)
-    _set_pending_merchant(client, another_id, "BoundaryCafe 第二笔", identity=identity)
+    set_pending_merchant(client, another_id, "BoundaryCafe 第二笔", identity=identity)
     client.post(
         "/api/rules/categories",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "BoundaryCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
-    _apply_pending_rules(client, identity=identity)
+    apply_pending_rules(client, identity=identity)
     batch_id = client.get("/api/rules/applications", headers=identity.app_headers).json()["items"][0]["public_id"]
 
     gray_list = client.get("/api/rules/applications", headers=identity.gray_app_headers)
@@ -197,13 +168,13 @@ def test_rule_application_rollback_skips_after_manual_edit_even_when_category_ma
     client: TestClient, *, identity,
 ) -> None:
     pending_id = upload_png(client, identity=identity)
-    _set_pending_merchant(client, pending_id, "ManualEditCafe", identity=identity)
+    set_pending_merchant(client, pending_id, "ManualEditCafe", identity=identity)
     client.post(
         "/api/rules/categories",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "ManualEditCafe", "category": "餐饮", "enabled": True, "priority": 1},
     )
-    applied = _apply_pending_rules(client, identity=identity)
+    applied = apply_pending_rules(client, identity=identity)
     assert applied.status_code == 200
     batch_id = client.get("/api/rules/applications", headers=identity.app_headers).json()["items"][0]["public_id"]
 
@@ -238,7 +209,7 @@ def test_rule_application_rollback_skips_after_manual_edit_even_when_category_ma
 
 def test_rule_application_cas_skips_stale_candidate_snapshot(client: TestClient, *, identity) -> None:
     pending_id = upload_png(client, identity=identity)
-    _set_pending_merchant(client, pending_id, "RaceCafe", identity=identity)
+    set_pending_merchant(client, pending_id, "RaceCafe", identity=identity)
     created = client.post(
         "/api/rules/categories",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
@@ -286,13 +257,13 @@ def test_rule_application_cas_skips_stale_candidate_snapshot(client: TestClient,
 
 def test_rule_application_rollback_cas_skips_stale_expense_snapshot(client: TestClient, *, identity) -> None:
     pending_id = upload_png(client, identity=identity)
-    _set_pending_merchant(client, pending_id, "RollbackRaceCafe", identity=identity)
+    set_pending_merchant(client, pending_id, "RollbackRaceCafe", identity=identity)
     client.post(
         "/api/rules/categories",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"keyword": "RollbackRaceCafe", "category": "Food", "enabled": True, "priority": 1},
     )
-    applied = _apply_pending_rules(client, identity=identity)
+    applied = apply_pending_rules(client, identity=identity)
     assert applied.status_code == 200
 
     with SessionLocal() as stale_db:
