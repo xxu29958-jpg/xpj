@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from alembic import command
@@ -15,6 +16,14 @@ from app.database._managed_postgres_migration_runtime import _prearmed_transacti
 _TRANSACTION_TIMEOUT_MS = 20 * 60 * 1000
 _ALEMBIC_CONNECTION_ATTRIBUTE = "connection"
 _MISSING = object()
+
+
+def alembic_config_for_test() -> Config:
+    """Return fresh migration configuration; the caller still owns its connection."""
+    backend_root = Path(__file__).resolve().parents[2]
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "migrations"))
+    return config
 
 
 def run_alembic_for_test(
@@ -58,4 +67,4 @@ def reset_public_schema(engine: Engine) -> None:
         connection.execute(text("CREATE SCHEMA public"))
 
 
-__all__ = ["reset_public_schema", "run_alembic_for_test"]
+__all__ = ["alembic_config_for_test", "reset_public_schema", "run_alembic_for_test"]

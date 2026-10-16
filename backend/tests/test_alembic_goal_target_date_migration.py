@@ -6,14 +6,12 @@ on its actual PostgreSQL schema. Never stamp a current schema as a historical on
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from sqlalchemy import inspect, text
 
 from app.database import engine
 from app.database_model_registry import Base
-from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
+from tests._infra.alembic_runtime import alembic_config_for_test, reset_public_schema, run_alembic_for_test
 
 pytestmark = pytest.mark.real_db
 
@@ -31,17 +29,8 @@ def _drop_alembic_version() -> None:
         connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
 
 
-def _alembic_cfg():
-    from alembic.config import Config
-
-    backend_root = Path(__file__).resolve().parents[1]
-    cfg = Config(str(backend_root / "alembic.ini"))
-    cfg.set_main_option("script_location", str(backend_root / "migrations"))
-    return cfg
-
-
 def _run_alembic(action, *args) -> None:
-    run_alembic_for_test(engine, _alembic_cfg(), action, *args)
+    run_alembic_for_test(engine, alembic_config_for_test(), action, *args)
 
 
 def test_add_goal_target_date_round_trips_on_postgres() -> None:

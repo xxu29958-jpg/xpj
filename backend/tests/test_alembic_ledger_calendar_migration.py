@@ -3,13 +3,11 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
-from pathlib import Path
 from threading import Barrier
 from uuid import uuid4
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, create_engine, inspect, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -25,7 +23,7 @@ from app.models import (
     LedgerCalendarRevision,
 )
 from app.services.ledger_calendar_service import adopt_ledger_calendar, calendar_revision, current_calendar
-from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
+from tests._infra.alembic_runtime import alembic_config_for_test, reset_public_schema, run_alembic_for_test
 from tests._infra.currency import activate_test_currency_authority
 from tests._infra.env import ADMIN_TEST_DATABASE_URL
 
@@ -37,10 +35,7 @@ _METADATA = ("calendar_revision", "user_local_date", "time_precision", "source_t
 
 
 def _run(action, revision):
-    root = Path(__file__).resolve().parents[1]
-    config = Config(str(root / "alembic.ini"))
-    config.set_main_option("script_location", str(root / "migrations"))
-    run_alembic_for_test(engine, config, action, revision)
+    run_alembic_for_test(engine, alembic_config_for_test(), action, revision)
 
 
 def _seed():
