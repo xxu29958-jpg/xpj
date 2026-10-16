@@ -28,7 +28,7 @@ if str(_SCRIPTS) not in sys.path:
 
 import ocr_benchmark  # noqa: E402
 
-FIXTURE_DIR = Path(__file__).resolve().parent / "_infra" / "ocr_fixtures"
+FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "_infra" / "ocr_fixtures"
 
 
 def test_synthetic_bank_alert_fixture_is_discovered() -> None:

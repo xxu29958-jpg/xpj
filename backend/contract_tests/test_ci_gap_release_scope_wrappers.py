@@ -3,9 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from test_ci_gap_release_scope import _GITEA_POLICY, _GITHUB_POLICY, _load
 
-from tests._infra.ci_gap_release_scope import write_valid_gitea, write_valid_github
+from tests._infra.ci_gap_release_scope import (
+    _GITEA_POLICY,
+    _GITHUB_POLICY,
+    _load,
+    write_valid_gitea,
+    write_valid_github,
+)
 
 
 def _wrap_detector_body(path: Path, *, opener: str, closer: str) -> None:

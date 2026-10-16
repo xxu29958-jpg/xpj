@@ -218,7 +218,7 @@ def _ready_to_confirm_filters() -> tuple:
     + non-duplicate (merchant/category calibers are applied Python-side).
 
     The tenant predicate is deliberately NOT in here: each call site adds it
-    inline so the ledger-scope guard (tests/test_ledger_query_scope_guard.py,
+    inline so the ledger-scope guard (contract_tests/test_ledger_query_scope_guard.py,
     per-statement AST walk) sees an explicit ``Expense.tenant_id`` comparison
     inside the query statement itself."""
     return (

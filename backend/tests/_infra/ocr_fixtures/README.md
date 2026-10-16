@@ -33,5 +33,5 @@ smoke-test fixture below.
 
 Image-less fixture that lets `mock` provider parse a canonical bank
 transaction alert. Drives the harness's framework test
-(`tests/test_ocr_benchmark_harness.py`) without depending on real OCR
+(`contract_tests/test_ocr_benchmark_harness.py`) without depending on real OCR
 libraries or a real LLM.
