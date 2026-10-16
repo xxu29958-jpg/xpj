@@ -10,8 +10,11 @@ from app.database import SessionLocal
 from app.models import ApiIdempotencyKey, BillSplitAgreementChange, BillSplitChangeProposal, Debt, Expense
 from app.schemas._bill_split_change import BillSplitChangeAcceptRequest
 from app.services.bill_split_change_command_service import accept_bill_split_change_idempotently
-from tests.test_bill_split_agreement_http import _accept, _change, _pay, _versions
-from tests.test_bill_split_agreement_http import split_http as split_http
+from tests.bill_split_test_support import accept_split_http as _accept
+from tests.bill_split_test_support import change_split_http as _change
+from tests.bill_split_test_support import pay_member_http as _pay
+from tests.bill_split_test_support import split_http as split_http
+from tests.bill_split_test_support import split_versions as _versions
 
 pytestmark = pytest.mark.real_db
 

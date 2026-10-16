@@ -5,86 +5,21 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import (
-    AuthToken,
     BillSplitAgreementChange,
     BillSplitChangeProposal,
     BillSplitInvitation,
-    Debt,
-    Device,
     Expense,
 )
 from app.routes.web_auth import SESSION_COOKIE_NAME
-from app.services.identity_service import hash_secret, new_session_token
 from tests._web_native_form_support import hidden_post_forms
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
-from tests.bill_split_test_support import _make_expense_for_owner, _seed_receiver
-from tests.debt_proposal_helpers import _idem, _member_headers, _propose
-
-
-@pytest.fixture
-def split_http(client, identity):
-    receiver_id = _seed_receiver("Receiver", "split-receiver")
-    with SessionLocal() as db:
-        device = Device(account_id=receiver_id, device_name="Split test", platform="android")
-        db.add(device)
-        db.flush()
-        token = new_session_token()
-        db.add(AuthToken(token_hash=hash_secret(token), account_id=receiver_id, device_id=device.id,
-            ledger_id="split-receiver", scope="app"))
-        db.commit()
-    receiver = _member_headers(token)
-    source_id = _make_expense_for_owner(amount_cents=10_000)
-    invited = client.post(f"/api/expenses/{source_id}/split-invite", headers=_idem(identity.app_headers),
-        json={"expected_row_version": 1, "receiver_account_id": receiver_id, "amount_cents": 4_000})
-    assert invited.status_code == 200, invited.json()
-    invitation_id = invited.json()["public_id"]
-    accepted = client.post(f"/api/bill-splits/{invitation_id}/accept", headers=receiver,
-        json={"target_ledger_id": "split-receiver"})
-    assert accepted.status_code == 200, accepted.json()
-    with SessionLocal() as db:
-        public_id = db.scalar(select(Debt.public_id).where(Debt.source_type == "bill_split", Debt.source_id == invitation_id))
-    with SessionLocal() as db:
-        sender_id = db.scalar(select(AuthToken.account_id).where(
-            AuthToken.token_hash == hash_secret(identity.app_token)))
-    return {"sender": identity.app_headers, "sender_id": sender_id,
-        "receiver": receiver, "receiver_id": receiver_id, "debt": public_id,
-        "source": source_id, "invitation": invitation_id}
-
-
-def _view(client, headers, public_id):
-    response = client.get(f"/api/debts/{public_id}/split-agreement", headers=headers)
-    assert response.status_code == 200, response.json()
-    return response.json()
-
-
-def _versions(view):
-    returned = view["return_debt"]
-    return {"expected_row_version": view["original_debt"]["row_version"],
-        "expected_return_row_version": returned["row_version"] if returned else None}
-
-
-def _change(client, split, *, share, net):
-    view = _view(client, split["receiver"], split["debt"])
-    response = client.post(f"/api/debts/{split['debt']}/split-change-proposals", headers=_idem(split["receiver"]),
-        json={**_versions(view), "new_share_amount_cents": share, "settlement_net_amount_cents": net,
-            "reason": "Review source refund"})
-    assert response.status_code == 201, response.json()
-    return response.json(), view
-
-
-def _accept(client, split, proposal, basis, *, headers=None):
-    return client.post(f"/api/debts/{split['debt']}/split-change-proposals/{proposal['public_id']}/accept",
-        headers=headers or _idem(split["sender"]), json=_versions(basis))
-
-
-def _pay(client, debtor, creditor, public_id, amount):
-    proposal = _propose(client, debtor, public_id, proposed_amount_cents=amount)
-    assert proposal.status_code == 201, proposal.json()
-    debt = client.get(f"/api/debts/{public_id}", headers=creditor).json()
-    confirmed = client.post(f"/api/debts/{public_id}/repayment-proposals/{proposal.json()['public_id']}/confirm",
-        headers=_idem(creditor), json={"expected_row_version": debt["row_version"]})
-    assert confirmed.status_code == 201, confirmed.json()
-    return confirmed.json()
+from tests.bill_split_test_support import accept_split_http as _accept
+from tests.bill_split_test_support import change_split_http as _change
+from tests.bill_split_test_support import pay_member_http as _pay
+from tests.bill_split_test_support import split_http as split_http
+from tests.bill_split_test_support import split_versions as _versions
+from tests.bill_split_test_support import split_view as _view
+from tests.debt_proposal_helpers import _idem, _propose
 
 
 def _financial_snapshot(client, split):
@@ -140,7 +75,16 @@ def test_paid_share_refund_partial_return_and_changed_mind_preserve_actual_cash(
         headers=split["receiver"], params={"new_share_amount_cents": 2_000})
     assert preview.status_code == 200, preview.text
     assert preview.json()["preview"]["default_settlement_net_amount_cents"] == -2_000
-    proposal, basis = _change(client, split, share=2_000, net=-2_000)
+    basis = _view(client, split["receiver"], split["debt"])
+    proposal_request = {
+        "headers": _idem(split["receiver"]),
+        "json": {**_versions(basis), "new_share_amount_cents": 2_000,
+                 "settlement_net_amount_cents": -2_000, "reason": "Review source refund"},
+    }
+    proposal_url = f"/api/debts/{split['debt']}/split-change-proposals"
+    created = client.post(proposal_url, **proposal_request)
+    assert created.status_code == 201, created.text
+    proposal = created.json()
     headers = _idem(split["sender"])
     accepted = _accept(client, split, proposal, basis, headers=headers)
     assert accepted.status_code == 200, accepted.json()
@@ -149,6 +93,9 @@ def test_paid_share_refund_partial_return_and_changed_mind_preserve_actual_cash(
     payables = client.get("/api/debts?lens=payables", headers=split["sender"]).json()["items"]
     assert returned_id in [debt["public_id"] for debt in payables]
     _pay(client, split["sender"], split["receiver"], returned_id, 800)
+    recreated = client.post(proposal_url, **proposal_request)
+    assert recreated.status_code == 201, recreated.text
+    assert recreated.json() == proposal
     replay = _accept(client, split, proposal, basis, headers=headers)
     assert replay.status_code == 200, replay.json()
     assert replay.json() == original_receipt
@@ -219,20 +166,24 @@ def test_api_reject_and_withdraw_record_the_right_actor_without_changing_financi
     before = _financial_snapshot(client, split)
 
     rejected_proposal, _ = _change(client, split, share=3_000, net=3_000)
-    rejected = client.post(
-        f"/api/debts/{split['debt']}/split-change-proposals/{rejected_proposal['public_id']}/reject",
-        headers=_idem(split["sender"]),
-    )
+    reject_url = f"/api/debts/{split['debt']}/split-change-proposals/{rejected_proposal['public_id']}/reject"
+    reject_headers = _idem(split["sender"])
+    rejected = client.post(reject_url, headers=reject_headers)
     assert rejected.status_code == 200, rejected.text
     assert rejected.json()["status"] == "rejected"
+    reject_replay = client.post(reject_url, headers=reject_headers)
+    assert reject_replay.status_code == 200, reject_replay.text
+    assert reject_replay.json() == rejected.json()
 
     withdrawn_proposal, _ = _change(client, split, share=3_500, net=3_500)
-    withdrawn = client.post(
-        f"/api/debts/{split['debt']}/split-change-proposals/{withdrawn_proposal['public_id']}/withdraw",
-        headers=_idem(split["receiver"]),
-    )
+    withdraw_url = f"/api/debts/{split['debt']}/split-change-proposals/{withdrawn_proposal['public_id']}/withdraw"
+    withdraw_headers = _idem(split["receiver"])
+    withdrawn = client.post(withdraw_url, headers=withdraw_headers)
     assert withdrawn.status_code == 200, withdrawn.text
     assert withdrawn.json()["status"] == "withdrawn"
+    withdraw_replay = client.post(withdraw_url, headers=withdraw_headers)
+    assert withdraw_replay.status_code == 200, withdraw_replay.text
+    assert withdraw_replay.json() == withdrawn.json()
 
     with SessionLocal() as db:
         rejected_row = db.scalar(select(BillSplitChangeProposal).where(

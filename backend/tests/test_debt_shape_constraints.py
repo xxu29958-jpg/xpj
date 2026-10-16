@@ -39,10 +39,10 @@ def _any_account_id() -> int:
         return db.scalar(select(Account.id).order_by(Account.id.asc()).limit(1))
 
 
-def _expect_integrity_error(sql: str, params: dict) -> None:
+def _expect_integrity_error(sql: str, params: dict, *, constraint: str | None = None) -> None:
     # begin_nested() is innermost so its __exit__ rolls the savepoint back and re-raises;
     # pytest.raises (one level out) then catches the re-raised IntegrityError.
-    with SessionLocal() as db, pytest.raises(IntegrityError), db.begin_nested():
+    with SessionLocal() as db, pytest.raises(IntegrityError, match=constraint), db.begin_nested():
         db.execute(text(sql), params)
         db.flush()
 
@@ -94,9 +94,12 @@ def test_bill_split_source_check_rejects_bill_split_without_source(
     # a bill_split Debt with source_id NULL violates ck_debts_bill_split_has_source_id (forward).
     # (source_id NULL is uq_debts_source NULL-distinct, so the CHECK — not the unique — fires.)
     debt_id = _member_debt(client, identity)  # _create_member_debt seeds source_type='bill_split'
-    _expect_integrity_error(
-        "UPDATE debts SET source_id = NULL WHERE id = :i", {"i": debt_id}
-    )
+    for kind in ("bill_split", "bill_split_return", "unknown"):
+        _expect_integrity_error(
+            "UPDATE debts SET source_type = :kind, source_id = NULL WHERE id = :i",
+            {"i": debt_id, "kind": kind},
+            constraint="ck_debts_source_type_valid" if kind == "unknown" else "ck_debts_bill_split_has_source_id",
+        )
 
 
 def test_bill_split_source_check_rejects_manual_with_source(
