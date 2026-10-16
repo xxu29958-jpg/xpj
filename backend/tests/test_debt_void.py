@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Debt, Repayment
+from app.models import Debt, DebtVoid, Repayment, RepaymentVoid
 from tests.debt_proposal_helpers import _create_external_debt, _record_repayment
 from tests.family_ledger_test_support import set_owner_ledger_role
 
@@ -30,59 +30,35 @@ def _idem(app_headers: dict[str, str]) -> dict[str, str]:
     return {**app_headers, "Idempotency-Key": str(uuid4())}
 
 
-def _repayment_public_ids(public_id: str) -> list[str]:
-    with SessionLocal() as db:
-        debt = db.scalar(select(Debt).where(Debt.public_id == public_id))
-        assert debt is not None
-        return [r.public_id for r in db.scalars(select(Repayment).where(Repayment.debt_id == debt.id))]
-
-
 def test_void_repayment_reopens_debt_and_keeps_row(client: TestClient, *, identity) -> None:
-    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label="信用卡")
     repaid = _record_repayment(client, identity.app_headers, debt, amount_cents=10000)
     assert repaid["status"] == "cleared"
     repayment_public_id = repaid["repayment_public_id"]
-
-    voided = client.post(
-        f"/api/debts/{debt['public_id']}/repayment-voids",
-        headers=_idem(identity.app_headers),
-        json={
-            "repayment_public_id": repayment_public_id,
-            "reason": "记错了",
-            "expected_row_version": repaid["row_version"],
-        },
-    )
+    route = f"/api/debts/{debt['public_id']}/repayment-voids"
+    voided = client.post(route, headers=_idem(identity.app_headers), json={
+        "repayment_public_id": repayment_public_id, "reason": "记错了",
+        "expected_row_version": repaid["row_version"],
+    })
     assert voided.status_code == 201, voided.json()
     body = voided.json()
-    # Fold reopens: remaining back to 10000, status open again.
     assert body["remaining_amount_cents"] == 10000
     assert body["paid_amount_cents"] == 0
     assert body["status"] == "open"
     assert body["row_version"] == repaid["row_version"] + 1
 
-    # F10: the original repayment row is NOT deleted — it still exists, just
-    # excluded from the fold.
-    assert _repayment_public_ids(debt["public_id"]) == [repayment_public_id]
-
-
-def test_void_repayment_twice_is_already_voided(client: TestClient, *, identity) -> None:
-    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
-    repaid = _record_repayment(client, identity.app_headers, debt, amount_cents=5000)
-    repayment_public_id = repaid["repayment_public_id"]
-
-    first = client.post(
-        f"/api/debts/{debt['public_id']}/repayment-voids",
-        headers=_idem(identity.app_headers),
-        json={"repayment_public_id": repayment_public_id, "reason": "a", "expected_row_version": repaid["row_version"]},
-    )
-    assert first.status_code == 201, first.json()
-    second = client.post(
-        f"/api/debts/{debt['public_id']}/repayment-voids",
-        headers=_idem(identity.app_headers),
-        json={"repayment_public_id": repayment_public_id, "reason": "b", "expected_row_version": first.json()["row_version"]},
-    )
+    second = client.post(route, headers=_idem(identity.app_headers), json={
+        "repayment_public_id": repayment_public_id, "reason": "再作废",
+        "expected_row_version": body["row_version"],
+    })
     assert second.status_code == 409, second.json()
     assert second.json()["error"] == "repayment_already_voided"
+    with SessionLocal() as db:
+        saved = db.scalar(select(Debt).where(Debt.public_id == debt["public_id"]))
+        repayments = list(db.scalars(select(Repayment).where(Repayment.debt_id == saved.id)))
+        assert [row.public_id for row in repayments] == [repayment_public_id]
+        assert db.scalars(select(RepaymentVoid.reason).where(RepaymentVoid.repayment_id == repayments[0].id)).all() == ["记错了"]
+        assert saved.row_version == body["row_version"]
 
 
 def test_void_unknown_repayment_is_404(client: TestClient, *, identity) -> None:
@@ -122,64 +98,41 @@ def test_void_repayment_belonging_to_other_debt_is_404(client: TestClient, *, id
 
 
 def test_void_debt_latches_voided_and_drops_from_open_total(client: TestClient, *, identity) -> None:
-    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=30000, counterparty_label='信用卡')
-    voided = client.post(
-        f"/api/debts/{debt['public_id']}/void",
-        headers=_idem(identity.app_headers),
-        json={"reason": "重复记录", "expected_row_version": debt["row_version"]},
-    )
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=30000, counterparty_label="信用卡")
+    route = f"/api/debts/{debt['public_id']}/void"
+    headers = _idem(identity.app_headers)
+    payload = {"reason": "重复记录", "expected_row_version": debt["row_version"]}
+    voided = client.post(route, headers=headers, json=payload)
     assert voided.status_code == 201, voided.json()
-    assert voided.json()["status"] == "voided"
-    assert voided.json()["row_version"] == debt["row_version"] + 1
+    body = voided.json()
+    assert body["status"] == "voided"
+    assert body["row_version"] == debt["row_version"] + 1
 
-    # Still GET-visible (audit/history).
+    replay = client.post(route, headers=headers, json=payload)
+    assert replay.status_code == 201, replay.json()
+    assert replay.json() == body
+    second = client.post(route, headers=_idem(identity.app_headers), json={
+        "reason": "再作废", "expected_row_version": body["row_version"],
+    })
+    assert second.status_code == 409, second.json()
+    assert second.json()["error"] == "debt_already_voided"
+    repayment = client.post(f"/api/debts/{debt['public_id']}/repayments",
+        headers=_idem(identity.app_headers),
+        json={"amount_cents": 1000, "expected_row_version": body["row_version"]})
+    assert repayment.status_code == 409, repayment.json()
+    assert repayment.json()["error"] == "debt_already_voided"
+
     detail = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers)
     assert detail.status_code == 200, detail.json()
     assert detail.json()["status"] == "voided"
-
-    # Voided Debt no longer contributes to the open total in the list.
+    assert detail.json()["row_version"] == body["row_version"]
     listed = client.get("/api/debts", headers=identity.app_headers)
-    open_total = sum(
-        item["remaining_amount_cents"]
-        for item in listed.json()["items"]
-        if item["status"] != "voided"
-    )
-    assert open_total == 0
-
-
-def test_void_debt_twice_is_already_voided(client: TestClient, *, identity) -> None:
-    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
-    first = client.post(
-        f"/api/debts/{debt['public_id']}/void",
-        headers=_idem(identity.app_headers),
-        json={"reason": "a", "expected_row_version": debt["row_version"]},
-    )
-    assert first.status_code == 201, first.json()
-    # A voided Debt is terminal — the §2.1 guard rejects any further fact write.
-    second = client.post(
-        f"/api/debts/{debt['public_id']}/void",
-        headers=_idem(identity.app_headers),
-        json={"reason": "b", "expected_row_version": first.json()["row_version"]},
-    )
-    assert second.status_code == 409, second.json()
-    assert second.json()["error"] == "debt_already_voided"
-
-
-def test_voided_debt_rejects_further_repayment(client: TestClient, *, identity) -> None:
-    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
-    voided = client.post(
-        f"/api/debts/{debt['public_id']}/void",
-        headers=_idem(identity.app_headers),
-        json={"reason": "作废", "expected_row_version": debt["row_version"]},
-    )
-    assert voided.status_code == 201, voided.json()
-    response = client.post(
-        f"/api/debts/{debt['public_id']}/repayments",
-        headers=_idem(identity.app_headers),
-        json={"amount_cents": 1000, "expected_row_version": voided.json()["row_version"]},
-    )
-    assert response.status_code == 409, response.json()
-    assert response.json()["error"] == "debt_already_voided"
+    assert listed.status_code == 200, listed.json()
+    assert sum(item["remaining_amount_cents"] for item in listed.json()["items"] if item["status"] != "voided") == 0
+    with SessionLocal() as db:
+        saved = db.scalar(select(Debt).where(Debt.public_id == debt["public_id"]))
+        assert db.scalars(select(DebtVoid.reason).where(DebtVoid.debt_id == saved.id)).all() == ["重复记录"]
+        assert db.scalars(select(Repayment.id).where(Repayment.debt_id == saved.id)).all() == []
 
 
 def test_void_debt_requires_reason(client: TestClient, *, identity) -> None:
@@ -191,23 +144,6 @@ def test_void_debt_requires_reason(client: TestClient, *, identity) -> None:
     )
     assert response.status_code == 422, response.json()
     assert response.json()["error"] == "debt_reason_required"
-
-
-def test_void_debt_idempotent_replay_applies_once(client: TestClient, *, identity) -> None:
-    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000, counterparty_label='信用卡')
-    key = str(uuid4())
-    headers = {**identity.app_headers, "Idempotency-Key": key}
-    payload = {"reason": "作废", "expected_row_version": debt["row_version"]}
-
-    first = client.post(f"/api/debts/{debt['public_id']}/void", headers=headers, json=payload)
-    assert first.status_code == 201, first.json()
-    bumped_version = first.json()["row_version"]
-
-    replay = client.post(f"/api/debts/{debt['public_id']}/void", headers=headers, json=payload)
-    assert replay.status_code == 201, replay.json()
-    assert replay.json()["status"] == "voided"
-    # §2.1 replay re-serialises without a second bump.
-    assert replay.json()["row_version"] == bumped_version
 
 
 def test_viewer_cannot_void_debt(client: TestClient, *, identity) -> None:
