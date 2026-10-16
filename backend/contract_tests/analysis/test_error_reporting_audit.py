@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 SCRIPTS = ROOT / "backend/scripts"
 sys.path.insert(0, str(SCRIPTS))
 REQUIRED_FILES = importlib.import_module("error_reporting_contract").REQUIRED_FILES

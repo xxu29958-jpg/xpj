@@ -226,10 +226,11 @@ if (-not $SkipBackend) {
     ) -WorkingDirectory $ProjectRoot.Path
 
     $tools = Ensure-BackendTools
-    Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "compileall", "app", "scripts", "tests") -WorkingDirectory $BackendRoot
+    Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "compileall", "app", "scripts", "tests", "contract_tests") -WorkingDirectory $BackendRoot
     if (-not $SkipLint) {
-        Invoke-Checked -FilePath $tools.Ruff -Arguments @("check", "app", "scripts", "tests") -WorkingDirectory $BackendRoot
+        Invoke-Checked -FilePath $tools.Ruff -Arguments @("check", "app", "scripts", "tests", "contract_tests") -WorkingDirectory $BackendRoot
     }
+    Invoke-Checked -FilePath $tools.Python -Arguments @("-m", "pytest", "-q", "contract_tests", "-p", "no:cacheprovider") -WorkingDirectory $BackendRoot
     # The local entry point consumes the same lane and connection authorities as CI.
     # The disposable cluster remains running for fast repeat runs; stop it through
     # backend\scripts\stop_test_pg.ps1 when local verification is complete.

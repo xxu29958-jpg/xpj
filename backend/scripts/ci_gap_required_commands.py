@@ -46,7 +46,7 @@ _PYTHON_COMMAND = r"(?:python(?:\.exe)?|[^\s]+[\\/]python(?:\.exe)?)"
 _PYTHON_PREFIX = rf"(?i)^\s*(?:&\s+)?{_PYTHON_COMMAND}\s+"
 _RUFF_PREFIX = r"(?i)^\s*(?:&\s+)?(?:ruff(?:\.exe)?|[^\s]+[\\/]ruff(?:\.exe)?)\s+"
 _PYTEST_LINE = rf"(?m)^\s*{_PYTHON_COMMAND}\s+-m\s+pytest\s+"
-_BACKEND_TARGETS = r"app\s+scripts\s+tests\s+packaging[\\/]+tests"
+_BACKEND_TARGETS = r"app\s+scripts\s+tests\s+contract_tests\s+packaging[\\/]+tests"
 _MATRIX_SHARD_COORDINATES = (
     "${{ matrix.shard.index }}",
     "${{ matrix.shard.count }}",

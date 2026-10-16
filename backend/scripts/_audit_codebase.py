@@ -1,4 +1,4 @@
-"""Read-only Backend Python audit. Walks app/, scripts/, tests/ and reports symptoms
+"""Read-only Backend Python audit. Walks app/, scripts/, tests/, contract_tests/ and reports symptoms
 across 7 dimensions (A-G). Writes nothing to the codebase."""
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from codebase_audit_gate import DebtCounts, evaluate_debt
 
 APP = pathlib.Path("app")
 TESTS = pathlib.Path("tests")
+CONTRACT_TESTS = pathlib.Path("contract_tests")
 SCRIPTS = pathlib.Path("scripts")
 
 
@@ -93,7 +94,7 @@ def _suppressed_lines(p: pathlib.Path, code: str) -> set[int]:
 # -----------------------------------------------------------------------------
 
 def audit_file_loc() -> DebtCounts:
-    rows = [(p, line_count(p)) for p in walk(APP, SCRIPTS, TESTS)]
+    rows = [(p, line_count(p)) for p in walk(APP, SCRIPTS, TESTS, CONTRACT_TESTS)]
     rows.sort(key=lambda r: -r[1])
     large_files = [(p, n) for p, n in rows if n > 500]
     print("== A1. File LOC (top 30) ==")
@@ -126,7 +127,7 @@ def audit_surface_area() -> DebtCounts:
 
 def audit_long_functions() -> DebtCounts:
     items: list[tuple[pathlib.Path, int, int, str]] = []
-    for p in walk(APP, SCRIPTS, TESTS):
+    for p in walk(APP, SCRIPTS, TESTS, CONTRACT_TESTS):
         tree = parse(p)
         if not tree:
             continue
@@ -160,7 +161,7 @@ def _max_depth(node, current=0):
 
 def audit_nesting_depth() -> DebtCounts:
     items: list[tuple[pathlib.Path, int, int, str]] = []
-    for p in walk(APP, SCRIPTS, TESTS):
+    for p in walk(APP, SCRIPTS, TESTS, CONTRACT_TESTS):
         tree = parse(p)
         if not tree:
             continue
@@ -342,7 +343,7 @@ def audit_sql_in_routes_or_services() -> DebtCounts:
 
 def audit_import_star() -> DebtCounts:
     items = []
-    for p in walk(APP, SCRIPTS, TESTS):
+    for p in walk(APP, SCRIPTS, TESTS, CONTRACT_TESTS):
         text = _read_text_or_none(p)
         if text is None:
             continue
@@ -680,7 +681,7 @@ def audit_bare_except() -> DebtCounts:
     bare = []
     broad = []
     swallow = []
-    for p in walk(APP, SCRIPTS, TESTS):
+    for p in walk(APP, SCRIPTS, TESTS, CONTRACT_TESTS):
         tree = parse(p)
         if not tree:
             continue
@@ -792,7 +793,7 @@ def audit_todos() -> DebtCounts:
     marker_words = ("TO" "DO", "FIX" "ME", "XX" "X", "HA" "CK", "TE" "MP")
     rx = re.compile(r"\b(" + "|".join(marker_words) + r")\b", re.IGNORECASE)
     items = []
-    for p in walk(APP, SCRIPTS, TESTS):
+    for p in walk(APP, SCRIPTS, TESTS, CONTRACT_TESTS):
         text = _read_text_or_none(p)
         if text is None:
             continue
@@ -1126,7 +1127,7 @@ def audit_test_coverage_by_module() -> DebtCounts:
         grep_targets[mod] = p
 
     reference_sources: list[tuple[pathlib.Path, str]] = []
-    for p in (*walk(TESTS), *walk(APP)):
+    for p in (*walk(TESTS, CONTRACT_TESTS), *walk(APP)):
         with contextlib.suppress(Exception):
             body = p.read_text(encoding="utf-8", errors="ignore")
             reference_sources.append((p, body))

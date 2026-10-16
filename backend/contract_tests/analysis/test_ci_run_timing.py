@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 from scripts import ci_run_timing
 
-SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
-ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def _job(**fields: object) -> dict:

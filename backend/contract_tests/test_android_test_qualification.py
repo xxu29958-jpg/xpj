@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tests._infra.android_test_qualification import qualification
+from contract_tests._infra.android_test_qualification import qualification
 
 
 def _write_results(

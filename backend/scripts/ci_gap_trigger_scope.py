@@ -48,13 +48,8 @@ _FULL_PATHS = {
 _ALWAYS_ON_CONTRACT_PATHS = {
     # Navigation output is consumed by the resident repository-weight checks.
     "backend/scripts/engineering_task_map.py",
-    "backend/tests/_infra/android_test_qualification.py",
-    "backend/tests/test_android_process_qualification.py",
-    "backend/tests/test_android_test_qualification.py",
-    "backend/tests/test_backend_ci_results.py",
-    "backend/tests/test_postgres_ci_lane_runner.py",
-    "backend/tests/test_postgres_ci_topology.py",
 }
+_ALWAYS_ON_CONTRACT_PREFIXES = ("backend/contract_tests/",)
 _FULL_PREFIXES = (".github/workflows/", ".gitea/workflows/")
 _CI_POLICY_PREFIXES = (
     "backend/scripts/ci_gap_",
@@ -504,8 +499,11 @@ def classify_ci_decision(paths: Iterable[str]) -> dict[str, object]:
     normalized = {path.replace("\\", "/") for path in paths if path}
     if not normalized:
         return _decision(all_ci_scopes(), "UNKNOWN_FULL", "empty path set", [], ())
-    ignored = tuple(sorted(normalized & _ALWAYS_ON_CONTRACT_PATHS))
-    normalized.difference_update(_ALWAYS_ON_CONTRACT_PATHS)
+    ignored = tuple(sorted(
+        path for path in normalized
+        if path in _ALWAYS_ON_CONTRACT_PATHS or path.startswith(_ALWAYS_ON_CONTRACT_PREFIXES)
+    ))
+    normalized.difference_update(ignored)
     hits: list[dict[str, object]] = []
     full_reason: str | None = None
     for path in sorted(normalized):

@@ -161,7 +161,7 @@ def source_owner(path: str) -> tuple[str, str]:
         return "Windows lifecycle", "production"
     module, role = next(((module, role) for prefix, module, role in SOURCE_OWNERS if path.startswith(prefix)),
                         ("Engineering", "tooling"))
-    is_test = bool(set(PurePosixPath(path).parts) & {"tests", "test", "androidTest", "testFixtures"})
+    is_test = bool(set(PurePosixPath(path).parts) & {"tests", "contract_tests", "test", "androidTest", "testFixtures"})
     if is_test or path.startswith(("android/macrobenchmark/", "android/baselineprofile/")):
         role = "test"
     return module, role

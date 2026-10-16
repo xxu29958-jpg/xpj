@@ -45,14 +45,20 @@ GitHub hosted runner 并行执行，是主要合并依据。本地 Gitea runner 
 
 ```powershell
 scripts\check_text_encoding.ps1 + check_dependency_versions.ps1 + 全部 .ps1 的 BOM/语法检查
-python -m compileall app scripts tests packaging/tests
-ruff check app scripts tests packaging/tests
+python -m compileall app scripts tests contract_tests packaging/tests
+ruff check app scripts tests contract_tests packaging/tests
 python scripts\check_api_contract.py
+python -m pytest -q contract_tests --ignore=contract_tests/analysis -p no:cacheprovider
+python -m pytest -q contract_tests/analysis -p no:cacheprovider
 python scripts\release_audit.py        # 自动发现全部 _audit_*.py lane
 pip-audit --strict（OSV 库）
 ```
 
 `Backend contracts` 没有数据库，不跑业务 pytest / smoke；它保持每个 PR 都可达，并有 12 分钟硬上限，负责验证分类器接线、CI 聚合器、PostgreSQL job 拓扑、CI gap、API 与静态合同。既有分支保护名 `Backend` 汇总 scope、静态合同和按需 Windows packaging，并逐项核对实际 checkout SHA。Windows 域为 `true` 时必须成功且 SHA 一致；明确为 `false` 时才接受无 SHA 的 `skipped`。
+
+纯合同按 `backend/contract_tests/` 自动发现，与业务 `backend/tests/` 同级，不继承其 PG 自动夹具。GitHub 先执行编排合同，再执行 `analysis/` 中的报告分析合同；Gitea 和本机 `verify_project.ps1` 在准备 PG 前运行整个目录。新增合同不需要维护文件名单。该目录明确归属常驻合同；修改选择器、聚合器或 workflow 本身仍按原政策全量资格。Windows 执行保留 PowerShell AST 等宿主行为；Linux 的真实 scope、ordinary、real-db、smoke 消费者仍分别执行，不再在 PG ordinary 中重复这些纯合同。
+
+后端计数按 `tests` 与 `contract_tests` 两次真实 collection 求和，工程报告将两者都计为测试。迁移路径不构成测试删除，也不下调 `backend/audit/test_count_baseline.txt`；ordinary / real-db runner 仍仅从 `tests` 自动发现业务集合。
 
 ### windows-packaging（按域）
 

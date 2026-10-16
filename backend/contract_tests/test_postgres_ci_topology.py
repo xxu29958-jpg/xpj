@@ -440,6 +440,11 @@ def test_gitea_keeps_the_shared_lane_runner_without_scope_modernization() -> Non
         assert "if" not in job
     maintenance = _steps(jobs["backend-full"])["Windows database maintenance contract"]["run"]
     assert "tests/test_database_maintenance_entrypoint.py" in maintenance
+    contracts = _steps(jobs["backend-full"])["Backend contracts (no database)"]
+    assert "-m pytest -q contract_tests -p no:cacheprovider" in contracts["run"]
+    assert "--noconftest" not in contracts["run"]
+    assert "if" not in contracts
+    assert "continue-on-error" not in contracts
     postgres = jobs["backend-postgres"]
     assert isinstance(postgres, dict)
     lane = next(step["run"] for step in postgres["steps"] if step["name"].startswith("PostgreSQL lane"))

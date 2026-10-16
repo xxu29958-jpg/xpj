@@ -342,10 +342,13 @@ def test_desktop_pairing_producers_require_the_real_desktop_consumer() -> None:
 def test_always_on_contract_tests_do_not_expand_heavy_scopes() -> None:
     for path in (
         "backend/scripts/engineering_task_map.py",
-        "backend/tests/test_android_test_qualification.py",
-        "backend/tests/test_backend_ci_results.py",
-        "backend/tests/test_postgres_ci_lane_runner.py",
-        "backend/tests/test_postgres_ci_topology.py",
+        "backend/contract_tests/test_android_test_qualification.py",
+        "backend/contract_tests/test_backend_ci_results.py",
+        "backend/contract_tests/test_postgres_ci_lane_runner.py",
+        "backend/contract_tests/test_postgres_ci_topology.py",
+        "backend/contract_tests/analysis/test_repository_weight.py",
+        "backend/contract_tests/test_new_contract.py",
+        "backend/contract_tests/_infra/android_test_qualification.py",
     ):
         assert classify_ci_paths([path]) == {
             "postgres": False,
@@ -584,7 +587,7 @@ def test_android_pure_test_sources_keep_only_proven_capabilities(root, connected
     "android/gradle/libs.versions.toml",
     "android/app/build.gradle.kts",
     "backend/app/main.py",
-    "backend/tests/test_android_test_qualification.py",
+    "backend/contract_tests/test_android_test_qualification.py",
     "backend/scripts/verify_scoped_ci_results.py",
     ".github/workflows/ci.yml",
     "docs/runbook/CI.md",

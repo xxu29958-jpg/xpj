@@ -148,9 +148,9 @@ jobs:
       - if: ${{ github.event_name == 'pull_request' && false }}
         run: python -m pytest -q
       - if: contains(fromJSON('["workflow_dispatch"]'), github.event_name)
-        run: python -m compileall app scripts tests packaging/tests
+        run: python -m compileall app scripts tests contract_tests packaging/tests
       - if: ${{ !(github.event_name == 'pull_request') }}
-        run: ruff check app scripts tests packaging/tests
+        run: ruff check app scripts tests contract_tests packaging/tests
 """,
         encoding="utf-8",
     )
@@ -253,7 +253,7 @@ jobs:
             python -m pytest -q
           }
           foreach ($item in @()) {
-            python -m compileall app scripts tests packaging/tests
+            python -m compileall app scripts tests contract_tests packaging/tests
           }
 """,
         encoding="utf-8",
@@ -331,9 +331,9 @@ jobs:
       - run: |
           $unused = {
             return
-            python -m compileall app scripts tests packaging/tests
+            python -m compileall app scripts tests contract_tests packaging/tests
           }
-          ruff check app scripts tests packaging/tests
+          ruff check app scripts tests contract_tests packaging/tests
 """,
         encoding="utf-8",
     )
@@ -344,7 +344,7 @@ jobs:
         "exit",
         "Write-Output 'done'\nreturn",
         "python -m pytest -q",
-        "ruff check app scripts tests packaging/tests",
+        "ruff check app scripts tests contract_tests packaging/tests",
     ]
     missing = mod._missing_ci_invocations(commands)
     assert "release audit aggregator" in missing
@@ -393,11 +393,11 @@ jobs:
   cycle-a:
     needs: cycle-b
     steps:
-      - run: python -m compileall app scripts tests packaging/tests
+      - run: python -m compileall app scripts tests contract_tests packaging/tests
   cycle-b:
     needs: cycle-a
     steps:
-      - run: ruff check app scripts tests packaging/tests
+      - run: ruff check app scripts tests contract_tests packaging/tests
 """,
         encoding="utf-8",
     )
@@ -461,7 +461,7 @@ jobs:
           $payload = @'
           prose
             '@
-          python -m compileall app scripts tests packaging/tests
+          python -m compileall app scripts tests contract_tests packaging/tests
 """,
         encoding="utf-8",
     )
