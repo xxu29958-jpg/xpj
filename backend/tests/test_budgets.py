@@ -9,9 +9,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
-from app.models import Budget, BudgetCategory, LedgerMember, RecurringItem
+from app.models import Budget, BudgetCategory, RecurringItem
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -75,14 +76,6 @@ def _seed_recurring(
                 archived_at=archived_at,
             )
         )
-        db.commit()
-
-
-def _set_owner_ledger_role(role: str) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = role
         db.commit()
 
 
@@ -421,7 +414,7 @@ def test_monthly_budget_archive_rejects_stale_row_version(
 
 
 def test_member_can_upsert_budget_but_viewer_can_only_read(client: TestClient, *, identity) -> None:
-    _set_owner_ledger_role("member")
+    set_owner_ledger_role("member")
     member_response = client.put(
         "/api/budgets/monthly/2026-05",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
@@ -429,7 +422,7 @@ def test_member_can_upsert_budget_but_viewer_can_only_read(client: TestClient, *
     )
     assert member_response.status_code == 200, member_response.json()
 
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     viewer_write = client.put(
         "/api/budgets/monthly/2026-05",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},

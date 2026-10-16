@@ -14,25 +14,16 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import ApiIdempotencyKey, LedgerMember
+from app.models import ApiIdempotencyKey
 from tests._runtime_protocol import negotiated_headers
 from tests.debt_repayment_goal_helpers import _repay_debt
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
 
 def _idem(headers: dict[str, str]) -> dict[str, str]:
     return {**headers, "Idempotency-Key": str(uuid4())}
-
-
-def _set_owner_ledger_role(role: str) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = role
-        db.commit()
 
 
 def _create_external_debt(client: TestClient, identity, *, debt_kind: str | None = None) -> dict:
@@ -76,7 +67,7 @@ def test_set_debt_kind_stale_row_version_is_409(client: TestClient, *, identity)
 
 def test_set_debt_kind_viewer_is_403(client: TestClient, *, identity) -> None:
     debt = _create_external_debt(client, identity)
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     response = _set_kind(client, identity, debt["public_id"], debt_kind="installment", expected_row_version=1)
     assert response.status_code == 403, response.json()
     assert response.json()["message"] == VIEWER_WRITE_MESSAGE

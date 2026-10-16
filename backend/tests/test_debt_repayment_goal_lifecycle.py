@@ -22,9 +22,9 @@ from tests.debt_repayment_goal_helpers import (
     _create_external_debt,
     _links_count_for_version,
     _replace_links,
-    _set_owner_ledger_role,
     _void_debt,
 )
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def test_replace_links_idempotent_replay(client: TestClient, *, identity) -> None:
@@ -214,7 +214,7 @@ def test_viewer_cannot_create_or_replace_debt_goal(client: TestClient, *, identi
         client, identity.app_headers, name="只读防护", debt_public_ids=[a["public_id"]]
     ).json()
 
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     viewer_create = _create_debt_goal(
         client, identity.app_headers, name="只读建", debt_public_ids=[a["public_id"]]
     )

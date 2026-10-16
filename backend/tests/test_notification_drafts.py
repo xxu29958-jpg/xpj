@@ -10,8 +10,9 @@ from sqlalchemy import func, select
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import Expense, LedgerMember
+from app.models import Expense
 from tests._infra.currency import activate_test_currency_authority
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -36,16 +37,6 @@ def _draft_count() -> int:
             )
             or 0
         )
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 def test_notification_draft_is_pending_structured_and_idempotent(
@@ -232,7 +223,7 @@ def test_notification_draft_rejects_raw_text_and_unknown_source(
 
 
 def test_notification_draft_viewer_is_read_only(client: TestClient, *, identity) -> None:
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     response = client.post(
         "/api/expenses/notification-drafts",

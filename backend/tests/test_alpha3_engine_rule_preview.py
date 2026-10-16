@@ -3,43 +3,14 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from api_contract_helpers import patch_expense, upload_png
+from api_contract_helpers import upload_png
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import CategoryRule, Expense
 from app.services.learning_service import OcrFactDraft, record_ocr_fact
-
-
-def _seed_pending_with_merchant(merchant: str) -> int:
-    """Upload a PNG (pending), then patch its merchant to control matching."""
-    # Use a TestClient implicitly via the fixture in the test that calls this helper.
-    raise RuntimeError("call _patch_pending_merchant from a test using `client`")
-
-
-def _set_pending_merchant(client: TestClient, expense_id: int, merchant: str, *, identity) -> None:
-    response = patch_expense(
-        client,
-        expense_id,
-        headers=identity.app_headers,
-        fields={"merchant": merchant, "amount_cents": 3800},
-    )
-    assert response.status_code == 200
-
-
-def _apply_pending_rules(client: TestClient, *, identity, max_scan: int = 500):
-    preview = client.post(
-        f"/api/rules/apply-pending/preview?max_scan={max_scan}",
-        headers=identity.app_headers,
-    )
-    assert preview.status_code == 200, preview.json()
-    token = preview.json()["preview_token"]
-    return client.post(
-        f"/api/rules/apply-pending?max_scan={max_scan}",
-        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={"confirm": True, "preview_token": token},
-    )
+from tests.rule_application_test_support import apply_pending_rules, set_pending_merchant
 
 
 def _record_ocr_fact(expense_id: int, raw_text: str, *, tenant_id: str = "owner") -> None:
@@ -61,7 +32,7 @@ def _record_ocr_fact(expense_id: int, raw_text: str, *, tenant_id: str = "owner"
 
 def test_rule_preview_does_not_modify(client: TestClient, *, identity) -> None:
     first_id = upload_png(client, identity=identity)
-    _set_pending_merchant(client, first_id, "STARBUCKS COFFEE", identity=identity)
+    set_pending_merchant(client, first_id, "STARBUCKS COFFEE", identity=identity)
 
     response = client.post(
         "/api/rules/preview",
@@ -130,7 +101,7 @@ def test_apply_pending_rules_uses_latest_ocr_fact(
     )
     assert created.status_code == 200, created.json()
 
-    applied = _apply_pending_rules(client, identity=identity)
+    applied = apply_pending_rules(client, identity=identity)
 
     assert applied.status_code == 200, applied.json()
     assert applied.json()["changed_count"] == 1
@@ -175,7 +146,7 @@ def test_rule_preview_caps_items_by_limit(client: TestClient, *, identity) -> No
     ids: list[int] = []
     for index in range(3):
         new_id = upload_png(client, identity=identity)
-        _set_pending_merchant(client, new_id, f"星巴克门店-{index}", identity=identity)
+        set_pending_merchant(client, new_id, f"星巴克门店-{index}", identity=identity)
         ids.append(new_id)
 
     response = client.post(

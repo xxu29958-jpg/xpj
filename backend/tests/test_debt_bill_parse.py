@@ -9,10 +9,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
-from app.database import SessionLocal
-from app.models import LedgerMember
 from app.services import debt_bill_parse_service
 from app.services.debt_bill_parse_service import (
     EmptyDebtBillProvider,
@@ -24,17 +21,7 @@ from app.services.debt_bill_parse_service import (
     parse_debt_bill,
 )
 from tests._infra.assets import PNG_BYTES
-
-
-def _set_owner_ledger_role(role: str) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = role
-        db.commit()
-
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 # ── service layer ────────────────────────────────────────────────────────────
 
@@ -157,7 +144,7 @@ def test_parse_bill_route_rejects_non_image(client: TestClient, *, identity) -> 
 
 def test_parse_bill_route_viewer_is_403(client: TestClient, *, identity) -> None:
     # coverage: viewer-write
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
 
     response = client.post(
         "/api/debts/parse-bill",

@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from tests._web_native_form_support import hidden_post_forms
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def _rule(client, identity):
@@ -102,7 +103,6 @@ def _definition_input(web, rule=None):
 @pytest.mark.parametrize("editing", [False, True])
 def test_public_rule_definition_receipt_survives_deletion_but_not_revoked_permission(client, identity, editing):
     from app.routes.web_auth import SESSION_COOKIE_NAME
-    from tests._infra.merchant_catalog import demote_owner_ledger_to_viewer
     from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
 
     original = _rule(client, identity) if editing else None
@@ -121,7 +121,7 @@ def test_public_rule_definition_receipt_survives_deletion_but_not_revoked_permis
         replay = web.post(action, data=fields, headers=headers)
         assert replay.status_code == 200 and replay.json() == result
         assert rule["id"] not in {row["id"] for row in client.get("/api/rules/categories", headers=identity.app_headers).json()}
-        demote_owner_ledger_to_viewer()
+        set_owner_ledger_role("viewer")
         assert web.post(action, data=fields, headers=headers).status_code == 403
 
 

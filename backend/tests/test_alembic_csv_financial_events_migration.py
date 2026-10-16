@@ -1,19 +1,17 @@
 """Real PostgreSQL preserves CSV history and enforces ledger-local event receipts."""
 
 from datetime import date
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from sqlalchemy import CheckConstraint, UniqueConstraint, insert, inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal, engine
 from app.models import CsvImportEvent, CsvImportRow
 from app.money_contract import MONEY_AGGREGATE_MAX, MONEY_MINOR_MAX
-from tests._infra.alembic_runtime import reset_public_schema, run_alembic_for_test
+from tests._infra.alembic_runtime import alembic_config_for_test, reset_public_schema, run_alembic_for_test
 from tests._infra.currency import activate_test_currency_authority
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
@@ -35,10 +33,7 @@ _ROW_INSERT = """
 
 
 def _run(action, revision):
-    root = Path(__file__).resolve().parents[1]
-    config = Config(str(root / "alembic.ini"))
-    config.set_main_option("script_location", str(root / "migrations"))
-    run_alembic_for_test(engine, config, action, revision)
+    run_alembic_for_test(engine, alembic_config_for_test(), action, revision)
 
 
 def _insert_batch(db, tenant):
