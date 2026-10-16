@@ -345,7 +345,11 @@ class MerchantManagementContinuationTest {
         reject = false
         compose.onNodeWithText(context.getString(R.string.merchant_command_verify))
             .performTouchInput { click() }
-        compose.waitUntil(5_000) { catalog?.displayName == "改名后的商家" }
+        compose.waitUntil(5_000) {
+            catalog?.displayName == "改名后的商家" && compose.onAllNodesWithText(
+                context.getString(R.string.merchant_catalog_rename_dialog_title),
+            ).fetchSemanticsNodes().isEmpty()
+        }
         compose.waitForIdle()
         compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_title)).assertDoesNotExist()
         clickText(R.string.merchant_catalog_section_list)
