@@ -89,8 +89,8 @@ def journey_dependencies(root: Path = ROOT, revision: str = "") -> dict[str, set
     common = set().union(*(_imports(node) for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))))
     # The existing workflow also calls preparation/identity helpers directly.
     # Read both revisions' invocations so removing a call cannot erase its old consumers.
-    common.update({"scripts." + name for name in re.findall(
-        r"(?:\bscripts\.|\bbackend/scripts/)([a-z_][a-z_0-9]*)", read_source(WORKFLOW))}
+    common.update({"scripts." + "".join(names) for names in re.findall(
+        r"\bscripts\.([a-z_][a-z_0-9]*)|\bbackend/scripts/([a-z_][a-z_0-9]*)\.py\b", read_source(WORKFLOW))}
         - {"scripts.planning_consumer_journey"})  # Its group branches are resolved below.
     modules = _transport_imports(tree, groups)
     for imports in modules.values():

@@ -398,13 +398,15 @@ def test_journey_selection_retains_consumers_across_renames_and_removed_imports(
         ], cwd=tmp_path, text=True).strip()
 
     git("init", "-q")
+    workflow = tmp_path / ".github/workflows/planning-consumer-journey.yml"
+    # A historical path trigger is not an executable module dependency.
+    workflow.write_text(workflow.read_text(encoding="utf-8").replace("backend/scripts/**.py", "backend/scripts/planning_*journey*.py"), encoding="utf-8")
     git("add", ".")
     git("commit", "-qm", "Before dependency changes")
     base = git("rev-parse", "HEAD")
     old = "backend/scripts/backstage_journey_facts.py"
     new = "backend/scripts/backstage_journey_fixture.py"
     (tmp_path / old).rename(tmp_path / new)
-    workflow = tmp_path / ".github/workflows/planning-consumer-journey.yml"
     workflow.write_text(workflow.read_text(encoding="utf-8").replace("backend/scripts/report_qualification_sha.py", "backend/scripts/report_journey_sha.py"), encoding="utf-8")
     (tmp_path / "backend/scripts/report_qualification_sha.py").rename(tmp_path / "backend/scripts/report_journey_sha.py")
     for path in (tmp_path / "backend/scripts").glob("*.py"):
