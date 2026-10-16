@@ -5,7 +5,7 @@ Verifies the harness mechanics on the synthetic image-less fixture
 
 - fixtures are discovered correctly
 - ``empty`` provider scores 0 hits (sanity floor)
-- ``mock`` provider scores 4/4 hits on the parse layer (sanity ceiling)
+- ``mock`` provider extracts amount, merchant and time from the declared text
 - unavailable providers (``rapidocr``/``local_llm`` without their deps) are
   reported as SKIP rather than crashing
 
@@ -28,7 +28,7 @@ if str(_SCRIPTS) not in sys.path:
 
 import ocr_benchmark  # noqa: E402
 
-FIXTURE_DIR = Path(__file__).resolve().parent / "_infra" / "ocr_fixtures"
+FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "_infra" / "ocr_fixtures"
 
 
 def test_synthetic_bank_alert_fixture_is_discovered() -> None:
@@ -54,17 +54,10 @@ def test_mock_provider_parses_bank_alert_correctly() -> None:
     rows = [r for r in report.rows if r.fixture == "_synthetic_bank_alert" and r.provider == "mock"]
     assert len(rows) == 1, rows
     row = rows[0]
-    # Mock feeds the GT raw_text through parse_receipt_text → all four
-    # extraction targets should land. If any miss, the parse layer
-    # regressed on this canonical bank-alert format.
+    # Mock feeds the declared raw_text through the real receipt parser.
     assert row.amount_match is True, f"amount miss: {row.note}"
     assert row.merchant_match is True, f"merchant miss: {row.note}"
     assert row.time_match is True, f"time miss: {row.note}"
-    # Category extraction from "交易提醒" is heuristic; track loosely.
-    # If the parser ever stops returning a category for this text the
-    # harness will still flag it as a miss — that's a parser regression
-    # worth catching but not blocking PR-6 on.
-    assert row.category_match in {True, False, None}
 
 
 def test_unavailable_providers_are_skipped_not_crashed() -> None:

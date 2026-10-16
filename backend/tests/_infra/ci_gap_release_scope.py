@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib.util
+import sys
 from pathlib import Path
 
 
@@ -173,3 +175,25 @@ jobs:
         encoding="utf-8",
     )
     return ci
+
+
+_MODULE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "ci_gap_release_scope.py"
+
+
+_GITHUB_POLICY = (
+    ".github/workflows/ci.yml: Android release APK builds must be path-gated for non-Android changes"
+)
+
+
+_GITEA_POLICY = (
+    ".gitea/workflows/windows-ci.yml: Android release APK builds must be path-gated for non-Android changes"
+)
+
+
+def _load() -> object:
+    spec = importlib.util.spec_from_file_location("ci_gap_release_scope", _MODULE_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module

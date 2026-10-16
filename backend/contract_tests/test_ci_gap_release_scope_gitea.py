@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from test_ci_gap_release_scope import _GITEA_POLICY, _load
-
+from tests._infra.ci_gap_release_scope import _GITEA_POLICY, _load
 from tests._infra.ci_gap_release_scope import write_valid_github as _write_valid_github
 
 

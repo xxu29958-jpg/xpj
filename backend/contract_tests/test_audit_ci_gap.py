@@ -237,7 +237,7 @@ def test_ci_gap_accepts_required_commands_across_workflows(tmp_path: Path) -> No
     assert "pytest real-db serial lane" not in mod._missing_ci_invocations(business_only)
     narrowed_business = mod.WorkflowCommand(
         Path("ci.yml"),
-        "python -m pytest tests/test_audit_ci_gap.py -q -ra --tb=short -p no:cacheprovider",
+        "python -m pytest tests/test_version.py -q -ra --tb=short -p no:cacheprovider",
     )
     assert "pytest ordinary business lane" in mod._missing_ci_invocations([narrowed_business])
     assert "pytest real-db serial lane" in mod._missing_ci_invocations([narrowed_business])

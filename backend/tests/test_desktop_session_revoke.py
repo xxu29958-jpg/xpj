@@ -29,13 +29,19 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.middleware.web_session import DESKTOP_BRIDGE_HEADER, DESKTOP_BRIDGE_VERSION
 from tests.desktop_activation_support import (
+    LOOPBACK_BASE_URL,
+    REVOKE_PATH,
+    _activate_attempt,
+    _bridge_headers,
+    _desktop_session,
+    _prepare_payload,
+    new_desktop_pairing_code,
+)
+from tests.desktop_activation_support import (
     activate as _activate,
 )
 from tests.desktop_activation_support import (
     attempt_row as _attempt_row,
-)
-from tests.desktop_activation_support import (
-    new_desktop_pairing_code,
 )
 from tests.desktop_activation_support import (
     pair_desktop as _pair_desktop,
@@ -43,15 +49,8 @@ from tests.desktop_activation_support import (
 from tests.desktop_activation_support import (
     token_row as _token_row,
 )
-from tests.test_desktop_ledger_switch_prepare import (
-    _activate_attempt,
-    _desktop_session,
-    _prepare_payload,
-)
 
-LOOPBACK_BASE_URL = "http://127.0.0.1:8000"
 PUBLIC_BASE_URL = "https://api.example.com"
-REVOKE_PATH = "/desktop/session/revoke"
 
 
 @pytest.fixture()
@@ -63,13 +62,6 @@ def loopback_client(identity) -> Iterator[TestClient]:
         client=("127.0.0.1", 51011),
     ) as test_client:
         yield test_client
-
-
-def _bridge_headers(token: str, *, marker: str = DESKTOP_BRIDGE_VERSION) -> dict[str, str]:
-    return {
-        DESKTOP_BRIDGE_HEADER: marker,
-        "Authorization": f"Bearer {token}",
-    }
 
 
 def test_revoke_exact_presented_credential(identity, loopback_client: TestClient, client: TestClient) -> None:
@@ -107,7 +99,7 @@ def test_switch_activation_closes_source_family_and_cleanup_keeps_successor(
     predecessor + its refresh descendants) with rotation grace; the promoted
     successor becomes the session, and the default cleanup revoke afterwards
     is a no-op 401 (predecessor already dead) that never touches it."""
-    from tests.test_desktop_ledger_switch_prepare import _create_ledger
+    from tests.desktop_activation_support import _create_ledger
 
     _, headers = _desktop_session(client, identity.pairing_code)
     source_token = headers["Authorization"].removeprefix("Bearer ")
@@ -154,7 +146,7 @@ def test_unpair_lineage_scope_kills_promoted_replacements_but_not_unrelated_line
     device's session survives. The promoted-replacement kill set itself —
     including a promoted token's refresh descendants — is pinned at service
     level in :mod:`tests.test_desktop_session_revoke_refresh_lineage`."""
-    from tests.test_desktop_ledger_switch_prepare import _create_ledger
+    from tests.desktop_activation_support import _create_ledger
 
     # Pair + activate a desktop session, then switch it to the second ledger.
     _, headers = _desktop_session(client, identity.pairing_code)
@@ -300,7 +292,7 @@ def test_revoke_cancels_outstanding_staged_replacements(
     """Unpair must not leave a staged desktop_pending replacement live: the
     unauthenticated activate endpoint would otherwise restore a full session
     from the retained attempt proof after the session was revoked."""
-    from tests.test_desktop_ledger_switch_prepare import _create_ledger
+    from tests.desktop_activation_support import _create_ledger
 
     _, headers = _desktop_session(client, identity.pairing_code)
     target = _create_ledger(client, headers)
@@ -323,4 +315,3 @@ def test_revoke_cancels_outstanding_staged_replacements(
     staged_row = _token_row(staged_value)
     assert staged_row.revoked_at is not None
     assert staged_row.grace_until is None
-

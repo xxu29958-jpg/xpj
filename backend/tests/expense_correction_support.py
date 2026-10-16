@@ -6,6 +6,8 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from tests._web_native_form_support import _NativeForm
+
 
 def idem(headers: dict[str, str], *, key: str | None = None) -> dict[str, str]:
     return {**headers, "Idempotency-Key": key or str(uuid4())}
@@ -44,3 +46,7 @@ def revision_history(client: TestClient, identity, expense_id: int, **query: int
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def _read_form(response, expense_id):
+    return _NativeForm(response.text, f"/web/expenses/{expense_id}/corrections")

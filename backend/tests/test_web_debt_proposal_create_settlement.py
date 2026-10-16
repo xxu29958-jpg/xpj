@@ -62,7 +62,7 @@ def test_web_second_proposal_shows_fresh_pending_owner_and_error(
 def test_member_date_only_proposal_recovers_original_after_lost_reply_and_unreadable_detail(web_client, monkeypatch):
     import app.routes.web_debt_actions as outcomes
     import app.routes.web_debt_proposal_actions as routes
-    from tests.test_web_correction_fx_continuation import _NativeForm
+    from tests._web_native_form_support import _NativeForm
 
     public_id, debt_id, _, _ = seed_member_debt(direction="i_owe", currency="JPY")
     action = f"/web/debts/{public_id}/repayment-proposals"
