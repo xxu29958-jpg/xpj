@@ -358,6 +358,8 @@ def test_journey_selection_follows_real_consumers_without_a_default_budget_group
         assert set(select_groups([f"backend/scripts/{name}"])["selected"]) == expected
     assert set(select_groups(["backend/scripts/financial_journey.py", "backend/scripts/relationship_journey.py"])["selected"]) == {"financial-facts", "relationships"}
     assert set(select_groups(["backend/scripts/planning_journey_android.py"])["selected"]) == set(journey_dependencies())
+    for helper in ("postgres_release_policy", "report_qualification_sha", "write_test_postgres_env", "prepare_test_postgres_databases"):
+        assert set(select_groups([f"backend/scripts/{helper}.py"])["selected"]) == set(journey_dependencies())
     assert select_groups([], "financial-facts")["selected"] == ["financial-facts"]
     assert select_groups([], "cold-copy")["selected"] == ["cold-copy"]
     assert select_groups(["backend/app/services/expense_service.py"])["selected"] == []
@@ -402,6 +404,9 @@ def test_journey_selection_retains_consumers_across_renames_and_removed_imports(
     old = "backend/scripts/backstage_journey_facts.py"
     new = "backend/scripts/backstage_journey_fixture.py"
     (tmp_path / old).rename(tmp_path / new)
+    workflow = tmp_path / ".github/workflows/planning-consumer-journey.yml"
+    workflow.write_text(workflow.read_text(encoding="utf-8").replace("backend/scripts/report_qualification_sha.py", "backend/scripts/report_journey_sha.py"), encoding="utf-8")
+    (tmp_path / "backend/scripts/report_qualification_sha.py").rename(tmp_path / "backend/scripts/report_journey_sha.py")
     for path in (tmp_path / "backend/scripts").glob("*.py"):
         text = path.read_text(encoding="utf-8")
         text = text.replace("scripts.backstage_journey_facts", "scripts.backstage_journey_fixture")
@@ -418,6 +423,7 @@ def test_journey_selection_retains_consumers_across_renames_and_removed_imports(
     insights = ["backend/scripts/insights_journey.py"]
     assert select_groups(insights, root=tmp_path, head=head)["selected"] == ["insights"]
     assert set(select_groups(insights, root=tmp_path, base=base, head=head)["selected"]) == {"insights", "appearance"}
+    assert set(select_groups(["backend/scripts/report_qualification_sha.py"], root=tmp_path, base=base, head=head)["selected"]) == set(journey_dependencies())
 
 
 def test_always_on_contract_tests_do_not_expand_heavy_scopes() -> None:

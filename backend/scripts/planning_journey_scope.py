@@ -6,6 +6,7 @@ import argparse
 import ast
 import json
 import os
+import re
 import subprocess
 from functools import cache
 from pathlib import Path
@@ -75,15 +76,22 @@ def _transport_imports(tree: ast.Module, groups: list[str]) -> dict[str, set[str
 
 def journey_dependencies(root: Path = ROOT, revision: str = "") -> dict[str, set[str]]:
     @cache
+    def read_source(path: str) -> str:
+        return subprocess.check_output(["git", "show", f"{revision}:{path}"], cwd=root).decode("utf-8-sig") if revision else (root / path).read_text(encoding="utf-8-sig")
+
     def read_tree(path: str) -> ast.Module:
-        source = subprocess.check_output(["git", "show", f"{revision}:{path}"], cwd=root).decode("utf-8-sig") if revision else (root / path).read_text(encoding="utf-8-sig")
-        return ast.parse(source)
+        return ast.parse(read_source(path))
 
     tree = read_tree(ENTRY)
     groups = _declared_groups(tree)
     # Top-level imports are loaded before every group starts, including shared
     # Android navigation, identity/recovery and the sealed database contract.
     common = set().union(*(_imports(node) for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))))
+    # The existing workflow also calls preparation/identity helpers directly.
+    # Read both revisions' invocations so removing a call cannot erase its old consumers.
+    common.update({"scripts." + name for name in re.findall(
+        r"(?:\bscripts\.|\bbackend/scripts/)([a-z_][a-z_0-9]*)", read_source(WORKFLOW))}
+        - {"scripts.planning_consumer_journey"})  # Its group branches are resolved below.
     modules = _transport_imports(tree, groups)
     for imports in modules.values():
         imports.update(common)
