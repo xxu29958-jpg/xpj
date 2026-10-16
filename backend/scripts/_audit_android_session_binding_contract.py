@@ -9,8 +9,7 @@ before workers exist, or as an atomic same-session token rotation.
 only by developer discipline; this lane turns it into a machine gate. Any call
 to a raw binding setter or durable-session commit
 outside the reason-annotated allowlist fails the build, closing future bypass
-paths (mirrors the ``android-outbox-contract`` lane shape;
-docs/audits/2026-06-14-known-bugs.md P3 #1).
+paths (docs/audits/2026-06-14-known-bugs.md P3 #1).
 
 Scans every shipping source set (``main`` + product-flavor / build-type source
 sets such as ``gray`` / ``internal``), keyed by source-set name, so a binding
