@@ -460,13 +460,27 @@ def _decision(
     hits: list[dict[str, object]],
     ignored: tuple[str, ...],
 ) -> dict[str, object]:
+    paths = [str(hit["path"]) for hit in hits] + list(ignored)
     capabilities, android_reason = _android_selection(
-        scopes["android"], status, [str(hit["path"]) for hit in hits] + list(ignored),
+        scopes["android"], status, paths,
+    )
+    # These Python sources run in the native coordinator lane; the frozen
+    # lifecycle spec and installer payload do not consume the tests directory.
+    native_tests_only = status == "REQUIRED" and bool(paths) and all(
+        path.startswith("distribution/windows/tests/") and path.endswith(".py")
+        and not any(part in {"", ".", ".."} for part in path.split("/"))
+        for path in paths
     )
     return {
         "scopes": scopes,
         "android_capabilities": capabilities,
         "android_reason": android_reason,
+        "windows_build": scopes["windows"] and not native_tests_only,
+        "windows_reason": (
+            "native coordinator tests only; installer build and its resource preparation not affected"
+            if native_tests_only else "full Windows inputs or unproven/mixed input set"
+            if scopes["windows"] else "Windows not affected"
+        ),
         "status": status,
         "reason": reason,
         "hits": hits,

@@ -41,6 +41,7 @@ jobs:
       android_apk: ${{ steps.scope.outputs.android_apk }}
       android_connected: ${{ steps.scope.outputs.android_connected }}
       windows: ${{ steps.scope.outputs.windows }}
+      windows_build: ${{ steps.scope.outputs.windows_build }}
       postgres_matrix: ${{ steps.scope.outputs.postgres_matrix }}
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
@@ -286,6 +287,7 @@ jobs:
 
       # The build job remains the only writer of the complete toolchain cache.
       - name: Restore pinned Windows build inputs
+        if: ${{ success() && (needs.scope.result != 'success' || needs.scope.outputs.windows_build != 'false') }}
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -296,6 +298,7 @@ jobs:
           key: windows-installer-vendor-${{ hashFiles('backend/packaging/windows-build-toolchain.json', 'backend/packaging/build_pg_bundle.ps1', 'backend/packaging/prepare_windows_installer_vendor.ps1') }}
 
       - name: Prepare pinned PostgreSQL and Shawl inputs
+        if: ${{ success() && (needs.scope.result != 'success' || needs.scope.outputs.windows_build != 'false') }}
         shell: powershell
         working-directory: backend
         run: |
@@ -303,8 +306,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # Keep shared-resource tests serial on this independent Windows host.
-      # The existing Windows aggregator requires both native and build lanes.
+      # Installer resources follow the same selection as the build lane.
       - name: Windows installer resource-serial behavior
+        if: ${{ success() && (needs.scope.result != 'success' || needs.scope.outputs.windows_build != 'false') }}
         working-directory: backend
         env:
           PYTEST_ADDOPTS: ""
@@ -316,7 +320,7 @@ jobs:
   windows_packaging_build:
     name: Windows installer build
     needs: scope
-    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows != 'false') }}
+    if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows_build != 'false') }}
     runs-on: windows-latest
     timeout-minutes: 30
     outputs:
@@ -584,6 +588,7 @@ jobs:
           ENV: ""
           SCOPE_RESULT: ${{ needs.scope.result }}
           WINDOWS_SCOPE: ${{ needs.scope.outputs.windows }}
+          WINDOWS_BUILD_SCOPE: ${{ needs.scope.outputs.windows_build }}
           EXPECTED_SHA: ${{ github.sha }}
           EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           AGGREGATOR_SHA: ${{ steps.qualification.outputs.sha }}
@@ -604,6 +609,7 @@ jobs:
           --lane BUILD
           --source-lane VNEXT
           --source-lane BUILD
+          --lane-scope BUILD=WINDOWS_BUILD_SCOPE
 
   backend:
     name: Backend
