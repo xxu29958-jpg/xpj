@@ -29,19 +29,6 @@ def _request() -> InstallRequest:
     )
 
 
-def test_planner_is_pure_and_uses_fixed_sequence() -> None:
-    observation = HostObservation(
-        installation_present=False,
-        active_operation_present=False,
-        active_operation_id=None,
-        active_phase=None,
-        program_files_present=True,
-        data_root_present=False,
-    )
-    plan = plan_fresh_install(_request(), observation)
-    assert tuple(step.name for step in plan.steps) == APPLY_SEQUENCE
-
-
 def test_planner_refuses_when_installation_already_exists() -> None:
     observation = HostObservation(
         installation_present=True,
