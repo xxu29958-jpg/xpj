@@ -11,7 +11,7 @@ from threading import Barrier
 import pytest
 from api_contract_helpers import confirm_expense_api
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import (
@@ -19,64 +19,12 @@ from app.models import (
     CsvImportEvent,
     CsvImportRow,
     ExchangeRate,
-    Expense,
-    ExpenseOffsetFact,
-    ExpenseOffsetRevision,
-    ExpenseRevision,
     FxRate,
 )
 from app.services.csv_import_batch_service import _events as csv_events
-from tests.expense_correction_support import idem, manual_confirmed
+from tests._infra.csv import _apply, _batch, _bundle, _export, _fact_counts, _foreign_source_export, _rows
+from tests.expense_correction_support import _create_refund, _foreign_expense, _seed_usd_rate, idem, manual_confirmed
 from tests.family_ledger_test_support import set_owner_ledger_role
-from tests.test_expense_offset_lifecycle import _create_refund, _foreign_expense, _seed_usd_rate
-
-
-def _batch(client, headers, content: bytes) -> str:
-    response = client.post(
-        "/api/imports/csv", headers=headers,
-        files={"csv_file": ("ticketbox-events.csv", content, "text/csv")},
-    )
-    assert response.status_code == 201, response.text
-    assert response.json()["error_rows"] == 0, response.json()
-    return response.json()["public_id"]
-
-
-def _rows(client, headers, batch: str, *, status: str | None = None) -> dict:
-    response = client.get(
-        f"/api/imports/csv/{batch}/rows", headers=headers,
-        params={"status": status} if status else None,
-    )
-    assert response.status_code == 200, response.text
-    return response.json()
-
-
-def _apply(client, headers, batch: str, *, size: int = 10) -> dict:
-    response = client.post(
-        f"/api/imports/csv/{batch}/apply", headers=headers, json={"batch_size": size},
-    )
-    assert response.status_code == 200, response.text
-    return response.json()
-
-
-def _export(client, headers, **filters) -> bytes:
-    response = client.get("/api/expenses/export.csv", headers=headers, params=filters)
-    assert response.status_code == 200, response.text
-    assert "text/csv" in response.headers["content-type"]
-    return response.content
-
-
-def _bundle(client, headers, expense_id: int) -> dict:
-    response = client.get(f"/api/expenses/{expense_id}/fact-bundle", headers=headers)
-    assert response.status_code == 200, response.text
-    return response.json()
-
-
-def _fact_counts(ledger_id: str) -> tuple[int, ...]:
-    with SessionLocal() as db:
-        return tuple(
-            db.scalar(select(func.count()).select_from(model).where(model.tenant_id == ledger_id))
-            for model in (Expense, ExpenseOffsetFact, ExpenseRevision, ExpenseOffsetRevision)
-        )
 
 
 def _rate_facts() -> tuple[list, list]:
@@ -111,25 +59,6 @@ def _offset_first(content: bytes) -> bytes:
     writer.writeheader()
     writer.writerows(rows)
     return output.getvalue().encode("utf-8")
-
-
-def _foreign_source_export(client, identity) -> tuple[bytes, dict]:
-    _seed_usd_rate(client, identity, "2026-05-04", "7")
-    _seed_usd_rate(client, identity, "2026-05-05", "8")
-    expense = _foreign_expense(client, identity, "原币退货订单")
-    created = _create_refund(client, identity, expense)
-    offset, = created["active_offsets"]
-    corrected = client.post(
-        f"/api/expenses/{expense['id']}/offsets/{offset['public_id']}/corrections",
-        headers=idem(identity.app_headers),
-        json={
-            "original_amount_minor": 2500, "accounting_date": "2026-05-05",
-            "category": "售后", "offset_reason": "部分商品退货", "correction_reason": "独立归类退款",
-            "expected_row_version": offset["row_version"],
-        },
-    )
-    assert corrected.status_code == 201, corrected.text
-    return _export(client, identity.app_headers), corrected.json()
 
 
 def test_native_csv_review_requires_authentication(client: TestClient) -> None:
