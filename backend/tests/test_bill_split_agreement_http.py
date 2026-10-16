@@ -136,6 +136,10 @@ def _post_web(browser, action, fields):
 def test_paid_share_refund_partial_return_and_changed_mind_preserve_actual_cash(client, split_http):
     split = split_http
     _pay(client, split["receiver"], split["sender"], split["debt"], 4_000)
+    preview = client.get(f"/api/debts/{split['debt']}/split-agreement",
+        headers=split["receiver"], params={"new_share_amount_cents": 2_000})
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["preview"]["default_settlement_net_amount_cents"] == -2_000
     proposal, basis = _change(client, split, share=2_000, net=-2_000)
     headers = _idem(split["sender"])
     accepted = _accept(client, split, proposal, basis, headers=headers)
