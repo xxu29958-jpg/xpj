@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.errors import AppError, app_error_handler
@@ -16,10 +15,9 @@ from app.routes import web_expense_create
 from app.schemas import ExpenseResponse
 from app.services import manual_expense_draft_presenter as presenter
 from app.services.manual_expense_receipt import _manual_receipt_key
-from tests import test_web_expense_confirmation_page as pages
-
-confirmation_store = pages.confirmation_store
-confirmation_web = pages.confirmation_web
+from tests.web_expense_fact_test_support import confirmation_actor
+from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
+from tests.web_expense_fact_test_support import confirmation_web as confirmation_web
 
 
 @pytest.mark.parametrize("receipt_id", [None, 99, 7])
@@ -43,12 +41,14 @@ def test_opening_current_fact_requires_matching_original_receipt_before_draft_ac
 
 
 @pytest.fixture
-def manual_receipt_page(confirmation_web, monkeypatch):
+def manual_receipt_page(confirmation_web, confirmation_store, monkeypatch):
     client, options = confirmation_web
     scope = {"datasetId": "dataset", "clientGeneration": "generation", "accountId": "account",
         "ledgerId": "owner", "deviceId": "browser"}
+    with confirmation_store() as db:
+        auth = confirmation_actor(db)
     def local(request: web_expense_create.Request):
-        request.state.web_session_auth = SimpleNamespace(ledger_id="owner", device_id=7, device_public_id="browser")
+        request.state.web_session_auth = auth
     client.app.dependency_overrides[web_expense_create.LocalOnly.dependency] = local
     client.app.add_exception_handler(AppError, app_error_handler)
     client.app.include_router(web_expense_create.router)
@@ -59,13 +59,14 @@ def manual_receipt_page(confirmation_web, monkeypatch):
 
 
 def _seed_original(confirmation_store, status):
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
+        auth = confirmation_actor(db)
         current = db.get(Expense, 42)
-        current.source, current.status, current.draft_idempotency_key = "手动记账", status, "7:" + "a" * 32
+        current.source, current.status, current.draft_idempotency_key = "手动记账", status, f"{auth.device_id}:" + "a" * 32
         if status == "pending":
             current.amount_cents, current.fx_status = None, "pending"
         receipt = ExpenseResponse.model_validate(current).model_dump(mode="json")
-        db.add(ApiIdempotencyKey(tenant_id="owner", idempotency_key=_manual_receipt_key(7, "a" * 32),
+        db.add(ApiIdempotencyKey(tenant_id="owner", idempotency_key=_manual_receipt_key(auth.device_id, "a" * 32),
             operation="create_manual_expense", request_fingerprint="b" * 64, status="succeeded",
             resource_type="expense", resource_id="42", response_body=receipt,
             expires_at=current.created_at + timedelta(days=30)))
@@ -96,7 +97,7 @@ def test_reading_manual_first_result_after_later_edits_is_read_only_even_for_vie
     assert '"originalTarget": {"expenseId": 42, "rowVersion": 4}' in body
     assert "/web/expenses/42/edit?ledger_id=owner&return_to=confirmed" in body
     assert response.headers["cache-control"] == "no-store"
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert (current.merchant, current.amount_cents, current.row_version) == ("后来人工修改", 9900, 9)
         assert db.scalar(select(ApiIdempotencyKey)).response_body == receipt
@@ -107,7 +108,7 @@ def test_missing_manual_receipt_keeps_unknown_result_and_original_return(manual_
     client, scope, _ = manual_receipt_page
     if legacy:
         _seed_original(confirmation_store, "confirmed")
-        with Session(confirmation_store) as db:
+        with confirmation_store() as db:
             db.scalar(select(ApiIdempotencyKey)).response_body = None
             db.commit()
     response = client.get("/web/expenses/new/result", params=_result_query(scope))

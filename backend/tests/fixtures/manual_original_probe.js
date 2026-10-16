@@ -40,7 +40,8 @@
     assert(!window.TicketboxManualDrafts.read(state.ref), "Only the receipt and durable transfer may collect the manual draft");
     const task = window.TicketboxAttachmentDrafts.store.read(state.ref);
     assert(task.phase === "editing" && task.values.file_sha256 === JSON.parse(state.meta).file_sha256, "Transfer changed the original file");
-    assert(new URL(task.values.action).searchParams.get("expected_row_version") === "4", "Attachment must keep the first receipt basis");
+    const accepted = JSON.parse(document.querySelector("[data-manual-draft-ack]").dataset.manualDraftAck);
+    assert(new URL(task.values.action).searchParams.get("expected_row_version") === String(accepted.originalTarget.rowVersion), "Attachment must keep the first receipt basis");
     state.origin.forEach(([name, value]) => assert(new URL(task.values.action).searchParams.get(name) === value, "Original handoff lost " + name));
     if (state.stage === "transfer-retry") {
       save("transferred");
