@@ -138,7 +138,6 @@ interface PendingMutationDao {
               AND sib.status IN (:inFlightStatus, 'conflict', 'failed')
               AND $OUTBOX_FAILED_ROW_BLOCKS
           )
-          AND $OUTBOX_NO_EARLIER_PENDING_SIBLING
         """,
     )
     suspend fun markInFlightIfPending(
