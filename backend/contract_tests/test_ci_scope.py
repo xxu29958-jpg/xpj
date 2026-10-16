@@ -431,6 +431,15 @@ def test_journey_selection_retains_consumers_across_renames_and_removed_imports(
 def test_always_on_contract_tests_do_not_expand_heavy_scopes() -> None:
     for path in (
         "backend/scripts/engineering_task_map.py",
+        "backend/scripts/_audit_android_alpha_ratchet.py",
+        "backend/scripts/_audit_android_outbox_dispatcher_coverage.py",
+        "backend/scripts/_audit_android_presentation_copy.py",
+        "backend/scripts/_audit_android_session_binding_contract.py",
+        "backend/tests/_infra/ci_gap.py",
+        "backend/tests/_infra/ci_gap_action_pins.py",
+        "backend/tests/_infra/ci_gap_installer.py",
+        "backend/tests/_infra/ci_gap_powershell_ast.py",
+        "backend/tests/_infra/ci_gap_release_scope.py",
         "backend/contract_tests/test_android_test_qualification.py",
         "backend/contract_tests/test_backend_ci_results.py",
         "backend/contract_tests/test_postgres_ci_lane_runner.py",
@@ -453,6 +462,10 @@ def test_ci_policy_and_unknown_paths_fail_closed_to_full() -> None:
     assert classify_ci_paths(["backend/scripts/ci_gap_workflow_parser.py"]) == all_ci_scopes()
     for path in (
         "backend/scripts/_audit_codebase.py",
+        "backend/scripts/_audit_ci_gap.py",
+        "backend/scripts/_audit_unknown.py",
+        "backend/scripts/_audit_wip_android_alpha_ratchet.py",
+        "backend/scripts/nested/_audit_android_alpha_ratchet.py",
         "backend/scripts/codebase_audit_gate.py",
         "backend/scripts/pr_delta_baselines.py",
         "backend/scripts/postgres_release_policy.py",
@@ -533,6 +546,13 @@ def test_changed_paths_is_rename_and_newline_safe(monkeypatch) -> None:
         "-z",
         "base...head",
     ]
+
+    # A deleted resident input remains recognized; a rename to an unknown
+    # consumer still selects the full chain from the added path.
+    old = "backend/scripts/_audit_android_alpha_ratchet.py"
+    new = "backend/scripts/android_runtime_policy.py"
+    assert not any(classify_ci_paths([old]).values())
+    assert classify_ci_paths([old, new]) == all_ci_scopes()
 
 
 def test_classifier_explanation_matches_existing_selection() -> None:
