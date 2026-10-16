@@ -247,9 +247,11 @@ class DirectRepaymentIntentTest {
         val original = fixture.pending()
         val next = fixture.outbox.enqueue(PendingMutationType.RecordDebtRepayment, original.row.targetId,
             original.row.payloadJson, 1, "separate-original-key")
+        fixture.api.repaymentRefusalsByKey["separate-original-key"] = 409 to "state_conflict"
         fixture.dao.runnableBatches += listOf(original.row.id)
         fixture.dao.runnableBatches += listOf(next)
         val result = fixture.engine().drainOnce()
+        assertTrue(fixture.dao.tokenCascadeCalls.isEmpty(), "An accepted repayment must not rebase another original")
         assertEquals(1, result.done)
         assertEquals(1, result.conflicts)
         assertEquals(1L, fixture.dao.rows.getValue(next).expectedRowVersion)

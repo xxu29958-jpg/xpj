@@ -22,6 +22,9 @@ class FakePendingMutationDao : PendingMutationDao {
     var replacePayloadError: Throwable? = null
     val refusedClaims = mutableSetOf<Long>()
     val refusedRecoveries = mutableSetOf<Long>()
+    val refusedStops = mutableSetOf<Long>()
+    val refusedDeletes = mutableSetOf<Long>()
+    val deleteCalls = mutableListOf<DeleteCall>()
     // Query outcomes are supplied by the scenario; generated Room owns age/status/binding predicates.
     val expiredPendingIds = mutableListOf<Long>()
     val expiredBoundIds = mutableSetOf<Long>()
@@ -253,14 +256,8 @@ class FakePendingMutationDao : PendingMutationDao {
         ledgerId: String,
         expectedStatus: String,
     ): Int {
-        val current = rows[id] ?: return 0
-        if (
-            current.ownerKey != ownerKey ||
-            current.ledgerId != ledgerId ||
-            current.status != expectedStatus
-        ) {
-            return 0
-        }
+        deleteCalls += DeleteCall(id, ownerKey, ledgerId, expectedStatus)
+        if (id !in rows || id in refusedDeletes) return 0
         rows.remove(id)
         refreshObservables()
         return 1
@@ -274,11 +271,7 @@ class FakePendingMutationDao : PendingMutationDao {
         stoppedAt: String,
     ): Int {
         val current = rows[id] ?: return 0
-        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != expectedStatus ||
-            current.type !in setOf("record_debt_adjustment", "record_debt_repayment", "void_debt", "void_debt_repayment",
-                "set_debt_kind", "create_goal", "confirm_repayment_draft", "dismiss_repayment_draft") ||
-            current.status !in setOf("failed", "conflict", "pending")
-        ) return 0
+        if (id in refusedStops) return 0
         rows[id] = current.copy(status = "abandoned", completedAt = stoppedAt)
         refreshObservables()
         return 1
@@ -469,3 +462,5 @@ data class RunnableBatchCall(val ownerKey: String, val ledgerId: String, val unr
 
 data class TokenCascadeCall(val ownerKey: String, val ledgerId: String, val targetId: String,
     val preservedTypes: List<String>, val freshToken: Long)
+
+data class DeleteCall(val id: Long, val ownerKey: String, val ledgerId: String, val status: String)

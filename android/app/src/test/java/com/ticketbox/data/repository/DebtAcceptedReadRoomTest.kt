@@ -205,6 +205,8 @@ class DebtAcceptedReadRoomTest {
             val api = RepaymentResponseLossProbe().apply {
                 loseResponse = false
                 current = current.copy(homeCurrencyCode = "JPY", originalCurrencyCode = "JPY", originalAmountMinor = 50_000)
+                repaymentDebt = current.copy(remainingAmountCents = 40_000, paidAmountCents = 10_000, rowVersion = 2)
+                repaymentResponse = repaymentResponse.copy(homeCurrencyCode = "JPY")
             }
             var replayFailure: Exception? = null
             val attempts = mutableListOf<OriginalRepaymentCall>()

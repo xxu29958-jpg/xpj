@@ -201,7 +201,8 @@ class LocalLedgerSessionCoordinatorOrderingTest {
 
         assertEquals(1, dao.rows.size, "sign-out must not silently discard a financial intent")
         assertEquals(0, outbox.dequeueNextRunnable().size)
-        assertTrue(dao.batchCalls.isEmpty(), "Signing out must close queue access")
+        assertEquals("", dao.batchCalls.single().ownerKey)
+        assertEquals("", dao.batchCalls.single().ledgerId)
         assertEquals(1, outbox.observeStatus().first().quarantinedCount)
     }
 

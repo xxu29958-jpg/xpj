@@ -9,6 +9,7 @@ class DebtRepaymentVoidRepositoryTest {
     @Test fun singlePaymentVoidCarriesParentVersionTargetReasonAndIdempotencyKey() = runTest {
         val fixture = DirectRepaymentTestFixture()
         fixture.api.current = fixture.api.current.copy(homeCurrencyCode = "JPY")
+        fixture.api.repaymentVoidResponse = fixture.api.repaymentVoidResponse.copy(homeCurrencyCode = "JPY")
         val debt = fixture.api.current.toDomain()
         fixture.api.loseResponse = false
         fixture.repository.saveRepaymentVoid(fixture.binding, debt, "payment-7", "  重复记录  ").getOrThrow()

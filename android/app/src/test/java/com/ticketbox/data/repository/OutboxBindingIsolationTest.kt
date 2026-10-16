@@ -21,13 +21,15 @@ class OutboxBindingIsolationTest {
         repo.withBindingTransition { binding = OutboxBinding.DEFAULT }
         assertEquals(1, repo.observeStatus().first().quarantinedCount)
         assertTrue(repo.dequeueNextRunnable().isEmpty())
-        assertTrue(dao.batchCalls.isEmpty(), "An unbound repository must not query the queue")
+        assertEquals("", dao.batchCalls.single().ownerKey)
+        assertEquals("", dao.batchCalls.single().ledgerId)
 
         repo.withBindingTransition { binding = original }
         assertEquals(0, repo.observeStatus().first().quarantinedCount)
         dao.runnableBatches += listOf(dao.rows.keys.single())
         assertEquals(1, repo.dequeueNextRunnable().size)
-        assertEquals(original.ownerStorageKey, dao.batchCalls.single().ownerKey)
+        assertEquals(original.ownerStorageKey, dao.batchCalls.last().ownerKey)
+        assertEquals(original.ledgerId, dao.batchCalls.last().ledgerId)
     }
 
     @Test
@@ -96,7 +98,7 @@ class OutboxBindingIsolationTest {
     }
 
     @Test
-    fun staleStatusActionCannotResolveRowFromPreviousBinding() = runTest {
+    fun staleStatusActionUsesTheCurrentBindingAndPropagatesRefusedDeletion() = runTest {
         val dao = FakePendingMutationDao()
         var binding = testOutboxBinding().copy(serverUrl = "https://one.example.com", ledgerId = "ledger-a")
         val repo = testOutboxRepository(dao = dao, bindingProvider = { binding })
@@ -111,7 +113,9 @@ class OutboxBindingIsolationTest {
             )
         }
 
+        dao.refusedDeletes += id
         assertEquals(false, repo.resolveConflict(id, ConflictResolution.DropMine))
+        assertEquals(DeleteCall(id, binding.ownerStorageKey, binding.ledgerId, "conflict"), dao.deleteCalls.single())
         assertEquals(PendingMutationStatus.Conflict.wireValue, dao.rows.getValue(id).status)
         assertEquals("https://one.example.com", dao.rows.getValue(id).serverUrl)
     }

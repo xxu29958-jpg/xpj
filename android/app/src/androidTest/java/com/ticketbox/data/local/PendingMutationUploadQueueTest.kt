@@ -188,6 +188,23 @@ class PendingMutationUploadQueueTest {
             val done = fixture.dao.allRows().single()
             assertEquals(0, fixture.dao.retryFailed(id, OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
             assertEquals(done, fixture.reopen().allRows().single())
+            val adjustment = original.copy(id = 0, type = "record_debt_adjustment")
+            val adjustmentId = fixture.dao.insert(adjustment)
+            for ((owner, ledger) in listOf("another-owner" to LEDGER, OWNER to "another-ledger")) {
+                assertEquals(0, fixture.dao.abandonOriginalCommand(adjustmentId, owner, ledger, "failed", COMPLETED))
+            }
+            assertEquals(0, fixture.dao.abandonOriginalCommand(adjustmentId, OWNER, LEDGER, "conflict", COMPLETED))
+            assertEquals(adjustment.copy(id = adjustmentId), fixture.dao.allRows().single { it.id == adjustmentId })
+            assertEquals(1, fixture.dao.abandonOriginalCommand(adjustmentId, OWNER, LEDGER, "failed", COMPLETED))
+            val stopped = fixture.reopen().allRows().single { it.id == adjustmentId }
+            assertEquals(adjustment.copy(id = adjustmentId, status = "abandoned", completedAt = COMPLETED), stopped)
+            assertEquals(0, fixture.dao.abandonOriginalCommand(adjustmentId, OWNER, LEDGER, "failed", COMPLETED))
+            for (status in listOf("in_flight", "done")) {
+                val current = adjustment.copy(status = status)
+                val currentId = fixture.dao.insert(current)
+                assertEquals(0, fixture.dao.abandonOriginalCommand(currentId, OWNER, LEDGER, status, COMPLETED))
+                assertEquals(current.copy(id = currentId), fixture.dao.allRows().single { it.id == currentId })
+            }
         }
     }
 

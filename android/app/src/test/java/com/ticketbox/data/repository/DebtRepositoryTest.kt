@@ -242,6 +242,7 @@ class DebtRepositoryTest {
     fun savedDebtKindDispatchesTheOriginalVersionKeyAndRetainsItsVerifiedReceipt() = runTest {
         val fixture = DirectRepaymentTestFixture()
         fixture.api.current = fixture.api.current.copy(rowVersion = 3)
+        fixture.api.kindResponse = fixture.api.kindResponse.copy(rowVersion = 4)
         fixture.api.loseResponse = false
         val debt = fixture.api.current.toDomain()
         fixture.repository.saveKind(fixture.binding, debt, DebtKinds.REVOLVING).getOrThrow()
@@ -282,6 +283,7 @@ class DebtRepositoryTest {
         assertEquals(1, fixture.engine().drainOnce().done)
         val first = fixture.dao.rows.values.single()
         val current = fixture.api.current.toDomain()
+        fixture.api.kindResponse = fixture.api.kindResponse.copy(debtKind = DebtKinds.INSTALLMENT, rowVersion = 3)
         val nextId = fixture.repository.saveKind(fixture.binding, current, DebtKinds.INSTALLMENT).getOrThrow()
         fixture.dao.runnableBatches += listOf(nextId)
         assertEquals(1, fixture.engine().drainOnce().done)

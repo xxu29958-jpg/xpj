@@ -159,6 +159,7 @@ class DebtAdjustmentRepositoryTest {
     @Test
     fun savePersistsSignedAmountTrimmedReasonAndOriginalVersionBeforeSchedulingWithoutDirectSend() = runTest {
         val fixture = DebtAdjustmentFixture()
+        fixture.api.response = fixture.api.response.copy(remainingAmountCents = 45_000L)
         val id = fixture.save(amountCents = -5_000L, reason = "  减免部分  ").getOrThrow()
 
         assertTrue(fixture.api.calls.isEmpty())
@@ -236,9 +237,11 @@ class DebtAdjustmentRepositoryTest {
             idempotencyKey = "synthetic-following-adjustment",
         )
         val following = fixture.dao.rows.getValue(followingId)
+        fixture.api.refusalsByKey["synthetic-following-adjustment"] = 409 to "state_conflict"
 
         fixture.dao.runnableBatches.addAll(listOf(listOf(id), listOf(followingId)))
         val summary = fixture.engine().drainOnce()
+        assertTrue(fixture.dao.tokenCascadeCalls.isEmpty(), "An accepted adjustment must not rebase another original")
         assertEquals(1, summary.done)
         assertEquals(1, summary.conflicts)
         assertEquals(2, fixture.api.calls.size)
@@ -401,6 +404,7 @@ class DebtAdjustmentRepositoryTest {
             assertEquals(reason, fixture.api.calls.single().request.reason)
         }
         val cleared = DebtAdjustmentFixture()
+        cleared.api.response = cleared.api.response.copy(remainingAmountCents = 0, status = "cleared")
         cleared.save(amountCents = -50_000L, reason = "减至零").getOrThrow()
         assertEquals(-50_000L, cleared.pending().adjustment?.request?.amountCents)
         assertEquals(listOf(1), cleared.queueDepthAtSchedule)
@@ -534,7 +538,8 @@ internal class DebtAdjustmentApiProbe : ApiService by FakeApiService(mutableList
     val facts = mutableMapOf<String, Pair<DebtAdjustmentCreateRequestDto, DebtDto>>()
     var loseResponse = false
     var refusal: Pair<Int, String>? = null
-    private var rowVersion = 2L
+    val refusalsByKey = mutableMapOf<String, Pair<Int, String>>()
+    var response = adjustmentDebtDto().copy(remainingAmountCents = 53_000L, rowVersion = 3)
 
     override suspend fun recordDebtAdjustment(
         publicId: String,
@@ -544,18 +549,13 @@ internal class DebtAdjustmentApiProbe : ApiService by FakeApiService(mutableList
         calls += AdjustmentCall(publicId, request, idempotencyKey)
         refusal?.let { (status, code) -> throw adjustmentRefusal(status, code) }
         val key = requireNotNull(idempotencyKey)
-        // The backend checks an existing key before OCC; a fresh key with stale OCC is rejected.
+        // Known replies support response-loss scenarios; PostgreSQL owns amount, OCC and key persistence.
         facts[key]?.let { (original, accepted) ->
             check(request == original) { "An existing adjustment key must keep its original body" }
             return accepted
         }
-        if (request.expectedRowVersion != rowVersion) throw adjustmentRefusal(409, "state_conflict")
-        rowVersion++
-        val accepted = adjustmentDebtDto().copy(
-            publicId = publicId,
-            remainingAmountCents = 50_000L + request.amountCents,
-            rowVersion = rowVersion,
-        )
+        refusalsByKey[key]?.let { (status, code) -> throw adjustmentRefusal(status, code) }
+        val accepted = response
         facts[key] = request to accepted
         if (loseResponse) throw IOException("Synthetic response loss after adjustment commit")
         return accepted

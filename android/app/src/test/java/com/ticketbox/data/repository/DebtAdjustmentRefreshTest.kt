@@ -3,8 +3,6 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
-import java.time.Clock
-import java.time.Duration
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -133,36 +131,24 @@ class DebtAdjustmentRefreshTest {
         assertTrue(reopened.newlyTerminal.isEmpty())
         assertEquals(PendingMutationStatus.Abandoned, reopened.writes.single().row.status)
         assertTrue(reopened.acceptsCanonical(fixture.debt), "A post-stop read may retain the original RV")
-        val later = fixture.newOutbox(Clock.offset(fixture.clock, Duration.ofDays(40)))
-        assertEquals(0, later.reapExpiredPending(fixture.clock.millis() + Duration.ofDays(40).toMillis()))
         assertTrue(fixture.outbox.activeForTarget("debt:${fixture.debt.publicId}").isEmpty())
         assertEquals(listOf(1, 1), fixture.queueDepthAtSchedule)
         assertTrue(fixture.api.calls.isEmpty())
     }
 
     @Test
-    fun stopCasRefusesRetriedInFlightDoneAndForeignBindingRows() = runTest {
+    fun refusedStopKeepsTheRetriedOriginalAndPendingAdjustmentCannotBeDropped() = runTest {
         val fixture = DebtAdjustmentFixture()
         val id = fixture.save().getOrThrow()
         fixture.outbox.markFailed(id, "debt_adjustment_response_unverified")
         val original = fixture.pending()
         val bound = LedgerRequestGuard(fixture.provider).bindExact(fixture.binding)
         fixture.repository.recover(fixture.binding, original, false).getOrThrow()
+        fixture.dao.refusedStops += id
         assertFalse(fixture.outbox.abandonOriginalCommand(bound, original.row))
-        // Eligibility belongs to the command owner; persistence still compares the exact observed state.
+        // The client propagates the database refusal and retains its pending original.
         val pending = fixture.dao.rows.getValue(id)
         assertTrue(fixture.repository.recover(fixture.binding, fixture.pending(), drop = true).isFailure)
         assertEquals(pending, fixture.dao.rows.getValue(id))
-        for (status in listOf("in_flight", "done")) {
-            val current = fixture.dao.rows.getValue(id).copy(status = status)
-            fixture.dao.rows[id] = current
-            assertEquals(0, fixture.dao.abandonOriginalCommand(id, requireNotNull(current.ownerKey), current.ledgerId, status, "stop"))
-            assertEquals(current, fixture.dao.rows.getValue(id))
-        }
-        val failed = fixture.dao.rows.getValue(id).copy(status = "failed")
-        fixture.dao.rows[id] = failed
-        assertEquals(0, fixture.dao.abandonOriginalCommand(id, "other-owner", failed.ledgerId, "failed", "stop"))
-        assertEquals(0, fixture.dao.abandonOriginalCommand(id, requireNotNull(failed.ownerKey), "other-ledger", "failed", "stop"))
-        assertEquals(failed, fixture.dao.rows.getValue(id))
     }
 }
