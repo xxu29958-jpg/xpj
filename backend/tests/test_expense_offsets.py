@@ -10,9 +10,8 @@ from app.database import SessionLocal
 from app.models import ExpenseOffsetRevision
 from app.services.expense_offset_service import expense_fact_bundle
 from app.services.expense_service import get_expense
+from tests.bill_split_test_support import _bearer_for_account_ledger, _seed_receiver, _split_headers
 from tests.expense_correction_support import idem, manual_confirmed
-from tests.test_bill_split import _seed_receiver, _split_headers
-from tests.test_bill_split_security_regressions import _bearer_for_account_ledger
 
 
 def test_create_offset_requires_authenticated_writer(

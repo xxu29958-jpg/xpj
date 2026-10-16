@@ -22,75 +22,21 @@ from sqlalchemy.exc import IntegrityError
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models import (
-    Account,
     BillSplitInvitation,
-    Debt,
     Expense,
-    Ledger,
     LedgerAuditLog,
-    LedgerMember,
 )
 from app.services import bill_split_service as bsplit
-from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service import create_bill_split_debt
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
-from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
-from tests.test_bill_split import _split_headers
-
-
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        owner = db.query(Account).order_by(Account.id.asc()).first()
-        assert owner is not None
-        return owner.id
-
-
-def _seed_receiver(name: str = "B", ledger_id: str = "receiver_b") -> int:
-    """A second account + their own personal ledger where they are owner."""
-    with SessionLocal() as db:
-        account = Account(display_name=name)
-        db.add(account)
-        db.flush()
-        db.add(Ledger(ledger_id=ledger_id, name=f"{name} 的账本", owner_account_id=account.id))
-        db.flush()
-        adopt_ledger_calendar(db, ledger_id=ledger_id, timezone_name="Asia/Shanghai", actor_account_id=account.id)
-        db.add(LedgerMember(ledger_id=ledger_id, account_id=account.id, role="owner"))
-        db.commit()
-        return account.id
-
-
-def _make_expense_for_owner(*, amount_cents: int = 5000, merchant: str = "Pizza Place") -> int:
-    with SessionLocal() as db:
-        resolve_write_capability(db)
-        expense = Expense(
-            tenant_id="owner",
-            amount_cents=amount_cents,
-            home_currency_code="CNY",
-            original_currency_code="CNY",
-            original_amount_minor=amount_cents,
-            merchant=merchant,
-            category="餐饮",
-            source="iPhone截图",
-            status="confirmed",
-            expense_time=now_utc(),
-            confirmed_at=now_utc(),
-        )
-        refresh_legacy_expense_time(db, expense)
-        db.add(expense)
-        db.commit()
-        return expense.id
-
-
-def _invite(client: TestClient, identity, receiver_account_id: int, *, amount_cents: int = 2500) -> str:
-    expense_id = _make_expense_for_owner()
-    resp = client.post(
-        f"/api/expenses/{expense_id}/split-invite",
-        headers=_split_headers(client, identity.app_headers),
-        json={"expected_row_version": 1, "receiver_account_id": receiver_account_id, "amount_cents": amount_cents},
-    )
-    assert resp.status_code in (200, 201), resp.json()
-    return resp.json()["public_id"]
+from tests.bill_split_test_support import _create_invited_split as _invite
+from tests.bill_split_test_support import (
+    _debts_for,
+    _owner_account_id,
+    _seed_receiver,
+    _split_headers,
+)
 
 
 def _accept(public_id: str, receiver_account_id: int, target_ledger_id: str = "receiver_b") -> None:
@@ -104,11 +50,6 @@ def _accept(public_id: str, receiver_account_id: int, target_ledger_id: str = "r
             accepting_account_id=receiver_account_id,
             target_ledger_id=target_ledger_id,
         )
-
-
-def _debts_for(public_id: str) -> list[Debt]:
-    with SessionLocal() as db:
-        return list(db.scalars(select(Debt).where(Debt.source_id == public_id)))
 
 
 def _received_expense(public_id: str) -> Expense | None:

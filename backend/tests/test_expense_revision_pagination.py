@@ -114,8 +114,7 @@ def test_full_history_reaches_before_twenty_offsets_and_keeps_its_original_prefi
 
 
 def test_full_history_keeps_parent_ledger_authorization(client: TestClient, *, identity) -> None:
-    from tests.test_bill_split import _seed_receiver
-    from tests.test_bill_split_security_regressions import _bearer_for_account_ledger
+    from tests.bill_split_test_support import _bearer_for_account_ledger, _seed_receiver
 
     expense = _manual_confirmed(client, identity)
     account = _seed_receiver(ledger_id="history-other")

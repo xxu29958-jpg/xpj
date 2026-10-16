@@ -13,7 +13,7 @@ from sqlalchemy import update
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Account, BillSplitInvitation, Expense, Ledger, LedgerMember
+from app.models import BillSplitInvitation, Expense, Ledger, LedgerMember
 from app.routes.web_common import _require_local as _web_require_local
 from app.services import bill_split_service as bsplit
 from app.services.currency_binding_service import resolve_write_capability
@@ -23,6 +23,9 @@ from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._web_native_form_support import hidden_post_forms
+from tests.bill_split_test_support import _make_web_expense as _make_owner_expense
+from tests.bill_split_test_support import _owner_account_id
+from tests.bill_split_test_support import _seed_web_receiver as _seed_receiver
 
 
 @pytest.fixture()
@@ -33,46 +36,6 @@ def web_client(client: TestClient) -> TestClient:
         yield client
     finally:
         app.dependency_overrides.pop(_web_require_local, None)
-
-
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        return db.query(Account).order_by(Account.id.asc()).first().id
-
-
-def _seed_receiver(ledger_id: str = "receiver_web", display: str = "B-web") -> tuple[int, str]:
-    with SessionLocal() as db:
-        acct = Account(display_name=display)
-        db.add(acct)
-        db.flush()
-        ledger = Ledger(ledger_id=ledger_id, name=f"{display} 账本", owner_account_id=acct.id)
-        db.add(ledger)
-        db.flush()
-        adopt_ledger_calendar(db, ledger_id=ledger_id, timezone_name="Asia/Shanghai", actor_account_id=acct.id)
-        db.add(LedgerMember(ledger_id=ledger_id, account_id=acct.id, role="owner"))
-        db.commit()
-        return acct.id, ledger_id
-
-
-def _make_owner_expense(amount_cents: int = 4000) -> int:
-    with SessionLocal() as db:
-        e = Expense(
-            tenant_id="owner",
-            amount_cents=amount_cents,
-            home_currency_code="CNY",
-            original_currency_code="CNY",
-            original_amount_minor=amount_cents,
-            merchant="Pizza",
-            category="餐饮",
-            source="iPhone截图",
-            status="confirmed",
-            expense_time=now_utc(),
-            confirmed_at=now_utc(),
-        )
-        refresh_legacy_expense_time(db, e)
-        db.add(e)
-        db.commit()
-        return e.id
 
 
 # --- inbox + sent rendering -----------------------------------------------
