@@ -92,7 +92,7 @@ class FinancialJourney:
         self.form("/web/auth/local").locator('button[type="submit"]').click()
         page.wait_for_url("**/web/expenses/new*")
         form = self.form("/web/expenses/new")
-        form.locator('[name="amount_major"]').fill("12.34")
+        form.locator('[name="amount_major"]').fill("0.00")  # Isolated T2 failure probe; never merge.
         if not form.locator('[name="merchant"]').is_visible():
             form.locator("details.manual-expense-options > summary").click()
         form.locator('[name="merchant"]').fill("FactStart")
