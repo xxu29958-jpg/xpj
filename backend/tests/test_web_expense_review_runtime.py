@@ -45,6 +45,7 @@ from app.services import (
     manual_expense_draft_presenter,
     pending_review_bulk_service,
 )
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 from tests import test_web_edge_runtime_contract as browser_runtime
 from tests import test_web_first_original as original_tests
@@ -74,6 +75,7 @@ def slow_confirmation_script(monkeypatch):
     assert not pending, "The delayed shared confirmation script was not requested"
 
 
+@pytest.mark.real_db
 def test_manual_original_follows_its_creation_receipt_without_losing_file_or_recreating_bill(
     first_original_web, monkeypatch, tmp_path,
 ):
@@ -92,6 +94,7 @@ def test_manual_original_follows_its_creation_receipt_without_losing_file_or_rec
     created_locations = []
     viewer_results = []
     with case.session_factory() as db:
+        resolve_write_capability(db)
         db.delete(db.get(Expense, 42))
         db.commit()
     create_expense = web_expense_create.create_manual_expense
@@ -155,6 +158,7 @@ def test_manual_original_follows_its_creation_receipt_without_losing_file_or_rec
         assert original.idempotency_key == result["ref"] and original.response_body["sha256"] == row.image_hash
 
 
+@pytest.mark.real_db
 def test_original_inspection_returns_to_its_page_and_refreshes_after_replenishment(first_original_web, tmp_path):
     from app.services.original_read_service import read_original_snapshot
 
@@ -177,6 +181,7 @@ def test_original_inspection_returns_to_its_page_and_refreshes_after_replenishme
 
     assert original_tests._attach(case).status_code == 200
     with case.session_factory() as db:
+        resolve_write_capability(db)
         current = db.get(Expense, 42)
         values = {column.name: getattr(current, column.name) for column in Expense.__table__.columns}
         with read_original_snapshot(relative_path=current.image_path, tenant_id="owner",
@@ -213,6 +218,7 @@ def uncategorized_browser(review_browser, confirmation_store, monkeypatch):
     monkeypatch.setattr(web_categories, "list_ledger_category_options", lambda *args, **kwargs: [*category_service.DEFAULT_CATEGORIES, "自选分类"])
 
     with confirmation_store() as db:
+        resolve_write_capability(db)
         row = db.get(Expense, 42)
         row.category = ""
         for identity, category, status, tenant in [(43, "其他", "pending", "owner"),
@@ -293,6 +299,7 @@ def test_uncategorized_replay_returns_original_batch_after_later_edits(uncategor
         assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == original["idempotency_key"]))
 
 
+@pytest.mark.real_db
 def test_uncategorized_original_survives_detail_return_lost_reply_and_partial_continuation(
     uncategorized_browser, confirmation_store, tmp_path,
 ):
@@ -306,6 +313,7 @@ def test_uncategorized_original_survives_detail_return_lost_reply_and_partial_co
     @client.app.post("/category-later/{stage}")
     def later_category(stage: str):
         with confirmation_store() as db:
+            resolve_write_capability(db)
             row = db.get(Expense, 44 if stage == "before" else 42)
             row.category, row.row_version = ("交通", 8) if stage == "before" else ("医疗", 9)
             db.commit()
@@ -425,6 +433,7 @@ def fact_review_browser(review_browser, confirmation_store, monkeypatch):
     @client.app.post("/probe-later-fact")
     def later_fact():
         with confirmation_store() as db:
+            resolve_write_capability(db)
             row = db.get(Expense, 42)
             row.merchant, row.amount_cents, row.row_version, row.status = "后来人工更正", 9900, 9, "confirmed"
             db.commit()
@@ -603,6 +612,7 @@ def test_original_ignore_banner_does_not_acquire_a_later_rejection(related_revie
         assert (db.get(Expense, 42).row_version, db.get(Expense, 42).status) == (9, "rejected")
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("entry,later_ignore", [("drawer", False), ("full", True)])
 def test_ignore_and_undo_unknown_results_recover_original_commands_and_financial_input(
     related_review_browser, confirmation_store, tmp_path, entry, later_ignore, slow_confirmation_script,
@@ -616,6 +626,7 @@ def test_ignore_and_undo_unknown_results_recover_original_commands_and_financial
     @client.app.post("/ignore-later")
     def later():
         with confirmation_store() as db:
+            resolve_write_capability(db)
             row = db.get(Expense, 42)
             assert (row.status, row.row_version) == ("pending", 6)
             row.status, row.row_version, row.merchant = "rejected", 9, "同伴后来再次忽略"
@@ -643,6 +654,7 @@ def test_ignore_and_undo_unknown_results_recover_original_commands_and_financial
 def test_duplicate_review_keeps_both_originals_currency_and_group_return(related_review_browser, fact_review_browser, confirmation_store):
     client = related_review_browser
     with confirmation_store() as db:
+        resolve_write_capability(db)
         current = db.get(Expense, 42)
         for identity, status in [(43, "confirmed"), (44, "pending")]:
             copy = Expense(**{c.name: getattr(current, c.name) for c in Expense.__table__.columns
@@ -680,10 +692,12 @@ def test_duplicate_review_keeps_both_originals_currency_and_group_return(related
         assert db.get(Expense, 44).duplicate_status == "suspected"
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("entry,fault", [("drawer", "reply"), ("full", "reply"), ("drawer", "ack-store"), ("drawer", "rejected")])
 def test_keep_original_survives_reload_then_rejoins_financial_draft(related_review_browser, confirmation_store, tmp_path, entry, fault):
     client = related_review_browser
     with confirmation_store() as db:
+        resolve_write_capability(db)
         db.get(Expense, 42).duplicate_status = "suspected"
         db.commit()
 
@@ -694,6 +708,7 @@ def test_keep_original_survives_reload_then_rejoins_financial_draft(related_revi
     @client.app.post("/keep-later")
     def later():
         with confirmation_store() as db:
+            resolve_write_capability(db)
             row = db.get(Expense, 42)
             row.row_version, row.merchant = 9, "后来填写"
             row.duplicate_status = "none" if (entry, fault) == ("drawer", "reply") else "suspected"
@@ -855,12 +870,14 @@ def test_standalone_decision_storage_failure_retains_original_and_reports_cause(
         assert db.scalar(select(ApiIdempotencyKey)) is None
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("action,fault", [("keep", "reply"), ("reject-current", "reply"), ("reject-original", "reply"), ("keep", "conflict")])
 def test_standalone_decision_recovers_original_or_explicitly_reviews_a_refusal(
     related_review_browser, confirmation_store, tmp_path, action, fault, slow_confirmation_script,
 ):
     client = related_review_browser
     with confirmation_store() as db:
+        resolve_write_capability(db)
         row = db.get(Expense, 42)
         db.add(Expense(**{c.name: getattr(row, c.name) for c in Expense.__table__.columns
             if c.name not in {"id", "public_id"}}, id=43, public_id="original-comparison"))
@@ -875,6 +892,7 @@ def test_standalone_decision_recovers_original_or_explicitly_reviews_a_refusal(
     @client.app.post("/duplicate-peer")
     def peer():
         with confirmation_store() as db:
+            resolve_write_capability(db)
             current, original = db.get(Expense, 42), db.get(Expense, 43)
             current.merchant, current.row_version, current.duplicate_status = "后来修改本次", 9, "suspected"
             original.merchant, original.row_version, original.status = "后来修改参考", 11, "confirmed"
@@ -935,12 +953,14 @@ def test_keep_decision_and_idempotency_record_roll_back_together(related_review_
         assert db.scalar(select(ApiIdempotencyKey)) is None
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("action,entry", [("keep", "drawer"), ("reject", "drawer"), ("keep", "full")])
 def test_related_review_actions_keep_input_and_rejoin_original_queue_before_confirmation(
     related_review_browser, confirmation_store, tmp_path, action, entry,
 ):
     if action == "keep":
         with confirmation_store() as db:
+            resolve_write_capability(db)
             db.get(Expense, 42).duplicate_status = "suspected"
             db.commit()
     filter_name = "duplicate" if action == "keep" else "ready"
@@ -959,6 +979,7 @@ def test_related_review_actions_keep_input_and_rejoin_original_queue_before_conf
         assert (current.status, current.merchant, current.amount_cents) == ("confirmed", "相关操作前的填写", 12860)
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("surface,operation", [("full", "confirm"), ("drawer", "confirm"), ("drawer", "save")])
 def test_current_fact_returns_to_original_review_and_receipt_without_replacing_later_fact(
     fact_review_browser, confirmation_store, tmp_path, surface, operation,
@@ -996,6 +1017,7 @@ def _run_review_page(client, tmp_path, path, *, width=393):
             thread.join(timeout=8)
 
 
+@pytest.mark.real_db
 def test_unknown_submission_can_inspect_current_pending_record_without_replacing_original_task(fact_review_browser, confirmation_store, tmp_path):
     result = _run_review_page(fact_review_browser, tmp_path, "/web/expenses/42/edit?ledger_id=owner&return_to=pending&probe=pending-current")
     assert "error" not in result, result
@@ -1005,9 +1027,11 @@ def test_unknown_submission_can_inspect_current_pending_record_without_replacing
         assert (current.merchant, current.row_version, current.status) == ("首次便利店", 4, "pending")
 
 
+@pytest.mark.real_db
 def test_actual_drawer_retains_input_and_original_save_then_confirms_next_and_last_receipt(review_browser, confirmation_store, tmp_path):
     client, _ = review_browser
     with confirmation_store() as db:
+        resolve_write_capability(db)
         original = db.get(Expense, 42)
         values = {column.name: getattr(original, column.name) for column in Expense.__table__.columns}
         db.add(Expense(**{**values, "id": 43, "public_id": "next-expense", "merchant": "第二张商家",
@@ -1025,6 +1049,7 @@ def test_actual_drawer_retains_input_and_original_save_then_confirms_next_and_la
         assert db.get(Expense, 43).status == "confirmed"
 
 
+@pytest.mark.real_db
 def test_accepted_drawer_confirmation_with_unavailable_display_only_rereads_the_receipt(review_browser, confirmation_store, tmp_path):
     client, _ = review_browser
     result = _run_review_page(client, tmp_path, "/web/pending?ledger_id=owner&filter=ready&probe=receipt-read-failure")
@@ -1036,6 +1061,7 @@ def test_accepted_drawer_confirmation_with_unavailable_display_only_rereads_the_
         assert current.status == "confirmed" and current.fact_revision == 1
 
 
+@pytest.mark.real_db
 def test_drawer_keeps_unretained_input_when_browser_storage_fails(review_browser, confirmation_store, tmp_path):
     client, _ = review_browser
     result = _run_review_page(client, tmp_path, "/web/pending?ledger_id=owner&probe=storage-failure")
@@ -1045,6 +1071,7 @@ def test_drawer_keeps_unretained_input_when_browser_storage_fails(review_browser
         assert db.get(Expense, 42).merchant == "首次便利店"
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("operation", ["save", "legacy-confirm"])
 def test_actual_review_browser_resolves_original_action_before_starting_next_command(
     review_browser, confirmation_store, tmp_path, operation,
@@ -1067,6 +1094,7 @@ def test_actual_review_browser_resolves_original_action_before_starting_next_com
         assert current.status == "confirmed" and current.merchant == "浏览器原填写"
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("drawer", [False, True])
 def test_explicit_latest_bill_load_uses_current_fields_while_retaining_original_task(
     review_browser, confirmation_store, monkeypatch, tmp_path, drawer,
@@ -1090,6 +1118,7 @@ def test_explicit_latest_bill_load_uses_current_fields_while_retaining_original_
     @client.app.post("/probe-latest-bill")
     def current_bill():
         with confirmation_store() as db:
+            resolve_write_capability(db)
             row = db.get(Expense, 42)
             row.row_version, row.merchant = 5, "服务器当前商家"
             db.commit()
@@ -1144,6 +1173,7 @@ def test_fx_action_checks_original_binding_and_keeps_inputs_and_confirmation_bas
             "initiator_account_id": auth.account_id, "initiator_device_id": auth.device_id})]
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("external_preview", [False, True])
 def test_selected_original_requires_confirmation_and_retains_exact_file_after_reload(first_original_web, tmp_path, external_preview):
     case = first_original_web

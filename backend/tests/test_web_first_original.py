@@ -21,6 +21,7 @@ from app.models import ApiIdempotencyKey, Expense, LedgerAuditLog
 from app.routes import web_originals
 from app.services import attachment_cleanup_service as cleanup
 from app.services import file_service, manual_expense_draft_presenter, original_command_service
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 from tests.test_original_replenishment_admission import _camera_jpeg
 from tests.web_expense_fact_test_support import confirmation_actor
@@ -56,6 +57,7 @@ def first_original_web(confirmation_store, confirmation_web, monkeypatch, tmp_pa
     monkeypatch.setattr(file_service, "get_settings", lambda: SimpleNamespace(upload_dir=state.uploads,
                                                                             max_upload_size_bytes=1024 * 1024))
     with state.session_factory() as db:
+        resolve_write_capability(db)
         expense = db.get(Expense, 42)
         expense.source, expense.status, expense.fact_revision = "手动记账", "confirmed", 1
         db.commit()

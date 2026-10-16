@@ -7,6 +7,7 @@ import pytest
 from fastapi.responses import FileResponse
 
 from app.models import Expense
+from app.services.currency_binding_service import resolve_write_capability
 from tests import test_web_expense_review_runtime as review_tests
 from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
 from tests.web_expense_fact_test_support import confirmation_web as confirmation_web
@@ -18,6 +19,7 @@ review_browser = review_tests.review_browser
 def score_browser(review_browser, confirmation_store):
     client, scope = review_browser
     with confirmation_store() as db:
+        resolve_write_capability(db)
         current = db.get(Expense, 42)
         current.value_score, current.regret_score = 4, 3
         db.commit()
@@ -66,6 +68,7 @@ def test_invalid_score_rejects_all_changes_and_preserves_original_native_form(sc
         assert (current.merchant, current.row_version, current.value_score, current.regret_score) == ("首次便利店", 4, 4, 3)
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("entry", ["full", "drawer"])
 def test_score_choice_and_clear_resume_in_real_review_before_original_save(score_browser, tmp_path, entry):
     client, _, session_factory = score_browser
