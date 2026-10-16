@@ -236,6 +236,8 @@ def test_view_open_communal_creditor_headline() -> None:
     assert view["public_id"] == "dbt_receivable"
     assert view["remaining_label"] == "¥25.00"
     assert "我帮你垫的" in view["member_headline"]  # creditor side (viewer_is_debtor False)
+    assert view["is_member"] is True
+    assert view["direction_label"] is None
 
 
 def test_view_cleared_recedes_and_two_clear_headline() -> None:
@@ -255,16 +257,6 @@ def test_view_voided_recedes_neutral() -> None:
 
 
 # ── same-ledger external receivable rows (W2-C 合并 lens: viewer 自己的 external 应收) ──
-def test_view_member_row_keeps_communal_framing() -> None:
-    view = _receivable_row_view(_row())
-    assert view["is_member"] is True
-    assert "我帮你垫的" in view["member_headline"]
-    assert view["status_label"] == "进行中"
-    assert view["status_tone"] == ""
-    assert view["show_progress"] is True
-    assert view["direction_label"] is None
-
-
 def test_view_external_receivable_is_accounting_row() -> None:
     """External 应收 = 会计行 (方向徽章+会计状态词+本金脚注)，不走 member communal 框架。"""
     view = _receivable_row_view(
