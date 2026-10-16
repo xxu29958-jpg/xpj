@@ -19,6 +19,7 @@ import com.ticketbox.data.remote.dto.ExchangeRateListDto
 import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
 import com.ticketbox.data.remote.dto.MissingExchangeRateDto
 import com.ticketbox.data.remote.dto.MonthlyArrangementDto
+import com.ticketbox.data.remote.dto.MonthlyArrangementHistoryItemDto
 import com.ticketbox.data.remote.dto.MonthlyArrangementResponseDto
 import com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest
 import com.ticketbox.data.repository.ApiServiceProvider
@@ -38,7 +39,6 @@ import java.io.IOException
 import java.lang.reflect.Proxy
 import java.time.YearMonth
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -60,15 +60,25 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     var referenceQuote: com.ticketbox.data.remote.dto.ReferenceRateDto? = null
     val adviceCalls = CopyOnWriteArrayList<BudgetAdviseRequestDto>()
     var advice: com.ticketbox.data.remote.dto.BudgetAdviceDto? = null
-    val arrangementWrites = CopyOnWriteArrayList<Pair<MonthlyArrangementSaveRequest, String>>()
-    private val arrangementReceipts = ConcurrentHashMap<String, MonthlyArrangementDto>()
+    val arrangementWrites = CopyOnWriteArrayList<Triple<String, MonthlyArrangementSaveRequest, String>>()
+    val trialRequests = CopyOnWriteArrayList<Pair<String, Map<String, String>>>()
+    var arrangementReply: MonthlyArrangementDto? = null
+    var historyItems = emptyList<MonthlyArrangementHistoryItemDto>()
+    var trialReply: BudgetAdviceInputsDto? = null
     @Volatile var arrangement: MonthlyArrangementDto? = null
     var historyReadGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     var historyUnavailable = false
-    private val receipts = ConcurrentHashMap<String, ExchangeRateDto>()
+    var rateReply = ExchangeRateDto("original-rate", "CNY", "JPY", rateDate, "20", "manual",
+        "2026-09-09T00:00:00Z", "2026-09-09T00:00:00Z", 1)
+    var referenceReply: com.ticketbox.data.remote.dto.ReferenceRateDto? = null
     @Volatile var latest: ExchangeRateDto? = null
     @Volatile var loseAck = false
     @Volatile var runtimeHome = "JPY"
+    var inputReply = BudgetAdviceInputsDto(YearMonth.now().toString(), "JPY",
+        DiscretionaryResponseDto(10000, 1000, null, 0, 0, null, null),
+        listOf(MissingExchangeRateDto("CNY", "JPY", rateDate)),
+        budgetDefinition = com.ticketbox.data.remote.dto.BudgetPlanDefinitionDto("JPY", 4000, 100, -50,
+            listOf("其他"), 3, "2026-09-01T04:00:00Z"))
     private val session = MutableStateFlow(LocalSessionRecord(sessionGeneration = "rate-session", bindingRevision = "rate-binding",
         serverId = "3f6f1f2c-0000-4000-8000-000000000001", dataGeneration = "3f6f1f2c-0000-4000-8000-000000000002",
         serverUrl = "https://rates.example.test", credential = StoredSessionToken("synthetic-rate-token"),
@@ -84,35 +94,27 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     private val api = object : ApiService by rateProxy<ApiService>({ error("Unexpected API call: $it") }) {
         override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): BudgetAdviceInputsDto {
             inputReads += month to homeCurrencyCode
-            val saved = arrangement?.takeIf { it.month == month }
-            return inputs(month, homeCurrencyCode ?: saved?.homeCurrencyCode ?: runtimeHome,
-                saved?.savingsTargetCents ?: 0, saved?.reservedBufferCents ?: 0, false)
+            return inputReply.copy(month = month, homeCurrencyCode = homeCurrencyCode ?: runtimeHome,
+                savedArrangement = arrangement?.takeIf { it.month == month },
+                dataScope = com.ticketbox.data.remote.dto.BudgetAdviceDataScopeDto("2026-10-11T04:00:00Z",
+                    YearMonth.parse(month).minusMonths(6).toString(), YearMonth.parse(month).minusMonths(1).toString(), 2))
         }
-        override suspend fun trialBudgetAdviceInputs(month: String, timezone: String?, arrangement: Map<String, String>) =
-            inputs(month, arrangement.getValue("home_currency_code"), arrangement.getValue("savings_target_cents").toLong(),
-                arrangement.getValue("reserved_buffer_cents").toLong(), true)
-                .copy(arrangementCurrencyCode = arrangement["arrangement_currency_code"] ?: arrangement.getValue("home_currency_code"))
+        override suspend fun trialBudgetAdviceInputs(month: String, timezone: String?, arrangement: Map<String, String>): BudgetAdviceInputsDto {
+            trialRequests += month to arrangement
+            return requireNotNull(trialReply)
+        }
         override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponseDto(
             session.value.identity.ledgerId, month, arrangement?.takeIf { it.month == month })
         override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto {
             historyReadGate?.await()
             if (historyUnavailable) throw java.net.ConnectException("offline")
             return com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto(session.value.identity.ledgerId, month,
-                arrangementReceipts.values.filter { it.month == month && (beforeVersion == null || it.rowVersion < beforeVersion) }
-                    .sortedByDescending { it.rowVersion }.take(limit).map {
-                        com.ticketbox.data.remote.dto.MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
-                            it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents)
-                    }, null)
+                historyItems, null)
         }
         override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementSaveRequest,
             idempotencyKey: String): MonthlyArrangementDto {
-            arrangementWrites += request to idempotencyKey
-            return arrangementReceipts.getOrPut(idempotencyKey) {
-                check(request.expectedRowVersion == arrangement?.takeIf { it.month == month }?.rowVersion)
-                MonthlyArrangementDto(session.value.identity.ledgerId, month, request.homeCurrencyCode,
-                    request.savingsTargetCents, request.reservedBufferCents, (request.expectedRowVersion ?: 0) + 1,
-                    "2026-09-27T00:00:00Z").also { arrangement = it }
-            }
+            arrangementWrites += Triple(month, request, idempotencyKey)
+            return requireNotNull(arrangementReply).also { arrangement = it }
         }
         override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int) =
             ExchangeRateListDto(listOfNotNull(latest).filter { (currencyCode == null || it.currencyCode == currencyCode) &&
@@ -123,21 +125,15 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
         override suspend fun acquireReferenceRates(request: com.ticketbox.data.remote.dto.ReferenceRateRequestDto): com.ticketbox.data.remote.dto.ReferenceRatesDto {
             referenceRequests += request
             if (referenceUnavailable) throw java.net.ConnectException("offline")
-            referenceQuote = com.ticketbox.data.remote.dto.ReferenceRateDto(request.currencyCode ?: "CNY", request.homeCurrencyCode,
-                request.rateDate ?: rateDate, "20", "ecb")
+            referenceQuote = requireNotNull(referenceReply)
             return referenceRates(request.homeCurrencyCode, request.currencyCode, request.rateDate)
         }
         override suspend fun saveExchangeRate(currencyCode: String, rateDate: String,
             request: ExchangeRateRequestDto, idempotencyKey: String): ExchangeRateDto {
             check(currencyCode == request.currencyCode && rateDate == request.rateDate)
             writes += request to idempotencyKey
-            val receipt = receipts.getOrPut(idempotencyKey) {
-                ExchangeRateDto("original-rate", request.currencyCode, request.homeCurrencyCode, request.rateDate,
-                    request.rateToHome, "manual", "2026-09-09T00:00:00Z", "2026-09-09T00:00:00Z",
-                    request.expectedRowVersion + 1).also { latest = it }
-            }
             if (loseAck) throw IOException("Synthetic lost acknowledgement")
-            return receipt
+            return rateReply
         }
         override suspend fun budgetAdvise(request: BudgetAdviseRequestDto): BudgetAdviseResponseDto {
             adviceCalls += request
@@ -156,20 +152,6 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
         budgetRepository = repository, outboxRepository = outbox), base.screenFactory.viewModelFactories)
 
     init { reopen() }
-
-    private fun inputs(month: String, home: String, savings: Long, buffer: Long, trial: Boolean): BudgetAdviceInputsDto {
-        val missing = latest == null && referenceQuote == null && home == "JPY"
-        val remaining = 7000 - savings - buffer
-        return BudgetAdviceInputsDto(month, home,
-            DiscretionaryResponseDto(10000, 1000, if (missing) null else 2000, savings, buffer,
-                if (missing) null else remaining.coerceAtLeast(0), if (missing) null else (-remaining).coerceAtLeast(0)),
-            if (missing) listOf(MissingExchangeRateDto("CNY", "JPY", rateDate)) else emptyList(),
-            savedArrangement = arrangement?.takeIf { it.month == month }, isTrial = trial,
-            budgetDefinition = com.ticketbox.data.remote.dto.BudgetPlanDefinitionDto("JPY", 4000, 100, -50, listOf("其他"), 3, "2026-09-01T04:00:00Z"),
-            plannedTotalCents = if (home == "JPY" && !missing) 4000 + savings + buffer else null,
-            dataScope = com.ticketbox.data.remote.dto.BudgetAdviceDataScopeDto("2026-10-11T04:00:00Z",
-                java.time.YearMonth.parse(month).minusMonths(6).toString(), java.time.YearMonth.parse(month).minusMonths(1).toString(), 2))
-    }
 
     fun reopen() {
         database?.close()

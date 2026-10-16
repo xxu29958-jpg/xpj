@@ -141,47 +141,6 @@ def test_create_proposal_missing_idempotency_key_is_422(client: TestClient, *, i
     assert response.json()["error"] == "idempotency_key_required"
 
 
-def test_confirm_idempotent_replay_changes_remaining_once(client: TestClient, *, identity) -> None:
-    # §11: retry with same key/fingerprint changes remaining once; the parent
-    # Debt is not bumped a second time (§2.1 replay does not bump).
-    member_id, member_token = _mint_member_actor()
-    debt = _create_member_debt(
-        client, identity.app_headers, direction="owed_to_me", member_account_id=member_id
-    )
-    proposal = _propose(
-        client, _member_headers(member_token), debt["public_id"], proposed_amount_cents=20000
-    ).json()
-    key = str(uuid4())
-    headers = {**identity.app_headers, "Idempotency-Key": key}
-    payload = {"expected_row_version": debt["row_version"]}
-
-    first = client.post(
-        f"/api/debts/{debt['public_id']}/repayment-proposals/{proposal['public_id']}/confirm",
-        headers=headers,
-        json=payload,
-    )
-    assert first.status_code == 201, first.json()
-    assert first.json()["remaining_amount_cents"] == 30000
-    bumped = first.json()["row_version"]
-
-    replay = client.post(
-        f"/api/debts/{debt['public_id']}/repayment-proposals/{proposal['public_id']}/confirm",
-        headers=headers,
-        json=payload,
-    )
-    assert replay.status_code == 201, replay.json()
-    assert replay.json()["remaining_amount_cents"] == 30000  # once, not 10000
-    assert replay.json()["row_version"] == bumped  # no second bump
-
-    # Authoritative: exactly one Repayment exists.
-    with SessionLocal() as db:
-        debt_row = db.scalar(select(Debt).where(Debt.public_id == debt["public_id"]))
-        repayments = list(
-            db.scalars(select(Repayment).where(Repayment.debt_id == debt_row.id))
-        )
-        assert len(repayments) == 1
-
-
 def test_full_confirm_replay_normalizes_null_confirmed_amount(
     client: TestClient, *, identity
 ) -> None:

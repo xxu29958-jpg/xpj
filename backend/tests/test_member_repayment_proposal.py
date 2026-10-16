@@ -44,18 +44,6 @@ def test_debtor_can_create_pending_proposal(client: TestClient, *, identity) -> 
     created = datetime.fromisoformat(body["created_at"])
     expires = datetime.fromisoformat(body["expires_at"])
     assert abs((expires - created) - timedelta(days=30)) < timedelta(seconds=5)
-
-
-def test_pending_proposal_does_not_reduce_remaining(client: TestClient, *, identity) -> None:
-    # §11: debtor-only repayment proposal does not reduce remaining.
-    member_id, member_token = _mint_member_actor()
-    debt = _create_member_debt(
-        client, identity.app_headers, direction="owed_to_me", member_account_id=member_id
-    )
-    proposal = _propose(
-        client, _member_headers(member_token), debt["public_id"], proposed_amount_cents=20000
-    )
-    assert proposal.status_code == 201, proposal.json()
     # The fold is unchanged: a pending proposal is an intent, not a fact.
     detail = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers)
     assert detail.json()["remaining_amount_cents"] == 50000
@@ -75,17 +63,20 @@ def test_creditor_full_confirm_commits_repayment_exactly_once(
         client, _member_headers(member_token), debt["public_id"], proposed_amount_cents=20000
     ).json()
 
-    confirm = client.post(
-        f"/api/debts/{debt['public_id']}/repayment-proposals/{proposal['public_id']}/confirm",
-        headers=_idem(identity.app_headers),
-        json={"expected_row_version": debt["row_version"]},
-    )
+    url = f"/api/debts/{debt['public_id']}/repayment-proposals/{proposal['public_id']}/confirm"
+    headers = _idem(identity.app_headers)
+    request = {"expected_row_version": debt["row_version"]}
+    confirm = client.post(url, headers=headers, json=request)
     assert confirm.status_code == 201, confirm.json()
     body = confirm.json()  # confirm replies with the fold-after DebtResponse
     assert body["remaining_amount_cents"] == 30000  # 50000 - 20000
     assert body["paid_amount_cents"] == 20000
     assert body["status"] == "open"
     assert body["row_version"] == debt["row_version"] + 1  # parent bumped once
+
+    replay = client.post(url, headers=headers, json=request)
+    assert replay.status_code == 201, replay.json()
+    assert replay.json() == body
 
     # Proposal latched confirmed; back-link to the committed repayment present.
     proposals = client.get(
