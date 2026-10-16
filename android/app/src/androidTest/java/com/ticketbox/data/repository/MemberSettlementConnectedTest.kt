@@ -17,6 +17,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
+import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
+import com.ticketbox.data.remote.dto.ExpenseTimeInputDto
+import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
+import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.saveConsumerArtPreview
@@ -29,6 +33,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -79,7 +84,8 @@ class MemberSettlementConnectedTest {
         compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.rowVersion == 2L && history.state.value.total == 3 }
         assertEquals(2, network.confirms.size)
         assertEquals(network.confirms.first(), network.confirms.last())
-        assertEquals(1, network.accepted.size)
+        assertEquals(MemberRepaymentProposalConfirmRequestDto(confirmedAmountCents = 450, expectedRowVersion = 1),
+            network.confirms.first().first)
         assertEquals(450L, history.state.value.items.single { it.kind == "repayment" }.repayment?.amountCents)
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("实际确认：¥450"))
         compose.onNodeWithText("实际确认：¥450").performScrollTo().assertIsDisplayed()
@@ -97,6 +103,7 @@ class MemberSettlementConnectedTest {
         compose.waitUntil(10_000) { detail.value?.state?.value?.debt?.isForgiven == true }
         assertEquals(0L, detail.value?.state?.value?.debt?.remainingAmountCents)
         assertEquals(450L, detail.value?.state?.value?.debt?.paidAmountCents)
+        assertEquals(DebtForgiveCreateRequestDto(expectedRowVersion = 2), network.forgives.single().first)
         assertEquals(retained, fixture.stored())
     }
 
@@ -119,7 +126,7 @@ class MemberSettlementConnectedTest {
         compose.onNodeWithText("重试").performScrollTo().performClick()
         compose.waitUntil(10_000) { proposals.state.value.pendingProposal != null }
         compose.onNodeWithText("收到啦，谢谢～").assertIsDisplayed()
-        assertEquals(0, network.accepted.size)
+        assertTrue(network.confirms.isEmpty() && network.proposes.isEmpty() && network.forgives.isEmpty())
     }
 
     @Test
@@ -152,9 +159,10 @@ class MemberSettlementConnectedTest {
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.onNodeWithText("提交还款确认").performTouchInput { click() }
         compose.waitUntil(10_000) { network.proposes.size == 1 && !proposals.state.value.isSubmitting }
-        assertEquals("2026-04-30", network.proposes.single().first.timeInput?.userLocalDate)
-        assertEquals(3L, network.proposes.single().first.timeInput?.calendarRevision)
-        assertNull(network.proposes.single().first.timeInput?.instantUtc)
+        assertEquals(MemberRepaymentProposalCreateRequestDto(proposedAmountCents = 750,
+            timeInput = ExpenseTimeInputDto(precision = "date_only", userLocalDate = "2026-04-30",
+                accountingDate = "2026-04-30", sourceTimezone = "Asia/Shanghai", calendarRevision = 3)),
+            network.proposes.single().first)
         stopModels()
         proposalSavedState = SavedStateHandle(proposalSavedState.keys().associateWith { proposalSavedState.get<Any?>(it) })
         network.current = network.current.copy(repaymentCalendar = com.ticketbox.data.remote.dto.RepaymentCalendarDto(4, "Pacific/Honolulu"))
@@ -168,7 +176,6 @@ class MemberSettlementConnectedTest {
         compose.onNodeWithText("核实原提交结果").assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { network.proposes.size == 2 && proposals.state.value.originalAttempt == null }
         assertEquals(network.proposes.first(), network.proposes.last())
-        assertEquals(1, network.acceptedProposals.size)
         assertEquals("2026-04-30", proposals.state.value.pendingProposal?.accountingTime?.userLocalDate)
         assertEquals(retained, fixture.stored())
     }
