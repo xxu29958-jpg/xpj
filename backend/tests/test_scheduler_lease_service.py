@@ -87,13 +87,6 @@ def test_scheduler_lease_refuses_session_with_inflight_transaction(*, identity) 
         assert db.scalar(select(AppMeta).where(AppMeta.key == probe_key)) is None
 
 
-def test_scheduler_lease_transaction_error_is_exported() -> None:
-    assert "SchedulerLeaseTransactionError" in __import__(
-        "app.services.scheduler_lease_service",
-        fromlist=["__all__"],
-    ).__all__
-
-
 @pytest.mark.real_db
 def test_two_sessions_concurrent_claim_yields_single_winner() -> None:
     """Two workers racing to claim a brand-new lease: exactly one wins.

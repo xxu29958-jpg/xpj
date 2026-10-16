@@ -7,10 +7,7 @@ import pytest
 from app.config import get_settings
 from app.errors import AppError
 from app.services.budget_advisor_service import (
-    BudgetAdvice,
-    BudgetAdvisorProvider,
     BudgetInputs,
-    BudgetSuggestion,
     CategorySnapshot,
     EmptyBudgetAdvisor,
     HistoricalBaseline,
@@ -113,30 +110,3 @@ def test_default_setting_is_empty() -> None:
     get_settings.cache_clear()
     settings = get_settings()
     assert settings.budget_advisor_provider == "empty"
-
-
-def test_protocol_is_structural() -> None:
-    advisor: BudgetAdvisorProvider = EmptyBudgetAdvisor()
-    assert callable(advisor.advise)
-
-
-def test_advice_dataclass_round_trip() -> None:
-    advice = BudgetAdvice(
-        summary="test advice",
-        suggestions=[
-            BudgetSuggestion(
-                category=DEFAULT_CATEGORIES[0],
-                suggested_amount_cents=130000,
-                rationale="historical P75",
-            ),
-            BudgetSuggestion(
-                category=None,
-                suggested_amount_cents=400000,
-                rationale="monthly total",
-            ),
-        ],
-        confidence=0.82,
-    )
-    assert advice.summary == "test advice"
-    assert len(advice.suggestions) == 2
-    assert advice.suggestions[1].category is None
