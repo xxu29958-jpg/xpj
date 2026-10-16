@@ -463,6 +463,24 @@ def scoped_job_protection_scope(
     return protection_scope
 
 
+def _windows_resource_step_is_protected(
+    path: pathlib.Path,
+    workflow: dict[object, object],
+    raw_job: dict[object, object],
+    raw_step: dict[object, object],
+    jobs: dict[object, object],
+) -> bool:
+    return (
+        path.name == "ci.yml"
+        and raw_job is jobs.get("windows_vnext_lifecycle")
+        and scoped_job_protection_scope(path, workflow, "windows_vnext_lifecycle", raw_job, jobs) == "windows"
+        and not allows_failure(raw_step.get("continue-on-error"))
+        and _expression_text(raw_step.get("if")) == (
+            "success() && (needs.scope.result != 'success' || needs.scope.outputs.windows_build != 'false')"
+        )
+    )
+
+
 def scoped_step_protection_scope(
     path: pathlib.Path,
     workflow: dict[object, object],
@@ -470,17 +488,9 @@ def scoped_step_protection_scope(
     raw_step: dict[object, object],
     jobs: dict[object, object],
 ) -> str | None:
-    """Recognize the existing Gitea and Windows resource step selections."""
-    if (
-        ".github" in path.parts and path.name == "ci.yml"
-        and raw_job is jobs.get("windows_vnext_lifecycle")
-        and scoped_job_protection_scope(path, workflow, "windows_vnext_lifecycle", raw_job, jobs) == "windows"
-        and not allows_failure(raw_step.get("continue-on-error"))
-        and _expression_text(raw_step.get("if")) == (
-            "success() && (needs.scope.result != 'success' || needs.scope.outputs.windows_build != 'false')"
-        )
-    ):
-        return "windows"
+    """Use each platform's existing job and terminal contract for step selection."""
+    if ".github" in path.parts:
+        return "windows" if _windows_resource_step_is_protected(path, workflow, raw_job, raw_step, jobs) else None
     if (
         ".gitea" not in path.parts
         or not _gitea_scope_job_is_valid(path, workflow, jobs)

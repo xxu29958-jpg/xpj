@@ -143,7 +143,12 @@ class BudgetFirstUseRouteTest {
         field("budget_category_name").performScrollTo().assertTextEquals("餐饮")
         transport.ledgerId = "another-ledger"
         compose.runOnIdle { harness.fixture.switchLedger() }
-        compose.waitUntil(5_000) { transport.readLedgers.lastOrNull() == "another-ledger" }
+        compose.waitUntil(5_000) {
+            transport.readLedgers.lastOrNull() == "another-ledger" && compose.onAllNodes(
+                hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")) and hasText(""),
+                useUnmergedTree = true,
+            ).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText(text(R.string.budget_editor_total_label)).performScrollTo()
         compose.onNodeWithTag("budget_optional_fields").assertDoesNotExist()
         assertTrue(runBlocking { harness.fixture.pendingDao.allRows().isEmpty() })
@@ -220,7 +225,8 @@ class BudgetFirstUseRouteTest {
         compose.onNodeWithText(text(R.string.budget_editor_back)).assertIsDisplayed().performClick()
         val count = transport.reads.size
         compose.onNodeWithText(text(label)).performScrollTo().performClick()
-        compose.waitUntil(5_000) { transport.reads.size > count }
+        compose.waitUntil(5_000) { transport.reads.size > count &&
+            compose.onAllNodesWithText(text(R.string.budget_editor_total_label)).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(text(R.string.budget_editor_total_label)).performScrollTo()
     }
 
