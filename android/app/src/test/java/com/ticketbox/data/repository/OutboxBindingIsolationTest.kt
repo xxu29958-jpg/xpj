@@ -51,23 +51,6 @@ class OutboxBindingIsolationTest {
     }
 
     @Test
-    fun explicitClearRemovesOnlyQuarantinedOwners() = runTest {
-        val dao = FakePendingMutationDao()
-        val active = testOutboxBinding().copy(ledgerId = "owner")
-        var binding = active
-        val repo = testOutboxRepository(dao = dao, bindingProvider = { binding })
-        val activeId = repo.enqueue(PendingMutationType.CreateExpense, "expense:local:mine", "{}", 0L)
-        binding = active.copy(owner = testOwner("50000000"))
-        repo.enqueue(PendingMutationType.CreateExpense, "expense:local:other", "{}", 0L)
-        binding = active
-
-        assertEquals(1, repo.clearQuarantined())
-        assertEquals(setOf(activeId), dao.rows.keys)
-        assertEquals(0, repo.observeStatus().first().quarantinedCount)
-        assertEquals(1, repo.observeStatus().first().queueDepth)
-    }
-
-    @Test
     fun rebindAtEnqueueLinearizationPointRejectsTheOldIntent() = runTest {
         val dao = FakePendingMutationDao()
         var current = boundSession("https://one.example.com", "token-a", "session-a", "binding-a")

@@ -5,7 +5,16 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.Closeable
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -295,6 +304,45 @@ class PendingMutationUploadQueueTest {
             val dao = fixture.reopen()
             assertEquals(preserved.mapIndexed { index, row -> row.copy(id = ids[unfinished.size + index]) }, dao.allRows())
             assertEquals(0, dao.deleteUnfinishedUploadGroup(OWNER, LEDGER, TARGET))
+        }
+    }
+
+    @Test
+    fun boundObservationsRefreshAndQuarantineRemovalPreservesTheCurrentOwnersOriginals() = runBlocking<Unit> {
+        UploadQueueFixture().use { fixture ->
+            val active = listOf("pending", "in_flight", "conflict", "failed")
+            val originals = (active + listOf("done", "abandoned")).map { fixture.row(it).copy(status = it) } + listOf(
+                fixture.row("other-type").copy(type = "patch_expense", targetId = "expense:other"),
+                fixture.row("other-ledger").copy(ledgerId = "other-ledger"),
+                fixture.row("other-owner").copy(ownerKey = "other-owner"),
+                fixture.row("unowned").copy(ownerKey = null),
+            )
+            val ids = fixture.dao.insertBatch(originals)
+            val dao = fixture.dao
+            assertEquals(ids.take(4), dao.activeForTarget(OWNER, LEDGER, TARGET, active).map { it.id })
+            assertEquals(3, dao.observeQueueDepth(OWNER, LEDGER, "pending", "in_flight").first())
+            assertEquals(listOf(ids[2]), dao.observeConflictRows(OWNER, LEDGER, "conflict").first().map { it.id })
+            assertEquals(listOf(ids[3]), dao.observeFailedRows(OWNER, LEDGER, "failed").first().map { it.id })
+            assertEquals(2, dao.observeQuarantinedCount(OWNER).first())
+            assertEquals(ids.size, dao.observeQuarantinedCount(null).first())
+            assertTrue(dao.nextRunnableBatch("", "", UNRESOLVED, 25).isEmpty())
+
+            val initial = CompletableDeferred<Unit>()
+            val updates = async {
+                withTimeout(10_000) {
+                    dao.observeActiveByTypes(OWNER, LEDGER, listOf("upload_screenshot"), active)
+                        .map { rows -> rows.map { it.id } }.distinctUntilChanged()
+                        .onEach { initial.complete(Unit) }.take(2).toList()
+                }
+            }
+            initial.await()
+            dao.markDone(ids[0], "done", COMPLETED, receiptJson = RECEIPT)
+            assertEquals(listOf(ids.take(4), ids.subList(1, 4)), updates.await())
+            val beforeDelete = dao.allRows()
+            assertEquals(2, dao.deleteQuarantined(OWNER))
+            assertEquals(beforeDelete.filter { it.id in ids.take(8) }, fixture.reopen().allRows())
+            assertEquals(0, fixture.dao.observeQuarantinedCount(OWNER).first())
+            assertEquals(0, fixture.dao.deleteQuarantined(OWNER))
         }
     }
 

@@ -306,53 +306,6 @@ class OutboxRepositoryTest {
     }
 
     @Test
-    fun activeForTargetExcludesTerminalRows() = runTest {
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-
-        val pendingId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        val doneId = repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 0L)
-        repo.markDone(doneId)
-        repo.enqueue(PendingMutationType.PatchExpense, "expense:2", "{}", 0L)
-
-        val active = repo.activeForTarget("expense:1").map { it.id }
-
-        assertEquals(listOf(pendingId), active)
-    }
-
-    @Test
-    fun observeActiveByTypesReturnsOnlyCurrentBindingRecurringIntents() = runTest {
-        val dao = FakePendingMutationDao()
-        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
-        val recurringCreate = repo.enqueue(
-            PendingMutationType.CreateRecurringItem,
-            "recurring_item_create:key-1",
-            "{}",
-            0L,
-        )
-        val recurringUpdate = repo.enqueue(
-            PendingMutationType.UpdateRecurringItem,
-            "recurring_item:rec-1",
-            "{}",
-            3L,
-        )
-        repo.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
-        val doneRecurring = repo.enqueue(
-            PendingMutationType.UpdateRecurringItem,
-            "recurring_item:rec-2",
-            "{}",
-            4L,
-        )
-        repo.markDone(doneRecurring)
-
-        val rows = repo.observeActiveByTypes(
-            setOf(PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem),
-        ).first()
-
-        assertEquals(listOf(recurringCreate, recurringUpdate), rows.map { it.id })
-    }
-
-    @Test
     fun dequeuePassesTheCurrentBindingWithoutRewritingAnEarlierLedgerOriginal() = runTest {
         val dao = FakePendingMutationDao()
         var binding = testOutboxBinding().copy(serverUrl = "https://old.example.com", ledgerId = "ledger-a")
