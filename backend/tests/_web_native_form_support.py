@@ -1,6 +1,7 @@
 """Read the hidden fields a native browser would submit from server-rendered forms."""
 
 import re
+from copy import deepcopy
 from html import unescape
 from html.parser import HTMLParser
 
@@ -79,3 +80,91 @@ def open_repayment_task(client, page, *, headers=None):
 def accounting_time_fields(html: str) -> dict[str, str]:
     return {name: value for form in hidden_post_forms(html).values()
         for name, value in form.items() if name in _TIME_FIELDS}
+
+
+class _NativeForm(HTMLParser):
+    """Successful controls, including repeated rows and the clicked submit button."""
+
+    def __init__(self, html, action, *, identity_fields=("csrf_token", "expected_row_version", "idempotency_key")):
+        super().__init__()
+        self.action = action
+        self.fields = {}
+        self.buttons = []
+        self.active = False
+        self.textarea = None
+        self.select = None
+        self.options = []
+        self.feed(html)
+        assert self.fields, f"Missing native form: {action}"
+        # Reuse the shared hidden-field reader for the original command identity.
+        hidden = hidden_post_forms(html)[action]
+        for name in identity_fields:
+            assert self.one(name) == hidden[name]
+
+    def one(self, name):
+        values = self.fields[name]
+        assert len(values) == 1, (name, values)
+        return values[0]
+
+    def set(self, name, value):
+        assert name in self.fields, f"The actual form does not expose {name}"
+        self.fields[name] = [value] if isinstance(value, str) else value
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "form":
+            self.active = attrs.get("action") == self.action and attrs.get("method", "").lower() == "post"
+        if not self.active or "disabled" in attrs:
+            return
+        name = attrs.get("name")
+        if tag == "input" and name:
+            self._record_input(name, attrs)
+            return
+        if tag == "textarea" and name:
+            self.textarea = name
+            self.fields.setdefault(name, []).append("")
+            return
+        if tag == "select" and name:
+            self.select, self.options = name, []
+            return
+        if tag == "option" and self.select:
+            self.options.append((attrs.get("value", ""), "selected" in attrs))
+            return
+        if tag == "button" and attrs.get("type", "submit") == "submit":
+            self.buttons.append(attrs)
+
+    def _record_input(self, name, attrs):
+        kind = attrs.get("type", "text")
+        if kind in {"submit", "button", "reset"} or (kind in {"checkbox", "radio"} and "checked" not in attrs):
+            return
+        self.fields.setdefault(name, []).append(attrs.get("value", ""))
+
+    def handle_data(self, data):
+        if self.active and self.textarea:
+            self.fields[self.textarea][-1] += data
+
+    def handle_endtag(self, tag):
+        if tag == "form":
+            self.active = False
+        elif tag == "textarea":
+            self.textarea = None
+        elif tag == "select" and self.select:
+            selected = [value for value, chosen in self.options if chosen]
+            self.fields.setdefault(self.select, []).append(selected[-1] if selected else self.options[0][0])
+            self.select, self.options = None, []
+
+    def post(self, client, *, rate=False, review=False, fetch=False):
+        fields = deepcopy(self.fields)
+        action = self.action
+        if rate:
+            candidates = [button for button in self.buttons
+                if button.get("formaction", "").endswith("/correction-rate")
+                and (button.get("name") == "fx_fetch_reference") == fetch
+                and (button.get("name") == "fx_review_latest") == review]
+            assert len(candidates) == 1, self.buttons
+            button = candidates[0]
+            action = button["formaction"]
+            if button.get("name"):
+                fields[button["name"]] = [button["value"]]
+        return client.post(action, data=fields, headers={"Origin": str(client.base_url).rstrip("/")},
+            follow_redirects=False)

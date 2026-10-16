@@ -23,8 +23,7 @@ from tests._local_web_identity_support import (
     _InstalledWeb,
     installed_web_setup,
 )
-from tests._web_native_form_support import open_repayment_task
-from tests.test_web_correction_fx_continuation import _NativeForm
+from tests._web_native_form_support import _NativeForm, open_repayment_task
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 

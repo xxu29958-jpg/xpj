@@ -29,19 +29,17 @@ from app.services.identity_service import (
     new_session_token,
 )
 from app.services.time_service import now_utc
-from tests.desktop_activation_support import token_row as _token_row
-from tests.pairing_test_support import session_refresh_payload
-from tests.test_desktop_ledger_switch_prepare import (
+from tests.desktop_activation_support import (
+    LOOPBACK_BASE_URL,
+    REVOKE_PATH,
     _activate_attempt,
+    _bridge_headers,
     _create_ledger,
     _desktop_session,
     _prepare_payload,
 )
-from tests.test_desktop_session_revoke import (
-    LOOPBACK_BASE_URL,
-    REVOKE_PATH,
-    _bridge_headers,
-)
+from tests.desktop_activation_support import token_row as _token_row
+from tests.pairing_test_support import session_refresh_payload
 
 
 @pytest.fixture()

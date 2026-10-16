@@ -34,46 +34,13 @@ from app.services.session_lifecycle_service import (
     hash_secret,
 )
 from app.services.time_service import ensure_utc, now_utc
-from tests.desktop_activation_support import (
-    activate as _activate,
-)
+from tests.desktop_activation_support import _activate_attempt, _create_ledger, _desktop_session, _prepare_payload
 from tests.desktop_activation_support import (
     attempt_row as _attempt_row,
 )
 from tests.desktop_activation_support import (
-    pair_desktop as _pair_desktop,
-)
-from tests.desktop_activation_support import (
     token_row as _token_row,
 )
-
-
-def _prepare_payload() -> dict[str, str]:
-    return {
-        "activation_attempt_id": str(uuid4()),
-        "activation_attempt_secret": secrets_module.token_urlsafe(32),
-    }
-
-
-def _activate_attempt(client: TestClient, payload: dict, *, previous: str | None = None):
-    """POST the switch-prepare attempt proof to #219's activate endpoint."""
-    headers = {"X-Ticketbox-Previous-Session": previous} if previous else None
-    return client.post("/api/auth/desktop/activate", json=payload, headers=headers)
-
-
-def _desktop_session(client: TestClient, pairing_code: str) -> tuple[dict, dict[str, str]]:
-    """Pair + activate a desktop device on ``owner``; return (payload, headers)."""
-    payload, _ = _pair_desktop(client, pairing_code)
-    response = _activate(client, payload)
-    assert response.status_code == 200, response.text
-    token = response.json()["session_token"]
-    return payload, {"Authorization": f"Bearer {token}"}
-
-
-def _create_ledger(client: TestClient, headers: dict[str, str], name: str = "桌面第二账本") -> str:
-    response = client.post("/api/ledgers", headers=headers, json={"name": name})
-    assert response.status_code == 201, response.text
-    return str(response.json()["ledger_id"])
 
 
 def _prepare(client: TestClient, ledger_id: str, headers: dict[str, str], payload: dict):

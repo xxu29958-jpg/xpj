@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import secrets as secrets_module
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.middleware.web_session import DESKTOP_BRIDGE_HEADER, DESKTOP_BRIDGE_VERSION
 from app.models import AuthToken, DesktopActivationAttempt
 from app.services.session_lifecycle_service import hash_secret
 from tests.pairing_test_support import pairing_payload
@@ -64,3 +68,44 @@ def new_desktop_pairing_code(client: TestClient, headers: dict[str, str], ledger
     )
     assert response.status_code == 201, response.text
     return str(response.json()["pairing_code"])
+
+
+def _prepare_payload() -> dict[str, str]:
+    return {
+        "activation_attempt_id": str(uuid4()),
+        "activation_attempt_secret": secrets_module.token_urlsafe(32),
+    }
+
+
+def _activate_attempt(client: TestClient, payload: dict, *, previous: str | None = None):
+    """POST the switch-prepare attempt proof to #219's activate endpoint."""
+    headers = {"X-Ticketbox-Previous-Session": previous} if previous else None
+    return client.post("/api/auth/desktop/activate", json=payload, headers=headers)
+
+
+def _desktop_session(client: TestClient, pairing_code: str) -> tuple[dict, dict[str, str]]:
+    """Pair + activate a desktop device on ``owner``; return (payload, headers)."""
+    payload, _ = pair_desktop(client, pairing_code)
+    response = activate(client, payload)
+    assert response.status_code == 200, response.text
+    token = response.json()["session_token"]
+    return payload, {"Authorization": f"Bearer {token}"}
+
+
+def _create_ledger(client: TestClient, headers: dict[str, str], name: str = "桌面第二账本") -> str:
+    response = client.post("/api/ledgers", headers=headers, json={"name": name})
+    assert response.status_code == 201, response.text
+    return str(response.json()["ledger_id"])
+
+
+LOOPBACK_BASE_URL = "http://127.0.0.1:8000"
+
+
+REVOKE_PATH = "/desktop/session/revoke"
+
+
+def _bridge_headers(token: str, *, marker: str = DESKTOP_BRIDGE_VERSION) -> dict[str, str]:
+    return {
+        DESKTOP_BRIDGE_HEADER: marker,
+        "Authorization": f"Bearer {token}",
+    }

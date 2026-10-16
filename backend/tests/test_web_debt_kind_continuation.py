@@ -11,10 +11,10 @@ import app.routes.web_debts as web_debts
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import ApiIdempotencyKey
+from tests._web_debt_command_support import _create_debt, _detail, _form
 from tests._web_native_form_support import hidden_post_forms
 from tests.debt_repayment_goal_helpers import _clear_debt
 from tests.test_debt_kind_setter import _set_owner_ledger_role
-from tests.test_web_debt_actions import _create_debt, _detail, _form
 
 
 def test_kind_native_select_keeps_exact_original_value_when_disabled_and_reopened():

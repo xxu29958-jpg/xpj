@@ -15,9 +15,8 @@ import app.services.debt_command_service as commands
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Debt, Repayment
-from tests._web_native_form_support import hidden_post_forms, open_repayment_task
-from tests.test_web_correction_fx_continuation import _NativeForm
-from tests.test_web_debt_actions import _create_debt, _detail
+from tests._web_debt_command_support import _create_debt, _detail
+from tests._web_native_form_support import _NativeForm, hidden_post_forms, open_repayment_task
 
 
 def _repayment_facts(public_id):
