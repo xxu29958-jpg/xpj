@@ -25,13 +25,6 @@ def _split_headers(client: TestClient, headers: dict[str, str]) -> dict[str, str
     return negotiated_headers(client, {"Idempotency-Key": str(uuid4()), **headers})
 
 
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        owner = db.query(Account).order_by(Account.id.asc()).first()
-        assert owner is not None
-        return owner.id
-
-
 def _seed_receiver(
     name: str = "B", ledger_id: str = "receiver_b", *, ledger_name: str | None = None,
 ) -> int:

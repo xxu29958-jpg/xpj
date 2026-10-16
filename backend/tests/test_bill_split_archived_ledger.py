@@ -24,13 +24,7 @@ from app.models import Account, Expense, Ledger, LedgerMember
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
-
-
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        owner = db.query(Account).order_by(Account.id.asc()).first()
-        assert owner is not None
-        return owner.id
+from tests._infra.identity import seeded_owner_account_id
 
 
 def _seed_receiver(name: str, ledger_id: str) -> int:
@@ -77,7 +71,7 @@ def test_accept_to_archived_ledger_409(client, *, identity) -> None:  # noqa: AR
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -115,7 +109,7 @@ def test_accept_to_active_ledger_still_succeeds(client, *, identity) -> None:  #
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,

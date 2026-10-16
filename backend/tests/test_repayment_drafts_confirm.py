@@ -30,6 +30,7 @@ from app.models import Account, Debt, LedgerMember, Repayment, RepaymentDraft
 from app.services import debt_service
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import ensure_utc, now_utc
+from tests._infra.identity import seeded_owner_account_id
 from tests._runtime_protocol import negotiated_headers
 from tests.family_ledger_test_support import set_owner_ledger_role
 
@@ -265,13 +266,6 @@ def test_dismiss_confirmed_draft_is_conflict(client: TestClient, *, identity) ->
 # --- ORM seeds for the member-debt guard + concurrency tests --------------------
 
 
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        owner = db.query(Account).order_by(Account.id.asc()).first()
-        assert owner is not None
-        return owner.id
-
-
 def _seed_manual_member_debt(*, principal_amount_cents: int = 10000) -> dict:
     with SessionLocal() as db:
         owner = db.scalar(select(Account).order_by(Account.id.asc()).limit(1))
@@ -302,7 +296,7 @@ def _seed_manual_member_debt(*, principal_amount_cents: int = 10000) -> dict:
 
 
 def _seed_committed_external_debt(*, principal_amount_cents: int) -> tuple[str, int]:
-    actor = _owner_account_id()
+    actor = seeded_owner_account_id()
     with SessionLocal() as db:
         from app.schemas import DebtCreateRequest
 
@@ -323,7 +317,7 @@ def _seed_committed_external_debt(*, principal_amount_cents: int) -> tuple[str, 
 
 
 def _seed_committed_draft(*, amount_cents: int) -> str:
-    actor = _owner_account_id()
+    actor = seeded_owner_account_id()
     with SessionLocal() as db:
         from app.schemas import RepaymentDraftCreateRequest
 
@@ -354,7 +348,7 @@ def test_two_sessions_confirm_serializes_on_draft_row(*, identity) -> None:
     can never each record a repayment for the same captured draft."""
     debt_public_id, debt_version = _seed_committed_external_debt(principal_amount_cents=50000)
     draft_public_id = _seed_committed_draft(amount_cents=10000)
-    actor = _owner_account_id()
+    actor = seeded_owner_account_id()
 
     holder = SessionLocal()
     try:
@@ -398,7 +392,7 @@ def test_two_sessions_confirm_serialize_then_second_rechecks(*, identity) -> Non
     once across two confirms."""
     debt_public_id, debt_version = _seed_committed_external_debt(principal_amount_cents=50000)
     draft_public_id = _seed_committed_draft(amount_cents=10000)
-    actor = _owner_account_id()
+    actor = seeded_owner_account_id()
 
     with SessionLocal() as session_a:
         debt_service.confirm_repayment_draft(

@@ -34,14 +34,8 @@ from app.services.bill_split_service import (
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.time_service import now_utc
+from tests._infra.identity import seeded_owner_account_id
 from tests.bill_split_test_support import _split_headers
-
-
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        owner = db.query(Account).order_by(Account.id.asc()).first()
-        assert owner is not None
-        return owner.id
 
 
 def _seed_receiver(name: str = "B", ledger_id: str = "receiver_b") -> int:
@@ -178,7 +172,7 @@ def test_backfill_creates_missing_member_debt(
     # A split accepted while the rollout was OFF has no Debt; backfill creates one
     # with the exact shape an inline-at-accept Debt would have (mirrors
     # test_bill_split_debt_linkage.test_accept_with_rollout_creates_member_debt).
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     receiver_id = _seed_receiver()
     public_id = _invite(client, identity, receiver_id, amount_cents=2500)
     _accept(public_id, receiver_id)  # rollout OFF → accepted, no Debt
@@ -288,7 +282,7 @@ def test_reconcile_backfills_when_rollout_on(
     # moment the reconcile runs with the rollout ON (⑤b). The ``debt_rollout_off``
     # fixture seeds the closed-period accept (no inline Debt); this test then flips
     # the same monkeypatch'd env ON to exercise the startup reconcile.
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     receiver_id = _seed_receiver()
     public_id = _invite(client, identity, receiver_id, amount_cents=2500)
     _accept(public_id, receiver_id)  # accepted while OFF → no Debt yet

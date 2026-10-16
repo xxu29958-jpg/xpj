@@ -15,7 +15,8 @@ from app.schemas import ExpenseCorrectionRequest
 from app.services import bill_split_service as bsplit
 from app.services.expense_correction_service import correct_expense
 from app.services.ledger_calendar_service import adopt_ledger_calendar
-from tests.bill_split_test_support import _make_expense_for_owner, _owner_account_id, _seed_receiver, _split_headers
+from tests._infra.identity import seeded_owner_account_id
+from tests.bill_split_test_support import _make_expense_for_owner, _seed_receiver, _split_headers
 
 # -------------------------------------------------------------------------
 # DTO separation
@@ -119,7 +120,7 @@ def test_inbox_account_scoped_regardless_of_ledger() -> None:
     with SessionLocal() as db:
         bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -141,7 +142,7 @@ def test_accept_idempotent_returns_same_received_expense() -> None:
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -188,7 +189,7 @@ def test_accept_to_viewer_ledger_403() -> None:
     receiver_account_id = _seed_receiver(name="B-viewer", ledger_id="receiver_b_view")
     with SessionLocal() as db:
         viewer_ledger = Ledger(
-            ledger_id="shared_viewer", name="共享", owner_account_id=_owner_account_id()
+            ledger_id="shared_viewer", name="共享", owner_account_id=seeded_owner_account_id()
         )
         db.add(viewer_ledger)
         db.flush()
@@ -205,7 +206,7 @@ def test_accept_to_viewer_ledger_403() -> None:
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -241,7 +242,7 @@ def test_accept_to_sender_ledger_403() -> None:
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -272,7 +273,7 @@ def test_chain_split_on_received_expense_blocked() -> None:
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -298,7 +299,7 @@ def test_chain_split_on_received_expense_blocked() -> None:
             sender_account_id=receiver_account_id,
             sender_ledger_id="receiver_chain",
             expense_id=received_id,
-            receiver_account_id=_owner_account_id(),
+            receiver_account_id=seeded_owner_account_id(),
             amount_cents=1000,
             idempotency_key=str(uuid4()), expected_row_version=1,
         )
@@ -316,7 +317,7 @@ def test_received_expense_amount_cannot_be_corrected(client: TestClient, *, iden
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -423,7 +424,7 @@ def test_cancel_accepted_invitation_rejected() -> None:
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_account_id,
@@ -439,6 +440,6 @@ def test_cancel_accepted_invitation_rejected() -> None:
 
     with SessionLocal() as db, pytest.raises(AppError) as exc:
         bsplit.cancel_invitation(
-            db, public_id=inv.public_id, sender_account_id=_owner_account_id()
+            db, public_id=inv.public_id, sender_account_id=seeded_owner_account_id()
         )
     assert exc.value.error == "invitation_not_cancellable"

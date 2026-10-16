@@ -24,13 +24,7 @@ from app.routes.web_receivables import _receivable_row_view
 from app.schemas import DebtCreateRequest
 from app.services.debt_service import create_bill_split_debt, create_debt
 from app.services.time_service import now_utc
-
-
-def _owner_account_id() -> int:
-    with SessionLocal() as db:
-        owner = db.query(Account).order_by(Account.id.asc()).first()
-        assert owner is not None
-        return owner.id
+from tests._infra.identity import seeded_owner_account_id
 
 
 def _seed_debtor_ledger(display_name: str, ledger_id: str) -> int:
@@ -108,7 +102,7 @@ def test_web_receivables_empty_renders_premium_empty_state(web_client: TestClien
 
 # ── communal open row ────────────────────────────────────────────────────────
 def test_web_receivables_open_row_is_communal_with_debtor_name(web_client: TestClient, *, identity) -> None:
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_debtor_ledger("阿明", "receiver_b")
     _seed_receivable(creditor_id=owner_id, debtor_id=debtor_id, debtor_ledger="receiver_b")
 
@@ -125,7 +119,7 @@ def test_web_receivables_open_row_is_communal_with_debtor_name(web_client: TestC
 
 
 def test_web_receivables_cleared_row_receded(web_client: TestClient, *, identity) -> None:
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_debtor_ledger("小红", "receiver_c")
     public_id = _seed_receivable(creditor_id=owner_id, debtor_id=debtor_id, debtor_ledger="receiver_c")
     _clear(public_id, debtor_id)
@@ -139,7 +133,7 @@ def test_web_receivables_cleared_row_receded(web_client: TestClient, *, identity
 
 # ── account-scoped cross-ledger aggregation ──────────────────────────────────
 def test_web_receivables_aggregates_across_debtor_ledgers(web_client: TestClient, *, identity) -> None:
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     d1 = _seed_debtor_ledger("阿明", "receiver_b")
     d2 = _seed_debtor_ledger("小刚", "receiver_d")
     _seed_receivable(creditor_id=owner_id, debtor_id=d1, debtor_ledger="receiver_b")
@@ -155,7 +149,7 @@ def test_web_receivable_preserves_remaining_and_opens_redacted_detail(
     *,
     identity,
 ) -> None:
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     debtor_id = _seed_debtor_ledger("阿明", "receiver_detail")
     public_id = _seed_receivable(
         creditor_id=owner_id,
@@ -198,7 +192,7 @@ def test_web_receivables_active_first_open_before_cleared_before_voided(
     even though the service returns status.asc (alphabetical → cleared before open).
     Mirrors the debt list + Android sortReceivablesActiveFirst; without the route
     re-sort the cleared row would render before the open row."""
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     d_open = _seed_debtor_ledger("阿明", "recv_open")
     d_cleared = _seed_debtor_ledger("小红", "recv_cleared")
     d_voided = _seed_debtor_ledger("老王", "recv_voided")
@@ -325,7 +319,7 @@ def test_view_fx_member_row_badges_viewer_relative_receivable() -> None:
 
 def test_web_receivables_external_row_uses_accounting_framing(web_client: TestClient, *, identity) -> None:
     """同账本 external 应收入页：会计框架 (应收/未结清/无进度条)，非 member 关系行。"""
-    owner_id = _owner_account_id()
+    owner_id = seeded_owner_account_id()
     with SessionLocal() as db:
         debt = create_debt(
             db,

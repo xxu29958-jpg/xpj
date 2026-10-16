@@ -21,10 +21,10 @@ from app.services.expense_accounting_time_service import refresh_legacy_expense_
 from app.services.ledger_calendar_service import adopt_ledger_calendar
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
+from tests._infra.identity import seeded_owner_account_id
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._web_native_form_support import hidden_post_forms
 from tests.bill_split_test_support import _make_web_expense as _make_owner_expense
-from tests.bill_split_test_support import _owner_account_id
 from tests.bill_split_test_support import _seed_web_receiver as _seed_receiver
 
 
@@ -70,7 +70,7 @@ def test_web_sent_lists_invitations(web_client: TestClient) -> None:
     with SessionLocal() as db:
         bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_id,
@@ -92,7 +92,7 @@ def test_web_sent_omits_receiver_ledger_id(web_client: TestClient) -> None:
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_id,
@@ -128,7 +128,7 @@ def test_web_split_cancel_after_accept_flashes_conflict_not_json(
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_id,
@@ -172,7 +172,7 @@ def test_web_split_accept_redirects_to_canonical_fact_receipt(
             sender_account_id=sender_id,
             sender_ledger_id=sender_ledger,
             expense_id=expense_id,
-            receiver_account_id=_owner_account_id(),
+            receiver_account_id=seeded_owner_account_id(),
             amount_cents=1200,
             idempotency_key=str(uuid4()), expected_row_version=1,
         )
@@ -307,7 +307,7 @@ def test_web_split_receipt_does_not_leak_another_receivers_acceptance(
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_id,
@@ -405,7 +405,7 @@ def test_web_inbox_target_shows_ledger_name_and_local_time(
             sender_account_id=sender_id,
             sender_ledger_id=sender_ledger,
             expense_id=expense_id,
-            receiver_account_id=_owner_account_id(),
+            receiver_account_id=seeded_owner_account_id(),
             amount_cents=1200,
             idempotency_key=str(uuid4()), expected_row_version=1,
         )
@@ -435,7 +435,7 @@ def test_web_sent_renders_local_time_not_utc_repr(web_client: TestClient) -> Non
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_id,
@@ -460,7 +460,7 @@ def test_web_bill_split_pages_use_obligations_product_cards(web_client: TestClie
     with SessionLocal() as db:
         bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_id,
@@ -492,7 +492,7 @@ def test_web_bill_split_pages_use_obligations_product_cards(web_client: TestClie
             sender_account_id=sender_id,
             sender_ledger_id=sender_ledger,
             expense_id=inbound_expense,
-            receiver_account_id=_owner_account_id(),
+            receiver_account_id=seeded_owner_account_id(),
             amount_cents=900,
             idempotency_key=str(uuid4()), expected_row_version=1,
         )
@@ -513,7 +513,7 @@ def test_web_sent_treats_past_ttl_as_expired_and_hides_cancel(
     with SessionLocal() as db:
         inv = bsplit.create_invitation(
             db,
-            sender_account_id=_owner_account_id(),
+            sender_account_id=seeded_owner_account_id(),
             sender_ledger_id="owner",
             expense_id=expense_id,
             receiver_account_id=receiver_id,
