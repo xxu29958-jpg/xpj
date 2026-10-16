@@ -92,11 +92,14 @@ class FinancialJourney:
         self.form("/web/auth/local").locator('button[type="submit"]').click()
         page.wait_for_url("**/web/expenses/new*")
         form = self.form("/web/expenses/new")
-        form.locator('[name="amount_major"]').fill("0.00")  # Isolated T2 failure probe; never merge.
+        form.locator('[name="amount_major"]').fill("12.34")
         if not form.locator('[name="merchant"]').is_visible():
             form.locator("details.manual-expense-options > summary").click()
         form.locator('[name="merchant"]').fill("FactStart")
         form.locator('[name="category"]').fill("餐饮")
+        # Isolated T2 failure probe: the actual command cannot reach its owner. Never merge.
+        page.route("**/web/expenses/new", lambda route: route.abort("connectionclosed")
+            if route.request.method == "POST" else route.continue_())
         form.get_by_role("button", name="记下这笔支出", exact=True).click()
         self.expect(lambda state: len(state["expenses"]) == 1, "The real manual expense did not commit")
         self.native.bind(self.fixture.pairing_code, self.port)
