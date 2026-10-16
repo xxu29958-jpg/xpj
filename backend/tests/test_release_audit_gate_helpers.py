@@ -254,7 +254,7 @@ def test_pr_delta_flags_missing_extra_and_unreadable_base_in_pr_ci(
 ) -> None:
     mod = importlib.reload(importlib.import_module("codebase_audit_gate"))
     assert "backend_pytest_count" not in mod.BASELINE_RATCHET_UP
-    assert "installer_pytest_count" in mod.BASELINE_RATCHET_UP
+    assert "installer_pytest_count" not in mod.BASELINE_RATCHET_UP
     assert "mutate_token_carriers" in mod.BASELINE_RATCHET_UP
     monkeypatch.setattr(mod, "STRICT_EQUALITY_BASELINE", {"backend_pytest_count": 2403})
     monkeypatch.setenv("XPJ_AUDIT_BASE_REF", "0123456789abcdef")

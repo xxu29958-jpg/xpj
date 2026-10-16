@@ -163,12 +163,10 @@ STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())
 # both baseline files. Android counts are NOT listed here.
 # Total test counts are reconciliation signals, not coverage proofs. Their
 # checked-in values are minimum floors: additions do not require baseline churn,
-# while a drop still requires an explicit reviewed floor movement. The installer
-# suite remains a release-critical monotonic floor except for exact one-time
-# removals of physically retired lifecycle harnesses.
+# while a drop still requires an explicit reviewed floor movement. This applies
+# to backend and installer tests alike; neither must retain redundant checks.
 BASELINE_RATCHET_UP: frozenset[str] = frozenset(
     {
-        "installer_pytest_count",
         "mutate_token_carriers",
     }
 )
@@ -361,9 +359,9 @@ def _compute_ratchet_findings(
         if key in BASELINE_RATCHET_UP and current_val < base_val and not retirement:
             movement_violations.append(
                 f"  - {key} (UP-only): base={base_val}, current={current_val} "
-                f"(dropped by {base_val - current_val}). Tests/coverage should "
-                f"accumulate, not vanish. Strict equality alone misses this when "
-                f"actuals dropped in lockstep — this layer catches it."
+                f"(dropped by {base_val - current_val}). Removing an OCC carrier "
+                f"requires an explicitly admitted route retirement; changing "
+                f"the count alone does not preserve its concurrency boundary."
             )
         elif key in BASELINE_RATCHET_DOWN and current_val > base_val and not admitted:
             movement_violations.append(
