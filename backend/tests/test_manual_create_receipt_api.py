@@ -13,6 +13,7 @@ from app.models import ApiIdempotencyKey, CategoryPreference, Expense, ExpenseRe
 from app.schemas import ExpenseManualCreateRequest
 from app.services.expense_service import _create as owner
 from app.services.identity_service import authenticate_session_token
+from app.services.manual_expense_receipt import read_manual_creation_receipt
 from tests.expense_correction_support import idem
 
 
@@ -42,6 +43,10 @@ def test_original_create_response_survives_later_fact_correction(client, identit
         assert db.get(Expense, accepted["id"]).amount_cents == 3400
         claim = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.operation == "create_manual_expense"))
         assert claim.response_body == accepted
+        auth = authenticate_session_token(db, identity.app_token, {"app"})
+        receipt = read_manual_creation_receipt(db, tenant_id="owner", device_id=auth.device_id,
+            client_ref=body["client_ref"])
+        assert receipt.model_dump(mode="json") == accepted
         assert db.scalar(select(func.count()).select_from(Expense)) == 1
 
 
@@ -126,11 +131,17 @@ def test_concurrent_same_original_key_returns_one_fact_and_identical_receipts(cl
 def test_missing_saved_receipt_requires_review_without_current_state_fallback(client, identity):
     first = _post(client, identity, _body())
     assert first.status_code == 200, first.text
-    with SessionLocal() as db:
-        claim = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.operation == "create_manual_expense"))
-        claim.response_body = None
-        db.commit()
-    replay = _post(client, identity, _body())
-    assert replay.status_code == 409, replay.text
-    assert (replay.json()["error"], replay.json()["expense_id"]) == (
-        "manual_create_original_requires_review", first.json()["id"])
+    for body in (None, {}, {"id": first.json()["id"]}):
+        with SessionLocal() as db:
+            claim = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.operation == "create_manual_expense"))
+            claim.response_body = body
+            db.commit()
+        replay = _post(client, identity, _body())
+        assert replay.status_code == 409, replay.text
+        assert (replay.json()["error"], replay.json()["expense_id"]) == (
+            "manual_create_original_requires_review", first.json()["id"])
+        with SessionLocal() as db:
+            auth = authenticate_session_token(db, identity.app_token, {"app"})
+            assert read_manual_creation_receipt(db, tenant_id="owner", device_id=auth.device_id,
+                client_ref=_body()["client_ref"]) is None
+            assert db.scalar(select(func.count()).select_from(Expense)) == 1

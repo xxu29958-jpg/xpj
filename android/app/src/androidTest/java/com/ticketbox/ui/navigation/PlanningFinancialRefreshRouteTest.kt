@@ -156,6 +156,8 @@ class PlanningFinancialRefreshRouteTest {
     @Test fun acceptedBackgroundCorrectionRefreshesTheRetainedPlanWithoutACompletionCallback() {
         val fixture = harness.fixture
         fixture.network.current = fixture.network.current.copy(status = "confirmed", confirmedAt = "2026-09-06T00:00:00Z")
+        fixture.network.correctionReply = fixture.network.correctionReply.copy(expense =
+            fixture.network.current.copy(rowVersion = 8, factRevision = 4, amountCents = 800, originalAmountMinor = 800))
         fixture.network.loseResponse = false
         showPlans()
         waitForText("¥2,000")
@@ -177,6 +179,8 @@ class PlanningFinancialRefreshRouteTest {
             assertEquals(column, original[column], fixture.stored().single()[column])
         }
         assertEquals(800L, fixture.network.current.amountCents)
+        assertEquals(800L, fixture.network.calls.single().first.originalAmountMinor)
+        assertEquals(7L, fixture.network.calls.single().first.expectedRowVersion)
         assertTrue(fixture.network.editCalls.isEmpty())
 
         switchDomain(PrimaryDomain.Plans)

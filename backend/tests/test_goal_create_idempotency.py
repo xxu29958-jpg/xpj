@@ -8,7 +8,9 @@ from sqlalchemy import func, select
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import ApiIdempotencyKey, Goal
+from app.schemas import GoalCreateRequest
 from app.services import goal_create_command as commands
+from app.services.idempotency import claim_idempotency_key, fingerprint_request
 from tests.debt_repayment_goal_helpers import _create_external_debt
 
 
@@ -54,6 +56,35 @@ def test_create_replays_original_receipt_after_edit_and_archive(client, identity
         receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key))
         assert receipt.response_body == goal
         assert receipt.resource_id == goal["public_id"]
+    for body in (None, {}, {**goal, "home_currency_code": None}):
+        with SessionLocal() as db:
+            receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key))
+            receipt.response_body = body
+            db.commit()
+        refused = client.post("/api/goals", headers=headers, json=_body())
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["error"] == "goal_original_requires_review"
+        with SessionLocal() as db:
+            assert db.scalar(select(func.count()).select_from(Goal)) == 1
+            current = db.scalar(select(Goal).where(Goal.public_id == goal["public_id"]))
+            assert (current.status, current.target_amount_cents) == ("archived", 2400)
+
+
+def test_in_progress_original_goal_cannot_start_another_write(client, identity):
+    key = str(uuid4())
+    with SessionLocal() as db:
+        claim_idempotency_key(db, tenant_id="owner", idempotency_key=key, operation="create_goal",
+            target_type="goal", request_fingerprint=fingerprint_request(
+                operation="create_goal", target_id=None, body=GoalCreateRequest(**_body()).model_dump(mode="json"),
+                expected_row_version=None))
+        db.commit()
+    response = client.post("/api/goals", headers=_headers(identity, key), json=_body())
+    assert response.status_code == 409, response.text
+    assert response.json()["error"] == "idempotency_key_in_progress"
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(Goal)) == 0
+        receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key))
+        assert receipt.status == "in_progress" and receipt.response_body is None
 
 
 @pytest.mark.parametrize("changes", [

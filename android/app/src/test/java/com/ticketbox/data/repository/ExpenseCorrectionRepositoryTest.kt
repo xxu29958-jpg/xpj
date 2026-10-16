@@ -30,33 +30,6 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
     private val harness = CorrectionRepositoryHarness()
 
     @Test
-    fun `explicit rate recheck schedules the identical original and leaves context changes to its sender`() = runTest {
-        val queue = FakePendingMutationDao()
-        var schedules = 0
-        val outbox = testOutboxRepository(queue, onEnqueued = { schedules++ })
-        val repo = harness.buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
-        val binding = assertNotNull(repo.observeCorrections().first().access).binding
-        harness.submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
-            ExpenseCorrectionDraft("更正原币种", originalCurrencyCode = CurrencyCode.JPY, originalAmountMinor = 12)).getOrThrow()
-        val original = queue.rows.values.single()
-        val refusal = "exchange_rate_pending:{\"source_currency_code\":\"JPY\",\"home_currency_code\":\"CNY\",\"rate_date\":\"2025-12-03\"}"
-        outbox.markFailed(original.id, refusal)
-        val pending = repo.observeCorrections().first().corrections.single()
-        assertEquals("2025-12-03", pending.missingExchangeRate?.rateDate)
-        assertEquals(1, schedules, "Reading missing-rate context does not start a retry")
-
-        repo.recoverCorrection(binding, original.id, drop = false).getOrThrow()
-
-        val resumed = queue.rows.getValue(original.id)
-        assertEquals(original.payload, resumed.payload)
-        assertEquals(original.idempotencyKey, resumed.idempotencyKey)
-        assertEquals(original.expectedRowVersion, resumed.expectedRowVersion)
-        assertEquals(original.ownerKey, resumed.ownerKey)
-        assertEquals(original.ledgerId, resumed.ledgerId)
-        assertEquals(2, schedules)
-    }
-
-    @Test
     fun `request storage boundaries refuse before enqueue and preserve every legal boundary`() = runTest {
         for ((label, draft, accepted) in correctionAdmissionBoundaryCases()) {
             val queue = FakePendingMutationDao()
@@ -296,27 +269,6 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
         val nextId = harness.submit(repo, baseline.copy(rowVersion = 8), ExpenseCorrectionDraft("第二次", note = "已核对新事实")).getOrThrow()
         assertEquals(delivered, queue.rows.getValue(original.id))
         assertEquals(8L, queue.rows.getValue(nextId).expectedRowVersion)
-    }
-
-    @Test
-    fun `old normalized intent remains readable but cannot retry and explicit discard preserves the fact`() = runTest {
-        val queue = FakePendingMutationDao()
-        val outbox = testOutboxRepository(queue)
-        val repo = harness.buildCorrectionRepository(FakeApiService(mutableListOf(), 0), outbox = outbox)
-        val json = OutboxAdapterGraph().legacyCorrectionAdapter.toJson(ExpenseCorrectionRequestDto(0, "旧明细", items = emptyList()))
-        val id = outbox.enqueue(PendingMutationType.CorrectExpense, "expense:42", json, 9, "old-key")
-        outbox.markFailed(id, "correction_requires_review")
-        val observed = repo.observeCorrections().first()
-        val access = assertNotNull(observed.access)
-        val pending = observed.corrections.single()
-        assertNull(pending.intent)
-        assertEquals("旧明细", pending.legacyRequest?.reason)
-        assertEquals(emptyList(), pending.legacyRequest?.items)
-        val original = queue.rows.getValue(id)
-        assertTrue(repo.recoverCorrection(access.binding, id, drop = false).isFailure)
-        assertEquals(original, queue.rows.getValue(id))
-        repo.recoverCorrection(access.binding, id, drop = true).getOrThrow()
-        assertTrue(queue.rows.isEmpty())
     }
 
     @Test

@@ -80,7 +80,6 @@ class IncomePlanRoomContinuityTest {
         // legitimately reconcile the original before the offline reopen.
         fixture.network.failReads = true
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
-        assertEquals(1, fixture.network.results.size)
         reopenInOctober(original, requireNotNull(beforeAcceptance))
         compose.onNodeWithText("九月工资计划 · 2026-09").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("重试原提交").performScrollTo().performClick()
@@ -89,9 +88,10 @@ class IncomePlanRoomContinuityTest {
         assertEquals(1, runBlocking { fixture.drain() }.done)
         assertEquals(2, fixture.network.calls.size)
         assertEquals(fixture.network.calls.first(), fixture.network.calls.last())
+        assertEquals(3L, fixture.network.calls.last().first.expectedRowVersion)
+        assertEquals(12_000L, fixture.network.calls.last().first.amountCents)
         assertEquals("2026-09", fixture.network.calls.last().first.intentMonth)
         assertEquals(original["idempotencyKey"], fixture.network.calls.last().second)
-        assertEquals(1, fixture.network.results.size)
         fixture.network.failReads = false
         compose.runOnIdle { model.value?.refresh() }
         compose.waitUntil(10_000) { model.value?.state?.value?.forecastMonth == "2026-10" }

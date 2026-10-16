@@ -54,3 +54,17 @@ def test_unaccepted_legacy_money_is_refused_and_existing_key_without_receipt_req
         assert db.scalar(select(func.count()).select_from(Expense)) == 1
         row = db.get(Expense, saved_id)
         assert (row.home_currency_code, row.amount_cents) == ("JPY", 12)
+
+
+def test_legacy_explicit_original_money_is_accepted_without_rewriting_its_body(client, identity):
+    body = {"client_ref": "legacy", "original_currency": "CNY", "original_amount": "12.00", "category": "餐饮"}
+    accepted = client.post("/api/expenses/manual", json=body, headers=identity.app_headers)
+    assert accepted.status_code == 200, accepted.text
+    replay = client.post("/api/expenses/manual", json=body, headers=identity.app_headers)
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == accepted.json()
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(Expense)) == 1
+        row = db.get(Expense, accepted.json()["id"])
+        assert (row.home_currency_code, row.original_currency_code,
+            row.original_amount_minor, row.amount_cents) == ("CNY", "CNY", 1200, 1200)
