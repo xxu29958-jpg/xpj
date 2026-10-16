@@ -14,11 +14,12 @@ from ci_gap_workflow_conditions import (
 )
 
 HEAVY_JOB_SCOPES = frozenset(CI_HEAVY_SCOPES)
-_GITHUB_JOB_SCOPES = HEAVY_JOB_SCOPES | frozenset(CI_ANDROID_CAPABILITIES)
-_ANDROID_CAPABILITY_JOBS = {
+_GITHUB_JOB_SCOPES = HEAVY_JOB_SCOPES | frozenset(CI_ANDROID_CAPABILITIES) | {"windows_build"}
+_CAPABILITY_JOBS = {
     ("ci.yml", "android_apk_debug"): "android_apk",
     ("ci.yml", "android_apk_release"): "android_apk",
     ("android-connected-test.yml", "connected_execution"): "android_connected",
+    ("ci.yml", "windows_packaging_build"): "windows_build",
 }
 _GITHUB_SCOPE_OUTPUTS = {
     scope: f"${{{{ steps.scope.outputs.{scope} }}}}" for scope in _GITHUB_JOB_SCOPES
@@ -448,7 +449,9 @@ def scoped_job_protection_scope(
     if scope is None:
         return None
     protection_scope = "android" if scope in CI_ANDROID_CAPABILITIES else scope
-    if scope != _ANDROID_CAPABILITY_JOBS.get((path.name, str(job_name)), protection_scope):
+    if scope == "windows_build":
+        protection_scope = "windows"
+    if scope != _CAPABILITY_JOBS.get((path.name, str(job_name)), protection_scope):
         return None
     if ".github" in path.parts and not _terminal_gate_protects_job(
         path,
@@ -467,7 +470,17 @@ def scoped_step_protection_scope(
     raw_step: dict[object, object],
     jobs: dict[object, object],
 ) -> str | None:
-    """Return a scope only for Gitea's exact fail-closed step contract."""
+    """Recognize the existing Gitea and Windows resource step selections."""
+    if (
+        ".github" in path.parts and path.name == "ci.yml"
+        and raw_job is jobs.get("windows_vnext_lifecycle")
+        and scoped_job_protection_scope(path, workflow, "windows_vnext_lifecycle", raw_job, jobs) == "windows"
+        and not allows_failure(raw_step.get("continue-on-error"))
+        and _expression_text(raw_step.get("if")) == (
+            "success() && (needs.scope.result != 'success' || needs.scope.outputs.windows_build != 'false')"
+        )
+    ):
+        return "windows"
     if (
         ".gitea" not in path.parts
         or not _gitea_scope_job_is_valid(path, workflow, jobs)
