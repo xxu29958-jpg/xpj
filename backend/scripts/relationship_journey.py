@@ -211,6 +211,18 @@ class RelationshipJourney:
         self.expect("settlement", 0)
 
     def run(self):
+        # Temporary unmerged probe: only the new production wiring leg, not full relationship qualification.
+        from scripts.relationship_debt_adjustment import manual_adjustment
+
+        with closing(self.page.context.browser.new_context(viewport={"width": 1280, "height": 960})) as context:
+            self.receiver = context.new_page()
+            self.connect(self.receiver, self.identity.receiver_account, next_path="/web/debts")
+            self.native.bind(pairing_code(self.identity.receiver_ledger, self.identity.receiver_account), self.port)
+            result = manual_adjustment(self)
+            result["verified_leg"] = "Isolated preparation only: actual AppContainer/Worker debt adjustment and Web/native reads"
+            return result
+
+    def full_relationship_run(self):
         from scripts.relationship_journey_recovery import RelationshipRecovery
         from scripts.relationship_journey_views import goal_entry
 
