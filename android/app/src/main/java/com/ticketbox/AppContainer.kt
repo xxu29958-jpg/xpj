@@ -107,11 +107,7 @@ class AppContainer(context: Context) {
         // the user doesn't wait up to 15 min for the periodic tick.
         // OutboxScheduler.enqueueOnce uses KEEP policy → a burst of
         // 20 enqueues collapses into one drain pass.
-        onEnqueued = {
-            if (sessionStore.currentSession().isBusinessReady()) {
-                outboxScheduler.enqueueOnce(appContext)
-            }
-        },
+        onEnqueued = {},
         // Session-boundary pause: cancel any in-flight or scheduled
         // workers so they do not keep draining rows from the old
         // binding after credentials change.
