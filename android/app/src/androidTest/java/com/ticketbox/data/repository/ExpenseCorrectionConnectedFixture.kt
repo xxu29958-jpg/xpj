@@ -237,9 +237,8 @@ internal class CorrectionConnectedNetwork {
     var splitSent = BillSplitSentListResponseDto(emptyList())
     var splitLedgers: com.ticketbox.data.remote.dto.LedgerListResponseDto? = null
     val splitAcceptCalls = CopyOnWriteArrayList<Pair<String, String>>()
-    val splitAcceptResults = mutableMapOf<String, com.ticketbox.data.remote.dto.BillSplitAcceptanceDto>()
+    var splitAcceptReply: com.ticketbox.data.remote.dto.BillSplitAcceptanceDto? = null
     var loseSplitAcceptResponse = false
-    var splitReceiptTargetOverride: String? = null
     val ledgerSwitchRequests = CopyOnWriteArrayList<String>()
     var splitMembers = emptyList<com.ticketbox.data.remote.dto.LedgerMemberDto>()
     var confirmedStreamItems: ((ExpenseDto) -> List<ConfirmedExpenseStreamItemDto>)? = null
@@ -376,23 +375,9 @@ internal class CorrectionConnectedNetwork {
         }
         override suspend fun acceptBillSplitInvitation(publicId: String, request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto): com.ticketbox.data.remote.dto.BillSplitAcceptanceDto {
             splitAcceptCalls += publicId to request.targetLedgerId
-            val accepted = splitAcceptResults.getOrPut(publicId) {
-                val target = requireNotNull(splitLedgers).ledgers.single { it.ledgerId == request.targetLedgerId }
-                current = current.copy(id = 84L, merchant = "已接受的分摊")
-                val invited = splitInbox.items.single { it.publicId == publicId }
-                com.ticketbox.data.remote.dto.BillSplitAcceptanceDto(publicId, "accepted", invited.amountCents,
-                    invited.homeCurrencyCode, invited.merchantSnapshot, invited.categorySuggestion, invited.expenseTimeSnapshot,
-                    invited.expiresAt, invited.createdAt, invited.acceptedAt, invited.rejectedAt, invited.cancelledAt, invited.expiredAt,
-                    invited.senderAccountId, invited.senderDisplayName,
-                    receivedBill = com.ticketbox.data.remote.dto.BillSplitReceivedBillDto(current.id, target.ledgerId, target.name),
-                    acceptedTargetLedgerId = target.ledgerId, originalCurrencyCode = invited.originalCurrencyCode,
-                    originalAmountMinor = invited.originalAmountMinor, accountingTimeSnapshot = invited.accountingTimeSnapshot)
-            }
-            check(accepted.acceptedTargetLedgerId == request.targetLedgerId)
-            // The account's latest-50 list may no longer include this original task.
-            splitInbox = com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto(emptyList())
+            val accepted = requireNotNull(splitAcceptReply)
             if (loseSplitAcceptResponse) throw IOException("Accepted split response lost")
-            return splitReceiptTargetOverride?.let { accepted.copy(acceptedTargetLedgerId = it) } ?: accepted
+            return accepted
         }
         override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto {
             readable()
