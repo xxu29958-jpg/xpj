@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from tests._web_native_form_support import hidden_post_forms
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def test_web_merchants_local_returns_200(web_client: TestClient) -> None:
@@ -522,9 +523,8 @@ def test_public_merchant_native_form_keeps_original_version_until_explicit_revie
                                headers={**headers, "Accept": "application/json"})
         assert wrong_scope.status_code == 409
         assert wrong_scope.json()["error"] == "session_binding_changed"
-        from tests._infra.merchant_catalog import demote_owner_ledger_to_viewer
 
-        demote_owner_ledger_to_viewer()
+        set_owner_ledger_role("viewer")
         denied_replay = web.post(rename_path, data={**reviewed, "display_name": draft},
                                  headers={**headers, "Accept": "application/json"})
         assert denied_replay.status_code == 403

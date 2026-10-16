@@ -7,13 +7,13 @@ from uuid import uuid4
 
 from api_contract_helpers import patch_expense
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Expense, LedgerMember
+from app.models import Expense
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.merchant_alias_service import canonical_merchant_for, enabled_merchant_alias_map
 from tests._infra.assets import PNG_BYTES
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def _create_alias(
@@ -35,16 +35,6 @@ def _create_alias(
     )
     assert response.status_code == 201, response.text
     return response.json()
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 def _upload_pending(client: TestClient, *, identity, merchant: str, category: str = "其他") -> int:
@@ -171,7 +161,7 @@ def test_viewer_cannot_mutate_merchant_aliases(client: TestClient, *, identity) 
     accepted = client.patch(f"/api/merchants/aliases/{created['public_id']}",
         headers=original_headers, json=original_body)
     assert accepted.status_code == 200, accepted.text
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     checks = [
         client.patch(f"/api/merchants/aliases/{created['public_id']}",

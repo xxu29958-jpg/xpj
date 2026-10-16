@@ -16,17 +16,10 @@ from sqlalchemy.exc import SQLAlchemyError
 import app.routes.web_inbox_capture as web_inbox_capture_routes
 from app.database import SessionLocal
 from app.main import app as fastapi_app
-from app.models import BackgroundTask, Expense, LedgerMember
+from app.models import BackgroundTask, Expense
 from app.services.ledger_service import find_owner_account_id_for_ledger
 from tests._infra.assets import PNG_BYTES
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 @pytest.mark.real_db
@@ -121,7 +114,7 @@ def test_web_pending_upload_enqueues_without_rereading_committed_expense(
 def test_web_pending_upload_rejects_viewer_before_saving(
     web_client: TestClient,
 ) -> None:
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     response = web_client.post(
         "/web/pending/upload?ledger_id=owner&idempotency_key=original-native-upload&timezone=Asia%2FShanghai",
@@ -189,7 +182,7 @@ def test_web_pending_upload_keeps_saved_row_visible_when_task_submit_fails(
 def test_web_pending_upload_rejects_viewer_before_multipart_parse(
     web_client: TestClient,
 ) -> None:
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     response = web_client.post(
         "/web/pending/upload?ledger_id=owner&idempotency_key=original-native-upload",
@@ -323,7 +316,7 @@ def test_inbox_pending_viewer_sees_status_without_write_action(web_client: TestC
     """K3: viewer 行只见状态 pill — 无勾选、无行内确认表单、无修复链接、
     页头也无上传表单; 批量条依旧不渲染。"""
     expense_id = _create_pending(web_client, identity=identity)
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
 
     body = web_client.get("/web/pending?ledger_id=owner").text
     assert "inbox-upload-form" not in body

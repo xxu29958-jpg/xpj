@@ -19,7 +19,6 @@ from app.models import (
     DebtForgiveness,
     DebtGoalLink,
     Goal,
-    LedgerMember,
     Repayment,
     RepaymentVoid,
 )
@@ -30,16 +29,6 @@ VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
 def _idem(headers: dict[str, str]) -> dict[str, str]:
     return {**headers, "Idempotency-Key": str(uuid4())}
-
-
-def _set_owner_ledger_role(role: str) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = role
-        db.commit()
 
 
 def _create_external_debt(

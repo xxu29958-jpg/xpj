@@ -14,7 +14,7 @@ from app.models import ApiIdempotencyKey
 from tests._web_debt_command_support import _create_debt, _detail, _form
 from tests._web_native_form_support import hidden_post_forms
 from tests.debt_repayment_goal_helpers import _clear_debt
-from tests.test_debt_kind_setter import _set_owner_ledger_role
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 
 def test_kind_native_select_keeps_exact_original_value_when_disabled_and_reopened():
@@ -28,7 +28,7 @@ def test_kind_native_select_keeps_exact_original_value_when_disabled_and_reopene
 def test_terminal_debt_still_mounts_original_kind_input_when_same_identity_becomes_viewer(web_client, identity):
     debt = _create_debt(web_client, identity=identity)
     _clear_debt(web_client, identity.app_headers, debt)
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     page = web_client.get(f"/web/debts/{debt['public_id']}?ledger_id=owner")
     assert page.status_code == 200, page.text
     action = f"/web/debts/{debt['public_id']}/kind"

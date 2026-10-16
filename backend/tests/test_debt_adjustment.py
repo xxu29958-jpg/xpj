@@ -31,22 +31,13 @@ from tests._infra.debt_aggregate_assertions import (
     create_repayment_goal,
 )
 from tests._runtime_protocol import negotiated_headers
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
 
 def _idem(app_headers: dict[str, str]) -> dict[str, str]:
     return {**app_headers, "Idempotency-Key": str(uuid4())}
-
-
-def _set_owner_ledger_role(role: str) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = role
-        db.commit()
 
 
 def _create_debt(client: TestClient, identity, *, principal_amount_cents: int = 50000) -> dict:
@@ -271,7 +262,7 @@ def test_manual_member_adjustment_requires_confirmation_flow(
 def test_viewer_cannot_record_adjustment(client: TestClient, *, identity) -> None:
     # coverage: viewer-write
     debt = _create_debt(client, identity, principal_amount_cents=10000)
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     response = client.post(
         f"/api/debts/{debt['public_id']}/adjustments",
         headers=_idem(identity.app_headers),

@@ -20,6 +20,7 @@ from app.database import SessionLocal
 from app.models import Account, Debt, ExchangeRate, LedgerMember
 from app.services.currency_binding_service import resolve_write_capability
 from tests._runtime_protocol import negotiated_headers
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -49,16 +50,6 @@ def _seed_usd_rate(*, tenant_id: str, rate_date: date, rate_to_cny: str) -> None
                 source="manual",
             )
         )
-        db.commit()
-
-
-def _set_owner_ledger_role(role: str) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = role
         db.commit()
 
 
@@ -247,7 +238,7 @@ def test_get_debt_by_public_id_and_cross_ledger_404(client: TestClient, *, ident
 
 def test_viewer_cannot_create_debt(client: TestClient, *, identity) -> None:
     # coverage: viewer-write
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     response = client.post(
         "/api/debts",
         headers=negotiated_headers(client, _idem_headers(identity.app_headers)),

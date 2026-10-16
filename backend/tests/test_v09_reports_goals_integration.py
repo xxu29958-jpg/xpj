@@ -4,12 +4,12 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Expense, LedgerMember
+from app.models import Expense
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.time_service import now_utc
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
 
@@ -72,14 +72,6 @@ def _create_goal(
     response = client.post(f"/api/goals?timezone={timezone}", headers={**headers, "Idempotency-Key": str(uuid4())}, json=body)
     assert response.status_code == 201, response.json()
     return response.json()
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1))
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 def _assert_permission_denied(response, *, label: str) -> None:
@@ -343,7 +335,7 @@ def _assert_goals_are_ledger_isolated(client: TestClient, identity: object) -> N
 
 
 def _assert_viewer_can_read_reports_and_goals(client: TestClient, identity: object) -> None:
-    _demote_owner_ledger_to_viewer()
+    set_owner_ledger_role("viewer")
     viewer_report = client.get(
         "/api/reports/overview?month=2026-05&timezone=UTC",
         headers=identity.app_headers,

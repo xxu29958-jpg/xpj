@@ -6,26 +6,16 @@ from uuid import uuid4
 
 from api_contract_helpers import confirm_expense_api
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import LedgerMember
 from app.services.exchange_rate_service import calculate_cny_cents, default_rate_date
 from app.services.fx_rate_provider import cross_rate_to_home, parse_ecb_daily_rates, upsert_fx_rate
 from tests._runtime_protocol import negotiated_headers
+from tests.family_ledger_test_support import demote_owner_ledger_members_to_viewer
 
 
 def test_default_rate_date_uses_accounting_local_day_for_stored_utc_time() -> None:
     assert default_rate_date(datetime(2026, 4, 30, 16, 30, tzinfo=UTC)) == date(2026, 5, 1)
-
-
-def _demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        members = db.scalars(select(LedgerMember).where(LedgerMember.ledger_id == "owner")).all()
-        assert members
-        for member in members:
-            member.role = "viewer"
-        db.commit()
 
 
 def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestClient, *, identity) -> None:
@@ -53,7 +43,7 @@ def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestCl
     assert gray_rates.status_code == 200, gray_rates.json()
     assert gray_rates.json()["items"] == []
 
-    _demote_owner_ledger_to_viewer()
+    demote_owner_ledger_members_to_viewer()
     viewer_read = client.get("/api/exchange-rates?currency_code=USD", headers=identity.app_headers)
     assert viewer_read.status_code == 200, viewer_read.json()
     assert viewer_read.json()["items"][0]["rate_date"] == "2026-05-04"

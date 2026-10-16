@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Expense, LedgerMember, MerchantAlias, MerchantCatalog, RecurringItem
+from app.models import Expense, MerchantAlias, MerchantCatalog, RecurringItem
 from app.services.merchant_service import normalize_merchant
 from app.services.time_service import now_utc
 
@@ -26,16 +26,6 @@ def create_catalog(
     )
     assert response.status_code == 201, response.text
     return response.json()
-
-
-def demote_owner_ledger_to_viewer() -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = "viewer"
-        db.commit()
 
 
 def seed_historical_expense(*, merchant: str = "Starbucks") -> None:

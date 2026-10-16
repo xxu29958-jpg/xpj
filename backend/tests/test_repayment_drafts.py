@@ -20,22 +20,13 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import Account, Debt, LedgerMember
+from app.models import Account, Debt
 from app.services import debt_service
 from app.services.time_service import now_utc
 from tests._runtime_protocol import negotiated_headers
+from tests.family_ledger_test_support import set_owner_ledger_role
 
 VIEWER_WRITE_MESSAGE = "当前角色为只读，无法修改账本。"
-
-
-def _set_owner_ledger_role(role: str) -> None:
-    with SessionLocal() as db:
-        member = db.scalar(
-            select(LedgerMember).where(LedgerMember.ledger_id == "owner").limit(1)
-        )
-        assert member is not None
-        member.role = role
-        db.commit()
 
 
 def _create_draft(
@@ -113,7 +104,7 @@ def test_capture_home_currency_is_server_set(client: TestClient, *, identity) ->
 
 
 def test_capture_viewer_is_403(client: TestClient, *, identity) -> None:
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     response = client.post(
         "/api/repayment-drafts",
         headers=identity.app_headers,
@@ -486,7 +477,7 @@ def test_dismiss_viewer_is_403(client: TestClient, *, identity) -> None:
     # dismiss is a writers-only destructive op; its get_current_writer_context dep is
     # per-handler, so it needs its own viewer-403 pin (capture/confirm cover their handlers).
     draft = _create_draft(client, identity, amount_cents=1000)
-    _set_owner_ledger_role("viewer")
+    set_owner_ledger_role("viewer")
     response = client.post(
         f"/api/repayment-drafts/{draft['public_id']}/dismiss", headers=identity.app_headers, json={}
     )

@@ -26,7 +26,7 @@ from app.services import runtime_settings_service as runtime
 from app.services.budget_advisor_service._models import BudgetAdvice
 from app.services.exchange_rate_service import resolve_payload_rate
 from tests._runtime_protocol import negotiated_headers
-from tests.test_exchange_rates import _demote_owner_ledger_to_viewer
+from tests.family_ledger_test_support import demote_owner_ledger_members_to_viewer
 
 
 @pytest.fixture
@@ -467,6 +467,6 @@ def test_reference_fetch_requires_writer_and_current_protocol_before_network(cli
     stale = client.post("/api/exchange-rates/reference", json=params,
         headers={**headers, "Ticketbox-Api-Version": "stale"})
     assert stale.status_code == 409
-    _demote_owner_ledger_to_viewer()
+    demote_owner_ledger_members_to_viewer()
     assert client.get("/api/exchange-rates/reference", params=params, headers=headers).status_code == 200
     assert client.post("/api/exchange-rates/reference", json=params, headers=headers).status_code == 403
