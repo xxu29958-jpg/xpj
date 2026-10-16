@@ -9,8 +9,8 @@ already-resolved (409); viewer (403); no-auth (401); dismiss-of-a-confirmed-draf
 and two concurrent confirms serialize on the draft row so the repayment lands exactly once.
 
 Capture / list / plain dismiss live in ``test_repayment_drafts.py`` (file split to stay
-under the 500-line budget). API assertions read the rendered response / a GET re-read,
-never a DB peek; the ``test_two_sessions_*`` tests seed via ORM + drive the service to
+under the 500-line budget). API assertions read the rendered response / a GET re-read
+and the single persisted repayment; the ``test_two_sessions_*`` tests seed via ORM + drive the service to
 model true FOR UPDATE contention the shared-savepoint connection cannot.
 """
 
@@ -83,7 +83,8 @@ def _confirm(client: TestClient, identity, draft_id: str, debt: dict, *, headers
 def test_confirm_records_repayment_and_reduces_remaining(client: TestClient, *, identity) -> None:
     debt = _create_debt(client, identity, principal_amount_cents=50000)
     draft = _create_draft(client, identity, amount_cents=20000)
-    response = _confirm(client, identity, draft["public_id"], debt)
+    headers = _idem(identity.app_headers)
+    response = _confirm(client, identity, draft["public_id"], debt, headers=headers)
     assert response.status_code == 201, response.json()
     body = response.json()
     assert body["status"] == "confirmed"
@@ -93,6 +94,28 @@ def test_confirm_records_repayment_and_reduces_remaining(client: TestClient, *, 
     detail = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json()
     assert detail["remaining_amount_cents"] == 30000
     assert detail["paid_amount_cents"] == 20000
+
+    # Reopening the original command returns the same receipt, not another payment.
+    replay = _confirm(client, identity, draft["public_id"], debt, headers=headers)
+    assert replay.status_code == 201, replay.json()
+    assert replay.json() == body
+
+    # A new command or dismissal cannot change an already-confirmed draft.
+    again = _confirm(client, identity, draft["public_id"], detail)
+    assert again.status_code == 409, again.json()
+    assert again.json()["error"] == "state_conflict"
+    dismissed = client.post(
+        f"/api/repayment-drafts/{draft['public_id']}/dismiss", headers=identity.app_headers, json={}
+    )
+    assert dismissed.status_code == 409, dismissed.json()
+    assert dismissed.json()["error"] == "state_conflict"
+    assert client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json() == detail
+    with SessionLocal() as db:
+        saved_debt = db.scalar(select(Debt).where(Debt.public_id == debt["public_id"]))
+        repayments = list(db.scalars(select(Repayment).where(Repayment.debt_id == saved_debt.id)))
+        assert [(row.public_id, row.amount_cents) for row in repayments] == [
+            (body["committed_repayment_public_id"], 20000)
+        ]
 
 
 def test_confirm_records_repayment_at_captured_time_not_review_time(
@@ -188,47 +211,12 @@ def test_confirm_missing_draft_is_404(client: TestClient, *, identity) -> None:
     assert response.json()["error"] == "repayment_draft_not_found"
 
 
-def test_confirm_idempotent_replay_records_once(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=50000)
-    draft = _create_draft(client, identity, amount_cents=15000)
-    key = str(uuid4())
-    headers = {**identity.app_headers, "Idempotency-Key": key}
-    first = _confirm(client, identity, draft["public_id"], debt, headers=headers)
-    assert first.status_code == 201, first.json()
-    repayment_id = first.json()["committed_repayment_public_id"]
-    # Same key → canonical re-serialise, no second repayment recorded.
-    replay = _confirm(client, identity, draft["public_id"], debt, headers=headers)
-    assert replay.status_code == 201, replay.json()
-    assert replay.json()["status"] == "confirmed"
-    assert replay.json()["committed_repayment_public_id"] == repayment_id
-    detail = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json()
-    assert detail["remaining_amount_cents"] == 35000  # 50000 - 15000, applied once
-
-
 def test_confirm_missing_idempotency_key_is_422(client: TestClient, *, identity) -> None:
     debt = _create_debt(client, identity, principal_amount_cents=10000)
     draft = _create_draft(client, identity, amount_cents=1000)
     response = _confirm(client, identity, draft["public_id"], debt, headers=identity.app_headers)
     assert response.status_code == 422
     assert response.json()["error"] == "idempotency_key_required"
-
-
-def test_confirm_already_confirmed_with_new_key_is_conflict(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=50000)
-    draft = _create_draft(client, identity, amount_cents=5000)
-    first = _confirm(client, identity, draft["public_id"], debt)
-    assert first.status_code == 201, first.json()
-    refreshed = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json()
-    # A DIFFERENT key confirming the already-confirmed draft cannot record again.
-    again = client.post(
-        f"/api/repayment-drafts/{draft['public_id']}/confirm",
-        headers=_idem(identity.app_headers),
-        json={"target_debt_public_id": debt["public_id"], "expected_row_version": refreshed["row_version"]},
-    )
-    assert again.status_code == 409, again.json()
-    assert again.json()["error"] == "state_conflict"
-    detail = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json()
-    assert detail["paid_amount_cents"] == 5000  # exactly one repayment landed
 
 
 def test_confirm_viewer_is_403(client: TestClient, *, identity) -> None:
@@ -249,18 +237,6 @@ def test_confirm_unauthenticated_is_401(client: TestClient, *, identity) -> None
         json={"target_debt_public_id": debt["public_id"], "expected_row_version": debt["row_version"]},
     )
     assert response.status_code == 401
-
-
-def test_dismiss_confirmed_draft_is_conflict(client: TestClient, *, identity) -> None:
-    debt = _create_debt(client, identity, principal_amount_cents=10000)
-    draft = _create_draft(client, identity, amount_cents=1000)
-    confirm = _confirm(client, identity, draft["public_id"], debt)
-    assert confirm.status_code == 201, confirm.json()
-    response = client.post(
-        f"/api/repayment-drafts/{draft['public_id']}/dismiss", headers=identity.app_headers, json={}
-    )
-    assert response.status_code == 409, response.json()
-    assert response.json()["error"] == "state_conflict"
 
 
 # --- ORM seeds for the member-debt guard + concurrency tests --------------------

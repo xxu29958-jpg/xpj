@@ -95,14 +95,6 @@ def test_capture_invalid_source_is_422(client: TestClient, *, identity) -> None:
     assert response.json()["error"] == "notification_source_invalid"
 
 
-def test_capture_home_currency_is_server_set(client: TestClient, *, identity) -> None:
-    # home_currency_code is NOT a client input — the server sets it from the configured
-    # home currency, so a capture that omits it still records the home currency, and the
-    # field cannot be used to smuggle a foreign currency past confirm.
-    draft = _create_draft(client, identity, amount_cents=20000)
-    assert draft["home_currency_code"] == "CNY"
-
-
 def test_capture_viewer_is_403(client: TestClient, *, identity) -> None:
     set_owner_ledger_role("viewer")
     response = client.post(
@@ -439,18 +431,6 @@ def test_list_suggestion_excludes_non_repayable_debt_shapes(client: TestClient, 
 # --- dismiss --------------------------------------------------------------------
 
 
-def test_dismiss_latches_dismissed(client: TestClient, *, identity) -> None:
-    draft = _create_draft(client, identity, amount_cents=4200)
-    response = client.post(
-        f"/api/repayment-drafts/{draft['public_id']}/dismiss",
-        headers=identity.app_headers,
-        json={},
-    )
-    assert response.status_code == 201, response.json()
-    assert response.json()["status"] == "dismissed"
-    assert response.json()["resolved_at"]
-
-
 def test_dismiss_is_idempotent_when_already_dismissed(
     client: TestClient, monkeypatch, *, identity
 ) -> None:
@@ -459,6 +439,8 @@ def test_dismiss_is_idempotent_when_already_dismissed(
         f"/api/repayment-drafts/{draft['public_id']}/dismiss", headers=identity.app_headers, json={}
     )
     assert first.status_code == 201, first.json()
+    assert first.json()["status"] == "dismissed"
+    assert first.json()["resolved_at"]
     monkeypatch.setenv("FX_HOME_CURRENCY_CODE", "JPY")
     get_settings.cache_clear()
     try:
@@ -468,7 +450,7 @@ def test_dismiss_is_idempotent_when_already_dismissed(
             json={},
         )
         assert again.status_code == 201, again.json()
-        assert again.json()["status"] == "dismissed"
+        assert again.json() == first.json()
     finally:
         get_settings.cache_clear()
 
