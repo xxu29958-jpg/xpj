@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import select
+
 from app.database import SessionLocal
-from app.models import Account, AuthToken, Device, Ledger, UploadLink
+from app.models import Account, AuthToken, Device, Ledger, LedgerMember, UploadLink
 from app.services.identity_service import (
     bootstrap_owner,
     hash_secret,
@@ -133,3 +135,14 @@ def seed_identity() -> TestIdentity:
         tenant_app_token=tenant_app_token,
         tenant_upload_key=tenant_upload_key,
     )
+
+
+def owner_ledger_account_id() -> int:
+    with SessionLocal() as db:
+        account_id = db.scalar(
+            select(LedgerMember.account_id)
+            .where(LedgerMember.ledger_id == "owner", LedgerMember.role == "owner")
+            .limit(1)
+        )
+        assert account_id is not None
+        return account_id

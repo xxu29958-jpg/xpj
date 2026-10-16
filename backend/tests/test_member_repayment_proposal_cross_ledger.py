@@ -31,23 +31,16 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models import (
-    Account,
-    AuthToken,
     Debt,
-    Device,
-    Ledger,
     LedgerMember,
     Repayment,
 )
-from app.services import bill_split_service as bsplit
-from app.services.identity_service import hash_secret, new_session_token
-from app.services.ledger_calendar_service import adopt_ledger_calendar
 from tests._infra.identity import seeded_owner_account_id
 from tests._runtime_protocol import current_protocol_headers
-from tests.bill_split_test_support import _create_invited_split as _invite
 
 # Reuse the slice-4 linkage helpers (owner expense → invite → service-level accept).
-from tests.bill_split_test_support import _debts_for
+from tests.bill_split_test_support import _accept_into, _debt_public_id_for, _mint_app_token, _seed_personal_ledger
+from tests.bill_split_test_support import _create_invited_split as _invite
 
 
 @pytest.fixture
@@ -61,49 +54,10 @@ def debt_rollout_on(monkeypatch: pytest.MonkeyPatch):
         get_settings.cache_clear()
 
 
-def _seed_personal_ledger(*, name: str, ledger_id: str) -> int:
-    """A new account that owns its own personal ledger (the bill-split receiver)."""
-    with SessionLocal() as db:
-        account = Account(display_name=name)
-        db.add(account)
-        db.flush()
-        db.add(Ledger(ledger_id=ledger_id, name=f"{name} 的账本", owner_account_id=account.id))
-        db.flush()
-        adopt_ledger_calendar(db, ledger_id=ledger_id, timezone_name="Asia/Shanghai")
-        db.add(LedgerMember(ledger_id=ledger_id, account_id=account.id, role="owner"))
-        db.commit()
-        return account.id
-
-
 def _add_member(*, ledger_id: str, account_id: int, role: str = "member") -> None:
     with SessionLocal() as db:
         db.add(LedgerMember(ledger_id=ledger_id, account_id=account_id, role=role))
         db.commit()
-
-
-def _mint_app_token(*, account_id: int, ledger_id: str) -> str:
-    """Mint an app-scope AuthToken for an EXISTING account in ``ledger_id``.
-
-    The account must already be a ``LedgerMember`` of ``ledger_id`` (role resolves
-    the AuthContext). Mirrors ``debt_proposal_helpers._mint_member_actor`` but for
-    a pre-existing account rather than a freshly created one.
-    """
-    with SessionLocal() as db:
-        device = Device(account_id=account_id, device_name="pytest-xledger", platform="android")
-        db.add(device)
-        db.flush()
-        token = new_session_token()
-        db.add(
-            AuthToken(
-                token_hash=hash_secret(token),
-                account_id=account_id,
-                device_id=device.id,
-                ledger_id=ledger_id,
-                scope="app",
-            )
-        )
-        db.commit()
-        return token
 
 
 def _headers(token: str) -> dict[str, str]:
@@ -112,22 +66,6 @@ def _headers(token: str) -> dict[str, str]:
 
 def _idem(headers: dict[str, str]) -> dict[str, str]:
     return {**headers, "Idempotency-Key": str(uuid4())}
-
-
-def _accept_into(public_id: str, receiver_account_id: int, target_ledger_id: str) -> None:
-    with SessionLocal() as db:
-        bsplit.accept_invitation(
-            db,
-            public_id=public_id,
-            accepting_account_id=receiver_account_id,
-            target_ledger_id=target_ledger_id,
-        )
-
-
-def _debt_public_id_for(invitation_public_id: str) -> str:
-    debts = _debts_for(invitation_public_id)
-    assert len(debts) == 1
-    return debts[0].public_id
 
 
 def _propose(

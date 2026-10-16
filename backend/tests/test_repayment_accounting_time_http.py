@@ -3,8 +3,8 @@
 from uuid import uuid4
 
 from tests._runtime_protocol import negotiated_headers
+from tests.bill_split_test_support import _mint_app_token, _seed_personal_ledger
 from tests.debt_proposal_helpers import _create_external_debt, _create_member_debt, _member_headers
-from tests.test_member_repayment_proposal_cross_ledger import _mint_app_token, _seed_personal_ledger
 
 
 def _detail(client, headers, public_id):

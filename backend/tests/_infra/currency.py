@@ -13,6 +13,7 @@ from app.currency_adoption_evidence import currency_adoption_evidence
 from app.currency_binding_contract import CURRENCY_ROUNDING_MODE
 from app.fx_constants import CURRENCY_MINOR_UNIT_DIGITS
 from app.models import InstallationCurrencyBinding
+from app.runtime_compatibility_contract import RUNTIME_COMPATIBILITY_SESSION_KEY, RuntimeCompatibilityRequest
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.desktop_activation_service import activate_desktop_session
 from app.services.identity_service import authenticate_session_token, bootstrap_installation_owner, pair_device
@@ -60,3 +61,10 @@ def authenticate_migration_currency_owner(db: Session) -> AuthContext:
     )
     db.commit()
     return authenticate_session_token(db, activated.session_token, {"app"})
+
+
+def mark_legacy_http_writer(db) -> None:
+    db.info[RUNTIME_COMPATIBILITY_SESSION_KEY] = RuntimeCompatibilityRequest(
+        api_version=None,
+        currency_binding=None,
+    )

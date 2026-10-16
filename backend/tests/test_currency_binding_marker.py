@@ -21,10 +21,6 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Debt, Expense, IncomePlanRevision, RecurringItem
-from app.runtime_compatibility_contract import (
-    RUNTIME_COMPATIBILITY_SESSION_KEY,
-    RuntimeCompatibilityRequest,
-)
 from app.schemas import BudgetMonthlyUpdateRequest, GoalCreateRequest, RecurringCandidateConfirmRequest
 from app.services import recurring_candidate_confirmation_service as candidate_service
 from app.services.app_meta_service import get_value
@@ -38,20 +34,12 @@ from app.services.debt_service._repayment_draft_confirm import confirm_repayment
 from app.services.goal_service import create_goal
 from app.services.income_plan_service import create_income_plan
 from tests._infra.currency import activate_test_currency_authority
+from tests._infra.currency import mark_legacy_http_writer as _mark_legacy_http_writer
+from tests._infra.identity import owner_ledger_account_id as _owner_account_id
 from tests._runtime_protocol import negotiated_headers
-from tests.test_debt_binding_drift import (
-    _idem_headers,
-    _owner_account_id,
-)
+from tests.debt_proposal_helpers import _idem as _idem_headers
 
 pytestmark = pytest.mark.currency_binding_unbound
-
-
-def _mark_legacy_http_writer(db) -> None:
-    db.info[RUNTIME_COMPATIBILITY_SESSION_KEY] = RuntimeCompatibilityRequest(
-        api_version=None,
-        currency_binding=None,
-    )
 
 
 def _seed_cny_expense_fact_row() -> None:

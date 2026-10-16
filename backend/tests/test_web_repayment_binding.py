@@ -13,16 +13,15 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.middleware.csrf import CSRF_COOKIE_NAME
-from app.models import Account, AuthToken, Debt, Device, Repayment
-from app.models.dataset_authority import DatasetAuthorityRecord
+from app.models import Debt, Repayment
 from app.routes.web_auth import SESSION_COOKIE_NAME
-from app.services.identity_service import hash_secret
-from tests._infra.currency import activate_test_currency_authority
 from tests._local_web_identity_support import (
     _connect_local_session,
+    _installed_scope,
     _InstalledWeb,
     installed_web_setup,
 )
+from tests._web_debt_command_support import _seed_external_debt
 from tests._web_native_form_support import _NativeForm, open_repayment_task
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
@@ -31,43 +30,6 @@ pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 @pytest.fixture()
 def installed_web() -> Iterator[_InstalledWeb]:
     yield from installed_web_setup()
-
-
-def _seed_external_debt(installed_web: _InstalledWeb) -> str:
-    with SessionLocal() as db:
-        activate_test_currency_authority(db, "CNY")
-        debt = Debt(
-            tenant_id=installed_web.shared_ledger_id,
-            owner_account_id=installed_web.installation_account_id,
-            created_by_account_id=installed_web.installation_account_id,
-            direction="i_owe",
-            counterparty_type="external",
-            counterparty_label="原还款绑定核对",
-            principal_amount_cents=50_000,
-            home_currency_code="CNY",
-            source_type="manual",
-        )
-        db.add(debt)
-        db.commit()
-        return debt.public_id
-
-
-def _installed_scope(installed_web: _InstalledWeb, session_token: str) -> dict[str, str]:
-    with SessionLocal() as db:
-        authority = db.get(DatasetAuthorityRecord, 1)
-        token = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(session_token)))
-        assert authority is not None and token is not None
-        device = db.get(Device, token.device_id)
-        assert device is not None and device.platform == "web"
-        account = db.get(Account, device.account_id)
-        assert account is not None and account.id == installed_web.installation_account_id
-        return {
-            "datasetId": authority.dataset_id,
-            "clientGeneration": authority.client_generation,
-            "accountId": account.public_id,
-            "ledgerId": installed_web.shared_ledger_id,
-            "deviceId": device.public_id,
-        }
 
 
 def test_installed_native_repayment_rejects_every_stale_binding_axis_then_replays_one_fact(installed_web):

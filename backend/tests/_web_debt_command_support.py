@@ -6,6 +6,10 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.database import SessionLocal
+from app.models import Debt
+from tests._infra.currency import activate_test_currency_authority
+from tests._local_web_identity_support import _InstalledWeb
 from tests._runtime_protocol import negotiated_headers
 
 
@@ -55,3 +59,22 @@ def _detail(web_client: TestClient, *, identity, public_id: str) -> dict:
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def _seed_external_debt(installed_web: _InstalledWeb) -> str:
+    with SessionLocal() as db:
+        activate_test_currency_authority(db, "CNY")
+        debt = Debt(
+            tenant_id=installed_web.shared_ledger_id,
+            owner_account_id=installed_web.installation_account_id,
+            created_by_account_id=installed_web.installation_account_id,
+            direction="i_owe",
+            counterparty_type="external",
+            counterparty_label="原还款绑定核对",
+            principal_amount_cents=50_000,
+            home_currency_code="CNY",
+            source_type="manual",
+        )
+        db.add(debt)
+        db.commit()
+        return debt.public_id
