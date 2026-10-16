@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.isDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -118,7 +119,10 @@ class FamilyInvitationNavigationTest {
         assertEquals(false, model.uiState.value.invitationsFresh)
         compose.onNodeWithText("重新读取已发邀请").performScrollTo().performClick()
         compose.waitUntil(5_000) { model.uiState.value.invitationsFresh && model.uiState.value.invitations.single().revokedAt != null }
-        compose.onNodeWithText("只读 · 已撤销").performScrollTo().assertIsDisplayed()
+        val revoked = compose.onNodeWithText("只读 · 已撤销").performScrollTo()
+        // Clearing the one-time invite changes sheet height; the model update precedes the window layout.
+        compose.waitUntil(5_000) { revoked.isDisplayed() }
+        revoked.assertIsDisplayed()
         compose.onNodeWithText("复制").assertDoesNotExist()
         assertEquals(listOf(original.publicId), revokes.toList())
         captureReferenceLibraryStep(compose, context, "family-invitation-revoked")
