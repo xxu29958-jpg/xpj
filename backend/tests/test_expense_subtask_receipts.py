@@ -1,46 +1,23 @@
 """Original subtask receipts cannot lend a peer's OCC token to offline work.
 
 The actual routes, domain writers, CAS, receipt rows and transactions run on
-SQLite; admission/authentication are controlled. Existing API tests own PG.
+PostgreSQL; authentication is controlled at this command boundary.
 """
 
-from types import SimpleNamespace
-
 import pytest
-from sqlalchemy import JSON, Column, MetaData, Table, select
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Account, ApiIdempotencyKey, Expense, ExpenseItem, ExpenseSplit, LedgerAuditLog, LedgerMember
+from app.models import ApiIdempotencyKey, Expense, ExpenseItem, ExpenseSplit, LedgerAuditLog, LedgerMember
 from app.routes import expenses
 from app.schemas import ExpenseAcknowledgeItemsMismatchRequest, ExpenseItemReplaceRequest, ExpenseSplitReplaceRequest
-from app.services import expense_split_service, receipt_item_service
-from tests import test_expense_confirmation_receipt as confirmation_fixtures
-
-confirmation_store = confirmation_fixtures.confirmation_store
-
-
-@pytest.fixture
-def subtask_store(confirmation_store, monkeypatch):
-    metadata = MetaData()
-    for model in (Account, LedgerMember, ExpenseItem, ExpenseSplit, LedgerAuditLog):
-        Table(model.__tablename__, metadata, *(Column(column.name,
-            JSON() if isinstance(column.type, JSONB) else column.type, primary_key=column.primary_key)
-            for column in model.__table__.columns))
-    metadata.create_all(confirmation_store)
-    with Session(confirmation_store) as db:
-        db.add(Account(id=11, display_name="自己"))
-        db.add(LedgerMember(id=1, ledger_id="owner", account_id=11, role="owner"))
-        db.commit()
-    for module in (receipt_item_service, expense_split_service):
-        monkeypatch.setattr(module, "resolve_write_capability", lambda *args: None)
-    return confirmation_store
+from tests.web_expense_fact_test_support import confirmation_actor
+from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
 
 
 def _submit(db, kind, version, key, *, label="原输入", amount=500):
-    auth = SimpleNamespace(tenant_id="owner", device_id=None, account_id=11)
+    auth = confirmation_actor(db)
     if kind == "items":
         route = expenses.put_expense_item_rows
         payload = ExpenseItemReplaceRequest(expected_row_version=version,
@@ -48,7 +25,9 @@ def _submit(db, kind, version, key, *, label="原输入", amount=500):
     elif kind == "splits":
         route = expenses.put_expense_split_rows
         payload = ExpenseSplitReplaceRequest(expected_row_version=version,
-            splits=[{"member_id": 1, "amount_cents": amount, "note": label}])
+            splits=[{"member_id": db.scalar(select(LedgerMember.id).where(
+                LedgerMember.ledger_id == "owner", LedgerMember.account_id == auth.account_id)),
+                "amount_cents": amount, "note": label}])
     else:
         route = expenses.acknowledge_expense_items_mismatch
         payload = ExpenseAcknowledgeItemsMismatchRequest(expected_row_version=version)
@@ -70,15 +49,15 @@ def _facts(db):
 
 
 @pytest.mark.parametrize("kind", ["items", "splits", "ack"])
-def test_replay_preserves_first_receipt_and_next_intent_conflicts_with_peer(subtask_store, kind):
-    with Session(subtask_store) as db:
+def test_replay_preserves_first_receipt_and_next_intent_conflicts_with_peer(confirmation_store, kind):
+    with confirmation_store() as db:
         original_version = _prepare(db, kind)
         first = _submit(db, kind, original_version, "original-key").model_dump(mode="json")
-    with Session(subtask_store) as db:
+    with confirmation_store() as db:
         _submit(db, "splits" if kind == "splits" else "items", first["row_version"], "peer-key",
             label="他端后来填写", amount=700)
         peer_facts = _facts(db)
-    with Session(subtask_store) as db:
+    with confirmation_store() as db:
         replay = _submit(db, kind, original_version, "original-key").model_dump(mode="json")
         # This is the next token actually consumed by Android's outbox cascade.
         with pytest.raises(AppError) as conflict:
@@ -93,15 +72,15 @@ def test_replay_preserves_first_receipt_and_next_intent_conflicts_with_peer(subt
 
 
 @pytest.mark.parametrize("kind", ["items", "splits", "ack"])
-def test_accepted_subtask_without_original_receipt_requires_review(subtask_store, kind):
-    with Session(subtask_store) as db:
+def test_accepted_subtask_without_original_receipt_requires_review(confirmation_store, kind):
+    with confirmation_store() as db:
         original_version = _prepare(db, kind)
         _submit(db, kind, original_version, "original-key")
         before = _facts(db)
         claim = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == "original-key"))
         claim.response_body = None
         db.commit()
-    with Session(subtask_store) as db:
+    with confirmation_store() as db:
         with pytest.raises(AppError) as refusal:
             _submit(db, kind, original_version, "original-key")
         assert refusal.value.error == "expense_subtask_original_requires_review"
@@ -109,8 +88,8 @@ def test_accepted_subtask_without_original_receipt_requires_review(subtask_store
 
 
 @pytest.mark.parametrize("kind", ["items", "splits", "ack"])
-def test_subtask_and_first_receipt_roll_back_together(subtask_store, kind, monkeypatch):
-    with Session(subtask_store) as db:
+def test_subtask_and_first_receipt_roll_back_together(confirmation_store, kind, monkeypatch):
+    with confirmation_store() as db:
         original_version = _prepare(db, kind)
         before = _facts(db)
     from app.services import expense_subtask_command_service as owner
@@ -119,9 +98,9 @@ def test_subtask_and_first_receipt_roll_back_together(subtask_store, kind, monke
         raise SQLAlchemyError("injected receipt failure")
 
     monkeypatch.setattr(owner, "mark_idempotency_succeeded", fail)
-    with Session(subtask_store) as db, pytest.raises(SQLAlchemyError, match="injected receipt failure"):
+    with confirmation_store() as db, pytest.raises(SQLAlchemyError, match="injected receipt failure"):
         _submit(db, kind, original_version, "original-key")
-    with Session(subtask_store) as db:
+    with confirmation_store() as db:
         assert _facts(db) == before
         assert db.scalar(select(ApiIdempotencyKey).where(
             ApiIdempotencyKey.idempotency_key == "original-key")) is None

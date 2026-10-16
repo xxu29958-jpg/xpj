@@ -7,18 +7,19 @@ import pytest
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
-from app.errors import AppError
 from app.middleware.logging import SanitizedLoggingMiddleware
-from app.models import ApiIdempotencyKey, Expense
+from app.models import ApiIdempotencyKey, Expense, OcrFact
 from app.routes import web_expense_recognition
 from app.services import expense_ocr_command_service as command
+from app.services.currency_binding_service import resolve_write_capability
+from app.services.expense_service import _ocr
+from app.services.ocr_service import OcrResult
 from tests import test_web_expense_review_runtime as review_tests
 from tests._web_native_form_support import hidden_post_forms
+from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
+from tests.web_expense_fact_test_support import confirmation_web as confirmation_web
 
-confirmation_store = review_tests.confirmation_store
-confirmation_web = review_tests.confirmation_web
 review_browser = review_tests.review_browser
 
 
@@ -30,22 +31,21 @@ def recognition_browser(review_browser, confirmation_store, monkeypatch):
     monkeypatch.setattr(web_expense_recognition, "_list_ledger_options", lambda db: options)
     monkeypatch.setattr(web_expense_recognition, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
     monkeypatch.setattr(web_expense_recognition, "resolve_web_actor", lambda *args: (None, None))
-    monkeypatch.setattr(command, "prepare_pending_expense_fx", lambda *args, **kwargs: None)
     accepted = []
+    monkeypatch.setattr(_ocr, "_active_provider_name", lambda: "mock")
+    monkeypatch.setattr(_ocr, "extract_ocr_result", lambda expense: OcrResult(
+        raw_text="中国建设银行\n交易金额：18.51", confidence=0.9, amount_cents=1851, merchant="中国建设银行"))
+    for name in ("retry_expense_ocr", "recognize_expense_text"):
+        operation = getattr(command, name)
 
-    def suggest(db, expense_id, tenant_id, *, expected_row_version, **kwargs):
-        current = db.get(Expense, expense_id)
-        if current.status != "pending" or current.row_version != expected_row_version:
-            raise AppError("state_conflict", status_code=409)
-        current.merchant, current.row_version = "识别建议", current.row_version + 1
-        accepted.append(expense_id)
-        db.flush()
-        return current
+        def capture(db, expense_id, *args, _operation=operation, **kwargs):
+            result = _operation(db, expense_id, *args, **kwargs)
+            accepted.append(expense_id)
+            return result
 
-    monkeypatch.setattr(command, "retry_expense_ocr", suggest)
-    monkeypatch.setattr(command, "recognize_expense_text", lambda db, expense_id, tenant_id, payload, **kwargs:
-        suggest(db, expense_id, tenant_id, expected_row_version=payload.expected_row_version))
-    with Session(confirmation_store) as db:
+        monkeypatch.setattr(command, name, capture)
+    with confirmation_store() as db:
+        resolve_write_capability(db)
         db.get(Expense, 42).image_path = "controlled-original.png"
         db.commit()
 
@@ -55,7 +55,8 @@ def recognition_browser(review_browser, confirmation_store, monkeypatch):
 
     @client.app.post("/recognition-later-fact")
     def later_fact():
-        with Session(confirmation_store) as db:
+        with confirmation_store() as db:
+            resolve_write_capability(db)
             current = db.get(Expense, 42)
             current.merchant, current.row_version = "后来人工核对", 12
             db.commit()
@@ -70,7 +71,7 @@ def _fields(client, path):
     assert page.status_code == 200, page.text
     fields = hidden_post_forms(page.text)[path]
     if path.endswith("recognize-text"):
-        fields["raw_text"] = "便利店\n合计 JPY 2850\n原粘贴文字"
+        fields["raw_text"] = "中国建设银行\n交易金额：18.51\n原粘贴文字"
     return fields
 
 
@@ -82,15 +83,18 @@ def test_recognition_acknowledges_original_request_without_overwriting_later_fac
     first = client.post(path, data=fields, headers={"Accept": "application/json"})
     assert first.status_code == 200, first.text
     assert first.json()["ack"] == {"scope": scope, "clientRef": fields["idempotency_key"]}
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         current = db.get(Expense, 42)
-        assert (current.merchant, current.row_version, current.status, current.fact_revision) == ("识别建议", 5, "pending", 0)
+        assert (current.merchant, current.row_version, current.status, current.fact_revision) == ("首次便利店", 5, "pending", 0)
+        suggestion = db.scalars(select(OcrFact).where(OcrFact.expense_id == 42)).one()
+        assert suggestion.parsed_merchant == "中国建设银行"
     client.post("/recognition-later-fact")
     replay = client.post(path, data=fields, headers={"Accept": "application/json"})
     assert replay.json() == first.json() and accepted == [42]
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert (current.merchant, current.row_version, current.status) == ("后来人工核对", 12, "pending")
+        assert len(db.scalars(select(OcrFact).where(OcrFact.expense_id == 42)).all()) == 1
 
 
 @pytest.mark.parametrize("change", ["identity", "viewer", "version"])
@@ -119,6 +123,7 @@ def test_recognition_refuses_changed_binding_or_fact_with_original_input_retaine
         assert not accepted, "核对依据不能启动识别"
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("kind", ["text", "image"])
 def test_browser_resumes_recognition_and_original_financial_draft_after_lost_reply(recognition_browser, confirmation_store, tmp_path, kind):
     client, _, _, accepted = recognition_browser
@@ -127,11 +132,12 @@ def test_browser_resumes_recognition_and_original_financial_draft_after_lost_rep
     assert not result.get("error"), result
     assert result["restored"] and result["financial_retained"] and result["recognition_removed"]
     assert result["requests"][0] == result["requests"][1] and accepted == [42]
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert (current.merchant, current.row_version, current.status) == ("后来人工核对", 12, "pending")
 
 
+@pytest.mark.real_db
 def test_recognition_keeps_unsaved_text_in_page_when_browser_cannot_retain_it(recognition_browser, tmp_path):
     client, _, _, accepted = recognition_browser
     result = review_tests._run_review_page(client, tmp_path,
@@ -163,7 +169,7 @@ def test_recognition_failure_preserves_original_and_reports_through_http_owner(r
         assert response.status_code == 503 and str(failure) not in response.text
         assert any(record.name == "ticketbox.http" and record.exc_info and record.exc_info[1] is failure
             and response.headers["X-Request-Id"] in record.getMessage() for record in caplog.records)
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert (current.row_version, current.merchant) == (4, "首次便利店")
         assert db.scalar(select(ApiIdempotencyKey)) is None

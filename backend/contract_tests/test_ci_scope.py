@@ -278,8 +278,8 @@ def test_version_contract_crosses_backend_desktop_and_packaging() -> None:
 
 
 def test_real_desktop_backend_consumers_require_the_native_postgres_lane() -> None:
+    _assert_path_scopes(("desktop/tests/_edge_cdp.py",), "postgres", "desktop", "windows")
     for path in (
-        "desktop/tests/_edge_cdp.py",
         "desktop/tests/_real_backend.py",
         "desktop/tests/_real_backend_helper.py",
         "desktop/tests/test_web_bff_edge_e2e.py",
@@ -293,6 +293,16 @@ def test_web_edge_runtime_consumer_and_fixtures_select_windows_desktop_job() -> 
     _assert_path_scopes(
         (
             "backend/tests/test_web_edge_runtime_contract.py",
+            "backend/tests/fixtures/bulk_bar_announcement_contract.html",
+            "backend/tests/fixtures/bulk_bar_empty_reload_contract.html",
+            "backend/tests/fixtures/review_keyboard_contract.html",
+            "backend/tests/fixtures/shell_keyboard_contract.html",
+        ),
+        "postgres",
+        "desktop",
+    )
+    # Expense journeys now use real PostgreSQL and its browser consumer once.
+    for path in (
             "backend/tests/test_web_expense_review_runtime.py",
             "backend/tests/test_web_expense_confirmation_page.py",
             "backend/tests/test_expense_confirmation_receipt.py",
@@ -300,15 +310,9 @@ def test_web_edge_runtime_consumer_and_fixtures_select_windows_desktop_job() -> 
             "backend/tests/fixtures/expense_review_navigation_probe.js",
             "backend/tests/fixtures/expense_review_actions_probe.js",
             "backend/tests/fixtures/expense_review_keep_recovery_probe.js",
-            "backend/tests/fixtures/bulk_bar_announcement_contract.html",
-            "backend/tests/fixtures/bulk_bar_empty_reload_contract.html",
             "backend/tests/fixtures/expense_review_drawer_probe.js",
-            "backend/tests/fixtures/review_keyboard_contract.html",
-            "backend/tests/fixtures/shell_keyboard_contract.html",
-        ),
-        "postgres",
-        "desktop",
-    )
+    ):
+        _assert_path_scopes((path,), "postgres")
 
 
 def test_desktop_pairing_producers_require_the_real_desktop_consumer() -> None:

@@ -115,6 +115,8 @@ def test_partial_confirmation_and_forgiveness_preserve_one_payment_and_both_prop
         assert item["proposal"]["status"] == "partially_confirmed"
         assert item["proposal"]["committed_repayment_public_id"] == payments[0]["public_id"]
         assert item["actor_is_you"] == (item["kind"] == "proposal_resolved")
+        if item["kind"] == "proposal_created":
+            assert item["actor_display_name"] == "家人"
     with SessionLocal() as db:
         stored = db.scalar(select(MemberRepaymentProposal).where(MemberRepaymentProposal.public_id == proposal["public_id"]))
         facts = list(db.scalars(select(Repayment).where(Repayment.proposal_id == stored.id)))
@@ -127,6 +129,7 @@ def test_partial_confirmation_and_forgiveness_preserve_one_payment_and_both_prop
     assert final["total"] == 5
     forgiveness = next(item for item in final["items"] if item["kind"] == "forgiveness")
     assert forgiveness["amount_cents"] == 46_000 and forgiveness["repayment"] is None
+    assert forgiveness["proposal"] is None
     assert forgiven["is_forgiven"] and forgiven["paid_amount_cents"] == 4_000
     assert forgiven["remaining_amount_cents"] == 0
 
@@ -149,7 +152,9 @@ def test_activity_viewer_read_auth_bounds_and_stranger_existence_hiding(client: 
 def test_real_cross_ledger_participant_reads_shared_history_without_private_ledger(client: TestClient, identity):
     public_id, debtor_token = _seed_cross_ledger_member_debt()
     debtor_headers = current_protocol_headers({"Authorization": f"Bearer {debtor_token}"})
-    proposed = _propose(client, debtor_headers, public_id, proposed_amount_cents=1_000)
+    private_key = "private-activity-proposal-key"
+    proposed = client.post(f"/api/debts/{public_id}/repayment-proposals",
+        headers={**debtor_headers, "Idempotency-Key": private_key}, json={"proposed_amount_cents": 1_000})
     assert proposed.status_code == 201, proposed.json()
     confirmed = _write(client, identity.app_headers, public_id,
         f"repayment-proposals/{proposed.json()['public_id']}/confirm", {"expected_row_version": 1})
@@ -159,7 +164,7 @@ def test_real_cross_ledger_participant_reads_shared_history_without_private_ledg
     assert {item["kind"] for item in body["items"]} == {"created", "proposal_created", "proposal_resolved", "repayment"}
     response_text = str(body)
     for private in ("ledger_id", "tenant_id", "actor_account_id", "debtor_account_id", "creditor_account_id",
-                    "idempotency_key", "image_path", "debtor-"):
+                    "idempotency_key", "image_path", "debtor-", private_key):
         assert private not in response_text
     # The gray device belongs to the same creditor Account, so its other
     # ledger context must preserve the authorized counterparty history.

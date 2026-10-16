@@ -1,4 +1,4 @@
-"""Actual expense review consumers, with real command keys and controlled identity/financial transitions."""
+"""Actual expense review consumers, commands and receipts with controlled browser identity."""
 import asyncio
 import base64
 import io
@@ -19,14 +19,12 @@ import pytest
 import uvicorn
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import JSON, Column, MetaData, Table, select
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from app.errors import AppError, app_error_handler
 from app.middleware.logging import SanitizedLoggingMiddleware
-from app.models import ApiIdempotencyKey, Expense, ExpenseOffsetFact, ExpenseOffsetRevision, ExpenseRevision
+from app.models import ApiIdempotencyKey, Expense
 from app.routes import (
     _web_expense_edit_command,
     _web_expense_fact,
@@ -41,29 +39,27 @@ from app.routes import (
     web_expense_lifecycle,
     web_pending,
 )
-from app.schemas import ExpenseRelationshipImpacts, ExpenseResponse
 from app.services import (
     category_service,
-    expense_edit_command_service,
-    expense_offset_service,
     expense_review_command_service,
     manual_expense_draft_presenter,
     pending_review_bulk_service,
 )
-from app.services.manual_expense_receipt import _manual_receipt_key
+from app.services.currency_binding_service import resolve_write_capability
+from app.services.time_service import now_utc
 from tests import test_web_edge_runtime_contract as browser_runtime
-from tests import test_web_expense_confirmation_page as page_tests
 from tests import test_web_first_original as original_tests
 from tests._web_native_form_support import hidden_post_forms
+from tests.web_expense_fact_test_support import confirmation_actor
+from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
+from tests.web_expense_fact_test_support import confirmation_web as confirmation_web
 
-confirmation_store = page_tests.confirmation_store
-confirmation_web = page_tests.confirmation_web
 first_original_web = original_tests.first_original_web
 
 
 @pytest.fixture
 def slow_confirmation_script(monkeypatch):
-    browser_runtime._discover_edge()
+    browser_runtime._discover_database_browser()
     respond = StaticFiles.get_response
     pending = True
 
@@ -79,10 +75,11 @@ def slow_confirmation_script(monkeypatch):
     assert not pending, "The delayed shared confirmation script was not requested"
 
 
+@pytest.mark.real_db
 def test_manual_original_follows_its_creation_receipt_without_losing_file_or_recreating_bill(
     first_original_web, monkeypatch, tmp_path,
 ):
-    """Real native form/receipt/attachment; only financial creation and identity are controlled."""
+    """Real native form, creation, receipt and attachment with a controlled browser identity."""
     case = first_original_web
     case.client.app.include_router(web_expense_create.router)
     case.client.app.mount("/static", StaticFiles(directory=Path(__file__).parents[1] / "app/static"))
@@ -96,23 +93,18 @@ def test_manual_original_follows_its_creation_receipt_without_losing_file_or_rec
     native_statuses = []
     created_locations = []
     viewer_results = []
-    initial_facts = original_tests._facts(case)
+    with case.session_factory() as db:
+        resolve_write_capability(db)
+        db.delete(db.get(Expense, 42))
+        db.commit()
+    create_expense = web_expense_create.create_manual_expense
 
     def create(db, payload, auth):
-        assert payload.amount_cents == 1234 and payload.merchant == "原稿商家" and auth == original_tests.AUTH
+        assert payload.amount_cents == 1234 and payload.merchant == "原稿商家" and auth == case.original_auth
         assert not creations, "The original creation must not be posted again to transfer its file"
-        creations.append(payload.client_ref)
-        row = db.get(Expense, 42)
-        row.draft_idempotency_key = f"7:{payload.client_ref}"
-        row.merchant, row.amount_cents = payload.merchant, payload.amount_cents
-        row.original_currency_code, row.original_amount_minor = "CNY", payload.amount_cents
-        snapshot = ExpenseResponse.model_validate(row).model_dump(mode="json")
-        db.add(ApiIdempotencyKey(tenant_id="owner", idempotency_key=_manual_receipt_key(7, payload.client_ref),
-            operation="create_manual_expense", request_fingerprint="b" * 64, status="succeeded",
-            resource_type="expense", resource_id="42", response_body=snapshot,
-            expires_at=row.created_at + timedelta(days=30)))
-        db.commit()
-        return row
+        receipt = create_expense(db, payload, auth)
+        creations.append((payload.client_ref, receipt.id, receipt.row_version))
+        return receipt
 
     monkeypatch.setattr(web_expense_create, "create_manual_expense", create)
     sample = base64.b64encode(original_tests._camera_jpeg()).decode()
@@ -122,7 +114,7 @@ def test_manual_original_follows_its_creation_receipt_without_losing_file_or_rec
     async def manual_original_probe(request, call_next):
         native_post = request.method == "POST" and request.url.path == "/web/expenses/new"
         if native_post and native_statuses == [422]:
-            case.auth = replace(original_tests.AUTH, role="viewer")
+            case.auth = replace(case.original_auth, role="viewer")
             case.options[0].role = "viewer"
         response = await call_next(request)
         if native_post:
@@ -131,10 +123,12 @@ def test_manual_original_follows_its_creation_receipt_without_losing_file_or_rec
                 created_locations.append(response.headers["location"])
         if request.url.path == "/web/expenses/new/result" and case.auth.role == "viewer":
             viewer_results.append(response.status_code)
-            assert not creations and original_tests._facts(case) == initial_facts
+            assert not creations
+            with case.session_factory() as db:
+                assert db.scalar(select(Expense.id)) is None
             # Another member restores the role after this read-only result lookup.
             # The original form must still get fresh server admission before retry.
-            case.auth = original_tests.AUTH
+            case.auth = case.original_auth
             case.options[0].role = "owner"
         if "text/html" not in response.headers.get("content-type", ""):
             return response
@@ -151,10 +145,12 @@ def test_manual_original_follows_its_creation_receipt_without_losing_file_or_rec
     assert result["permission_restored"] and native_statuses == [422, 403, 303] and viewer_results == [200]
     redirect_query = parse_qs(urlsplit(created_locations[0]).query)
     assert all(redirect_query.get(name) == [value] for name, value in result["origin"])
-    assert creations == [result["ref"]]
-    with Session(case.engine) as db:
-        row = db.get(Expense, 42)
-        assert (row.merchant, row.amount_cents, row.row_version) == ("原稿商家", 1234, 5)
+    assert len(creations) == 1 and creations[0][0] == result["ref"]
+    _, created_id, created_version = creations[0]
+    with case.session_factory() as db:
+        assert len(db.scalars(select(Expense)).all()) == 1
+        row = db.get(Expense, created_id)
+        assert (row.merchant, row.amount_cents, row.row_version) == ("原稿商家", 1234, created_version + 1)
         assert row.image_path and row.image_hash
         receipts = db.scalars(select(ApiIdempotencyKey)).all()
         assert len(receipts) == 2
@@ -162,6 +158,7 @@ def test_manual_original_follows_its_creation_receipt_without_losing_file_or_rec
         assert original.idempotency_key == result["ref"] and original.response_body["sha256"] == row.image_hash
 
 
+@pytest.mark.real_db
 def test_original_inspection_returns_to_its_page_and_refreshes_after_replenishment(first_original_web, tmp_path):
     from app.services.original_read_service import read_original_snapshot
 
@@ -183,7 +180,8 @@ def test_original_inspection_returns_to_its_page_and_refreshes_after_replenishme
         return Response(body.replace(b"</body>", script.encode() + b"</body>"), status_code=response.status_code, headers=headers)
 
     assert original_tests._attach(case).status_code == 200
-    with Session(case.engine) as db:
+    with case.session_factory() as db:
+        resolve_write_capability(db)
         current = db.get(Expense, 42)
         values = {column.name: getattr(current, column.name) for column in Expense.__table__.columns}
         with read_original_snapshot(relative_path=current.image_path, tenant_id="owner",
@@ -201,7 +199,7 @@ def test_original_inspection_returns_to_its_page_and_refreshes_after_replenishme
     result = _run_review_page(case.client, tmp_path, "/web/originals?ledger_id=owner")
     assert "error" not in result, result
     assert result["page_retained"] and result["fresh_result"] and result["partial_read_failure"]
-    with Session(case.engine) as db:
+    with case.session_factory() as db:
         row = db.get(Expense, 43)
         assert tuple(getattr(row, name) for name in original_tests.FACT_FIELDS) == before
         assert (row.row_version, row.image_hash) == (version + 1, digest)
@@ -219,26 +217,13 @@ def uncategorized_browser(review_browser, confirmation_store, monkeypatch):
     monkeypatch.setattr(web_categories, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
     monkeypatch.setattr(web_categories, "list_ledger_category_options", lambda *args, **kwargs: [*category_service.DEFAULT_CATEGORIES, "自选分类"])
 
-    def update(db, expense_id, tenant_id, payload, *, commit=True):
-        row = db.get(Expense, expense_id)
-        assert row.tenant_id == tenant_id
-        assert payload.model_fields_set == {"category", "expected_row_version"}
-        if row.status != "pending" or row.row_version != payload.expected_row_version:
-            raise AppError("state_conflict", status_code=409)
-        row.category = payload.category
-        row.row_version += 1
-        db.flush()
-        if commit:
-            db.commit()
-        return row
-
-    monkeypatch.setattr(pending_review_bulk_service, "update_expense", update)
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
+        resolve_write_capability(db)
         row = db.get(Expense, 42)
         row.category = ""
         for identity, category, status, tenant in [(43, "其他", "pending", "owner"),
             (44, "未分类", "pending", "owner"), (45, "", "confirmed", "owner"),
-            (46, "", "pending", "other-ledger")]:
+            (46, "", "pending", "tester_1")]:
             copy = Expense(**{column.name: getattr(row, column.name) for column in Expense.__table__.columns
                 if column.name not in {"id", "public_id", "category", "status", "tenant_id"}},
                 id=identity, public_id=f"category-{identity}", category=category, status=status, tenant_id=tenant)
@@ -252,14 +237,14 @@ def uncategorized_browser(review_browser, confirmation_store, monkeypatch):
 
 def test_uncategorized_stale_selection_cannot_replace_later_category(uncategorized_browser, confirmation_store):
     client, scope = uncategorized_browser
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         row.category, row.row_version = "医疗", 5
         db.commit()
     result = client.post("/web/categories/uncategorized/bulk-set", data={"ledger_id": "owner",
         "draft_scope": json.dumps(scope), "idempotency_key": str(uuid4()), "expense_ids": ["42"], "expected_row_version": ["4"],
         "category": "购物"}, follow_redirects=False)
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         assert (row.category, row.row_version, row.status) == ("医疗", 5, "pending"), result.text
     assert "购物" in result.text and 'value="42:4"' in result.text
@@ -275,7 +260,7 @@ def test_uncategorized_partial_result_keeps_scope_money_and_original_selection(u
     href = unescape(re.search(r'href="([^"]*/web/expenses/42/edit[^"]*)"', page.text)[1])
     detail = client.get(href)
     assert '/web/categories/uncategorized?ledger_id=owner' in detail.text
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 44)
         row.category, row.row_version = "交通", 5
         db.commit()
@@ -285,7 +270,7 @@ def test_uncategorized_partial_result_keeps_scope_money_and_original_selection(u
     assert "刷新后重新选择" not in result.text
     assert re.search(r'name="expense_snapshot" value="44:4"[^>]*checked', result.text)
     assert "自选分类" in result.text and 'aria-label="继续逐笔核对"' in result.text
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         saved, stale = db.get(Expense, 42), db.get(Expense, 44)
         assert (saved.category, saved.row_version, saved.status) == ("自选分类", 5, "pending")
         assert (saved.original_currency_code, saved.original_amount_minor, saved.amount_cents) == ("JPY", 2850, 12860)
@@ -302,18 +287,19 @@ def test_uncategorized_replay_returns_original_batch_after_later_edits(uncategor
         "draft_ref": str(uuid4()), "expense_snapshot": ["42:4", "44:4"], "category": "购物"}
     first = client.post("/web/categories/uncategorized/bulk-set", data=original)
     assert "已更新 2 条" in first.text
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         row.category, row.row_version = "医疗", 8
         db.commit()
     replay = client.post("/web/categories/uncategorized/bulk-set", data=original)
     assert "已更新 2 条" in replay.text, "The first accepted batch must survive response loss and later edits"
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert (db.get(Expense, 42).category, db.get(Expense, 42).row_version) == ("医疗", 8)
         assert (db.get(Expense, 44).category, db.get(Expense, 44).row_version) == ("购物", 5)
         assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == original["idempotency_key"]))
 
 
+@pytest.mark.real_db
 def test_uncategorized_original_survives_detail_return_lost_reply_and_partial_continuation(
     uncategorized_browser, confirmation_store, tmp_path,
 ):
@@ -326,7 +312,8 @@ def test_uncategorized_original_survives_detail_return_lost_reply_and_partial_co
 
     @client.app.post("/category-later/{stage}")
     def later_category(stage: str):
-        with Session(confirmation_store) as db:
+        with confirmation_store() as db:
+            resolve_write_capability(db)
             row = db.get(Expense, 44 if stage == "before" else 42)
             row.category, row.row_version = ("交通", 8) if stage == "before" else ("医疗", 9)
             db.commit()
@@ -337,7 +324,7 @@ def test_uncategorized_original_survives_detail_return_lost_reply_and_partial_co
     assert result["detail_return"] and result["original_restored"] and result["partial_continued"]
     first, replay, final = result["requests"]
     assert first == replay and final != first
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert (db.get(Expense, 42).category, db.get(Expense, 42).row_version) == ("医疗", 9)
         assert (db.get(Expense, 44).category, db.get(Expense, 44).row_version) == ("自选分类", 9)
         assert db.get(Expense, 42).original_amount_minor == 2850
@@ -376,7 +363,7 @@ def test_uncategorized_failure_retains_original_selection(uncategorized_browser,
         else:
             assert form[key] == value
     assert "controlled storage interruption" not in response.text
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert db.get(Expense, 42).category == ""
         assert (db.get(Expense, 44).category, db.get(Expense, 44).row_version) == ("未分类", 4)
         assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == original["idempotency_key"])) is None
@@ -384,28 +371,17 @@ def test_uncategorized_failure_retains_original_selection(uncategorized_browser,
 
 @pytest.fixture
 def review_browser(confirmation_store, confirmation_web, monkeypatch):
-    """Actual routes, templates and draft scripts; SQLite keys with a controlled financial transition."""
+    """Actual routes, commands, PostgreSQL receipts, templates and draft scripts."""
     client, options = confirmation_web
     scope = {"datasetId": "dataset", "clientGeneration": "generation", "accountId": "account", "ledgerId": "owner", "deviceId": "browser"}
 
+    with confirmation_store() as db:
+        auth = confirmation_actor(db)
     def local(request: web_expense_edit.Request):
-        request.state.web_session_auth = SimpleNamespace(ledger_id="owner")
-
-    def update(db, expense_id, tenant_id, payload, **kwargs):
-        current = db.get(Expense, expense_id)
-        if current.status != "pending" or current.row_version != payload.expected_row_version:
-            raise AppError("state_conflict", status_code=409)
-        if "merchant" in payload.model_fields_set:
-            current.merchant = payload.merchant
-        current.row_version += 1
-        db.flush()
-        return current
+        request.state.web_session_auth = auth
 
     client.app.dependency_overrides[web_expense_edit.LocalOnly.dependency] = local
     monkeypatch.setattr(manual_expense_draft_presenter, "manual_draft_scope", lambda *args: scope)
-    monkeypatch.setattr(expense_edit_command_service, "update_expense", update)
-    monkeypatch.setattr(expense_edit_command_service, "prepare_pending_expense_fx", lambda *args, **kwargs: None)
-    monkeypatch.setattr(expense_review_command_service, "update_expense", update)
     for module in (_web_expense_helpers, _web_expense_edit_command):
         monkeypatch.setattr(module, "calendar_revision", lambda *args, **kwargs: SimpleNamespace(timezone_name="Asia/Shanghai", revision=1))
     monkeypatch.setattr(_web_expense_helpers, "manual_draft_ack", lambda *args: None)
@@ -416,12 +392,9 @@ def review_browser(confirmation_store, confirmation_web, monkeypatch):
     monkeypatch.setattr(_web_expense_helpers, "list_ledger_category_options", lambda *args, **kwargs: ["购物"])
     monkeypatch.setattr(_web_expense_fx, "_list_ledger_options", lambda db: options)
     monkeypatch.setattr(_web_expense_fx, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
-    monkeypatch.setattr(_web_expense_fx, "resolve_web_actor", lambda *args: (None, None))
     client.app.include_router(web_pending.router)
     monkeypatch.setattr(web_pending, "_list_ledger_options", lambda db: options)
     monkeypatch.setattr(web_pending, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
-    monkeypatch.setattr(web_pending, "require_runtime_home_currency_code", lambda db: "CNY")
-    monkeypatch.setattr(web_pending, "list_pending", lambda db, ledger: db.scalars(select(Expense).where(Expense.status == "pending").order_by(Expense.id)).all())
     monkeypatch.setattr(web_pending, "web_pending_enrichment_context", lambda *args, **kwargs: {})
     monkeypatch.setattr(web_pending, "ledger_has_any_expense", lambda *args: True)
     client.app.mount("/static", StaticFiles(directory=Path(__file__).parents[1] / "app/static"))
@@ -453,21 +426,14 @@ def review_browser(confirmation_store, confirmation_web, monkeypatch):
 def fact_review_browser(review_browser, confirmation_store, monkeypatch):
     """Real fact projection/history queries; empty related journals and controlled membership."""
     client, _ = review_browser
-    metadata = MetaData()
-    for model in (ExpenseOffsetFact, ExpenseOffsetRevision, ExpenseRevision):
-        Table(model.__tablename__, metadata, *(Column(column.name,
-            JSON() if isinstance(column.type, JSONB) else column.type, primary_key=column.primary_key)
-            for column in model.__table__.columns))
-    metadata.create_all(confirmation_store)
-    monkeypatch.setattr(expense_offset_service, "expense_to_response", lambda db, *, expense, tenant_id: ExpenseResponse.model_validate(expense))
-    monkeypatch.setattr(expense_offset_service, "relationship_impacts", lambda *args, **kwargs: ExpenseRelationshipImpacts())
     monkeypatch.setattr(_web_expense_fact, "build_split_invite_context", lambda *args, **kwargs: None)
     monkeypatch.setattr(_web_expense_fact.invitation_members, "list_members", lambda *args, **kwargs: [])
     monkeypatch.setattr(_web_expense_offset_fact, "current_ledger_date", lambda *args, **kwargs: date(2026, 10, 8))
 
     @client.app.post("/probe-later-fact")
     def later_fact():
-        with Session(confirmation_store) as db:
+        with confirmation_store() as db:
+            resolve_write_capability(db)
             row = db.get(Expense, 42)
             row.merchant, row.amount_cents, row.row_version, row.status = "后来人工更正", 9900, 9, "confirmed"
             db.commit()
@@ -486,39 +452,9 @@ def related_review_browser(review_browser, confirmation_store, monkeypatch):
     client, _ = review_browser
     options = [SimpleNamespace(ledger_id="owner", name="家庭账本", role="owner", is_default=True)]
 
-    def keep(db, expense_id, tenant_id, *, expected_row_version, commit=True):
-        current = db.get(Expense, expense_id)
-        if current.row_version != expected_row_version:
-            raise AppError("state_conflict", status_code=409)
-        current.duplicate_status, current.row_version = "none", current.row_version + 1
-        db.flush()
-        if commit:
-            db.commit()
-        return current
-
-    def reject(db, expense_id, tenant_id, *, expected_row_version, **kwargs):
-        current = db.get(Expense, expense_id)
-        if current.row_version != expected_row_version or current.status != "pending":
-            raise AppError("state_conflict", status_code=409)
-        current.status, current.row_version = "rejected", current.row_version + 1
-        db.flush()
-        return current
-
-    def undo(db, expense_id, tenant_id, expected_row_version, **kwargs):
-        current = db.get(Expense, expense_id)
-        if current.row_version != expected_row_version or current.status != "rejected":
-            raise AppError("state_conflict", status_code=409)
-        current.status, current.row_version = "pending", current.row_version + 1
-        db.flush()
-        return current
-
-    monkeypatch.setattr(expense_review_command_service, "reject_expense", reject)
-    monkeypatch.setattr(expense_review_command_service, "undo_reject_expense", undo)
     client.app.include_router(web_duplicates.router)
     monkeypatch.setattr(web_duplicates, "_list_ledger_options", lambda db: options)
     monkeypatch.setattr(web_duplicates, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
-    monkeypatch.setattr(web_duplicates, "require_runtime_home_currency_code", lambda db: "CNY")
-    monkeypatch.setattr(expense_review_command_service, "mark_expense_not_duplicate", keep)
 
     @client.app.get("/actions-probe.js")
     def actions_probe():
@@ -546,8 +482,9 @@ def test_ignore_and_undo_preserve_original_identity_before_mutation(
     fields["draft_scope"] = json.dumps({**json.loads(fields["draft_scope"]), "deviceId": original_device}) if original_device else ""
     fields.update(original_expense_id="41", expected_original_row_version="1")
     if action == "undo":
-        with Session(confirmation_store) as db:
-            db.get(Expense, 42).status = "rejected"
+        with confirmation_store() as db:
+            row = db.get(Expense, 42)
+            row.status, row.rejected_at = "rejected", now_utc()
             db.commit()
     path = f"/web/{'duplicates' if action.startswith('reject-') else 'expenses'}/42/{action}"
     response = related_review_browser.post(path, data=fields, follow_redirects=False)
@@ -556,7 +493,7 @@ def test_ignore_and_undo_preserve_original_identity_before_mutation(
     refused = related_review_browser.post(path, data=fields, headers={"Accept": "application/json"})
     assert refused.status_code == 409 and refused.json()["draft_result"] == "blocked"
     assert "ack" not in refused.json()
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         assert (row.row_version, row.status) == (4, "rejected" if action == "undo" else "pending")
         assert not db.scalars(select(ApiIdempotencyKey)).all()
@@ -570,7 +507,7 @@ def test_ignore_conflict_returns_the_original_raw_financial_input(related_review
     for name in ("merchant", "amount_yuan", "idempotency_key", "reject_idempotency_key", "draft_ref", "expected_row_version"):
         assert re.search(rf'name="{name}"\s+value="{re.escape(fields[name])}"', response.text), name
     assert 'name="return_filter" value="duplicate"' in response.text
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         assert (row.status, row.merchant, row.row_version) == ("pending", "首次便利店", 4)
 
@@ -581,13 +518,14 @@ def test_ignore_or_undo_replay_recognizes_original_after_later_confirmation(
 ):
     fields = _related_keep_fields()
     if action == "undo":
-        with Session(confirmation_store) as db:
-            db.get(Expense, 42).status = "rejected"
+        with confirmation_store() as db:
+            row = db.get(Expense, 42)
+            row.status, row.rejected_at = "rejected", now_utc()
             db.commit()
     path = f"/web/expenses/42/{action}"
     first = related_review_browser.post(path, data=fields, follow_redirects=False)
     assert first.status_code == 303, first.text
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         row.status, row.row_version, row.merchant = "confirmed", 9, "后来入账"
         db.commit()
@@ -596,7 +534,7 @@ def test_ignore_or_undo_replay_recognizes_original_after_later_confirmation(
     receipt = related_review_browser.post(path, data=fields, headers={"Accept": "application/json"}).json()
     assert (receipt["receipt"]["status"], receipt["receipt"]["row_version"]) == ("rejected" if action == "reject" else "pending", 5)
     assert receipt["ack"]["clientRef"] == fields["reject_idempotency_key" if action == "reject" else "idempotency_key"]
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         assert (row.status, row.row_version, row.merchant) == ("confirmed", 9, "后来入账")
         assert len(db.scalars(select(ApiIdempotencyKey)).all()) == 1
@@ -639,7 +577,7 @@ def test_ignore_and_undo_failures_retain_original_command_without_claiming_expir
             assert str(failure) not in failed_response.text
     else:
         assert not errors
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert db.get(Expense, 42).row_version == 4
 
 
@@ -659,7 +597,7 @@ def test_original_ignore_banner_does_not_acquire_a_later_rejection(related_revie
     page = related_review_browser.get(first.headers["location"])
     original = hidden_post_forms(page.text)["/web/expenses/42/undo"]
     assert original["expected_row_version"] == "5"
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         db.get(Expense, 42).row_version = 9
         db.commit()
     reopened = related_review_browser.get(first.headers["location"])
@@ -668,11 +606,13 @@ def test_original_ignore_banner_does_not_acquire_a_later_rejection(related_revie
     resumed = hidden_post_forms(task.text)["/web/expenses/42/undo"]
     assert (resumed["expected_row_version"], resumed["idempotency_key"]) == ("5", original["idempotency_key"])
     refused = related_review_browser.post("/web/expenses/42/undo", data=resumed, headers={"Accept": "application/json"})
-    assert refused.status_code == 409 and refused.json()["draft_result"] == "blocked"
-    with Session(confirmation_store) as db:
+    assert refused.status_code == 404 and refused.json()["error"] == "expense_not_found"
+    assert refused.json()["draft_result"] == "blocked"
+    with confirmation_store() as db:
         assert (db.get(Expense, 42).row_version, db.get(Expense, 42).status) == (9, "rejected")
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("entry,later_ignore", [("drawer", False), ("full", True)])
 def test_ignore_and_undo_unknown_results_recover_original_commands_and_financial_input(
     related_review_browser, confirmation_store, tmp_path, entry, later_ignore, slow_confirmation_script,
@@ -685,7 +625,8 @@ def test_ignore_and_undo_unknown_results_recover_original_commands_and_financial
 
     @client.app.post("/ignore-later")
     def later():
-        with Session(confirmation_store) as db:
+        with confirmation_store() as db:
+            resolve_write_capability(db)
             row = db.get(Expense, 42)
             assert (row.status, row.row_version) == ("pending", 6)
             row.status, row.row_version, row.merchant = "rejected", 9, "同伴后来再次忽略"
@@ -694,7 +635,7 @@ def test_ignore_and_undo_unknown_results_recover_original_commands_and_financial
 
     @client.app.get("/ignore-current")
     def current():
-        with Session(confirmation_store) as db:
+        with confirmation_store() as db:
             row = db.get(Expense, 42)
             return {"version": row.row_version, "status": row.status, "merchant": row.merchant}
 
@@ -705,14 +646,15 @@ def test_ignore_and_undo_unknown_results_recover_original_commands_and_financial
     assert result["financial_retained"] and result["reject_lost"] and result["undo_lost"]
     assert result["requests"]["reject"][0] == result["requests"]["reject"][1]
     assert result["requests"]["undo"][0] == result["requests"]["undo"][1]
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         assert (row.status, row.merchant) == (("rejected", "同伴后来再次忽略") if later_ignore else ("confirmed", "忽略前的原填写"))
 
 
 def test_duplicate_review_keeps_both_originals_currency_and_group_return(related_review_browser, fact_review_browser, confirmation_store):
     client = related_review_browser
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
+        resolve_write_capability(db)
         current = db.get(Expense, 42)
         for identity, status in [(43, "confirmed"), (44, "pending")]:
             copy = Expense(**{c.name: getattr(current, c.name) for c in Expense.__table__.columns
@@ -723,6 +665,7 @@ def test_duplicate_review_keeps_both_originals_currency_and_group_return(related
                 copy.original_currency_code, copy.original_amount_minor = "CNY", 12860
             copy.image_path = f"comparison-{identity}.png"
             db.add(copy)
+            db.flush()
         current.duplicate_status, current.duplicate_of_id = "suspected", 43
         current.image_path = "comparison-42.png"
         db.commit()
@@ -743,16 +686,18 @@ def test_duplicate_review_keeps_both_originals_currency_and_group_return(related
     assert "focus=44" in response.headers["location"]
     returned = client.get(response.headers["location"])
     assert 'id="duplicate-44"' in returned.text and 'autofocus' in returned.text
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert (db.get(Expense, 42).status, db.get(Expense, 42).duplicate_status) == ("pending", "none")
         assert db.get(Expense, 43).status == "confirmed"
         assert db.get(Expense, 44).duplicate_status == "suspected"
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("entry,fault", [("drawer", "reply"), ("full", "reply"), ("drawer", "ack-store"), ("drawer", "rejected")])
 def test_keep_original_survives_reload_then_rejoins_financial_draft(related_review_browser, confirmation_store, tmp_path, entry, fault):
     client = related_review_browser
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
+        resolve_write_capability(db)
         db.get(Expense, 42).duplicate_status = "suspected"
         db.commit()
 
@@ -762,7 +707,8 @@ def test_keep_original_survives_reload_then_rejoins_financial_draft(related_revi
 
     @client.app.post("/keep-later")
     def later():
-        with Session(confirmation_store) as db:
+        with confirmation_store() as db:
+            resolve_write_capability(db)
             row = db.get(Expense, 42)
             row.row_version, row.merchant = 9, "后来填写"
             row.duplicate_status = "none" if (entry, fault) == ("drawer", "reply") else "suspected"
@@ -771,7 +717,7 @@ def test_keep_original_survives_reload_then_rejoins_financial_draft(related_revi
 
     @client.app.get("/keep-current")
     def current():
-        with Session(confirmation_store) as db:
+        with confirmation_store() as db:
             row = db.get(Expense, 42)
             return {"version": row.row_version, "duplicate": row.duplicate_status, "merchant": row.merchant}
 
@@ -785,7 +731,7 @@ def test_keep_original_survives_reload_then_rejoins_financial_draft(related_revi
         assert len(result["requests"]) == 1
     else:
         assert len(result["requests"]) == 2 and result["requests"][0] == result["requests"][1]
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         assert (row.status, row.merchant, row.amount_cents) == ("confirmed", "非重复前的原填写", 12860)
 
@@ -802,7 +748,7 @@ def test_full_keep_returns_to_original_review_without_saving_raw_input(related_r
     assert "disabled" in buttons["保存草稿"] and "disabled" in buttons["确认入账"]
     assert "disabled" not in buttons["核对当前记录，保留填写"]
     assert re.search(r'<button\b[^>]*aria-hidden="true"[^>]*disabled', response.text)
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         assert (row.status, row.merchant, row.row_version) == ("pending", "首次便利店", 5)
 
@@ -810,7 +756,7 @@ def test_full_keep_returns_to_original_review_without_saving_raw_input(related_r
 def test_related_keep_replay_recognizes_original_decision_without_overwriting_later_state(related_review_browser, confirmation_store, monkeypatch):
     fields = {**_related_keep_fields(), "fragment": "1"}
     assert related_review_browser.post("/web/duplicates/42/keep", data=fields).status_code == 200
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         row.duplicate_status, row.row_version, row.merchant = "suspected", 9, "后来记录"
         db.commit()
@@ -825,7 +771,7 @@ def test_related_keep_replay_recognizes_original_decision_without_overwriting_la
         ledger_id="owner", name="家庭账本", role="viewer", is_default=True)])
     denied = related_review_browser.post("/web/duplicates/42/keep", data=fields, headers={"Accept": "application/json"})
     assert denied.status_code == 403 and "receipt" not in denied.json()
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         assert (row.duplicate_status, row.row_version, row.merchant) == ("suspected", 9, "后来记录")
 
@@ -841,16 +787,17 @@ def test_related_keep_refuses_changed_or_missing_original_identity(related_revie
     assert response.status_code == status, response.text
     assert re.search(r'name="merchant"\s+value="原填写仍未保存"', response.text)
     assert 'name="return_filter" value="duplicate"' in response.text
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert db.get(Expense, 42).row_version == 4
 
 
 @pytest.mark.parametrize("action", ["keep", "reject-current", "reject-original"])
 def test_standalone_duplicate_form_carries_its_original_decision_and_browser_identity(related_review_browser, confirmation_store, action):
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         current = db.get(Expense, 42)
         db.add(Expense(**{column.name: getattr(current, column.name) for column in Expense.__table__.columns
             if column.name not in {"id", "public_id"}}, id=43, public_id="comparison-expense"))
+        db.flush()
         current.duplicate_status, current.duplicate_of_id = "suspected", 43
         db.commit()
     page = related_review_browser.get("/web/duplicates?ledger_id=owner")
@@ -860,7 +807,7 @@ def test_standalone_duplicate_form_carries_its_original_decision_and_browser_ide
     assert json.loads(fields["draft_scope"])["deviceId"] == "browser"
     response = related_review_browser.post(path, data=fields, follow_redirects=False)
     assert response.status_code == 303 and response.headers["location"].startswith("/web/duplicates?")
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         current, original = db.get(Expense, 42), db.get(Expense, 43)
         assert (current.status, original.status) == (
             ("rejected", "pending") if action == "reject-current" else
@@ -873,7 +820,7 @@ def test_standalone_duplicate_form_carries_its_original_decision_and_browser_ide
     assert replay.json()["ack"]["clientRef"] == key
     assert replay.json()["next"].startswith("/web/duplicates?")
     assert replay.json()["receipt"]["accepted"] is True
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert (db.get(Expense, 42).merchant, db.get(Expense, 42).row_version, db.get(Expense, 42).duplicate_status) == ("后来修改本次", 9, "suspected")
         assert (db.get(Expense, 43).merchant, db.get(Expense, 43).row_version, db.get(Expense, 43).status) == ("后来修改参考", 11, "confirmed")
         assert len(db.scalars(select(ApiIdempotencyKey)).all()) == 1
@@ -888,7 +835,7 @@ def test_standalone_decision_preserves_writer_permission_denial(related_review_b
         headers={"Accept": "application/json"}, follow_redirects=False)
     assert response.status_code == 403, response.text
     assert response.json()["error"] == "permission_denied"
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert db.get(Expense, 42).row_version == 4
         assert db.scalar(select(ApiIdempotencyKey)) is None
 
@@ -918,20 +865,23 @@ def test_standalone_decision_storage_failure_retains_original_and_reports_cause(
         assert response.status_code == 503 and str(failure) not in response.text
         assert any(record.name == "ticketbox.http" and record.exc_info and record.exc_info[1] is failure
             and response.headers["X-Request-Id"] in record.getMessage() for record in caplog.records)
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert db.get(Expense, 42).row_version == 4
         assert db.scalar(select(ApiIdempotencyKey)) is None
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("action,fault", [("keep", "reply"), ("reject-current", "reply"), ("reject-original", "reply"), ("keep", "conflict")])
 def test_standalone_decision_recovers_original_or_explicitly_reviews_a_refusal(
     related_review_browser, confirmation_store, tmp_path, action, fault, slow_confirmation_script,
 ):
     client = related_review_browser
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
+        resolve_write_capability(db)
         row = db.get(Expense, 42)
         db.add(Expense(**{c.name: getattr(row, c.name) for c in Expense.__table__.columns
             if c.name not in {"id", "public_id"}}, id=43, public_id="original-comparison"))
+        db.flush()
         row.duplicate_status, row.duplicate_of_id = "suspected", 43
         db.commit()
 
@@ -941,7 +891,8 @@ def test_standalone_decision_recovers_original_or_explicitly_reviews_a_refusal(
 
     @client.app.post("/duplicate-peer")
     def peer():
-        with Session(confirmation_store) as db:
+        with confirmation_store() as db:
+            resolve_write_capability(db)
             current, original = db.get(Expense, 42), db.get(Expense, 43)
             current.merchant, current.row_version, current.duplicate_status = "后来修改本次", 9, "suspected"
             original.merchant, original.row_version, original.status = "后来修改参考", 11, "confirmed"
@@ -950,7 +901,7 @@ def test_standalone_decision_recovers_original_or_explicitly_reviews_a_refusal(
 
     @client.app.get("/duplicate-facts")
     def facts():
-        with Session(confirmation_store) as db:
+        with confirmation_store() as db:
             current, original = db.get(Expense, 42), db.get(Expense, 43)
             return {"current_version": current.row_version, "current_merchant": current.merchant,
                 "current_duplicate": current.duplicate_status, "original_version": original.row_version, "original_merchant": original.merchant,
@@ -978,13 +929,13 @@ def test_keep_api_and_web_share_the_existing_original_decision(related_review_br
 
     first = submit(first_surface)
     assert first.status_code == 200, first.text
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         row.duplicate_status, row.row_version = "suspected", 9
         db.commit()
     replay = submit("web" if first_surface == "api" else "api")
     assert replay.status_code == 200, replay.text
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert (db.get(Expense, 42).duplicate_status, db.get(Expense, 42).row_version) == ("suspected", 9)
         assert [(r.operation, r.status) for r in db.scalars(select(ApiIdempotencyKey))] == [("mark_not_duplicate", "succeeded")]
 
@@ -994,20 +945,22 @@ def test_keep_decision_and_idempotency_record_roll_back_together(related_review_
         raise SQLAlchemyError("decision persistence failed")
 
     monkeypatch.setattr(expense_review_command_service, "mark_idempotency_succeeded", fail)
-    with Session(confirmation_store) as db, pytest.raises(SQLAlchemyError, match="decision persistence failed"):
+    with confirmation_store() as db, pytest.raises(SQLAlchemyError, match="decision persistence failed"):
         expense_review_command_service.submit_expense_duplicate_decision(db, tenant_id="owner", expense_id=42,
             expected_row_version=4, request_expected_row_version=4, idempotency_key=str(uuid4()))
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert db.get(Expense, 42).row_version == 4
         assert db.scalar(select(ApiIdempotencyKey)) is None
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("action,entry", [("keep", "drawer"), ("reject", "drawer"), ("keep", "full")])
 def test_related_review_actions_keep_input_and_rejoin_original_queue_before_confirmation(
     related_review_browser, confirmation_store, tmp_path, action, entry,
 ):
     if action == "keep":
-        with Session(confirmation_store) as db:
+        with confirmation_store() as db:
+            resolve_write_capability(db)
             db.get(Expense, 42).duplicate_status = "suspected"
             db.commit()
     filter_name = "duplicate" if action == "keep" else "ready"
@@ -1021,11 +974,12 @@ def test_related_review_actions_keep_input_and_rejoin_original_queue_before_conf
         assert result["keep_reply_lost"] and result["unknown_retained"]
     if action == "keep" and entry == "full":
         assert result["legacy_edit_restored"]
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert (current.status, current.merchant, current.amount_cents) == ("confirmed", "相关操作前的填写", 12860)
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("surface,operation", [("full", "confirm"), ("drawer", "confirm"), ("drawer", "save")])
 def test_current_fact_returns_to_original_review_and_receipt_without_replacing_later_fact(
     fact_review_browser, confirmation_store, tmp_path, surface, operation,
@@ -1036,13 +990,13 @@ def test_current_fact_returns_to_original_review_and_receipt_without_replacing_l
     assert result["original_preserved"] and result["current_fact"] and result["original_removed"] and result["returned_to_filter"]
     assert len(result["requests"]) == 2 and result["requests"][0] == result["requests"][1]
     assert result["first_receipt"] == (operation == "confirm")
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert (current.merchant, current.amount_cents, current.row_version) == ("后来人工更正", 9900, 9)
 
 
 def _run_review_page(client, tmp_path, path, *, width=393):
-    edge = browser_runtime._discover_edge()
+    edge = browser_runtime._discover_database_browser()
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
@@ -1063,21 +1017,25 @@ def _run_review_page(client, tmp_path, path, *, width=393):
             thread.join(timeout=8)
 
 
+@pytest.mark.real_db
 def test_unknown_submission_can_inspect_current_pending_record_without_replacing_original_task(fact_review_browser, confirmation_store, tmp_path):
     result = _run_review_page(fact_review_browser, tmp_path, "/web/expenses/42/edit?ledger_id=owner&return_to=pending&probe=pending-current")
     assert "error" not in result, result
     assert result["current_fact"] and result["original_preserved"] and len(result["requests"]) == 1
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert (current.merchant, current.row_version, current.status) == ("首次便利店", 4, "pending")
 
 
+@pytest.mark.real_db
 def test_actual_drawer_retains_input_and_original_save_then_confirms_next_and_last_receipt(review_browser, confirmation_store, tmp_path):
     client, _ = review_browser
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
+        resolve_write_capability(db)
         original = db.get(Expense, 42)
         values = {column.name: getattr(original, column.name) for column in Expense.__table__.columns}
-        db.add(Expense(**{**values, "id": 43, "public_id": "next-expense", "merchant": "第二张商家"}))
+        db.add(Expense(**{**values, "id": 43, "public_id": "next-expense", "merchant": "第二张商家",
+            "created_at": original.created_at - timedelta(seconds=1)}))
         db.commit()
     result = _run_review_page(client, tmp_path, "/web/pending?ledger_id=owner&filter=ready", width=1440)
     assert not result.get("error"), json.dumps(result, ensure_ascii=False)
@@ -1086,31 +1044,34 @@ def test_actual_drawer_retains_input_and_original_save_then_confirms_next_and_la
     assert first == replay and first["path"].endswith("/42/save")
     assert confirm_first["path"].endswith("/42/confirm") and confirm_last["path"].endswith("/43/confirm")
     assert result["positions"] == ["第 1 / 2 张", "第 2 / 2 张"]
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert (db.get(Expense, 42).status, db.get(Expense, 42).merchant) == ("confirmed", "抽屉原填写")
         assert db.get(Expense, 43).status == "confirmed"
 
 
+@pytest.mark.real_db
 def test_accepted_drawer_confirmation_with_unavailable_display_only_rereads_the_receipt(review_browser, confirmation_store, tmp_path):
     client, _ = review_browser
     result = _run_review_page(client, tmp_path, "/web/pending?ledger_id=owner&filter=ready&probe=receipt-read-failure")
     assert not result.get("error"), json.dumps(result, ensure_ascii=False)
     assert result["readFailed"] and result["original_removed"]
     assert len(result["requests"]) == 1 and result["requests"][0]["path"].endswith("/42/confirm")
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert current.status == "confirmed" and current.fact_revision == 1
 
 
+@pytest.mark.real_db
 def test_drawer_keeps_unretained_input_when_browser_storage_fails(review_browser, confirmation_store, tmp_path):
     client, _ = review_browser
     result = _run_review_page(client, tmp_path, "/web/pending?ledger_id=owner&probe=storage-failure")
     assert not result.get("error"), json.dumps(result, ensure_ascii=False)
     assert result["storage_recovered"] and not result["requests"]
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         assert db.get(Expense, 42).merchant == "首次便利店"
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("operation", ["save", "legacy-confirm"])
 def test_actual_review_browser_resolves_original_action_before_starting_next_command(
     review_browser, confirmation_store, tmp_path, operation,
@@ -1128,11 +1089,12 @@ def test_actual_review_browser_resolves_original_action_before_starting_next_com
     else:
         assert not next_command
         assert not {"value_score", "regret_score"}.intersection(dict(first["fields"]))
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert current.status == "confirmed" and current.merchant == "浏览器原填写"
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("drawer", [False, True])
 def test_explicit_latest_bill_load_uses_current_fields_while_retaining_original_task(
     review_browser, confirmation_store, monkeypatch, tmp_path, drawer,
@@ -1141,7 +1103,7 @@ def test_explicit_latest_bill_load_uses_current_fields_while_retaining_original_
     monkeypatch.setattr(_web_expense_helpers, "expense_fx_view", lambda *a, **k: {
         "state": "completed", "can_request": False, "current": {"original_currency_code": "CNY"}})
     client.app.state.expense_review_probe = "latest-review-probe.js"
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         money_before = (row.amount_cents, row.original_amount_minor, row.original_currency_code, row.status)
 
@@ -1155,7 +1117,8 @@ def test_explicit_latest_bill_load_uses_current_fields_while_retaining_original_
 
     @client.app.post("/probe-latest-bill")
     def current_bill():
-        with Session(confirmation_store) as db:
+        with confirmation_store() as db:
+            resolve_write_capability(db)
             row = db.get(Expense, 42)
             row.row_version, row.merchant = 5, "服务器当前商家"
             db.commit()
@@ -1169,7 +1132,7 @@ def test_explicit_latest_bill_load_uses_current_fields_while_retaining_original_
     assert result["after"]["draft_ref"] != result["saved"]["draft_ref"]
     assert result["retained"]["values"]["amount_yuan"] == "29.00"
     assert result["retained"]["values"]["expected_row_version"] == "4"
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
         row = db.get(Expense, 42)
         assert row.row_version == 5 and row.merchant == "服务器当前商家"
         assert (row.amount_cents, row.original_amount_minor, row.original_currency_code, row.status) == money_before
@@ -1178,12 +1141,10 @@ def test_explicit_latest_bill_load_uses_current_fields_while_retaining_original_
 
 def test_fx_action_checks_original_binding_and_keeps_inputs_and_confirmation_basis(review_browser, confirmation_store, monkeypatch):
     client, scope = review_browser
+    requests = []
 
     def request_fx(db, *, tenant_id, expense_id, expected_row_version, **kwargs):
-        current = db.get(Expense, expense_id)
-        assert current.row_version == expected_row_version
-        current.note, current.row_version = "汇率任务已接受", current.row_version + 1
-        db.commit()
+        requests.append((tenant_id, expense_id, expected_row_version, kwargs))
 
     monkeypatch.setattr(_web_expense_fx, "request_pending_expense_fx", request_fx)
     fields = {"ledger_id": "owner", "expected_row_version": "4", "idempotency_key": str(uuid4()),
@@ -1192,7 +1153,8 @@ def test_fx_action_checks_original_binding_and_keeps_inputs_and_confirmation_bas
         "draft_scope": json.dumps({**scope, "deviceId": "previous-browser"})}
     refused = client.post("/web/expenses/42/fx", data=fields)
     assert refused.status_code == 409, refused.text
-    with Session(confirmation_store) as db:
+    assert not requests
+    with confirmation_store() as db:
         assert (db.get(Expense, 42).note, db.get(Expense, 42).row_version) == ("", 4)
     fields["draft_scope"] = json.dumps(scope)
     accepted = client.post("/web/expenses/42/fx", data=fields)
@@ -1203,11 +1165,15 @@ def test_fx_action_checks_original_binding_and_keeps_inputs_and_confirmation_bas
     assert f'name="idempotency_key" value="{fields["idempotency_key"]}"' in accepted.text
     for name, value in (("value_score", ""), ("regret_score", "5")):
         assert re.search(rf'name="{name}" value="{value}"\s+checked', accepted.text)
-    with Session(confirmation_store) as db:
+    with confirmation_store() as db:
+        auth = confirmation_actor(db)
         current = db.get(Expense, 42)
-        assert (current.merchant, current.status, current.row_version) == ("首次便利店", "pending", 5)
+        assert (current.merchant, current.status, current.row_version) == ("首次便利店", "pending", 4)
+        assert requests == [("owner", 42, 4, {
+            "initiator_account_id": auth.account_id, "initiator_device_id": auth.device_id})]
 
 
+@pytest.mark.real_db
 @pytest.mark.parametrize("external_preview", [False, True])
 def test_selected_original_requires_confirmation_and_retains_exact_file_after_reload(first_original_web, tmp_path, external_preview):
     case = first_original_web
@@ -1240,6 +1206,6 @@ def test_selected_original_requires_confirmation_and_retains_exact_file_after_re
     assert "error" not in result, result
     assert all(result[name] for name in ("decoded", "restored", "explicit_confirmation", "fixed_after_reply_loss"))
     assert original_tests._facts(case) == before
-    with Session(case.engine) as db:
+    with case.session_factory() as db:
         assert len(db.scalars(select(ApiIdempotencyKey)).all()) == 1
         assert db.get(Expense, 42).image_path is not None

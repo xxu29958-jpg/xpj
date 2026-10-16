@@ -60,7 +60,9 @@
       document.querySelector('.review-subtask-link[href$="#expense-items"]').click();
       await wait(() => !document.querySelector("[data-review-subtasks]").hidden && location.hash === "#expense-items", "retaining a blurred field displaced subtask navigation");
       put(form("items"), "item_name", "原商品填写"); put(form("items"), "item_amount_yuan", "0005.00");
-      put(form("splits"), "split_member_id", "1"); put(form("splits"), "split_amount_yuan", "5.50"); put(form("splits"), "split_note", "原拆账填写");
+      const member = field(form("splits"), "split_member_id")[0];
+      put(form("splits"), "split_member_id", [...member.options].find(option => option.value).value);
+      put(form("splits"), "split_amount_yuan", "5.50"); put(form("splits"), "split_note", "原拆账填写");
       state.main = basis(main()); state.items = basis(form("items")); state.splits = basis(form("splits"));
       go("restored"); return;
     }
