@@ -2,12 +2,18 @@ package com.ticketbox.ui.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,14 +36,10 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.PendingDebtCreation
 import com.ticketbox.data.repository.parseExpenseTargetRef
-import com.ticketbox.ui.components.AppAdaptiveEditActionLayout
-import com.ticketbox.ui.components.AppAdaptiveEditActionMode
-import com.ticketbox.ui.components.AppAdaptiveTrailingActionRow
 import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
-import com.ticketbox.ui.components.AppButtonIcons
-import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppStatusBanner
+import com.ticketbox.ui.design.AppIconSize
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.DebtCreationIntentSummary
 import com.ticketbox.data.repository.EXPENSE_ORIGINAL_REVIEW_ERRORS
@@ -110,10 +112,11 @@ internal data class SyncStatusActions(
     val onOpenArrangement: (String) -> Unit = {},
 )
 
-private data class SyncStatusActionButton(
+internal data class SyncStatusActionButton(
     val text: String,
     val icon: ImageVector? = null,
     val enabled: Boolean,
+    val danger: Boolean = false,
     val onClick: () -> Unit,
 )
 
@@ -253,8 +256,8 @@ private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () 
     if (rows.isEmpty()) return
     SettingsSection(title = stringResource(R.string.sync_status_mutation_upload_screenshot)) {
         Text(stringResource(R.string.sync_status_upload_recovery_body), style = MaterialTheme.typography.bodyMedium)
-        AppPrimaryButton(text = stringResource(R.string.sync_status_open_uploads), icons = AppButtonIcons(leading = Icons.Filled.CloudUpload),
-            onClick = onOpenInbox)
+        SyncStatusItemActions(next = SyncStatusActionButton(text = stringResource(R.string.sync_status_open_uploads),
+            icon = Icons.Filled.CloudUpload, enabled = true, onClick = onOpenInbox))
     }
 }
 
@@ -277,18 +280,15 @@ private fun SyncStatusQuarantineSection(count: Int, clearEnabled: Boolean, onCle
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                AppAdaptiveTrailingActionRow {
-                    AppOutlinedButton(
-                        modifier = it,
+                SyncStatusItemActions(
+                    next = null,
+                    other = SyncStatusActionButton(
+                        text = stringResource(R.string.sync_status_quarantined_remove_button),
+                        enabled = clearEnabled,
+                        danger = true,
                         onClick = onClear,
-                        options = AppOutlinedButtonOptions(
-                            enabled = clearEnabled,
-                            danger = true,
-                        ),
-                    ) {
-                        Text(stringResource(R.string.sync_status_quarantined_remove_button))
-                    }
-                }
+                    ),
+                )
             }
         }
     }
@@ -323,8 +323,8 @@ internal fun ConflictCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            SyncStatusRecoveryActions(
-                primary = if (originalOffset || reviewOriginal) expenseReviewAction(row, busy, actions) else if (canKeep) {
+            SyncStatusItemActions(
+                next = if (originalOffset || reviewOriginal) expenseReviewAction(row, busy, actions) else if (canKeep) {
                     SyncStatusActionButton(
                         text = stringResource(R.string.sync_status_conflict_button_keep_mine),
                         icon = Icons.Filled.CloudUpload,
@@ -334,9 +334,10 @@ internal fun ConflictCard(
                 } else {
                     null
                 },
-                danger = SyncStatusActionButton(
+                other = SyncStatusActionButton(
                     text = stringResource(R.string.sync_status_conflict_button_drop_mine),
                     enabled = !busy,
+                    danger = true,
                     onClick = { actions.onDropMine(row) },
                 ),
             )
@@ -381,8 +382,8 @@ internal fun FailedCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            SyncStatusRecoveryActions(
-                primary = if (reviewMessage != null) {
+            SyncStatusItemActions(
+                next = if (reviewMessage != null) {
                     expenseReviewAction(row, busy, actions)
                 } else if (row.manualCreateReviewExpenseId() != null) {
                     SyncStatusActionButton(text = stringResource(R.string.ledger_manual_review_existing), enabled = !busy,
@@ -397,9 +398,10 @@ internal fun FailedCard(
                         onClick = onRetry,
                     )
                 },
-                danger = SyncStatusActionButton(
+                other = SyncStatusActionButton(
                     text = stringResource(failedCardDangerLabels.getValue(expired)),
                     enabled = !busy,
+                    danger = true,
                     onClick = { actions.onDropFailed(row) },
                 ),
             )
@@ -415,61 +417,39 @@ private fun expenseReviewAction(row: OutboxRow, busy: Boolean, actions: SyncStat
         onClick = { actions.onOpenExpense(id) })
 }
 
+/**
+ * One action row per to-do item: the next step is the only bordered control, and stop or view
+ * links sit beside it as text. Items on this page never compete with full-width primaries.
+ */
 @Composable
-private fun SyncStatusRecoveryActions(
-    primary: SyncStatusActionButton?,
-    danger: SyncStatusActionButton,
-) {
-    if (primary == null) {
-        AppAdaptiveTrailingActionRow {
-            AppOutlinedButton(
-                modifier = it,
-                onClick = danger.onClick,
-                options = AppOutlinedButtonOptions(enabled = danger.enabled, danger = true),
+internal fun SyncStatusItemActions(next: SyncStatusActionButton?, other: SyncStatusActionButton? = null) {
+    if (next == null && other == null) return
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+    ) {
+        other?.let { action ->
+            TextButton(
+                onClick = action.onClick,
+                enabled = action.enabled,
+                modifier = Modifier.heightIn(min = AppSpacing.controlMinHeight),
+                colors = if (action.danger) {
+                    ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                } else {
+                    ButtonDefaults.textButtonColors()
+                },
             ) {
-                Text(danger.text)
+                Text(action.text)
             }
         }
-        return
-    }
-    AppAdaptiveEditActionLayout(actionCount = 2, compact = false, stackTwoActionsOnNarrow = true) { mode ->
-        when (mode) {
-            AppAdaptiveEditActionMode.Stacked -> Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-            ) {
-                AppPrimaryButton(
-                    text = primary.text,
-                    icons = AppButtonIcons(leading = primary.icon ?: Icons.Filled.CloudUpload),
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = primary.enabled,
-                    onClick = primary.onClick,
-                )
-                AppOutlinedButton(
-                    modifier = Modifier.align(Alignment.End),
-                    onClick = danger.onClick,
-                    options = AppOutlinedButtonOptions(enabled = danger.enabled, danger = true),
-                ) {
-                    Text(danger.text)
+        next?.let { action ->
+            AppOutlinedButton(onClick = action.onClick, options = AppOutlinedButtonOptions(enabled = action.enabled)) {
+                action.icon?.let {
+                    Icon(it, contentDescription = null, modifier = Modifier.size(AppIconSize.compact))
+                    Spacer(Modifier.width(AppSpacing.smallGap))
                 }
-            }
-            AppAdaptiveEditActionMode.Compact,
-            AppAdaptiveEditActionMode.Inline -> Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
-            ) {
-                AppPrimaryButton(
-                    text = primary.text,
-                    icons = AppButtonIcons(leading = primary.icon ?: Icons.Filled.CloudUpload),
-                    enabled = primary.enabled,
-                    onClick = primary.onClick,
-                )
-                AppOutlinedButton(
-                    onClick = danger.onClick,
-                    options = AppOutlinedButtonOptions(enabled = danger.enabled, danger = true),
-                ) {
-                    Text(danger.text)
-                }
+                Text(action.text)
             }
         }
     }
