@@ -96,7 +96,7 @@ class BudgetAdviceManualRateRecoveryTest {
         waitForText(context.getString(R.string.budget_advice_generate))
         compose.onNodeWithText(context.getString(R.string.arrangement_budget_title)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.arrangement_budget_currency, "JPY")).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText(context.getString(R.string.arrangement_budget_version, 3)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.arrangement_budget_version)).performScrollTo().performClick()
         compose.onNodeWithText(context.getString(R.string.arrangement_budget_excluded, "其他")).performScrollTo().assertIsDisplayed()
         compose.waitForIdle()
         saveConsumerArtPreview("arrangement-budget-definition", compose.onRoot().captureToImage().asAndroidBitmap())

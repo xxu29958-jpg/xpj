@@ -35,7 +35,7 @@ internal fun MonthlyPlanBudget(inputs: BudgetAdviceInputsDto, onOpenBudget: (() 
             AppAmountText(formatDisplayAmount(budget.totalAmountCents, currency), role = AppAmountRole.Medium)
             Text(stringResource(R.string.arrangement_budget_currency, currencyCode), style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { expanded = !expanded }) {
-                Text(stringResource(R.string.arrangement_budget_version, budget.rowVersion))
+                Text(stringResource(R.string.arrangement_budget_version))
             }
             if (expanded) {
                 Text(stringResource(R.string.arrangement_budget_scope,
