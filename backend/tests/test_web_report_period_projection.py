@@ -48,7 +48,8 @@ def period_page(monkeypatch):
     gap = ProjectionGap("USD", "JPY", date(2026, 5, 2))
     rows = [{"month": month, "home_currency_code": "JPY", "amount_cents": amount, "amount_yuan": amount,
         "amount_major_text": None if amount is None else str(amount), "count": 2, "undated_expense_count": 0,
-        "budget_cents": budget, "budget_yuan": budget, "budget_major_text": None if budget is None else str(budget),
+        "budget_cents": budget, "budget_status": "unavailable" if budget is None else "set",
+        "budget_yuan": budget, "budget_major_text": None if budget is None else str(budget),
         "missing_rates": (gap,) if amount is None else (),
         "reference_rates": () if budget is None else (ProjectionReference("USD", "JPY", date(2026, 4, 15)),)}
         for month, amount, budget in [("2026-04", 1200, 1500), ("2026-05", None, None)]]
@@ -166,7 +167,7 @@ def test_history_reader_and_csv_share_month_currency_unknowns_and_return_context
     href = next(unescape(href) for href in re.findall(r'href="([^"]+)"', overview.text) if "view=data" in href)
     reader = period_page.client.get(href)
     assert reader.status_code == 200
-    assert "2026-04" in reader.text and "2026-05" in reader.text and "待补信息" in reader.text
+    assert "2026年4月" in reader.text and "2026年5月" in reader.text and "预算待补信息" in reader.text
     download = next(unescape(href) for href in re.findall(r'href="([^"]+)"', reader.text) if "scope=six_month" in href)
     query = parse_qs(urlsplit(download).query)
     assert {key: query[key] for key in ("ledger_id", "month", "home_currency_code", "merchant_category", "granularity", "ranking_metric")} == {
@@ -176,8 +177,9 @@ def test_history_reader_and_csv_share_month_currency_unknowns_and_return_context
     assert result.status_code == 200
     assert '2026-05-six-month.csv' in result.headers['content-disposition']
     rows = list(csv.reader(result.text.lstrip('\ufeff').splitlines()))
-    assert rows[1][0:7] == ['monthly_history', '2026-04', 'JPY', '1200', '1200', '1500', '1500']
-    assert rows[2][0:7] == ['monthly_history', '2026-05', 'JPY', '', '', '', '']
+    assert rows[0][-1] == 'budget_status'
+    assert rows[1] == ['monthly_history', '2026-04', 'JPY', '1200', '1200', '1500', '1500', '2', '0', 'set']
+    assert rows[2] == ['monthly_history', '2026-05', 'JPY', '', '', '', '', '2', '0', 'unavailable']
     assert ['missing_rates', '2026-05', 'USD', 'JPY', '2026-05-02'] in rows
     assert ['reference_rates', '2026-04', 'USD', 'JPY', '2026-04-15'] in rows
     assert period_page.calls[-1] == ('history_export', {
@@ -188,11 +190,61 @@ def test_history_total_does_not_block_representable_months_and_average():
     from app.money_contract_types import MONEY_AGGREGATE_MAX
     from app.routes.web_reports import _six_month_history_view
 
-    rows = [{'amount_cents': MONEY_AGGREGATE_MAX, 'budget_cents': 0, 'missing_rates': [], 'reference_rates': []}] * 2
+    rows = [{'amount_cents': MONEY_AGGREGATE_MAX, 'budget_cents': None, 'budget_status': 'not_set',
+             'missing_rates': [], 'reference_rates': []}] * 2
     view = _six_month_history_view(rows, currency_code='JPY')
     assert view['six_month_total_label'] == '合计超出显示范围'
     assert view['six_month_average_amount_yuan'] == str(MONEY_AGGREGATE_MAX)
     assert [row['amount_cents'] for row in view['six_month_trend']] == [MONEY_AGGREGATE_MAX] * 2
+
+
+def test_history_overspent_months_count_set_budgets_including_zero_and_name_unset_ones():
+    from app.routes.web_reports import _six_month_history_view
+
+    row = {'amount_cents': 500, 'missing_rates': [], 'reference_rates': []}
+    rows = [{**row, 'budget_cents': 0, 'budget_status': 'set'}, {**row, 'budget_cents': None, 'budget_status': 'not_set'},
+            {**row, 'budget_cents': 900, 'budget_status': 'set'}]
+    view = _six_month_history_view(rows, currency_code='JPY')
+    assert view['overspent_months'] == 1
+    labels = [item['budget_label'] for item in view['six_month_trend']]
+    assert labels[1] == '未设预算' and '未设预算' not in (labels[0], labels[2])
+    unavailable = _six_month_history_view([*rows, {**row, 'budget_cents': None, 'budget_status': 'unavailable'}], currency_code='JPY')
+    assert unavailable['overspent_months'] is None
+    assert unavailable['six_month_trend'][-1]['budget_label'] == '待补信息'
+
+
+def test_web_money_puts_the_sign_before_the_currency_symbol():
+    from app.routes.web_common import templates
+
+    def render(value):
+        return templates.env.from_string("{{ value|money('¥') }}").render(value=value)
+
+    assert render("-1234.50") == "-¥1,234.50"
+    assert render("1234.50") == "¥1,234.50"
+    assert render("—") == "¥—"
+
+
+def test_year_ago_change_is_signed_and_names_a_year_without_records(period_page):
+    def fact(name):
+        return re.search(rf"<dt>{name}</dt><dd>(.*?)</dd>", _report_response(period_page).text).group(1)
+
+    assert fact("较去年同月") == "待补信息"
+    period_page.payload.update(total_amount_cents=2500, year_over_year_total_amount_cents=0, year_over_year_count=0,
+                               year_over_year_delta_amount_cents=2500)
+    assert fact("较去年同月") == "去年同月没有记录"
+    period_page.payload.update(year_over_year_total_amount_cents=1000, year_over_year_count=3, year_over_year_delta_amount_cents=1500)
+    assert fact("较去年同月").startswith("+") and fact("较去年同月").endswith("1,500")
+    period_page.payload.update(year_over_year_delta_amount_cents=-1500)
+    assert fact("较去年同月").startswith("-") and "+" not in fact("较去年同月")
+
+
+def test_category_comparison_names_year_ago_only_when_there_is_one(period_page):
+    def subtitle():
+        return re.search(r"分类对比</div>\s*<div class=\"product-panel-subtitle\">(.*?)</div>", _report_response(period_page).text).group(1)
+
+    assert subtitle() == "本月与上月、去年同月"  # a year-ago amount still waiting for its rate is something to compare
+    period_page.payload["category_comparison"][0]["year_over_year_amount_cents"] = 0
+    assert subtitle() == "本月与上月"
 
 
 def test_navigation_export_and_rate_recovery_keep_original_report_task(period_page):

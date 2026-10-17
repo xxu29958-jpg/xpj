@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, select_autoescape
 
-from app.routes.web_common import _grouped_amount
+from app.routes.web_common import _grouped_amount, _money_amount
 
 
 @pytest.mark.parametrize(("can_write", "archived"), [(True, False), (False, False), (False, True)])
@@ -17,6 +17,7 @@ def test_income_rows_offer_readable_history_without_requiring_edit_permission(ca
         DictLoader({"base.html": "{% block content %}{% endblock %}"}), FileSystemLoader(templates),
     ]), autoescape=select_autoescape(["html"]))
     environment.filters["grouped"] = _grouped_amount
+    environment.filters["money"] = _money_amount
     plan = {"public_id": "income-original", "label": "工资预测", "source_type": "salary", "frequency": "monthly",
         "home_currency_code": "JPY", "amount_cents": 1200, "pay_day": 31, "row_version": 7}
     body = environment.get_template("income_plans.html").render(
@@ -42,6 +43,7 @@ def test_history_renders_original_definition_and_unknown_months_without_mutation
         DictLoader({"base.html": "{% block content %}{% endblock %}"}), FileSystemLoader(templates),
     ]), autoescape=select_autoescape(["html"]))
     environment.filters["grouped"] = _grouped_amount
+    environment.filters["money"] = _money_amount
     environment.filters["to_iso"] = str
     snapshot = {"label": "<原工资预测>", "source_type": "salary", "frequency": "one_time",
         "income_month": "2026-11", "amount_cents": 1200, "home_currency_code": currency, "pay_day": 31, "status": "archived"}

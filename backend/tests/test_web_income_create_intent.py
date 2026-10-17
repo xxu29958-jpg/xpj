@@ -9,7 +9,7 @@ from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 
 from app.errors import AppError
 from app.routes import web_income_plans
-from app.routes.web_common import _grouped_amount
+from app.routes.web_common import _grouped_amount, _money_amount
 from app.services.currency_common import currency_input_metadata
 
 
@@ -18,6 +18,7 @@ def test_income_create_form_retains_raw_money_month_and_original_submission():
         FileSystemLoader(Path(__file__).parents[1] / "app" / "templates" / "web")])
     environment = Environment(loader=loader, autoescape=True)
     environment.filters["grouped"] = _grouped_amount
+    environment.filters["money"] = _money_amount
     html = environment.get_template("income_plans.html").render(
         can_write=True, income_creating=True, plans_active=[], plans_archived=[], selected_ledger_id="owner",
         home_currency_code="CNY", currency_input=currency_input_metadata("CNY"),

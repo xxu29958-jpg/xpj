@@ -39,6 +39,7 @@ def test_unknown_budget_line_does_not_become_zero_or_erase_known_spending(monkey
         currency_code="JPY", timezone_name="UTC")
     assert rows[-1]["amount_cents"] == 300
     assert rows[-1]["budget_cents"] is None
+    assert rows[-1]["budget_status"] == "unavailable"
     assert rows[-1]["budget_yuan"] is None
     assert rows[-1]["missing_rates"] == (money.ProjectionGap("CNY", "JPY", date(2026, 9, 9)),)
 
@@ -72,3 +73,13 @@ def test_budget_line_reads_only_recorded_limit_not_unrelated_spending_calculatio
     rows = _history.six_month_summary(StatsRows([]), anchor_month="2026-09", tenant_id="owner",
         currency_code="JPY", timezone_name="UTC")
     assert all((row["budget_cents"], row["amount_cents"]) == (1200, 0) for row in rows)
+
+
+def test_month_without_budget_is_not_a_zero_budget(monkeypatch):
+    budgets = {"2026-08": SimpleNamespace(home_currency_code="JPY", total_amount_cents=0, rollover_amount_cents=0)}
+    monkeypatch.setattr(_history, "_get_budget", lambda _db, *, tenant_id, month: budgets.get(month))
+    rows = {row["month"]: row for row in _history.six_month_summary(
+        StatsRows([]), anchor_month="2026-09", tenant_id="owner", currency_code="JPY", timezone_name="UTC")}
+    assert (rows["2026-08"]["budget_cents"], rows["2026-08"]["budget_status"]) == (0, "set")
+    assert (rows["2026-09"]["budget_cents"], rows["2026-09"]["budget_status"]) == (None, "not_set")
+    assert rows["2026-09"]["budget_major_text"] is None

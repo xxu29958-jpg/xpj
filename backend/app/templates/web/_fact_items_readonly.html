@@ -13,9 +13,9 @@
     </div>
   </div>
   {% if receipt_items.status == 'mismatch_known' %}
-  <div class="product-feedback product-feedback--warning">明细合计与账单金额差 {{ currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan|grouped }}。</div>
+  <div class="product-feedback product-feedback--warning">明细合计与账单金额差 {{ receipt_items.mismatch_yuan|money(currency_input.currency_symbol) }}。</div>
   {% elif receipt_items.status == 'mismatch_acknowledged' %}
-  <div class="product-feedback">已确认原小票合计与明细存在 {{ currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan|grouped }} 差异。</div>
+  <div class="product-feedback">已确认原小票合计与明细存在 {{ receipt_items.mismatch_yuan|money(currency_input.currency_symbol) }} 差异。</div>
   {% endif %}
   {{ subtask_draft.acknowledge() }}
   {% set visible_items = receipt_items.rows | selectattr('name') | list %}
@@ -25,15 +25,15 @@
     <div class="product-entry product-entry--static" role="listitem">
       <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#shopping-bag"/></svg></span>
       <div class="product-entry-copy">
-        <div class="product-entry-heading"><strong>{{ item.name }}</strong><span class="product-entry-amount">{% if item.amount_yuan %}{{ currency_input.currency_symbol }}{{ item.amount_yuan|grouped }}{% else %}金额未填{% endif %}</span></div>
+        <div class="product-entry-heading"><strong>{{ item.name }}</strong><span class="product-entry-amount">{% if item.amount_yuan %}{{ item.amount_yuan|money(currency_input.currency_symbol) }}{% else %}金额未填{% endif %}</span></div>
         {% if item.kind != 'product' %}<span>{{ {'discount': '优惠/折扣', 'tax': '税', 'service_fee': '服务费'}.get(item.kind, item.kind) }}</span>{% endif %}
-        {% if item.quantity_text or item.unit_price_yuan %}<span>{% if item.quantity_text %}数量 {{ item.quantity_text }}{% endif %}{% if item.quantity_text and item.unit_price_yuan %} · {% endif %}{% if item.unit_price_yuan %}单价 {{ currency_input.currency_symbol }}{{ item.unit_price_yuan|grouped }}{% endif %}</span>{% endif %}
+        {% if item.quantity_text or item.unit_price_yuan %}<span>{% if item.quantity_text %}数量 {{ item.quantity_text }}{% endif %}{% if item.quantity_text and item.unit_price_yuan %} · {% endif %}{% if item.unit_price_yuan %}单价 {{ item.unit_price_yuan|money(currency_input.currency_symbol) }}{% endif %}</span>{% endif %}
         {% if item.category %}<span>分类 {{ item.category }}</span>{% endif %}
       </div>
     </div>
     {% endfor %}
   </div>
-  {% if receipt_items.total_yuan %}<div class="fact-reconcile"><span>明细合计 · {{ currency_input.currency_code }}</span><strong>{{ currency_input.currency_symbol }}{{ receipt_items.total_yuan|grouped }}</strong></div>{% endif %}
+  {% if receipt_items.total_yuan %}<div class="fact-reconcile"><span>明细合计 · {{ currency_input.currency_code }}</span><strong>{{ receipt_items.total_yuan|money(currency_input.currency_symbol) }}</strong></div>{% endif %}
   {% else %}
   <div class="meta">没有记录明细行。</div>
   {% endif %}

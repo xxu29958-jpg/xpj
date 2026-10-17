@@ -13,7 +13,7 @@ import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, StrictUndefined
 from starlette.requests import Request
 
-from app.routes.web_common import _grouped_amount
+from app.routes.web_common import _grouped_amount, _money_amount
 
 
 @pytest.fixture(scope="module")
@@ -106,6 +106,7 @@ def test_data_quality_routes_each_uncategorized_count_to_its_records() -> None:
         undefined=StrictUndefined,
     )
     environment.filters["grouped"] = _grouped_amount
+    environment.filters["money"] = _money_amount
     summary = {
         "pending_total": 2, "missing_amount": 0, "missing_fx": 0, "missing_merchant": 0,
         "suspected_duplicates": 0, "ready_to_confirm_categorized": 0,
@@ -197,6 +198,7 @@ def test_clear_tag_links_keep_only_the_current_month_or_all_month_scope(filter, 
         ]), autoescape=True, undefined=StrictUndefined,
     )
     environment.filters["grouped"] = _grouped_amount
+    environment.filters["money"] = _money_amount
     body = environment.get_template("confirmed.html").render(
         request=Request({"type": "http", "path": "/web/confirmed", "headers": [],
             "query_string": b"ledger_id=family&home_currency_code=JPY&tag=Shared"}),

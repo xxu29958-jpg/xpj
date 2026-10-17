@@ -164,11 +164,11 @@
     {# ADR-0035: items_sum_status banner — mismatch_known 时提示用户确认或修正 #}
     {% if receipt_items.status == 'mismatch_known' %}
     <div class="product-feedback product-feedback--warning" role="status" data-items-mismatch>
-      明细合计与账单金额差 {{ currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan|grouped }}。{% if can_write and not expense_review_inspection %}检查明细，或如果原小票本身如此，点下面“原小票如此”确认。{% endif %}
+      明细合计与账单金额差 {{ receipt_items.mismatch_yuan|money(currency_input.currency_symbol) }}。{% if can_write and not expense_review_inspection %}检查明细，或如果原小票本身如此，点下面“原小票如此”确认。{% endif %}
     </div>
     {% elif receipt_items.status == 'mismatch_acknowledged' %}
     <div class="product-feedback" role="status">
-      已确认原小票合计与明细存在 {{ currency_input.currency_symbol }}{{ receipt_items.mismatch_yuan|grouped }} 差异；后续编辑不再弹警告。
+      已确认原小票合计与明细存在 {{ receipt_items.mismatch_yuan|money(currency_input.currency_symbol) }} 差异；后续编辑不再弹警告。
     </div>
     {% endif %}
     {{ subtask_draft.acknowledge() }}
@@ -181,7 +181,7 @@
       {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
       {% with subtask_review=items_review, subtask_kind='items', subtask_label='商品明细' %}{% include '_expense_subtask_review.html' %}{% endwith %}
       {% include "_expense_items_table.html" %}
-      {% if receipt_items.total_yuan %}<div class="fact-reconcile"><span>已存明细合计 · {{ currency_input.currency_code }}</span><strong>{{ currency_input.currency_symbol }}{{ receipt_items.total_yuan|grouped }}</strong></div>{% endif %}
+      {% if receipt_items.total_yuan %}<div class="fact-reconcile"><span>已存明细合计 · {{ currency_input.currency_code }}</span><strong>{{ receipt_items.total_yuan|money(currency_input.currency_symbol) }}</strong></div>{% endif %}
       <p class="hint">金额按 {{ currency_input.currency_code }} 记录。这里仅保存商品明细，回到核对后再确认入账。</p>
       <div class="product-form-actions">
         <button type="submit" class="product-button" data-subtask-submit{% if not can_write %} hidden{% endif %}{% if not can_write or items_review.needs_review %} disabled{% endif %}>保存明细</button>
@@ -205,9 +205,9 @@
     {% endif %}
     {% if split_rows.total_yuan %}
     <div class="fact-reconcile">
-      <span>已分摊 · {{ currency_input.currency_code }}<br>账单 {{ currency_input.currency_symbol }}{{ split_rows.parent_amount_yuan|grouped }}</span><strong>{{ currency_input.currency_symbol }}{{ split_rows.total_yuan|grouped }}</strong>
-      {% if split_rows.reconcile_state == 'partial' %}· 还差 {{ currency_input.currency_symbol }}{{ split_rows.reconcile_delta_yuan|grouped }} 未分配{% endif %}
-      {% if split_rows.reconcile_state == 'overallocated' %}<span class="error-text">· 已拆超出 {{ currency_input.currency_symbol }}{{ split_rows.reconcile_delta_yuan|grouped }}</span>{% endif %}
+      <span>已分摊 · {{ currency_input.currency_code }}<br>账单 {{ split_rows.parent_amount_yuan|money(currency_input.currency_symbol) }}</span><strong>{{ split_rows.total_yuan|money(currency_input.currency_symbol) }}</strong>
+      {% if split_rows.reconcile_state == 'partial' %}· 还差 {{ split_rows.reconcile_delta_yuan|money(currency_input.currency_symbol) }} 未分配{% endif %}
+      {% if split_rows.reconcile_state == 'overallocated' %}<span class="error-text">· 已拆超出 {{ split_rows.reconcile_delta_yuan|money(currency_input.currency_symbol) }}</span>{% endif %}
     </div>
     {% endif %}
     <form method="post" action="/web/expenses/{{ e.id }}/splits/save" data-review-form {{ subtask_draft.binding('splits') }}>

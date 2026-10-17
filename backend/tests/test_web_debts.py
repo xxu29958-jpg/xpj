@@ -283,7 +283,7 @@ def test_debt_view_maps_labels_tones_and_fallbacks() -> None:
     assert external_blank["name"] == "外部欠款"
     # Remaining hero is exposed as cur/int/dec segments for the editorial split.
     seg = _debt_view(_stub_debt(remaining_amount_cents=123456))["remaining_segments"]
-    assert seg == {"cur": "¥", "int": "1,234", "dec": ".56"}
+    assert seg == {"sign": "", "cur": "¥", "int": "1,234", "dec": ".56"}
 
 
 def test_debt_view_member_branch_is_communal() -> None:
@@ -387,10 +387,13 @@ def test_direction_and_totals_keep_participant_currency_and_third_party_boundari
 def test_amount_segments_splits_cur_int_dec() -> None:
     """Editorial amount split: small currency mark + thousands-separated integer +
     decimal tail. No-fraction currencies drop the decimal segment."""
-    assert _amount_segments(50000, "CNY") == {"cur": "¥", "int": "500", "dec": ".00"}
-    assert _amount_segments(123456, "CNY") == {"cur": "¥", "int": "1,234", "dec": ".56"}
-    assert _amount_segments(0, "CNY") == {"cur": "¥", "int": "0", "dec": ".00"}
-    assert _amount_segments(None, "CNY") == {"cur": "¥", "int": "0", "dec": ".00"}
+    assert _amount_segments(50000, "CNY") == {"sign": "", "cur": "¥", "int": "500", "dec": ".00"}
+    assert _amount_segments(123456, "CNY") == {"sign": "", "cur": "¥", "int": "1,234", "dec": ".56"}
+    assert _amount_segments(0, "CNY") == {"sign": "", "cur": "¥", "int": "0", "dec": ".00"}
+    assert _amount_segments(None, "CNY") == {"sign": "", "cur": "¥", "int": "0", "dec": ".00"}
+    # A net refund keeps its sign ahead of the symbol: -¥500.00.
+    assert _amount_segments(-50000, "CNY") == {"sign": "-", "cur": "¥", "int": "500", "dec": ".00"}
+    assert _amount_segments(-1500, "JPY") == {"sign": "-", "cur": "¥", "int": "1,500", "dec": ""}
     # JPY is a no-fraction currency → dec is empty, amount is the raw minor unit.
     assert _amount_segments(1500, "JPY")["dec"] == ""
     assert _amount_segments(1500, "JPY")["int"] == "1,500"
@@ -505,7 +508,7 @@ def test_detail_view_member_neutral_and_fx_fallback() -> None:
             remaining_amount_cents=30000,
         )
     )
-    assert partial["remaining_segments"] == {"cur": "¥", "int": "300", "dec": ".00"}
+    assert partial["remaining_segments"] == {"sign": "", "cur": "¥", "int": "300", "dec": ".00"}
     assert partial["paid_ratio_percent"] == 40  # 20000 / 50000
     # Member branch never carries the external accounting fields.
     assert "paid_ratio_percent" not in member
