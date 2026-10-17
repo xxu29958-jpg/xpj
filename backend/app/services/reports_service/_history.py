@@ -34,11 +34,11 @@ def export_six_month_summary_csv(db, *, anchor_month, tenant_id, timezone_name=N
     output = StringIO()
     writer = csv.writer(output, lineterminator="\n")
     writer.writerow(["section", "month", "home_currency_code", "net_spending_minor", "net_spending_major",
-                     "budget_minor", "budget_major", "count", "undated_expense_count"])
+                     "budget_minor", "budget_major", "count", "undated_expense_count", "budget_status"])
     for row in rows:
         writer.writerow(["monthly_history", row["month"], row["home_currency_code"], row["amount_cents"],
                          row["amount_major_text"], row["budget_cents"], row["budget_major_text"],
-                         row["count"], row["undated_expense_count"]])
+                         row["count"], row["undated_expense_count"], row["budget_status"]])
     writer.writerow([])
     writer.writerow(["section", "month", "source_currency_code", "home_currency_code", "rate_date"])
     for row in rows:
@@ -57,7 +57,8 @@ def _history_row(db, *, tenant_id, month, period, entries, home, zone, today, ra
     if undated:
         amount = None
     budget = _get_budget(db, tenant_id=tenant_id, month=month)
-    limit = 0
+    # A month without a budget has no limit at all; a configured budget may legitimately be zero.
+    limit = None
     if budget is not None:
         rate_date = min(today, period[1] - timedelta(days=1))
         project_amount = project_valuation_amount if rate_date == today else project_recorded_amount
@@ -65,9 +66,10 @@ def _history_row(db, *, tenant_id, month, period, entries, home, zone, today, ra
             amount_minor=value, source_currency=budget.home_currency_code, home_currency=home,
             rate_date=rate_date, missing_rates=gaps, rate_cache=rate_cache, reference_rates=references)
             for value in (budget.total_amount_cents, budget.rollover_amount_cents)), label="reports.budget_available")
+    budget_status = "not_set" if budget is None else ("unavailable" if limit is None else "set")
     return {"month": month, "home_currency_code": home, "undated_expense_count": undated, "missing_rates": ordered_projection_gaps(gaps),
         "reference_rates": tuple(sorted(references)),
-        "amount_cents": amount, "count": count, "budget_cents": limit,
+        "amount_cents": amount, "count": count, "budget_cents": limit, "budget_status": budget_status,
         "amount_yuan": None if amount is None else minor_amount_major_number(amount, home),
         "amount_major_text": None if amount is None else minor_amount_value(amount, home),
         "budget_yuan": None if limit is None else minor_amount_major_number(limit, home),

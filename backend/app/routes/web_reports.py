@@ -199,9 +199,12 @@ def _monthly_report_sections(
     )
 
 
+_BUDGET_STATUS_LABELS = {"not_set": "未设预算", "unavailable": "待补信息"}
+
+
 def _six_month_history_view(rows: list[dict], *, currency_code: str) -> dict:
     """Keep the history chart, accessible table, and average on the same series."""
-    amounts_known = all(row["amount_cents"] is not None and row["budget_cents"] is not None for row in rows)
+    amounts_known = all(row["amount_cents"] is not None and row["budget_status"] != "unavailable" for row in rows)
     total = None if any(row["amount_cents"] is None for row in rows) else sum(
         _money(row["amount_cents"], "history_amount") for row in rows
     )
@@ -211,11 +214,12 @@ def _six_month_history_view(rows: list[dict], *, currency_code: str) -> dict:
     return {
         "six_month_trend": [{**row, "missing_rates": projection_gaps_view(row["missing_rates"]),
             "amount_label": _home_amount_label(row["amount_cents"], currency_code) if row["amount_cents"] is not None else "待补信息",
-            "budget_label": _home_amount_label(row["budget_cents"], currency_code) if row["budget_cents"] is not None else "待补信息",
+            "budget_label": _BUDGET_STATUS_LABELS.get(row["budget_status"]) or _home_amount_label(row["budget_cents"], currency_code),
             "reference_rates": projection_gaps_view(row["reference_rates"])} for row in rows],
         "six_month_average_amount_yuan": _six_month_average_amount_yuan(rows, currency_code=currency_code),
         "six_month_total_label": total_label,
-        "overspent_months": sum(row["amount_cents"] > row["budget_cents"] > 0 for row in rows) if amounts_known else None,
+        "overspent_months": sum(row["budget_status"] == "set" and row["amount_cents"] > row["budget_cents"] for row in rows)
+            if amounts_known else None,
     }
 
 

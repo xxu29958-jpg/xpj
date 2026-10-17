@@ -46,7 +46,8 @@
 </section>
 <section class="report-history" aria-label="半年趋势">
   <div id="chart-trend" class="report-chart report-chart--tall" data-series='{{ six_month_trend | tojson }}'></div>
-  <p class="hint">柱形表示净支出，虚线为预算；精确数值可在明细数据中核对。</p>
+  {% set _budgeted_months = six_month_trend | rejectattr("budget_status", "equalto", "not_set") | list %}
+  <p class="hint">柱形表示净支出{% if _budgeted_months %}，虚线为当月预算{% endif %}；精确数值可在明细数据中核对。</p>
 </section>
 <div class="product-form-actions report-primary-action"><a class="product-button product-button--primary" href="/web/reports?{{ report_query }}&amp;view=data">查看明细数据 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>
 <script type="application/json" id="reports-overview-data">{{ report | tojson }}</script>

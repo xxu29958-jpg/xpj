@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_month_label.html' import month_label %}
 {% set product_body_domain = 'insights' %}
 {% set page_surface = 'tertiary' %}
 {% block title %}月度明细数据 · 小票夹{% endblock %}
@@ -13,7 +14,7 @@
 <div class="report-monthly-rows">
   {% for item in six_month_trend %}
   <section class="report-monthly-row">
-    <div><strong>{{ item.month }}</strong><span>{{ report.home_currency_code }}{% if item.budget_cents is not none and item.budget_cents != 0 %} · 预算 {{ item.budget_label }}{% elif item.budget_cents is none %} · 预算待补信息{% endif %}</span></div>
+    <div><strong>{{ month_label(item.month) }}</strong><span>{{ report.home_currency_code }} · {% if item.budget_status == 'set' %}预算 {{ item.budget_label }}{% elif item.budget_status == 'unavailable' %}预算待补信息{% else %}未设预算{% endif %}</span></div>
     <strong class="num">{{ item.amount_label }}</strong>
     {% if item.missing_rates %}<p class="text-meta">本月有换算信息待补齐，请从报表中的原任务继续处理。</p>{% endif %}
     {% if item.reference_rates %}{% with reference_rates=item.reference_rates %}{% include 'partials/reference_rates.html' %}{% endwith %}{% endif %}

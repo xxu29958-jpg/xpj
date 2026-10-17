@@ -177,14 +177,19 @@
     return amount / Math.pow(10, digits);
   };
 
+  // The sign leads the symbol (-¥500.00), as in the server's money labels.
+  function signedHomeMoney(number) {
+    const negative = number.charAt(0) === "-";
+    return (negative ? "-" : "") + app.homeCurrencySymbol() + (negative ? number.slice(1) : number);
+  }
+
   app.homeMoneyMinor = function homeMoneyMinor(value) {
     const major = app.homeMinorToMajorText(value);
-    return app.homeCurrencySymbol() +
-      (major === null ? UNKNOWN_MONEY_TEXT : app.homeMajorNumber(major));
+    return major === null ? app.homeCurrencySymbol() + UNKNOWN_MONEY_TEXT : signedHomeMoney(app.homeMajorNumber(major));
   };
 
   app.homeMoneyMajor = function homeMoneyMajor(value) {
-    return app.homeCurrencySymbol() + app.homeMajorNumber(value);
+    return signedHomeMoney(app.homeMajorNumber(value));
   };
 
   app.homeMoney = function homeMoney(value) {

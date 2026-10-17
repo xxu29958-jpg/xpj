@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from tests._web_budget_test_support import _save_budget
 from tests._web_native_form_support import hidden_post_forms, open_creation_form
 from tests.family_ledger_test_support import set_owner_ledger_role
 
@@ -208,6 +209,18 @@ def test_web_reports_renders_six_month_trend_chart_container(
     six_month = json.loads(trend_blob.group(1))
     assert len(six_month) == 6
     assert {"month", "amount_yuan", "budget_yuan"} <= six_month[0].keys()
+
+
+def test_web_reports_trend_hint_names_the_budget_only_when_a_month_has_one(web_client: TestClient) -> None:
+    """未设预算的月份在 data-series 里是 0, 图上不画预算; 说明文字也不能提一条不存在的虚线。"""
+    def hint() -> str:
+        response = web_client.get("/web/reports?ledger_id=owner&month=2026-05")
+        assert response.status_code == 200
+        return re.search(r'id="chart-trend".*?<p class="hint">(.*?)</p>', response.text, re.DOTALL).group(1)
+
+    assert hint() == "柱形表示净支出；精确数值可在明细数据中核对。"
+    _save_budget(web_client)
+    assert hint() == "柱形表示净支出，虚线为当月预算；精确数值可在明细数据中核对。"
 
 
 def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) -> None:
