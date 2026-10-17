@@ -705,6 +705,10 @@ class DebtGoalDraftNavigationRoomTest {
 
     private fun enterGoals() {
         compose.runOnIdle { inner.navigate(ProductSecondaryPage.DebtGoals.route) }
+        val owner = goalOwner()
+        // Compose idleness does not join the first Room observation or the query cache write.
+        compose.waitUntil(10_000) { owner.state.value.fetchedAt != null || owner.state.value.error != null }
+        assertEquals("Initial goal read failed", null, owner.state.value.error)
         compose.waitForIdle()
     }
 
