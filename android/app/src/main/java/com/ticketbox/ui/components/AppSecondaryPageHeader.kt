@@ -37,7 +37,6 @@ class AppSecondaryPageSlots(
     val status: (@Composable () -> Unit)? = null,
     val actions: (@Composable () -> Unit)? = null,
     val bottomBar: (@Composable () -> Unit)? = null,
-    val headingPrefix: (@Composable () -> Unit)? = null,
 )
 
 internal fun AppSecondaryPageSlots.resolveBottomBar(
@@ -67,7 +66,6 @@ fun AppSecondaryPageHeader(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
     ) {
         onBack?.let { AppBackButton(text = backText, onClick = it) }
-        slots.headingPrefix?.invoke()
         AppSecondaryTitleText(title = title, subtitle = subtitle, modifier = Modifier.fillMaxWidth())
         slots.actions?.invoke()
     }
