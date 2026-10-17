@@ -466,7 +466,7 @@ fun PendingScreen(
                         Text(
                             text = accountingDay?.let(::displayCalendarDay)
                                 ?: stringResource(R.string.calendar_date_pending),
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge,
                             modifier = Modifier.padding(top = AppSpacing.smallGap),
                         )
                     }
