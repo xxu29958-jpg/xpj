@@ -216,7 +216,7 @@ class DebtOfflineReadingConnectedTest {
     }
 
     private fun assertOriginalPaymentDate() {
-        compose.onNodeWithText("2026-08-09 · 账务归属 2026-08-10").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("2026年8月9日 · 账务归属 2026年8月10日").performScrollTo().assertIsDisplayed()
         compose.waitForIdle()
         saveConsumerArtPreview(if (offline) "debt-payment-time-offline" else "debt-payment-time-online",
             requireNotNull(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))

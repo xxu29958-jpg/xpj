@@ -17,7 +17,7 @@ class DebtActivityContractTest {
         assertEquals("2026-04-30", reopened.accountingTime?.userLocalDate)
         assertEquals(3L, reopened.accountingTime?.calendarRevision)
         assertEquals(com.ticketbox.domain.model.UiText.res(
-            com.ticketbox.R.string.accounting_time_date_with_ledger_day, "2026-04-30", "2026-05-01"),
+            com.ticketbox.R.string.accounting_time_date_with_ledger_day, "2026年4月30日", "2026年5月1日"),
             com.ticketbox.ui.components.accountingTimeDateText(reopened.accountingTime, reopened.paidAt))
     }
 

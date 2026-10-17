@@ -187,15 +187,15 @@ fun displayDate(value: String?): String {
 fun displayCalendarDay(day: String): String =
     runCatching { LocalDate.parse(day).format(DateTimeFormatter.ofPattern(DATE_PATTERN)) }.getOrDefault(day)
 
-/** Frozen input/ledger days stay independent of the current device time zone. */
+/** Frozen input/ledger days stay independent of the current device time zone and read like other dates. */
 fun accountingTimeDateText(evidence: ExpenseAccountingTime?, legacyInstant: String?): UiText {
     if (evidence == null) return UiText.raw(displayDate(legacyInstant))
     val day = evidence.userLocalDate ?: evidence.accountingDate
         ?: return UiText.res(R.string.accounting_time_date_unknown)
-    val label = displayDate(day)
+    val label = displayCalendarDay(day)
     val accountingDay = evidence.accountingDate
     return if (accountingDay != null && accountingDay != day) {
-        UiText.res(R.string.accounting_time_date_with_ledger_day, label, displayDate(accountingDay))
+        UiText.res(R.string.accounting_time_date_with_ledger_day, label, displayCalendarDay(accountingDay))
     } else UiText.raw(label)
 }
 
