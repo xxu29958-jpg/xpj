@@ -167,9 +167,9 @@ internal class ExpenseRepositoryCore(
                 logNetworkWarning("operation=ExpenseConnection ${networkDiagnosticMessage(error, serverUrl)}", error)
                 userNetworkMessage(error, serverUrl)
             }
-            is RepositoryException -> error.message ?: "操作失败。"
+            is RepositoryException -> error.message ?: "暂时没能完成，请稍后再试。"
             is IllegalArgumentException -> error.message ?: "请求参数不正确。"
-            else -> error.message ?: "操作失败。"
+            else -> error.message ?: "暂时没能完成，请稍后再试。"
         }
     }
 

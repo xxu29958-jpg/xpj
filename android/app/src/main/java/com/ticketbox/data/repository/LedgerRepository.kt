@@ -562,7 +562,7 @@ class LedgerRepository(
             Result.failure(RepositoryException(error.message ?: "请求参数不正确。"))
         } catch (error: RuntimeException) {
             if (error is CancellationException) throw error
-            Result.failure(RepositoryException(error.message ?: "操作失败。"))
+            Result.failure(RepositoryException(error.message ?: "暂时没能完成，请稍后再试。"))
         }
     }
 
