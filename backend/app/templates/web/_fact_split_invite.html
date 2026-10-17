@@ -37,7 +37,7 @@
       <button type="submit" class="product-button product-button--primary">发起拆账</button>
       {% endif %}
     </div>
-    <p class="meta">本张账单还可分摊 {{ currency_input.currency_symbol }}{{ split_invite.remaining_yuan|grouped }}。</p>
+    <p class="meta">本张账单还可分摊 {{ split_invite.remaining_yuan|money(currency_input.currency_symbol) }}。</p>
   </form>
   {% endif %}
 

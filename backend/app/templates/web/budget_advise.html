@@ -7,7 +7,7 @@
 {% block title %}本月安排 · 小票夹{% endblock %}
 {% block page_scripts %}{{ drafts.scripts(asset_version) }}{% endblock %}
 
-{% macro money(value, subtract=false) %}{% if value is none %}{{ '待核对输入' if form_error or undated_expense_count else '待补汇率' }}{% else %}{% if subtract %}− {% endif %}{{ currency_input.currency_symbol }}{{ value|grouped }}{% endif %}{% endmacro %}
+{% macro money(value, subtract=false) %}{% if value is none %}{{ '待核对输入' if form_error or undated_expense_count else '待补汇率' }}{% else %}{% if subtract %}− {% endif %}{{ value|money(currency_input.currency_symbol) }}{% endif %}{% endmacro %}
 {% block content %}
 {% set editor_currency = arrangement_currency_input|default(currency_input) %}
 <header class="product-page-header">
@@ -159,7 +159,7 @@
         <ol class="product-history" aria-label="各分类建议">
           {% for s in advice.suggestions %}
           <li class="product-history-item">
-            <div class="product-entry-heading"><strong>{{ s.category if s.category is not none else '整体安排' }}</strong><strong class="product-entry-amount">{{ home_currency_symbol }}{{ minor_amount_label(s.suggested_amount_cents)|grouped }}</strong></div>
+            <div class="product-entry-heading"><strong>{{ s.category if s.category is not none else '整体安排' }}</strong><strong class="product-entry-amount">{{ minor_amount_label(s.suggested_amount_cents)|money(home_currency_symbol) }}</strong></div>
             <span>建议金额 · {{ s.rationale }}</span>
           </li>
           {% endfor %}

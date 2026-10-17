@@ -126,11 +126,12 @@ def _amount_segments(
         empty_is_zero=True,
     )
     digits = minor_unit_digits(code)
-    if digits == 0:
-        return {"cur": symbol, "int": f"{cents:,}", "dec": ""}
+    # The sign leads the symbol (-¥500.00), as in every other money label.
     sign = "-" if cents < 0 else ""
+    if digits == 0:
+        return {"sign": sign, "cur": symbol, "int": f"{abs(cents):,}", "dec": ""}
     whole, frac = divmod(abs(cents), 10**digits)
-    return {"cur": symbol, "int": f"{sign}{whole:,}", "dec": f".{frac:0{digits}d}"}
+    return {"sign": sign, "cur": symbol, "int": f"{whole:,}", "dec": f".{frac:0{digits}d}"}
 
 
 def _exchange_rate_source_label(source: str) -> str:

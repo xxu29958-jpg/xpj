@@ -56,7 +56,7 @@
 {% if hero %}
 <section class="product-surface" aria-label="固定支出概览">
   <span class="product-amount-label">每月固定支出</span>
-  <strong class="product-amount">{{ home_currency_symbol }}{{ hero.monthly_total_yuan|grouped }}</strong>
+  <strong class="product-amount">{{ hero.monthly_total_yuan|money(home_currency_symbol) }}</strong>
   <span class="product-amount-meta">{{ hero.active_count }} 项活跃固定支出合计</span>
   <dl class="product-surface-rows">
     {% if hero.next_due %}

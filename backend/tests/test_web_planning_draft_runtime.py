@@ -13,7 +13,7 @@ from uuid import uuid4
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, select_autoescape
 
-from app.routes.web_common import _grouped_amount
+from app.routes.web_common import _grouped_amount, _money_amount
 from app.services.time_service import to_iso
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,6 +29,7 @@ ENV = Environment(loader=ChoiceLoader([
     FileSystemLoader(ROOT / "backend/app/templates/web"),
 ]), autoescape=select_autoescape(["html"]))
 ENV.filters["grouped"] = _grouped_amount
+ENV.filters["money"] = _money_amount
 ENV.filters["to_iso"] = to_iso
 HITS = {}
 MISSING = []

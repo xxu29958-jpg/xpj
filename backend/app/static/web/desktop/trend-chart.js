@@ -13,17 +13,21 @@
 
     const chart = echarts.init(el, null, { renderer: "canvas" });
     function build() {
-      const labels = series.map(function (s) { return s.month.slice(5) + "月"; });
+      const labels = series.map(function (s) { return Number(s.month.slice(5)) + "月"; });
       const amounts = series.map(function (s) {
         return {
           value: s.amount_cents == null ? null : app.homeMinorToMajor(s.amount_cents),
           majorText: s.amount_cents == null ? null : (s.amount_major_text || app.homeMinorToMajorText(s.amount_cents)),
         };
       });
-      const budgets = series.map(function (s) {
+      // Only a set budget has a level to draw. A month without one is left out of the tooltip;
+      // a set budget waiting for its rate stays in it as 待补汇率.
+      const budgets = series.map(function (s, index) {
+        const set = s.budget_status === "set";
         return {
-          value: s.budget_cents == null ? null : app.homeMinorToMajor(s.budget_cents),
-          majorText: s.budget_cents == null ? null : (s.budget_major_text || app.homeMinorToMajorText(s.budget_cents)),
+          value: [index, set ? app.homeMinorToMajor(s.budget_cents) : null],
+          majorText: set ? (s.budget_major_text || app.homeMinorToMajorText(s.budget_cents)) : null,
+          unset: s.budget_status === "not_set",
         };
       });
       const axisLabel = app.readVar("--chart-axis-label");
@@ -44,7 +48,7 @@
           formatter: function (params) {
             const head = '<div style="font-size:var(--type-caption-size);margin-bottom:var(--space-2)">' +
                          params[0].axisValue + "</div>";
-            return head + params.map(function (p) {
+            return head + params.filter(function (p) { return !p.data.unset; }).map(function (p) {
               return '<div style="display:flex;justify-content:space-between;gap:var(--space-4);font-size:var(--type-caption-size)">' +
                 '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' +
                 p.color + ';margin-right:6px;vertical-align:1px"></span>' + p.seriesName + "</span>" +
@@ -73,16 +77,27 @@
         },
         series: [
           {
-            name: "预算", type: "line", data: budgets,
-            smooth: false, connectNulls: false, symbol: "none",
-            lineStyle: { color: ink4, width: 1, type: "dashed" }, z: 1,
+            // Each month's budget is its own level across that month's bar, never a line between months.
+            name: "预算", type: "custom", data: budgets, encode: { x: 0, y: 1 }, color: ink4, z: 3,
+            renderItem: function (params, api) {
+              const value = api.value(1);
+              if (value == null || isNaN(value)) return null;
+              const point = api.coord([api.value(0), value]);
+              const half = Math.min(api.size([1, 0])[0] * 0.41, 36) + 6;
+              return {
+                type: "line",
+                shape: { x1: point[0] - half, y1: point[1], x2: point[0] + half, y2: point[1] },
+                style: { stroke: ink4, lineWidth: 1.5, lineDash: [4, 3] },
+              };
+            },
           },
           {
             name: "净支出", type: "bar", barMaxWidth: 72, barCategoryGap: "18%",
             data: amounts.map((amount, index) => ({...amount, itemStyle: {opacity: index === amounts.length - 1 ? 1 : .3}})),
             itemStyle: { color: accent, borderRadius: [6, 6, 0, 0] },
             label: { show: ordinary && el.clientWidth / series.length > fontSize * 4, position: "top", color: axisLabel, opacity: 1,
-              fontFamily: app.readVar("--font-numeric"), fontSize: fontSize, formatter: p => p.data.majorText?.replace(/\.00$/, "") || "" },
+              fontFamily: app.readVar("--font-numeric"), fontSize: fontSize,
+              formatter: p => p.data.majorText == null ? "" : app.homeMoneyMajor(p.data.majorText).replace(/\.0+$/, "") },
             z: 2,
           },
         ],

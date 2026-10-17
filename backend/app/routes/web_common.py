@@ -137,7 +137,14 @@ def _grouped_amount(value: object) -> str:
     return f"{sign}{','.join(groups)}{dot}{fraction}"
 
 
+def _money_amount(value: object, symbol: str) -> str:
+    """Grouped amount with its currency symbol after the sign: -¥1,234.50, never ¥-1,234.50."""
+    text = _grouped_amount(value)
+    return f"-{symbol}{text[1:]}" if text.startswith("-") else f"{symbol}{text}"
+
+
 templates.env.filters["grouped"] = _grouped_amount
+templates.env.filters["money"] = _money_amount
 
 
 def category_return_url(ledger_id: str, category_id: str, month: str, *, message: str = "") -> str:
