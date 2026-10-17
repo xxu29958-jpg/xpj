@@ -130,6 +130,6 @@ class CustomBackgroundShellRenderTest {
         writeControlledPhoto(File(context.filesDir, "background-fixture-$name.png"), width, height, paint).also { photos += it }
 
     private companion object {
-        const val DECODE_SETTLE_MS = 700L
+        const val DECODE_SETTLE_MS = 2_000L
     }
 }

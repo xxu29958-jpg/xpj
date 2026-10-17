@@ -61,7 +61,7 @@ object BackgroundReadability {
 
     /** Ignore the rarest specks (antialiasing, tiny highlights) instead of veiling the whole page for them. */
     private const val COVERED_SHARE = 0.97f
-    private const val SEARCH_STEPS = 14
+    private const val SEARCH_STEPS = 10
 
     /** Per-sample minimum veil alpha for [target] text; computed once per photo, veil and target. */
     fun sampleNeeds(profile: BackgroundTonalProfile, veil: Color, target: CanvasTextTarget): FloatArray {

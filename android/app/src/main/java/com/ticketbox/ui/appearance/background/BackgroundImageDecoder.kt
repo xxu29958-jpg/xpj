@@ -132,4 +132,4 @@ private fun calculateInSampleSize(width: Int, height: Int, maxSide: Int): Int {
 }
 
 private const val MAX_BACKGROUND_SIDE = 2160
-private const val PROFILE_SIDE = 64
+private const val PROFILE_SIDE = 48

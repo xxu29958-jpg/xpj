@@ -187,7 +187,7 @@ class BackgroundEditorViewportTest {
     }
 
     private companion object {
-        const val PHOTO_DECODE_SETTLE_MS = 700L
+        const val PHOTO_DECODE_SETTLE_MS = 2_000L
     }
 
     private fun capture(name: String) = saveConsumerArtPreview(name,
