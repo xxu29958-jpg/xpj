@@ -18,6 +18,7 @@
     <string name="plan_debt_goal_title">还债目标</string>
     <string name="plan_debt_goal_subtitle">跟踪关联欠款的清偿进度</string>
     <string name="plan_section_ongoing">固定安排</string>
+    <string name="plan_section_monthly_arrangement">月度安排</string>
     <string name="plan_recurring_title">固定支出</string>
     <string name="plan_recurring_loading">正在读取周期安排</string>
     <string name="plan_recurring_error">固定支出暂时无法读取</string>

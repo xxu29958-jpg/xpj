@@ -96,6 +96,7 @@
     <string name="pending_row_signal_category">缺分类</string>
     <string name="pending_row_signal_duplicate">疑似重复</string>
     <string name="pending_row_signal_review">需核对</string>
+    <string name="pending_row_signal_reviewing">正在核对</string>
     <string name="pending_row_action_edit">编辑</string>
     <string name="pending_row_action_amount">补金额</string>
     <string name="pending_row_action_duplicate">核对重复</string>

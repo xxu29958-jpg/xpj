@@ -149,6 +149,8 @@ fun PendingScreen(
         showsSupportingPane = adaptivePolicy.showsSupportingPane,
         activeSheet = state.activeSheet,
     )
+    // 复核常驻 pane 时，队列只标出 pane 正在核对的那一行；开始核对已经发生，不再给第二个入口。
+    val paneReviewExpenseId = (supportingContent as? PendingSupportingPaneContent.Review)?.sheet?.reviewExpense()?.id
     val authorityTone = when {
         readOnly -> DataAuthorityTone.ReadOnly
         blockingRefresh -> DataAuthorityTone.Refreshing
@@ -305,7 +307,7 @@ fun PendingScreen(
             AppScrollableContent(
                 chrome = AppScrollableContentChrome(
                     role = AppPageRole.Pending,
-                    bottomBar = onStartReview?.let { start -> {
+                    bottomBar = onStartReview?.takeIf { supportingContent !is PendingSupportingPaneContent.Review }?.let { start -> {
                         com.ticketbox.ui.components.AppFloatingActionBar {
                             com.ticketbox.ui.components.AppPrimaryButton(
                                 text = stringResource(R.string.pending_start_review),
@@ -481,6 +483,7 @@ fun PendingScreen(
                             showInlineActions = showInlineActions,
                             busy = actionBusy,
                             readOnly = readOnly,
+                            reviewing = expense.id == paneReviewExpenseId,
                         ),
                         actions = PendingExpenseReviewActions(
                             canMutate = canMutate,
