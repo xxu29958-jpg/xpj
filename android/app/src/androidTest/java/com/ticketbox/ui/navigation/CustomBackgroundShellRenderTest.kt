@@ -24,7 +24,9 @@ import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.ui.appearance.background.CanvasPhotoState
 import com.ticketbox.ui.appearance.background.ControlledPhotos
+import com.ticketbox.ui.appearance.background.LocalCanvasPhotoState
 import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
 import com.ticketbox.ui.appearance.background.writeControlledPhoto
 import com.ticketbox.ui.saveConsumerArtPreview
@@ -45,6 +47,7 @@ class CustomBackgroundShellRenderTest {
     private val settings = mutableStateOf(BackgroundSettings())
     private val skin = mutableStateOf(AppSkin.Paper)
     private val photos = mutableListOf<File>()
+    private var canvas: CanvasPhotoState? = null
 
     @After fun close() {
         photos.forEach(File::delete)
@@ -92,8 +95,8 @@ class CustomBackgroundShellRenderTest {
         compose.runOnIdle {
             settings.value = BackgroundSettings(enableParallax = false).withCustomImage(photo.absolutePath).copy(immersionMode = mode)
         }
-        // Decoding runs off the main thread; give it a bounded moment before the screenshot.
-        Thread.sleep(DECODE_SETTLE_MS)
+        // The previous photo stays on screen until the new one decodes; wait for the canvas itself.
+        compose.waitUntil(PHOTO_DECODE_TIMEOUT_MS) { canvas?.photoPath == photo.absolutePath }
         compose.waitForIdle()
     }
 
@@ -116,6 +119,7 @@ class CustomBackgroundShellRenderTest {
                     val controller = rememberNavController()
                     val entry by controller.currentBackStackEntryAsState()
                     ImmersiveBackgroundScaffold(settings.value, skin.value, harness.shell.surfaceRole(entry?.destination?.route)) {
+                        canvas = LocalCanvasPhotoState.current
                         MainNavGraph(MainNavigationRuntime(controller, harness.shell, harness.screenFactory), remember { SnackbarHostState() },
                             SettingsPreferenceControls(skin.value, AppThemeMode.System, CurrencyCode.CNY,
                                 onThemeModeChange = {}, onCurrencyChange = {}), onBindingCleared = {})
@@ -130,6 +134,6 @@ class CustomBackgroundShellRenderTest {
         writeControlledPhoto(File(context.filesDir, "background-fixture-$name.png"), width, height, paint).also { photos += it }
 
     private companion object {
-        const val DECODE_SETTLE_MS = 2_000L
+        const val PHOTO_DECODE_TIMEOUT_MS = 15_000L
     }
 }

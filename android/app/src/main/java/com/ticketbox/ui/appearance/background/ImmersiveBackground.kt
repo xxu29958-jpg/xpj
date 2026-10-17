@@ -51,7 +51,7 @@ fun ImmersiveBackgroundScaffold(
     val photo = rememberBackgroundImage(customPhotoPath(backgroundSettings))
     val canvasState = remember { CanvasPhotoState() }
     SideEffect {
-        canvasState.photoActive = photo != null
+        canvasState.photoPath = photo?.path
         canvasState.immersion = backgroundSettings.immersionMode
     }
     Box(modifier = Modifier.fillMaxSize()) {
@@ -74,11 +74,18 @@ fun BackgroundPreviewStage(
     content: @Composable BoxScope.() -> Unit = {},
 ) {
     val photo = rememberBackgroundImage(customPhotoPath(settings))
+    // The stage publishes the same canvas state as the shell, so a domain header previewed inside
+    // it opens the same photo window and is measured the same way.
+    val canvasState = remember { CanvasPhotoState() }
+    SideEffect {
+        canvasState.photoPath = photo?.path
+        canvasState.immersion = settings.immersionMode
+    }
     Box(modifier = modifier) {
         Box(Modifier.matchParentSize()) {
-            BackgroundCanvas(settings, skin, role, photo)
+            BackgroundCanvas(settings, skin, role, photo, CanvasLayout(headerBandPx = canvasState.headerBandPx))
         }
-        content()
+        CompositionLocalProvider(LocalCanvasPhotoState provides canvasState) { content() }
     }
 }
 

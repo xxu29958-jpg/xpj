@@ -8,29 +8,20 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
@@ -42,6 +33,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ticketbox.ui.components.AppBottomNav
 import com.ticketbox.ui.components.AppAccountButton
+import com.ticketbox.ui.components.AppDomainHeader
 import com.ticketbox.ui.components.AppNavigationRail
 import com.ticketbox.ui.components.AppPostureSafeContent
 import com.ticketbox.ui.components.AppPrimaryNavItem
@@ -49,30 +41,15 @@ import com.ticketbox.ui.components.LocalAppAdaptivePaneDirective
 import com.ticketbox.ui.components.LocalPrimaryNavigationInsetHandled
 import com.ticketbox.ui.components.LocalPrimaryStatusInsetHandled
 import com.ticketbox.ui.design.AppAdaptiveLayoutPolicy
-import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppPrimaryNavigationMode
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
-import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.toAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.toAppAdaptivePaneDirective
 import com.ticketbox.ui.design.toAppPostureSafeHingeBounds
 import kotlinx.coroutines.flow.collect
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import com.ticketbox.domain.model.ImmersionMode
-import com.ticketbox.ui.appearance.background.LocalCanvasPhotoState
-import com.ticketbox.ui.design.AppTypography
-import com.ticketbox.ui.design.asTextStyle
-import kotlin.math.roundToInt
 
 internal data class MainNavigationRuntime(
     val navController: NavHostController,
@@ -297,60 +274,13 @@ private fun MainDomainTopBar(
     onQuickAction: (ShortcutTarget) -> Unit,
     onOpenWorkspace: () -> Unit,
 ) {
-    val visuals = LocalThemeVisuals.current
-    // With a measured photo the domain bar becomes the photo window: it only carries the large
-    // root title and two icons, so the canvas veils this band to the large-text target.
-    val canvas = LocalCanvasPhotoState.current
-    val photoWindow = canvas?.photoActive == true
-    DisposableEffect(canvas) { onDispose { canvas?.headerBandPx = 0 } }
-    SideEffect { if (!photoWindow) canvas?.headerBandPx = 0 }
-    Surface(
-        modifier = Modifier.onGloballyPositioned { coordinates ->
-            if (photoWindow && canvas != null) canvas.headerBandPx = coordinates.boundsInRoot().bottom.roundToInt()
-        },
-        color = if (photoWindow) Color.Transparent else visuals.surfaceNav.copy(alpha = AppAlpha.opaque),
-        tonalElevation = AppSpacing.none,
-        shadowElevation = AppSpacing.none,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding(),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = AppSpacing.controlMinHeight)
-                    .padding(horizontal = AppSpacing.screenHorizontal),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // D01–D05: every root shares one large title level.
-                Text(
-                    text = stringResource(domain.labelRes),
-                    modifier = Modifier.weight(1f),
-                    color = visuals.primary,
-                    style = AppTypography.pageTitle.asTextStyle(),
-                )
-                MainQuickActionsButton(
-                    canModify = canModify,
-                    onAction = onQuickAction,
-                )
-                AppAccountButton(onClick = onOpenWorkspace)
-            }
-            if (photoWindow) {
-                Spacer(Modifier.height(photoWindowHeight(requireNotNull(canvas).immersion)))
-            } else {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
-            }
-        }
+    AppDomainHeader(title = stringResource(domain.labelRes)) {
+        MainQuickActionsButton(
+            canModify = canModify,
+            onAction = onQuickAction,
+        )
+        AppAccountButton(onClick = onOpenWorkspace)
     }
-}
-
-/** How much of the photo the root header shows: more for atmosphere, a sliver for focus. */
-private fun photoWindowHeight(mode: ImmersionMode): Dp = when (mode) {
-    ImmersionMode.Atmosphere -> 72.dp
-    ImmersionMode.Balanced -> 40.dp
-    ImmersionMode.Focus -> 12.dp
 }
 
 @Composable

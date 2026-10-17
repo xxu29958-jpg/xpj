@@ -104,7 +104,7 @@ class BudgetRecoveryNavigationRouteTest {
         }
         val original = harness.fixture.stored().single()
         if (readOnly) harness.fixture.role("viewer")
-        val summary = context.getString(R.string.arrangement_original, originalMonth, 1,
+        val summary = context.getString(R.string.arrangement_original, originalMonth,
             formatDisplayAmount(3000, CurrencyDisplay.forRecord("JPY")),
             formatDisplayAmount(500, CurrencyDisplay.forRecord("JPY")))
         show()
@@ -148,7 +148,7 @@ class BudgetRecoveryNavigationRouteTest {
         transport.budgetRevision = 4
         androidx.test.espresso.Espresso.pressBack()
         waitForText(context.getString(R.string.budget_advice_page_title))
-        waitForText(context.getString(R.string.arrangement_budget_version, 4))
+        waitForText(context.getString(R.string.arrangement_budget_version))
         compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("arrangement_savings")), useUnmergedTree = true)
             .performScrollTo().assertTextEquals("8000")
         assertEquals(draft, runBlocking { repository.arrangementDraft(binding, originalMonth) })

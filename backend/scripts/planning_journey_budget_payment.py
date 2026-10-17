@@ -47,11 +47,11 @@ def native_link(j, payment_date):
     j.open_native("series")
     native.click("更多操作：" + SERIES)
     native.click("查看本期")
-    native.reveal_any("本期尚未履约")
+    native.reveal_any("本期尚未关联付款")
     native.reveal_any("筛选付款")
     native.click(j.month + " · 筛选付款")
-    native.reveal_any("付款账期 · 留空查看全部缓存")
-    native.fill(payment_date[:7], previous=j.month, label="付款账期 · 留空查看全部缓存")
+    native.reveal_any("付款月份")
+    native.fill(payment_date[:7], previous=j.month, label="付款月份")
     booked = date.fromisoformat(payment_date)
     displayed_day = f"{booked.year}年{booked.month}月{booked.day}日"
     native.reveal_any(displayed_day, exact=True)
@@ -65,7 +65,7 @@ def native_link(j, payment_date):
     native.reveal_any("保存本期提交", toward_start=True)
     native.click("保存本期提交")
     j.expect_fact("linked_expense_id", j.facts()["expense_id"])
-    native.reveal_any("本期已履约", toward_start=True)
+    native.reveal_any("本期已关联付款", toward_start=True)
     native.capture("cross-month-payment-linked")
     native.back()
 

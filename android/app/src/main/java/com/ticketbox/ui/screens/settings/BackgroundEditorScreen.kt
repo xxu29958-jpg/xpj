@@ -4,6 +4,7 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -59,8 +60,6 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.asTextStyle
 import com.ticketbox.ui.theme.configureTicketboxSystemBars
 import com.ticketbox.viewmodel.BackgroundEditorState
 import androidx.compose.material.icons.filled.Crop
@@ -68,6 +67,15 @@ import com.ticketbox.ui.components.AppOutlinedButton
 import com.ticketbox.ui.components.AppOutlinedButtonOptions
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import com.ticketbox.ui.components.AppAccountButton
+import com.ticketbox.ui.components.AppDomainHeader
 
 /**
  * 独立的全窗口编辑面，不继承设置页或安全提示横幅扣减后的内容高度。
@@ -111,36 +119,34 @@ private fun BackgroundEditorContent(
             draft = draft,
             skin = currentSkin,
             role = previewRole,
-            gesturesEnabled = composing && !editor.saving,
-            onTransformChange = { transform ->
-                actions.onDraftChange(draft.copy(transform = transform))
-            },
-        )
+            gestures = BackgroundEditorGestures(
+                enabled = composing && !editor.saving,
+                onTransformChange = { transform -> actions.onDraftChange(draft.copy(transform = transform)) },
+            ),
+        ) {
+            if (!composing) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // The preview is the real page top: a root header opens the same photo window as the shell.
+                    Column(
+                        modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
+                    ) {
+                        BackgroundEditorPagePreview(previewRole)
+                        BackgroundReadabilitySample(Modifier.padding(horizontal = AppSpacing.screenHorizontal))
+                    }
+                    BackgroundEditorControlPanel(
+                        editor = editor,
+                        previewRole = previewRole,
+                        onPreviewRole = { previewRole = it },
+                        onCompose = { composing = true },
+                        actions = actions,
+                    )
+                }
+            }
+        }
         if (composing) {
             BackgroundEditorCompositionPanel(editor, actions, onDone = { composing = false },
                 modifier = Modifier.align(Alignment.BottomCenter))
-        } else {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // The free space under the sample is deliberate: the photo itself is the preview.
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .statusBarsPadding()
-                        .padding(horizontal = AppSpacing.screenHorizontal, vertical = AppSpacing.compactGap),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
-                ) {
-                    BackgroundEditorHeading(draft, actions.onCancel, !editor.saving)
-                    BackgroundReadabilitySample()
-                }
-                BackgroundEditorControlPanel(
-                    editor = editor,
-                    previewRole = previewRole,
-                    onPreviewRole = { previewRole = it },
-                    onCompose = { composing = true },
-                    actions = actions,
-                )
-            }
         }
     }
 }
@@ -165,14 +171,18 @@ private val backgroundEditorPreviewRoles = listOf(
  * 与 renderer 同一 geometry 单源；视差 1.01–1.05 的额外缩放在手势闭环
  * （拖到边界即收敛）下不可感知，不重复计入。
  */
+private class BackgroundEditorGestures(val enabled: Boolean, val onTransformChange: (BackgroundTransform) -> Unit)
+
 @Composable
 private fun BackgroundEditorStage(
     draft: BackgroundSettings,
     skin: AppSkin,
     role: SurfaceRole,
-    gesturesEnabled: Boolean,
-    onTransformChange: (BackgroundTransform) -> Unit,
+    gestures: BackgroundEditorGestures,
+    content: @Composable BoxScope.() -> Unit,
 ) {
+    val gesturesEnabled = gestures.enabled
+    val onTransformChange = gestures.onTransformChange
     val customPath = draft.customImagePath
         ?.takeIf { draft.source == BackgroundSource.CustomImage }
     val imageSize = rememberBackgroundImage(customPath)?.size ?: IntSize.Zero
@@ -214,7 +224,8 @@ private fun BackgroundEditorStage(
             skin = skin,
             role = role,
             modifier = Modifier.fillMaxSize(),
-        ) {}
+            content = content,
+        )
     }
 }
 
@@ -224,22 +235,42 @@ private fun BackgroundEditorHeading(
     onBack: () -> Unit,
     enabled: Boolean,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)) {
-        TextButton(onClick = onBack, enabled = enabled) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-            Text(stringResource(R.string.background_editor_back), modifier = Modifier.padding(start = AppSpacing.smallGap))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack, enabled = enabled) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.background_editor_back))
         }
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            Text(stringResource(R.string.background_editor_page_title),
-                style = AppTextHierarchy.hero.asTextStyle())
-            Text(stringResource(R.string.background_editor_intro), style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+            Text(stringResource(R.string.background_editor_page_title), style = MaterialTheme.typography.titleLarge)
             Text(stringResource(
                 if (draft.source == BackgroundSource.BuiltIn) R.string.background_editor_preview_builtin
                 else R.string.background_editor_preview_source,
                 backgroundSourceLabel(draft),
             ), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+/** Root roles preview the real domain header; editing and settings pages have no photo window. */
+@Composable
+private fun BackgroundEditorPagePreview(role: SurfaceRole) {
+    val title = when (role) {
+        SurfaceRole.Pending -> R.string.nav_domain_inbox
+        SurfaceRole.Ledger -> R.string.nav_domain_transactions
+        SurfaceRole.Stats -> R.string.nav_domain_insights
+        else -> null
+    }
+    if (title == null) {
+        Spacer(Modifier.statusBarsPadding())
+        return
+    }
+    val description = stringResource(R.string.background_editor_page_preview, stringResource(title))
+    AppDomainHeader(
+        title = stringResource(title),
+        modifier = Modifier.clearAndSetSemantics { contentDescription = description },
+    ) {
+        Icon(ImageVector.vectorResource(R.drawable.ic_lucide_plus), contentDescription = null,
+            modifier = Modifier.padding(AppSpacing.compactGap))
+        AppAccountButton(onClick = {})
     }
 }
 
@@ -270,6 +301,7 @@ private fun BackgroundEditorControlPanel(
                 .padding(horizontal = AppSpacing.screenHorizontal, vertical = AppSpacing.contentGap),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         ) {
+            BackgroundEditorHeading(draft, actions.onCancel, !editor.saving)
             AppStatusBanner(message = editor.message, tone = MessageTone.Danger)
             BackgroundEditorChips(
                 label = stringResource(R.string.background_editor_section_preview_role),

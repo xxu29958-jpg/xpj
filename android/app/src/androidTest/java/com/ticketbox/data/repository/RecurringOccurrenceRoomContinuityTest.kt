@@ -74,12 +74,12 @@ class RecurringOccurrenceRoomContinuityTest {
             }
         }
         compose.waitUntil(10_000) { host.model.value?.uiState?.value?.canWrite == true }
-        compose.onNodeWithTag("occurrence-state").assertTextEquals("本期尚未履约")
+        compose.onNodeWithTag("occurrence-state").assertTextEquals("本期尚未关联付款")
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         automation.waitForIdle(300, 3_000)
         saveConsumerArtPreview("recurring-occurrence-unpaid", requireNotNull(automation.takeScreenshot()))
         compose.onNodeWithTag("occurrence-payment-filter-toggle").performScrollTo().performClick()
-        compose.onNode(hasSetTextAction() and hasText("付款账期 · 留空查看全部缓存"))
+        compose.onNode(hasSetTextAction() and hasText("付款月份"))
             .performScrollTo().performTextReplacement("")
         compose.onNode(hasSetTextAction() and hasText("查找商家或备注"))
             .performScrollTo().performTextReplacement("房租付款")
@@ -507,7 +507,7 @@ class RecurringOccurrenceRoomContinuityTest {
                 host.model.value?.uiState?.value?.ledgerHomeCurrencyCode != null
         }
         fixture.network.failReads = true
-        compose.onNodeWithTag("occurrence-state").assertTextEquals("本期尚未履约")
+        compose.onNodeWithTag("occurrence-state").assertTextEquals("本期尚未关联付款")
         compose.onNodeWithTag("occurrence-record-payment").performScrollTo().performClick()
         compose.waitUntil(10_000) { host.paymentTask.value != null }
         val task = requireNotNull(host.paymentTask.value)
