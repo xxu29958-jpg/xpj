@@ -91,7 +91,7 @@
   <dl class="report-supporting-facts">
     <div><dt>已入账笔数</dt><dd>{{ r.count }} 笔{% if r.previous_count %} · 上月 {{ r.previous_count }} 笔{% endif %}</dd></div>
     <div><dt>较上月</dt><dd>{% if r.previous_total_amount_cents is none or r.total_amount_cents is none %}待补信息{% elif r.previous_total_amount_cents > 0 %}{{ '%+.1f' % ((r.total_amount_cents - r.previous_total_amount_cents) / r.previous_total_amount_cents * 100) }}%{% elif r.previous_total_amount_cents == 0 %}上月合计为零{% else %}上月为净退回，不计算增长率{% endif %}</dd></div>
-    <div><dt>较去年同月</dt><dd>{% if r.year_over_year_delta_amount_cents is none %}待补信息{% elif not r.year_over_year_count and r.year_over_year_total_amount_cents == 0 %}去年同月没有记录{% else %}{% if r.year_over_year_delta_amount_cents > 0 %}+{% endif %}{{ r.year_over_year_delta_amount_yuan|money(home_currency_symbol) }}{% endif %}</dd></div>
+    <div><dt>较去年同月</dt><dd>{{ r.year_over_year_change_label }}</dd></div>
     <div><dt>近六个月超预算</dt><dd>{% if overspent_months is none %}待补信息{% else %}{{ overspent_months }} 个月{% endif %}</dd></div>
   </dl>
 </details>

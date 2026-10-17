@@ -86,7 +86,7 @@
     </div>
     <img class="insight-hero-art" src="/static/web/product/art/receipt-clip.png" alt="">
     <div class="insight-hero-value{% if hero_amount and hero_amount.int|length > 12 %} insight-hero-value--long{% endif %}">
-      {% if hero_amount is not none %}<small>{{ hero_amount.cur }}</small>{{ hero_amount.int }}{% if hero_amount.dec %}<small>{{ hero_amount.dec }}</small>{% endif %}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}
+      {% if hero_amount is not none %}{{ hero_amount.sign }}<small>{{ hero_amount.cur }}</small>{{ hero_amount.int }}{% if hero_amount.dec %}<small>{{ hero_amount.dec }}</small>{% endif %}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}
     </div>
     <div class="insight-module-foot">
       {% if cards.delta_direction == 'unavailable' %}<span class="text-meta">补齐换算信息后比较上月</span>

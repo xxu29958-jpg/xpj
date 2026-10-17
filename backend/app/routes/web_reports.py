@@ -78,6 +78,16 @@ def _amount_rows_view(rows: list[dict], *, currency_code: str) -> list[dict]:
         "count": int(row["count"]), "percent": _percent(amount, maximum)} for row, amount in zip(rows, amounts, strict=True)]
 
 
+def _year_over_year_change_label(view: dict, home: str) -> str:
+    """Signed change against the same month last year, or why there is none."""
+    delta = view["year_over_year_delta_amount_cents"]
+    if delta is None:
+        return "待补信息"
+    if not view["year_over_year_count"] and view["year_over_year_total_amount_cents"] == 0:
+        return "去年同月没有记录"
+    return ("+" if delta > 0 else "") + _home_amount_label(delta, home)
+
+
 def _view_model(payload: dict) -> dict:
     home = payload["home_currency_code"]
     view = {**payload, "merchant_category": payload["merchant_category"] or "",
@@ -90,6 +100,7 @@ def _view_model(payload: dict) -> dict:
     view.update(trend=_amount_rows_view(payload["trend"], currency_code=home),
         merchant_ranking=_amount_rows_view(payload["merchant_ranking"], currency_code=home),
         category_comparison=_category_comparison_view(payload["category_comparison"], currency_code=home))
+    view["year_over_year_change_label"] = _year_over_year_change_label(view, home)
     # Year-ago bars only when there is something to compare: recorded spending, or an amount still waiting for its rate.
     view["category_has_year_ago"] = any(row["year_over_year_amount_cents"] != 0 for row in payload["category_comparison"])
     view["merchant_amount_unavailable"] = (
