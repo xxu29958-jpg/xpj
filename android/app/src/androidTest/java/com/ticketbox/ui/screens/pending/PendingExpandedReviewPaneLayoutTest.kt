@@ -17,6 +17,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -129,7 +130,11 @@ class PendingExpandedReviewPaneLayoutTest {
         val review = composeRule.onNodeWithTag(AppAdaptivePaneStructures.Inbox.supportingTestTag)
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue("DW2 queue and original review must stay side by side", queue.right <= review.left)
-        composeRule.onNodeWithText("补全金额").assertIsDisplayed()
+        // MissingAmountSheetContent autofocuses its input. A real user may have to scroll the
+        // sheet back to its header when the IME moves the viewport; preserve a visible-title
+        // assertion instead of treating an offscreen header as a missing review owner.
+        composeRule.onNodeWithText("补全金额").performScrollTo().assertIsDisplayed()
+        composeRule.onNode(hasSetTextAction()).assertExists()
         saveConsumerArtPreview("dw2-inbox-wide-active-review-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
     }
 }
