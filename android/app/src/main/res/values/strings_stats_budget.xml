@@ -951,7 +951,7 @@
     <string name="recurring_message_candidate_expired">固定支出候选已过期，请刷新后再试。</string>
     <string name="recurring_message_updated">固定支出已更新。</string>
     <string name="recurring_message_queued">已保存到待同步；同步完成后才会计入计划。</string>
-    <string name="recurring_message_action_failed">操作失败。</string>
+    <string name="recurring_message_action_failed">暂时没能完成，请稍后再试。</string>
 
     <!-- ADR-0049 §杠杆③ (slice 3a)：NLS 还款捕获复核箱 -->
     <string name="repayment_draft_topbar_back">返回</string>
