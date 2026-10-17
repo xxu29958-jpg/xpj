@@ -190,8 +190,7 @@ private fun BackgroundEditorStage(
 ) {
     val customPath = draft.customImagePath
         ?.takeIf { draft.source == BackgroundSource.CustomImage }
-    val bitmap = rememberBackgroundImage(customPath)
-    val imageSize = bitmap?.let { IntSize(it.width, it.height) } ?: IntSize.Zero
+    val imageSize = rememberBackgroundImage(customPath)?.size ?: IntSize.Zero
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     val currentDraft by rememberUpdatedState(draft)
     val currentOnTransformChange by rememberUpdatedState(onTransformChange)
