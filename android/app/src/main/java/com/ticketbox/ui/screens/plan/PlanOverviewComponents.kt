@@ -45,7 +45,7 @@ import com.ticketbox.viewmodel.IncomePlanUiState
 import com.ticketbox.viewmodel.RecurringListLoadState
 import com.ticketbox.viewmodel.RecurringUiState
 
-private data class PlanRowModel(
+internal data class PlanRowModel(
     val title: String,
     val subtitle: String,
     val icon: Int,
@@ -78,15 +78,6 @@ internal fun PlanBudgetSection(
                 onOpenBudget = actions.onOpenBudget,
             )
         }
-        PlanDestinationRow(
-            model = PlanRowModel(
-                title = stringResource(R.string.plan_budget_advice_title),
-                subtitle = stringResource(R.string.plan_budget_advice_subtitle),
-                icon = R.drawable.ic_lucide_sliders_horizontal,
-                testTag = PlanDestinationTestTags.BudgetAdvice,
-                onClick = actions.onOpenAdvice,
-            ),
-        )
     }
 }
 
@@ -227,7 +218,7 @@ internal fun PlanFixedArrangementsSection(
 }
 
 @Composable
-private fun PlanSectionTitle(title: String) {
+internal fun PlanSectionTitle(title: String) {
     Text(
         text = title,
         modifier = Modifier.padding(bottom = AppSpacing.smallGap),
@@ -238,7 +229,7 @@ private fun PlanSectionTitle(title: String) {
 }
 
 @Composable
-private fun PlanDestinationRow(
+internal fun PlanDestinationRow(
     model: PlanRowModel,
     showDivider: Boolean = true,
     supportingContent: (@Composable () -> Unit)? = null,

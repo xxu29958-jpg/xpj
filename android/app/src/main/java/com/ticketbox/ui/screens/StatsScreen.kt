@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.MonthComparison
@@ -111,16 +112,29 @@ fun StatsScreen(
     }
 
     val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
+    // 真实竖铰链右页固定为当前查询；左页在结果与布局编辑之间切换，右页不跟着重排。
+    val queryPane = appAdaptiveSupportingPaneContent(purpose = AppAdaptivePanePurpose.InsightControls) {
+        AppAdaptiveSupportingPane(role = AppPageRole.Stats) {
+            Text(
+                text = stringResource(R.string.stats_query_pane_title),
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            StatsFilterControls(
+                state = state,
+                onOpenMonthPicker = { showMonthPicker = true },
+                onTagChange = actions.filters.onTagChange,
+            )
+            StatsStatusMessages(state = state, selectedTab = selectedStatsTab)
+        }
+    }
     if (overview.layout.draft != null && adaptivePolicy.usesOfficialVerticalHingeBounds) {
         AppAdaptivePaneScaffold(
             structure = AppAdaptivePaneStructures.Insights,
             policy = adaptivePolicy,
             primaryPane = { DashboardLayoutEditorContent(overview.layout, actions = actions.overview.layout) },
-            supportingPane = appAdaptiveSupportingPaneContent(purpose = AppAdaptivePanePurpose.InsightControls) {
-                AppAdaptiveSupportingPane(role = AppPageRole.Stats) {
-                    Text(stringResource(R.string.dashboard_editor_description), style = MaterialTheme.typography.bodyLarge)
-                }
-            },
+            supportingPane = queryPane,
         )
         return
     }
@@ -146,25 +160,7 @@ fun StatsScreen(
                     controlsMode = StatsControlsMode.Tabs,
                 )
             },
-            supportingPane = appAdaptiveSupportingPaneContent(
-                purpose = AppAdaptivePanePurpose.InsightControls,
-            ) {
-                AppAdaptiveSupportingPane(role = AppPageRole.Stats) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
-                    ) {
-                        StatsFilterControls(
-                            state = paneState.screenState,
-                            onOpenMonthPicker = paneActions.onOpenMonthPicker,
-                            onTagChange = paneActions.screenActions.filters.onTagChange,
-                        )
-                        StatsStatusMessages(
-                            state = paneState.screenState,
-                            selectedTab = paneState.selectedTab,
-                        )
-                    }
-                }
-            },
+            supportingPane = queryPane,
         )
     } else {
         StatsPrimaryPane(
