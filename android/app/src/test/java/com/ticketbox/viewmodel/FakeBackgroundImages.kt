@@ -5,8 +5,13 @@ import com.ticketbox.data.repository.BackgroundImageRepository
 
 internal class FakeBackgroundImages : BackgroundImageRepository {
     val discarded = mutableListOf<String>()
+    val staleSweeps = mutableListOf<String?>()
 
     override suspend fun importImage(uri: Uri): String = error("This test does not pick images")
+
+    override suspend fun discardStale(keep: String?, startedAt: Long) {
+        staleSweeps += keep
+    }
 
     override suspend fun discardImage(path: String): Boolean {
         discarded += path

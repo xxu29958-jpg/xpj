@@ -34,6 +34,19 @@ class BackgroundImageStore(context: Context) {
         }
     }
 
+    /**
+     * Removes private images left behind by an editor that never applied or cancelled (for
+     * example after the process was killed). Only files older than [startedAt] are candidates,
+     * so an image imported after the sweep began is never touched; [keep] is the applied one.
+     */
+    fun deleteStaleExcept(keep: String?, startedAt: Long): Int {
+        val directory = File(appContext.filesDir, "backgrounds")
+        val kept = keep?.let { File(it).canonicalFile }
+        return directory.listFiles().orEmpty()
+            .filter { it.isFile && it.canonicalFile != kept && it.lastModified() < startedAt }
+            .count { it.delete() }
+    }
+
     fun deleteCustomBackground(path: String): Boolean {
         val directory = File(appContext.filesDir, "backgrounds").canonicalFile
         val image = File(path).canonicalFile

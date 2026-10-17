@@ -11,24 +11,40 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.IntSize
 import androidx.exifinterface.media.ExifInterface
+import com.ticketbox.domain.model.AppSkin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-@Composable
-internal fun rememberBackgroundImage(path: String?): ImageBitmap? {
-    var image by remember(path) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(path) {
-        image = null
-        val cleanPath = path?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        image = withContext(Dispatchers.IO) {
-            decodeBackgroundImage(cleanPath)
-        }
-    }
-    return image
+/** One decode serves the photo layer, the editor geometry and the readability veil. */
+internal class DecodedBackground(
+    val image: ImageBitmap,
+    val profile: BackgroundTonalProfile,
+    private val needs: Map<Pair<AppSkin, CanvasTextDemand>, FloatArray>,
+) {
+    val size: IntSize get() = IntSize(image.width, image.height)
+
+    fun needs(skin: AppSkin, demand: CanvasTextDemand): FloatArray = needs.getValue(skin to demand)
 }
 
-private fun decodeBackgroundImage(path: String): ImageBitmap? {
+/**
+ * Keeps the previous photo on screen while a replacement decodes, so applying a new background
+ * does not flash the theme canvas; clearing the path clears the photo at once.
+ */
+@Composable
+internal fun rememberBackgroundImage(path: String?): DecodedBackground? {
+    val cleanPath = path?.takeIf { it.isNotBlank() }
+    var decoded by remember { mutableStateOf<Pair<String, DecodedBackground?>?>(null) }
+    LaunchedEffect(cleanPath) {
+        if (cleanPath == null || decoded?.first == cleanPath) return@LaunchedEffect
+        val result = withContext(Dispatchers.IO) { decodeBackgroundImage(cleanPath) }
+        decoded = cleanPath to result
+    }
+    return if (cleanPath == null) null else decoded?.second
+}
+
+private fun decodeBackgroundImage(path: String): DecodedBackground? {
     val bounds = BitmapFactory.Options().apply {
         inJustDecodeBounds = true
     }
@@ -44,7 +60,31 @@ private fun decodeBackgroundImage(path: String): ImageBitmap? {
         )
     }
     val decoded = BitmapFactory.decodeFile(path, options) ?: return null
-    return decoded.uprightByExif(path).asImageBitmap()
+    val upright = decoded.uprightByExif(path)
+    val profile = tonalProfile(upright)
+    val needs = buildMap {
+        for (skin in AppSkin.entries) {
+            for (demand in CanvasTextDemand.entries) {
+                put(skin to demand, BackgroundReadability.sampleNeeds(profile, canvasVeilColor(skin), canvasTextTarget(skin, demand)))
+            }
+        }
+    }
+    return DecodedBackground(upright.asImageBitmap(), profile, needs)
+}
+
+/**
+ * Nearest-neighbour samples keep the real distribution of light and dark pixels; an averaged
+ * thumbnail would turn a busy texture into flat grey and under-protect the text above it.
+ */
+private fun tonalProfile(bitmap: Bitmap): BackgroundTonalProfile {
+    val longest = maxOf(bitmap.width, bitmap.height)
+    val columns = (bitmap.width * PROFILE_SIDE / longest).coerceAtLeast(1)
+    val rows = (bitmap.height * PROFILE_SIDE / longest).coerceAtLeast(1)
+    val small = Bitmap.createScaledBitmap(bitmap, columns, rows, false)
+    val pixels = IntArray(columns * rows)
+    small.getPixels(pixels, 0, columns, 0, 0, columns, rows)
+    if (small !== bitmap) small.recycle()
+    return BackgroundTonalProfile.fromArgb(columns, rows, pixels)
 }
 
 /**
@@ -92,3 +132,4 @@ private fun calculateInSampleSize(width: Int, height: Int, maxSide: Int): Int {
 }
 
 private const val MAX_BACKGROUND_SIDE = 2160
+private const val PROFILE_SIDE = 48
