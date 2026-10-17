@@ -72,7 +72,7 @@ class MerchantManagementContinuationTest {
     private val deletes = CopyOnWriteArrayList<MerchantCatalogDeleteRequest>()
     private var catalogResponse: MerchantCatalogDto? = null
     private var mergeResponse: MerchantCatalogMergeDto? = null
-    private var updateFailure: Exception? = null
+    private var updateFailure: (() -> Exception)? = null
     private var mergeFailure: Exception? = null
     @Volatile private var loseCommandReply = false
     @Volatile private var reject = true
@@ -120,7 +120,7 @@ class MerchantManagementContinuationTest {
                 updates += request
                 assertEquals("existing", publicId)
                 if (reject) throw unavailable()
-                updateFailure?.let { throw it }
+                updateFailure?.let { throw it() }
                 if (loseCommandReply) throw IOException("Reply lost after acceptance")
                 return requireNotNull(catalogResponse)
             }
@@ -347,8 +347,8 @@ class MerchantManagementContinuationTest {
         compose.onNode(hasSetTextAction() and hasText("原商家")).performTextReplacement("  我的原稿名称  ")
         closeSoftKeyboard()
         catalog = requireNotNull(catalog).copy(displayName = "另一台设备的名称", rowVersion = 8)
-        updateFailure = HttpException(Response.error<Any>(409,
-            """{"error":"state_conflict","message":"商家已被其他设备修改。"}""".toResponseBody("application/json".toMediaType())))
+        updateFailure = { HttpException(Response.error<Any>(409,
+            """{"error":"state_conflict","message":"商家已被其他设备修改。"}""".toResponseBody("application/json".toMediaType()))) }
         compose.onNodeWithText(context.getString(R.string.merchant_catalog_rename_dialog_confirm))
             .assertIsEnabled().performTouchInput { click() }
         compose.waitUntil(5_000) { updates.size == 1 }
@@ -452,9 +452,9 @@ class MerchantManagementContinuationTest {
 
     @Test fun suggestedMergeCanReturnToOriginalRenameAndCloseAfterAcceptance() {
         prepareMerge()
-        updateFailure = HttpException(Response.error<Any>(409,
+        updateFailure = { HttpException(Response.error<Any>(409,
             """{"error":"state_conflict","conflict_merchant_public_id":"target","conflict_merchant_row_version":11,"conflict_merchant_display_name":"目标商家","conflict_merchant_status":"active","conflict_merchant_deleted":false}"""
-                .toResponseBody("application/json".toMediaType())))
+                .toResponseBody("application/json".toMediaType()))) }
         clickText(R.string.merchant_catalog_card_action_rename)
         compose.onNode(hasSetTextAction() and hasText("原商家")).performTextReplacement("  目标商家  ")
         closeSoftKeyboard()
@@ -526,19 +526,19 @@ class MerchantManagementContinuationTest {
     private fun acceptedCommandReopens(kind: MerchantDraftKind, action: Int, title: Int, confirm: Int) {
         prepareMerge()
         clickText(action)
-        if (kind == MerchantDraftKind.Rename) {
-            compose.onNode(hasSetTextAction() and hasText("原商家")).performTextReplacement("  原来想改的名称  ")
-            closeSoftKeyboard()
-        }
-        if (kind == MerchantDraftKind.Merge) {
-            compose.onNodeWithText("目标商家").performScrollTo().performTouchInput { click() }
-            clickText(R.string.merchant_catalog_merge_alias_policy_none)
-        }
         when (kind) {
-            MerchantDraftKind.Rename -> catalogResponse = requireNotNull(catalog).copy(displayName = "原来想改的名称", rowVersion = 8)
+            MerchantDraftKind.Rename -> {
+                compose.onNode(hasSetTextAction() and hasText("原商家")).performTextReplacement("  原来想改的名称  ")
+                closeSoftKeyboard()
+                catalogResponse = requireNotNull(catalog).copy(displayName = "原来想改的名称", rowVersion = 8)
+            }
             MerchantDraftKind.Visibility -> catalogResponse = requireNotNull(catalog).copy(status = "hidden", rowVersion = 8)
             MerchantDraftKind.Delete -> catalogResponse = requireNotNull(catalog).copy(deletedAt = "2026-10-08T00:00:00Z", rowVersion = 8)
-            MerchantDraftKind.Merge -> declareMergeResponse(8, 12)
+            MerchantDraftKind.Merge -> {
+                compose.onNodeWithText("目标商家").performScrollTo().performTouchInput { click() }
+                clickText(R.string.merchant_catalog_merge_alias_policy_none)
+                declareMergeResponse(8, 12)
+            }
             else -> error("Unsupported declared command")
         }
         if (kind != MerchantDraftKind.Merge) catalog = catalogResponse
