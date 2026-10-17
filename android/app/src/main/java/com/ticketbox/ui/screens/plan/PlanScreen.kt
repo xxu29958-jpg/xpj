@@ -80,6 +80,7 @@ internal fun PlanScreen(
                     income = data.income,
                     onOpenRecurring = actions.onOpenRecurring,
                     onOpenIncomePlans = actions.onOpenIncomePlans,
+                    onOpenArrangement = actions.budgetNavigation.onOpenAdvice,
                 )
             }
         },
@@ -114,6 +115,7 @@ private fun PlanPrimaryPane(
             PlanBudgetSection(
                 state = data.budget,
                 actions = actions.budgetNavigation,
+                showAdviceRow = !showSupportingPane,
             )
         }
         item {
