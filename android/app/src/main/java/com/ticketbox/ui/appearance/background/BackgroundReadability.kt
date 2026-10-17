@@ -50,8 +50,11 @@ class BackgroundTonalProfile(
     }
 }
 
-/** Contrast target for the text a page leaves on the canvas. */
-data class CanvasTextTarget(val text: Color, val ratio: Float)
+/** Which part of the decoded photo a viewport shows under a transform. */
+data class PhotoFrame(val image: IntSize, val viewport: IntSize, val transform: BackgroundTransform)
+
+/** Contrast target: every listed text colour the page leaves on the canvas must reach [ratio]. */
+data class CanvasTextTarget(val texts: List<Color>, val ratio: Float)
 
 object BackgroundReadability {
     const val BAND_COUNT = 6
@@ -62,23 +65,29 @@ object BackgroundReadability {
 
     /** Per-sample minimum veil alpha for [target] text; computed once per photo, veil and target. */
     fun sampleNeeds(profile: BackgroundTonalProfile, veil: Color, target: CanvasTextTarget): FloatArray {
-        val textLuminance = relativeLuminance(target.text)
-        return FloatArray(profile.columns * profile.rows) { index -> veilFor(profile, index, veil, textLuminance, target.ratio) }
+        val textLuminances = target.texts.map(::relativeLuminance)
+        return FloatArray(profile.columns * profile.rows) { index -> veilFor(profile, index, veil, textLuminances, target.ratio) }
     }
 
     /**
      * Minimum veil alpha per horizontal band of the viewport, covering [COVERED_SHARE] of the
      * photo samples that the current transform actually shows in that band.
      */
-    fun bandNeeds(
-        needs: FloatArray,
-        profile: BackgroundTonalProfile,
-        image: IntSize,
-        viewport: IntSize,
-        transform: BackgroundTransform,
-    ): FloatArray {
-        val result = FloatArray(BAND_COUNT)
-        if (image.width <= 0 || image.height <= 0 || viewport.width <= 0 || viewport.height <= 0) return result
+    fun bandNeeds(needs: FloatArray, profile: BackgroundTonalProfile, frame: PhotoFrame): FloatArray =
+        FloatArray(BAND_COUNT) { band ->
+            val top = frame.viewport.height * band / BAND_COUNT
+            val bottom = frame.viewport.height * (band + 1) / BAND_COUNT
+            regionNeed(needs, profile, frame, top until bottom)
+        }
+
+    /**
+     * The same coverage rule for one horizontal region of the viewport, such as the shell header
+     * band, so a region that only carries large titles is measured over exactly its own pixels.
+     */
+    fun regionNeed(needs: FloatArray, profile: BackgroundTonalProfile, frame: PhotoFrame, rows: IntRange): Float {
+        val (image, viewport, transform) = frame
+        if (image.width <= 0 || image.height <= 0 || viewport.width <= 0 || viewport.height <= 0 || rows.isEmpty()) return 0f
+        val band = IntSize(viewport.width, rows.last - rows.first + 1)
         val total = BackgroundTransformGeometry.cropBaseScale(viewport, image) * transform.scale
         val shift = BackgroundTransformGeometry.maxTranslation(viewport, image, transform)
         val centerX = viewport.width / 2f - transform.offsetX * shift.x
@@ -86,31 +95,27 @@ object BackgroundReadability {
         fun column(x: Float) = ((x - centerX) / total + image.width / 2f) / image.width * profile.columns
         fun row(y: Float) = ((y - centerY) / total + image.height / 2f) / image.height * profile.rows
         val left = floor(column(0f)).toInt().coerceIn(0, profile.columns - 1)
-        val right = ceil(column(viewport.width.toFloat())).toInt().coerceIn(left + 1, profile.columns)
-        for (band in 0 until BAND_COUNT) {
-            val top = floor(row(viewport.height * band / BAND_COUNT.toFloat())).toInt().coerceIn(0, profile.rows - 1)
-            val bottom = ceil(row(viewport.height * (band + 1) / BAND_COUNT.toFloat())).toInt()
-                .coerceIn(top + 1, profile.rows)
-            val visible = FloatArray((bottom - top) * (right - left))
-            var cursor = 0
-            for (r in top until bottom) {
-                for (c in left until right) visible[cursor++] = needs[r * profile.columns + c]
-            }
-            visible.sort()
-            result[band] = visible[((visible.size - 1) * COVERED_SHARE).toInt()]
+        val right = ceil(column(band.width.toFloat())).toInt().coerceIn(left + 1, profile.columns)
+        val top = floor(row(rows.first.toFloat())).toInt().coerceIn(0, profile.rows - 1)
+        val bottom = ceil(row(rows.last + 1f)).toInt().coerceIn(top + 1, profile.rows)
+        val visible = FloatArray((bottom - top) * (right - left))
+        var cursor = 0
+        for (r in top until bottom) {
+            for (c in left until right) visible[cursor++] = needs[r * profile.columns + c]
         }
-        return result
+        visible.sort()
+        return visible[((visible.size - 1) * COVERED_SHARE).toInt()]
     }
 
     /** Smallest veil alpha that lifts one photo sample to the contrast ratio against the text colour. */
-    private fun veilFor(profile: BackgroundTonalProfile, index: Int, veil: Color, textLuminance: Float, ratio: Float): Float {
+    private fun veilFor(profile: BackgroundTonalProfile, index: Int, veil: Color, textLuminances: List<Float>, ratio: Float): Float {
         fun passes(alpha: Float): Boolean {
             val luminance = relativeLuminance(
                 blend(profile.red(index), veil.red, alpha),
                 blend(profile.green(index), veil.green, alpha),
                 blend(profile.blue(index), veil.blue, alpha),
             )
-            return contrast(luminance, textLuminance) >= ratio
+            return textLuminances.all { contrast(luminance, it) >= ratio }
         }
         if (passes(0f)) return 0f
         if (!passes(1f)) return 1f

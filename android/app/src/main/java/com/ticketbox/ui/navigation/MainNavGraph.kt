@@ -53,13 +53,26 @@ import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppPrimaryNavigationMode
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.toAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.toAppAdaptivePaneDirective
 import com.ticketbox.ui.design.toAppPostureSafeHingeBounds
 import kotlinx.coroutines.flow.collect
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.ticketbox.domain.model.ImmersionMode
+import com.ticketbox.ui.appearance.background.LocalCanvasPhotoState
+import com.ticketbox.ui.design.AppTypography
+import com.ticketbox.ui.design.asTextStyle
+import kotlin.math.roundToInt
 
 internal data class MainNavigationRuntime(
     val navController: NavHostController,
@@ -285,8 +298,17 @@ private fun MainDomainTopBar(
     onOpenWorkspace: () -> Unit,
 ) {
     val visuals = LocalThemeVisuals.current
+    // With a measured photo the domain bar becomes the photo window: it only carries the large
+    // root title and two icons, so the canvas veils this band to the large-text target.
+    val canvas = LocalCanvasPhotoState.current
+    val photoWindow = canvas?.photoActive == true
+    DisposableEffect(canvas) { onDispose { canvas?.headerBandPx = 0 } }
+    SideEffect { if (!photoWindow) canvas?.headerBandPx = 0 }
     Surface(
-        color = visuals.surfaceNav.copy(alpha = AppAlpha.opaque),
+        modifier = Modifier.onGloballyPositioned { coordinates ->
+            if (photoWindow && canvas != null) canvas.headerBandPx = coordinates.boundsInRoot().bottom.roundToInt()
+        },
+        color = if (photoWindow) Color.Transparent else visuals.surfaceNav.copy(alpha = AppAlpha.opaque),
         tonalElevation = AppSpacing.none,
         shadowElevation = AppSpacing.none,
     ) {
@@ -302,12 +324,12 @@ private fun MainDomainTopBar(
                     .padding(horizontal = AppSpacing.screenHorizontal),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // D01–D05: every root shares one large title level.
                 Text(
                     text = stringResource(domain.labelRes),
                     modifier = Modifier.weight(1f),
                     color = visuals.primary,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = AppTextHierarchy.heading.weight,
+                    style = AppTypography.pageTitle.asTextStyle(),
                 )
                 MainQuickActionsButton(
                     canModify = canModify,
@@ -315,9 +337,20 @@ private fun MainDomainTopBar(
                 )
                 AppAccountButton(onClick = onOpenWorkspace)
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
+            if (photoWindow) {
+                Spacer(Modifier.height(photoWindowHeight(requireNotNull(canvas).immersion)))
+            } else {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.soft))
+            }
         }
     }
+}
+
+/** How much of the photo the root header shows: more for atmosphere, a sliver for focus. */
+private fun photoWindowHeight(mode: ImmersionMode): Dp = when (mode) {
+    ImmersionMode.Atmosphere -> 72.dp
+    ImmersionMode.Balanced -> 40.dp
+    ImmersionMode.Focus -> 12.dp
 }
 
 @Composable

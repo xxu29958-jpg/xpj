@@ -21,8 +21,10 @@ class ImmersiveBackgroundTest {
             ImmersionMode.entries.flatMap { mode -> SurfaceRole.entries.map { mode to it } }.forEach { (mode, role) ->
                 val alpha = photoVeilAlpha(need, mode, role, skin == AppSkin.Midnight)
                 assertTrue(alpha >= need, "The veil never drops below the photo's measured need")
-                val ratio = contrastOver(pixel, veil, alpha, target.text)
-                assertTrue(ratio >= target.ratio - 0.001f, "$skin $demand ${Integer.toHexString(pixel)} $mode $role: $ratio")
+                target.texts.forEach { text ->
+                    val ratio = contrastOver(pixel, veil, alpha, text)
+                    assertTrue(ratio >= target.ratio - 0.001f, "$skin $demand ${Integer.toHexString(pixel)} $mode $role: $ratio")
+                }
             }
         }
     }
@@ -34,7 +36,7 @@ class ImmersiveBackgroundTest {
         val pale = BackgroundReadability.sampleNeeds(solid(0xFFF1EADF.toInt()), veil, target).single()
         val black = BackgroundReadability.sampleNeeds(solid(0xFF000000.toInt()), veil, target).single()
         assertEquals(0f, pale, "A pale photo already carries the large title")
-        assertTrue(black in 0.35f..0.6f, "Large titles over black need a partial, not near-opaque, veil: $black")
+        assertTrue(black in 0.35f..0.75f, "Large titles over black need a partial, not near-opaque, veil: $black")
     }
 
     @Test
@@ -67,12 +69,28 @@ class ImmersiveBackgroundTest {
             canvasTextTarget(AppSkin.Paper, CanvasTextDemand.Body))
         val image = IntSize(400, 800)
         val viewport = IntSize(400, 800)
-        val centered = BackgroundReadability.bandNeeds(needs, profile, image, viewport, BackgroundTransform())
+        val centered = BackgroundReadability.bandNeeds(needs, profile, PhotoFrame(image, viewport, BackgroundTransform()))
         assertEquals(0f, centered.first())
         assertTrue(centered.last() > 0.8f)
         // Zoomed in and moved to the top of the photo, every band shows the pale half.
-        val top = BackgroundReadability.bandNeeds(needs, profile, image, viewport, BackgroundTransform(scale = 2f, offsetY = -1f))
+        val top = BackgroundReadability.bandNeeds(needs, profile, PhotoFrame(image, viewport, BackgroundTransform(scale = 2f, offsetY = -1f)))
         assertTrue(top.all { it == 0f }, top.joinToString())
+    }
+
+    @Test
+    fun headerRegionIsMeasuredOverItsOwnPixels() {
+        // Pale sky over a dark lower half: the header region shows only the sky.
+        val columns = 4
+        val rows = 8
+        val pixels = IntArray(columns * rows) { index -> if (index / columns < rows / 2) 0xFFEAF3FB.toInt() else 0xFF000000.toInt() }
+        val profile = BackgroundTonalProfile.fromArgb(columns, rows, pixels)
+        val display = BackgroundReadability.sampleNeeds(profile, canvasVeilColor(AppSkin.Paper),
+            canvasTextTarget(AppSkin.Paper, CanvasTextDemand.Display))
+        val size = IntSize(400, 800)
+        val header = BackgroundReadability.regionNeed(display, profile, PhotoFrame(size, size, BackgroundTransform()), 0 until 160)
+        val whole = BackgroundReadability.regionNeed(display, profile, PhotoFrame(size, size, BackgroundTransform()), 0 until 800)
+        assertEquals(0f, header, "A pale sky already carries the large title")
+        assertTrue(whole > 0.3f, "The whole viewport includes the dark half: $whole")
     }
 
     private fun solid(pixel: Int) = BackgroundTonalProfile.fromArgb(1, 1, intArrayOf(pixel))

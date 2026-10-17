@@ -8,8 +8,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -29,18 +36,39 @@ import com.ticketbox.ui.design.themeVisualsForSkin
 import java.io.File
 
 /**
+ * What the shell needs to know about the canvas: whether a measured photo is drawn, its immersion,
+ * and how tall the shell header is. The header only carries a large title, so it is veiled to the
+ * large-text target and becomes the place where the photo is plainly visible.
+ */
+@Stable
+class CanvasPhotoState internal constructor() {
+    var photoActive by mutableStateOf(false)
+        internal set
+    var immersion by mutableStateOf(ImmersionMode.Balanced)
+        internal set
+
+    /** Height in px of the shell header band (status bar included); 0 while no header shows. */
+    var headerBandPx by mutableIntStateOf(0)
+}
+
+val LocalCanvasPhotoState = staticCompositionLocalOf<CanvasPhotoState?> { null }
+
+/**
  * The one background canvas. A user photo is drawn at full strength and veiled only as much as
  * its own pixels require for the text the page leaves on the canvas; immersion and page role then
  * add calm on top of that floor. Controlled built-in artwork keeps its tuned curve.
  */
+/** What the page leaves on the canvas: the demand below the header, and the header band height. */
+internal data class CanvasLayout(val canvasText: CanvasTextDemand = CanvasTextDemand.Body, val headerBandPx: Int = 0)
+
 @Composable
 internal fun BackgroundCanvas(
     settings: BackgroundSettings,
     skin: AppSkin,
     role: SurfaceRole,
-    canvasText: CanvasTextDemand,
+    photo: DecodedBackground?,
+    layout: CanvasLayout = CanvasLayout(),
 ) {
-    val photo = rememberBackgroundImage(customPhotoPath(settings))
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val viewport = IntSize(constraints.maxWidth, constraints.maxHeight)
         TicketboxBackgroundLayer(settings = settings, skin = skin, surfaceRole = role, photo = photo)
@@ -48,38 +76,69 @@ internal fun BackgroundCanvas(
             Box(Modifier.fillMaxSize().background(resolveGlobalScrim(settings, skin, role)))
             BottomReadabilityScrim(settings = settings, skin = skin, role = role)
         } else {
-            val transform = settings.transform
-            val canvasNeeds = remember(photo, skin, canvasText, viewport, transform) {
-                BackgroundReadability.bandNeeds(photo.needs(skin, canvasText), photo.profile, photo.size, viewport, transform)
-            }
-            val navigationNeed = remember(photo, skin, viewport, transform) {
-                BackgroundReadability.bandNeeds(photo.needs(skin, CanvasTextDemand.Body), photo.profile, photo.size, viewport, transform)
-                    .last()
-            }
-            val veil = canvasVeilColor(skin)
-            val dark = skin == AppSkin.Midnight
-            val alphas = canvasNeeds.map { photoVeilAlpha(it, settings.immersionMode, role, dark) }
-            Box(Modifier.fillMaxSize().background(bandedVeil(veil, alphas)))
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(PhotoNavigationScrimHeight)
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Transparent,
-                            0.45f to veil.copy(alpha = navigationNeed),
-                            1f to veil.copy(alpha = navigationNeed),
-                        ),
-                    ),
-            )
+            PhotoVeil(settings, skin, role, PhotoVeilInputs(photo, viewport, layout.canvasText, layout.headerBandPx))
         }
     }
 }
 
+private class PhotoVeilInputs(
+    val photo: DecodedBackground,
+    val viewport: IntSize,
+    val canvasText: CanvasTextDemand,
+    headerBandPx: Int,
+) {
+    val header = headerBandPx.coerceIn(0, viewport.height)
+}
+
+@Composable
+private fun BoxScope.PhotoVeil(settings: BackgroundSettings, skin: AppSkin, role: SurfaceRole, inputs: PhotoVeilInputs) {
+    val photo = inputs.photo
+    val viewport = inputs.viewport
+    val transform = settings.transform
+    val navigationPx = with(LocalDensity.current) { PhotoNavigationScrimHeight.roundToPx() }
+    val needs = remember(photo, skin, inputs.canvasText, viewport, transform, inputs.header, navigationPx) {
+        val header = inputs.header
+        val frame = PhotoFrame(photo.size, viewport, transform)
+        fun need(demand: CanvasTextDemand, rows: IntRange) =
+            BackgroundReadability.regionNeed(photo.needs(skin, demand), photo.profile, frame, rows)
+        val edges = (0..BackgroundReadability.BAND_COUNT).map { header + (viewport.height - header) * it / BackgroundReadability.BAND_COUNT }
+        Triple(
+            if (header == 0) 0f else need(CanvasTextDemand.Display, 0 until header),
+            List(BackgroundReadability.BAND_COUNT) { need(inputs.canvasText, edges[it] until edges[it + 1]) },
+            need(CanvasTextDemand.Body, (viewport.height - navigationPx).coerceAtLeast(0) until viewport.height),
+        )
+    }
+    val (headerNeed, bodyNeeds, navigationNeed) = needs
+    val veil = canvasVeilColor(skin)
+    val dark = skin == AppSkin.Midnight
+    Box(
+        Modifier.fillMaxSize().background(
+            veilBrush(
+                color = veil,
+                headerAlpha = photoVeilAlpha(headerNeed, settings.immersionMode, role, dark),
+                headerFraction = inputs.header / viewport.height.coerceAtLeast(1).toFloat(),
+                bands = bodyNeeds.map { photoVeilAlpha(it, settings.immersionMode, role, dark) },
+            ),
+        ),
+    )
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .height(PhotoNavigationScrimHeight)
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.45f to veil.copy(alpha = navigationNeed),
+                    1f to veil.copy(alpha = navigationNeed),
+                ),
+            ),
+    )
+}
+
 private val PhotoNavigationScrimHeight = 176.dp
 
-private fun customPhotoPath(settings: BackgroundSettings): String? =
+internal fun customPhotoPath(settings: BackgroundSettings): String? =
     settings.customImagePath?.takeIf { settings.source == BackgroundSource.CustomImage && File(it).isFile }
 
 /** Veil tone: the skin's own canvas colour, so a veiled photo still reads as paper or midnight. */
@@ -89,8 +148,10 @@ internal fun canvasVeilColor(skin: AppSkin): Color = themeVisualsForSkin(skin).b
 internal fun canvasTextTarget(skin: AppSkin, demand: CanvasTextDemand): CanvasTextTarget {
     val visuals = themeVisualsForSkin(skin)
     return when (demand) {
-        CanvasTextDemand.Body -> CanvasTextTarget(text = visuals.textMeta, ratio = 4.5f)
-        CanvasTextDemand.Display -> CanvasTextTarget(text = visuals.textDefault, ratio = 3f)
+        // Meta text and primary-coloured links are the faintest small text left on the canvas.
+        CanvasTextDemand.Body -> CanvasTextTarget(texts = listOf(visuals.textMeta, visuals.primary), ratio = 4.5f)
+        // The shell title is primary-coloured; default text covers any other large title.
+        CanvasTextDemand.Display -> CanvasTextTarget(texts = listOf(visuals.textDefault, visuals.primary), ratio = 3f)
     }
 }
 
@@ -119,21 +180,29 @@ fun photoVeilAlpha(need: Float, mode: ImmersionMode, role: SurfaceRole, dark: Bo
 }
 
 /**
- * Band alphas become one vertical gradient. Each band boundary takes the larger neighbour, so
- * interpolation never drops a band below its own requirement.
+ * The header band keeps its own (large-title) veil; below it, band alphas become one gradient.
+ * Every boundary takes the larger neighbour, so interpolation never drops a region below its need.
  */
-private fun bandedVeil(color: Color, alphas: List<Float>): Brush {
-    val count = alphas.size
+private fun veilBrush(color: Color, headerAlpha: Float, headerFraction: Float, bands: List<Float>): Brush {
+    val count = bands.size
+    val span = 1f - headerFraction
     val stops = buildList {
-        add(0f to color.copy(alpha = alphas.first()))
-        alphas.forEachIndexed { index, alpha ->
-            add((index + 0.5f) / count to color.copy(alpha = alpha))
-            if (index < count - 1) add((index + 1f) / count to color.copy(alpha = maxOf(alpha, alphas[index + 1])))
+        if (headerFraction > 0f) {
+            add(0f to color.copy(alpha = headerAlpha))
+            add((headerFraction - HeaderEdgeFraction).coerceAtLeast(0f) to color.copy(alpha = headerAlpha))
         }
-        add(1f to color.copy(alpha = alphas.last()))
+        add(headerFraction to color.copy(alpha = maxOf(bands.first(), if (headerFraction > 0f) headerAlpha else 0f)))
+        bands.forEachIndexed { index, alpha ->
+            add(headerFraction + span * (index + 0.5f) / count to color.copy(alpha = alpha))
+            if (index < count - 1) add(headerFraction + span * (index + 1f) / count to color.copy(alpha = maxOf(alpha, bands[index + 1])))
+        }
+        add(1f to color.copy(alpha = bands.last()))
     }
     return Brush.verticalGradient(*stops.toTypedArray())
 }
+
+/** A short ramp inside the bottom of the header softens its edge without leaving content less protected. */
+private const val HeaderEdgeFraction = 0.02f
 
 /**
  * 自由构图渲染：Image 层尺寸 = 完整绘制尺寸（超出视口），外层 clipToBounds；平移在视口内

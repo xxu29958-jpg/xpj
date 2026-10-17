@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,9 +48,15 @@ fun ImmersiveBackgroundScaffold(
     canvasText: CanvasTextDemand = CanvasTextDemand.Body,
     content: @Composable () -> Unit,
 ) {
+    val photo = rememberBackgroundImage(customPhotoPath(backgroundSettings))
+    val canvasState = remember { CanvasPhotoState() }
+    SideEffect {
+        canvasState.photoActive = photo != null
+        canvasState.immersion = backgroundSettings.immersionMode
+    }
     Box(modifier = Modifier.fillMaxSize()) {
-        BackgroundCanvas(backgroundSettings, currentSkin, surfaceRole, canvasText)
-        content()
+        BackgroundCanvas(backgroundSettings, currentSkin, surfaceRole, photo, CanvasLayout(canvasText, canvasState.headerBandPx))
+        CompositionLocalProvider(LocalCanvasPhotoState provides canvasState) { content() }
     }
 }
 
@@ -64,9 +73,10 @@ fun BackgroundPreviewStage(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit = {},
 ) {
+    val photo = rememberBackgroundImage(customPhotoPath(settings))
     Box(modifier = modifier) {
         Box(Modifier.matchParentSize()) {
-            BackgroundCanvas(settings, skin, role, CanvasTextDemand.Body)
+            BackgroundCanvas(settings, skin, role, photo)
         }
         content()
     }
