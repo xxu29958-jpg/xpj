@@ -14,6 +14,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -25,6 +26,10 @@ class AppearanceViewModel(
     val uiState: StateFlow<AppearanceUiState> = _uiState.asStateFlow()
 
     init {
+        val startedAt = System.currentTimeMillis()
+        viewModelScope.launch {
+            images.discardStale(settingsStore.backgroundSettingsFlow.first().customImagePath, startedAt)
+        }
         viewModelScope.launch {
             settingsStore.backgroundSettingsFlow.collect { settings ->
                 _uiState.update { it.copy(backgroundSettings = settings) }
