@@ -40,7 +40,9 @@ fun formatAmount(amountCents: Long?, currency: CurrencyCode = CurrencyCode.Defau
     val symbols = DecimalFormatSymbols.getInstance(locale)
     val digits = currency.minorUnitDigits
     val pattern = DecimalFormat("#,##0" + if (digits == 0) "" else "." + "0".repeat(digits), symbols)
-    return "${currency.symbol}${pattern.format(BigDecimal.valueOf(amountCents, digits))}"
+    // The sign reads before the currency (-¥500), as on the web and in the v0.6 designs.
+    val sign = if (amountCents < 0) "-" else ""
+    return "$sign${currency.symbol}${pattern.format(BigDecimal.valueOf(amountCents, digits).abs())}"
 }
 
 fun formatDisplayAmount(amountCents: Long?, display: CurrencyDisplay = CurrencyDisplay.Base): String {

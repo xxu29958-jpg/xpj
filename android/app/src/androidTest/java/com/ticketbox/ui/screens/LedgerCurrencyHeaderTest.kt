@@ -59,9 +59,9 @@ class LedgerCurrencyHeaderTest {
         composeRule.onAllNodesWithText("CNY ¥1.00").assertCountEquals(2)
         composeRule.onAllNodesWithText("CNY ¥1.00")[0].assertIsDisplayed()
         composeRule.onAllNodesWithText("CNY ¥1.00")[1].assertIsDisplayed()
-        composeRule.onAllNodesWithText("JPY ¥-50").assertCountEquals(2)
-        composeRule.onAllNodesWithText("JPY ¥-50")[0].assertIsDisplayed()
-        composeRule.onAllNodesWithText("JPY ¥-50")[1].assertIsDisplayed()
+        composeRule.onAllNodesWithText("JPY -¥50").assertCountEquals(2)
+        composeRule.onAllNodesWithText("JPY -¥50")[0].assertIsDisplayed()
+        composeRule.onAllNodesWithText("JPY -¥50")[1].assertIsDisplayed()
         composeRule.onAllNodesWithText("€", substring = true).assertCountEquals(0)
     }
 
