@@ -54,7 +54,7 @@ internal class NetworkErrorHandler(
             Result.failure(RepositoryException(error.message ?: "请求参数不正确。", cause = error))
         } catch (error: Exception) {
             logNetworkWarning("operation=$context request failed", error)
-            Result.failure(RepositoryException(error.message ?: "操作失败。", cause = error))
+            Result.failure(RepositoryException(error.message ?: "暂时没能完成，请稍后再试。", cause = error))
         }
     }
 

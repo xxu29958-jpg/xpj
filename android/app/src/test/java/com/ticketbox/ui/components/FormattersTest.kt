@@ -343,6 +343,14 @@ class FormattersTest {
         assertEquals("2026-05-03T08:45:00Z", original.copy(time = "08:45", changed = true).resolve().instant)
     }
 
+
+    @Test
+    fun negativeAmountsPutTheSignBeforeTheCurrency() {
+        assertEquals("-¥500", formatAmount(-500, CurrencyCode.JPY))
+        assertEquals("-¥1,234.56", formatAmount(-123_456, CurrencyCode.CNY))
+        assertEquals("¥0.00", formatAmount(0, CurrencyCode.CNY))
+        assertEquals("-${'$'}92,233,720,368,547,758.08", formatAmount(Long.MIN_VALUE, CurrencyCode.USD))
+    }
 }
 
 private data class FormatterExpenseFixture(

@@ -42,7 +42,7 @@
     <string name="saved_query_accepted">已取得原提交的首次结果。</string>
     <string name="saved_query_done">完成并读取当前查询</string>
     <string name="saved_query_readonly">当前为只读，可查看查询；原输入保留。</string>
-    <string name="saved_query_back">返回查询目录</string>
+    <string name="saved_query_back">常用查询</string>
     <string name="saved_query_result_count">找到 %1$d 条流水 · 第 %2$d 页</string>
     <string name="saved_query_previous">上一页</string>
     <string name="saved_query_next">下一页</string>

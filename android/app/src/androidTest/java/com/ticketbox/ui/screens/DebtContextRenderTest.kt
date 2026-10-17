@@ -66,7 +66,7 @@ class DebtContextRenderTest {
             homeCurrencyCode = "JPY", principalAmountCents = 1200, paidAmountCents = 300,
             remainingAmountCents = 800, adjustmentAmountCents = -100, forgivenAmountCents = 0) }
         composeRule.onNodeWithText(note).assertDoesNotExist()
-        composeRule.onNodeWithText("¥-100").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("-¥100").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("剩余 · JPY").assertExists()
         composeRule.onNodeWithText("¥300").performScrollTo().assertIsDisplayed()
         composeRule.runOnIdle { current.value = current.value.copy(counterpartyType = DebtCounterpartyTypes.MEMBER,

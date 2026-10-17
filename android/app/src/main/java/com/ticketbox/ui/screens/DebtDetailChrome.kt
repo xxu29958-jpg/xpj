@@ -9,9 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.vectorResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.CurrencyCode
@@ -33,9 +31,7 @@ import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.DebtAction
 import com.ticketbox.viewmodel.DebtDetailUiState
 import com.ticketbox.viewmodel.DebtActivityUiState
@@ -110,10 +106,7 @@ internal fun DebtDetailContent(
             ),
             onRefresh = callbacks.onRefresh,
         ),
-        slots = AppSecondaryPageSlots(bottomBar = debtDetailPrimaryAction(state, panels, callbacks), headingPrefix = {
-            if (debt != null) SettingsEntryIcon(ImageVector.vectorResource(R.drawable.ic_lucide_users),
-                background = LocalThemeVisuals.current.surfaceApricot, prominent = true)
-        }),
+        slots = AppSecondaryPageSlots(bottomBar = debtDetailPrimaryAction(state, panels, callbacks)),
     ) {
         debtDetailStatusItems(
             state = state,

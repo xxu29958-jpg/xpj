@@ -23,12 +23,11 @@ fun SettingsEntryIcon(
     modifier: Modifier = Modifier,
     background: Color = MaterialTheme.colorScheme.primaryContainer,
     shape: Shape? = null,
-    prominent: Boolean = false,
 ) {
     Box(
         modifier = modifier
-            .size(if (prominent) SettingsEntryIconTokens.ProminentContainerSize else SettingsEntryIconTokens.ContainerSize)
-            .clip(shape ?: RoundedCornerShape(if (prominent) AppRadius.hero else AppRadius.extraSmall))
+            .size(SettingsEntryIconTokens.ContainerSize)
+            .clip(shape ?: RoundedCornerShape(AppRadius.extraSmall))
             .background(background),
         contentAlignment = Alignment.Center,
     ) {
@@ -36,13 +35,11 @@ fun SettingsEntryIcon(
             imageVector = icon,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(if (prominent) SettingsEntryIconTokens.ProminentGlyphSize else AppIconSize.compact),
+            modifier = Modifier.size(AppIconSize.compact),
         )
     }
 }
 
 private object SettingsEntryIconTokens {
     val ContainerSize = 36.dp
-    val ProminentContainerSize = 64.dp
-    val ProminentGlyphSize = 28.dp
 }

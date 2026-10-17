@@ -115,7 +115,7 @@
     <string name="stats_chart_distribution_remaining">其余 %1$d 天</string>
     <string name="stats_recent_upload_title">最近上传</string>
     <string name="stats_recent_upload_empty">还没有上传记录</string>
-    <string name="stats_recent_upload_hint">用于确认手机端和电脑端最近一次上传状态。</string>
+    <string name="stats_recent_upload_hint">有新上传的小票时，这里显示最近一次的时间。</string>
 
     <!-- LifestyleCard：生活画像 + 高频商家 + 真香/后悔 -->
     <string name="stats_lifestyle_module_title">消费线索</string>
@@ -339,7 +339,7 @@
     <string name="debt_list_total_count">%1$d 笔未结往来</string>
     <string name="debt_list_total_out_of_range">合计金额超出可显示范围，请逐笔核对。</string>
     <string name="debt_list_section_family">家人</string>
-    <string name="debt_list_section_external">朋友与其它</string>
+    <string name="debt_list_section_external">朋友与其他</string>
     <string name="debt_list_error_title">欠款暂时打不开</string>
     <string name="debt_list_load_failed">欠款加载失败，请稍后再试。</string>
     <string name="debt_create_sheet_title">记一笔欠款</string>
@@ -391,7 +391,7 @@
     <string name="debt_goal_create_failed">创建失败，请稍后再试。</string>
     <string name="debt_goal_create_load_failed">欠款加载失败，请稍后再试。</string>
     <string name="debt_goal_link_editor_action">编辑关联欠款</string>
-    <string name="debt_goal_link_editor_back">返回目标详情</string>
+    <string name="debt_goal_link_editor_back">目标详情</string>
     <string name="debt_goal_link_editor_title">编辑关联欠款</string>
     <string name="debt_goal_link_editor_picker_title">目标内的欠款</string>
     <string name="debt_goal_link_editor_picker_subtitle">可加入未结清欠款；已关联且仍有效的欠款会保留在列表中。</string>
@@ -680,7 +680,7 @@
     <string name="stats_empty_skeleton_frequent_merchants">高频商家</string>
 
     <!-- RecurringScreen：固定支出独立屏 -->
-    <string name="recurring_back_to_stats">返回计划</string>
+    <string name="recurring_back_to_stats">计划</string>
     <string name="recurring_header_title">固定支出</string>
     <string name="recurring_section_formal">正式计划</string>
     <string name="recurring_section_suggestions">发现的建议</string>
@@ -719,7 +719,7 @@
     <string name="recurring_badge_empty">未设置</string>
 
     <!-- BudgetHeader / MonthSwitcher：预算屏头部 + 月份切换 -->
-    <string name="budget_back_to_stats">返回计划</string>
+    <string name="budget_back_to_stats">计划</string>
     <string name="budget_header_title">这个月，心里有数</string>
     <string name="budget_header_subtitle">%1$s · 月度预算</string>
     <string name="budget_month_previous">上月</string>
@@ -799,7 +799,7 @@
     <!-- CreateSpendingGoalScreen：洞察→规划→添加开销目标 -->
     <string name="spending_goal_create_title">添加消费目标</string>
     <string name="spending_goal_create_intro">设置某个月的支出上限，保存后会在消费目标列表里跟踪进度。</string>
-    <string name="spending_goal_create_back">返回计划</string>
+    <string name="spending_goal_create_back">计划</string>
     <string name="spending_goal_create_month_section">目标月份</string>
     <string name="spending_goal_create_month_hint">按月跟踪，之后可在目标卡片查看进度。</string>
     <string name="spending_goal_create_form_section">目标内容</string>
@@ -951,7 +951,7 @@
     <string name="recurring_message_candidate_expired">固定支出候选已过期，请刷新后再试。</string>
     <string name="recurring_message_updated">固定支出已更新。</string>
     <string name="recurring_message_queued">已保存到待同步；同步完成后才会计入计划。</string>
-    <string name="recurring_message_action_failed">操作失败。</string>
+    <string name="recurring_message_action_failed">暂时没能完成，请稍后再试。</string>
 
     <!-- ADR-0049 §杠杆③ (slice 3a)：NLS 还款捕获复核箱 -->
     <string name="repayment_draft_topbar_back">返回</string>

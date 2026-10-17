@@ -79,8 +79,6 @@
     <string name="pending_queue_overview_metric_count">%1$d 条</string>
     <string name="pending_queue_overview_amount_issue">缺金额 %1$d</string>
     <string name="pending_queue_overview_merchant_issue">缺商家 %1$d</string>
-    <string name="pending_queue_overview_missing_info_issue">缺信息 %1$d</string>
-    <string name="pending_queue_overview_duplicate_issue">疑似重复 %1$d</string>
     <string name="pending_queue_overview_bulk_confirm">确认 %1$d 条</string>
     <string name="pending_queue_overview_bulk_running">正在确认</string>
 

@@ -91,7 +91,7 @@ data class RecurringConflictDetails(
  *  files so it's the single source of truth for error text. */
 internal fun backendErrorUserMessage(errorCode: String, serverMessage: String): String {
     return backendErrorUserMessages[errorCode.trim()]
-        ?: serverMessage.trim().ifBlank { "操作失败。" }
+        ?: serverMessage.trim().ifBlank { "暂时没能完成，请稍后再试。" }
 }
 
 private val backendErrorUserMessages = mapOf(

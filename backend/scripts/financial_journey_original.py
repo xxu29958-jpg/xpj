@@ -98,7 +98,7 @@ def native_first_original(j):
     native.click("确认并保存原件", stable=True)
     j.expect(lambda value: value["original_attached"], "The restored original did not reach the existing bill")
     _accepted_original(j, key, before, digest)
-    native.reveal_any("服务端已接受")
+    native.reveal_any("原件状态见下方检查")
     native.capture("financial-original-first-accepted")
     j.native_open()
     return digest

@@ -167,7 +167,7 @@
     <string name="error_split_parent_amount_missing">原账单金额未确定，无法发起拆账。</string>
     <string name="error_not_found">没有找到对应的记录。</string>
     <string name="error_task_not_found">后台任务不存在或已结束。</string>
-    <string name="error_generic">操作失败。</string>
+    <string name="error_generic">暂时没能完成，请稍后再试。</string>
     <string name="sync_status_mutation_create_bill_split">拆账邀请原提交</string>
     <string name="bill_split_submission_saved">拆账提交已保存，发送结果会显示在这笔账单中。</string>
     <string name="bill_split_submission_pending">请先处理这笔账单的原拆账提交。</string>

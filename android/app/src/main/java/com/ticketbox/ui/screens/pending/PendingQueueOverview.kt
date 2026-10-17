@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens.pending
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -106,36 +105,31 @@ internal fun PendingQueueOverview(
             bulkRunning = bulkRunning,
             onOpenBulkConfirm = onOpenBulkConfirm,
         )
-        if (model.shouldShowMetrics || model.hasReviewSignals) FlowRow(
+        // Issue counts live on the filter chips below; the overview only adds ready/review totals.
+        if (model.shouldShowMetrics) FlowRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         ) {
-            if (model.shouldShowMetrics) {
-                PendingQueueMetric(
-                    label = stringResource(
-                        if (model.evidence == PendingQueueEvidence.LocalCache) {
-                            R.string.pending_queue_overview_ready_cache_label
-                        } else {
-                            R.string.pending_queue_overview_ready_label
-                        },
-                    ),
-                    value = model.readyCount,
-                )
-                PendingQueueMetric(
-                    label = stringResource(
-                        if (model.evidence == PendingQueueEvidence.LocalCache) {
-                            R.string.pending_queue_overview_review_cache_label
-                        } else {
-                            R.string.pending_queue_overview_review_label
-                        },
-                    ),
-                    value = model.reviewCount,
-                )
-            }
-            if (model.hasReviewSignals) {
-                PendingQueueIssue(model.needsInformation, R.string.pending_queue_overview_missing_info_issue)
-                PendingQueueIssue(model.duplicate, R.string.pending_queue_overview_duplicate_issue)
-            }
+            PendingQueueMetric(
+                label = stringResource(
+                    if (model.evidence == PendingQueueEvidence.LocalCache) {
+                        R.string.pending_queue_overview_ready_cache_label
+                    } else {
+                        R.string.pending_queue_overview_ready_label
+                    },
+                ),
+                value = model.readyCount,
+            )
+            PendingQueueMetric(
+                label = stringResource(
+                    if (model.evidence == PendingQueueEvidence.LocalCache) {
+                        R.string.pending_queue_overview_review_cache_label
+                    } else {
+                        R.string.pending_queue_overview_review_label
+                    },
+                ),
+                value = model.reviewCount,
+            )
         }
     }
 }
@@ -178,9 +172,6 @@ private fun PendingQueueOverviewHeader(
     }
 }
 
-private val PendingQueueOverviewModel.hasReviewSignals: Boolean
-    get() = needsInformation > 0 || duplicate > 0
-
 private val PendingQueueOverviewModel.shouldShowMetrics: Boolean
     get() = readyCount > 0 && reviewCount > 0
 
@@ -218,13 +209,3 @@ private fun PendingQueueMetric(label: String, value: Int) {
     }
 }
 
-@Composable
-private fun PendingQueueIssue(count: Int, @StringRes labelRes: Int) {
-    if (count <= 0) return
-    Text(
-        text = stringResource(labelRes, count),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
-        fontWeight = AppTextHierarchy.heading.weight,
-    )
-}

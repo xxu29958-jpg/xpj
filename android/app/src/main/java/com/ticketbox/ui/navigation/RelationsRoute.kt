@@ -61,6 +61,9 @@ import com.ticketbox.viewmodel.DebtListUiState
 import com.ticketbox.viewmodel.DebtListViewModel
 import com.ticketbox.viewmodel.debtViewModelFactory
 import kotlinx.coroutines.delay
+import androidx.compose.ui.text.font.FontWeight
+import com.ticketbox.ui.design.LocalThemeVisuals
+import androidx.compose.foundation.layout.padding
 
 /** 域级新建抽屉的 VM key：与两个 tab 的列表 VM 实例隔离（同 ViewModelStore 内按 key 区分）。 */
 internal const val RelationsDebtComposerViewModelKey = "relations-debt-composer"
@@ -428,11 +431,11 @@ internal fun ObligationsTaskNavigation(
     ledgerName: String?,
 ) {
     Column {
+        // D03: secondary tasks read as quiet links under the same section-title level as the groups.
         Text(
             text = stringResource(R.string.relations_task_section_title),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.fillMaxWidth().padding(top = AppSpacing.contentGap),
         )
         ObligationsTaskRow(
             title = stringResource(R.string.relations_all_debts),
@@ -469,7 +472,9 @@ private fun ObligationsTaskRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyLarge,
+                color = LocalThemeVisuals.current.primary,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
             )
             supporting?.takeIf { it.isNotBlank() }?.let {
                 Text(

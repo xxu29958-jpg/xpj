@@ -11,7 +11,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -107,6 +109,9 @@ class CustomBackgroundShellRenderTest {
 
     private fun capture(name: String) {
         compose.waitForIdle()
+        // A background change alone does not schedule a window redraw before the system
+        // screenshot; capturing the root forces one, so the screenshot shows the photo just set.
+        compose.onRoot().captureToImage()
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         automation.waitForIdle(250, 5_000)
         saveConsumerArtPreview(name, requireNotNull(automation.takeScreenshot()))
