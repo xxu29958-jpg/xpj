@@ -71,6 +71,17 @@ class AppearanceViewModelTest {
         assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
     }
 
+    @Test
+    fun openingAppearanceSweepsOrphanedCandidatesButKeepsTheAppliedImage() = appearanceTest {
+        val store = FakeTicketboxSettingsStore()
+        store.saveBackgroundSettings(BackgroundSettings().withCustomImage("/private/applied.image"))
+        val images = FakeBackgroundImages()
+        AppearanceViewModel(store, images)
+        advanceUntilIdle()
+
+        assertEquals(listOf<String?>("/private/applied.image"), images.staleSweeps)
+    }
+
     private fun appearanceTest(block: suspend TestScope.() -> Unit) = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)

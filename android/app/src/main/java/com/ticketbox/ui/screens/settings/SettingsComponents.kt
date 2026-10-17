@@ -78,9 +78,6 @@ import com.ticketbox.ui.appearance.BuiltInBackground
 import com.ticketbox.ui.appearance.BuiltInBackgroundCategory
 import com.ticketbox.ui.appearance.background.ImmersiveBackgroundScaffold
 import com.ticketbox.ui.appearance.background.SurfaceRole
-import com.ticketbox.ui.appearance.background.TicketboxBackgroundLayer
-import com.ticketbox.ui.appearance.background.resolveCardContainerAlpha
-import com.ticketbox.ui.appearance.background.resolveGlobalScrim
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppPageChrome

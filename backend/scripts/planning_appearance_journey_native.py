@@ -70,7 +70,7 @@ def pick_photo(native):
     nodes = wait_for(photo, "The actual Photo Picker did not expose the known image")
     native.capture("appearance-photo-picker")
     native.tap(nodes[0])
-    wait_for(lambda: native.has("应用背景"), "The actual selected image did not open the editor")
+    wait_for(lambda: native.has("应用这个背景"), "The actual selected image did not open the editor")
 
 
 def read_domains(native, images):
@@ -135,8 +135,8 @@ def native_appearance(j, path, image_digest):
     native.capture("appearance-settings-default")
     native.click("背景图库")
     native.click("茶雾")
-    native.click("应用背景")
-    wait_for(lambda: not native.has("应用背景"), "The built-in background did not publish")
+    native.click("应用这个背景")
+    wait_for(lambda: not native.has("应用这个背景"), "The built-in background did not publish")
     native.reveal_any("更多外观设置")
     native.click("更多外观设置")
     native.reveal_any("茶雾", toward_start=True)
@@ -149,7 +149,7 @@ def native_appearance(j, path, image_digest):
     native.click("完成构图")
     assert saved_background(native) == original, "Editing published the candidate before Apply"
     native.capture("appearance-unpublished-preview")
-    native.click("取消", bottom=True)
+    native.click("取消，使用原背景", bottom=True)
     wait_for(lambda: not private_images(native), "Cancel did not release its uncommitted candidate image")
     assert saved_background(native) == original
     pick_photo(native)
@@ -157,8 +157,8 @@ def native_appearance(j, path, image_digest):
     native.click("放大")
     native.click("右移")
     native.click("完成构图")
-    native.click("应用背景")
-    wait_for(lambda: not native.has("应用背景"), "Apply did not return to appearance settings")
+    native.click("应用这个背景")
+    wait_for(lambda: not native.has("应用这个背景"), "Apply did not return to appearance settings")
     assert saved_background(native) != original
     images = private_images(native)
     assert len(images) == 1 and list(images.values()) == [image_digest], "The private image changed at import"
@@ -173,13 +173,13 @@ def native_appearance(j, path, image_digest):
     native.reveal_any("自定义图片")
     native.reveal_any("调整构图", toward_start=True)
     native.click("调整构图")
-    wait_for(lambda: native.has("应用背景"), "The saved composition did not reopen in its editor")
+    wait_for(lambda: native.has("应用这个背景"), "The saved composition did not reopen in its editor")
     native.capture("appearance-reopened-composition")
     native.click("拖动与缩放")
     native.click("左移")
     native.click("完成构图")
-    native.click("取消", bottom=True)
-    wait_for(lambda: not native.has("应用背景"), "Cancel did not leave the composition editor")
+    native.click("取消，使用原背景", bottom=True)
+    wait_for(lambda: not native.has("应用这个背景"), "Cancel did not leave the composition editor")
     assert saved_background(native) == applied and private_images(native) == images
     open_appearance(native)
     native.click("自动匹配系统明暗外观")
