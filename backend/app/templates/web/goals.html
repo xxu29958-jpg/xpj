@@ -42,8 +42,8 @@
       </div>
       {% if goal.progress_percent is not none %}
       <div class="product-meter">
-        <div class="product-entry-heading"><strong>目标进度</strong><span>{{ goal.progress_percent }}%</span></div>
-        <progress class="product-progress{% if goal.is_over_limit %} is-over{% endif %}" value="{{ goal.bar_percent }}" max="100" aria-label="{{ goal.name }}目标进度 {{ goal.progress_percent }}%"></progress>
+        <div class="product-entry-heading"><strong>额度已用</strong><span>{{ goal.progress_percent }}%</span></div>
+        <progress class="product-progress{% if goal.is_over_limit %} is-over{% endif %}" value="{{ goal.bar_percent }}" max="100" aria-label="{{ goal.name }}额度已用 {{ goal.progress_percent }}%"></progress>
       </div>
       {% else %}<p class="product-feedback" role="status">币种或汇率待补充，暂时无法计算进度。目标金额已保留。</p>{% endif %}
       <div class="product-form-actions">

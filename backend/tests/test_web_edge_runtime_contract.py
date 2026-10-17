@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, select_autoescape
 
-from app.routes.web_common import _grouped_amount
+from app.routes.web_common import _grouped_amount, _money_amount
 from tests._web_browser_test_support import _REPO_ROOT, _discover_edge, _edge_cdp
 
 _BULK_BAR_JS = _REPO_ROOT / "backend" / "app" / "static" / "web" / "desktop" / "bulk-bar.js"
@@ -80,6 +80,7 @@ def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, ra
         seed + '{% block page_scripts %}{% endblock %}</head><body>{% block content %}{% endblock %}</body></html>'}),
         FileSystemLoader(_REPO_ROOT / "backend/app/templates/web")]), autoescape=select_autoescape(["html"]))
     environment.filters["grouped"] = _grouped_amount
+    environment.filters["money"] = _money_amount
     body = environment.get_template("expense_new.html").render(manual_draft_scope=scope, manual_draft_result="",
         form_ledger_id="ledger", form_device_public_id="device", form_home_currency_code="CNY", client_ref="b" * 32,
         values={"currency_code": "CNY"}, currency_options=["CNY"], category_options=[], edit_return_fields={},
@@ -150,6 +151,7 @@ def test_income_create_original_form_draft_survives_refresh_in_real_edge(tmp_pat
         autoescape=select_autoescape(["html"]),
     )
     environment.filters["grouped"] = _grouped_amount
+    environment.filters["money"] = _money_amount
     template = environment.get_template("income_plans.html")
     scope = {"datasetId": "income-dataset", "clientGeneration": "income-generation",
              "accountId": "income-account", "ledgerId": "income-ledger", "deviceId": "income-device"}
@@ -320,6 +322,7 @@ def test_pending_subtasks_preserve_inputs_and_guard_only_other_unsaved_forms(tmp
         FileSystemLoader(_REPO_ROOT / "backend/app/templates/web"),
     ]), autoescape=select_autoescape(["html"]))
     environment.filters["grouped"] = _grouped_amount
+    environment.filters["money"] = _money_amount
     row = {"public_id": "", "name": "", "kind": "product", "amount_yuan": "", "unit_price_yuan": "",
         "quantity_text": "", "category": "", "errors": {}}
     body = environment.get_template("edit.html").render(expense={"id": 7, "row_version": 9, "merchant": "原商家",
@@ -556,6 +559,7 @@ def test_income_edit_keeps_original_draft_beside_current_facts_in_real_edge(tmp_
         FileSystemLoader(_REPO_ROOT / "backend/app/templates/web"),
     ]), autoescape=select_autoescape(["html"]))
     environment.filters["grouped"] = _grouped_amount
+    environment.filters["money"] = _money_amount
     template = environment.get_template("income_edit.html")
     scope = {"datasetId": "income-dataset", "clientGeneration": "income-generation",
         "accountId": "income-account", "ledgerId": "income-ledger", "deviceId": "income-device"}
@@ -692,6 +696,7 @@ def test_goal_original_input_survives_reload_and_reopening_in_real_edge(tmp_path
         FileSystemLoader(_REPO_ROOT / "backend/app/templates/web"),
     ]), autoescape=select_autoescape(["html"]))
     environment.filters["grouped"] = _grouped_amount
+    environment.filters["money"] = _money_amount
     template = environment.get_template("goals.html" if kind == "create" else "goal_edit.html")
     scope = {"datasetId": "goal-dataset", "clientGeneration": "goal-generation", "accountId": "goal-account",
         "ledgerId": "goal-ledger", "deviceId": "goal-device"}

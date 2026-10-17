@@ -10,7 +10,7 @@ from urllib.parse import parse_qs
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, StrictUndefined
 
-from app.routes.web_common import _grouped_amount
+from app.routes.web_common import _grouped_amount, _money_amount
 
 
 @pytest.fixture(autouse=True)
@@ -105,6 +105,7 @@ def test_actual_confirmed_template_distinguishes_unknown_calendar_and_page_sum()
         FileSystemLoader(Path(__file__).parents[1] / "app/templates/web"),
     ]))
     env.filters["grouped"] = _grouped_amount
+    env.filters["money"] = _money_amount
     entry = {"entry_kind": "expense", "id": 3, "stream_date": "2026-08-05", "stream_amount_cents": 100,
         "merchant": "原账单", "category": "餐饮", "stat_time": "", "lineage_chip_label": "", "amount_label": "CN¥1.00",
         "fx_meta": None}

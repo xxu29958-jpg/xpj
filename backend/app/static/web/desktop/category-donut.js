@@ -81,13 +81,5 @@
       });
       new ResizeObserver(render).observe(el);
     });
-
-    // 把环图 legend dots 的颜色也按 chart-series 涂上
-    document.querySelectorAll(".chart-legend-0").forEach(function (n) { n.style.background = app.readVar("--chart-series-1"); });
-    document.querySelectorAll(".chart-legend-1").forEach(function (n) { n.style.background = app.readVar("--chart-series-2"); });
-    document.querySelectorAll(".chart-legend-2").forEach(function (n) { n.style.background = app.readVar("--chart-series-3"); });
-    document.querySelectorAll(".chart-legend-3").forEach(function (n) { n.style.background = app.readVar("--chart-series-4"); });
-    document.querySelectorAll(".chart-legend-4").forEach(function (n) { n.style.background = app.readVar("--chart-series-5"); });
-    document.querySelectorAll(".chart-legend-5").forEach(function (n) { n.style.background = app.readVar("--chart-series-6"); });
   };
 })(window, document);

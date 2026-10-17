@@ -5,7 +5,7 @@
 {% set _earliest_month = six_month_trend[0].month if six_month_trend else r.month %}
 {% set _mc = '&merchant_category=' ~ (r.merchant_category | urlencode) if r.merchant_category else '' %}
 {% block title %}报表 · 小票夹{% endblock %}
-{% macro report_money(value) %}{% if value is none %}待补汇率{% else %}{{ home_currency_symbol }}{{ value|grouped }}{% endif %}{% endmacro %}
+{% macro report_money(value) %}{% if value is none %}待补汇率{% else %}{{ value|money(home_currency_symbol) }}{% endif %}{% endmacro %}
 {% macro report_projection_gaps(gaps, month) %}
   {% for gap in gaps %}
     {% set rate_context = {'ledger_id': selected_ledger_id, 'month': month, 'home_currency_code': gap.home_currency_code, 'return_to': 'reports', 'granularity': report.granularity, 'ranking_metric': report.ranking_metric, 'merchant_category': report.merchant_category} %}
@@ -46,7 +46,8 @@
 </section>
 <section class="report-history" aria-label="半年趋势">
   <div id="chart-trend" class="report-chart report-chart--tall" data-series='{{ six_month_trend | tojson }}'></div>
-  <p class="hint">柱形表示净支出，虚线为预算；精确数值可在明细数据中核对。</p>
+  {% set _budgeted_months = six_month_trend | rejectattr("budget_status", "equalto", "not_set") | list %}
+  <p class="hint">柱形表示净支出{% if _budgeted_months %}，虚线为当月预算{% endif %}；精确数值可在明细数据中核对。</p>
 </section>
 <div class="product-form-actions report-primary-action"><a class="product-button product-button--primary" href="/web/reports?{{ report_query }}&amp;view=data">查看明细数据 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>
 <script type="application/json" id="reports-overview-data">{{ report | tojson }}</script>
@@ -90,7 +91,7 @@
   <dl class="report-supporting-facts">
     <div><dt>已入账笔数</dt><dd>{{ r.count }} 笔{% if r.previous_count %} · 上月 {{ r.previous_count }} 笔{% endif %}</dd></div>
     <div><dt>较上月</dt><dd>{% if r.previous_total_amount_cents is none or r.total_amount_cents is none %}待补信息{% elif r.previous_total_amount_cents > 0 %}{{ '%+.1f' % ((r.total_amount_cents - r.previous_total_amount_cents) / r.previous_total_amount_cents * 100) }}%{% elif r.previous_total_amount_cents == 0 %}上月合计为零{% else %}上月为净退回，不计算增长率{% endif %}</dd></div>
-    <div><dt>同比金额变化</dt><dd>{{ report_money(r.year_over_year_delta_amount_yuan) }}</dd></div>
+    <div><dt>较去年同月</dt><dd>{{ r.year_over_year_change_label }}</dd></div>
     <div><dt>近六个月超预算</dt><dd>{% if overspent_months is none %}待补信息{% else %}{{ overspent_months }} 个月{% endif %}</dd></div>
   </dl>
 </details>
@@ -102,7 +103,7 @@
     <div class="product-panel-header">
       <div>
         <div class="product-panel-title">分类对比</div>
-        <div class="product-panel-subtitle">本月 vs 上月 vs 去年同月</div>
+        <div class="product-panel-subtitle">本月与上月{% if r.category_has_year_ago %}、去年同月{% endif %}</div>
       </div>
     </div>
     <p class="chart-fallback">图表需要启用 JavaScript 才能渲染；原始数据见下方表格。</p>
@@ -194,7 +195,7 @@
             <td><a href="{{ row.edit_href }}">{{ row.merchant }}</a></td>
             <td>{{ row.category }}</td>
             <td class="text-meta">{{ row.expense_time }}</td>
-            <td class="amount">{{ home_currency_symbol }}{{ row.amount_yuan|grouped }}</td>
+            <td class="amount">{{ row.amount_yuan|money(home_currency_symbol) }}</td>
           </tr>
         {% endfor %}
         </tbody>

@@ -52,7 +52,8 @@ def report_client(monkeypatch):
     monkeypatch.setattr(web_reports, "_view_model", lambda payload, **_k: {
         **payload, "merchant_category": payload.get("merchant_category") or "", "total_amount_yuan": "0.00", "total_amount_label": "¥0",
         "total_amount_cents": 0, "previous_total_amount_cents": 0, "merchant_amount_unavailable": False,
-        "year_over_year_delta_amount_yuan": "0.00", "count": 0, "previous_count": 0,
+        "year_over_year_delta_amount_yuan": "0.00", "year_over_year_change_label": "去年同月没有记录",
+        "category_has_year_ago": False, "count": 0, "previous_count": 0,
         "trend": [], "category_comparison": [], "merchant_ranking": [],
     })
     template_root = Path(__file__).resolve().parents[1] / "app/templates/web"

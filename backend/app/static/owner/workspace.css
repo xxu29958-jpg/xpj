@@ -124,8 +124,11 @@
   .workspace-columns { gap: 24px; }
 }
 /* Device identity, connection purpose and credential handoff. */
-.workspace-pairing-form { min-height: calc(100svh - 250px); display: flex; flex-direction: column; }
-.workspace-pairing-form .workspace-save { margin-top: auto; }
+.workspace-pairing-form { display: flex; flex-direction: column; }
+@media (max-width: 880px) {
+  .workspace-pairing-form { min-height: calc(100svh - 250px); }
+  .workspace-pairing-form .workspace-save { margin-top: auto; }
+}
 .workspace-pairing-purpose { border: 0; margin: 0 0 24px; }
 .workspace-pairing-note, .workspace-device-warning { display: flex; gap: 14px; align-items: flex-start; font-size: 14px; margin-bottom: 26px; }
 .workspace-pairing-note > .workspace-icon { width: 20px; height: 20px; flex-basis: 20px; color: var(--brand-primary); }
@@ -202,7 +205,6 @@
 .workspace-check-action:disabled { cursor: not-allowed; opacity: .55; }
 
 /* Ledger identity, lifecycle actions and calendar rules stay distinct. */
-.workspace-ledgers { min-height: calc(100svh - 240px); }
 .workspace-ledger-row .workspace-task__text, .workspace-archived-ledger .workspace-task__text { overflow-wrap: anywhere; }
 .workspace-row-action { font-size: 14px; white-space: nowrap; }
 .workspace-ledger-row .workspace-disclosure__body { padding-bottom: 20px; }
@@ -212,7 +214,6 @@
 .workspace-ledger-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
 .workspace-ledger-create { align-self: stretch; display: flex; flex-direction: column; }
 .workspace-ledger-create > form { display: flex; flex-direction: column; flex: 1; }
-.workspace-ledger-create .workspace-save { margin-top: auto; }
 .workspace-ledger-help { border: 0; padding: 0 0 18px; color: var(--brand-primary); }
 .workspace-calendar { max-width: 720px; }
 .workspace-calendar-current { margin-bottom: 26px; border: 0; overflow-wrap: anywhere; }
@@ -226,10 +227,12 @@
 .workspace-calendar-rules li { padding: 14px 0; border-bottom: 1px solid var(--border-card); font-size: 14px; overflow-wrap: anywhere; }
 .workspace-calendar-rules li span { display: block; color: var(--text-muted); font-size: 13px; margin-top: 4px; }
 
+/* Phones keep the create action in the thumb zone; wide windows keep it right under its fields. */
 @media (max-width: 880px) {
   .workspace-ledgers, .workspace-calendar-form { display: flex; flex-direction: column; min-height: calc(100svh - 180px); }
   .workspace-ledgers > div { width: 100%; min-width: 0; }
   .workspace-ledger-create { flex: 1; }
+  .workspace-ledger-create .workspace-save { margin-top: auto; }
   .workspace-calendar-form .workspace-save { margin-top: auto; }
 }
 
