@@ -12,13 +12,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ticketbox.OutboxAdapterGraph
-import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.ExpenseDto
-import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
-import com.ticketbox.data.repository.ConfirmExpenseDispatcher
-import com.ticketbox.data.repository.OutboxDrainEngine
-import com.ticketbox.data.repository.PatchExpenseDispatcher
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.withConfirmationReceipt
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.ui.saveConsumerArtPreview
@@ -36,7 +30,6 @@ class ExpenseConfirmationRouteTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val mounted = mutableStateOf(true)
     private lateinit var harness: FactEntryNavigationHarness
-    private lateinit var api: ApiService
     private var exits = 0
 
     @After fun close() {
@@ -46,19 +39,15 @@ class ExpenseConfirmationRouteTest {
     }
 
     @Test fun acceptedConfirmationStaysOnItsFirstReceiptBeforeOpeningTheLaterFact() {
-        harness = FactEntryNavigationHarness(context) { original ->
-            object : ApiService by original {
-                override suspend fun confirmExpense(id: String, request: ExpenseStateTokenRequest, idempotencyKey: String?): ExpenseDto {
-                    val accepted = original.confirmExpense(id, request, idempotencyKey).withConfirmationReceipt()
-                    val current = accepted.copy(merchant = "后来更正的商家", amountCents = 9900L, originalAmountMinor = 9900L,
-                        rowVersion = accepted.rowVersion + 1, factRevision = accepted.factRevision + 1, confirmationReceipt = null)
-                    harness.fixture.network.current = current
-                    return current.copy(confirmationReceipt = accepted.confirmationReceipt)
-                }
-            }.also { api = it }
-        }
-        harness.fixture.network.current = harness.fixture.network.current.copy(status = "pending", confirmedAt = null,
+        harness = FactEntryNavigationHarness(context)
+        val network = harness.fixture.network
+        network.current = network.current.copy(status = "pending", confirmedAt = null,
             merchant = "首次便利店", amountCents = 12860, originalAmountMinor = 12860, category = "购物")
+        network.patchReply = network.current.copy(rowVersion = 8)
+        val accepted = network.current.copy(status = "confirmed", rowVersion = 9,
+            confirmedAt = "2026-09-07T00:00:00Z").withConfirmationReceipt()
+        network.confirmReply = accepted.copy(merchant = "后来更正的商家", amountCents = 9900L,
+            originalAmountMinor = 9900L, rowVersion = 10, factRevision = 4)
         compose.setContent {
             val dark = InstrumentationRegistry.getArguments().getString("receiptTheme") == "midnight"
             CompositionLocalProvider(LocalViewModelStoreOwner provides compose.activity) {
@@ -72,7 +61,17 @@ class ExpenseConfirmationRouteTest {
         compose.onNodeWithText("确认入账").performClick()
         compose.waitUntil(10_000) { runBlocking { harness.fixture.stored().isNotEmpty() } }
         assertEquals(0, exits)
-        drain()
+        runBlocking { harness.fixture.drainExpenseLifecycle(maxAttempts = 4) }
+        network.current = requireNotNull(network.confirmReply).copy(confirmationReceipt = null)
+        val commands = harness.fixture.stored()
+        assertEquals("42", network.patchCalls.single().first)
+        assertEquals(7L, network.patchCalls.single().second.expectedRowVersion)
+        assertEquals(commands.single { it["type"] == PendingMutationType.PatchExpense.wireValue }["idempotencyKey"],
+            network.patchCalls.single().third)
+        assertEquals("42", network.confirmCalls.single().first)
+        assertEquals(8L, network.confirmCalls.single().second.expectedRowVersion)
+        assertEquals(commands.single { it["type"] == PendingMutationType.ConfirmExpense.wireValue }["idempotencyKey"],
+            network.confirmCalls.single().third)
         compose.waitUntil(10_000) { exits > 0 || compose.onAllNodes(hasText("这张，记好了")).fetchSemanticsNodes().isNotEmpty() }
         assertEquals("Acceptance must stay visible until the user chooses where to go", 0, exits)
         waitFor("首次便利店 · 家庭账本")
@@ -88,17 +87,6 @@ class ExpenseConfirmationRouteTest {
         compose.onNodeWithText("完成并返回").performClick()
         compose.waitUntil(5_000) { exits == 1 }
         assertEquals("The later current fact is never replaced by its first receipt", "后来更正的商家", harness.fixture.network.current.merchant)
-    }
-
-    private fun drain() = runBlocking {
-        val graph = OutboxAdapterGraph()
-        val publish: suspend (String, ExpenseDto) -> Unit = { ledger, expense ->
-            harness.fixture.publishExpense(ledger, expense)
-        }
-        OutboxDrainEngine(harness.fixture.outbox, listOf(
-            PatchExpenseDispatcher({ api }, graph.patchExpenseAdapter, publish),
-            ConfirmExpenseDispatcher({ api }, graph.expenseStateTokenAdapter, publish),
-        ), maxAttempts = 4, now = harness.fixture.clock::millis).drainOnce()
     }
 
     private fun waitFor(text: String) = compose.waitUntil(10_000) {

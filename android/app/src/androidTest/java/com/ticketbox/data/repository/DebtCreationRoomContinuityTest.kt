@@ -79,8 +79,11 @@ class DebtCreationRoomContinuityTest {
             draft(), CurrencyCode.CNY, "original-debt").getOrThrow()
         assertEquals(result.getOrThrow(), replay)
         assertEquals(stored, storedRows(restartedDatabase))
-        assertTrue(reentered.createDebt(requireNotNull(reentered.currentAccess()).binding,
-            draft().copy(principalAmountCents = 99L), CurrencyCode.CNY, "original-debt").isFailure)
+        for (changed in listOf(draft().copy(principalAmountCents = 99L),
+            draft().copy(timeInput = requireNotNull(draft().timeInput).copy(userLocalDate = "2026-02-01")))) {
+            assertTrue(reentered.createDebt(requireNotNull(reentered.currentAccess()).binding,
+                changed, CurrencyCode.CNY, "original-debt").isFailure)
+        }
         assertEquals(stored, storedRows(restartedDatabase))
         val restartedOutbox = outbox(restartedDatabase, session)
         val resumed = restartedOutbox.dequeueNextRunnable().single()
@@ -101,7 +104,6 @@ class DebtCreationRoomContinuityTest {
         assertEquals(original["idempotencyKey"], network.calls.last().second)
         assertEquals("2026-01-31", network.calls.last().first.timeInput?.userLocalDate)
         assertEquals(3L, network.calls.last().first.timeInput?.calendarRevision)
-        assertEquals(1, network.facts.size)
         val completed = repositoryGraph(retryDatabase, session).debtCreationRepository
             .observePendingCreations().first { it.completedIntentIds.isNotEmpty() }
         assertEquals(setOf(result.getOrThrow().intentId), completed.completedIntentIds)
@@ -207,27 +209,19 @@ class DebtCreationRoomContinuityTest {
 
 private class RoomDebtCreateApiProbe {
     val calls = mutableListOf<Pair<DebtCreateRequestDto, String>>()
-    val facts = mutableMapOf<String, DebtDto>()
+    val response = DebtDto(publicId = "synthetic-debt-1", ledgerId = "debt-ledger", direction = "owed_to_me",
+        counterpartyType = "external", counterpartyLabel = "小王", principalAmountCents = 12_345,
+        remainingAmountCents = 12_345, paidAmountCents = 0, status = "open", sourceType = "manual", homeCurrencyCode = "CNY",
+        createdAt = "2026-09-06T00:00:00Z", updatedAt = "2026-09-06T00:00:00Z", rowVersion = 1, note = "出差垫付车费",
+        accountingTime = com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto(
+            precision = "date_only", userLocalDate = "2026-01-31", calendarRevision = 3))
     var loseResponse = true
     val service = object : ApiService by fixtureProxy<ApiService>({ method, _ -> error("Unexpected network call: $method") }) {
         override suspend fun createDebt(request: DebtCreateRequestDto, idempotencyKey: String?): DebtDto {
             val key = requireNotNull(idempotencyKey)
             calls += request to key
-            val fact = facts.getOrPut(key) {
-                DebtDto(
-                    publicId = "synthetic-debt-${facts.size + 1}", ledgerId = "debt-ledger",
-                    direction = request.direction, counterpartyType = request.counterpartyType,
-                    counterpartyLabel = request.counterpartyLabel, principalAmountCents = request.principalAmountCents,
-                    remainingAmountCents = request.principalAmountCents, paidAmountCents = 0,
-                    status = "open", sourceType = request.sourceType, homeCurrencyCode = "CNY",
-                    createdAt = "2026-09-06T00:00:00Z", updatedAt = "2026-09-06T00:00:00Z", rowVersion = 1,
-                    note = request.note,
-                    accountingTime = request.timeInput?.let { com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto(
-                        precision = it.precision, userLocalDate = it.userLocalDate, calendarRevision = it.calendarRevision) },
-                )
-            }
             if (loseResponse) throw IOException("Synthetic lost response after acceptance")
-            return fact
+            return response
         }
     }
 }

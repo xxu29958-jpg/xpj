@@ -47,19 +47,18 @@ class CategoryRuleSubmissionConnectedTest {
     private val network = DebtAdjustmentConnectedNetwork()
     private var loseAck = true
     private val keys = mutableListOf<String>()
-    private val accepted = mutableMapOf<String, CategoryRuleDto>()
+    private val requests = mutableListOf<CategoryRuleRequest>()
+    private val response = CategoryRuleDto(7, "旅行", "交通", true, 10, 1200, null,
+        createdAt = "2026-09-09T00:00:00Z", updatedAt = "2026-09-09T00:00:00Z", rowVersion = 1,
+        homeCurrencyCode = "JPY")
     private val api = object : ApiService by network.service {
         override suspend fun categoryRules(): List<CategoryRuleDto> = emptyList()
         override suspend fun ruleApplications(limit: Int) = RuleApplicationListDto(emptyList())
         override suspend fun createCategoryRule(request: CategoryRuleRequest, idempotencyKey: String): CategoryRuleDto {
             keys += idempotencyKey
-            check(request.homeCurrencyCode == "JPY" && request.amountMinCents == 1200L)
-            val result = accepted.getOrPut(idempotencyKey) { CategoryRuleDto(7, requireNotNull(request.keyword),
-                requireNotNull(request.category), true, 10, request.amountMinCents, request.amountMaxCents,
-                createdAt = "2026-09-09T00:00:00Z", updatedAt = "2026-09-09T00:00:00Z", rowVersion = 1,
-                homeCurrencyCode = request.homeCurrencyCode) }
+            requests += request
             if (loseAck) throw IOException("Synthetic lost acknowledgement")
-            return result
+            return response
         }
     }
     private val fixture = DebtAdjustmentConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext, api)
@@ -103,7 +102,9 @@ class CategoryRuleSubmissionConnectedTest {
             assertEquals(1, engine.drainOnce().done)
         }
         assertEquals(listOf(original["idempotencyKey"], original["idempotencyKey"]), keys)
-        assertEquals(1, accepted.size)
+        assertEquals(requests.first(), requests.last())
+        assertEquals("JPY", requests.first().homeCurrencyCode)
+        assertEquals(1200L, requests.first().amountMinCents)
         assertEquals(original["payload"], fixture.stored().single()["payload"])
     }
 

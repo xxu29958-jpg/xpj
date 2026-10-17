@@ -44,18 +44,19 @@ class ExpenseSnapshotRoomContinuityTest {
     private lateinit var originalSnapshot: ExpenseDto
     @Volatile private var offline = false
     @Volatile private var staleRead = false
-    private var localRef: String? = null
     private val reads = AtomicInteger()
     private val attempts = AtomicInteger()
-    private val commits = CopyOnWriteArrayList<Pair<ExpenseUpdateRequest, String>>()
+    private val commits = CopyOnWriteArrayList<Triple<String, ExpenseUpdateRequest, String>>()
+    private val patchResponses = ArrayDeque<ExpenseDto>()
+    private lateinit var createResponse: ExpenseDto
+    private var createRequest: ExpenseManualCreateRequestDto? = null
     private lateinit var sendingApi: ApiService
     private var global: OutboxStatusViewModel? = null
     private val fixture = ExpenseCorrectionConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext) { api ->
         object : ApiService by api {
             override suspend fun createManualExpense(request: ExpenseManualCreateRequestDto): ExpenseDto {
-                check(!request.clientRef.isNullOrBlank() && request.originalCurrency == "USD" && request.originalAmount == "10.00")
-                localRef = "local:${request.clientRef}"
-                return current.copy(source = "手动记账", merchant = request.merchant).also { current = it }
+                createRequest = request
+                return createResponse.also { current = it }
             }
 
             override suspend fun expense(id: Long): ExpenseDto {
@@ -68,12 +69,8 @@ class ExpenseSnapshotRoomContinuityTest {
             override suspend fun updateExpense(id: String, request: ExpenseUpdateRequest, idempotencyKey: String?): ExpenseDto {
                 attempts.incrementAndGet()
                 if (offline) throw IOException("Offline before submission")
-                check(id == current.id.toString() || id == localRef)
-                // The existing server local-ref protocol resolves first-write OCC 0 from the original create receipt.
-                check(request.expectedRowVersion == current.rowVersion || (id == localRef && request.expectedRowVersion == 0L))
-                check(!idempotencyKey.isNullOrBlank())
-                commits += request to idempotencyKey
-                return current.copy(merchant = request.merchant, rowVersion = current.rowVersion + 1).also { current = it }
+                commits += Triple(id, request, requireNotNull(idempotencyKey))
+                return patchResponses.removeFirst().also { current = it }
             }
         }.also { sendingApi = it }
     }
@@ -87,6 +84,8 @@ class ExpenseSnapshotRoomContinuityTest {
             fxStatus = "pending", fxRate = null, fxRateDate = null, fxSource = null,
             exchangeRateToCny = null, exchangeRateDate = null, exchangeRateSource = null)
         originalSnapshot = current
+        createResponse = current.copy(source = "手动记账", merchant = "Original manual merchant")
+        patchResponses += createResponse.copy(merchant = "Reviewed local merchant", rowVersion = 2)
         val local = repository.createManualExpense(foreignDraft("Original manual merchant")).getOrThrow()
         assertTrue(local.pendingSync)
         assertTrue(repository.saveExpenseAllowingOffline(requireNotNull(repository.captureDeferredLedgerBinding()), local.id, foreignDraft("Reviewed local merchant"), local)
@@ -111,7 +110,12 @@ class ExpenseSnapshotRoomContinuityTest {
         assertOriginalFields(listOf(originals.last()), listOf(delivered))
         assertEquals("0", delivered["expectedRowVersion"])
         assertEquals("correction_refresh_required:2", delivered["lastError"])
-        assertEquals(originals.last()["idempotencyKey"], commits.single().second)
+        assertEquals(originals.last()["idempotencyKey"], commits.single().third)
+        assertEquals("local:${local.clientRef}", commits.single().first)
+        assertEquals(0L, commits.single().second.expectedRowVersion)
+        assertEquals(local.clientRef, createRequest?.clientRef)
+        assertEquals("USD", createRequest?.originalCurrency)
+        assertEquals("10.00", createRequest?.originalAmount)
 
         val binding = requireNotNull(fixture.outbox.observeStatus().first().binding)
         val acceptedReceipts = fixture.stored()
@@ -155,9 +159,13 @@ class ExpenseSnapshotRoomContinuityTest {
         assertTrue(commits.isEmpty())
         offline = false
 
+        patchResponses += current.copy(merchant = "First saved merchant", rowVersion = 8)
+        patchResponses += current.copy(merchant = "Second saved merchant", rowVersion = 9)
         assertEquals(2, drain().done)
-        assertEquals(listOf(7L, 8L), commits.map { it.first.expectedRowVersion })
-        assertEquals(originals.map { it["idempotencyKey"] }, commits.map { it.second })
+        assertEquals(listOf(7L, 8L), commits.map { it.second.expectedRowVersion })
+        assertEquals(originals.map { it["idempotencyKey"] }, commits.map { it.third })
+        assertEquals(listOf("42", "42"), commits.map { it.first })
+        assertEquals(listOf("First saved merchant", "Second saved merchant"), commits.map { it.second.merchant })
         assertEquals(9L, current.rowVersion)
         assertEquals(7L, repository.fetchExpenseFromLocalCache(42).getOrThrow().rowVersion)
         val delivered = fixture.stored()

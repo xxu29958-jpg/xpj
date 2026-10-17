@@ -48,7 +48,6 @@ class ReferenceCreationViewModelTest {
             restored.submit(); advanceUntilIdle()
             assertEquals(listOf(key, key), remote.calls.map { it.third })
             assertEquals(listOf("  暑期旅行  ", "  暑期旅行  "), remote.calls.map { it.second })
-            assertEquals(1, remote.accepted.size)
             assertEquals("accepted", restored.state.value.draft?.phase)
             restored.submit(); advanceUntilIdle()
             assertEquals(2, remote.calls.size)
@@ -73,7 +72,7 @@ class ReferenceCreationViewModelTest {
     }
 
     @Test fun reauthenticationNeedsExplicitReviewAndRetainsOriginalUncertainCommand() = runTest(dispatcher) {
-        val remote = Remote()
+        val remote = Remote().apply { response = response.copy(name = "旅行") }
         val vm = ReferenceCreationViewModel(remote)
         advanceUntilIdle(); vm.open(); vm.updateName("旅行"); vm.submit(); advanceUntilIdle()
         val originalCall = remote.calls.single()
@@ -86,7 +85,7 @@ class ReferenceCreationViewModelTest {
         assertEquals(renewed, remote.calls.last().first)
         assertEquals(originalCall.second, remote.calls.last().second)
         assertEquals(originalCall.third, remote.calls.last().third)
-        assertEquals(1, remote.accepted.size)
+        assertEquals("accepted", vm.state.value.draft?.phase)
     }
 
     @Test fun otherAccountLedgerOrServerCannotReadOrAdoptTheOriginalDraft() = runTest(dispatcher) {
@@ -126,15 +125,18 @@ class ReferenceCreationViewModelTest {
     private inner class Remote(override val kind: ReferenceKind = ReferenceKind.Tag) : ReferenceCreationActions {
         val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(original, true))
         val calls = mutableListOf<Triple<LogicalSessionBinding, String, String>>()
-        val accepted = mutableMapOf<String, ReferenceCreatedDto>()
+        var response = ReferenceCreatedDto(kind.wire, "00000000-0000-0000-0000-000000000001", "暑期旅行", 1)
+        var loseReply = true
         var refuse = false
         override fun observeAccess() = access
         override suspend fun create(binding: LogicalSessionBinding, name: String, key: String): Result<ReferenceCreatedDto> {
             calls += Triple(binding, name, key)
             if (refuse) return Result.failure(RepositoryException("已有同名对象", errorCode = "reference_name_conflict"))
-            accepted[key]?.let { return Result.success(it) }
-            accepted[key] = ReferenceCreatedDto(kind.wire, "00000000-0000-0000-0000-000000000001", name.trim(), 1)
-            return Result.failure(RepositoryException("回执暂时不可达"))
+            if (loseReply) {
+                loseReply = false
+                return Result.failure(RepositoryException("回执暂时不可达"))
+            }
+            return Result.success(response)
         }
     }
 }

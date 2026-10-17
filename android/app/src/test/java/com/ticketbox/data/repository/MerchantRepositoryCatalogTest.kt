@@ -102,6 +102,7 @@ class MerchantRepositoryCatalogTest {
         assertEquals(null, api.updateRequests.single().status)
         assertEquals("original-rename", api.updateIdempotencyKeys.single())
         assertEquals(8L, updated.catalogReceipt?.rowVersion)
+        api.updateResponse = api.updateResponse.copy(status = "hidden")
         repo.submitDraft(rename.copy(kind = MerchantDraftKind.Visibility, key = "original-visibility", nextStatus = "hidden")).getOrThrow()
         assertEquals("hidden", api.updateRequests.last().status)
         assertEquals(null, api.updateRequests.last().displayName)
@@ -162,6 +163,7 @@ class MerchantRepositoryCatalogTest {
         assertTrue(api.deleteRequests.isEmpty())
         assertTrue(api.mergeRequests.isEmpty())
         assertTrue(repository.merchantCatalog(expectedBinding = current).isSuccess)
+        api.updateResponse = api.updateResponse.copy(displayName = "原稿")
         assertEquals(8L, repository.submitDraft(MerchantDraft(current, MerchantDraftKind.Rename, "valid", source = source,
             displayName = "原稿")).getOrThrow().catalogReceipt?.rowVersion)
     }
@@ -178,6 +180,7 @@ class MerchantRepositoryCatalogTest {
     ) : ApiService by delegate {
         var catalogItems: List<MerchantCatalogDto> = listOf(merchantCatalogDto())
         var deleteFailure: Throwable? = null
+        var updateResponse = merchantCatalogDto(displayName = "星巴克臻选").copy(rowVersion = 8)
         val includeHiddenRequests = mutableListOf<Boolean>()
         val createRequests = mutableListOf<MerchantCatalogCreateRequest>()
         val updateTargets = mutableListOf<String>()
@@ -199,8 +202,8 @@ class MerchantRepositoryCatalogTest {
             createRequests += request
             return merchantCatalogDto(
                 publicId = "catalog-created",
-                displayName = request.displayName.trim(),
-                status = request.status,
+                displayName = "蓝瓶咖啡",
+                status = "active",
             )
         }
 
@@ -212,11 +215,7 @@ class MerchantRepositoryCatalogTest {
             updateTargets += publicId
             updateRequests += request
             updateIdempotencyKeys += idempotencyKey
-            return merchantCatalogDto(
-                publicId = publicId,
-                displayName = request.displayName ?: "星巴克",
-                status = request.status ?: "active",
-            ).copy(rowVersion = request.expectedRowVersion + 1)
+            return updateResponse
         }
 
         override suspend fun deleteMerchantCatalog(
@@ -229,7 +228,7 @@ class MerchantRepositoryCatalogTest {
             deleteIdempotencyKeys += idempotencyKey
             deleteFailure?.let { throw it }
             return merchantCatalogDto(
-                publicId = publicId,
+                publicId = "catalog-1",
                 displayName = "星巴克",
                 status = "active",
             ).copy(deletedAt = "2026-06-30T00:00:00Z")
@@ -245,18 +244,18 @@ class MerchantRepositoryCatalogTest {
             mergeKeys += idempotencyKey
             return MerchantCatalogMergeDto(
                 source = merchantCatalogDto(
-                    publicId = sourcePublicId,
+                    publicId = "source",
                     displayName = "星巴克",
                     status = "merged",
                 ).copy(
-                    rowVersion = request.expectedRowVersion + 1,
-                    mergedIntoPublicId = request.targetPublicId,
+                    rowVersion = 4,
+                    mergedIntoPublicId = "target",
                 ),
                 target = merchantCatalogDto(
-                    publicId = request.targetPublicId,
+                    publicId = "target",
                     displayName = "蓝瓶咖啡",
                     status = "active",
-                ).copy(rowVersion = request.targetRowVersion + 1),
+                ).copy(rowVersion = 10),
                 createdAliasPublicId = "alias-created-by-merge",
             )
         }

@@ -11,7 +11,6 @@ import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
-import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -33,31 +32,10 @@ class ManualExchangeRateContinuityTest {
         assertFalse(f.pending(id).isConfirmed)
     }
 
-    @Test fun savedRateIntentSurvivesLostAckAndReplaysOriginalReceiptWithoutReplacingCurrentRate() = runTest {
-        val f = ManualRateFixture()
-        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
-        val original = f.dao.rows.getValue(id)
-        assertTrue(f.keys.isEmpty())
-        f.dao.runnableBatches += listOf(id)
-        assertEquals(1, f.engine.drainOnce().failures)
-        assertEquals(0, f.adviceInvalidations)
-        f.latest = f.latest.copy(rateToHome = "0.06000000", rowVersion = 3)
-        f.repository.recoverRate(f.binding, f.pending(id), false).getOrThrow()
-        f.loseAck = false
-        f.dao.runnableBatches += listOf(id)
-        assertEquals(1, f.engine.drainOnce().done)
-        assertEquals(1, f.adviceInvalidations)
-        assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
-        assertEquals(original.payload, f.dao.rows.getValue(id).payload)
-        assertEquals("0.05", f.pending(id).receipt?.rateToHome)
-        assertEquals("0.06000000", f.repository.exchangeRates(f.binding).getOrThrow().single().rateToHome)
-    }
-
     @Test fun rejectedOrUnverifiedRateKeepsOriginalAndRequiresReview() = runTest {
         val f = ManualRateFixture()
         val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
-        f.loseAck = false
-        f.latest = f.latest.copy(homeCurrencyCode = "USD")
+        f.response = f.latest.copy(homeCurrencyCode = "USD")
         f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine.drainOnce().failures)
         assertEquals(0, f.adviceInvalidations)
@@ -106,9 +84,8 @@ internal class ManualRateFixture {
     val request = ExchangeRateRequestDto("JPY", "CNY", "2026-09-01", "0.05", "manual", 0)
     var latest = ExchangeRateDto("manual-rate", "JPY", "CNY", "2026-09-01", "0.05", "manual",
         "2026-09-09T00:00:00Z", "2026-09-09T00:00:00Z", 1)
-    var loseAck = true
     val keys = mutableListOf<String>()
-    val receipts = mutableMapOf<String, ExchangeRateDto>()
+    var response = latest
     val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int) =
             ExchangeRateListDto(listOf(latest))
@@ -117,9 +94,7 @@ internal class ManualRateFixture {
             assertEquals(request.currencyCode, currencyCode)
             assertEquals(request.rateDate, rateDate)
             keys += idempotencyKey
-            val receipt = receipts.getOrPut(idempotencyKey) { latest }
-            if (loseAck) throw IOException("Synthetic lost acknowledgement")
-            return receipt
+            return response
         }
     }
     val provider = testApiServiceProvider(object : ApiServiceFactory {

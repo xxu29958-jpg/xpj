@@ -84,12 +84,13 @@ class RuleApplicationConnectedTest {
         assertEquals(emptyList<String>(), network.keys)
         reopen()
         assertEquals(original, fixture.stored().single())
+        network.applicationResponse = RuleApplyConfirmedResponseDto(false, 9, 1, commandKey = original["idempotencyKey"],
+            applicationPublicId = "accepted-batch", scanLimit = 500)
         assertEquals(1, drain().failures)
         compose.waitUntil(10_000) { model!!.uiState.value.pendingApplications.singleOrNull()?.canRetry == true }
         compose.onNodeWithText("原预览扫描 9 笔已确认账单，预计改写 1 笔。").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("预览已确认账单", substring = false).assertDoesNotExist()
         capture("rule-application-original")
-        network.currentCategory = "医疗"
         network.loseReply = false
         compose.onNodeWithText("核实原应用").performScrollTo().performClick()
         compose.waitUntil(10_000) { model!!.uiState.value.pendingApplications.singleOrNull()?.row?.status == com.ticketbox.data.local.PendingMutationStatus.Pending }
@@ -106,10 +107,9 @@ class RuleApplicationConnectedTest {
         compose.waitUntil(10_000) { model!!.uiState.value.pendingApplications.singleOrNull()?.needsRefresh == false }
         assertEquals(listOf(original["idempotencyKey"], original["idempotencyKey"]), network.keys)
         assertEquals(original["payload"], fixture.stored().single()["payload"])
-        assertEquals("医疗", network.currentCategory)
         assertEquals(2, network.reads)
-        assertEquals(1, network.receipts.size)
-        assertEquals(listOf("按商家统一分类", "按商家统一分类"), network.applicationReasons)
+        assertEquals(listOf("按商家统一分类", "按商家统一分类"), network.applicationRequests.map { it.reason })
+        assertEquals(listOf("original-preview", "original-preview"), network.applicationRequests.map { it.previewToken })
         runBlocking { assertEquals(emptyList<OutboxRow>(), fixture.outbox.observeStatus().first().refreshRequired) }
     }
 
@@ -134,6 +134,7 @@ class RuleApplicationConnectedTest {
         compose.onNodeWithText("查看 1 笔保留项").performScrollTo().performClick()
         compose.onNodeWithText("应用后已有修改，保留当前事实").performScrollTo().assertIsDisplayed()
         capture("rule-rollback-eligibility")
+        network.rollbackAccepted = true
         compose.onNodeWithText("回退允许的 1 笔").assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { model!!.uiState.value.rollback.error != null }
         assertEquals("核对后撤回本批次", model!!.uiState.value.rollback.submittedReason)
@@ -145,7 +146,6 @@ class RuleApplicationConnectedTest {
         compose.onNodeWithText("回退说明：核对后撤回本批次").performScrollTo().assertIsDisplayed()
         capture("rule-rollback-reason-history")
         assertEquals(listOf("accepted-batch" to "核对后撤回本批次", "accepted-batch" to "核对后撤回本批次"), network.rollbackRequests)
-        assertEquals(1, network.rollbackMutations)
     }
 
     private fun reopen() {
@@ -196,18 +196,19 @@ class RuleApplicationConnectedTest {
 
 private class RuleApplicationConnectedNetwork {
     val keys = mutableListOf<String>()
-    val applicationReasons = mutableListOf<String?>()
+    val applicationRequests = mutableListOf<RuleApplyConfirmedRequestDto>()
     val rollbackRequests = mutableListOf<Pair<String, String?>>()
-    val receipts = mutableMapOf<String, RuleApplyConfirmedResponseDto>()
+    var applicationResponse: RuleApplyConfirmedResponseDto? = null
     var loseReply = true
     var failRead = true
     var reads = 0
-    var currentCategory = "其他"
     var showBatch = false
     var previewFails = true
     var rollbackLosesReply = true
-    var rollbackMutations = 0
-    private var rollbackReceipt: RuleApplicationRollbackDto? = null
+    var rollbackAccepted = false
+    private val rollbackResponse = RuleApplicationRollbackDto("accepted-batch", "rollback_partial", 1, 1,
+        "2026-10-15T00:10:00Z", "核对后撤回本批次")
+    private val rollbackReceipt get() = rollbackResponse.takeIf { rollbackAccepted }
     val api = object : ApiService by DebtAdjustmentConnectedNetwork().service {
         override suspend fun categoryRules(): List<CategoryRuleDto> = emptyList()
         override suspend fun ruleApplications(limit: Int) = RuleApplicationListDto(if (!showBatch) emptyList() else listOf(
@@ -222,12 +223,8 @@ private class RuleApplicationConnectedNetwork {
         }
         override suspend fun rollbackRuleApplication(publicId: String, request: RuleApplicationRollbackRequestDto): RuleApplicationRollbackDto {
             rollbackRequests += publicId to request.reason
-            if (rollbackReceipt == null) {
-                rollbackMutations += 1
-                rollbackReceipt = RuleApplicationRollbackDto(publicId, "rollback_partial", 1, 1, "2026-10-15T00:10:00Z", request.reason)
-            }
             if (rollbackLosesReply) throw IOException("Synthetic lost rollback reply")
-            return requireNotNull(rollbackReceipt)
+            return rollbackResponse
         }
         override suspend fun confirmedExpenses(query: Map<String, String>): PaginatedExpensesDto {
             reads += 1
@@ -237,16 +234,11 @@ private class RuleApplicationConnectedNetwork {
         override suspend fun applyConfirmedRules(request: RuleApplyConfirmedRequestDto, limit: Int, maxScan: Int,
             idempotencyKey: String?): RuleApplyConfirmedResponseDto {
             if (!request.confirm) return RuleApplyConfirmedResponseDto(true, 9, 1, previewToken = "original-preview", scanLimit = 500)
-            check(request.previewToken == "original-preview")
             val key = requireNotNull(idempotencyKey)
             keys += key
-            applicationReasons += request.reason
-            val receipt = receipts.getOrPut(key) {
-                currentCategory = "餐饮"
-                RuleApplyConfirmedResponseDto(false, 9, 1, commandKey = key, applicationPublicId = "accepted-batch", scanLimit = 500)
-            }
+            applicationRequests += request
             if (loseReply) throw IOException("Synthetic lost application reply")
-            return receipt
+            return requireNotNull(applicationResponse)
         }
     }
 }

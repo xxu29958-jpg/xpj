@@ -51,7 +51,6 @@ class SavedQueryContinuityTest {
             resumed.submit(slot)
             resumed.state.first { !it.busy && it.drafts.single().phase == "accepted" }
             assertEquals(later, fixture.current)
-            assertEquals(1, fixture.receipts.size)
             assertEquals(listOf(original.key, original.key), fixture.keys)
             assertEquals(fixture.requests.first(), fixture.requests.last())
             assertEquals("  原保存输入  ", resumed.state.value.drafts.single().definition.name)
@@ -81,10 +80,16 @@ class SavedQueryContinuityTest {
         assertEquals(12L, reviewed.baseline?.rowVersion)
         assertNotEquals(rejected.key, reviewed.key)
         assertEquals(1, fixture.keys.size)
+        fixture.updateResponse = requireNotNull(fixture.current).copy(name = "我的新名字", queryText = "原关键词", rowVersion = 13)
         controller.submit(slot)
         controller.state.first { !it.busy && it.drafts.single().phase == "accepted" }
-        assertEquals("我的新名字", fixture.current?.name)
-        assertEquals(13L, fixture.current?.rowVersion)
+        val accepted = controller.state.value.drafts.single()
+        assertEquals("我的新名字", accepted.receipt?.name)
+        assertEquals(13L, accepted.receipt?.rowVersion)
+        val request = fixture.requests.last() as SavedViewUpdateRequestDto
+        assertEquals(12L, request.expectedRowVersion)
+        assertEquals("  我的新名字  ", request.name)
+        assertEquals("  原关键词  ", request.queryText)
         scope.cancel()
     }
 
@@ -123,7 +128,9 @@ private class QueryCommandFixture {
     val original = SavedViewDto("query-1", "原名称", 7, "fixed", "2026-10", "", null, null, "JPY", null, "便利店", "购物")
     var current: SavedViewDto? = original
     var rejectFirst = false
-    val receipts = mutableMapOf<String, Any>()
+    private val createResponse = original.copy(name = "原保存输入", rowVersion = 1)
+    var updateResponse = original.copy(name = "原保存输入", rowVersion = 8)
+    private val deletionResponse = SavedViewDeletionReceiptDto("query-1", 7, "原名称")
     val keys = mutableListOf<String>()
     val requests = mutableListOf<Any>()
     val inputs = QueryInputDao()
@@ -131,26 +138,22 @@ private class QueryCommandFixture {
     private val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun savedViews() = SavedViewListDto(listOfNotNull(current))
         override suspend fun savedView(publicId: String) = requireNotNull(current)
-        override suspend fun createSavedView(request: SavedViewDefinitionRequestDto, idempotencyKey: String): SavedViewDto = accept(idempotencyKey, request) {
-            original.copy(name = request.name.trim(), rowVersion = 1).also { current = it }
-        } as SavedViewDto
-        override suspend fun updateSavedView(publicId: String, request: SavedViewUpdateRequestDto, idempotencyKey: String): SavedViewDto = accept(idempotencyKey, request) {
-            requireNotNull(current).copy(name = request.name.trim(), rowVersion = request.expectedRowVersion + 1).also { current = it }
-        } as SavedViewDto
-        override suspend fun deleteSavedView(publicId: String, request: SavedViewDeleteRequestDto, idempotencyKey: String): SavedViewDeletionReceiptDto = accept(idempotencyKey, request) {
-            SavedViewDeletionReceiptDto(original.publicId, original.rowVersion, original.name).also { current = null }
-        } as SavedViewDeletionReceiptDto
+        override suspend fun createSavedView(request: SavedViewDefinitionRequestDto, idempotencyKey: String): SavedViewDto =
+            accept(idempotencyKey, request, createResponse)
+        override suspend fun updateSavedView(publicId: String, request: SavedViewUpdateRequestDto, idempotencyKey: String): SavedViewDto =
+            accept(idempotencyKey, request, updateResponse)
+        override suspend fun deleteSavedView(publicId: String, request: SavedViewDeleteRequestDto, idempotencyKey: String): SavedViewDeletionReceiptDto =
+            accept(idempotencyKey, request, deletionResponse)
     }
     val repository = SavedQueryRepository(testApiServiceProvider(object : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?) = api
     }, session), SavedQueryDraftStore(inputs))
 
-    private fun accept(key: String, request: Any, create: () -> Any): Any {
+    private fun <T> accept(key: String, request: Any, response: T): T {
         keys += key; requests += request
         if (keys.size == 1 && rejectFirst) throw RepositoryException("stale", errorCode = "state_conflict")
-        val result = receipts.getOrPut(key, create)
         if (keys.size == 1) throw IOException("reply lost")
-        return result
+        return response
     }
 }
 

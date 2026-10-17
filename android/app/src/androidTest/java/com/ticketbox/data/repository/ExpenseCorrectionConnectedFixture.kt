@@ -172,10 +172,6 @@ internal class ExpenseCorrectionConnectedFixture(
             while (cursor.moveToNext()) add(cursor.columnNames.mapIndexed { index, column -> column to cursor.getString(index) }.toMap())
         } }
 
-    suspend fun publishExpense(ledgerId: String, expense: ExpenseDto) {
-        requireNotNull(database).expenseDao().applyServerExpense(ledgerId, expense.toEntity(ledgerId))
-    }
-
     fun blockBudgetReadDeletion(block: Boolean) {
         requireNotNull(database).openHelper.writableDatabase.execSQL(if (block)
             "CREATE TRIGGER fail_budget_read_delete BEFORE DELETE ON stats_projection_cache " +
@@ -196,10 +192,10 @@ internal class ExpenseCorrectionConnectedFixture(
         .also { it.onAdviceInputReplaySucceeded = { adviceCallbacks++ } }.drainOnce()
 
     /** Existing engine with the production Patch/Confirm dispatchers; callers drive it after admission. */
-    suspend fun drainExpenseLifecycle(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
+    suspend fun drainExpenseLifecycle(maxAttempts: Int = 10, api: ApiService = network.service) = OutboxDrainEngine(outbox,
         listOf(
-            PatchExpenseDispatcher({ network.service }, adapters.patchExpenseAdapter, ::publishExpenseSnapshot),
-            ConfirmExpenseDispatcher({ network.service }, adapters.expenseStateTokenAdapter, ::publishExpenseSnapshot),
+            PatchExpenseDispatcher({ api }, adapters.patchExpenseAdapter, ::publishExpenseSnapshot),
+            ConfirmExpenseDispatcher({ api }, adapters.expenseStateTokenAdapter, ::publishExpenseSnapshot),
         ), maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
     suspend fun drainSplitAcceptance(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
@@ -237,9 +233,8 @@ internal class CorrectionConnectedNetwork {
     var splitSent = BillSplitSentListResponseDto(emptyList())
     var splitLedgers: com.ticketbox.data.remote.dto.LedgerListResponseDto? = null
     val splitAcceptCalls = CopyOnWriteArrayList<Pair<String, String>>()
-    val splitAcceptResults = mutableMapOf<String, com.ticketbox.data.remote.dto.BillSplitAcceptanceDto>()
+    var splitAcceptReply: com.ticketbox.data.remote.dto.BillSplitAcceptanceDto? = null
     var loseSplitAcceptResponse = false
-    var splitReceiptTargetOverride: String? = null
     val ledgerSwitchRequests = CopyOnWriteArrayList<String>()
     var splitMembers = emptyList<com.ticketbox.data.remote.dto.LedgerMemberDto>()
     var confirmedStreamItems: ((ExpenseDto) -> List<ConfirmedExpenseStreamItemDto>)? = null
@@ -259,6 +254,10 @@ internal class CorrectionConnectedNetwork {
     val expenseReads = CopyOnWriteArrayList<Long>()
     val occurrenceReads = CopyOnWriteArrayList<Pair<String, String>>()
     val editCalls = CopyOnWriteArrayList<String>()
+    val patchCalls = CopyOnWriteArrayList<Triple<String, ExpenseUpdateRequest, String?>>()
+    val confirmCalls = CopyOnWriteArrayList<Triple<String, ExpenseStateTokenRequest, String?>>()
+    var patchReply: ExpenseDto? = null
+    var confirmReply: ExpenseDto? = null
     val imageReads = CopyOnWriteArrayList<Long>()
     val originalHealthReads = CopyOnWriteArrayList<Long>()
     var beforeOriginalHealthResponse: (suspend () -> Unit)? = null
@@ -306,17 +305,14 @@ internal class CorrectionConnectedNetwork {
             return listOf(current).filter { it.status == "pending" }
         }
         override suspend fun updateExpense(id: String, request: ExpenseUpdateRequest, idempotencyKey: String?): ExpenseDto {
-            check(id == current.id.toString() && request.expectedRowVersion == current.rowVersion)
-            check(!idempotencyKey.isNullOrBlank())
+            patchCalls += Triple(id, request, idempotencyKey)
             editCalls += "save"
-            return current.copy(rowVersion = current.rowVersion + 1).also { current = it }
+            return requireNotNull(patchReply).also { current = it }
         }
         override suspend fun confirmExpense(id: String, request: ExpenseStateTokenRequest, idempotencyKey: String?): ExpenseDto {
-            check(id == current.id.toString() && request.expectedRowVersion == current.rowVersion)
-            check(!idempotencyKey.isNullOrBlank())
+            confirmCalls += Triple(id, request, idempotencyKey)
             editCalls += "confirm"
-            return current.copy(status = "confirmed", rowVersion = current.rowVersion + 1,
-                confirmedAt = "2026-09-07T00:00:00Z").withConfirmationReceipt().also { current = it }
+            return requireNotNull(confirmReply).also { current = it }
         }
         override suspend fun expenseThumbnail(id: Long): Response<ResponseBody> = Response.error(404,
             """{"error":"not_found","message":"图片不存在。"}""".toResponseBody("application/json".toMediaType()))
@@ -376,23 +372,9 @@ internal class CorrectionConnectedNetwork {
         }
         override suspend fun acceptBillSplitInvitation(publicId: String, request: com.ticketbox.data.remote.dto.BillSplitAcceptRequestDto): com.ticketbox.data.remote.dto.BillSplitAcceptanceDto {
             splitAcceptCalls += publicId to request.targetLedgerId
-            val accepted = splitAcceptResults.getOrPut(publicId) {
-                val target = requireNotNull(splitLedgers).ledgers.single { it.ledgerId == request.targetLedgerId }
-                current = current.copy(id = 84L, merchant = "已接受的分摊")
-                val invited = splitInbox.items.single { it.publicId == publicId }
-                com.ticketbox.data.remote.dto.BillSplitAcceptanceDto(publicId, "accepted", invited.amountCents,
-                    invited.homeCurrencyCode, invited.merchantSnapshot, invited.categorySuggestion, invited.expenseTimeSnapshot,
-                    invited.expiresAt, invited.createdAt, invited.acceptedAt, invited.rejectedAt, invited.cancelledAt, invited.expiredAt,
-                    invited.senderAccountId, invited.senderDisplayName,
-                    receivedBill = com.ticketbox.data.remote.dto.BillSplitReceivedBillDto(current.id, target.ledgerId, target.name),
-                    acceptedTargetLedgerId = target.ledgerId, originalCurrencyCode = invited.originalCurrencyCode,
-                    originalAmountMinor = invited.originalAmountMinor, accountingTimeSnapshot = invited.accountingTimeSnapshot)
-            }
-            check(accepted.acceptedTargetLedgerId == request.targetLedgerId)
-            // The account's latest-50 list may no longer include this original task.
-            splitInbox = com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto(emptyList())
+            val accepted = requireNotNull(splitAcceptReply)
             if (loseSplitAcceptResponse) throw IOException("Accepted split response lost")
-            return splitReceiptTargetOverride?.let { accepted.copy(acceptedTargetLedgerId = it) } ?: accepted
+            return accepted
         }
         override suspend fun expenseItems(id: Long): ExpenseItemsResponseDto {
             readable()

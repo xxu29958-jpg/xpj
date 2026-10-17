@@ -55,6 +55,7 @@ class HistoricalCorrectionRateRecoveryTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val adapters = OutboxAdapterGraph()
     private var currentRate: ExchangeRateDto? = null
+    private var correctionConflict = false
     private val correctionCalls = CopyOnWriteArrayList<Pair<ExpenseCorrectionRequestDto, String>>()
     private val rateCalls = CopyOnWriteArrayList<Pair<ExchangeRateRequestDto, String>>()
     private val providerCalls = CopyOnWriteArrayList<BudgetAdviseRequestDto>()
@@ -64,7 +65,7 @@ class HistoricalCorrectionRateRecoveryTest {
             override suspend fun correctExpense(id: String, request: ExpenseCorrectionRequestDto,
                 idempotencyKey: String?): ExpenseCorrectionResponseDto {
                 correctionCalls += request to requireNotNull(idempotencyKey)
-                if (request.expectedRowVersion != harness.fixture.network.current.rowVersion) {
+                if (correctionConflict) {
                     throw refusal("state_conflict")
                 }
                 if (currentRate == null) throw refusal("exchange_rate_pending",
@@ -91,8 +92,8 @@ class HistoricalCorrectionRateRecoveryTest {
                 assertEquals("JPY", currencyCode)
                 assertEquals("2025-12-03", rateDate)
                 rateCalls += request to idempotencyKey
-                return ExchangeRateDto("historical-rate", currencyCode, request.homeCurrencyCode, rateDate, request.rateToHome,
-                    "manual", "2026-09-09T00:00:00Z", "2026-09-09T00:00:00Z", request.expectedRowVersion + 1).also { currentRate = it }
+                return ExchangeRateDto("historical-rate", "JPY", "CNY", "2025-12-03", "0.05",
+                    "manual", "2026-09-09T00:00:00Z", "2026-09-09T00:00:00Z", 1).also { currentRate = it }
             }
         }.also { sender = it }
     }
@@ -209,6 +210,7 @@ class HistoricalCorrectionRateRecoveryTest {
         assertEquals("2025-12-03", pending.missingExchangeRate?.rateDate)
         assertEquals(original, correctionRow())
         harness.fixture.network.current = harness.fixture.network.current.copy(rowVersion = 8)
+        correctionConflict = true
         val binding = requireNotNull(graph.expenseRepository.captureDeferredLedgerBinding())
         graph.expenseRepository.recoverCorrection(binding, pending.row.id, drop = false).getOrThrow()
         assertEquals(1, drain().conflicts)

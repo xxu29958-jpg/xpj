@@ -50,7 +50,8 @@ class SpendingGoalSubmissionConnectedTest {
     private var failRead = false
     private var canonical = original
     private val keys = mutableListOf<String?>()
-    private val committed = mutableMapOf<String, GoalDto>()
+    private val requests = mutableListOf<Pair<String, GoalUpdateRequestDto>>()
+    private val response = original.copy(targetAmountCents = 35_000, remainingAmountCents = 27_000, rowVersion = 3)
     private val service = object : ApiService by debtNetwork.service {
         override suspend fun runtimeCompatibility() = RuntimeCompatibilityDto(CURRENT_TICKETBOX_API_VERSION,
             "compatible", RuntimeProductCapabilitiesDto(RuntimeCurrencyCapabilityDto("1:1:CNY", "CNY", 2, "compatible")))
@@ -64,13 +65,9 @@ class SpendingGoalSubmissionConnectedTest {
             idempotencyKey: String?, timezone: String?): GoalDto {
             remoteWrites += 1
             keys += idempotencyKey
-            val result = committed.getOrPut(requireNotNull(idempotencyKey)) {
-                check(request.expectedRowVersion == original.rowVersion)
-                check(request.homeCurrencyCode == "JPY" && request.targetAmountCents == 35_000L)
-                original.copy(targetAmountCents = 35_000, remainingAmountCents = 27_000, rowVersion = 3).also { canonical = it }
-            }
+            requests += publicId to request
             if (loseAck) throw IOException("Synthetic lost acknowledgement")
-            return result
+            return response
         }
     }
     private val fixture = DebtAdjustmentConnectedFixture(context, service)
@@ -111,6 +108,7 @@ class SpendingGoalSubmissionConnectedTest {
             adapters.goalUpdateAdapter, adapters.goalReceiptAdapter,
             fixture.graph.reportsRepository::invalidateGoalReadsAfterDelivery)), maxAttempts = 1,
             now = { java.time.Instant.parse("2026-09-30T15:30:00Z").toEpochMilli() })
+        canonical = response
         runBlocking { assertEquals(1, engine().drainOnce().failures) }
         compose.waitUntil(10_000) { model.state.value.pendingEdits.any { it.canRetry } }
         loseAck = false
@@ -118,7 +116,11 @@ class SpendingGoalSubmissionConnectedTest {
         compose.waitUntil(10_000) { !model.state.value.isSaving }
         runBlocking { assertEquals(1, engine().drainOnce().done) }
         assertEquals(listOf(originalRow["idempotencyKey"], originalRow["idempotencyKey"]), keys)
-        assertEquals(1, committed.size)
+        assertEquals(requests.first(), requests.last())
+        assertEquals("spending-goal-original", requests.first().first)
+        assertEquals(2L, requests.first().second.expectedRowVersion)
+        assertEquals("JPY", requests.first().second.homeCurrencyCode)
+        assertEquals(35_000L, requests.first().second.targetAmountCents)
         compose.runOnIdle { model.viewModelScope.cancel() }
         val graph = fixture.reopen()
         failRead = true

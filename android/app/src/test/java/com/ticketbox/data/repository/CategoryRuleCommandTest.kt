@@ -40,6 +40,8 @@ class CategoryRuleCommandTest {
         val id = f.repository.updateCategoryRule(f.binding, f.current.toDomain(),
             f.current.asRequest().copy(amountMinCents = 3500, amountMaxCents = null)).getOrThrow()
         val original = f.dao.rows.getValue(id)
+        f.response = f.current.copy(amountMinCents = 3500, amountMaxCents = null, rowVersion = 2)
+        f.current = f.response
         f.loseAck = true
         f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine(PendingMutationType.UpdateCategoryRule).drainOnce().failures)
@@ -52,7 +54,12 @@ class CategoryRuleCommandTest {
         assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), f.keys)
         assertEquals(accepted.toDomain(), f.pending(id).confirmed)
         assertEquals(original.payload, f.dao.rows.getValue(id).payload)
-        assertEquals(1, f.accepted.size)
+        assertEquals(f.requests.first(), f.requests.last())
+        val request = f.requests.first() as CategoryRuleUpdateRequest
+        assertEquals(1L, request.expectedRowVersion)
+        assertEquals(3500L, request.amountMinCents)
+        assertEquals(null, request.amountMaxCents)
+        assertEquals(7000L, f.current.amountMinCents)
     }
 
     @Test fun currencyRelabelForeignBindingAndReadonlyCannotPublishOrRetry() = runTest {
@@ -93,10 +100,11 @@ class CategoryRuleCommandTest {
         assertEquals(1, f.engine(PendingMutationType.DeleteCategoryRule).drainOnce().done)
         assertEquals(1200L, f.pending(id).request?.amountMinCents)
         assertEquals(null, f.pending(id).request?.homeCurrencyCode)
+        assertEquals(1L, (f.requests.single() as CategoryRuleDeleteRequest).expectedRowVersion)
     }
 }
 
-internal class CategoryRuleCommandFixture(private val refreshConfirmed: suspend () -> Unit = {}) {
+internal class CategoryRuleCommandFixture {
     val session = TestSessionFixture().apply { saveToken("synthetic-rule-session") }
     val adapters = OutboxAdapterGraph()
     val dao = FakePendingMutationDao()
@@ -106,34 +114,27 @@ internal class CategoryRuleCommandFixture(private val refreshConfirmed: suspend 
     var loseAck = false
     var calls = 0
     val keys = mutableListOf<String?>()
-    val accepted = mutableMapOf<String, CategoryRuleDto>()
+    var response = current
+    val requests = mutableListOf<Any>()
     val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun createCategoryRule(request: CategoryRuleRequest, idempotencyKey: String): CategoryRuleDto =
-            accept(idempotencyKey, request, 1)
+            accept(idempotencyKey, request)
         override suspend fun updateCategoryRule(id: Long, request: CategoryRuleUpdateRequest, idempotencyKey: String?,): CategoryRuleDto =
-            accept(requireNotNull(idempotencyKey), CategoryRuleRequest(request.keyword, request.category, request.enabled,
-                request.priority, request.amountMinCents, request.amountMaxCents, request.sourceContains,
-                request.tagContains, request.homeCurrencyCode), request.expectedRowVersion + 1)
+            accept(requireNotNull(idempotencyKey), request)
         override suspend fun deleteCategoryRule(id: Long, request: CategoryRuleDeleteRequest, idempotencyKey: String?): StatusDto {
-            calls += 1; keys += idempotencyKey
-            check(request.expectedRowVersion == current.rowVersion)
+            calls += 1; keys += idempotencyKey; requests += request
             return StatusDto("ok")
         }
     }
-    private fun accept(key: String, request: CategoryRuleRequest, version: Long): CategoryRuleDto {
-        calls += 1; keys += key
-        val result = accepted.getOrPut(key) { current.copy(keyword = requireNotNull(request.keyword),
-            category = requireNotNull(request.category), enabled = requireNotNull(request.enabled), priority = requireNotNull(request.priority),
-            amountMinCents = request.amountMinCents, amountMaxCents = request.amountMaxCents, sourceContains = request.sourceContains,
-            tagContains = request.tagContains, homeCurrencyCode = request.homeCurrencyCode, rowVersion = version).also { current = it } }
+    private fun accept(key: String, request: Any): CategoryRuleDto {
+        calls += 1; keys += key; requests += request
         if (loseAck) throw IOException("Synthetic lost acknowledgement")
-        return result
+        return response
     }
     private val factory = object : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?) = api
     }
     val repository = RuleRepository(testServerSessionBinding(factory, FakeTicketboxSettingsStore(), session),
-        onConfirmedChanged = { runCatching { refreshConfirmed() } },
         offlineMutations = CategoryRuleOfflineMutationWiring(outbox, adapters.categoryRuleUpdateAdapter,
             adapters.categoryRuleDeleteAdapter, adapters.categoryRuleSubmissionAdapter, adapters.categoryRuleReceiptAdapter,
             adapters.ruleApplicationAdapter, adapters.ruleApplicationReceiptAdapter))

@@ -25,8 +25,10 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.R
+import com.ticketbox.data.remote.dto.BillSplitAcceptanceDto
 import com.ticketbox.data.remote.dto.BillSplitInboxDto
 import com.ticketbox.data.remote.dto.BillSplitInboxListResponseDto
+import com.ticketbox.data.remote.dto.BillSplitReceivedBillDto
 import com.ticketbox.data.remote.dto.BillSplitSentDto
 import com.ticketbox.data.remote.dto.BillSplitSentListResponseDto
 import com.ticketbox.data.remote.dto.LedgerDto
@@ -66,6 +68,11 @@ class BillSplitResultNavigationTest {
         configureLedgers("viewer", extraTarget = true)
         val row = requireNotNull(moshi.adapter(BillSplitInboxDto::class.java).fromJson(splitJson("invited")))
         harness.fixture.network.splitInbox = BillSplitInboxListResponseDto(listOf(row))
+        val acceptedReply = requireNotNull(moshi.adapter(BillSplitAcceptanceDto::class.java).fromJson(splitJson("accepted"))).copy(
+            receivedBill = BillSplitReceivedBillDto(84L, "received-ledger", targetName),
+            acceptedTargetLedgerId = "received-ledger",
+        )
+        harness.fixture.network.splitAcceptReply = acceptedReply
         installSplitCenter()
 
         val review = context.getString(R.string.bill_split_review_invitation)
@@ -98,6 +105,9 @@ class BillSplitResultNavigationTest {
         harness.fixture.network.loseSplitAcceptResponse = true
         assertEquals(1, runBlocking { harness.fixture.drainSplitAcceptance(maxAttempts = 1) }.failures)
         assertEquals("failed", acceptanceRow()?.get("status"))
+        // Later reads may omit the original invitation while exposing its accepted bill.
+        harness.fixture.network.splitInbox = BillSplitInboxListResponseDto(emptyList())
+        harness.fixture.network.current = harness.fixture.network.current.copy(id = 84L, merchant = "已接受的分摊")
         val originalBinding = requireNotNull(harness.screenFactory.repository.captureDeferredLedgerBinding())
         harness.fixture.renewBinding()
         assertTrue(runBlocking { harness.screenFactory.repository.recoverBillSplitAcceptance(originalBinding,
@@ -114,7 +124,7 @@ class BillSplitResultNavigationTest {
         compose.onNodeWithText(retry).performScrollTo().assertIsDisplayed()
         capture("split-accept-recovery-actions")
         harness.fixture.network.loseSplitAcceptResponse = false
-        harness.fixture.network.splitReceiptTargetOverride = "wrong-target"
+        harness.fixture.network.splitAcceptReply = acceptedReply.copy(acceptedTargetLedgerId = "wrong-target")
         retryAcceptance(retry)
         assertEquals(1, runBlocking { harness.fixture.drainSplitAcceptance() }.failures)
         assertEquals("bill_split_accept_response_unverified", acceptanceRow()?.get("lastError"))
@@ -122,7 +132,7 @@ class BillSplitResultNavigationTest {
         harness.fixture.network.splitLedgers = LedgerListResponseDto(requireNotNull(harness.fixture.network.splitLedgers).ledgers.map {
             if (it.ledgerId == "received-ledger") it.copy(role = "viewer") else it
         })
-        harness.fixture.network.splitReceiptTargetOverride = null
+        harness.fixture.network.splitAcceptReply = acceptedReply
         compose.runOnIdle { harness.shell.openSecondaryPage(ProductSecondaryPage.ObligationSync) }
         waitForText(context.getString(R.string.sync_status_page_title))
         retryAcceptance(retry)
@@ -132,7 +142,6 @@ class BillSplitResultNavigationTest {
         for (field in listOf("payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId", "targetId")) {
             assertEquals("Original acceptance $field must remain unchanged", originalAcceptance[field], completed[field])
         }
-        assertEquals(1, harness.fixture.network.splitAcceptResults.size)
         val received = context.getString(R.string.bill_split_open_received)
         waitForText(received)
         capture("split-accept-delivered")

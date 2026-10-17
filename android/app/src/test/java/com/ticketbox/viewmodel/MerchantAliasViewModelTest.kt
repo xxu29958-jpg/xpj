@@ -4,6 +4,7 @@ import com.ticketbox.data.local.PersistedLedgerIdentity
 
 import com.ticketbox.R
 import com.ticketbox.data.repository.FakeApiService
+import com.ticketbox.data.repository.FakeMerchantApi
 import com.ticketbox.data.repository.FakeApiServiceFactory
 import com.ticketbox.data.repository.FakeExpenseDao
 import com.ticketbox.data.repository.ledgerSessionFixture
@@ -239,6 +240,7 @@ class MerchantAliasViewModelTest {
         assertEquals(0, harness.vm.uiState.value.changedRevision)
         assertEquals(null, harness.vm.uiState.value.editorCompletion)
         assertTrue(harness.api.merchantCatalogUpdateRequests.isEmpty())
+        harness.merchant.catalogUpdateResponse = merchantCatalogDto(original.publicId, "原稿名称", 10)
         harness.vm.renameMerchantCatalog(original, "原稿名称")
         harness.vm.uiState.first { it.changedRevision == 1 }
         assertEquals(listOf(original.publicId), harness.api.merchantCatalogPatchTargets)
@@ -324,6 +326,9 @@ class MerchantAliasViewModelTest {
         val merge = requireNotNull(drafts.state.value.draft(MerchantDraftKind.Merge, source.publicId))
         assertEquals(parent.key, merge.parentRenameKey)
         drafts.change(merge.copy(aliasPolicy = MerchantCatalogAliasPolicy.None))
+        harness.merchant.catalogMergeResponse = com.ticketbox.data.remote.dto.MerchantCatalogMergeDto(
+            merchantCatalogDto("source", "原商家", 8).copy(status = "merged", mergedIntoPublicId = "target"),
+            merchantCatalogDto("target", "目标商家", 12), null)
         drafts.submit(MerchantDraftKind.Merge, source.publicId)
         val accepted = requireNotNull(drafts.state.first { !it.busy }.draft(MerchantDraftKind.Merge, source.publicId))
         assertEquals("accepted", accepted.phase)
@@ -388,7 +393,8 @@ class MerchantAliasViewModelTest {
             ledgerName = "我的小票夹",
             role = role,
         )
-        val api = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0).apply(configureApi)
+        val merchant = FakeMerchantApi()
+        val api = FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0, merchantApi = merchant).apply(configureApi)
         val apiFactory = FakeApiServiceFactory(api)
         val merchantRepository = MerchantRepository(
             draftStore = com.ticketbox.data.repository.fakeMerchantDraftStore(),
@@ -411,13 +417,14 @@ class MerchantAliasViewModelTest {
             repository = expenseRepository,
         )
         activeViewModels += vm
-        return Harness(api = api, vm = vm, session = tokenStore)
+        return Harness(api = api, vm = vm, session = tokenStore, merchant = merchant)
     }
 
     private data class Harness(
         val api: FakeApiService,
         val vm: MerchantAliasViewModel,
         val session: TestSessionFixture,
+        val merchant: FakeMerchantApi,
     )
 
     private companion object {

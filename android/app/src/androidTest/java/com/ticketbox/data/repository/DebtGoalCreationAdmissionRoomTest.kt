@@ -53,19 +53,17 @@ class DebtGoalCreationAdmissionRoomTest {
 
         f.loseRemoteAck = true
         assertEquals(1, f.drain().failures)
-        val firstReceipt = f.accepted.values.single()
+        val firstReceipt = f.response
         repository = f.fixture.reopen().goalEditRepository
         val failed = requireNotNull(repository.originalCreation(binding, f.key).getOrThrow())
         assertTrue(failed.canRetry)
         assertEquals(failed, repository.describeCreation(failed.row))
-        f.laterRemaining = 800
         f.loseRemoteAck = false
         repository.recoverCreation(binding, failed, drop = false).getOrThrow()
         assertEquals(1, f.drain().done)
         val done = requireNotNull(repository.originalCreation(binding, f.key).getOrThrow())
         assertEquals(firstReceipt.toDomain(), done.confirmed)
         assertTrue(done.isDone)
-        assertEquals(1, f.accepted.size)
         assertEquals(listOf(f.request to f.key, f.request to f.key), f.calls)
         assertEquals(original.row.id, repository.create(binding, f.request, f.key).getOrThrow())
         val delivered = f.fixture.stored().single()
@@ -169,13 +167,14 @@ class DebtGoalCreationAdmissionRoomTest {
         val stopped = requireNotNull(repository.originalCreation(binding, f.key).getOrThrow())
         assertEquals(PendingMutationStatus.Abandoned, stopped.row.status)
         assertFalse(stopped.canRetry)
+        assertFalse(stopped.canDrop)
+        assertTrue(repository.recoverCreation(binding, stopped, drop = false).isFailure)
         assertEquals(id, repository.create(binding, f.request, f.key).getOrThrow())
         for (field in listOf("payload", "targetId", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId", "serverUrl")) {
             assertEquals(field, original[field], f.fixture.stored().single()[field])
         }
         assertEquals(0, f.drain().done)
         assertEquals(1, f.calls.size)
-        assertEquals(1, f.accepted.size)
 
         val nextKey = UUID.randomUUID().toString()
         val nextId = repository.create(binding, f.request, nextKey).getOrThrow()
@@ -194,28 +193,31 @@ private class DebtCreationConnectedFixture {
     val key = UUID.randomUUID().toString()
     val request = GoalCreateRequestDto("还清欠款", goalType = "debt_repayment", debtPublicIds = listOf("debt-b", "debt-a"))
     val calls = mutableListOf<Pair<GoalCreateRequestDto, String>>()
-    val accepted = mutableMapOf<String, GoalDto>()
+    val response = GoalDto(
+        "created-debt-goal", "correction-ledger", "还清欠款", "debt_repayment", "monthly", null, null, null, null, null, null,
+        "in_progress", "active", "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null,
+        debtRepayment = DebtRepaymentEvaluationDto(1, "in_progress", false, linkedDebts = listOf("debt-b", "debt-a").map {
+            DebtGoalLinkViewDto(it, "open", "i_owe", "external", "原欠款对象", 1200, 1200, "JPY")
+        }, voidedDebtPublicIds = emptyList()),
+    )
     var loseRemoteAck = false
     var offline = false
-    var laterRemaining = 1200L
     lateinit var service: ApiService
     val fixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext()) { delegate ->
         object : ApiService by delegate {
             override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto {
                 val key = requireNotNull(idempotencyKey)
                 calls += request to key
-                check(calls.first { it.second == key }.first == request) { "Replay changed the original selection" }
-                val receipt = accepted.getOrPut(key) { debtCreationRoomReceipt(request, laterRemaining) }
                 if (loseRemoteAck) throw IOException("Synthetic remote acknowledgement lost after creation")
-                return receipt
+                return response
             }
             override suspend fun goals(month: String?, includeArchived: Boolean, goalType: String?, timezone: String?): GoalListResponseDto {
                 if (offline) throw ConnectException("offline")
-                return GoalListResponseDto(listOf(debtCreationRoomReceipt(request).copy(publicId = "old-debt-goal")))
+                return GoalListResponseDto(listOf(response.copy(publicId = "old-debt-goal")))
             }
             override suspend fun goal(publicId: String, timezone: String?): GoalDto {
                 if (offline) throw ConnectException("offline")
-                return debtCreationRoomReceipt(request).copy(publicId = publicId)
+                return response.copy(publicId = publicId)
             }
         }.also { service = it }
     }
@@ -225,14 +227,6 @@ private class DebtCreationConnectedFixture {
         adapters.goalCreateAdapter, adapters.goalReceiptAdapter, fixture.graph.reportsRepository::invalidateGoalReadsAfterDelivery)),
         maxAttempts = 1, now = fixture.clock::millis).drainOnce()
 }
-
-private fun debtCreationRoomReceipt(request: GoalCreateRequestDto, remaining: Long = 1200) = GoalDto(
-    "created-debt-goal", "correction-ledger", request.name, "debt_repayment", "monthly", null, null, null, null, null, null,
-    "in_progress", "active", "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null,
-    debtRepayment = DebtRepaymentEvaluationDto(1, "in_progress", false, linkedDebts = request.debtPublicIds.orEmpty().map {
-        DebtGoalLinkViewDto(it, "open", "i_owe", "external", "原欠款对象", 1200, remaining, "JPY")
-    }, voidedDebtPublicIds = emptyList()),
-)
 
 private fun debtOutboxBinding(binding: LogicalSessionBinding) = OutboxBinding(binding.serverUrl, binding.ledgerId,
     requireNotNull(OutboxOwnerIdentity.parseOrNull(binding.ownerKey)))

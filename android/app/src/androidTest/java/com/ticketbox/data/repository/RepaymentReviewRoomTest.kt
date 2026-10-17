@@ -27,7 +27,7 @@ class RepaymentReviewRoomTest {
     private var loseReply = true
     private var refuseReview = false
     private var expectedReviewDate: String? = null
-    private val accepted = mutableSetOf<String>()
+    private val confirmCalls = mutableListOf<Pair<String, RepaymentDraftConfirmRequestDto>>()
     private val fixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext()) { api ->
         object : ApiService by api {
             override suspend fun repaymentDraft(publicId: String): RepaymentDraftDto {
@@ -35,14 +35,14 @@ class RepaymentReviewRoomTest {
                 return capture
             }
             override suspend fun confirmRepaymentDraft(publicId: String, request: RepaymentDraftConfirmRequestDto, idempotencyKey: String?): RepaymentDraftDto {
+                confirmCalls += requireNotNull(idempotencyKey) to request
                 assertEquals(capture.publicId, publicId)
                 assertEquals("90.00", request.originalAmount)
                 assertEquals(7L, request.expectedRowVersion)
                 assertEquals(expectedReviewDate, request.timeInput?.userLocalDate)
                 refuseReviewIfRequired()
-                accepted += requireNotNull(idempotencyKey)
                 if (loseReply) throw IOException("isolated lost reply")
-                return capture.copy(status = "confirmed", committedDebtPublicId = request.targetDebtPublicId, committedRepaymentPublicId = "original-repayment")
+                return capture.copy(status = "confirmed", committedDebtPublicId = "original-debt", committedRepaymentPublicId = "original-repayment")
             }
             override suspend fun dismissRepaymentDraft(publicId: String, request: RepaymentDraftDismissRequestDto): RepaymentDraftDto {
                 assertEquals(capture.publicId, publicId)
@@ -95,7 +95,15 @@ class RepaymentReviewRoomTest {
         assertEquals("done", completed["status"])
         assertEquals(original["payload"], completed["payload"])
         assertEquals(original["idempotencyKey"], completed["idempotencyKey"])
-        assertEquals(1, accepted.size)
+        assertEquals(2, confirmCalls.size)
+        assertEquals(confirmCalls.first(), confirmCalls.last())
+        assertEquals(original["idempotencyKey"], confirmCalls.first().first)
+        val sent = confirmCalls.first().second
+        assertEquals("CNY", sent.originalCurrency)
+        assertEquals("original-debt", sent.targetDebtPublicId)
+        assertEquals(3L, sent.timeInput?.calendarRevision)
+        assertEquals("date_only", sent.timeInput?.precision)
+        assertEquals(null, sent.timeInput?.instantUtc)
         graph = fixture.reopen()
         val receipt = graph.repaymentReviewRepository.observe(binding, capture.publicId).first().original
         assertTrue(requireNotNull(receipt?.receiptJson).contains("original-repayment"))
@@ -112,13 +120,12 @@ class RepaymentReviewRoomTest {
         assertEquals(id, graph.repaymentReviewRepository.submit(binding, capture.toDomain(), true).getOrThrow())
         drain()
         assertEquals("done", fixture.stored().single()["status"])
-        assertTrue(accepted.isEmpty())
+        assertTrue(confirmCalls.isEmpty())
         assertTrue(requireNotNull(graph.repaymentReviewRepository.observe(binding, capture.publicId).first().original?.receiptJson).contains("dismissed"))
     }
 
     @Test fun globalSyncStopRetainsTheRejectedOriginalAndInput() = runBlocking {
         for (dismiss in listOf(true, false)) stopRejectedOriginal(dismiss)
-        assertTrue(accepted.isEmpty())
     }
 
     private suspend fun stopRejectedOriginal(dismiss: Boolean) {

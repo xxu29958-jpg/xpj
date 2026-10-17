@@ -36,8 +36,6 @@ import org.junit.Assert.assertEquals
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 /** Shipped library routes and repositories, with controlled remote replies. */
@@ -46,15 +44,17 @@ class ReferenceCreationNavigationTest {
     @get:Rule val keyboard = RealKeyboard()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val mounted = mutableStateOf(true)
-    private val accepted = ConcurrentHashMap<String, ReferenceCreatedDto>()
+    private var acceptedRead = false
+    private var response: ReferenceCreatedDto? = null
+    private val readableReferences get() = if (acceptedRead) listOfNotNull(response) else emptyList()
     private val requests = CopyOnWriteArrayList<Triple<String, String, String>>()
     private var vocabularyChanges = 0
     private val harness = FactEntryNavigationHarness(context) { delegate ->
         object : ApiService by delegate {
-            override suspend fun categoryPreferences() = CategoryPreferenceListResponseDto(accepted.values
+            override suspend fun categoryPreferences() = CategoryPreferenceListResponseDto(readableReferences
                 .filter { it.kind == "category" }.map { CategoryPreferenceDto(it.publicId, it.name, "custom", 0,
                     it.rowVersion, "2026-10-08T00:00:00Z", "2026-10-08T00:00:00Z", null) })
-            override suspend fun listManagedTags() = TagManagementListDto(accepted.values.filter { it.kind == "tag" }
+            override suspend fun listManagedTags() = TagManagementListDto(readableReferences.filter { it.kind == "tag" }
                 .map { TagListItemDto(it.publicId, it.name, 0, it.rowVersion) })
             override suspend fun createTag(key: String, request: ReferenceCreateRequestDto) = accept("tag", key, request)
             override suspend fun createCategoryPreference(key: String, request: ReferenceCreateRequestDto) = accept("category", key, request)
@@ -72,6 +72,7 @@ class ReferenceCreationNavigationTest {
     @Test fun unusedTagCreationSurvivesLibraryExitAndReplaysItsOriginalCommand() = createAndRecover("标签", TRANSACTIONS_LIBRARY_TAGS_ROUTE)
 
     private fun createAndRecover(label: String, route: String) {
+        response = ReferenceCreatedDto(if (label == "分类") "category" else "tag", "00000000-0000-4000-8000-000000000001", "暑期旅行", 1)
         compose.setContent {
             ReferenceLibraryTestTheme {
                 if (mounted.value) {
@@ -94,6 +95,7 @@ class ReferenceCreationNavigationTest {
         click("添加$label")
         compose.onNode(hasSetTextAction()).performTextInput("  暑期旅行  ")
         keyboard.dismissAndWait(compose)
+        acceptedRead = true
         click("添加$label")
         waitFor("回执暂时不可达")
         captureReferenceLibraryStep(compose, context, "$label-unconfirmed")
@@ -108,7 +110,8 @@ class ReferenceCreationNavigationTest {
         compose.onNodeWithText("暑期旅行").performScrollTo().assertIsDisplayed()
         assertEquals(2, requests.size)
         assertEquals(requests.first(), requests.last())
-        assertEquals(1, accepted.size)
+        assertEquals(response?.kind, requests.first().first)
+        assertEquals("暑期旅行", requests.first().third.trim())
         assertEquals(1, vocabularyChanges)
         captureReferenceLibraryStep(compose, context, "$label-accepted")
     }
@@ -131,8 +134,7 @@ class ReferenceCreationNavigationTest {
 
     private fun accept(kind: String, key: String, request: ReferenceCreateRequestDto): ReferenceCreatedDto {
         requests += Triple(kind, key, request.name)
-        accepted[key]?.let { return it }
-        accepted[key] = ReferenceCreatedDto(kind, UUID.randomUUID().toString(), request.name.trim(), 1)
+        if (requests.size != 1) return requireNotNull(response)
         throw HttpException(Response.error<ReferenceCreatedDto>(503,
             """{"error":"service_unavailable","message":"回执暂时不可达"}""".toResponseBody("application/json".toMediaType())))
     }

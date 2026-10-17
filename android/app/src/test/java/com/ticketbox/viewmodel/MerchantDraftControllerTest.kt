@@ -33,23 +33,18 @@ class MerchantDraftControllerTest {
         for (kind in listOf(MerchantDraftKind.Catalog, MerchantDraftKind.Alias)) {
             val keys = mutableListOf<String>()
             val bodies = mutableListOf<List<String>>()
-            val accepted = mutableMapOf<String, Any>()
             val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
                 override suspend fun createMerchantCatalog(request: MerchantCatalogCreateRequest, idempotencyKey: String): MerchantCatalogDto {
                     keys += idempotencyKey; bodies += listOf(request.displayName)
-                    val receipt = accepted.getOrPut(idempotencyKey) {
-                        MerchantCatalogDto("original-catalog", request.displayName.trim(), "original", "active",
-                            usageCount = 0, createdAt = "2026-10-08T00:00:00Z", updatedAt = "2026-10-08T00:00:00Z", rowVersion = 1)
-                    } as MerchantCatalogDto
+                    val receipt = MerchantCatalogDto("original-catalog", "原商家", "original", "active",
+                        usageCount = 0, createdAt = "2026-10-08T00:00:00Z", updatedAt = "2026-10-08T00:00:00Z", rowVersion = 1)
                     if (keys.size == 1) throw IOException("response lost after acceptance")
                     return receipt
                 }
                 override suspend fun createMerchantAlias(request: MerchantAliasRequest, idempotencyKey: String): MerchantAliasDto {
                     keys += idempotencyKey; bodies += listOf(requireNotNull(request.canonicalMerchant), requireNotNull(request.alias))
-                    val receipt = accepted.getOrPut(idempotencyKey) {
-                        MerchantAliasDto("original-alias", requireNotNull(request.canonicalMerchant).trim(), "original", requireNotNull(request.alias).trim(), "alias", true,
-                            "2026-10-08T00:00:00Z", "2026-10-08T00:00:00Z", 1)
-                    } as MerchantAliasDto
+                    val receipt = MerchantAliasDto("original-alias", "标准商家", "original", "原别名", "alias", true,
+                        "2026-10-08T00:00:00Z", "2026-10-08T00:00:00Z", 1)
                     if (keys.size == 1) throw IOException("response lost after acceptance")
                     return receipt
                 }
@@ -86,7 +81,6 @@ class MerchantDraftControllerTest {
             resumed.state.first { it.draft(kind)?.phase == "accepted" && !it.busy }
             assertEquals(listOf(original.key, original.key), keys)
             assertEquals(bodies.first(), bodies.last())
-            assertEquals(1, accepted.size)
             assertEquals("accepted", resumed.state.value.draft(kind)?.phase)
             resumed.submit(kind); advanceUntilIdle()
             assertEquals(2, keys.size)

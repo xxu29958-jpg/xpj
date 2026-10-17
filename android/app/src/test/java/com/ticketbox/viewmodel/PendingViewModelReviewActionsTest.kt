@@ -35,13 +35,10 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         var current = original
         val fake = FakeReviewActions(pending = listOf(original))
         fake.expenseResponder = { _, _ -> Result.success(current) }
-        fake.saveResponder = { _, reviewed, draft ->
-            if (reviewed.rowVersion != current.rowVersion) {
-                Result.failure(IllegalStateException("账单已被修改，请核对原填写"))
-            } else {
-                current = current.copy(category = requireNotNull(draft.category), rowVersion = current.rowVersion + 1)
-                Result.success(current)
-            }
+        val reviewedVersions = mutableListOf<Long>()
+        fake.saveResponder = { _, reviewed, _ ->
+            reviewedVersions += reviewed.rowVersion
+            Result.failure(IllegalStateException("账单已被修改，请核对原填写"))
         }
         val vm = pendingViewModel(fake)
         advanceUntilIdle()
@@ -68,10 +65,17 @@ internal class PendingViewModelReviewActionsTest : PendingViewModelReviewTestBas
         assertEquals("购物", vm.uiState.value.reviewInputValues.custom)
         assertEquals("医疗", current.category, "Reading the new basis must not submit the original input")
         assertTrue(fake.originalInputs.loadPendingReviewInputs(binding).getOrThrow().single().originalKey != originalKey)
+        val accepted = current.copy(category = "购物", rowVersion = 3)
+        fake.saveResponder = { _, basis, draft ->
+            reviewedVersions += basis.rowVersion
+            assertEquals("购物", draft.category)
+            Result.success(accepted)
+        }
         vm.saveQuickCategory(reviewed.expense, "购物")
         advanceUntilIdle()
-        assertEquals("购物", current.category)
-        assertEquals(3L, current.rowVersion)
+        assertEquals(listOf(1L, 2L), reviewedVersions)
+        assertEquals("购物", vm.uiState.value.items.single().category)
+        assertEquals(3L, vm.uiState.value.items.single().rowVersion)
     }
 
     @Test

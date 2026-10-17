@@ -38,7 +38,6 @@ import com.ticketbox.viewmodel.closeSheet
 import com.ticketbox.viewmodel.changeReviewInput
 import com.ticketbox.viewmodel.reviewCurrentInputBasis
 import java.util.concurrent.CopyOnWriteArrayList
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -55,8 +54,9 @@ class PendingExpenseAdmissionRoomTest {
     private var pending by mutableStateOf<PendingViewModel?>(null)
     @Volatile private lateinit var current: ExpenseDto
     private var secondPending: ExpenseDto? = null
-    @Volatile private var holdTransport = false
-    private val requests = CopyOnWriteArrayList<String>()
+    private val requests = CopyOnWriteArrayList<Triple<String, Any, String?>>()
+    private lateinit var patchResponse: ExpenseDto
+    private lateinit var confirmationResponse: ExpenseDto
     private lateinit var admissionApi: ApiService
     private val fixture = ExpenseCorrectionConnectedFixture(InstrumentationRegistry.getInstrumentation().targetContext) { api ->
         object : ApiService by api {
@@ -64,19 +64,13 @@ class PendingExpenseAdmissionRoomTest {
             override suspend fun pendingExpenses(): List<ExpenseDto> = listOfNotNull(current, secondPending).filter { it.status == "pending" }
 
             override suspend fun updateExpense(id: String, request: ExpenseUpdateRequest, idempotencyKey: String?): ExpenseDto {
-                requests += "patch"
-                if (holdTransport) awaitCancellation()
-                return current.copy(merchant = request.merchant, rowVersion = current.rowVersion + 1).also { current = it }
+                requests += Triple(id, request, idempotencyKey)
+                return patchResponse.also { current = it }
             }
 
             override suspend fun confirmExpense(id: String, request: ExpenseStateTokenRequest, idempotencyKey: String?): ExpenseDto {
-                requests += "confirm"
-                if (holdTransport) awaitCancellation()
-                val original = if (id == current.id.toString()) current else requireNotNull(secondPending)
-                check(id == original.id.toString() && request.expectedRowVersion == original.rowVersion)
-                return original.copy(status = "confirmed", confirmedAt = "2026-09-06T00:01:00Z",
-                    rowVersion = original.rowVersion + 1).withConfirmationReceipt()
-                    .also { if (it.id == current.id) current = it else secondPending = it }
+                requests += Triple(id, request, idempotencyKey)
+                return confirmationResponse.also { current = it }
             }
         }.also { admissionApi = it }
     }
@@ -196,7 +190,6 @@ class PendingExpenseAdmissionRoomTest {
         fixture.network.current = fixture.network.current.copy(status = "pending", confirmedAt = null)
         current = fixture.network.current
         val repository = fixture.reopen().expenseRepository
-        holdTransport = true
         lateinit var vm: ExpenseEditViewModel
         compose.runOnIdle { vm = ExpenseEditViewModel(42, repository); editor = vm }
         compose.waitUntil(10_000) { !vm.uiState.value.expenseLoading && vm.uiState.value.expense != null }
@@ -258,7 +251,6 @@ class PendingExpenseAdmissionRoomTest {
 
         val originals = fixture.stored()
         assertEquals("Both reviewed bills need durable original commands", 2, originals.size)
-        assertEquals(2, originals.size)
         assertEquals(setOf("expense:42", "expense:43"), originals.map { it["targetId"] }.toSet())
         assertTrue(originals.all { it["type"] == PendingMutationType.ConfirmExpense.wireValue })
         assertTrue(originals.all { it["status"] == PendingMutationStatus.Pending.wireValue })
@@ -304,12 +296,17 @@ class PendingExpenseAdmissionRoomTest {
         compose.waitUntil(10_000) { editor?.uiState?.value?.expenseLoading == false }
         assertEquals(originalIds, editor!!.uiState.value.commandRowIds)
         assertEquals(false, editor!!.uiState.value.done)
-        val adapters = OutboxAdapterGraph()
-        OutboxDrainEngine(fixture.outbox, listOf(
-            PatchExpenseDispatcher({ admissionApi }, adapters.patchExpenseAdapter, fixture::publishExpense),
-            ConfirmExpenseDispatcher({ admissionApi }, adapters.expenseStateTokenAdapter, fixture::publishExpense),
-        ), now = fixture.clock::millis).drainOnce()
+        patchResponse = current.copy(merchant = "自己输入的商家", rowVersion = 8)
+        confirmationResponse = patchResponse.copy(status = "confirmed", confirmedAt = "2026-09-06T00:01:00Z", rowVersion = 9)
+            .withConfirmationReceipt()
+        val originalRows = fixture.stored()
+        fixture.drainExpenseLifecycle(api = admissionApi)
         compose.waitUntil(10_000) { editor!!.uiState.value.confirmationReceipt != null }
+        assertEquals(listOf("42", "42"), requests.map { it.first })
+        assertEquals(7L, (requests.first().second as ExpenseUpdateRequest).expectedRowVersion)
+        assertEquals("自己输入的商家", (requests.first().second as ExpenseUpdateRequest).merchant)
+        assertEquals(8L, (requests.last().second as ExpenseStateTokenRequest).expectedRowVersion)
+        assertEquals(originalRows.map { it["idempotencyKey"] }, requests.map { it.third })
         val firstReceipt = editor!!.uiState.value.confirmationReceipt
         assertEquals("自己输入的商家", firstReceipt?.merchant)
         compose.runOnIdle { editor!!.viewModelScope.cancel() }

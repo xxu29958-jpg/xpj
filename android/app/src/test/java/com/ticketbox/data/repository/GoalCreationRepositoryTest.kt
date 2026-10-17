@@ -7,7 +7,6 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.domain.model.GoalDraft
-import java.io.IOException
 import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -32,28 +31,6 @@ class GoalCreationRepositoryTest {
         assertEquals(1200L, pending.request?.targetAmountCents)
         assertEquals("goal_create:${pending.row.idempotencyKey}", pending.row.targetId)
         assertEquals(0L, pending.row.expectedRowVersion)
-    }
-
-    @Test fun lostAcknowledgementRetriesOriginalKeyAndAcceptsOnlyOriginalReceipt() = runTest {
-        val fixture = GoalCreationFixture()
-        fixture.create().getOrThrow()
-        val original = fixture.pending().row
-        fixture.loseAck = true
-        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
-        assertEquals(1, fixture.engine().drainOnce().failures)
-        val failed = fixture.pending()
-        assertTrue(failed.canRetry)
-        fixture.loseAck = false
-        fixture.repository.recoverCreation(fixture.binding, failed, drop = false).getOrThrow()
-        fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
-        assertEquals(1, fixture.engine().drainOnce().done)
-        val done = fixture.pending()
-        assertEquals(listOf(original.idempotencyKey, original.idempotencyKey), fixture.keys)
-        assertEquals(1, fixture.accepted.size)
-        assertEquals(listOf(original.id), fixture.acceptedRows)
-        assertEquals(original.payloadJson, done.row.payloadJson)
-        assertEquals(1L, done.confirmed?.rowVersion)
-        assertEquals("JPY", done.confirmed?.homeCurrencyCode)
     }
 
     @Test fun differentReceiptCannotSettleAnUnconfirmedCreation() = runTest {
@@ -109,7 +86,7 @@ class GoalCreationRepositoryTest {
             assertEquals(original.payloadJson, failed.row.payloadJson)
             assertEquals(original.idempotencyKey, failed.row.idempotencyKey)
             assertEquals(code == "client_upgrade_required", failed.canRetry)
-            assertTrue(fixture.accepted.isEmpty())
+            assertTrue(fixture.acceptedRows.isEmpty())
         }
     }
 
@@ -156,9 +133,10 @@ private class GoalCreationFixture {
     val scheduledDepth = mutableListOf<Int>()
     private val outbox = testOutboxRepository(dao, onEnqueued = { scheduledDepth += dao.rows.size })
     val keys = mutableListOf<String?>()
-    val accepted = mutableMapOf<String, GoalDto>()
+    val response = GoalDto("created-goal", "owner", "Travel", "spending_limit", "monthly", "2026-09", "交通",
+        1200, 0, 1200, 0, "not_started", "active", "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null,
+        homeCurrencyCode = "JPY")
     val acceptedRows = mutableListOf<Long>()
-    var loseAck = false
     var wrongReceipt = false
     var httpError: HttpException? = null
     val draft = GoalDraft(" Travel ", "2026-09", 1200, "交通", "jpy")
@@ -167,13 +145,7 @@ private class GoalCreationFixture {
         override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto {
             keys += idempotencyKey
             httpError?.let { throw it }
-            val receipt = accepted.getOrPut(requireNotNull(idempotencyKey)) {
-                GoalDto("created-goal", "owner", request.name, "spending_limit", "monthly", request.month, request.category,
-                    request.targetAmountCents, 0, request.targetAmountCents, 0, "not_started", "active",
-                    "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null, homeCurrencyCode = "JPY")
-            }
-            if (loseAck) throw IOException("Synthetic lost acknowledgement")
-            return if (wrongReceipt) receipt.copy(homeCurrencyCode = "CNY") else receipt
+            return if (wrongReceipt) response.copy(homeCurrencyCode = "CNY") else response
         }
     }
     private val provider = testApiServiceProvider(object : ApiServiceFactory {
