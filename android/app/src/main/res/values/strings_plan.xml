@@ -79,7 +79,7 @@
     <string name="spending_goal_remaining_label">还可用</string>
     <string name="spending_goal_over_label">已超出</string>
     <string name="spending_goal_limit_label">目标上限</string>
-    <string name="spending_goal_progress_a11y">%1$s，当前进度 %2$d%%</string>
+    <string name="spending_goal_progress_a11y">%1$s，额度已用 %2$d%%</string>
     <string name="spending_goal_status_idle">未开始</string>
     <string name="spending_goal_status_on_track">正常</string>
     <string name="spending_goal_status_near">接近上限</string>

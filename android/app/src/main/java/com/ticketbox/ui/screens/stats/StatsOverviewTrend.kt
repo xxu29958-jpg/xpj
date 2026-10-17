@@ -51,10 +51,11 @@ internal fun HeroSpendTrend(
 
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         HeroTrendHeader(summary = summary, currencyDisplay = currencyDisplay)
-        if (points.isEmpty() || points.all { it.amountCents <= 0L }) {
-            HeroTrendEmpty()
-        } else {
-            HeroTrendBody(
+        when {
+            // A period where refunds exceed spending is a negative net amount, not an empty one.
+            points.any { it.amountCents < 0L } -> HeroTrendSigned()
+            points.isEmpty() || points.all { it.amountCents == 0L } -> HeroTrendEmpty()
+            else -> HeroTrendBody(
                 points = visiblePoints,
                 summary = summary,
                 currencyDisplay = currencyDisplay,
@@ -93,6 +94,15 @@ private fun HeroTrendHeader(
             )
         }
     }
+}
+
+@Composable
+private fun HeroTrendSigned() {
+    Text(
+        text = stringResource(R.string.stats_overview_trend_signed),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 @Composable
@@ -315,7 +325,7 @@ internal fun heroSpendTrendPoints(
         .map {
             StatsSpendChartPoint(
                 label = it.label.ifBlank { it.bucket },
-                amountCents = requireNotNull(it.amountCents).coerceAtLeast(0L),
+                amountCents = requireNotNull(it.amountCents),
             )
         }
 }
