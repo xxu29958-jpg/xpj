@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.stats
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,8 +54,8 @@ internal fun HeroSpendTrend(
         HeroTrendHeader(summary = summary, currencyDisplay = currencyDisplay)
         when {
             // A period where refunds exceed spending is a negative net amount, not an empty one.
-            points.any { it.amountCents < 0L } -> HeroTrendSigned()
-            points.isEmpty() || points.all { it.amountCents == 0L } -> HeroTrendEmpty()
+            points.any { it.amountCents < 0L } -> HeroTrendNote(R.string.stats_overview_trend_signed)
+            points.isEmpty() || points.all { it.amountCents == 0L } -> HeroTrendNote(R.string.stats_overview_trend_empty)
             else -> HeroTrendBody(
                 points = visiblePoints,
                 summary = summary,
@@ -97,18 +98,9 @@ private fun HeroTrendHeader(
 }
 
 @Composable
-private fun HeroTrendSigned() {
+private fun HeroTrendNote(@StringRes text: Int) {
     Text(
-        text = stringResource(R.string.stats_overview_trend_signed),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.bodySmall,
-    )
-}
-
-@Composable
-private fun HeroTrendEmpty() {
-    Text(
-        text = stringResource(R.string.stats_overview_trend_empty),
+        text = stringResource(text),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodySmall,
     )
