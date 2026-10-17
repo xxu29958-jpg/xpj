@@ -476,6 +476,7 @@ SOFTWARE.
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-play"></use></svg><span>启动</span>
         </button>
         <button class="button button-icon manager-action" id="restartAction" type="button" title="重启小票夹" aria-label="重启小票夹" onclick="act('restart', this)"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#manager-icon-rotate-cw"></use></svg></button>
+        <button class="button manager-action" id="serviceDiagnosticAction" type="button" hidden onclick="act('export_diagnostics', this)">导出诊断包</button>
       </div>
     </section>
 
@@ -781,6 +782,7 @@ Start-Service TicketboxBackend</pre>
         || !Boolean(productSession && productSession.configured);
       $("iphoneAction").disabled = actionInFlight || !productAvailable || s.iphone_upload_state !== "configured_unverified";
       $("diagnosticExportAction").disabled = actionInFlight;
+      $("serviceDiagnosticAction").disabled = actionInFlight;
       applyDesktopPairingAvailability();
       applyPublicConnectivityActionAvailability(hasStatus ? s.public_connectivity : null);
       document.querySelector("main").setAttribute("aria-busy", String(actionInFlight));
@@ -841,6 +843,10 @@ Start-Service TicketboxBackend</pre>
         $("serviceTitle").textContent = mismatch ? "安装身份校验失败" : "小票夹没有正常响应";
         $("serviceDetail").textContent = s.health_detail || "请打开系统体检或导出诊断包。";
       }
+
+      // When the service card asks for a diagnostic bundle first, the same export sits right under it.
+      $("serviceDiagnosticAction").hidden = !(serviceFault || runtimeRepairRequired || ownerRecoveryRequired
+        || (running && !backendReady && !pending));
 
       const primary = $("primaryAction");
       primary.dataset.action = running ? "stop" : "start";
