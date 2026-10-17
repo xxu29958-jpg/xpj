@@ -2,7 +2,6 @@ package com.ticketbox.ui.screens.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -27,9 +26,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
@@ -424,11 +425,19 @@ private fun expenseReviewAction(row: OutboxRow, busy: Boolean, actions: SyncStat
 @Composable
 internal fun SyncStatusItemActions(next: SyncStatusActionButton?, other: SyncStatusActionButton? = null) {
     if (next == null && other == null) return
-    FlowRow(
+    SyncStatusActionLayout(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap, Alignment.End),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
+        gap = AppSpacing.smallGap,
     ) {
+        next?.let { action ->
+            AppOutlinedButton(onClick = action.onClick, options = AppOutlinedButtonOptions(enabled = action.enabled)) {
+                action.icon?.let {
+                    Icon(it, contentDescription = null, modifier = Modifier.size(AppIconSize.compact))
+                    Spacer(Modifier.width(AppSpacing.smallGap))
+                }
+                Text(action.text)
+            }
+        }
         other?.let { action ->
             TextButton(
                 onClick = action.onClick,
@@ -443,13 +452,39 @@ internal fun SyncStatusItemActions(next: SyncStatusActionButton?, other: SyncSta
                 Text(action.text)
             }
         }
-        next?.let { action ->
-            AppOutlinedButton(onClick = action.onClick, options = AppOutlinedButtonOptions(enabled = action.enabled)) {
-                action.icon?.let {
-                    Icon(it, contentDescription = null, modifier = Modifier.size(AppIconSize.compact))
-                    Spacer(Modifier.width(AppSpacing.smallGap))
+    }
+}
+
+/**
+ * End-aligned: on one line the next step sits last (rightmost); when large text forces a wrap the
+ * next step stays on top so it is still read first, with the stop or view link below it.
+ */
+@Composable
+private fun SyncStatusActionLayout(modifier: Modifier, gap: Dp, content: @Composable () -> Unit) {
+    Layout(content = content, modifier = modifier) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val placeables = measurables.map { it.measure(loose) }
+        val gapPx = gap.roundToPx()
+        val inline = placeables.sumOf { it.width } + gapPx * (placeables.size - 1) <= constraints.maxWidth
+        val width = constraints.maxWidth
+        if (inline) {
+            val height = placeables.maxOf { it.height }
+            layout(width, height) {
+                var x = width
+                placeables.forEach { placeable ->
+                    x -= placeable.width
+                    placeable.placeRelative(x, (height - placeable.height) / 2)
+                    x -= gapPx
                 }
-                Text(action.text)
+            }
+        } else {
+            val height = placeables.sumOf { it.height } + gapPx * (placeables.size - 1)
+            layout(width, height) {
+                var y = 0
+                placeables.forEach { placeable ->
+                    placeable.placeRelative(width - placeable.width, y)
+                    y += placeable.height + gapPx
+                }
             }
         }
     }
