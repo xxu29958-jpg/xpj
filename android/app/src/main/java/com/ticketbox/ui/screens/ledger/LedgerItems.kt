@@ -173,8 +173,7 @@ private fun LedgerDayHeaderCopy(
         Text(
             text = state.label,
             color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = AppTypography.cardTitle.weight,
+            style = MaterialTheme.typography.titleLarge,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

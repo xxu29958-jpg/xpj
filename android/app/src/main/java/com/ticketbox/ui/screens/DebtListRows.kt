@@ -39,14 +39,14 @@ internal fun groupDebtsForList(debts: List<Debt>): Pair<List<Debt>, List<Debt>> 
     return members.sortedBy { debtRowStatusRank(it.status) } to externals.sortedBy { debtRowStatusRank(it.status) }
 }
 
+/** Root list groups share the section-title level (D03 家人 / 朋友与其他, D04 days, D05 days). */
 @Composable
 internal fun DebtSectionHeader(title: String) {
     Text(
         title,
-        style = MaterialTheme.typography.labelMedium,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = AppSpacing.smallGap, bottom = AppSpacing.miniGap),
+        style = MaterialTheme.typography.titleLarge,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(top = AppSpacing.contentGap, bottom = AppSpacing.miniGap),
     )
 }
 
@@ -80,7 +80,8 @@ internal fun DebtListRow(
                 debt.homeCurrencyCode, formatDisplayAmount(debt.principalAmountCents, display)),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                DebtStatusBadge(
+                // The balance line already says 未结; an open external debt adds no badge (D03).
+                if (debt.isMember || debt.status != DebtLinkStatuses.OPEN) DebtStatusBadge(
                     text = stringResource(if (debt.isMember) memberDebtStatusLabelRes(debt.status)
                         else debtLinkStatusLabelRes(debt.status)),
                     tone = if (debt.isMember) memberDebtStatusTone(debt.status) else debtLinkStatusTone(debt.status),
