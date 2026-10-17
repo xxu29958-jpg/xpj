@@ -1,6 +1,14 @@
 package com.ticketbox.ui.screens.pending
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.ForcedSize
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
@@ -10,6 +18,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
@@ -18,9 +27,21 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.ui.RealKeyboard
+import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.components.AppAdaptivePaneStructures
+import com.ticketbox.ui.design.AppAdaptiveLayoutPolicy
+import com.ticketbox.ui.design.AppAdaptivePaneMode
+import com.ticketbox.ui.design.AppAdaptivePostureConstraint
+import com.ticketbox.ui.design.AppPrimaryNavigationMode
+import com.ticketbox.ui.design.AppWindowWidthClass
+import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
+import com.ticketbox.ui.screens.PendingScreen
 import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.viewmodel.PendingListLoadState
 import com.ticketbox.viewmodel.PendingSheet
+import com.ticketbox.viewmodel.PendingUiState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -63,6 +84,53 @@ class PendingExpandedReviewPaneLayoutTest {
         keyboard.assertActionAboveKeyboard(composeRule, save, "pending-pane-jpy-keyboard")
         composeRule.onNodeWithText(save).performTouchInput { click() }
         composeRule.runOnIdle { assertEquals(listOf(1L to 1234L), drafts) }
+    }
+
+    @Test
+    fun dw2ExpandedInboxKeepsTheQueueBesideItsExistingReviewOwner() {
+        val expense = missingAmountExpense()
+        val policy = AppAdaptiveLayoutPolicy(
+            widthClass = AppWindowWidthClass.Expanded,
+            paneMode = AppAdaptivePaneMode.ExpandedSupporting,
+            primaryNavigation = AppPrimaryNavigationMode.Rail,
+            postureConstraint = AppAdaptivePostureConstraint.None,
+        )
+        composeRule.setContent {
+            DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(1440.dp, 900.dp))) {
+                TicketboxTheme(skin = AppSkin.Paper) {
+                    CompositionLocalProvider(LocalAppAdaptiveLayoutPolicy provides policy) {
+                        PendingScreen(
+                            state = PendingUiState(
+                                items = listOf(expense), listLoadState = PendingListLoadState.Loaded,
+                                hasLoadedOnce = true, activeSheet = PendingSheet.MissingAmount(expense),
+                                reviewRemaining = 1,
+                            ),
+                            chromeActions = PendingScreenChromeActions(
+                                onRefresh = {}, onUploadScreenshot = {},
+                                onOpenRepaymentReview = {}, onOpenDataQuality = {},
+                                onRetryEnrichment = {}, onRetryCapacityUpload = {},
+                                onDiscardCapacityUpload = {},
+                                uploadSelection = PendingUploadSelectionUiState(0, false, {}, {}),
+                            ),
+                            itemActions = PendingExpenseQueueActions({}, {}, {}, {}),
+                            reviewActions = PendingReviewFlowActions(
+                                quickFix = PendingQuickFixEntryActions({}, {}, {}),
+                                duplicate = PendingDuplicateReviewActions({}),
+                                queue = PendingQueueReviewActions({}, {}),
+                            ),
+                            sheetActions = reviewActions { _, _ -> },
+                        )
+                    }
+                }
+            }
+        }
+        val queue = composeRule.onNodeWithTag(AppAdaptivePaneStructures.Inbox.primaryTestTag)
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val review = composeRule.onNodeWithTag(AppAdaptivePaneStructures.Inbox.supportingTestTag)
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("DW2 queue and original review must stay side by side", queue.right <= review.left)
+        composeRule.onNodeWithText("补全金额").assertIsDisplayed()
+        saveConsumerArtPreview("dw2-inbox-wide-active-review-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
     }
 }
 
