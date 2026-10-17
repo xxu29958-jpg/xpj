@@ -26,7 +26,7 @@ class BudgetRecovery:
         native.reveal_any("本次试算：尚未保存")
         assert j.facts()["arrangement_revisions"] == 1, "Native trial saved a definition"
         native.connection(j.port, online=False)
-        native.click("明确保存本月安排")
+        native.click("保存这份安排")
         native.reveal_any("原安排提交已保留", "等待确认")
         native.restart()
         j.open_native("arrangement")
@@ -37,7 +37,7 @@ class BudgetRecovery:
         # The actual outbox resumes its retained command automatically after reconnection.
         j.expect_fact("savings", 110000)
         assert j.facts()["buffer"] == 60000 and j.facts()["arrangement_revisions"] == 2
-        native.reveal_any("服务器已确认原提交")
+        native.reveal_any("原提交已保存")
         native.capture("arrangement-original-confirmed-after-reconnect")
         self.reject_stale(form, original)
 

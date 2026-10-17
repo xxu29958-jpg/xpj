@@ -15,9 +15,9 @@
     <string name="plan_history_schedule">预计日期</string>
     <string name="plan_history_source">来源</string>
     <string name="plan_history_excluded">不计入预算的分类</string>
-    <string name="plan_history_query_receipt">这里是后来读取的修改记录；原保存回执仍保留在安排页。</string>
+    <string name="plan_history_query_receipt">这里是后来读取的修改记录；本机的保存记录仍保留在安排页。</string>
     <string name="plan_history_cached_receipts">离线仅显示本机保留的历史与已确认保存回执，可能不完整。</string>
     <string name="arrangement_history_read_time_unknown">本机旧记录未保存读取时间与来源，联网刷新后可核对。</string>
-    <string name="arrangement_history_receipt_source">来自原保存回执，尚未重新读取此版本。</string>
-    <string name="arrangement_receipt_revision">原保存回执 · 版本 %1$d · %2$s</string>
+    <string name="arrangement_history_receipt_source">来自本机的保存记录，尚未重新读取此版本。</string>
+    <string name="arrangement_receipt_revision">本机保存记录 · 版本 %1$d · %2$s</string>
 </resources>

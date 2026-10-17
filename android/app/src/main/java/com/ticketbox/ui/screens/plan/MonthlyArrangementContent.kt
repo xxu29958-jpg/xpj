@@ -87,7 +87,7 @@ private fun MonthlyArrangementSaved(state: BudgetAdviceUiState) {
     if (read.fromCache) Text(stringResource(R.string.arrangement_cached))
     val record = read.response.arrangement
     if (record == null) Text(stringResource(R.string.arrangement_not_saved))
-    else Text(stringResource(R.string.arrangement_record, record.rowVersion,
+    else Text(stringResource(R.string.arrangement_record,
         formatDisplayAmount(record.savingsTargetCents, CurrencyDisplay.forRecord(record.homeCurrencyCode)),
         formatDisplayAmount(record.reservedBufferCents, CurrencyDisplay.forRecord(record.homeCurrencyCode))))
 }
@@ -122,7 +122,7 @@ internal fun MonthlyArrangementIntentSummary(submission: PendingMonthlyArrangeme
         return
     }
     Text(stringResource(R.string.arrangement_original_currency, intent.request.homeCurrencyCode))
-    Text(stringResource(R.string.arrangement_original, intent.month, submission.row.expectedRowVersion,
+    Text(stringResource(R.string.arrangement_original, intent.month,
         formatDisplayAmount(intent.request.savingsTargetCents, CurrencyDisplay.forRecord(intent.request.homeCurrencyCode)),
         formatDisplayAmount(intent.request.reservedBufferCents, CurrencyDisplay.forRecord(intent.request.homeCurrencyCode))))
 }

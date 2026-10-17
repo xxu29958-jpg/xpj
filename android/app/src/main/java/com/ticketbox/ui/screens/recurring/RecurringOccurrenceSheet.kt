@@ -198,7 +198,8 @@ private fun OccurrenceRecordPayment(
 @Composable
 private fun OccurrencePeriodControls(state: RecurringOccurrenceUiState, actions: OccurrenceSheetActions) {
     var period by rememberSaveable(state.item?.publicId, state.occurrence?.period) { mutableStateOf(state.occurrence?.period.orEmpty()) }
-    AppTextInput(state = AppTextInputState(label = stringResource(R.string.occurrence_period), value = period),
+    AppTextInput(state = AppTextInputState(label = stringResource(R.string.occurrence_period), value = period,
+        placeholder = stringResource(R.string.occurrence_period_placeholder)),
         actions = AppTextInputActions(onValueChange = { period = it }), modifier = Modifier.fillMaxWidth().testTag("occurrence-period"))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         TextButton(onClick = { actions.onPeriod(period) }, enabled = !state.loading && !state.saving) { Text(stringResource(R.string.occurrence_show_period)) }
@@ -272,7 +273,8 @@ private fun OccurrencePaymentPicker(
         Text(stringResource(if (filtersExpanded) R.string.occurrence_filters_hide else R.string.occurrence_filters_show, scope))
     }
     if (filtersExpanded) {
-        AppTextInput(state = AppTextInputState(label = stringResource(R.string.occurrence_payment_month), value = month),
+        AppTextInput(state = AppTextInputState(label = stringResource(R.string.occurrence_payment_month), value = month,
+            placeholder = stringResource(R.string.occurrence_payment_month_placeholder)),
             actions = AppTextInputActions(onValueChange = { month = it }), modifier = Modifier.fillMaxWidth())
         AppTextInput(state = AppTextInputState(label = stringResource(R.string.occurrence_search), value = query),
             actions = AppTextInputActions(onValueChange = { query = it }), modifier = Modifier.fillMaxWidth())
