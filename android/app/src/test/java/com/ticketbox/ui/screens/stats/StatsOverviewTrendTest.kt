@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 
 class StatsOverviewTrendTest {
     @Test
-    fun overviewTrendUsesOnlyServerReportBuckets() {
+    fun overviewTrendUsesOnlyServerReportBucketsAndKeepsNetRefunds() {
         val points = heroSpendTrendPoints(
             listOf(
                 ReportTrendPoint(bucket = "2026-05-01", label = "5/1", amountCents = 1_200L, count = 1),
@@ -18,7 +18,7 @@ class StatsOverviewTrendTest {
         assertEquals(
             listOf(
                 StatsSpendChartPoint(label = "5/1", amountCents = 1_200L),
-                StatsSpendChartPoint(label = "2026-05-02", amountCents = 0L),
+                StatsSpendChartPoint(label = "2026-05-02", amountCents = -300L),
             ),
             points,
         )

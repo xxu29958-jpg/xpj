@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.stats
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,10 +52,11 @@ internal fun HeroSpendTrend(
 
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         HeroTrendHeader(summary = summary, currencyDisplay = currencyDisplay)
-        if (points.isEmpty() || points.all { it.amountCents <= 0L }) {
-            HeroTrendEmpty()
-        } else {
-            HeroTrendBody(
+        when {
+            // A period where refunds exceed spending is a negative net amount, not an empty one.
+            points.any { it.amountCents < 0L } -> HeroTrendNote(R.string.stats_overview_trend_signed)
+            points.isEmpty() || points.all { it.amountCents == 0L } -> HeroTrendNote(R.string.stats_overview_trend_empty)
+            else -> HeroTrendBody(
                 points = visiblePoints,
                 summary = summary,
                 currencyDisplay = currencyDisplay,
@@ -96,9 +98,9 @@ private fun HeroTrendHeader(
 }
 
 @Composable
-private fun HeroTrendEmpty() {
+private fun HeroTrendNote(@StringRes text: Int) {
     Text(
-        text = stringResource(R.string.stats_overview_trend_empty),
+        text = stringResource(text),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodySmall,
     )
@@ -315,7 +317,7 @@ internal fun heroSpendTrendPoints(
         .map {
             StatsSpendChartPoint(
                 label = it.label.ifBlank { it.bucket },
-                amountCents = requireNotNull(it.amountCents).coerceAtLeast(0L),
+                amountCents = requireNotNull(it.amountCents),
             )
         }
 }
