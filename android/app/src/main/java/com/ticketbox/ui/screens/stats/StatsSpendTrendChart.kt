@@ -47,7 +47,6 @@ internal fun StatsSpendTrendChart(
         SpendTrendChartStyle(
             primary = chartTokens.series.firstOrNull() ?: Color(0xff5b6ee1),
             grid = chartTokens.grid,
-            gridEmphasis = chartTokens.gridEmphasis,
             emphasisAlpha = statsTokens.chart.emphasisAlpha,
             quietAlpha = statsTokens.chart.quietAlpha,
         )
@@ -95,7 +94,6 @@ internal fun StatsSpendTrendChart(
 private data class SpendTrendChartStyle(
     val primary: Color,
     val grid: Color,
-    val gridEmphasis: Color,
     val emphasisAlpha: Float,
     val quietAlpha: Float,
 )
@@ -114,29 +112,8 @@ private fun DrawScope.drawSpendTrendBars(
     val barRadius = minOf(barWidth / 2f, AppRadius.small.toPx())
     val maxPointAmount = points.maxOfOrNull { it.amountCents } ?: 0L
     val zeroDotSize = 4.dp.toPx()
-    val positivePoints = points.filter { it.amountCents > 0L }
-    val averageAmount = if (positivePoints.size > 1) {
-        positivePoints.sumOf { it.amountCents } / positivePoints.size
-    } else {
-        0L
-    }
 
-    drawLine(
-        color = style.grid,
-        start = Offset(0f, bottom - plotHeight * 0.5f),
-        end = Offset(size.width, bottom - plotHeight * 0.5f),
-        strokeWidth = 1.dp.toPx(),
-    )
-    if (averageAmount > 0L && averageAmount < maxAmount) {
-        val averageY = bottom - plotHeight * averageAmount.toFloat() / maxAmount.toFloat()
-        drawLine(
-            color = style.gridEmphasis,
-            start = Offset(horizontalInset, averageY),
-            end = Offset(size.width - horizontalInset, averageY),
-            strokeWidth = 1.dp.toPx(),
-        )
-    }
-
+    // Only the baseline: the chart has no value axis, so any other line would be an unlabeled level.
     drawLine(
         color = style.grid,
         start = Offset(0f, bottom),
