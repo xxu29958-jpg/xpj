@@ -31,7 +31,6 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppAsyncImageLayout
 import com.ticketbox.ui.components.AppAsyncImagePresentation
-import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.displayTime
@@ -133,7 +132,7 @@ private fun OriginalReadAndRepair(state: OriginalAttachmentUiState, viewModel: O
             onClick = viewModel::loadImage, enabled = !state.imageLoading)
     }
     if (state.health?.state == "unverified") {
-        AppPrimaryButton(text = stringResource(R.string.original_verify), modifier = Modifier.fillMaxWidth(),
+        AppSecondaryButton(text = stringResource(R.string.original_verify), modifier = Modifier.fillMaxWidth(),
             onClick = { verify = true }, enabled = state.canVerify)
     }
     if (verify) OriginalConfirmDialog(R.string.original_verify_explanation, {
@@ -145,7 +144,7 @@ private fun OriginalReadAndRepair(state: OriginalAttachmentUiState, viewModel: O
             R.string.original_attach to R.string.original_attach_context
         else R.string.original_replenish to R.string.original_replenish_context
         Text(stringResource(explanation), style = MaterialTheme.typography.bodyMedium)
-        AppPrimaryButton(text = stringResource(action), modifier = Modifier.fillMaxWidth(),
+        AppSecondaryButton(text = stringResource(action), modifier = Modifier.fillMaxWidth(),
             onClick = onSelectFile, enabled = state.canSubmit)
     }
 }
@@ -197,7 +196,7 @@ private fun OriginalLocalSelection(state: OriginalAttachmentUiState, viewModel: 
             Checkbox(checked = state.selectionConfirmed, onCheckedChange = null, enabled = editable)
             Text(stringResource(R.string.original_selection_review), style = MaterialTheme.typography.bodyMedium)
         }
-        AppPrimaryButton(text = stringResource(R.string.original_selection_submit), modifier = Modifier.fillMaxWidth(),
+        AppSecondaryButton(text = stringResource(R.string.original_selection_submit), modifier = Modifier.fillMaxWidth(),
             onClick = viewModel::submitSelectedSource, enabled = state.canConfirmSelection)
     } else {
         Text(stringResource(when {
