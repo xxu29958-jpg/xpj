@@ -37,6 +37,13 @@ import com.ticketbox.ui.design.AppMotion
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.valentinilk.shimmer.shimmer
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.ticketbox.ui.design.AppIconSize
+import androidx.compose.foundation.layout.BoxScope
 
 
 data class AppAsyncImagePresentation(
@@ -109,21 +116,8 @@ fun AppAsyncImage(
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
         contentAlignment = Alignment.Center,
     ) {
-        if (!displayed) {
-            if (!failed && request != null) Box(
-                modifier = Modifier.fillMaxSize().shimmer(),
-            ) {
-                SkeletonBlock(modifier = Modifier.fillMaxSize(), shape = presentation.shape)
-            }
-            Text(
-                text = if (!failed && request != null) stringResource(R.string.components_async_image_loading)
-                    else presentation.placeholder,
-                modifier = Modifier.padding(AppSpacing.contentGap),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.Center,
-            )
-        }
+        if (!displayed) AppAsyncImagePending(loading = !failed && request != null, compact = layout.compact,
+            placeholder = presentation.placeholder, shape = presentation.shape)
         request?.let {
             AsyncImage(
                 model = it,
@@ -142,5 +136,33 @@ fun AppAsyncImage(
                 },
             )
         }
+    }
+}
+
+/** Not yet displayed: a loading shimmer or a failure/absence state, sized for a thumbnail or a page. */
+@Composable
+private fun BoxScope.AppAsyncImagePending(loading: Boolean, compact: Boolean, placeholder: String, shape: Shape) {
+    if (loading) Box(modifier = Modifier.fillMaxSize().shimmer()) {
+        SkeletonBlock(modifier = Modifier.fillMaxSize(), shape = shape)
+    }
+    val status = if (loading) stringResource(R.string.components_async_image_loading) else placeholder
+    if (compact) {
+        // A thumbnail is too small for a sentence: the shimmer or a glyph shows the state,
+        // and the sentence stays available to screen readers.
+        if (!loading) Icon(
+            imageVector = ImageVector.vectorResource(R.drawable.ic_lucide_image),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(AppIconSize.compact),
+        )
+        Box(Modifier.matchParentSize().semantics { contentDescription = status })
+    } else {
+        Text(
+            text = status,
+            modifier = Modifier.padding(AppSpacing.contentGap),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center,
+        )
     }
 }
