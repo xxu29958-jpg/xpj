@@ -1016,11 +1016,8 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
 .product-meter > .product-entry-heading > span { color: var(--text-meta); }
 .product-meter > .product-status { justify-self: start; }
 .product-meter > :is(p, .hint) { margin: 0; }
+/* 并列的进度行同一颜色: 颜色只表达状态 (超出用危险色), 不按排列顺序换色。 */
 .product-meter-list { display: grid; gap: var(--space-6); min-width: 0; }
-/* 并列的进度行按顺序取分类色; 超出仍是危险色。 */
-.product-meter-list > :nth-child(4n + 2) > .product-progress:not(.is-over) { --progress-fill: var(--chart-series-3); }
-.product-meter-list > :nth-child(4n + 3) > .product-progress:not(.is-over) { --progress-fill: var(--chart-series-2); }
-.product-meter-list > :nth-child(4n + 4) > .product-progress:not(.is-over) { --progress-fill: var(--chart-series-5); }
 
 .product-check {
     display: inline-flex;

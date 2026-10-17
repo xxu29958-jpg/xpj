@@ -69,7 +69,7 @@
     if (yuanValue === null) return '金额不可用';
     var abs = Math.abs(yuanValue);
     if (abs >= 10000) return (yuanValue / 10000).toFixed(1) + '万';
-    if (abs >= 1000) return Math.round(yuanValue).toString();
+    if (abs >= 1000) return Math.round(yuanValue).toLocaleString('zh-CN');
     return yuanValue.toFixed(0);
   }
 
@@ -78,7 +78,8 @@
   }
 
   function homeCompactCents(cents) {
-    return app.homeCurrencySymbol() + compactYuan(cents);
+    var text = compactYuan(cents);
+    return text.charAt(0) === '-' ? '-' + app.homeCurrencySymbol() + text.slice(1) : app.homeCurrencySymbol() + text;
   }
 
   function rgba(color, alpha) {
@@ -134,12 +135,12 @@
     var container = document.getElementById('reports-trend-chart');
     var points = report && report.trend ? report.trend : [];
     var hasData = points.some(function (point) {
-      return Number(point.amount_cents || 0) > 0 || Number(point.count || 0) > 0;
+      return Number(point.amount_cents || 0) !== 0 || Number(point.count || 0) > 0;
     });
     if (!hasChartSpace(container) || !hasData) return null;
 
     var chart = chartFor(container);
-    var lineColor = colors.series[0];
+    // Each day, week or month is its own total: bars, never a smoothed line implying a flow between them.
     chart.setOption({
       textStyle: { fontFamily: cssVar('--font-numeric', 'sans-serif') },
       color: colors.series,
@@ -154,7 +155,6 @@
       grid: { left: 58, right: 20, top: 24, bottom: 38 },
       xAxis: {
         type: 'category',
-        boundaryGap: false,
         data: points.map(function (point) { return point.label; }),
         axisLine: { lineStyle: { color: colors.axis } },
         axisTick: { show: false },
@@ -172,28 +172,11 @@
         splitLine: { lineStyle: { color: colors.grid, type: 'dashed' } },
       },
       series: [{
-        name: '支出',
-        type: 'line',
+        name: '净支出',
+        type: 'bar',
         data: points.map(function (point) { return point.amount_cents; }),
-        smooth: true,
-        showSymbol: false,
-        symbol: 'circle',
-        symbolSize: 7,
-        lineStyle: { width: 3, color: lineColor },
-        itemStyle: { color: lineColor, borderColor: colors.surface, borderWidth: 2 },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: rgba(lineColor, 0.30) },
-              { offset: 1, color: rgba(lineColor, 0.03) },
-            ],
-          },
-        },
+        barMaxWidth: 28,
+        itemStyle: { color: colors.series[0], borderRadius: [4, 4, 0, 0] },
       }],
       animationDuration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180,
       animationEasing: 'cubicOut',
@@ -246,10 +229,10 @@
       },
       series: [{
         type: 'bar',
-        data: reversedRows.map(function (row, index) {
+        data: reversedRows.map(function (row) {
           return {
             value: metric === 'count' ? row.count : row.amount_cents,
-            itemStyle: { color: colors.series[index % colors.series.length] },
+            itemStyle: { color: colors.series[0] },
           };
         }),
         barWidth: 14,
@@ -274,12 +257,16 @@
     var rows = report && report.category_comparison ? report.category_comparison.slice(0, 8) : [];
     if (!hasChartSpace(container) || !rows.length) return null;
 
+    // This month is the subject; earlier periods are quieter references in the same hue. A spending
+    // increase is not an overspend, so no bar borrows the overspend colour. Year-ago bars appear only
+    // when the ledger has year-ago spending to compare with.
+    var hasYearAgo = Boolean(report.category_has_year_ago);
     var chart = chartFor(container);
     chart.setOption({
       textStyle: { fontFamily: cssVar('--font-numeric', 'sans-serif') },
-      color: [colors.series[0], rgba(colors.series[2], 0.55), rgba(colors.series[4], 0.55)],
+      color: [colors.series[0], rgba(colors.series[0], 0.38), colors.axis],
       legend: {
-        data: ['本月', '上月', '去年同月'],
+        data: hasYearAgo ? ['本月', '上月', '去年同月'] : ['本月', '上月'],
         top: 0,
         textStyle: { color: colors.axisLabel, fontSize: parseFloat(cssVar('--type-caption-size', '13')) },
       },
@@ -295,9 +282,9 @@
           var yoyPrefix = yoyDelta > 0 ? '+' : '';
           return row.category + '<br>本月 ' + homeMoneyCents(row.amount_cents)
             + '<br>上月 ' + homeMoneyCents(row.previous_amount_cents)
-            + '<br>去年同月 ' + homeMoneyCents(row.year_over_year_amount_cents)
             + '<br>环比 ' + prefix + homeMoneyCents(delta)
-            + '<br>同比 ' + yoyPrefix + homeMoneyCents(yoyDelta);
+            + (hasYearAgo ? '<br>去年同月 ' + homeMoneyCents(row.year_over_year_amount_cents)
+              + '<br>同比 ' + yoyPrefix + homeMoneyCents(yoyDelta) : '');
         },
       }),
       grid: { left: 58, right: 22, top: 36, bottom: 44 },
@@ -322,29 +309,22 @@
       series: [{
         name: '本月',
         type: 'bar',
-        data: rows.map(function (row) {
-          return {
-            value: row.amount_cents,
-            itemStyle: {
-              color: Number(row.delta_amount_cents || 0) > 0 ? colors.overspend : colors.series[0],
-              borderRadius: [5, 5, 0, 0],
-            },
-          };
-        }),
-        barWidth: 14,
+        data: rows.map(function (row) { return row.amount_cents; }),
+        itemStyle: { borderRadius: [5, 5, 0, 0] },
+        barMaxWidth: 14,
       }, {
         name: '上月',
         type: 'bar',
         data: rows.map(function (row) { return row.previous_amount_cents; }),
         itemStyle: { borderRadius: [5, 5, 0, 0] },
-        barWidth: 14,
-      }, {
+        barMaxWidth: 14,
+      }].concat(hasYearAgo ? [{
         name: '去年同月',
         type: 'bar',
         data: rows.map(function (row) { return row.year_over_year_amount_cents; }),
         itemStyle: { borderRadius: [5, 5, 0, 0] },
-        barWidth: 14,
-      }],
+        barMaxWidth: 14,
+      }] : []),
       animationDuration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180,
     });
     return markRendered(container, chart);

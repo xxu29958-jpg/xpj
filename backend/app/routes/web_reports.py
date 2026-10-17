@@ -90,6 +90,8 @@ def _view_model(payload: dict) -> dict:
     view.update(trend=_amount_rows_view(payload["trend"], currency_code=home),
         merchant_ranking=_amount_rows_view(payload["merchant_ranking"], currency_code=home),
         category_comparison=_category_comparison_view(payload["category_comparison"], currency_code=home))
+    # Year-ago bars only when there is something to compare: recorded spending, or an amount still waiting for its rate.
+    view["category_has_year_ago"] = any(row["year_over_year_amount_cents"] != 0 for row in payload["category_comparison"])
     view["merchant_amount_unavailable"] = (
         any(row["category"] == view["merchant_category"] and row["amount_cents"] is None
             for row in payload["category_comparison"])

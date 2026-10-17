@@ -44,7 +44,7 @@
   <div class="product-state-title">还没有本月预算</div>
   <div class="product-state-body">设一个总预算，开始跟踪本月预算执行。</div>
   {# 未配置 ≠ 没有执行事实: 已确认支出安静列示, 但不出现剩余/假进度。 #}
-  <div class="hint">本月已确认支出 {{ budget_currency_symbol }}{{ budget.spent_yuan|grouped }}</div>
+  <div class="hint">本月已确认支出 {{ budget.spent_yuan|money(budget_currency_symbol) }}</div>
 </section>
 {% endif %}
 
@@ -54,12 +54,12 @@
 <section class="product-surface{% if budget.is_over_budget %} product-surface--apricot{% endif %} budget-reading" aria-label="本月预算概况">
   {% if budget.is_over_budget %}
   <span class="product-amount-label">已超支</span>
-  <strong class="product-amount">{{ budget_currency_symbol }}{{ budget.overspent_yuan|grouped }}</strong>
+  <strong class="product-amount">{{ budget.overspent_yuan|money(budget_currency_symbol) }}</strong>
   {% else %}
   <span class="product-amount-label">本月预算剩余</span>
-  <strong class="product-amount">{{ budget_currency_symbol }}{{ (budget.remaining_yuan or '—')|grouped }}</strong>
+  <strong class="product-amount">{{ (budget.remaining_yuan or '—')|money(budget_currency_symbol) }}</strong>
   {% endif %}
-  <span class="product-amount-meta">已用 {{ budget_currency_symbol }}{{ budget.spent_yuan|grouped }} · 可用 {{ budget_currency_symbol }}{{ budget.available_yuan|grouped }}</span>
+  <span class="product-amount-meta">已用 {{ budget.spent_yuan|money(budget_currency_symbol) }} · 可用 {{ budget.available_yuan|money(budget_currency_symbol) }}</span>
 </section>
 
 <section class="product-flow budget-execution budget-reading" aria-label="本月预算执行">
@@ -77,10 +77,10 @@
     <div class="product-meter" data-category="{{ row.saved_category }}">
       <div class="product-entry-heading">
         <strong>{{ row.saved_category }}</strong>
-        <span>已用 {{ budget_currency_symbol }}{{ row.spent_yuan|grouped }} / {{ row.saved_amount_yuan|grouped }}</span>
+        <span>已用 {{ row.spent_yuan|money(budget_currency_symbol) }} / {{ row.saved_amount_yuan|money(budget_currency_symbol) }}</span>
       </div>
       {% if row.has_progress_basis %}<progress class="product-progress{% if row.has_overspend %} is-over{% endif %}" value="{{ row.progress_value_cents }}" max="{{ row.progress_max_cents }}" aria-label="{{ row.saved_category }}预算执行进度"></progress>{% endif %}
-      {% if row.has_overspend %}<span class="product-status product-status--danger">超支 {{ budget_currency_symbol }}{{ row.overspent_yuan|grouped }}</span>{% endif %}
+      {% if row.has_overspend %}<span class="product-status product-status--danger">超支 {{ row.overspent_yuan|money(budget_currency_symbol) }}</span>{% endif %}
     </div>
     {% endfor %}
   </div>
@@ -105,7 +105,7 @@
     </div>
     {% if category_return_url %}<a class="product-button product-button--quiet" href="{{ category_return_url }}">返回分类继续移除</a>{% endif %}
   </header>
-  {% if not budget.configured %}<p class="hint">先设一个总额。其他设置随时可补；本月已确认支出 {{ budget_currency_symbol }}{{ budget.spent_yuan|grouped }}。</p>{% endif %}
+  {% if not budget.configured %}<p class="hint">先设一个总额。其他设置随时可补；本月已确认支出 {{ budget.spent_yuan|money(budget_currency_symbol) }}。</p>{% endif %}
   {% if error %}
   {# 草稿只活在表单 input 里; 上方执行区仍是未变更的服务端事实。 #}
   <div class="product-feedback product-feedback--danger" role="alert">预算没有保存：{{ error }} 你填的内容还在下面，修正后可再次保存。</div>
@@ -143,7 +143,7 @@
             </div>
             <details class="product-disclosure" data-budget-options open data-start-expanded="{{ 'true' if row.category != row.saved_category or row.remove_requested else 'false' }}">
               <summary hidden>改名、移除与执行情况</summary>
-              <div class="hint">已保存：{{ row.saved_category }} · 本月已花 {{ budget_currency_symbol }}{{ (row.spent_yuan or '—')|grouped }}{% if row.has_overspend %} · 超支 {{ budget_currency_symbol }}{{ row.overspent_yuan|grouped }}{% elif row.remaining_yuan %} · 剩余 {{ budget_currency_symbol }}{{ row.remaining_yuan|grouped }}{% endif %}</div>
+              <div class="hint">已保存：{{ row.saved_category }} · 本月已花 {{ (row.spent_yuan or '—')|money(budget_currency_symbol) }}{% if row.has_overspend %} · 超支 {{ row.overspent_yuan|money(budget_currency_symbol) }}{% elif row.remaining_yuan %} · 剩余 {{ row.remaining_yuan|money(budget_currency_symbol) }}{% endif %}</div>
               <div class="product-field">
                 <label for="budget-category-name-{{ row.index }}">保存后的分类名称</label>
                 <input id="budget-category-name-{{ row.index }}" class="product-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="餐饮" aria-label="分类预算分类">
@@ -233,14 +233,14 @@
 <details class="budget-reading">
   <summary class="product-entry">
     <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#layers"/></svg></span>
-    <span class="product-entry-copy"><strong>结转、固定支出与预留</strong><span>月度总预算 {{ budget_currency_symbol }}{{ budget.total_yuan|grouped }}</span></span>
+    <span class="product-entry-copy"><strong>结转、固定支出与预留</strong><span>月度总预算 {{ budget.total_yuan|money(budget_currency_symbol) }}</span></span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </summary>
   <dl class="product-surface-rows">
-    <div><dt>月度总预算</dt><dd>{{ budget_currency_symbol }}{{ budget.total_yuan|grouped }}</dd></div>
-    <div><dt>结转</dt><dd>{{ budget_currency_symbol }}{{ budget.rollover_yuan|grouped }}</dd></div>
-    <div><dt>固定支出</dt><dd>{{ budget_currency_symbol }}{{ budget.fixed_yuan|grouped }}</dd></div>
-    <div><dt>非月度预留</dt><dd>{{ budget_currency_symbol }}{{ budget.non_monthly_yuan|grouped }}</dd></div>
+    <div><dt>月度总预算</dt><dd>{{ budget.total_yuan|money(budget_currency_symbol) }}</dd></div>
+    <div><dt>结转</dt><dd>{{ budget.rollover_yuan|money(budget_currency_symbol) }}</dd></div>
+    <div><dt>固定支出</dt><dd>{{ budget.fixed_yuan|money(budget_currency_symbol) }}</dd></div>
+    <div><dt>非月度预留</dt><dd>{{ budget.non_monthly_yuan|money(budget_currency_symbol) }}</dd></div>
   </dl>
 </details>
 {% if budget.excluded_breakdown %}
@@ -252,7 +252,7 @@
   </summary>
   <dl class="product-surface-rows" aria-label="排除分类">
     {% for item in budget.excluded_breakdown %}
-    <div><dt>{{ item.category }} · {{ item.count }} 笔</dt><dd>{{ budget_currency_symbol }}{{ item.amount_yuan|grouped }}</dd></div>
+    <div><dt>{{ item.category }} · {{ item.count }} 笔</dt><dd>{{ item.amount_yuan|money(budget_currency_symbol) }}</dd></div>
     {% endfor %}
   </dl>
 </details>

@@ -193,6 +193,15 @@
 .insight-list-row .product-entry-copy > span { white-space: nowrap; }
 .insight-list-row > .cat-amt { margin-inline-start: auto; max-width: 100%; overflow-wrap: anywhere; text-align: end; }
 
+/* Desktop shows the donut beside this list: each row carries its slice's colour. */
+.insight-share-key { display: none; flex: 0 0 auto; inline-size: .625rem; block-size: .625rem; border-radius: 50%; }
+.chart-legend-0 { background: var(--chart-series-1); }
+.chart-legend-1 { background: var(--chart-series-2); }
+.chart-legend-2 { background: var(--chart-series-3); }
+.chart-legend-3 { background: var(--chart-series-4); }
+.chart-legend-4 { background: var(--chart-series-5); }
+.chart-legend-5 { background: var(--chart-series-6); }
+
 .insight-list-row:last-child {
     border-block-end: 0;
 }
@@ -225,6 +234,7 @@
     .insight-category-layout { grid-template-columns: minmax(calc(var(--space-12) * 3), .8fr) minmax(0, 1.2fr); }
     .insight-category-visual { display: block; }
     .insight-list-row > .product-entry-icon { display: none; }
+    .insight-share-key { display: block; }
 }
 
 @container (max-width: 26rem) {

@@ -213,6 +213,40 @@ def test_history_overspent_months_count_set_budgets_including_zero_and_name_unse
     assert unavailable['six_month_trend'][-1]['budget_label'] == '待补信息'
 
 
+def test_web_money_puts_the_sign_before_the_currency_symbol():
+    from app.routes.web_common import templates
+
+    def render(value):
+        return templates.env.from_string("{{ value|money('¥') }}").render(value=value)
+
+    assert render("-1234.50") == "-¥1,234.50"
+    assert render("1234.50") == "¥1,234.50"
+    assert render("—") == "¥—"
+
+
+def test_year_ago_change_is_signed_and_names_a_year_without_records(period_page):
+    def fact(name):
+        return re.search(rf"<dt>{name}</dt><dd>(.*?)</dd>", _report_response(period_page).text).group(1)
+
+    assert fact("较去年同月") == "待补信息"
+    period_page.payload.update(total_amount_cents=2500, year_over_year_total_amount_cents=0, year_over_year_count=0,
+                               year_over_year_delta_amount_cents=2500)
+    assert fact("较去年同月") == "去年同月没有记录"
+    period_page.payload.update(year_over_year_total_amount_cents=1000, year_over_year_count=3, year_over_year_delta_amount_cents=1500)
+    assert fact("较去年同月").startswith("+") and fact("较去年同月").endswith("1,500")
+    period_page.payload.update(year_over_year_delta_amount_cents=-1500)
+    assert fact("较去年同月").startswith("-") and "+" not in fact("较去年同月")
+
+
+def test_category_comparison_names_year_ago_only_when_there_is_one(period_page):
+    def subtitle():
+        return re.search(r"分类对比</div>\s*<div class=\"product-panel-subtitle\">(.*?)</div>", _report_response(period_page).text).group(1)
+
+    assert subtitle() == "本月与上月、去年同月"  # a year-ago amount still waiting for its rate is something to compare
+    period_page.payload["category_comparison"][0]["year_over_year_amount_cents"] = 0
+    assert subtitle() == "本月与上月"
+
+
 def test_navigation_export_and_rate_recovery_keep_original_report_task(period_page):
     response = _report_response(period_page)
     links = [urlsplit(unescape(href)) for href in re.findall(r'href="([^"]+)"', response.text)]
