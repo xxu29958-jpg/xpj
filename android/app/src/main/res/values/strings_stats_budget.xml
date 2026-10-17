@@ -115,7 +115,7 @@
     <string name="stats_chart_distribution_remaining">其余 %1$d 天</string>
     <string name="stats_recent_upload_title">最近上传</string>
     <string name="stats_recent_upload_empty">还没有上传记录</string>
-    <string name="stats_recent_upload_hint">用于确认手机端和电脑端最近一次上传状态。</string>
+    <string name="stats_recent_upload_hint">有新上传的小票时，这里显示最近一次的时间。</string>
 
     <!-- LifestyleCard：生活画像 + 高频商家 + 真香/后悔 -->
     <string name="stats_lifestyle_module_title">消费线索</string>
