@@ -192,8 +192,8 @@ class DebtOfflineReadingConnectedTest {
         val breakdownHint = context.getString(R.string.debt_detail_component_hint)
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(breakdownHint))
         compose.onNodeWithText(breakdownHint).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("¥-120").performScrollTo().assertIsDisplayed()
-        val adjustmentBounds = compose.onNodeWithText("¥-120").getUnclippedBoundsInRoot()
+        compose.onNodeWithText("-¥120").performScrollTo().assertIsDisplayed()
+        val adjustmentBounds = compose.onNodeWithText("-¥120").getUnclippedBoundsInRoot()
         // Returning from the online form retains that task; the reopened graph has no form draft.
         val primaryAction = context.getString(if (offline) R.string.debt_action_repayment_title
             else R.string.debt_proposal_resume_draft)
