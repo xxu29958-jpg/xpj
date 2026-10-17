@@ -19,6 +19,8 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -92,6 +94,11 @@ class StatsAdaptiveExperienceTest {
             if (size.first == 360.dp) {
                 saveConsumerArtPreview("insights-populated-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
             }
+            if (size.first == 1440.dp) {
+                // DW3：没有真实竖铰链时，宽窗仍是 D01 的单主列加宽，不造第二栏。
+                composeRule.onNodeWithTag(AppAdaptivePaneStructures.Insights.supportingTestTag).assertDoesNotExist()
+                saveConsumerArtPreview("insights-wide-single-column", composeRule.onRoot().captureToImage().asAndroidBitmap())
+            }
         }
         composeRule.onNode(hasScrollToIndexAction())
             .performScrollToNode(hasTestTag("overview-module-recent_uploads"))
@@ -151,6 +158,10 @@ class StatsAdaptiveExperienceTest {
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue("Results must not be under the hinge: primary=$primary, hinge=$hinge", primary.right <= hinge.left)
         assertTrue("Filters must not be under the hinge: supporting=$supporting, hinge=$hinge", supporting.left >= hinge.right)
+        val queryTitle = context.getString(R.string.stats_query_pane_title)
+        assertTrue("The right page is the current query",
+            composeRule.onNodeWithText(queryTitle).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.left >= supporting.left)
+        saveConsumerArtPreview("insights-book-posture-results", composeRule.onRoot().captureToImage().asAndroidBitmap())
         composeRule.onNode(hasText(monthLabel) and hasClickAction()).assertIsDisplayed().performClick()
         composeRule.onNodeWithText(context.getString(R.string.components_month_picker_title)).assertIsDisplayed()
         composeRule.onNode(hasText(context.getString(R.string.components_month_picker_all_months)) and hasClickAction())
@@ -162,6 +173,9 @@ class StatsAdaptiveExperienceTest {
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue("Editor must stay out of the hinge: $editor", editor.right <= hinge.left || editor.left >= hinge.right)
         assertTrue("Save must stay out of the hinge: $save", save.right <= hinge.left || save.left >= hinge.right)
+        // 编辑只替换左页结果；右页仍是当前查询，不复述编辑器说明。
+        composeRule.onNodeWithText(queryTitle).assertIsDisplayed()
+        composeRule.onAllNodesWithText(context.getString(R.string.dashboard_editor_description)).assertCountEquals(1)
         saveConsumerArtPreview("insights-book-posture-editor", composeRule.onRoot().captureToImage().asAndroidBitmap())
     }
 

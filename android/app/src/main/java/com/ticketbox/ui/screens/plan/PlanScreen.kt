@@ -1,9 +1,12 @@
 package com.ticketbox.ui.screens.plan
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppAdaptivePaneScaffold
@@ -74,13 +77,17 @@ internal fun PlanScreen(
         supportingPane = appAdaptiveSupportingPaneContent(
             purpose = AppAdaptivePanePurpose.FixedArrangements,
         ) {
-            AppAdaptiveSupportingPane(role = AppPageRole.Stats) {
+            AppAdaptiveSupportingPane(
+                role = AppPageRole.Stats,
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
+            ) {
                 PlanFixedArrangementsSection(
                     recurring = data.recurring,
                     income = data.income,
                     onOpenRecurring = actions.onOpenRecurring,
                     onOpenIncomePlans = actions.onOpenIncomePlans,
                 )
+                PlanMonthlyArrangement(onOpenAdvice = actions.budgetNavigation.onOpenAdvice, titled = true)
             }
         },
     )
@@ -111,10 +118,15 @@ private fun PlanPrimaryPane(
             )
         }
         item {
-            PlanBudgetSection(
-                state = data.budget,
-                actions = actions.budgetNavigation,
-            )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                PlanBudgetSection(
+                    state = data.budget,
+                    actions = actions.budgetNavigation,
+                )
+                if (!showSupportingPane) {
+                    PlanMonthlyArrangement(onOpenAdvice = actions.budgetNavigation.onOpenAdvice, titled = false)
+                }
+            }
         }
         item {
             PlanGoalsSection(
@@ -132,6 +144,26 @@ private fun PlanPrimaryPane(
                 )
             }
         }
+    }
+}
+
+/** 窄窗紧随预算；宽窗与固定安排同在辅助区，作为「月度安排」分组。 */
+@Composable
+private fun PlanMonthlyArrangement(
+    onOpenAdvice: () -> Unit,
+    titled: Boolean,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (titled) PlanSectionTitle(stringResource(R.string.plan_section_monthly_arrangement))
+        PlanDestinationRow(
+            model = PlanRowModel(
+                title = stringResource(R.string.plan_budget_advice_title),
+                subtitle = stringResource(R.string.plan_budget_advice_subtitle),
+                icon = R.drawable.ic_lucide_sliders_horizontal,
+                testTag = PlanDestinationTestTags.BudgetAdvice,
+                onClick = onOpenAdvice,
+            ),
+        )
     }
 }
 

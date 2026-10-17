@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
@@ -59,6 +61,7 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.LocalStateTokens
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.StateTone
 
 @Immutable
@@ -71,6 +74,8 @@ internal data class PendingExpenseReviewItem(
     // Viewer 没有写命令：readOnly 时行内不渲染 mutation CTA（禁用态会暗示
     // 「别的时候能」，是撒谎投影）；busy 是唯一合法的禁用理由。
     val readOnly: Boolean,
+    // 宽窗复核常驻在 supporting pane 时，标出面板正在核对的那一行；窄窗由 modal 覆盖，不标。
+    val reviewing: Boolean = false,
 )
 
 @Immutable
@@ -91,9 +96,11 @@ internal fun PendingExpenseReviewRow(
     val metrics = AppDensity.rowMetrics(
         if (item.compact) AppListDensity.Compact else AppListDensity.Standard,
     )
+    val reviewingTint = LocalThemeVisuals.current.brandPrimaryBg.takeIf { item.reviewing }
     Column(
-        modifier = modifier
-            .fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().then(reviewingTint?.let {
+            Modifier.clip(RoundedCornerShape(AppRadius.small)).background(it).semantics { selected = true }
+        } ?: Modifier),
     ) {
         Column(
             modifier = Modifier.padding(
@@ -192,6 +199,9 @@ private fun RowScope.PendingExpenseTextBlock(item: PendingExpenseReviewItem) {
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
         ) {
+            if (item.reviewing) {
+                PendingSignalText(stringResource(R.string.pending_row_signal_reviewing), LocalStateTokens.current.success)
+            }
             PendingExpenseSignals(expense)
         }
         if (!item.compact) {
