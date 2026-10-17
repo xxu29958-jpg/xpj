@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 
 /** One decode serves the photo layer, the editor geometry and the readability veil. */
 internal class DecodedBackground(
+    val path: String,
     val image: ImageBitmap,
     val profile: BackgroundTonalProfile,
     private val needs: Map<Pair<AppSkin, CanvasTextDemand>, FloatArray>,
@@ -69,7 +70,7 @@ private fun decodeBackgroundImage(path: String): DecodedBackground? {
             }
         }
     }
-    return DecodedBackground(upright.asImageBitmap(), profile, needs)
+    return DecodedBackground(path, upright.asImageBitmap(), profile, needs)
 }
 
 /**

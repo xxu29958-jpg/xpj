@@ -51,7 +51,7 @@ fun ImmersiveBackgroundScaffold(
     val photo = rememberBackgroundImage(customPhotoPath(backgroundSettings))
     val canvasState = remember { CanvasPhotoState() }
     SideEffect {
-        canvasState.photoActive = photo != null
+        canvasState.photoPath = photo?.path
         canvasState.immersion = backgroundSettings.immersionMode
     }
     Box(modifier = Modifier.fillMaxSize()) {
@@ -78,7 +78,7 @@ fun BackgroundPreviewStage(
     // it opens the same photo window and is measured the same way.
     val canvasState = remember { CanvasPhotoState() }
     SideEffect {
-        canvasState.photoActive = photo != null
+        canvasState.photoPath = photo?.path
         canvasState.immersion = settings.immersionMode
     }
     Box(modifier = modifier) {

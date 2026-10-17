@@ -42,8 +42,10 @@ import java.io.File
  */
 @Stable
 class CanvasPhotoState internal constructor() {
-    var photoActive by mutableStateOf(false)
+    /** The photo the canvas is drawing right now; it lags a new choice until that photo has decoded. */
+    var photoPath by mutableStateOf<String?>(null)
         internal set
+    val photoActive: Boolean get() = photoPath != null
     var immersion by mutableStateOf(ImmersionMode.Balanced)
         internal set
 
