@@ -93,7 +93,7 @@
     <string name="spending_goal_detail_error_title">目标详情暂时打不开</string>
     <string name="spending_goal_detail_load_failed">目标详情暂时无法读取，请稍后重试。</string>
     <string name="spending_goal_detail_wrong_type">这个目标不属于消费目标，请返回计划选择对应入口。</string>
-    <string name="spending_goal_progress_title">本月进度</string>
+    <string name="spending_goal_progress_title">本月已用</string>
     <string name="spending_goal_progress_percent">%1$d%%</string>
     <string name="spending_goal_details_section">目标设置</string>
     <string name="spending_goal_month_label">目标月份</string>

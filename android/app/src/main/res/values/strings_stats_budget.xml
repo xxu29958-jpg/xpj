@@ -727,7 +727,7 @@
 
     <!-- BudgetSummarySection：本月预算概况 -->
     <string name="budget_summary_title">本月预算</string>
-    <string name="budget_summary_status_label">执行进度</string>
+    <string name="budget_summary_status_label">本月已用</string>
     <string name="budget_summary_percent">%1$d%%</string>
     <!-- 加载失败错误态（区别于 loading——失败时不能停留在读取占位）。 -->
     <string name="budget_summary_error_title">预算没能打开</string>
