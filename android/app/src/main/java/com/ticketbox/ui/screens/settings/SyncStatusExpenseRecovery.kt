@@ -1,6 +1,8 @@
 package com.ticketbox.ui.screens.settings
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -12,9 +14,6 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.data.repository.EXPENSE_ORIGINAL_REVIEW_ERRORS
-import com.ticketbox.ui.components.AppOutlinedButton
-import com.ticketbox.ui.components.AppOutlinedButtonOptions
-import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.fact.CorrectionSubmissionActions
 import com.ticketbox.ui.screens.expense.fact.CorrectionSubmissionOptions
 import com.ticketbox.ui.screens.expense.fact.ExpenseCorrectionSubmissionCard
@@ -30,15 +29,15 @@ internal fun SyncStatusExpenseReviewSection(state: OutboxStatusUiState, actions:
                 subtitle = stringResource(R.string.sync_status_review_entry_hint),
                 icon = R.drawable.ic_lucide_git_branch) {
                 Text(stringResource(R.string.sync_status_expense_original_requires_review))
-                com.ticketbox.data.repository.expenseRefreshTargetId(row.targetId, row.receiptJson)?.let { id ->
-                    AppOutlinedButton(onClick = { actions.onOpenExpense(id) },
-                        options = AppOutlinedButtonOptions(enabled = state.busyRowId == null)) {
-                        Text(stringResource(R.string.expense_offset_review_current))
-                    }
-                }
-                TextButton(onClick = { actions.onDropFailed(row) }, enabled = state.busyRowId == null) {
-                    Text(stringResource(R.string.sync_status_accepted_stop))
-                }
+                SyncStatusItemActions(
+                    next = com.ticketbox.data.repository.expenseRefreshTargetId(row.targetId, row.receiptJson)?.let { id ->
+                        SyncStatusActionButton(text = stringResource(R.string.expense_offset_review_current),
+                            icon = Icons.AutoMirrored.Filled.OpenInNew, enabled = state.busyRowId == null,
+                            onClick = { actions.onOpenExpense(id) })
+                    },
+                    other = SyncStatusActionButton(text = stringResource(R.string.sync_status_accepted_stop),
+                        enabled = state.busyRowId == null, onClick = { actions.onDropFailed(row) }),
+                )
             }
         } }
     }
@@ -92,18 +91,21 @@ private fun SyncStatusAcceptedRow(row: OutboxRow, state: OutboxStatusUiState, ac
     ) {
         budget?.let { com.ticketbox.ui.screens.budget.BudgetSaveIntentSummary(it) }
         application?.let { com.ticketbox.ui.screens.settings.categoryrules.RuleApplicationSubmissionSummary(it) }
-        AppOutlinedButton(onClick = { actions.onRefreshAcceptedResult(row) },
-            options = AppOutlinedButtonOptions(enabled = state.busyRowId == null)) {
-            Text(stringResource(when {
-                application != null -> R.string.rule_application_refresh_action
-                budget != null -> R.string.budget_read_recover
-                else -> R.string.sync_status_refresh_expense
-            }))
-        }
-        budget?.intent?.takeIf { budget.hasSupportedIntent }?.let { intent ->
-            TextButton(onClick = { actions.onOpenBudget(intent.month) }) {
-                Text(stringResource(R.string.budget_save_open_month))
-            }
-        }
+        SyncStatusItemActions(
+            next = SyncStatusActionButton(
+                text = stringResource(when {
+                    application != null -> R.string.rule_application_refresh_action
+                    budget != null -> R.string.budget_read_recover
+                    else -> R.string.sync_status_refresh_expense
+                }),
+                icon = Icons.Filled.Refresh,
+                enabled = state.busyRowId == null,
+                onClick = { actions.onRefreshAcceptedResult(row) },
+            ),
+            other = budget?.intent?.takeIf { budget.hasSupportedIntent }?.let { intent ->
+                SyncStatusActionButton(text = stringResource(R.string.budget_save_open_month), enabled = true,
+                    onClick = { actions.onOpenBudget(intent.month) })
+            },
+        )
     }
 }

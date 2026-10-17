@@ -50,7 +50,7 @@ import org.junit.Test
  * 未决 → 禁用保存；重试成功同一帧「提示行移除 + 保存键 disabled→enabled」后，
  * enabled=true 且可点击，但 teal 填充/描边永久丢失、深色文字近不可见。
  * 本测试镜像该精确状态翻转（sheet 内、兄弟行同帧移除、按钮翻转），合同：
- * 禁用与启用两态盒体填充都必须真实绘制（现行渲染：只有内容变淡、盒体不变），
+ * 禁用与启用两态盒体填充都必须真实绘制（禁用态为退后的不透明容器色，启用态为 primary），
  * 且翻转后 enabled 语义与点击保持可用。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,12 +63,14 @@ class AppPrimaryButtonRenderTest {
         var currencyResolved by mutableStateOf(false)
         var clicks = 0
         var primary = Color.Unspecified
+        var disabled = Color.Unspecified
     }
 
     private fun setSheet(harness: Harness) {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Midnight) {
                 harness.primary = LocalThemeVisuals.current.primary
+                harness.disabled = appPrimaryButtonDisabledContainer(LocalThemeVisuals.current)
                 ModalBottomSheet(
                     onDismissRequest = {},
                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -98,13 +100,13 @@ class AppPrimaryButtonRenderTest {
         setSheet(harness)
 
         // 基线对照：禁用态盒体填充必须在绘（若此断言也失败，说明捕获通道本身坏了而非产品 RED）
-        assertContainerFilled(stage = "disabled", harness = harness)
+        assertContainerFilled(stage = "disabled", expected = harness.disabled)
 
         // 同一状态翻转：提示行移除 + 按钮 disabled→enabled（生产鬼影帧的精确条件）
         composeRule.runOnIdle { harness.currencyResolved = true }
         composeRule.waitForIdle()
 
-        assertContainerFilled(stage = "enabled", harness = harness)
+        assertContainerFilled(stage = "enabled", expected = harness.primary)
         composeRule.onNodeWithTag(BUTTON_TAG).assertIsEnabled().performClick()
         composeRule.waitForIdle()
         assertEquals(1, harness.clicks)
@@ -186,9 +188,8 @@ class AppPrimaryButtonRenderTest {
         assertEquals(4, secondaryClicks)
     }
 
-    private fun assertContainerFilled(stage: String, harness: Harness) {
-        val expected = harness.primary
-        assertTrue("harness 应读到真实 primary 色", expected != Color.Unspecified)
+    private fun assertContainerFilled(stage: String, expected: Color) {
+        assertTrue("harness 应读到真实容器色", expected != Color.Unspecified)
         val bitmap = composeRule.onNodeWithTag(BUTTON_TAG).captureToImage().asAndroidBitmap()
         val sampleX = listOf(0.08f, 0.2f, 0.92f).map { (bitmap.width * it).toInt() }
         val sampleY = listOf(0.5f, 0.8f).map { (bitmap.height * it).toInt() }
@@ -196,7 +197,7 @@ class AppPrimaryButtonRenderTest {
             for (y in sampleY) {
                 val pixel = Color(bitmap.getPixel(x, y))
                 assertTrue(
-                    "$stage 态主键填充丢失：($x,$y)=$pixel 偏离 primary=$expected",
+                    "$stage 态主键填充丢失：($x,$y)=$pixel 偏离容器色=$expected",
                     pixel.isCloseTo(expected),
                 )
             }
