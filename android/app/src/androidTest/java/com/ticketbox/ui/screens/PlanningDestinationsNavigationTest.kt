@@ -1,6 +1,13 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.DeviceConfigurationOverride
+import androidx.compose.ui.test.ForcedSize
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
@@ -12,6 +19,9 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.BudgetMonthly
+import com.ticketbox.ui.components.AppAdaptivePaneStructures
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.design.AppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.AppAdaptivePaneMode
 import com.ticketbox.ui.design.AppAdaptivePostureConstraint
@@ -31,6 +41,7 @@ import com.ticketbox.viewmodel.BudgetUiState
 import com.ticketbox.viewmodel.IncomePlanUiState
 import com.ticketbox.viewmodel.RecurringUiState
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -120,6 +131,47 @@ class PlanningDestinationsNavigationTest {
             label = context.getString(R.string.plan_income_title),
             assertHit = { assertEquals(1, hits.incomePlans) },
         )
+    }
+
+    @Test
+    fun dw1PlansWideKeepsBudgetAndGoalsPrimaryWithFixedArrangementsSupporting() {
+        val budget = BudgetMonthly(
+            ledgerId = "dw1-synthetic", month = "2026-10", configured = true,
+            totalAmountCents = 400_000L, rolloverAmountCents = 0L, fixedAmountCents = 0L,
+            nonMonthlyAmountCents = 0L, flexBudgetCents = 400_000L, spentAmountCents = 246_000L,
+            excludedAmountCents = 0L, remainingAmountCents = 154_000L, overspentAmountCents = 0L,
+            excludedCategories = emptyList(), excludedBreakdown = emptyList(), categoryBudgets = emptyList(),
+            updatedAt = null, homeCurrencyCode = "CNY",
+        )
+        composeRule.setContent {
+            DeviceConfigurationOverride(DeviceConfigurationOverride.ForcedSize(DpSize(1440.dp, 900.dp))) {
+                TicketboxTheme(skin = AppSkin.Paper) {
+                    CompositionLocalProvider(LocalAppAdaptiveLayoutPolicy provides expandedSupportingPolicy) {
+                        PlanScreen(
+                            data = PlanScreenData(
+                                budget = BudgetUiState(month = "2026-10", budget = budget),
+                                recurring = RecurringUiState(),
+                                income = IncomePlanUiState(),
+                            ),
+                            actions = PlanScreenActions(
+                                budgetNavigation = PlanBudgetNavigationActions({}, {}),
+                                onOpenSpendingGoal = {}, onOpenDebtGoal = {},
+                                onOpenRecurring = {}, onOpenIncomePlans = {}, onRefresh = {},
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        val primary = composeRule.onNodeWithTag(AppAdaptivePaneStructures.Plans.primaryTestTag)
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val supporting = composeRule.onNodeWithTag(AppAdaptivePaneStructures.Plans.supportingTestTag)
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("DW1 main budget/goals must precede fixed-arrangement pane", primary.right <= supporting.left)
+        composeRule.onNodeWithTag(PlanDestinationTestTags.Budget).assertIsDisplayed()
+        composeRule.onNodeWithTag(PlanDestinationTestTags.SpendingGoal).assertIsDisplayed()
+        composeRule.onNodeWithTag(PlanDestinationTestTags.Recurring).assertIsDisplayed()
+        saveConsumerArtPreview("dw1-plans-wide-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
     }
 
     @Test
