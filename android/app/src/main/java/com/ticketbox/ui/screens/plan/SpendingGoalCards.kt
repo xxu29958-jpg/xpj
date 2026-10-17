@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -20,9 +21,12 @@ import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
+import com.ticketbox.ui.components.AppAdaptiveAmountRowStyle
+import com.ticketbox.ui.components.AppAdaptiveEditAmountRow
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.displayMonthLabel
+import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -30,18 +34,63 @@ import com.ticketbox.ui.design.LocalGoalTokens
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.StateTone
 
+/**
+ * One active goal keeps its hero (D17A); several goals read as a list so every remaining amount
+ * is not a competing hero card. Each row opens the same detail.
+ */
 @Composable
 internal fun SpendingGoalListCard(
     goals: List<Goal>,
     onOpenGoal: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)) {
-        goals.forEach { goal ->
-            SpendingGoalRow(
-                goal = goal,
-                onClick = { onOpenGoal(goal.publicId) },
-            )
+    goals.singleOrNull()?.let { goal ->
+        SpendingGoalRow(goal = goal, onClick = { onOpenGoal(goal.publicId) })
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        goals.forEachIndexed { index, goal ->
+            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppAlpha.subtle))
+            SpendingGoalCompactRow(goal = goal, onClick = { onOpenGoal(goal.publicId) })
         }
+    }
+}
+
+@Composable
+private fun SpendingGoalCompactRow(goal: Goal, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+    ) {
+        AppAdaptiveEditAmountRow(
+            amount = spendingGoalAmountText(goal.remainingAmountCents?.let { kotlin.math.abs(it) }, goal.homeCurrencyCode),
+            style = AppAdaptiveAmountRowStyle(
+                role = AppAmountRole.Medium,
+                amountColor = if (goal.isOverLimit) goal.stateTone().fg else null,
+            ),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(goal.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    StatusPill(text = goal.statusText(), tone = goal.stateTone())
+                }
+                Text(
+                    text = stringResource(
+                        R.string.spending_goal_compact_context,
+                        displayMonthLabel(goal.month),
+                        goal.category ?: stringResource(R.string.spending_goal_scope_all),
+                        stringResource(if (goal.isOverLimit) R.string.spending_goal_over_label else R.string.spending_goal_remaining_label),
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        SpendingGoalProgress(goal)
+        com.ticketbox.ui.components.AccountingDateNotice(goal.undatedExpenseCount)
     }
 }
 

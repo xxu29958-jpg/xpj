@@ -8,14 +8,16 @@
     <string name="occurrence_refresh_failed">未能刷新期次。已加载的期次和付款仍可保存提交，联网后会校验版本。</string>
     <string name="occurrence_payment_refresh_failed">付款列表未刷新，当前显示本机已保存的流水。</string>
     <string name="occurrence_subtitle">关联已确认付款，核对每月固定支出</string>
-    <string name="occurrence_summary_period">本期月份 · %1$s</string>
+    <string name="occurrence_summary_period">义务月份 · %1$s</string>
     <string name="occurrence_planned_amount">本期计划金额</string>
-    <string name="occurrence_period">履约月份 · YYYY-MM</string>
+    <string name="occurrence_period">义务月份</string>
+    <string name="occurrence_period_placeholder">例如 2026-10</string>
+    <string name="occurrence_payment_month_placeholder">留空查看全部月份</string>
     <string name="occurrence_show_period">查看该月</string>
     <string name="occurrence_refresh">刷新期次与付款</string>
     <string name="occurrence_loading">正在读取期次…</string>
-    <string name="occurrence_fulfilled">本期已履约</string>
-    <string name="occurrence_unfulfilled">本期尚未履约</string>
+    <string name="occurrence_fulfilled">本期已关联付款</string>
+    <string name="occurrence_unfulfilled">本期尚未关联付款</string>
     <string name="occurrence_review">原付款需要重新核对</string>
     <string name="occurrence_review_reversed">原账单已冲销，暂不能作为本期付款依据。</string>
     <string name="occurrence_review_not_confirmed">原账单当前未确认，暂不能作为本期付款依据。</string>
@@ -33,7 +35,7 @@
     <string name="occurrence_clear_review">撤销关联后重新预留本期计划金额；原付款账单不会改变。</string>
     <string name="occurrence_link_review">用「%1$s · %2$s」确认本期已完整付款。金额可与计划不同；本操作不会新建或修改支出。</string>
     <string name="occurrence_submit">保存本期提交</string>
-    <string name="occurrence_pending">本期提交待同步，尚未确认履约结果</string>
+    <string name="occurrence_pending">本期提交待同步，尚未确认关联结果</string>
     <string name="occurrence_attention">本期提交需要处理。请先刷新核对当前状态；原提交仍保留。</string>
     <string name="occurrence_unsupported">当前版本不能读取原提交。记录已保留，请更新应用后再处理。</string>
     <string name="occurrence_original_intent">原提交：%1$s · %2$s</string>
@@ -42,9 +44,9 @@
     <string name="occurrence_drop_explanation">只移除这条待处理提交，不会撤销服务器已完成的关联。请先刷新核对本期结果；放弃后可重新选择。</string>
     <string name="occurrence_keep">继续保留</string>
     <string name="occurrence_record_payment">没有对应账单，记一笔付款</string>
-    <string name="occurrence_pick_explanation">选择一张已确认账单，明确确认本期已完整付款。一张账单只能关联一个期次；暂不支持分次或拆分履约。</string>
+    <string name="occurrence_pick_explanation">选择一张已确认账单，明确确认本期已完整付款。一张账单只能关联一个期次；暂不支持分次或拆分付款。</string>
     <string name="occurrence_pick_title">可能对应的付款</string>
-    <string name="occurrence_payment_month">付款账期 · 留空查看全部缓存</string>
+    <string name="occurrence_payment_month">付款月份</string>
     <string name="occurrence_search">查找商家或备注</string>
     <string name="occurrence_filters_show">%1$s · 筛选付款</string>
     <string name="occurrence_filters_hide">%1$s · 收起筛选</string>
@@ -52,5 +54,5 @@
     <string name="occurrence_no_payments">没有匹配的已确认付款。可调整付款月份、搜索词，或刷新流水。</string>
     <string name="occurrence_narrow_search">显示前 20 笔，请缩小月份或搜索范围。</string>
     <string name="occurrence_has_refund">（有退款，显示原付款金额）</string>
-    <string name="sync_status_mutation_recurring_occurrence">固定支出本期履约（在计划中查看本期）</string>
+    <string name="sync_status_mutation_recurring_occurrence">固定支出本期付款（在计划中查看本期）</string>
 </resources>

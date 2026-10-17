@@ -133,7 +133,7 @@ class NotificationReminders:
         self.native.click("更多操作：" + SERIES)
         self.native.click("查看本期")
         self.native.reveal_any(displayed_reminder, exact=True)
-        self.native.reveal_any("履约月份")
+        self.native.reveal_any("义务月份")
         self.native.capture("notification-fixed-read-before-share")
         self.native.back()
         self.native.back()
@@ -142,7 +142,7 @@ class NotificationReminders:
         self.j.tap_notification(SERIES, expected="固定支出")
         self.native.reveal_any(SERIES)
         self.native.reveal_any(displayed_reminder, exact=True)
-        self.native.reveal_any("履约月份")
+        self.native.reveal_any("义务月份")
         self.native.capture("notification-original-fixed-occurrence")
         reminder_facts = self.facts()
         assert reminder_facts["expected_date"] == self.expected_date, "Opening a reminder advanced the fixed-expense due date"

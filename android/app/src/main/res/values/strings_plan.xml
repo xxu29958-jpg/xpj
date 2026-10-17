@@ -73,6 +73,7 @@
     <string name="spending_goals_archived_title">已归档目标</string>
     <string name="spending_goals_archived_empty">这个月没有已归档的消费目标。</string>
     <string name="spending_goal_row_context">%1$s · %2$s</string>
+    <string name="spending_goal_compact_context">%1$s · %2$s · %3$s</string>
     <string name="spending_goal_scope_all">全部支出</string>
     <string name="spending_goal_spent_label">已花</string>
     <string name="spending_goal_remaining_label">还可用</string>
