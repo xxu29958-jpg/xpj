@@ -91,6 +91,9 @@ class StatsAdaptiveExperienceTest {
             assertTrue("Views precede their results", tab.bottom <= result.top)
             if (size.first == 360.dp) {
                 saveConsumerArtPreview("insights-populated-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
+            } else if (size.first == 1440.dp) {
+                // Flat expanded windows retain one query/control owner above the results.
+                saveConsumerArtPreview("dw3-insights-flat-wide-paper", composeRule.onRoot().captureToImage().asAndroidBitmap())
             }
         }
         composeRule.onNode(hasScrollToIndexAction())
@@ -151,6 +154,9 @@ class StatsAdaptiveExperienceTest {
             .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue("Results must not be under the hinge: primary=$primary, hinge=$hinge", primary.right <= hinge.left)
         assertTrue("Filters must not be under the hinge: supporting=$supporting, hinge=$hinge", supporting.left >= hinge.right)
+        composeRule.onNodeWithText(context.getString(R.string.stats_overview_month_spend_label)).assertIsDisplayed()
+        composeRule.onNode(hasText(monthLabel) and hasClickAction()).assertIsDisplayed()
+        saveConsumerArtPreview("dw3-insights-vertical-hinge-results-filters", composeRule.onRoot().captureToImage().asAndroidBitmap())
         composeRule.onNode(hasText(monthLabel) and hasClickAction()).assertIsDisplayed().performClick()
         composeRule.onNodeWithText(context.getString(R.string.components_month_picker_title)).assertIsDisplayed()
         composeRule.onNode(hasText(context.getString(R.string.components_month_picker_all_months)) and hasClickAction())
