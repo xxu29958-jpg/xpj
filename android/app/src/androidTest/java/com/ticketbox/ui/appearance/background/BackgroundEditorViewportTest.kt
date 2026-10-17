@@ -165,6 +165,7 @@ class BackgroundEditorViewportTest {
         for ((label, mode) in listOf("氛围" to ImmersionMode.Atmosphere, "平衡" to ImmersionMode.Balanced, "专注" to ImmersionMode.Focus)) {
             compose.onNodeWithText(label).performScrollTo().performClick()
             compose.runOnIdle { assertEquals(mode, editor.value.settings.immersionMode) }
+            compose.waitForIdle()
             Thread.sleep(PHOTO_DECODE_SETTLE_MS)
             compose.waitForIdle()
             capture("background-editor-photo-${mode.storageKey}")

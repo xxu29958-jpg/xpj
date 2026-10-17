@@ -92,7 +92,9 @@ class CustomBackgroundShellRenderTest {
         compose.runOnIdle {
             settings.value = BackgroundSettings(enableParallax = false).withCustomImage(photo.absolutePath).copy(immersionMode = mode)
         }
-        // Decoding runs off the main thread; give it a bounded moment before the screenshot.
+        // Recompose first so the new photo's decode actually starts; it then runs off the main
+        // thread, so give it a bounded moment before the screenshot.
+        compose.waitForIdle()
         Thread.sleep(DECODE_SETTLE_MS)
         compose.waitForIdle()
     }

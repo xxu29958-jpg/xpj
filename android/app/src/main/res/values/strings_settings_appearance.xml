@@ -73,7 +73,7 @@
     <!-- BackgroundEditorScreen：全局背景编辑面（visual-ledger 全局背景批） -->
     <string name="background_editor_page_title">预览你的背景</string>
     <string name="background_editor_back">外观</string>
-    <string name="background_editor_intro">先看实际内容，再决定应用。</string>
+    <string name="background_editor_page_preview">页面预览：%1$s</string>
     <string name="background_editor_gesture_mode">拖动与缩放</string>
     <string name="background_editor_composition_builtin">内置背景无需裁切</string>
     <string name="background_editor_composition_done">完成构图</string>

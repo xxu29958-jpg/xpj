@@ -96,6 +96,7 @@ private fun BoxScope.PhotoVeil(settings: BackgroundSettings, skin: AppSkin, role
     val viewport = inputs.viewport
     val transform = settings.transform
     val navigationPx = with(LocalDensity.current) { PhotoNavigationScrimHeight.roundToPx() }
+    val headerRampPx = with(LocalDensity.current) { HeaderRampMax.toPx() }
     val needs = remember(photo, skin, inputs.canvasText, viewport, transform, inputs.header, navigationPx) {
         val header = inputs.header
         val frame = PhotoFrame(photo.size, viewport, transform)
@@ -117,6 +118,7 @@ private fun BoxScope.PhotoVeil(settings: BackgroundSettings, skin: AppSkin, role
                 color = veil,
                 headerAlpha = photoVeilAlpha(headerNeed, settings.immersionMode, role, dark),
                 headerFraction = inputs.header / viewport.height.coerceAtLeast(1).toFloat(),
+                rampFraction = minOf(inputs.header * HeaderRampShare, headerRampPx) / viewport.height.coerceAtLeast(1).toFloat(),
                 bands = bodyNeeds.map { photoVeilAlpha(it, settings.immersionMode, role, dark) },
             ),
         ),
@@ -182,14 +184,15 @@ fun photoVeilAlpha(need: Float, mode: ImmersionMode, role: SurfaceRole, dark: Bo
 /**
  * The header band keeps its own (large-title) veil; below it, band alphas become one gradient.
  * Every boundary takes the larger neighbour, so interpolation never drops a region below its need.
+ * The header softens into the content inside its own bottom edge, where the veil only grows.
  */
-private fun veilBrush(color: Color, headerAlpha: Float, headerFraction: Float, bands: List<Float>): Brush {
+private fun veilBrush(color: Color, headerAlpha: Float, headerFraction: Float, rampFraction: Float, bands: List<Float>): Brush {
     val count = bands.size
     val span = 1f - headerFraction
     val stops = buildList {
         if (headerFraction > 0f) {
             add(0f to color.copy(alpha = headerAlpha))
-            add((headerFraction - HeaderEdgeFraction).coerceAtLeast(0f) to color.copy(alpha = headerAlpha))
+            add((headerFraction - rampFraction).coerceAtLeast(0f) to color.copy(alpha = headerAlpha))
         }
         add(headerFraction to color.copy(alpha = maxOf(bands.first(), if (headerFraction > 0f) headerAlpha else 0f)))
         bands.forEachIndexed { index, alpha ->
@@ -201,8 +204,9 @@ private fun veilBrush(color: Color, headerAlpha: Float, headerFraction: Float, b
     return Brush.verticalGradient(*stops.toTypedArray())
 }
 
-/** A short ramp inside the bottom of the header softens its edge without leaving content less protected. */
-private const val HeaderEdgeFraction = 0.02f
+/** The softening ramp takes at most this share of the header, below the title row. */
+private const val HeaderRampShare = 0.35f
+private val HeaderRampMax = 48.dp
 
 /**
  * 自由构图渲染：Image 层尺寸 = 完整绘制尺寸（超出视口），外层 clipToBounds；平移在视口内
