@@ -25,7 +25,6 @@ import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
@@ -115,11 +114,9 @@ class BackgroundEditorViewportTest {
         assertSystemBarIcons(lightAppearance = false)
         assertSampleAmountFits(2f)
         capture("background-editor-midnight-large")
-        compose.onNodeWithContentDescription("预览页面").performScrollTo().performClick()
-        compose.onNodeWithText("洞察").performClick()
+        compose.onNodeWithText("洞察").performScrollTo().performClick()
         compose.onNodeWithText("洞察").assertIsDisplayed()
-        compose.onNodeWithContentDescription("沉浸强度").performScrollTo().performClick()
-        compose.onNodeWithText("专注").performClick()
+        compose.onNodeWithText("专注").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(ImmersionMode.Focus, editor.value.settings.immersionMode) }
         val image = File.createTempFile("editor-composition-", ".png", compose.activity.cacheDir).also { fixtureImage = it }
         Bitmap.createBitmap(120, 200, Bitmap.Config.ARGB_8888).also { bitmap ->
@@ -135,9 +132,9 @@ class BackgroundEditorViewportTest {
         compose.onNodeWithText("放大").performScrollTo().performClick()
         compose.runOnIdle { assertTrue(editor.value.settings.transform.scale > 1f); assertEquals(0, applied) }
         compose.onNodeWithText("完成构图").performScrollTo().performClick()
-        compose.onNodeWithText("应用背景").performClick()
+        compose.onNodeWithText("应用这个背景").performScrollTo().performClick()
         compose.onNodeWithText("应用中…").assertIsNotEnabled()
-        compose.onNodeWithText("取消").assertIsNotEnabled()
+        compose.onNodeWithText("取消，使用原背景").assertIsNotEnabled()
         compose.runOnIdle {
             assertEquals(1, applied); assertEquals(0, cancelled)
             editor.value = editor.value.copy(saving = false,
@@ -145,8 +142,33 @@ class BackgroundEditorViewportTest {
         }
         compose.onNodeWithText("背景没有保存成功。").performScrollTo().assertIsDisplayed()
         capture("background-editor-retained-draft-large")
-        compose.onNodeWithText("取消").performClick()
+        compose.onNodeWithText("取消，使用原背景").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1, cancelled); assertEquals(ImmersionMode.Focus, editor.value.settings.immersionMode) }
+    }
+
+    @Test
+    fun immersionChipsCompareTheRealResultOverAPhoto() {
+        val photo = writeControlledPhoto(File.createTempFile("editor-scene-", ".png", compose.activity.cacheDir),
+            1600, 1000, ControlledPhotos::scene).also { fixtureImage = it }
+        val editor = mutableStateOf(BackgroundEditorState(BackgroundSettings(enableParallax = false).withCustomImage(photo.absolutePath)))
+        compose.setContent {
+            TicketboxTheme(skin = AppSkin.Paper) {
+                BackgroundEditorScreen(
+                    editor = editor.value,
+                    currentSkin = AppSkin.Paper,
+                    actions = BackgroundEditorActions({ editor.value = editor.value.copy(settings = it) }, {}, {}),
+                )
+            }
+        }
+        compose.onNodeWithText("正在预览：自定义图片").assertIsDisplayed()
+        compose.onNodeWithText("收件").performScrollTo().performClick()
+        for ((label, mode) in listOf("氛围" to ImmersionMode.Atmosphere, "平衡" to ImmersionMode.Balanced, "专注" to ImmersionMode.Focus)) {
+            compose.onNodeWithText(label).performScrollTo().performClick()
+            compose.runOnIdle { assertEquals(mode, editor.value.settings.immersionMode) }
+            Thread.sleep(PHOTO_DECODE_SETTLE_MS)
+            compose.waitForIdle()
+            capture("background-editor-photo-${mode.storageKey}")
+        }
     }
 
     private fun assertSampleAmountFits(expectedScale: Float) {
@@ -162,6 +184,10 @@ class BackgroundEditorViewportTest {
                 assertTrue(layout.getLineRight(line) <= layout.size.width)
             }
         }
+    }
+
+    private companion object {
+        const val PHOTO_DECODE_SETTLE_MS = 700L
     }
 
     private fun capture(name: String) = saveConsumerArtPreview(name,

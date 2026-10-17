@@ -4,7 +4,6 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -17,21 +16,18 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,8 +37,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -61,12 +55,7 @@ import com.ticketbox.ui.appearance.background.SurfaceRole
 import com.ticketbox.ui.appearance.background.rememberBackgroundImage
 import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
-import com.ticketbox.ui.components.AppPageChrome
-import com.ticketbox.ui.components.AppPageRole
-import com.ticketbox.ui.components.AppPageScrollableColumn
-import com.ticketbox.ui.components.AppScrollablePageChrome
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
@@ -74,6 +63,11 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.asTextStyle
 import com.ticketbox.ui.theme.configureTicketboxSystemBars
 import com.ticketbox.viewmodel.BackgroundEditorState
+import androidx.compose.material.icons.filled.Crop
+import com.ticketbox.ui.components.AppOutlinedButton
+import com.ticketbox.ui.components.AppOutlinedButtonOptions
+import com.ticketbox.ui.components.AppSegmentedControl
+import com.ticketbox.ui.components.AppSegmentedItem
 
 /**
  * 独立的全窗口编辑面，不继承设置页或安全提示横幅扣减后的内容高度。
@@ -126,35 +120,26 @@ private fun BackgroundEditorContent(
             BackgroundEditorCompositionPanel(editor, actions, onDone = { composing = false },
                 modifier = Modifier.align(Alignment.BottomCenter))
         } else {
-            AppPageScrollableColumn(
-                chrome = AppScrollablePageChrome(
-                    page = AppPageChrome(role = AppPageRole.Settings, hasBottomBar = false, includeStatusBarPadding = false),
-                    contentWidth = AppAdaptiveContentWidth.Secondary,
+            Column(modifier = Modifier.fillMaxSize()) {
+                // The free space under the sample is deliberate: the photo itself is the preview.
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .statusBarsPadding()
+                        .padding(horizontal = AppSpacing.screenHorizontal, vertical = AppSpacing.compactGap),
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
-                ),
-                modifier = Modifier.statusBarsPadding(),
-                bottomBar = { BackgroundEditorBottomBar(editor.saving, actions) },
-            ) {
-                BackgroundEditorHeading(draft, actions.onCancel, !editor.saving)
-                AppStatusBanner(message = editor.message, tone = MessageTone.Danger)
-                BackgroundReadabilitySample()
-                BackgroundEditorChoice(
-                    label = stringResource(R.string.background_editor_section_preview_role),
-                    choices = backgroundEditorPreviewRoles.map { stringResource(backgroundEditorRoleNameRes(it)) },
-                    selectedIndex = backgroundEditorPreviewRoles.indexOf(previewRole),
-                    enabled = !editor.saving,
-                    onSelect = { previewRole = backgroundEditorPreviewRoles[it] },
+                ) {
+                    BackgroundEditorHeading(draft, actions.onCancel, !editor.saving)
+                    BackgroundReadabilitySample()
+                }
+                BackgroundEditorControlPanel(
+                    editor = editor,
+                    previewRole = previewRole,
+                    onPreviewRole = { previewRole = it },
+                    onCompose = { composing = true },
+                    actions = actions,
                 )
-                BackgroundEditorCompositionEntry(editor, onOpen = { composing = true })
-                BackgroundEditorChoice(
-                    label = stringResource(R.string.appearance_section_immersion_title),
-                    choices = ImmersionMode.entries.map { stringResource(immersionModeNameRes(it)) },
-                    selectedIndex = ImmersionMode.entries.indexOf(draft.immersionMode),
-                    enabled = !editor.saving,
-                    onSelect = { actions.onDraftChange(draft.copy(immersionMode = ImmersionMode.entries[it])) },
-                )
-                Text(stringResource(R.string.background_editor_scope_note),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -258,50 +243,82 @@ private fun BackgroundEditorHeading(
     }
 }
 
+/**
+ * One bottom panel owns every choice and the single commit, so the photo stays visible above it.
+ * Preview page and immersion are chips: one tap compares the real result instead of a menu.
+ */
 @Composable
-private fun BackgroundEditorChoice(
-    label: String,
-    choices: List<String>,
-    selectedIndex: Int,
-    enabled: Boolean,
-    onSelect: (Int) -> Unit,
+private fun BackgroundEditorControlPanel(
+    editor: BackgroundEditorState,
+    previewRole: SurfaceRole,
+    onPreviewRole: (SurfaceRole) -> Unit,
+    onCompose: () -> Unit,
+    actions: BackgroundEditorActions,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Box {
-            Surface(onClick = { expanded = true }, enabled = enabled,
-                modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
-                shape = RoundedCornerShape(14.dp)) {
-                Row(Modifier.heightIn(min = 52.dp).padding(AppSpacing.compactPadding),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text(choices[selectedIndex], modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
+    val draft = editor.settings
+    val maxPanelHeight = LocalConfiguration.current.screenHeightDp.dp * 0.62f
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(topStart = AppRadius.large, topEnd = AppRadius.large),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = AppAlpha.opaque),
+    ) {
+        Column(
+            modifier = Modifier
+                .heightIn(max = maxPanelHeight)
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = AppSpacing.screenHorizontal, vertical = AppSpacing.contentGap),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
+        ) {
+            AppStatusBanner(message = editor.message, tone = MessageTone.Danger)
+            BackgroundEditorChips(
+                label = stringResource(R.string.background_editor_section_preview_role),
+                items = backgroundEditorPreviewRoles.map { AppSegmentedItem(it, stringResource(backgroundEditorRoleNameRes(it)), !editor.saving) },
+                selected = previewRole,
+                onSelect = onPreviewRole,
+            )
+            BackgroundEditorChips(
+                label = stringResource(R.string.appearance_section_immersion_title),
+                items = ImmersionMode.entries.map { AppSegmentedItem(it, stringResource(immersionModeNameRes(it)), !editor.saving) },
+                selected = draft.immersionMode,
+                onSelect = { actions.onDraftChange(draft.copy(immersionMode = it)) },
+                note = stringResource(immersionModeDescriptionRes(draft.immersionMode)),
+            )
+            if (draft.source == BackgroundSource.CustomImage) {
+                AppOutlinedButton(onClick = onCompose, modifier = Modifier.fillMaxWidth(),
+                    options = AppOutlinedButtonOptions(enabled = !editor.saving)) {
+                    Icon(Icons.Filled.Crop, contentDescription = null, modifier = Modifier.padding(end = AppSpacing.smallGap))
+                    Text(stringResource(R.string.background_editor_gesture_mode))
                 }
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                choices.forEachIndexed { index, choice ->
-                    DropdownMenuItem(text = { Text(choice) }, enabled = enabled,
-                        onClick = { expanded = false; onSelect(index) })
-                }
+            Text(stringResource(R.string.background_editor_scope_note),
+                color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            AppPrimaryButton(
+                text = stringResource(if (editor.saving) R.string.background_editor_applying else R.string.background_editor_apply_button),
+                icons = AppButtonIcons(leading = Icons.Filled.Check),
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !editor.saving,
+                onClick = actions.onApply,
+            )
+            TextButton(enabled = !editor.saving, onClick = actions.onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text(stringResource(R.string.background_editor_cancel_button))
             }
         }
     }
 }
 
 @Composable
-private fun BackgroundEditorCompositionEntry(editor: BackgroundEditorState, onOpen: () -> Unit) {
+private fun <T : Any> BackgroundEditorChips(
+    label: String,
+    items: List<AppSegmentedItem<T>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    note: String? = null,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Text(stringResource(R.string.background_editor_section_composition), style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Surface(onClick = onOpen, enabled = !editor.saving && editor.settings.source == BackgroundSource.CustomImage,
-            modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
-            Row(Modifier.heightIn(min = 52.dp).padding(AppSpacing.compactPadding), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(if (editor.settings.source == BackgroundSource.CustomImage) R.string.background_editor_gesture_mode
-                    else R.string.background_editor_composition_builtin), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
-            }
-        }
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AppSegmentedControl(options = items, selectedValue = selected, onValueChange = onSelect)
+        note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 
@@ -337,42 +354,5 @@ private fun BackgroundEditorCompositionPanel(
             AppPrimaryButton(text = stringResource(R.string.background_editor_composition_done),
                 icons = AppButtonIcons(leading = Icons.Filled.Check), modifier = Modifier.fillMaxWidth(), enabled = !editor.saving, onClick = onDone)
         }
-    }
-}
-
-@Composable
-private fun BackgroundEditorBottomBar(saving: Boolean, actions: BackgroundEditorActions) {
-    Surface(color = MaterialTheme.colorScheme.surface.copy(alpha = AppAlpha.opaque)) {
-        Box(
-            Modifier.navigationBarsPadding()
-                .padding(horizontal = AppSpacing.screenHorizontal, vertical = AppSpacing.contentGap),
-        ) {
-            BackgroundEditorFooter(saving, actions)
-        }
-    }
-}
-
-@Composable
-private fun BackgroundEditorFooter(
-    saving: Boolean,
-    actions: BackgroundEditorActions,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-        TextButton(enabled = !saving, onClick = actions.onCancel) {
-            Text(stringResource(R.string.background_editor_cancel_button))
-        }
-        AppPrimaryButton(
-            text = stringResource(
-                if (saving) {
-                    R.string.background_editor_applying
-                } else {
-                    R.string.background_editor_apply_button
-                },
-            ),
-            icons = AppButtonIcons(leading = Icons.Filled.Check),
-            modifier = Modifier.weight(1f),
-            enabled = !saving,
-            onClick = actions.onApply,
-        )
     }
 }
