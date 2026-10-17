@@ -4,7 +4,7 @@
     <string name="advice_reference_lookup_pair">查看 %1$s → %2$s 的汇率</string>
     <string name="advice_reference_page_title">换算依据</string>
     <string name="advice_reference_page_body">从已配置的来源获取参考汇率；需要时再自行补录。</string>
-    <string name="advice_reference_back_to_insights">返回洞察</string>
+    <string name="advice_reference_back_to_insights">洞察</string>
     <string name="advice_inputs_title">本月建议依据</string>
     <string name="advice_inputs_load_failed">暂时无法读取建议依据，请重试。</string>
     <string name="advice_rates_load_failed">暂时无法读取人工汇率，请重试。</string>

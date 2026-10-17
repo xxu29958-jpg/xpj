@@ -44,5 +44,5 @@
     <string name="category_directory_inspection_retry">重新核对引用</string>
     <string name="category_directory_reference_open">进入原任务处理，返回后重新核对</string>
     <string name="category_directory_no_references">当前没有规则、预算或目标引用。移除时会再次检查。</string>
-    <string name="category_directory_back">返回分类</string>
+    <string name="category_directory_back">分类</string>
 </resources>

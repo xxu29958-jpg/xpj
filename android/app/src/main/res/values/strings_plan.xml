@@ -34,7 +34,7 @@
     <!-- W2-C：入口行动词统一为 chevron（旧 设置/调整/查看/管理/打开/读取中 动词族退役）。 -->
     <string name="budget_advice_page_title">给本月做个安排</string>
     <string name="budget_advice_page_subtitle">%1$s · 储蓄目标、备用金与可支配金额</string>
-    <string name="budget_advice_back_to_plan">返回计划</string>
+    <string name="budget_advice_back_to_plan">计划</string>
     <string name="budget_advice_start_title">给你一个参考</string>
     <string name="budget_advice_consent_title">允许发送本次汇总信息生成建议？</string>
     <string name="budget_advice_consent_confirm">允许并生成本次建议</string>
@@ -60,7 +60,7 @@
     <string name="budget_advice_result_note">这些额度仅供审阅，不会自动写入月度预算。</string>
     <string name="spending_goals_page_title">消费目标</string>
     <string name="spending_goals_page_subtitle">%1$s的支出上限与执行进度</string>
-    <string name="spending_goals_back_to_plan">返回计划</string>
+    <string name="spending_goals_back_to_plan">计划</string>
     <string name="spending_goals_loading_title">正在读取消费目标</string>
     <string name="spending_goals_loading_body">目标读取完成后，会显示本月支出进度。</string>
     <string name="spending_goals_error_title">消费目标暂时打不开</string>
@@ -86,7 +86,7 @@
     <string name="spending_goal_status_archived">已归档</string>
     <string name="spending_goal_detail_title">消费目标详情</string>
     <string name="spending_goal_detail_subtitle">%1$s · %2$s</string>
-    <string name="spending_goal_detail_back">返回消费目标</string>
+    <string name="spending_goal_detail_back">消费目标</string>
     <string name="spending_goal_detail_loading_title">正在读取目标详情</string>
     <string name="spending_goal_detail_loading_body">稍后会显示支出进度和目标设置。</string>
     <string name="spending_goal_detail_error_title">目标详情暂时打不开</string>
