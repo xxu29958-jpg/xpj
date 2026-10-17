@@ -58,7 +58,7 @@ REVIEWED_BOUNDARIES = {
         "reason": "Only the log call is suppressed; there is no business retry, persistence or recursive reporting.",
     },
     (ANDROID + "data/repository/NetworkErrorHandler.kt", "safeCall"): {
-        "sha256": "24a26eb6fdc2b73a1bb99203c808221f7078dc550894d12eac0cefcdbf3bf707", "owner": "public repository failure mapping and sanitized Logcat",
+        "sha256": "017fb0f6d8be62fc92089382d6c3ca0004a14207945950aa7cd9908b1017aac7", "owner": "public repository failure mapping and sanitized Logcat",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt",
         "reason": "Cancellation reraises and existing RepositoryException is returned; unexpected outcomes are logged before mapping.",
     },
