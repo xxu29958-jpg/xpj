@@ -46,7 +46,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.ledger_scope import ledger_scoped_select
-from app.models import Debt, RepaymentDraft
+from app.models import Debt, Expense, RepaymentDraft
 from app.money_contract import MoneySign, ensure_money_minor
 from app.schemas import (
     RepaymentDraftCreateRequest,
@@ -335,6 +335,7 @@ class RepaymentDraftAuditRow:
     resolved_at: datetime | None = None
     source_expense_public_id: str | None = None
     source_expense_requires_review: bool = False
+    source_expense_id: int | None = None
 
 
 def _debt_counterparty_labels(db: Session, public_ids: set[str]) -> dict[str, str | None]:
@@ -394,15 +395,19 @@ def list_repayment_draft_audit_for_account(
         elif draft.status == "confirmed" and draft.committed_debt_public_id is not None:
             referenced.add(draft.committed_debt_public_id)
     labels = _debt_counterparty_labels(db, referenced)
+    source_ids = {draft.source_expense_public_id for draft in drafts if draft.source_expense_public_id}
+    sources = {(tenant, source): identifier for tenant, source, identifier in db.execute(
+        select(Expense.tenant_id, Expense.public_id, Expense.id).where(Expense.public_id.in_(source_ids))
+    )} if source_ids else {}
     return [
         _repayment_audit_row(draft, suggested_by_draft.get(draft.id), labels,
-            candidates_by_tenant.get(draft.tenant_id, []))
+            candidates_by_tenant.get(draft.tenant_id, []), sources.get((draft.tenant_id, draft.source_expense_public_id)))
         for draft in drafts
     ]
 
 
 def _repayment_audit_row(draft: RepaymentDraft, suggested_id: str | None, labels: dict[str, str | None],
-    candidates: list[RepaymentMatchCandidate]) -> RepaymentDraftAuditRow:
+    candidates: list[RepaymentMatchCandidate], source_expense_id: int | None) -> RepaymentDraftAuditRow:
     """Project captured money separately from eligible targets and a resolved fact's label."""
     committed_id = draft.committed_debt_public_id if draft.status == "confirmed" else None
     return RepaymentDraftAuditRow(
@@ -421,6 +426,7 @@ def _repayment_audit_row(draft: RepaymentDraft, suggested_id: str | None, labels
         committed_debt_public_id=committed_id,
         resolved_at=draft.resolved_at,
         source_expense_public_id=draft.source_expense_public_id,
+        source_expense_id=source_expense_id,
         source_expense_requires_review=(draft.source_expense_public_id is not None
             and draft.source_expense_row_version is None and draft.status == "pending"),
         suggested_debt_public_id=suggested_id,

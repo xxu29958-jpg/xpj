@@ -13,8 +13,6 @@ from sqlalchemy.orm import Session
 
 from app.error_reporting import retain_handled_error
 from app.errors import AppError
-from app.ledger_scope import ledger_scoped_select
-from app.models import Expense
 from app.routes._web_accounting_time import parse_web_accounting_time
 from app.routes._web_debt_money import parse_web_debt_major_minor
 from app.routes._web_debt_repayment import require_repayment_binding
@@ -89,14 +87,10 @@ def render_review(request: Request, db: Session, *, options, selected_id: str, p
                   rejected: bool = False, ack: dict | None = None, status_code: int = 200) -> HTMLResponse:
     scope = repayment_scope(request, db)
     row, read_error, calendar = None, "", None
-    source_expense_id = None
     try:
         rows = list_repayment_draft_audit_for_account(
             db, account_id=account_id, tenant_id=selected_id, public_id=public_id)
         row = rows[0] if rows else None
-        if row and row.source_expense_public_id:
-            source_expense_id = db.scalar(ledger_scoped_select(Expense, selected_id)
-                .where(Expense.public_id == row.source_expense_public_id).with_only_columns(Expense.id))
         if row and row.status == "pending":
             calendar = repayment_calendar(db, ledger_id=selected_id)
         if row is None:
@@ -112,8 +106,6 @@ def render_review(request: Request, db: Session, *, options, selected_id: str, p
     can_recover = _debt_write_gate(options, selected_id)
     can_create = calendar is not None and can_recover and not ack
     view = _audit_row_view(row) if row else None
-    if view is not None:
-        view["source_expense_id"] = source_expense_id
     initial = _initial_review_values(scope, selected_id, public_id, row, can_create, calendar, values)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对还款采集")
     ctx.update(row=view, read_error=read_error, currencies=supported_currency_codes(), review={
@@ -209,6 +201,7 @@ def _audit_row_view(
 
     view: dict = {
         "public_id": row.public_id,
+        "source_expense_id": row.source_expense_id,
         "source_label": REPAYMENT_DRAFT_SOURCE_LABELS.get(row.source, row.source),
         "merchant": (row.merchant_label or "").strip() or None,
         "amount_label": _home_amount_label(

@@ -41,6 +41,12 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # Exact-symbol evidence, never a module/directory exemption or a handler registry.
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
+    (ANDROID + "data/repository/RepaymentReviewDispatchers.kt", "dispatch"): {
+        "sha256": "bdf9cd64bffc378fd29979824b7d4fc78d90905eadec975b8f421171005fee5f",
+        "owner": "existing repayment delivery mapping, Outbox retry and sanitized TicketboxNetwork output",
+        "test": "android/app/src/androidTest/java/com/ticketbox/data/repository/RepaymentReviewRoomTest.kt::rawInputAndOriginalReceiptSurviveReopenAndQueryCleanup",
+        "reason": "The added catch is only after repayment acceptance and preserves the same command until source-expense projection succeeds. Cancellation propagates, failures report through logNetworkWarning, and no Done receipt is published early. NetworkErrorReportingTest verifies the reused sanitized sink.",
+    },
     ("backend/app/services/integration_settings_service.py", "discover_local_models"): {
         "sha256": "ae7785abaf829801ef941f40e489fc964fef12a1b9e18c41d2255c9186f69af6",
         "owner": "existing HTTP exception handler and sanitized ticketbox.http output",
