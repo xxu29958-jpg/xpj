@@ -41,12 +41,12 @@ from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.errors import AppError
 from app.fx_constants import DEFAULT_HOME_CURRENCY_CODE
 from app.ledger_scope import ledger_scoped_select
-from app.models import Debt, RepaymentDraft
+from app.models import Debt, Expense, PaymentCapture, RepaymentDraft
 from app.money_contract import MoneySign, ensure_money_minor
 from app.schemas import (
     RepaymentDraftCreateRequest,
@@ -144,7 +144,13 @@ def repayment_draft_response(
     # confirm / dismiss responses, the confirm idempotency-replay re-serialize) returns a
     # draft with no suggestion: a freshly-captured draft is for the NLS poster (which never
     # uses the match) and a resolved draft is already linked.
+    db = object_session(draft)
+    corrected = db.scalar(select(Expense.id).join(PaymentCapture, Expense.public_id == PaymentCapture.expense_public_id)
+        .where(PaymentCapture.tenant_id == draft.tenant_id, PaymentCapture.actor_account_id == draft.created_by_account_id,
+            PaymentCapture.repayment_public_id == draft.public_id, PaymentCapture.kind == "expense",
+            Expense.tenant_id == draft.tenant_id)) if db is not None and draft.status == "dismissed" else None
     return RepaymentDraftResponse(
+        corrected_expense_id=corrected,
         public_id=draft.public_id,
         source=draft.source,
         amount_cents=draft.amount_cents,
@@ -184,7 +190,7 @@ def get_repayment_draft_response(
     return repayment_draft_response(draft)
 
 
-def create_repayment_draft(
+def stage_repayment_draft(
     db: Session,
     *,
     payload: RepaymentDraftCreateRequest,
@@ -248,11 +254,11 @@ def create_repayment_draft(
         status="pending",
         created_at=now,
     )
-    db.add(draft)
     try:
-        db.flush()
+        with db.begin_nested():
+            db.add(draft)
+            db.flush()
     except IntegrityError:
-        db.rollback()
         existing = db.scalar(
             ledger_scoped_select(RepaymentDraft, tenant_id)
             .where(RepaymentDraft.created_by_account_id == actor_account_id)
@@ -261,9 +267,14 @@ def create_repayment_draft(
         if existing is not None:
             return existing
         raise
-    db.commit()
-    db.refresh(draft)
     return draft
+
+
+def create_repayment_draft(db: Session, *, payload: RepaymentDraftCreateRequest,
+        tenant_id: str, actor_account_id: int) -> RepaymentDraft:
+    from app.services.payment_capture_service import capture_legacy_repayment
+
+    return capture_legacy_repayment(db, payload, tenant_id=tenant_id, actor_account_id=actor_account_id)
 
 
 def list_repayment_drafts(

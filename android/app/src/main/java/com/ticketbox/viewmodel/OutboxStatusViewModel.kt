@@ -44,7 +44,7 @@ internal val incomePlanSubmissionTypes = setOf(PendingMutationType.CreateIncomeP
 private val writerSubmissionTypes = setOf(
     PendingMutationType.UpdateGoal, PendingMutationType.ReplaceGoalDebtLinks, PendingMutationType.SetGoalTargetDate, PendingMutationType.CreateGoal, PendingMutationType.SaveMonthlyBudget,
     PendingMutationType.SaveManualExchangeRate, PendingMutationType.SaveMonthlyArrangement,
-    PendingMutationType.DismissRepaymentDraft,
+    PendingMutationType.DismissRepaymentDraft, PendingMutationType.ResolvePaymentCapture,
 ) + recurringSubmissionTypes + categoryRuleSubmissionTypes + incomePlanSubmissionTypes
 private val originalSubmissionTypes = writerSubmissionTypes + PendingMutationType.CorrectExpense
 
@@ -274,7 +274,7 @@ class OutboxStatusViewModel(
                 PendingMutationType.CreateExpense -> expenseRepository.stopManualCreation(row)
                 PendingMutationType.CreateBillSplitInvitation -> expenseRepository.recoverBillSplitCreation(binding, row.id, drop)
                 PendingMutationType.AcceptBillSplitInvitation -> expenseRepository.recoverBillSplitAcceptance(binding, row.id, drop)
-                PendingMutationType.DismissRepaymentDraft -> recoveries.repaymentReviews.recoverOriginal(binding, row, drop)
+                PendingMutationType.DismissRepaymentDraft, PendingMutationType.ResolvePaymentCapture -> recoveries.repaymentReviews.recoverOriginal(binding, row, drop)
                 else -> recoveries.recoverPlanningSubmission(binding, row, drop)
                     ?: expenseRepository.recoverCorrection(binding, row.id, drop)
             }

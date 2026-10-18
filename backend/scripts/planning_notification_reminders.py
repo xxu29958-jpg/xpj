@@ -96,11 +96,11 @@ class NotificationReminders:
         for label in ("固定支出提醒", "预算超支提醒", "备份超龄提醒"):
             self.native.set_switch(label, True)
         assert self.facts()["expenses"][0]["status"] == "pending"
-        self.j.tap_notification("16.80", expected="核对这张小票")
+        self.j.tap_notification("37.90", expected="核对这张小票")
         self.native.capture("notification-expense-original")
         self.native.click("确认入账")
         wait_for(lambda: self.facts()["expenses"][0]["status"] == "confirmed", "The captured payment did not wait for actual human confirmation")
-        assert self.facts()["expenses"][0]["amount"] == 1680
+        assert self.facts()["expenses"][0]["amount"] == 3790
         self.run_existing_checks("blocked")
         for channel in CHANNELS:
             self.set_channel(channel, True)

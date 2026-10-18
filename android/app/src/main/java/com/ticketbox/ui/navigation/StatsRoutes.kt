@@ -474,6 +474,7 @@ internal fun RepaymentDraftRoute(
     screenFactory: MainScreenFactory,
     focusedDraftPublicId: String? = null,
     onBack: () -> Unit,
+    onOpenExpense: (Long) -> Unit,
 ) {
     val launchFocusedDraftPublicId = remember { focusedDraftPublicId }
     val viewModel: RepaymentDraftInboxViewModel = viewModel(
@@ -497,7 +498,7 @@ internal fun RepaymentDraftRoute(
     var linkedDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val linked = linkedDebtId
     if (linked == null) RepaymentDraftInboxScreen(viewModel, showHistory,
-        onHistoryChange = { showHistory = it }, onBack = onBack, onOpenDebt = { linkedDebtId = it })
+        onHistoryChange = { showHistory = it }, onBack = onBack, onOpenDebt = { linkedDebtId = it }, onOpenExpense = onOpenExpense)
     else RepaymentDraftLinkedDebt(screenFactory, linked) { linkedDebtId = null; viewModel.refresh() }
 }
 

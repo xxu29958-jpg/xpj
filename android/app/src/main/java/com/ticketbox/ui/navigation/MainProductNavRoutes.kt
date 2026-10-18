@@ -207,6 +207,7 @@ internal fun NavGraphBuilder.addObligationRoutes(
                 screenFactory = screenFactory,
                 focusedDraftPublicId = entry.arguments?.getString(REPAYMENT_DRAFT_FOCUS_ARG),
                 onBack = onBack,
+                onOpenExpense = navController::openExpense,
             )
             }
         }

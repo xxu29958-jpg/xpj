@@ -61,7 +61,7 @@ REVIEW_FIELDS = (
     "draft_public_id", "ledger_id", "origin_binding", "review_action",
     "target_with_expected_row_version", "original_currency", "original_amount",
 )
-REVIEW_TIME_FIELDS = ("payment_date", "calendar_revision")
+REVIEW_TIME_FIELDS = ("payment_date", "calendar_revision", "reason")
 
 
 def _initial_review_values(scope, selected_id, public_id, row, can_create, calendar=None, values=None):
@@ -75,6 +75,7 @@ def _initial_review_values(scope, selected_id, public_id, row, can_create, calen
         "original_amount": _minor_amount_value(row.original_amount_minor, row.original_currency_code) if row else "",
         "idempotency_key": str(uuid4()) if can_create else "",
         "payment_date": "", "calendar_revision": str(calendar.revision) if calendar else "",
+        "reason": "",
     }
     if values is not None:
         initial.update(values)
@@ -114,6 +115,10 @@ def render_review(request: Request, db: Session, *, options, selected_id: str, p
     view = _audit_row_view(row) if row else None
     if view is not None:
         view["source_expense_id"] = source_expense_id
+        current = get_repayment_draft_response(db, tenant_id=selected_id, actor_account_id=account_id, public_id=public_id)
+        view["corrected_expense_id"] = current.corrected_expense_id
+        if current.corrected_expense_id:
+            view["status_label"] = "已改为消费"
     initial = _initial_review_values(scope, selected_id, public_id, row, can_create, calendar, values)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对还款采集")
     ctx.update(row=view, read_error=read_error, currencies=supported_currency_codes(), review={
@@ -159,6 +164,7 @@ def _review_error(exc):
 
 def submit_review(request: Request, db: Session, *, options, selected_id: str, public_id: str,
                   account_id: int, values: dict[str, str]) -> HTMLResponse:
+    correction = None
     try:
         require_repayment_binding(request, db, values=values, public_id=public_id, target_field="draft_public_id")
         _require_selected_ledger_write(options, selected_id)
@@ -171,8 +177,18 @@ def submit_review(request: Request, db: Session, *, options, selected_id: str, p
                 payload=payload, idempotency_key=values["idempotency_key"].strip() or None)
         elif values["review_action"] == "dismiss":
             receipt = dismiss_repayment_draft(db, tenant_id=selected_id, actor_account_id=account_id, public_id=public_id, commit=True)
+        elif values["review_action"] == "expense":
+            from app.schemas.payment_capture import RepaymentAsExpense
+            from app.services.payment_capture_commands import repayment_as_expense
+
+            auth = getattr(request.state, "web_session_auth", None)
+            if auth is None or auth.account_id != account_id or auth.tenant_id != selected_id:
+                raise AppError("session_binding_changed", status_code=409)
+            correction = repayment_as_expense(db, auth=auth, public_id=public_id,
+                payload=RepaymentAsExpense(reason=values.get("reason", "")), idempotency_key=values["idempotency_key"])
+            receipt = get_repayment_draft_response(db, tenant_id=selected_id, actor_account_id=account_id, public_id=public_id)
         else:
-            raise AppError("invalid_request", "请选择记为还款或忽略通知。", status_code=422)
+            raise AppError("invalid_request", "请选择消费、还款或忽略通知。", status_code=422)
     except (AppError, ValidationError, SQLAlchemyError) as exc:
         retain_handled_error(request, exc)
         db.rollback()
@@ -181,6 +197,8 @@ def submit_review(request: Request, db: Session, *, options, selected_id: str, p
     ack = {"scope": scope, "clientRef": values["idempotency_key"], "resultPublicId": receipt.public_id,
         "values": {name: values[name] for name in (*REVIEW_FIELDS, *REVIEW_TIME_FIELDS) if name in values},
         "repaymentPublicId": receipt.committed_repayment_public_id, "status": receipt.status}
+    if correction:
+        ack.update(status="converted", expenseId=correction.expense_id, expensePublicId=correction.expense_public_id)
     return render_review(request, db, options=options, selected_id=selected_id, public_id=public_id, account_id=account_id, ack=ack)
 
 

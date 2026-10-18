@@ -53,6 +53,70 @@ def test_capture_dedupes_same_notification_identity(client: TestClient, *, ident
     assert second["public_id"] == first["public_id"]
     listing = client.get("/api/repayment-drafts", headers=identity.app_headers).json()
     assert sum(1 for d in listing["items"] if d["public_id"] == first["public_id"]) == 1
+    # The same original is also reserved across types, including older clients.
+    wrong_type = client.post("/api/expenses/notification-drafts", headers=identity.app_headers,
+        json={"source": "alipay", "amount_cents": 12345, "notification_key": "ident-abc"})
+    assert wrong_type.status_code == 409, wrong_type.text
+
+
+def test_wrong_repayment_becomes_one_reviewable_expense_and_old_capture_cannot_return(client, identity, monkeypatch):
+    from app.models import Expense, PaymentCapture
+    from app.services import payment_capture_commands
+    key = "real-notification-redacted"
+    draft = capture_repayment_draft(client, identity, amount_cents=3790, notification_key=key)
+    url = f"/api/repayment-drafts/{draft['public_id']}/as-expense"
+    body = {"reason": "花呗消费，末尾只是还款提醒", "notification_key": key}
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    def fail_after_target(*args, **kwargs):
+        raise RuntimeError("injected before atomic commit")
+    with monkeypatch.context() as patch:
+        patch.setattr(payment_capture_commands, "append_decision", fail_after_target)
+        import pytest
+        with pytest.raises(RuntimeError, match="before atomic commit"):
+            client.post(url, headers=headers, json=body)
+    assert client.get(f"/api/repayment-drafts/{draft['public_id']}", headers=identity.app_headers).json()["status"] == "pending"
+    with SessionLocal() as db:
+        assert db.scalar(select(Expense).where(Expense.original_amount_minor == 3790)) is None
+    first = client.post(url, headers=headers, json=body)
+    assert first.status_code == 200, first.text
+    receipt = first.json()
+    again = client.post(url, headers=headers, json=body)
+    assert again.json() == receipt
+    new_key = client.post(url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json=body)
+    assert new_key.json()["expense_public_id"] == receipt["expense_public_id"]
+    expense = client.get(f"/api/expenses/{receipt['expense_id']}", headers=identity.app_headers).json()
+    assert expense["status"] == "pending" and expense["original_amount_minor"] == 3790
+    assert client.get(f"/api/repayment-drafts/{draft['public_id']}", headers=identity.app_headers).json()["status"] == "dismissed"
+    replay = client.post("/api/payment-captures", headers=identity.app_headers, json={
+        "notification_key": key, "source": "alipay", "captured_at": draft["captured_at"],
+        "original_currency": "CNY", "original_amount_minor": 3790, "merchant": "花呗",
+        "suggested_kind": "repayment", "parser_version": "legacy", "candidates": []})
+    assert replay.status_code == 201, replay.text
+    assert replay.json()["kind"] == "expense" and replay.json()["expense_id"] == receipt["expense_id"]
+    with SessionLocal() as db:
+        capture = db.scalar(select(PaymentCapture).where(PaymentCapture.public_id == receipt["public_id"]))
+        assert len(capture.decisions) == 1 and capture.decisions[0]["reason"] == body["reason"]
+
+
+def test_uncertain_payment_survives_until_explicit_review_without_financial_fact(client, identity):
+    body = {"notification_key": "ambiguous-original", "source": "alipay", "captured_at": "2026-10-17T05:13:19Z",
+        "original_currency": "CNY", "suggested_kind": "review", "parser_version": "transaction-evidence-v2",
+        "candidates": [{"kind": "expense", "amount_minor": 3790, "field": "text", "evidence": "amount_bound_expense"},
+            {"kind": "repayment", "amount_minor": 50000, "field": "bigText", "evidence": "amount_bound_repayment"}]}
+    captured = client.post("/api/payment-captures", headers=identity.app_headers, json=body)
+    assert captured.status_code == 201, captured.text
+    row = captured.json()
+    assert row["expense_id"] is None and row["repayment_public_id"] is None
+    assert row in client.get("/api/payment-captures", headers=identity.app_headers).json()
+    decision = {"expected_row_version": row["row_version"], "kind": "expense", "original_currency": "CNY",
+        "original_amount_minor": 3790, "reason": "已核对原支付记录"}
+    url = f"/api/payment-captures/{row['public_id']}/decision"
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    chosen = client.post(url, headers=headers, json=decision)
+    assert chosen.status_code == 200, chosen.text
+    assert client.post(url, headers=headers, json=decision).json() == chosen.json()
+    assert client.post(url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json=decision).status_code == 409
+    assert client.get(f"/api/expenses/{chosen.json()['expense_id']}", headers=identity.app_headers).json()["status"] == "pending"
 
 
 def test_capture_distinct_identities_same_content_create_two(
@@ -138,6 +202,7 @@ def _create_confirmed_expense(
     merchant: str = "京东",
     category: str = "白条",
     amount_cents: int = 391363,
+    time_input: dict | None = None,
 ) -> dict:
     response = client.post(
         "/api/expenses/manual",
@@ -147,7 +212,7 @@ def _create_confirmed_expense(
             "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,
-            "expense_time": "2026-06-28T13:13:00Z",
+            **({"time_input": time_input} if time_input else {"expense_time": "2026-06-28T13:13:00Z"}),
         },
     )
     assert response.status_code == 200, response.json()
@@ -202,7 +267,10 @@ def test_confirmed_expense_can_enter_repayment_draft_model(
         counterparty_label="京东白条",
         principal_amount_cents=500000,
     )
-    expense = _create_confirmed_expense(client, identity, merchant="京东", category="白条")
+    calendar = client.get("/api/ledgers/owner/calendar", headers=identity.app_headers).json()
+    original_time = {"precision": "date_only", "calendar_revision": calendar["revision"],
+        "user_local_date": "2026-04-30", "accounting_date": "2026-05-01"}
+    expense = _create_confirmed_expense(client, identity, merchant="京东", category="白条", time_input=original_time)
 
     response = client.post(
         f"/api/expenses/{expense['id']}/repayment-draft",
@@ -220,6 +288,12 @@ def test_confirmed_expense_can_enter_repayment_draft_model(
     assert listed["suggested_debt_public_id"] == debt["public_id"]
 
     assert draft["source_expense_public_id"] == expense["public_id"]
+    # Delayed review after a ledger-calendar change keeps the captured date, without
+    # reconstructing the transaction owner in a MagicMock-based second product.
+    changed_calendar = client.post("/api/ledgers/owner/calendar", headers=negotiated_headers(client,
+        {**identity.app_headers, "Idempotency-Key": str(uuid4())}),
+        json={"timezone_name": "Pacific/Honolulu", "expected_revision": calendar["revision"]})
+    assert changed_calendar.status_code == 200, changed_calendar.text
     from app.models import Expense, ExpenseOffsetFact, Repayment
     from app.services.expense_offset_summary import expense_financial_summary
 
@@ -244,7 +318,13 @@ def test_confirmed_expense_can_enter_repayment_draft_model(
         assert len(offsets) == 1 and offsets[0].kind == "reversal"
         assert offsets[0].accounting_date == original.accounting_date
         assert expense_financial_summary(original, offsets).lineage_home_net_cents == 0
-        assert len(db.scalars(select(Repayment).where(Repayment.debt_id == db.scalar(select(Debt.id).where(Debt.public_id == debt["public_id"])))).all()) == 1
+        payments = db.scalars(select(Repayment).where(Repayment.debt_id == db.scalar(select(Debt.id)
+            .where(Debt.public_id == debt["public_id"])))).all()
+        assert len(payments) == 1
+        assert payments[0].paid_at is None
+        assert payments[0].accounting_time_snapshot["user_local_date"] == "2026-04-30"
+        assert payments[0].accounting_time_snapshot["accounting_date"] == "2026-05-01"
+        assert payments[0].accounting_time_snapshot["calendar_revision"] == calendar["revision"]
 
 
 def test_expense_repayment_draft_dedupes_same_expense(

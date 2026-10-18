@@ -378,6 +378,8 @@ class AppContainer(context: Context) {
                 ::publishExpenseFactBundle),
             com.ticketbox.data.repository.DismissRepaymentDraftDispatcher(outboxRequestGuard,
                 outboxAdapters.repaymentDismissAdapter, outboxAdapters.repaymentDraftReceiptAdapter),
+            com.ticketbox.data.repository.PaymentCaptureResolutionDispatcher(outboxRequestGuard,
+                { binding, expense -> publishExpenseSnapshot(binding.ledgerId, expense) }),
             com.ticketbox.data.repository.VoidDebtRepaymentDispatcher(
                 outboxRequestGuard, outboxAdapters.debtRepaymentVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
             ),
@@ -393,7 +395,8 @@ class AppContainer(context: Context) {
                         publishExpenseSnapshot(binding.ledgerId, created)
                         notifier.onDraftCreated(created.toDomain(), binding)
                     },
-                    onRepayment = { binding, created -> notifier.onRepaymentDraftCreated(created.toDomain(), binding) }),
+                    onRepayment = { binding, created -> notifier.onRepaymentDraftCreated(created.toDomain(), binding) },
+                    onReview = { binding, id -> notifier.onPaymentReviewCreated(id, binding) }),
             com.ticketbox.data.repository.CreateBillSplitDispatcher(
                 apiProvider = ::outboxApi,
                 payloadAdapter = outboxAdapters.billSplitCreateAdapter,

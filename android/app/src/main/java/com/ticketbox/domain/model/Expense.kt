@@ -245,6 +245,8 @@ data class ExpenseSplitDraft(
 )
 
 enum class NotificationDraftSource(val apiValue: String) {
+    Jd("jd"),
+    Meituan("meituan"),
     WeChat("wechat"),
     Alipay("alipay"),
     BankSms("bank_sms"),

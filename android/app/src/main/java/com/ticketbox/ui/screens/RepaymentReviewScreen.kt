@@ -50,7 +50,7 @@ import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 
 @Composable
 internal fun RepaymentReviewScreen(state: RepaymentDraftInboxUiState, model: RepaymentDraftInboxViewModel,
-    onOpenDebt: (String) -> Unit) {
+    onOpenDebt: (String) -> Unit, onOpenExpense: (Long) -> Unit) {
     BackHandler { model.reviewEditor.closeReview() }
     var choosingDebt by rememberSaveable { mutableStateOf(false) }
     AppSecondaryScrollableContent(chrome = AppSecondaryPageChrome(role = AppPageRole.Stats,
@@ -72,7 +72,12 @@ internal fun RepaymentReviewScreen(state: RepaymentDraftInboxUiState, model: Rep
                     Text(stringResource(R.string.repayment_review_unsubmitted_history), style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                RepaymentDraftResolved(capture) { capture.committedDebtPublicId?.let(onOpenDebt) }
+                if (capture.correctedExpenseId != null) {
+                    Text(stringResource(R.string.payment_capture_corrected))
+                    TextButton(onClick = { onOpenExpense(capture.correctedExpenseId) }) {
+                        Text(stringResource(R.string.payment_capture_open_expense))
+                    }
+                } else RepaymentDraftResolved(capture) { capture.committedDebtPublicId?.let(onOpenDebt) }
             }
         }
     }
@@ -115,6 +120,7 @@ private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: Repa
     val editable = unsubmitted && !state.review.bindingChanged && state.canModify && state.pendingActionDraftId == null
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+        if (unsubmitted) RepaymentAsExpenseAction(editable, model::correctAsExpense)
         RepaymentReviewMoney(input.currency, input.amountText, editable, model.reviewEditor::updateReviewMoney)
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
             if (editable) {
@@ -138,6 +144,25 @@ private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: Repa
             }
         }
     }
+}
+
+@Composable
+private fun RepaymentAsExpenseAction(enabled: Boolean, onSubmit: (String) -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    var reason by rememberSaveable { mutableStateOf("") }
+    TextButton(onClick = { open = true }, enabled = enabled) { Text(stringResource(R.string.payment_capture_as_expense)) }
+    if (open) AlertDialog(onDismissRequest = { open = false },
+        title = { Text(stringResource(R.string.payment_capture_as_expense)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+                Text(stringResource(R.string.payment_capture_correction_explanation))
+                com.ticketbox.ui.components.AppTextInput(com.ticketbox.ui.components.AppTextInputState(
+                    stringResource(R.string.payment_capture_reason), reason),
+                    com.ticketbox.ui.components.AppTextInputActions({ reason = it }))
+            }
+        }, confirmButton = { TextButton(onClick = { onSubmit(reason); open = false }, enabled = reason.isNotBlank()) {
+            Text(stringResource(R.string.payment_capture_create_expense))
+        } }, dismissButton = { TextButton(onClick = { open = false }) { Text(stringResource(android.R.string.cancel)) } })
 }
 
 /** Which debt this repayment goes to: the choice and the way to change it sit on one line. */
@@ -232,7 +257,8 @@ private fun RepaymentReviewDelivery(state: RepaymentDraftInboxUiState, model: Re
             Text(stringResource(R.string.repayment_review_original), style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold)
             Text(stringResource(when (row?.status) {
-                PendingMutationStatus.Done -> R.string.repayment_review_done
+                PendingMutationStatus.Done -> if (row.type == com.ticketbox.data.local.PendingMutationType.ResolvePaymentCapture)
+                    R.string.payment_capture_corrected else R.string.repayment_review_done
                 PendingMutationStatus.Abandoned -> R.string.repayment_review_stopped
                 null -> R.string.repayment_review_receipt_missing
                 else -> R.string.repayment_review_waiting

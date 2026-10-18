@@ -958,8 +958,8 @@
 
     <!-- ADR-0049 §杠杆③ (slice 3a)：NLS 还款捕获复核箱 -->
     <string name="repayment_draft_topbar_back">返回</string>
-    <string name="repayment_draft_topbar_title">还款采集</string>
-    <string name="repayment_draft_intro_body">手机采集的还款信息，核对后才记账。</string>
+    <string name="repayment_draft_topbar_title">支付通知核对</string>
+    <string name="repayment_draft_intro_body">先核对待确认的支付通知，再记为消费或还款。</string>
     <string name="repayment_draft_captured_at">捕获于 %1$s</string>
     <string name="repayment_draft_confirm">对应欠款</string>
     <string name="repayment_draft_dismiss">忽略</string>

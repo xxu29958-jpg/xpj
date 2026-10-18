@@ -648,6 +648,12 @@ private class FakeRepaymentDraftActions(
     var confirmResult: Result<RepaymentDraft> = Result.success(draft("d1", status = RepaymentDraftStatuses.CONFIRMED)),
     var dismissResult: Result<RepaymentDraft> = Result.success(draft("d1", status = RepaymentDraftStatuses.DISMISSED)),
 ) : RepaymentDraftActions, com.ticketbox.data.repository.RepaymentReviewActions {
+    override suspend fun readCaptures(binding: com.ticketbox.data.repository.LogicalSessionBinding) =
+        Result.success(ReadSnapshot(emptyList<com.ticketbox.data.remote.dto.PaymentCaptureDto>(), "2026-10-18T00:00:00Z", false))
+    override fun observeResolutions() = kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.OutboxRow>())
+    override suspend fun correctAsExpense(binding: com.ticketbox.data.repository.LogicalSessionBinding, draft: RepaymentDraft, reason: String): Result<Long> = error("Not configured")
+    override suspend fun resolveCapture(binding: com.ticketbox.data.repository.LogicalSessionBinding, captureId: String,
+        decision: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String): Result<Long> = error("Not configured")
     var listCalls = 0
     val confirmCalls = mutableListOf<ConfirmCall>()
     val confirmBindings = mutableListOf<com.ticketbox.data.repository.LogicalSessionBinding>()

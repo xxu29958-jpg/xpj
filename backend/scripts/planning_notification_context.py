@@ -93,7 +93,7 @@ def identity_changes(journey):
     native = journey.native
     for sample in (5, 6):
         journey.sources.post(SOURCES[0], sample)
-    wait_for(lambda: len(journey.facts()["captures"]) == 4, "The original identity did not retain its final two reminders")
+    wait_for(lambda: len(journey.facts()["captures"]) == 5, "The original identity did not retain its final two reminders")
     journey.sources.post(SOURCES[0], 4)
     open_ledger_directory(native)
     native.reveal_any("新账本名称")

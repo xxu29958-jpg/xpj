@@ -84,6 +84,7 @@ class RepaymentDraftDismissRequest(BaseModel):
 
 
 class RepaymentDraftResponse(BaseModel):
+    corrected_expense_id: int | None = None
     public_id: str
     source: str
     amount_cents: PositiveMoneyMinor | None

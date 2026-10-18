@@ -54,7 +54,7 @@ internal fun RepaymentDraftReadHeader(state: RepaymentDraftInboxUiState, history
 
 @Composable
 internal fun RepaymentDraftResolved(draft: RepaymentDraft, onOpenDebt: () -> Unit) {
-    val status = when (draft.status) {
+    val status = if (draft.correctedExpenseId != null) R.string.payment_capture_corrected else when (draft.status) {
         RepaymentDraftStatuses.CONFIRMED -> R.string.repayment_draft_recorded
         RepaymentDraftStatuses.DISMISSED -> R.string.repayment_draft_ignored
         else -> R.string.repayment_draft_unknown_status

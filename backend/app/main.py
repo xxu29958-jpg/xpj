@@ -64,6 +64,7 @@ from app.routes import (
     recurring,
     recycle_bin,
     repayment_drafts,
+    payment_captures,
     reports,
     rules,
     saved_views,
@@ -113,6 +114,7 @@ from app.routes import (
     web_recycle_bin,
     web_reference_create,
     web_repayment_drafts,
+    web_payment_captures,
     web_reports,
     web_rule_edit,
     web_search,
@@ -376,6 +378,7 @@ app.include_router(debts.router)
 app.include_router(debt_bills.router)
 app.include_router(debt_split_changes.router)
 app.include_router(repayment_drafts.router)
+app.include_router(payment_captures.router)
 app.include_router(dashboard.router)
 app.include_router(rules.router)
 app.include_router(saved_views.router)
@@ -438,6 +441,7 @@ app.include_router(web_split_agreement.router)
 app.include_router(web_debt_goals.router)
 app.include_router(web_debt_goal_entry.router)
 app.include_router(web_repayment_drafts.router)
+app.include_router(web_payment_captures.router)
 app.include_router(web_recycle_bin.router)
 app.include_router(web_receivables.router)
 app.include_router(web_categories.router)

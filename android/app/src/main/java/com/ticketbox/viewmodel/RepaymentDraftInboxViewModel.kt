@@ -53,6 +53,9 @@ data class RepaymentDraftInboxUiState(
     val flashMessage: UiText? = null,
     val reviewId: String? = null,
     val review: RepaymentReviewState = RepaymentReviewState(null),
+    val uncertainCaptures: List<com.ticketbox.data.remote.dto.PaymentCaptureDto> = emptyList(),
+    val resolutions: List<com.ticketbox.data.repository.OutboxRow> = emptyList(),
+    val captureReadError: UiText? = null,
 )
 
 class RepaymentDraftInboxViewModel(
@@ -82,6 +85,15 @@ class RepaymentDraftInboxViewModel(
     private var loadGeneration = 0L
 
     init {
+        viewModelScope.launch {
+            var completed = emptySet<Long>()
+            reviews.observeResolutions().collect { rows ->
+                val nowDone = rows.filter { it.status == com.ticketbox.data.local.PendingMutationStatus.Done }.map { it.id }.toSet()
+                _state.update { it.copy(resolutions = rows) }
+                if ((nowDone - completed).isNotEmpty()) refresh()
+                completed = nowDone
+            }
+        }
         viewModelScope.launch {
             debts.observeReadAccessDenials().collect { denial ->
                 if (denial.binding != writes.currentAccess()?.binding) return@collect
@@ -157,11 +169,14 @@ class RepaymentDraftInboxViewModel(
             targetsFetchedAt = null, targetsFromCache = false, error = null) }
         viewModelScope.launch {
             val draftResult = drafts.readDrafts(binding)
+            val captureResult = drafts.readCaptures(binding)
             val debtSnapshot = debts.listDebts(expectedBinding = binding).getOrNull()
             val repayable = debtSnapshot?.value?.debts?.filter(::isRepayableDebt)
                 ?.filter { adjustmentSnapshot?.acceptsCanonical(it) == true }
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
             if (gen != loadGeneration || !ownsAdjustmentBinding(binding)) return@launch
+            _state.update { it.copy(uncertainCaptures = captureResult.getOrNull()?.value.orEmpty(),
+                captureReadError = captureResult.exceptionOrNull()?.toUiText(R.string.payment_capture_load_failed)) }
             _state.update { current ->
                 draftResult.fold(
                     onSuccess = { snapshot ->
@@ -261,6 +276,31 @@ class RepaymentDraftInboxViewModel(
 
     private fun ownsAdjustmentBinding(binding: LogicalSessionBinding): Boolean =
         binding == adjustmentBinding && binding == writes.currentAccess()?.binding
+
+    fun correctAsExpense(reason: String) {
+        val binding = adjustmentBinding ?: return
+        val draft = _state.value.drafts.singleOrNull { it.publicId == _state.value.reviewId } ?: return
+        viewModelScope.launch {
+            val result = reviews.correctAsExpense(binding, draft, reason)
+            if (ownsAdjustmentBinding(binding)) _state.update { it.copy(error = result.exceptionOrNull()?.toUiText(R.string.payment_capture_failed)) }
+        }
+    }
+
+    fun resolveCapture(captureId: String, decision: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String) {
+        val binding = adjustmentBinding ?: return
+        viewModelScope.launch {
+            val result = reviews.resolveCapture(binding, captureId, decision, key)
+            if (ownsAdjustmentBinding(binding)) _state.update { it.copy(captureReadError = result.exceptionOrNull()?.toUiText(R.string.payment_capture_failed)) }
+        }
+    }
+
+    fun recoverCapture(row: com.ticketbox.data.repository.OutboxRow, stop: Boolean) {
+        val binding = adjustmentBinding ?: return
+        viewModelScope.launch {
+            val result = reviews.recoverOriginal(binding, row, stop)
+            if (ownsAdjustmentBinding(binding)) _state.update { it.copy(captureReadError = result.exceptionOrNull()?.toUiText(R.string.payment_capture_failed)) }
+        }
+    }
 
     private suspend fun originalTargetIsReady(binding: LogicalSessionBinding, publicId: String, generation: Long): Boolean {
         val rows = writes.observeWrites(binding, publicId).first()

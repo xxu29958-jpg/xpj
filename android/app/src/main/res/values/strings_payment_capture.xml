@@ -1,0 +1,22 @@
+<resources>
+    <string name="payment_capture_review_title">支付通知待核对</string>
+    <string name="payment_capture_review_body">这条通知的类型或金额不明确。请核对原支付记录，再选择消费、还款或忽略；当前尚未记账。</string>
+    <string name="payment_capture_as_expense">这笔其实是消费</string>
+    <string name="payment_capture_correction_explanation">关闭这份还款草稿，转为消费草稿后再核对金额、商家和分类。原采集与更正原因会保留，不会直接记账。若来自已有流水，则返回原流水。</string>
+    <string name="payment_capture_create_expense">改为消费待核对</string>
+    <string name="payment_capture_reason">核对或更正原因</string>
+    <string name="payment_capture_amount">本次实际交易金额</string>
+    <string name="payment_capture_refund">退款候选</string>
+    <string name="payment_capture_submit">保存核对结果</string>
+    <string name="payment_capture_saved">原提交已保存在本机，正在核实处理结果。网络恢复后会继续。</string>
+    <string name="payment_capture_completed">核对已完成。消费草稿在收件箱，还款草稿在此页继续确认。</string>
+    <string name="payment_capture_stop">停止本机重试，重新核对</string>
+    <string name="payment_capture_failed">核对结果暂未确认，请保留原提交重试。</string>
+    <string name="payment_capture_corrected">已改为消费，原还款草稿已关闭。原采集与更正原因继续保留。</string>
+    <string name="payment_capture_open_expense">打开消费，继续核对</string>
+    <string name="payment_capture_load_failed">待核对通知暂时无法读取，请刷新重试。</string>
+    <string name="payment_capture_recent">最近核对结果</string>
+    <string name="payment_capture_expense_ready">已转为消费待核对，尚未确认记账。</string>
+    <string name="payment_capture_repayment_ready">已转为还款草稿，请选择对应欠款后确认。</string>
+    <string name="payment_capture_ignored">已忽略通知，核对记录已保留，没有记账。</string>
+</resources>

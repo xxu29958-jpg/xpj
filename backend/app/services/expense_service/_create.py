@@ -250,12 +250,12 @@ def _guard_notification_capture_currency(payload: NotificationDraftCreateRequest
         raise AppError("notification_draft_currency_unsupported", status_code=422)
 
 
-def create_notification_draft(
+def stage_notification_draft(
     db: Session,
     payload: NotificationDraftCreateRequest,
     auth: AuthContext,
-) -> Expense:
-    from app.services.pending_fx_task_service import prepare_pending_expense_fx, submit_pending_expense_fx
+) -> tuple[Expense, object | None]:
+    from app.services.pending_fx_task_service import prepare_pending_expense_fx
 
     tenant_id = auth.tenant_id
     validate_currency_payload_money_command(
@@ -279,7 +279,7 @@ def create_notification_draft(
         ledger_scoped_select(Expense, tenant_id).where(Expense.draft_idempotency_key == idempotency_key)
     )
     if existing is not None:
-        return existing
+        return existing, None
 
     resolve_write_capability(db)
     source_label = NOTIFICATION_DRAFT_SOURCE_LABELS[source]
@@ -313,16 +313,16 @@ def create_notification_draft(
         payload=payload,
         amount_was_explicit=payload.amount_cents is not None,
     )
-    db.add(expense)
     try:
-        db.flush()
+        with db.begin_nested():
+            db.add(expense)
+            db.flush()
     except IntegrityError:
-        db.rollback()
         existing = db.scalar(
             ledger_scoped_select(Expense, tenant_id).where(Expense.draft_idempotency_key == idempotency_key)
         )
         if existing is not None:
-            return existing
+            return existing, None
         raise
     if expense.category == "其他":
         classify_expense(db, expense)
@@ -332,8 +332,10 @@ def create_notification_draft(
     expense.updated_at = now_utc()
     fx_task = prepare_pending_expense_fx(db, expense=expense,
         initiator_account_id=auth.account_id, initiator_device_id=auth.device_id)
-    db.commit()
-    if fx_task is not None:
-        submit_pending_expense_fx(db, fx_task)
-    db.refresh(expense)
-    return expense
+    return expense, fx_task
+
+
+def create_notification_draft(db: Session, payload: NotificationDraftCreateRequest, auth: AuthContext) -> Expense:
+    from app.services.payment_capture_service import capture_legacy_expense
+
+    return capture_legacy_expense(db, payload, auth)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from starlette.responses import Response
 
 from app.database import get_db
@@ -22,6 +23,11 @@ from app.routes.web_debts import _web_viewer_account_id
 from app.services.debt_service import (
     list_repayment_draft_audit_for_account,
 )
+from app.models import PaymentCapture, Expense
+from app.services.payment_capture_identity import capture_query, capture_response
+from app.routes._web_debt_write import repayment_scope
+from app.services.currency_common import minor_amount_label
+from uuid import uuid4
 
 router = APIRouter(prefix="/web/repayment-drafts", tags=["web"])
 
@@ -47,6 +53,7 @@ def _render_repayment_drafts(
     error_draft_public_id: str | None = None,
     flash_message: str | None = None,
     status_code: int = 200,
+    capture_result=None, capture_values=None,
 ) -> HTMLResponse:
     account_id = _web_viewer_account_id(request, db, selected_id)
     rows = (
@@ -59,15 +66,27 @@ def _render_repayment_drafts(
         db=db,
         options=options,
         selected_ledger_id=selected_id,
-        page_title="还款采集",
+        page_title="支付通知核对",
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
     ctx["rows"] = [_audit_row_view(row) for row in rows]
+    corrected = dict(db.execute(select(PaymentCapture.repayment_public_id, Expense.id)
+        .join(Expense, Expense.public_id == PaymentCapture.expense_public_id)
+        .where(PaymentCapture.tenant_id == selected_id, PaymentCapture.actor_account_id == account_id,
+            Expense.tenant_id == selected_id, PaymentCapture.kind == "expense")).all()) if account_id else {}
+    for view in ctx["rows"]:
+        if view["public_id"] in corrected:
+            view.update(status_label="已改为消费", corrected_expense_id=corrected[view["public_id"]])
     ctx["empty_title"] = _EMPTY_TITLE
     ctx["empty_body"] = _EMPTY_BODY
     ctx["form_error"] = form_error
     ctx["error_draft_public_id"] = error_draft_public_id
     ctx["flash_message"] = flash_message
+    captures = list(db.scalars(capture_query(selected_id, account_id).where(PaymentCapture.kind == "review")
+        .order_by(PaymentCapture.captured_at.desc()))) if account_id is not None else []
+    ctx.update(uncertain_captures=[capture_response(db, row) for row in captures], capture_result=capture_result,
+        capture_values=capture_values or {}, capture_scope=repayment_scope(request, db), new_intent_key=lambda: str(uuid4()),
+        capture_amount_label=minor_amount_label)
     return templates.TemplateResponse(
         request=request,
         name="repayment_drafts.html",
@@ -118,6 +137,7 @@ def web_submit_repayment_review(
     original_amount: str = Form(default=""), idempotency_key: str = Form(default=""),
     payment_date: str | None = Form(default=None), calendar_revision: str | None = Form(default=None),
     csrf_token: str = Form(default=""), _local: None = LocalOnly, db: Session = Depends(get_db),
+    reason: str | None = Form(default=None),
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
@@ -129,6 +149,6 @@ def web_submit_repayment_review(
     if calendar_revision is not None and payment_date is None:
         payment_date = ""
     values.update({name: value for name, value in {"payment_date": payment_date,
-        "calendar_revision": calendar_revision}.items() if value is not None})
+        "calendar_revision": calendar_revision, "reason": reason}.items() if value is not None})
     return submit_review(request, db, options=options, selected_id=selected_id, public_id=public_id,
         account_id=_actor_account_id(request, db, selected_id), values=values)

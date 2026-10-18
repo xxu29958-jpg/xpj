@@ -13,6 +13,7 @@ internal class NotificationCaptureDispatcher(
     private val guard: LedgerRequestGuard,
     private val onExpense: suspend (LogicalSessionBinding, ExpenseDto) -> Unit,
     private val onRepayment: (LogicalSessionBinding, RepaymentDraftDto) -> Unit,
+    private val onReview: (LogicalSessionBinding, String) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type = PendingMutationType.CapturePaymentNotification
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "Notification capture")
@@ -23,8 +24,19 @@ internal class NotificationCaptureDispatcher(
         return try {
             val bound = guard.bind(expectedLedgerId = row.ledgerId)
             val api = bound.serviceFor(requireNotNull(row.bindingOrNull()))
-            val receipt = if (payload.kind == "expense") expense(api, bound, payload)
-                else repayment(api, bound, payload)
+            val result = api.capturePayment(payload.request())
+            bound.requireStillActive()
+            require(result.publicId.isNotBlank())
+            val receipt = when (result.kind) {
+                "expense" -> expense(api, bound, requireNotNull(result.expenseId))
+                "repayment" -> repayment(api, bound, requireNotNull(result.repaymentPublicId))
+                "review" -> {
+                    onReview(bound.logicalBinding, result.publicId)
+                    NotificationCaptureReceipt(capturePublicId = result.publicId)
+                }
+                "dismissed" -> NotificationCaptureReceipt(capturePublicId = result.publicId)
+                else -> error("Unknown capture result")
+            }
             DispatchResult.Success(receiptJson = NotificationCaptureWire.receipt.toJson(receipt))
         } catch (error: CancellationException) {
             throw error
@@ -40,8 +52,8 @@ internal class NotificationCaptureDispatcher(
         }
     }
 
-    private suspend fun expense(api: ApiService, bound: BoundLedgerRequest, payload: NotificationCapturePayload): NotificationCaptureReceipt {
-        val created = api.createNotificationDraft(payload.expenseRequest())
+    private suspend fun expense(api: ApiService, bound: BoundLedgerRequest, id: Long): NotificationCaptureReceipt {
+        val created = api.expense(id)
         require(created.id > 0 && !created.publicId.isNullOrBlank())
         bound.requireStillActive()
         // An idempotent replay may return an already reviewed draft. Publish its current projection,
@@ -50,8 +62,8 @@ internal class NotificationCaptureDispatcher(
         return NotificationCaptureReceipt(expenseId = created.id)
     }
 
-    private suspend fun repayment(api: ApiService, bound: BoundLedgerRequest, payload: NotificationCapturePayload): NotificationCaptureReceipt {
-        val created = api.createRepaymentDraft(payload.repaymentRequest())
+    private suspend fun repayment(api: ApiService, bound: BoundLedgerRequest, id: String): NotificationCaptureReceipt {
+        val created = api.repaymentDraft(id)
         require(created.publicId.isNotBlank())
         bound.requireStillActive()
         onRepayment(bound.logicalBinding, created)

@@ -247,6 +247,15 @@ class TicketboxNotifier(
             NotificationTask(binding, NotificationDestination.Repayment(draft.publicId)))
     }
 
+    fun onPaymentReviewCreated(publicId: String, binding: LogicalSessionBinding) {
+        if (!settingsStore.notificationPreferences().pendingDraftReminders) return
+        val spec = NotificationContentSpec(CHANNEL_REPAYMENTS, R.string.payment_capture_review_title, emptyList(),
+            R.string.payment_capture_review_body, emptyList(), R.string.payment_capture_review_body,
+            R.string.notification_action_review)
+        publish(spec, boundReminderKey(binding, "capture:${binding.ledgerId}:$publicId"),
+            NotificationTask(binding, NotificationDestination.Repayment(publicId)))
+    }
+
     /**
      * 固定支出（recurring）到期提醒出口。判定本身（哪条 recurring item 该提醒、是否已提醒过）
      * 不在本类：检测源是 [com.ticketbox.notification.recurring.RecurringReminderEngine]（ADR-0046），

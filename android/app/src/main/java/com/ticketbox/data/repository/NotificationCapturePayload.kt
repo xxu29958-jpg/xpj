@@ -17,21 +17,27 @@ data class NotificationCapturePayload(
     val kind: String,
     val notificationKey: String,
     val source: String,
-    val originalAmountMinor: Long,
+    val originalAmountMinor: Long?,
     val originalCurrencyCode: String,
     val merchant: String?,
     val category: String?,
     val capturedAt: String,
+    val parserVersion: String = "legacy",
+    val candidates: List<com.ticketbox.data.remote.dto.PaymentCandidateDto> = emptyList(),
 ) {
     internal fun expenseRequest() = NotificationDraft(NotificationDraftSource.entries.single { it.apiValue == source },
-        originalAmountMinor, merchant, category, capturedAt).toRequest(notificationKey)
+        requireNotNull(originalAmountMinor), merchant, category, capturedAt).toRequest(notificationKey)
 
     internal fun repaymentRequest() = RepaymentNotificationDraft(RepaymentDraftSource.entries.single { it.apiValue == source },
-        originalAmountMinor, merchant, capturedAt).toCreateRequest(notificationKey)
+        requireNotNull(originalAmountMinor), merchant, capturedAt).toCreateRequest(notificationKey)
+
+    internal fun request() = com.ticketbox.data.remote.dto.PaymentCaptureCreateDto(notificationKey, source, capturedAt,
+        originalCurrencyCode, originalAmountMinor, merchant, kind, parserVersion, candidates)
 }
 
 @JsonClass(generateAdapter = true)
-data class NotificationCaptureReceipt(val expenseId: Long? = null, val repaymentPublicId: String? = null)
+data class NotificationCaptureReceipt(val expenseId: Long? = null, val repaymentPublicId: String? = null,
+    val capturePublicId: String? = null)
 
 /** A shared codec for the persisted command, its dispatcher and the existing recovery screen. */
 internal object NotificationCaptureWire {
@@ -42,15 +48,19 @@ internal object NotificationCaptureWire {
 
 internal fun PaymentNotificationResult.captureIntent(key: String): PendingMutationIntent {
     require(key.isNotBlank())
-    val payload = when (this) {
+    val parsed = when (this) {
         is PaymentNotificationResult.Expense -> NotificationCapturePayload(
             1, "expense", key, draft.source.apiValue, requireNotNull(draft.amountCents), "CNY", draft.merchant?.trim(), draft.category,
             requireNotNull(draft.expenseTime))
         is PaymentNotificationResult.Repayment -> NotificationCapturePayload(
             1, "repayment", key, draft.source.apiValue, draft.amountCents, "CNY", draft.merchantLabel?.trim(), null,
             requireNotNull(draft.capturedAt))
+        is PaymentNotificationResult.Review -> NotificationCapturePayload(
+            2, "review", key, source, null, "CNY", merchant, null, capturedAt)
     }
-    require(payload.originalAmountMinor > 0)
+    val payload = parsed.copy(revision = 2, parserVersion = com.ticketbox.notification.PaymentNotificationParser.VERSION,
+        candidates = candidates.map { com.ticketbox.data.remote.dto.PaymentCandidateDto(it.kind, it.amountMinor, it.field, it.evidence) })
+    require(payload.kind == "review" || (payload.originalAmountMinor ?: 0) > 0)
     Instant.parse(payload.capturedAt)
     return PendingMutationIntent(PendingMutationType.CapturePaymentNotification, "notification:$key", NotificationCaptureWire.payload.toJson(payload), 0, key)
 }
@@ -58,13 +68,14 @@ internal fun PaymentNotificationResult.captureIntent(key: String): PendingMutati
 internal fun OutboxRow.notificationCapture(): NotificationCapturePayload? = runCatching {
     require(type == PendingMutationType.CapturePaymentNotification && expectedRowVersion == 0L)
     val capture = requireNotNull(NotificationCaptureWire.payload.fromJson(payloadJson))
-    require(capture.revision == 1 && capture.notificationKey.isNotBlank() && capture.notificationKey == idempotencyKey &&
+    require(capture.revision in 1..2 && capture.notificationKey.isNotBlank() && capture.notificationKey == idempotencyKey &&
         targetId == "notification:${capture.notificationKey}")
-    require(capture.originalCurrencyCode == "CNY" && capture.originalAmountMinor > 0)
+    require(capture.originalCurrencyCode == "CNY" && (capture.kind == "review" || (capture.originalAmountMinor ?: 0) > 0))
     Instant.parse(capture.capturedAt)
     when (capture.kind) {
         "expense" -> capture.expenseRequest()
         "repayment" -> capture.repaymentRequest()
+        "review" -> require(capture.revision == 2)
         else -> error("Unknown capture kind")
     }
     capture

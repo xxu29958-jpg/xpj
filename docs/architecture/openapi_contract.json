@@ -2885,6 +2885,64 @@
         "title": "Body_post_restore_web_income_plans__public_id__restore_post",
         "type": "object"
       },
+      "Body_review_capture_web_payment_captures__public_id__decision_post": {
+        "properties": {
+          "capture_public_id": {
+            "title": "Capture Public Id",
+            "type": "string"
+          },
+          "csrf_token": {
+            "default": "",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "origin_binding": {
+            "title": "Origin Binding",
+            "type": "string"
+          },
+          "original_amount": {
+            "default": "",
+            "title": "Original Amount",
+            "type": "string"
+          },
+          "original_currency": {
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "origin_binding",
+          "capture_public_id",
+          "expected_row_version",
+          "original_currency",
+          "kind",
+          "idempotency_key"
+        ],
+        "title": "Body_review_capture_web_payment_captures__public_id__decision_post",
+        "type": "object"
+      },
       "Body_save_correction_rate_web_expenses__expense_id__correction_rate_post": {
         "properties": {
           "amount_yuan": {
@@ -8803,6 +8861,17 @@
               }
             ],
             "title": "Payment Date"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           },
           "review_action": {
             "default": "",
@@ -21561,6 +21630,333 @@
         "title": "PairingCodeResponse",
         "type": "object"
       },
+      "PaymentCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Minor"
+          },
+          "evidence": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "field": {
+            "enum": [
+              "title",
+              "text",
+              "bigText",
+              "subText"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "expense",
+              "repayment",
+              "refund",
+              "unknown"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "field",
+          "evidence"
+        ],
+        "title": "PaymentCandidate",
+        "type": "object"
+      },
+      "PaymentCaptureCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentCandidate"
+            },
+            "maxItems": 24,
+            "title": "Candidates",
+            "type": "array"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "notification_key": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Notification Key",
+            "type": "string"
+          },
+          "original_amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount Minor"
+          },
+          "original_currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "parser_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "suggested_kind": {
+            "enum": [
+              "expense",
+              "repayment",
+              "review"
+            ],
+            "title": "Suggested Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "notification_key",
+          "source",
+          "captured_at",
+          "original_currency",
+          "suggested_kind",
+          "parser_version"
+        ],
+        "title": "PaymentCaptureCreate",
+        "type": "object"
+      },
+      "PaymentCaptureDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "expense",
+              "repayment",
+              "dismissed"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "original_amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount Minor"
+          },
+          "original_currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "kind",
+          "original_currency",
+          "reason"
+        ],
+        "title": "PaymentCaptureDecision",
+        "type": "object"
+      },
+      "PaymentCaptureResponse": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "decisions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "expense_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Id"
+          },
+          "expense_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Public Id"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "original_amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount Minor"
+          },
+          "original_currency": {
+            "title": "Original Currency",
+            "type": "string"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "repayment_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repayment Public Id"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id",
+          "row_version",
+          "source",
+          "captured_at",
+          "original_currency",
+          "original_amount_minor",
+          "merchant",
+          "kind",
+          "parser_version",
+          "candidates",
+          "expense_public_id",
+          "repayment_public_id",
+          "decisions"
+        ],
+        "title": "PaymentCaptureResponse",
+        "type": "object"
+      },
       "PendingCategorySuggestionResponse": {
         "properties": {
           "algorithm_version": {
@@ -23125,6 +23521,35 @@
         "title": "RefreshSessionResponse",
         "type": "object"
       },
+      "RepaymentAsExpense": {
+        "additionalProperties": false,
+        "properties": {
+          "notification_key": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notification Key"
+          },
+          "reason": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RepaymentAsExpense",
+        "type": "object"
+      },
       "RepaymentCalendarResponse": {
         "description": "A participant may use the rule without learning the other ledger's identity.",
         "properties": {
@@ -23784,6 +24209,17 @@
               }
             ],
             "title": "Committed Repayment Public Id"
+          },
+          "corrected_expense_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corrected Expense Id"
           },
           "created_at": {
             "anyOf": [
@@ -44746,6 +45182,374 @@
         ]
       }
     },
+    "/api/payment-captures": {
+      "get": {
+        "operationId": "list_captures_api_payment_captures_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentCaptureResponse"
+                  },
+                  "title": "Response List Captures Api Payment Captures Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "List Captures",
+        "tags": [
+          "payment-captures"
+        ]
+      },
+      "post": {
+        "operationId": "capture_api_payment_captures_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentCaptureCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentCaptureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Capture",
+        "tags": [
+          "payment-captures"
+        ]
+      }
+    },
+    "/api/payment-captures/{public_id}": {
+      "get": {
+        "operationId": "detail_api_payment_captures__public_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentCaptureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Detail",
+        "tags": [
+          "payment-captures"
+        ]
+      }
+    },
+    "/api/payment-captures/{public_id}/decision": {
+      "post": {
+        "operationId": "decide_api_payment_captures__public_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentCaptureDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentCaptureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Decide",
+        "tags": [
+          "payment-captures"
+        ]
+      }
+    },
     "/api/recurring/from-candidate": {
       "post": {
         "operationId": "post_recurring_from_candidate_api_recurring_from_candidate_post",
@@ -46541,6 +47345,122 @@
           }
         },
         "summary": "Get Repayment Draft",
+        "tags": [
+          "repayment-drafts"
+        ]
+      }
+    },
+    "/api/repayment-drafts/{public_id}/as-expense": {
+      "post": {
+        "operationId": "correct_as_expense_api_repayment_drafts__public_id__as_expense_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepaymentAsExpense"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentCaptureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Correct As Expense",
         "tags": [
           "repayment-drafts"
         ]
@@ -61186,6 +62106,56 @@
           }
         },
         "summary": "Web Overview",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/payment-captures/{public_id}/decision": {
+      "post": {
+        "operationId": "review_capture_web_payment_captures__public_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_review_capture_web_payment_captures__public_id__decision_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Capture",
         "tags": [
           "web"
         ]

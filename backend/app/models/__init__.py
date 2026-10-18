@@ -16,6 +16,7 @@ from app.models.ai_advisor import (
     BudgetAdvisorQuotaLock,
 )
 from app.models.app_meta import AppMeta
+from app.models.payment_capture import PaymentCapture
 from app.models.auth import (
     DesktopActivationAttempt,
     DeviceEnrollmentAttempt,
@@ -173,6 +174,7 @@ __all__ = [
     "RecurringOccurrenceRevision",
     "Repayment",
     "RepaymentDraft",
+    "PaymentCapture",
     "RepaymentVoid",
     "SessionRefreshAttempt",
     "RuleApplicationBatch",

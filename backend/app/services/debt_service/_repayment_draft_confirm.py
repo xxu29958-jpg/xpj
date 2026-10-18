@@ -137,6 +137,15 @@ def confirm_repayment_draft(
     draft.committed_repayment_public_id = result.repayment_public_id
     draft.resolved_at = now_utc()
     draft.resolved_by_account_id = actor_account_id
+    if draft.source_expense_public_id:
+        from app.models import PaymentCapture
+        from app.services.payment_capture_identity import append_decision, capture_query
+
+        capture = db.scalar(capture_query(tenant_id, actor_account_id)
+            .where(PaymentCapture.expense_public_id == draft.source_expense_public_id).with_for_update())
+        if capture is not None:
+            capture.repayment_public_id = draft.public_id
+            append_decision(capture, kind="repayment", reason="误记为消费，人工确认还款并冲正原消费", actor_account_id=actor_account_id)
     db.flush()
     if commit:
         db.commit()

@@ -23,6 +23,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.repository.paymentCaptureReceipt
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MessageTone
@@ -66,10 +68,11 @@ fun RepaymentDraftInboxScreen(
     onHistoryChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     onOpenDebt: (String) -> Unit,
+    onOpenExpense: (Long) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     if (state.reviewId != null) {
-        RepaymentReviewScreen(state, viewModel, onOpenDebt)
+        RepaymentReviewScreen(state, viewModel, onOpenDebt, onOpenExpense)
         return
     }
 
@@ -97,6 +100,21 @@ fun RepaymentDraftInboxScreen(
             onRefresh = viewModel::refresh,
         ),
     ) {
+        state.captureReadError?.let { item { AppStatusBanner(it, tone = MessageTone.Danger) } }
+        if (!showHistory) items(state.uncertainCaptures, key = { "capture:${it.publicId}" }) { capture ->
+            PaymentCaptureReviewCard(capture, state.resolutions.filter {
+                it.targetId == "payment-capture:${capture.publicId}" && it.status != PendingMutationStatus.Abandoned
+            }.maxByOrNull { it.id },
+                state.canModify, onSubmit = { decision, key -> viewModel.resolveCapture(capture.publicId, decision, key) },
+                onRecover = viewModel::recoverCapture)
+        }
+        if (!showHistory) state.resolutions.filter { it.status == PendingMutationStatus.Done }
+            .maxByOrNull { it.id }?.paymentCaptureReceipt()?.let { receipt ->
+                item {
+                    PaymentCaptureReceiptCard(receipt, onOpenExpense,
+                        onOpenRepayment = { viewModel.reviewEditor.openReview(it) })
+                }
+            }
         item {
             RepaymentDraftReadHeader(state, showHistory, onHistoryChange)
         }

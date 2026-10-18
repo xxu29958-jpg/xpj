@@ -19,7 +19,7 @@ class NotificationJourney:
         from sqlalchemy import select
 
         from app.database import SessionLocal
-        from app.models import Debt, Expense, Repayment, RepaymentDraft
+        from app.models import Debt, Expense, Repayment, RepaymentDraft, PaymentCapture
 
         with SessionLocal() as db:
             drafts = list(db.scalars(select(RepaymentDraft).where(RepaymentDraft.tenant_id == self.fixture.ledger_id)))
@@ -29,7 +29,10 @@ class NotificationJourney:
                         "repayment": item.committed_repayment_public_id} for item in drafts],
                     "debts": [{"id": debt.public_id, "version": debt.row_version} for debt in debts],
                     "payments": [{"id": item.public_id, "amount": item.amount_cents} for item in payments],
-                    "expenses": len(list(db.scalars(select(Expense).where(Expense.tenant_id == self.fixture.ledger_id))))}
+                    "expenses": len(list(db.scalars(select(Expense).where(Expense.tenant_id == self.fixture.ledger_id)))),
+                    "event_decisions": [{"id": row.public_id, "kind": row.kind, "expense": row.expense_public_id,
+                        "repayment": row.repayment_public_id, "decisions": row.decisions} for row in db.scalars(
+                        select(PaymentCapture).where(PaymentCapture.tenant_id == self.fixture.ledger_id))]}
 
     def goto(self, path):
         self.page.goto(self.base_url + path + ("&" if "?" in path else "?") + "ledger_id=" + self.fixture.ledger_id)
@@ -63,7 +66,7 @@ class NotificationJourney:
         assert self.facts()["payments"] == [], "Capture must not automatically record repayment"
         self.background_process_death()
 
-    def tap_notification(self, amount, expected="还款采集"):
+    def tap_notification(self, amount, expected="支付通知核对"):
         def show_shade():
             self.native.adb("shell", "cmd", "statusbar", "expand-notifications")
             return any(node.attrib.get("resource-id") == "com.android.systemui:id/notification_stack_scroller"
@@ -128,7 +131,7 @@ class NotificationJourney:
         self.native.reveal_any("核对这笔还款")
         self.native.capture("notification-second-original")
         self.native.back()
-        self.native.reveal_any("还款采集")
+        self.native.reveal_any("支付通知核对")
         self.native.capture("notification-second-returned-to-inbox")
         self.native.back()
         self.native.reveal_any("90.00")
@@ -239,6 +242,52 @@ class NotificationJourney:
                 self.native.back()
                 self.native.reveal_any("已处理 2")
 
+    def correct_notification(self):
+        """One uncertain event is retained, reviewed and corrected through the actual UI."""
+        before = self.facts()
+        self.sources.post("com.eg.android.AlipayGphone", 7)
+        wait_for(lambda: any(row["kind"] == "review" for row in self.facts()["event_decisions"]),
+            "Ambiguous money was discarded instead of becoming an actionable review")
+        assert self.facts()["expenses"] == before["expenses"]
+        assert len(self.facts()["captures"]) == len(before["captures"])
+        self.tap_notification("支付通知待核对")
+        self.native.click("还款")
+        self.native.fill("37.90", label="本次实际交易金额")
+        self.native.fill("Review-source", label="核对或更正原因")
+        self.native.click("保存核对结果")
+        wait_for(lambda: len(self.facts()["captures"]) == len(before["captures"]) + 1,
+            "Human type selection did not create its pending draft")
+        self.native.reveal_any("最近核对结果")
+        self.native.click("核对并处理", bottom=True)
+        self.native.click("这笔其实是消费")
+        self.native.fill("Purchase-not-repayment", label="核对或更正原因")
+        self.native.connection(self.port, online=False)
+        self.native.click("改为消费待核对")
+        self.native.reveal_any("原提交")
+        self.native.capture("notification-correction-offline")
+        self.background_process_death()
+        self.reopen_original_task()
+        self.native.reveal_any("核对这笔还款")
+        self.native.connection(self.port, online=True)
+        wait_for(lambda: self.facts()["expenses"] == before["expenses"] + 1,
+            "The retained correction did not resume", 120)
+        corrected = next(row for row in self.facts()["captures"] if row["original"] == 3790)
+        assert corrected["status"] == "dismissed" and corrected["repayment"] is None
+        assert self.facts()["payments"] == before["payments"], "A correction created a repayment fact"
+        decision = next(row for row in self.facts()["event_decisions"] if row["repayment"] == corrected["id"])
+        assert decision["kind"] == "expense" and len(decision["decisions"]) == 2
+        assert decision["decisions"][-1]["reason"] == "Purchase-not-repayment"
+        self.native.click("打开消费，继续核对")
+        self.native.reveal_any("核对这张小票")
+        self.native.reveal_any("37.90")
+        self.native.capture("notification-corrected-expense")
+        self.goto("/web/repayment-drafts/" + corrected["id"])
+        assert "已改为消费" in self.page.inner_text("main")
+        self.page.get_by_role("link", name="打开更正后的消费，继续核对", exact=True).click()
+        self.page.get_by_role("button", name="确认入账", exact=True).wait_for()
+        self.capture("corrected-expense")
+        self.sources.post("com.eg.android.AlipayGphone", 4)
+
     def run(self):
         from scripts.planning_notification_context import identity_changes
 
@@ -247,10 +296,12 @@ class NotificationJourney:
         self.web_original()
         reminders = NotificationReminders(self).run()
         self.appearances()
+        self.correct_notification()
         identity = identity_changes(self)
         result = self.facts()
         result["reminders"] = reminders
         result["identity"] = identity
-        assert sorted(item["original"] for item in result["captures"]) == [6000, 6100, 8000, 10000]
+        assert sorted(item["original"] for item in result["captures"]) == [3790, 6000, 6100, 8000, 10000]
+        result["notification_correction"] = "Real 37.90 purchase counterexample; ambiguous evidence retained; human classification and reason; offline correction survives process death; one pending Expense and closed RepaymentDraft; original audit and Web/native result navigation"
         result["verified_leg"] = "Actual Android notification-access grant and isolated source apps; application off/on and source allowlist; real native NLS/parser/Outbox/HTTP/notifier; cold and warm OS taps; native offline process restoration; Web retained edit and lost receipt; original money and one repayment per confirmation; real Expense confirmation; three fresh-source reminder channels refused then restored; original Budget/Backup/Recurring taps; retained unfinished input and original image share; actual ledger/account switches require the original identity; light/dark native history and original review plus wide/narrow Web"
         return result
