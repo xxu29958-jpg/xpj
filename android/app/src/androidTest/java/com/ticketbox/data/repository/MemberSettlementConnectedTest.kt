@@ -22,6 +22,7 @@ import com.ticketbox.data.remote.dto.ExpenseTimeInputDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.screens.DebtDetailNavigation
 import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
@@ -58,7 +59,7 @@ class MemberSettlementConnectedTest {
         installModels()
         compose.setContent {
             val model = detail.value ?: return@setContent
-            TicketboxTheme(skin = skin) { DebtDetailScreen(model, proposals, history, {}) }
+            TicketboxTheme(skin = skin) { DebtDetailScreen(model, proposals, history, DebtDetailNavigation({})) }
         }
         compose.waitUntil(10_000) { proposals.state.value.pendingProposal != null }
         saveConsumerArtPreview("member-debt-primary", requireNotNull(
@@ -113,7 +114,7 @@ class MemberSettlementConnectedTest {
         installModels()
         compose.setContent {
             val model = detail.value ?: return@setContent
-            TicketboxTheme(skin = skin) { DebtDetailScreen(model, proposals, history, {}) }
+            TicketboxTheme(skin = skin) { DebtDetailScreen(model, proposals, history, DebtDetailNavigation({})) }
         }
         compose.waitUntil(10_000) { proposals.state.value.error != null }
         compose.onNodeWithText("算了，不用还了").assertDoesNotExist()
@@ -137,7 +138,7 @@ class MemberSettlementConnectedTest {
         val retained = fixture.stored()
         compose.setContent {
             val model = detail.value ?: return@setContent
-            TicketboxTheme(skin = skin) { DebtDetailScreen(model, proposals, history, {}) }
+            TicketboxTheme(skin = skin) { DebtDetailScreen(model, proposals, history, DebtDetailNavigation({})) }
         }
         compose.waitUntil(10_000) { detail.value?.state?.value?.debt != null && proposals.state.value.hasReadableProposalState }
         compose.onNodeWithText("提交还款确认").performClick()

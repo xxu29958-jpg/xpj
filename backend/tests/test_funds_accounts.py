@@ -190,11 +190,24 @@ def test_native_funds_entry_keeps_private_accounts_and_consumes_actual_funding(i
         "Origin": "http://127.0.0.1:8000", "Accept": "application/json"}
     fields.update(name="浏览器信用账户", kind="credit", currency_code="CNY", opening_amount="0", visibility="private",
         opening_source="本人对账", occurred_on="2026-10-18", institution="", tail="1234")
+    rejected = {**fields, "opening_amount": "金额待核对"}
+    refused = installed.browser.post("/web/funds/save", data=rejected, headers=headers)
+    assert refused.status_code == 422 and refused.json()["draft_result"] == "rejected"
+    reviewed = installed.browser.post("/web/funds/save", data={**rejected, "review_latest": "1"}, headers=headers)
+    assert reviewed.status_code == 200, reviewed.text
+    replacement = hidden_post_forms(reviewed.text)["/web/funds/save"]
+    assert replacement["idempotency_key"] != fields["idempotency_key"]
+    assert f'data-funds-prepared-from="{fields["idempotency_key"]}"' in reviewed.text
+    assert "金额待核对" in reviewed.text
+    fields["idempotency_key"] = replacement["idempotency_key"]
     first = installed.browser.post("/web/funds/save", data=fields, headers=headers)
     assert first.status_code == 200, first.text
     receipt = first.json()["receipt"]
     assert receipt["balance_minor"] == 0
     assert installed.browser.post("/web/funds/save", data=fields, headers=headers).json() == first.json()
+    assert installed.browser.post("/web/funds/save", data={**fields, "review_latest": "1"}, headers=headers).json() == first.json()
+    changed = installed.browser.post("/web/funds/save", data={**fields, "opening_amount": "金额待核对", "review_latest": "1"}, headers=headers)
+    assert changed.status_code == 422, changed.text
     page = installed.browser.get("/web/expenses/new", headers=headers)
     assert page.status_code == 200, page.text
     form = hidden_post_forms(page.text)["/web/expenses/new"]

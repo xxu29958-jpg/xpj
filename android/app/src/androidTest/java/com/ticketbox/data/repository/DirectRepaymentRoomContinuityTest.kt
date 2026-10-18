@@ -29,6 +29,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.screens.DebtDetailNavigation
 import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.screens.settings.SyncStatusNavigation
 import com.ticketbox.ui.screens.settings.SyncStatusScreen
@@ -91,7 +92,7 @@ class DirectRepaymentRoomContinuityTest {
                         onOpenExpense = {}, onOpenInbox = {}, onOpenBudget = {}, onOpenRecurring = {},
                         onOpenGoalCreation = {}, onOpenGoalEdit = {}, onOpenRuleSubmission = {},
                         onOpenIncomeSubmission = {}, onOpenRateSubmission = {}, onRepairCorrectionRate = { _, _ -> }))
-                    else detail.value?.let { DebtDetailScreen(it, proposals, history, {}) }
+                    else detail.value?.let { DebtDetailScreen(it, proposals, history, DebtDetailNavigation({})) }
                 }
             }
             compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.singleOrNull()?.originalBindingChanged == true &&
@@ -128,7 +129,7 @@ class DirectRepaymentRoomContinuityTest {
         installModels()
         compose.setContent {
             val model = detail.value ?: return@setContent
-            TicketboxTheme(skin = skin) { DebtDetailScreen(model, proposals, history, {}) }
+            TicketboxTheme(skin = skin) { DebtDetailScreen(model, proposals, history, DebtDetailNavigation({})) }
         }
         compose.waitUntil(10_000) { detail.value?.state?.value?.canWriteActions == true }
         compose.onNodeWithText("记还款").assertIsDisplayed().performClick()
@@ -313,7 +314,7 @@ class DirectRepaymentRoomContinuityTest {
             else fixture.session.copy(bindingRevision = "new-revision")
         installModels()
         compose.setContent { detail.value?.let { model ->
-            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
+            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, DebtDetailNavigation({})) }
         } }
         compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.singleOrNull() != null }
         val state = requireNotNull(detail.value).state.value

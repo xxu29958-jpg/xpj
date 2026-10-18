@@ -14,6 +14,14 @@ from app.models import (
 )
 from app.money_contract import projection_sum_to_int, round_minor_ratio_half_up
 from app.services.credit_allocation_service import active_allocation_condition, active_credit_movements
+from app.services.time_service import ensure_utc
+
+
+def uses_credit_at(db, debt, cutoff):
+    if debt.source_type != "credit_facility":
+        return False
+    boundary = db.scalar(select(CreditFacility.adopted_at).where(CreditFacility.debt_id == debt.id))
+    return boundary is None or ensure_utc(boundary) <= ensure_utc(cutoff)
 
 
 def credit_visible(ledger_id, actor_account_id):

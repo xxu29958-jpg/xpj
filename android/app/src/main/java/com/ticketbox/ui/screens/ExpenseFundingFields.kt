@@ -10,13 +10,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -36,40 +36,21 @@ private val fundingAdapter = fundingInputAdapter
 @Composable
 internal fun ExpenseFundingFields(json: String, currency: CurrencyCode, enabled: Boolean, refund: Boolean = false, change: (String) -> Unit) {
     val repository = LocalFundsRepository.current ?: return
-    var accounts by remember { mutableStateOf<List<FinancialAccountDto>>(emptyList()) }
-    var message by remember { mutableStateOf<String?>(null) }
     var choose by rememberSaveable { mutableStateOf(false) }
     var attempt by remember { mutableStateOf(0) }
-    LaunchedEffect(repository, attempt) {
-        repository.access().collectLatest { access ->
-            accounts = emptyList()
-            if (access != null) repository.accounts(access.binding).fold(
-                onSuccess = { read -> accounts = read.value.filterNot { it.archived || !refund && it.creditKind == "one_off" }; message = if (read.fromCache) "显示上次读取的账户，保存时会核对版本。" else null },
-                onFailure = { message = it.message })
-        }
-    }
+    val options by rememberFundingAccounts(repository, refund, attempt)
+    val accounts = options.accounts
     val parsed = remember(json) { runCatching { requireNotNull(fundingAdapter.fromJson(json)) } }
     val parts = parsed.getOrDefault(emptyList())
     val editable = enabled && parsed.isSuccess
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Text(if (refund) "实际退款去向" else "付款来源（可选，支持分开付款）")
-        message?.let { Text(it) }
+        options.message?.let { Text(it) }
         if (parsed.isFailure) Text("付款来源原稿无法读取，原输入仍保留。请返回重新打开，勿重复提交。")
         parts.forEachIndexed { index, row ->
-            Text("${row.accountName} · ${row.accountCurrency}")
-            fun put(next: ExpenseFundingInput) { change(fundingAdapter.toJson(parts.toMutableList().also { it[index] = next })) }
-            OutlinedTextField(row.expenseAmount, { value -> put(row.copy(expenseAmount = value,
-                accountAmount = if (row.accountCurrency == row.expenseCurrency) value else row.accountAmount)) },
-                label = { Text("${if (refund) "原币退款组成" else "抵付消费"}（${row.expenseCurrency}）") }, enabled = editable, modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
-            if (row.accountCurrency != row.expenseCurrency) OutlinedTextField(row.accountAmount, { put(row.copy(accountAmount = it)) },
-                label = { Text("${if (refund) "实际退入 / 抵扣" else "实际扣款 / 信用使用"}（${row.accountCurrency}）") }, enabled = editable, modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
-            TextButton(onClick = { change(fundingAdapter.toJson(parts.filterIndexed { n, _ -> n != index })) }, enabled = editable) { Text("移除这项付款") }
-            if (!refund) androidx.compose.foundation.layout.Row {
-                androidx.compose.material3.Switch(row.includedInOpening, { put(row.copy(includedInOpening = it)) }, enabled = editable)
-                Text("已纳入期初，不重复扣款")
-            }
+            FundingPartFields(row, editable, refund, put = { next ->
+                change(fundingAdapter.toJson(parts.toMutableList().also { it[index] = next }))
+            }, remove = { change(fundingAdapter.toJson(parts.filterIndexed { n, _ -> n != index })) })
         }
         AppSecondaryButton(if (refund) "选择退入 / 抵扣账户" else "选择付款账户", enabled = editable && parts.size < 8) { choose = true }
         Text(if (refund) "信用账户抵扣欠款或保留溢缴款；其他账户记录实际到账。尚未到账时保留原稿。" else "未选择时只记录消费，付款来源待补。可在往来 → 资金账户添加账户。")
@@ -85,3 +66,38 @@ internal fun ExpenseFundingFields(json: String, currency: CurrencyCode, enabled:
     }, confirmButton = { TextButton(onClick = { attempt += 1 }) { Text("刷新账户") } },
         dismissButton = { TextButton(onClick = { choose = false }) { Text("返回") } })
 }
+
+@Composable
+private fun FundingPartFields(row: ExpenseFundingInput, editable: Boolean, refund: Boolean,
+    put: (ExpenseFundingInput) -> Unit, remove: () -> Unit) {
+
+            Text("${row.accountName} · ${row.accountCurrency}")
+            OutlinedTextField(row.expenseAmount, { value -> put(row.copy(expenseAmount = value,
+                accountAmount = if (row.accountCurrency == row.expenseCurrency) value else row.accountAmount)) },
+                label = { Text("${if (refund) "原币退款组成" else "抵付消费"}（${row.expenseCurrency}）") }, enabled = editable, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
+            if (row.accountCurrency != row.expenseCurrency) OutlinedTextField(row.accountAmount, { put(row.copy(accountAmount = it)) },
+                label = { Text("${if (refund) "实际退入 / 抵扣" else "实际扣款 / 信用使用"}（${row.accountCurrency}）") }, enabled = editable, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
+            TextButton(onClick = { remove() }, enabled = editable) { Text("移除这项付款") }
+            if (!refund) androidx.compose.foundation.layout.Row {
+                androidx.compose.material3.Switch(row.includedInOpening, { put(row.copy(includedInOpening = it)) }, enabled = editable)
+                Text("已纳入期初，不重复扣款")
+            }
+
+}
+
+private data class FundingAccountOptions(val accounts: List<FinancialAccountDto> = emptyList(), val message: String? = null)
+
+@Composable
+private fun rememberFundingAccounts(repository: FundsRepository, refund: Boolean, attempt: Int) =
+    produceState(FundingAccountOptions(), repository, refund, attempt) {
+        repository.access().collectLatest { access ->
+            value = FundingAccountOptions()
+            if (access != null) repository.reads.accounts(access.binding).fold(
+                onSuccess = { read -> value = FundingAccountOptions(
+                    read.value.filterNot { it.archived || !refund && it.creditKind == "one_off" },
+                    if (read.fromCache) "显示上次读取的账户，保存时会核对版本。" else null) },
+                onFailure = { value = FundingAccountOptions(message = it.message) })
+        }
+    }

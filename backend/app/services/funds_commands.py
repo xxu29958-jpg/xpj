@@ -33,6 +33,15 @@ def replay_funds(db, auth, key):
     return FinancialAccountView.model_validate(row.response_body)
 
 
+def funds_request_is_unpublished(db, auth, key):
+    # Share the command's transaction lock: an uncommitted original request must
+    # finish before absence can be used to reopen malformed retained input.
+    lock_and_revalidate_mutation_actor(db, auth, actor_account_id=auth.account_id, ledger_id=auth.ledger_id)
+    require_write_expense(auth)
+    return db.scalar(select(ApiIdempotencyKey.id).where(ApiIdempotencyKey.tenant_id == auth.ledger_id,
+        ApiIdempotencyKey.idempotency_key == key)) is None
+
+
 def finish_funds(db, auth, claim, account):
     db.flush()
     result = account_view(db, account, actor_account_id=auth.account_id, with_movements=True)

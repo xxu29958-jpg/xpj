@@ -9,7 +9,9 @@
     if (options.filter(option => names[option.value]).length < 10) return;
     options.forEach(option => {
       if (names[option.value] && option.textContent.trim() === option.value) {
-        option.textContent = option.value + " · " + names[option.value];
+        const code = option.value;
+        option.value = code;
+        option.textContent = code + " · " + names[code];
       }
     });
     const search = document.createElement("input");

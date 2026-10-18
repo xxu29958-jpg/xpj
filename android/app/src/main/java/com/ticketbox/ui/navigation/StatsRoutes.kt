@@ -403,8 +403,7 @@ private fun DebtDetailHost(
             viewModel = detailViewModel,
             proposalViewModel = proposalViewModel,
             historyViewModel = historyViewModel,
-            onBack = returnFromDetail,
-            onOpenCredit = onOpenCredit,
+            navigation = com.ticketbox.ui.screens.DebtDetailNavigation(returnFromDetail, onOpenCredit),
             splitAgreement = splitModel?.let { model -> com.ticketbox.ui.screens.SplitAgreementPanel(model) { id ->
                 if (id != displayedDebtId) relatedTrail = relatedTrail + id
             } },

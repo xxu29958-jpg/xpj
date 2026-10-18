@@ -21,7 +21,11 @@
     receiptMatches: (receipt, saved) => typeof receipt?.public_id === "string" &&
       (!saved.account_id || receipt.public_id === saved.account_id) && receipt.currency_code === saved.currency_code,
     acceptsDestination: next => next.pathname === "/web/funds",
-    updatePresentation: form => form.dispatchEvent(new Event("ticketbox:funds-state")),
+    updatePresentation: (form, state) => {
+      const choice = form.querySelector("[data-funds-choice]");
+      if (choice) choice.disabled = !state.editable;
+      form.dispatchEvent(new Event("ticketbox:funds-state"));
+    },
   };
   const form = document.querySelector("[data-funds-form]");
   if (!form) {
@@ -34,7 +38,6 @@
   function showCreditTerms() {
     const originalDebt = field("existing_debt")?.selectedOptions?.[0];
     if (originalDebt?.value && originalDebt.text === originalDebt.value) originalDebt.text = "保留原欠款选择，请重新核对";
-    if (form.querySelector("[data-funds-choice]")) form.querySelector("[data-funds-choice]").disabled = form.dataset.fundsCanWrite !== "true" || (!!form.dataset.fundsDraftPhase && form.dataset.fundsDraftPhase !== "editing");
     if (creditPanel) creditPanel.hidden = field("kind")?.value !== "credit";
   }
   field("kind")?.addEventListener("change", showCreditTerms);

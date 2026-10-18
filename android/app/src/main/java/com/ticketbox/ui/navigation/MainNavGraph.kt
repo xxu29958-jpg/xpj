@@ -105,41 +105,7 @@ internal fun MainNavGraph(
         addManualExpenseSubmissionRoute(runtime)
         addRecurringPaymentRoute(runtime)
         addCorrectionRateRoute(runtime.screenFactory) { runtime.navController.popBackStack() }
-        composable(
-            route = EXPENSE_ROUTE,
-            arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType }, notificationArgument),
-            enterTransition = { expenseEditEnter() },
-            exitTransition = { expenseEditExit() },
-            popEnterTransition = { expenseEditEnter() },
-            popExitTransition = { expenseEditExit() },
-        ) { backStackEntry ->
-            val expenseId = backStackEntry.arguments?.getLong(EXPENSE_ID_ARG) ?: return@composable
-            NotificationTaskBoundary(backStackEntry, runtime.screenFactory, { runtime.navController.popBackStack() }) {
-            ExpenseEditRoute(
-                expenseId = expenseId,
-                screenFactory = runtime.screenFactory,
-                financialDataRevision = runtime.shellState.financialDataRevision,
-                exit = ExpenseEditExitActions(
-                    onBack = { runtime.navController.popBackStack() },
-                    onCompleted = { adviceInputsChanged ->
-                        runtime.shellState.markExpenseEditCompleted()
-                        // Narrow hook (218-B4 review P2-19): only edits that moved
-                        // advisor-payload fields (amount / currency / category /
-                        // date-time, or confirmed-set membership) invalidate the
-                        // advice cache — note/tag/merchant-only edits preserve it.
-                        if (adviceInputsChanged) {
-                            runtime.screenFactory.budgetRepository.invalidateBudgetAdvice()
-                        }
-                        runtime.navController.popBackStack()
-                    },
-                ),
-                related = ExpenseFactNavigation(onOpenRepaymentDrafts = { draftPublicId ->
-                    runtime.shellState.openRepaymentDrafts(draftPublicId)
-                    runtime.navController.popBackStack()
-                }, onRepairRate = { binding, gap -> runtime.navController.navigate(correctionRateRoute(binding, gap)) }),
-            )
-            }
-        }
+        addExpenseEditRoute(runtime)
     }
     }
 }
@@ -358,3 +324,41 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.expenseEditExit():
         }
 
 private const val EXPENSE_EDIT_SLIDE_FRACTION = 0.04f
+
+private fun androidx.navigation.NavGraphBuilder.addExpenseEditRoute(runtime: MainNavigationRuntime) {
+        composable(
+            route = EXPENSE_ROUTE,
+            arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType }, notificationArgument),
+            enterTransition = { expenseEditEnter() },
+            exitTransition = { expenseEditExit() },
+            popEnterTransition = { expenseEditEnter() },
+            popExitTransition = { expenseEditExit() },
+        ) { backStackEntry ->
+            val expenseId = backStackEntry.arguments?.getLong(EXPENSE_ID_ARG) ?: return@composable
+            NotificationTaskBoundary(backStackEntry, runtime.screenFactory, { runtime.navController.popBackStack() }) {
+            ExpenseEditRoute(
+                expenseId = expenseId,
+                screenFactory = runtime.screenFactory,
+                financialDataRevision = runtime.shellState.financialDataRevision,
+                exit = ExpenseEditExitActions(
+                    onBack = { runtime.navController.popBackStack() },
+                    onCompleted = { adviceInputsChanged ->
+                        runtime.shellState.markExpenseEditCompleted()
+                        // Narrow hook (218-B4 review P2-19): only edits that moved
+                        // advisor-payload fields (amount / currency / category /
+                        // date-time, or confirmed-set membership) invalidate the
+                        // advice cache — note/tag/merchant-only edits preserve it.
+                        if (adviceInputsChanged) {
+                            runtime.screenFactory.budgetRepository.invalidateBudgetAdvice()
+                        }
+                        runtime.navController.popBackStack()
+                    },
+                ),
+                related = ExpenseFactNavigation(onOpenRepaymentDrafts = { draftPublicId ->
+                    runtime.shellState.openRepaymentDrafts(draftPublicId)
+                    runtime.navController.popBackStack()
+                }, onRepairRate = { binding, gap -> runtime.navController.navigate(correctionRateRoute(binding, gap)) }),
+            )
+            }
+        }
+}

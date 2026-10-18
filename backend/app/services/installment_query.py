@@ -5,6 +5,7 @@ from app.models import (
     AccountMovement,
     CreditSettlementAllocation,
     Expense,
+    ExpenseFunding,
     ExpenseOffsetFact,
     InstallmentAgreement,
     InstallmentDraw,
@@ -36,7 +37,10 @@ def period_paid(db, period):
     for payment in payments:
         if not payment.fee_expense_id:
             continue
-        expense = db.get(Expense, payment.fee_expense_id)
+        expense = db.scalars(select(Expense).join(ExpenseFunding, ExpenseFunding.expense_id == Expense.id)
+            .join(AccountMovement, AccountMovement.funding_id == ExpenseFunding.id).where(
+                Expense.id == payment.fee_expense_id, Expense.tenant_id == ExpenseFunding.tenant_id,
+                AccountMovement.repayment_id == payment.repayment_id)).one()
         offsets = list(db.scalars(select(ExpenseOffsetFact).where(ExpenseOffsetFact.expense_id == expense.id,
             ExpenseOffsetFact.status == "active")))
         summary = expense_financial_summary(expense, offsets)

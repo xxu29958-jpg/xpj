@@ -16,8 +16,11 @@
       parts.forEach(part => {
         const row = document.createElement("div"); row.className = "product-form-grid";
         const label = (text, input) => {
-          const field = document.createElement("label"); field.className = "product-field";
-          field.append(document.createTextNode(text), input); row.append(field); input.className = "product-input";
+          const field = document.createElement("div"); field.className = "product-field";
+          const caption = document.createElement("label"); caption.textContent = text;
+          input.id = "funding-" + part.component_id + "-" + row.childElementCount;
+          caption.htmlFor = input.id;
+          field.append(caption, input); row.append(field); input.className = "product-input";
         };
         const choice = document.createElement("select"); choice.add(new Option(refund ? "选择实际退入账户" : "选择实际付款账户", ""));
         accounts.filter(account => refund || account.credit_kind !== "one_off").forEach(account => choice.add(new Option(account.name + " · " + account.currency_code, account.public_id)));

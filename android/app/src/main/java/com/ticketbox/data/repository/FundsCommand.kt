@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
+import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.CreditPaymentDto
 import com.ticketbox.data.remote.dto.CreditPaymentVoidDto
@@ -13,11 +14,8 @@ import com.ticketbox.data.remote.dto.AccountPostingDto
 import com.ticketbox.data.remote.dto.FundsOverviewDto
 import com.ticketbox.data.remote.dto.ExpenseFundingViewDto
 import com.ticketbox.data.remote.dto.ExpenseFundingCommandDto
-import com.ticketbox.data.remote.dto.ExpenseFundingPartDto
 import com.ticketbox.data.remote.dto.InstallmentCommandDto
 import com.ticketbox.data.remote.dto.InstallmentsDto
-import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.parseExactMoneyMinor
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
@@ -63,73 +61,6 @@ internal object FundsWire {
         Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.ExistingDebtChoiceDto::class.java))
 }
 
-internal fun FundsInput.command(): FundsCommand {
-    fun amount(text: String, code: String, signed: Boolean = false): Long = requireNotNull(parseExactMoneyMinor(text,
-        requireNotNull(CurrencyCode.fromStorageKeyOrNull(code)) { "请先选择原币种。" }, allowNegative = signed)) { "请核对金额及币种的小数位。" }
-    if (mode != "funding") java.time.LocalDate.parse(date)
-    fun creditTerms(): com.ticketbox.data.remote.dto.CreditTermsDto? {
-        if (kind != "credit") return null
-        fun day(value: String): Int? = value.takeIf(String::isNotBlank)?.let {
-            requireNotNull(it.toIntOrNull()?.takeIf { day -> day in 1..31 }) { "账单日和还款日请填写 1 至 31。" }
-        }
-        if (creditLimit.isNotBlank() || availableCredit.isNotBlank()) {
-            java.time.LocalDate.parse(creditObservedOn)
-            require(creditSource.isNotBlank()) { "请填写额度查询来源。" }
-        }
-        return com.ticketbox.data.remote.dto.CreditTermsDto(creditLimit.takeIf(String::isNotBlank)?.let { amount(it, currency) },
-            availableCredit.takeIf(String::isNotBlank)?.let { amount(it, currency) }, creditObservedOn.ifBlank { null },
-            day(statementDay), day(paymentDueDay), creditSource.ifBlank { null })
-    }
-    val result = when (mode) {
-        "void_repayment" -> {
-            require(repaymentId.isNotBlank() && note.isNotBlank()) { "请保留原还款并填写撤销依据。" }
-            FundsCommand(binding = binding, accountId = accountId,
-                voidPayment = CreditPaymentVoidDto(version, repaymentId, date, note))
-        }
-        "installments" -> FundsCommand(binding = binding, accountId = accountId, installments = installmentCommand())
-        "funding" -> {
-            require(expenseId != null && note.isNotBlank()) { "请保留原消费并填写核对依据。" }
-            val parts = readExpenseFunding(fundingJson, requireNotNull(CurrencyCode.fromStorageKeyOrNull(currency)))
-            require(parts.isNotEmpty()) { "请选择实际付款来源。" }
-            FundsCommand(binding = binding, accountId = "", expenseId = expenseId,
-                funding = ExpenseFundingCommandDto(version, parts.map { ExpenseFundingPartDto(it.componentId,
-                    it.accountPublicId, it.accountRowVersion, it.expenseAmountMinor, it.accountAmountMinor,
-                    it.includedInOpening, it.expenseCurrencyCode, it.accountCurrencyCode) }, note))
-        }
-        "create" -> {
-            require(name.isNotBlank() && source.isNotBlank()) { "请填写账户名称和期初依据。" }
-            val adoption = existingDebtId.takeIf(String::isNotBlank)?.let {
-                require(kind == "credit" && opening.isNotBlank() && existingDebtVersion > 0) { "接入旧欠款时，请选择信用账户并核对实际币种和期初欠款。" }
-                com.ticketbox.data.remote.dto.DebtAdoptionDto(it, existingDebtVersion)
-            }
-            FundsCommand(binding = binding, accountId = "", create = FinancialAccountCreateDto(name.trim(), kind, currency,
-                visibility, institution.trim().ifBlank { null }, tail.trim().ifBlank { null },
-                opening.takeIf { it.isNotBlank() }?.let { amount(it, currency, signed = true) }, date, source, creditTerms(), adoption))
-        }
-        "edit" -> FundsCommand(binding = binding, accountId = accountId, edit = FinancialAccountEditDto(version,
-            name.trim(), institution.trim().ifBlank { null }, tail.trim().ifBlank { null }, archived, creditTerms()))
-        "repay" -> {
-            require(payerId.isNotBlank() && payerVersion > 0 && note.isNotBlank()) { "请选择实际扣款账户并填写说明。" }
-            val (periods, draws) = paymentAllocation()
-            FundsCommand(binding = binding, accountId = accountId, payment = CreditPaymentDto(version, calendarRevision,
-                payerId, payerVersion, amount(principal, currency), amount(paid, payerCurrency), date, note,
-                newFee.takeIf { it.isNotBlank() }?.let { amount(it, payerCurrency) } ?: 0L, feeNote.ifBlank { null },
-                periods, draws, overpayment.takeIf(String::isNotBlank)?.let { amount(it, currency) } ?: 0L))
-        }
-        "income", "loan", "transfer", "reconciliation" -> {
-            require(note.isNotBlank()) { "请填写实际来源或核对依据。" }
-            FundsCommand(binding = binding, accountId = accountId, activity = AccountPostingDto(version, mode,
-                amount(activityAmount, currency, signed = mode == "reconciliation") * if (mode == "reconciliation" && kind == "credit") -1 else 1,
-                date, note, calendarRevision, payerId.takeIf { mode == "transfer" }, payerVersion.takeIf { mode == "transfer" },
-                if (mode == "transfer") amount(otherAmount, payerCurrency) else null, applyAdjustment,
-                loanName.takeIf { mode == "loan" }, loanCurrency.takeIf { mode == "loan" },
-                if (mode == "loan") amount(loanPrincipal, loanCurrency) else null))
-        }
-        else -> error("原资金任务类型无法确认，输入仍保留。")
-    }
-    require(tail.isEmpty() || tail.matches(Regex("[0-9]{1,4}"))) { "尾号只需填写最后 1 至 4 位数字。" }
-    return result
-}
 
 internal const val FUNDS_REFUSED = "资金请求未接受："
 
@@ -137,13 +68,7 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
     override val type = PendingMutationType.FinancialAccountCommand
     private val errors = NetworkErrorHandler({ null }, "Funds")
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val original = runCatching {
-            require(row.type == type && !row.idempotencyKey.isNullOrBlank())
-            val value = requireNotNull(FundsWire.command.fromJson(row.payloadJson))
-            require(value.revision == 1 && listOf(value.create, value.edit, value.payment, value.activity, value.funding, value.installments, value.voidPayment).count { it != null } == 1)
-            require(row.expectedRowVersion == value.version && row.targetId == value.target(requireNotNull(row.idempotencyKey)))
-            value
-        }.getOrNull() ?: return DispatchResult.Failure("原资金提交无法读取，输入已保留。", definitelyRejected = true)
+        val original = original(row) ?: return DispatchResult.Failure("原资金提交无法读取，输入已保留。", definitelyRejected = true)
         return try {
             val bound = guard.bindExact(original.binding)
             val api = bound.serviceFor(requireNotNull(row.bindingOrNull()))
@@ -154,7 +79,33 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
                 bound.requireStillActive()
                 return DispatchResult.Success(receiptJson = FundsWire.funding.toJson(result))
             }
-            val result = when {
+            val result = accountResult(original, api, key)
+            bound.requireStillActive()
+            DispatchResult.Success(receiptJson = FundsWire.account.toJson(result))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: HttpException) {
+            httpFailure(error)
+        } catch (_: IOException) {
+            DispatchResult.RetryableFailure("连接中断，将核实原资金提交。")
+        } catch (_: RepositoryException) {
+            DispatchResult.RetryableFailure("原资金任务的身份已变化，请切回原身份核对。")
+        } catch (error: Exception) {
+            logNetworkWarning("Funds response unverified", error)
+            DispatchResult.RetryableFailure("尚未确认资金回执，保留原提交核实。")
+        }
+    }
+
+    private fun original(row: OutboxRow) = runCatching {
+            require(row.type == type && !row.idempotencyKey.isNullOrBlank())
+            val value = requireNotNull(FundsWire.command.fromJson(row.payloadJson))
+            require(value.revision == 1 && listOf(value.create, value.edit, value.payment, value.activity, value.funding, value.installments, value.voidPayment).count { it != null } == 1)
+            require(row.expectedRowVersion == value.version && row.targetId == value.target(requireNotNull(row.idempotencyKey)))
+            value
+        }.getOrNull()
+
+    private suspend fun accountResult(original: FundsCommand, api: ApiService, key: String): FinancialAccountDto {
+        val result = when {
                 original.create != null -> api.createFundsAccount(original.create, key)
                 original.edit != null -> api.editFundsAccount(original.accountId, original.edit, key)
                 original.activity != null -> api.postFundsActivity(original.accountId, original.activity, key)
@@ -164,13 +115,12 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
             }
             require(result.publicId.isNotBlank() && result.rowVersion > 0 &&
                 (original.accountId.isBlank() || result.publicId == original.accountId))
-            bound.requireStillActive()
-            DispatchResult.Success(receiptJson = FundsWire.account.toJson(result))
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: HttpException) {
+        return result
+    }
+
+    private fun httpFailure(error: HttpException): DispatchResult {
             val parsed = errors.parseHttpError(error)
-            when {
+            return when {
                 error.code() in setOf(408, 429) || error.code() >= 500 || parsed.errorCode == "idempotency_key_in_progress" ->
                     DispatchResult.RetryableFailure("连接中断，将核实原资金提交。")
                 parsed.errorCode == "state_conflict" -> DispatchResult.Conflict(parsed.message)
@@ -185,13 +135,5 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
                         definitelyRejected = refused, credentialRejected = error.code() == 401)
                 }
             }
-        } catch (_: IOException) {
-            DispatchResult.RetryableFailure("连接中断，将核实原资金提交。")
-        } catch (_: RepositoryException) {
-            DispatchResult.RetryableFailure("原资金任务的身份已变化，请切回原身份核对。")
-        } catch (error: Exception) {
-            logNetworkWarning("Funds response unverified", error)
-            DispatchResult.RetryableFailure("尚未确认资金回执，保留原提交核实。")
-        }
     }
 }

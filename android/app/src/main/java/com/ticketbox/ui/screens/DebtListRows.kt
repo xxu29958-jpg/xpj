@@ -76,11 +76,12 @@ internal fun DebtListRow(
                 Text(debtDetailTitle(debt), style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold)
             }
-            Text(stringResource(R.string.debt_list_card_balance,
-                debt.homeCurrencyCode, formatDisplayAmount(debt.principalAmountCents, display)),
+            Text(if (debt.sourceType == "credit_facility") stringResource(R.string.debt_list_credit_balance, debt.homeCurrencyCode)
+                else stringResource(R.string.debt_list_card_balance,
+                    debt.homeCurrencyCode, formatDisplayAmount(debt.principalAmountCents, display)),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-                // The balance line already says 未结; an open external debt adds no badge (D03).
+                // Only member or terminal-state rows need a separate status badge (D03).
                 if (debt.isMember || debt.status != DebtLinkStatuses.OPEN) DebtStatusBadge(
                     text = stringResource(if (debt.isMember) memberDebtStatusLabelRes(debt.status)
                         else debtLinkStatusLabelRes(debt.status)),

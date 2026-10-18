@@ -54,10 +54,3 @@ def adopt_existing_debt(db, *, auth, account, payload):
     # Original principal, currency, dates, repayments and public_id remain intact.
     db.add(CreditFacility(account_id=account.id, debt_id=debt.id, adopted_at=adopted_at, adopted_from=snapshot))
     return debt
-
-
-def uses_credit_at(db, debt, cutoff):
-    if debt.source_type != "credit_facility":
-        return False
-    boundary = db.scalar(select(CreditFacility.adopted_at).where(CreditFacility.debt_id == debt.id))
-    return boundary is None or ensure_utc(boundary) <= ensure_utc(cutoff)

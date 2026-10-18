@@ -18,6 +18,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.CurrencyChoiceField
 import com.ticketbox.viewmodel.FundsViewModel
+import com.ticketbox.viewmodel.choosePayer
 
 @Composable
 internal fun FundsActivityFields(input: FundsInput, accounts: List<FinancialAccountDto>, enabled: Boolean, vm: FundsViewModel) {

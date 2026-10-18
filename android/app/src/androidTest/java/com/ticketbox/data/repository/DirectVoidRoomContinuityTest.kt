@@ -17,6 +17,7 @@ import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.DebtRepayment
+import com.ticketbox.ui.screens.DebtDetailNavigation
 import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.screens.settings.syncStatusOverview
 import com.ticketbox.data.local.PendingMutationStatus
@@ -341,7 +342,7 @@ class DirectVoidRoomContinuityTest {
     private fun showDetail() {
         installDetail()
         compose.setContent { detail.value?.let { model ->
-            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
+            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, DebtDetailNavigation({})) }
         } }
     }
 

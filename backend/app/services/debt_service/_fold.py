@@ -23,8 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Debt, DebtAdjustment, DebtForgiveness, Repayment, RepaymentVoid
 from app.money_contract import fold_sum_to_int, projection_sum_to_int
-from app.services.credit_balance_projection import credit_home_balance
-from app.services.credit_history_adoption import uses_credit_at
+from app.services.credit_balance_projection import credit_home_balance, uses_credit_at
 from app.services.time_service import ensure_utc
 
 

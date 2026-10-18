@@ -242,6 +242,8 @@ def _stub_debt(**overrides) -> SimpleNamespace:
         "counterparty_type": "external",
         "direction": "i_owe",
         "status": "open",
+        "source_type": "manual",
+        "source_id": None,
         "remaining_amount_cents": 50000,
         "principal_amount_cents": 50000,
         "paid_amount_cents": 0,

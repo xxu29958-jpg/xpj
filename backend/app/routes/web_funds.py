@@ -20,6 +20,7 @@ from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
     _list_ledger_options,
+    _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
     templates,
@@ -36,7 +37,13 @@ from app.schemas.funds import (
 from app.services.credit_history_adoption import existing_debt_choices
 from app.services.currency_common import major_amount_to_minor, minor_amount_label, supported_currency_codes
 from app.services.funds_account_choices import ACCOUNT_CHOICES
-from app.services.funds_commands import claim_funds, create_account, edit_account, replay_funds
+from app.services.funds_commands import (
+    claim_funds,
+    create_account,
+    edit_account,
+    funds_request_is_unpublished,
+    replay_funds,
+)
 from app.services.funds_credit_payment import pay_credit
 from app.services.funds_payment_correction import void_credit_payment
 from app.services.funds_posting_service import post_account_activity
@@ -57,7 +64,7 @@ def _scope(request, db, ledger_id):
     return options, selected, auth
 
 
-def _render(request, db, *, ledger_id, task="", account_id="", values=None, error=None, result="", status=200, agreement_id="", repayment_id=""):
+def _render(request, db, *, ledger_id, task="", account_id="", values=None, error=None, result="", status=200, agreement_id="", repayment_id="", prepared_from=""):
     options, selected, auth = _scope(request, db, ledger_id)
     accounts = list_accounts(db, ledger_id=selected, actor_account_id=auth.account_id)
     account = account_view(db, get_account(db, ledger_id=selected, actor_account_id=auth.account_id,
@@ -99,7 +106,7 @@ def _render(request, db, *, ledger_id, task="", account_id="", values=None, erro
         defaults["draw_ids_json"] = json.dumps([row.public_id for row in installments.draws
             if row.public_id in agreement.draw_public_ids and row.remaining_minor > 0])
     ctx.update(accounts=accounts, account=account, task=task, values=defaults if values is None else values,
-        funds_scope=browser_draft_scope(db, request), funds_result=result, error=error,
+        funds_scope=browser_draft_scope(db, request), funds_result=result, funds_prepared_from=prepared_from, error=error,
         currency_options=sorted(supported_currency_codes()), money=minor_amount_label,
         funds_can_write=auth.role in {"owner", "member"}, installments=installments, account_choices=ACCOUNT_CHOICES,
         existing_debts=existing_debt_choices(db, ledger_id=selected, actor_account_id=auth.account_id) if task == "create" else [])
@@ -212,6 +219,7 @@ async def web_save_funds(request: Request, _local: None = LocalOnly, db: Session
     ledger = str(values.get("ledger_id", ""))
     try:
         auth = require_draft_binding(db, request, ledger_id=ledger, draft_scope=values.get("draft_scope", ""))
+        _require_selected_ledger_write(_list_ledger_options(db), ledger)
         if values.get("review_latest"):
             original = _execute(db, auth, values, review=True)
             if original is not None:
@@ -230,11 +238,21 @@ async def web_save_funds(request: Request, _local: None = LocalOnly, db: Session
                     raise AppError("state_conflict", "原付款币种与账户不一致，请核对原输入。", status_code=409)
                 values["payer_row_version"] = str(payer.row_version)
             return _render(request, db, ledger_id=ledger, task=values["mode"], account_id=values.get("account_id", ""),
-                values={**values, "idempotency_key": str(uuid4())}, result="prepared")
+                values={**values, "idempotency_key": str(uuid4())}, result="prepared", prepared_from=values["idempotency_key"])
         receipt = _execute(db, auth, values)
     except (AppError, ValidationError, KeyError, ValueError) as exc:
         db.rollback()
         error = exc if isinstance(exc, AppError) else AppError("invalid_request", "请检查账户、金额和日期；原输入已保留。", status_code=422)
+        if values.get("review_latest") and error.error in {"invalid_request", "currency_not_supported", "amount_invalid"}:
+            # A malformed original body cannot become valid by replaying it. Only
+            # release it for editing after proving its key has no server result.
+            # Accepted/in-flight keys continue through the original receipt path.
+            auth = require_draft_binding(db, request, ledger_id=ledger, draft_scope=values.get("draft_scope", ""))
+            if funds_request_is_unpublished(db, auth, values.get("idempotency_key", "")):
+                return _render(request, db, ledger_id=ledger, task=values.get("mode", ""),
+                    account_id=values.get("account_id", ""), values={**values, "idempotency_key": str(uuid4())},
+                    error=error.message + " 原提交未记账，请修改保留的输入后确认。", result="prepared",
+                    prepared_from=values.get("idempotency_key", ""))
         response = draft_error_response(request, error)
         if response is not None:
             return response

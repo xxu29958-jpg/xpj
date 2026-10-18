@@ -18,6 +18,8 @@ import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.FundsViewModel
+import com.ticketbox.viewmodel.start
+import com.ticketbox.viewmodel.reviseAgreement
 
 private fun amount(value: Long, currency: String) = formatDisplayAmount(value, CurrencyDisplay.forRecord(currency))
 

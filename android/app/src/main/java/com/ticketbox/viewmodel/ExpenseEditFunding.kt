@@ -64,16 +64,10 @@ fun ExpenseEditViewModel.reviewPendingFunding(funds: FundsRepository) {
             fundingInputSession?.flush()?.getOrThrow()
             val fresh = repository.fetchExpenseForFxReview(binding, expense.id).getOrThrow()
             require(fresh.status == "pending") { "这笔消费已不在待确认状态，请返回查看最新账单；原提交仍保留。" }
-            val accounts = funds.accounts(binding).getOrThrow()
+            val accounts = funds.reads.accounts(binding).getOrThrow()
             require(!accounts.fromCache) { "请联网核对账户；原金额和币种已保留。" }
-            val json = if (rejected != null) reviewedFundingInputs(rejected, accounts.value) else {
-                fundingInputAdapter.toJson(requireNotNull(fundingInputAdapter.fromJson(state.fundingJson)).map { part ->
-                    val account = accounts.value.firstOrNull { it.publicId == part.accountId && !it.archived &&
-                        it.currencyCode == part.accountCurrency }
-                    part.copy(accountVersion = account?.rowVersion ?: part.accountVersion,
-                        accountName = account?.name ?: "原付款账户（现不可用）")
-                })
-            }
+            val json = if (rejected != null) reviewedFundingInputs(rejected, accounts.value)
+                else refreshedPendingFunding(state.fundingJson, accounts.value)
             require(binding == repository.captureDeferredLedgerBinding()) { "身份已变化，请回到原账本核对。" }
             val draft = ExpenseFactInputDraft(fresh, fundingJson = json)
             if (rejected != null) {
@@ -115,3 +109,9 @@ internal suspend fun ExpenseEditViewModel.readyPendingFunding(draft: ExpenseDraf
         original
     }
 }
+
+private fun refreshedPendingFunding(json: String, accounts: List<com.ticketbox.data.remote.dto.FinancialAccountDto>) =
+    fundingInputAdapter.toJson(requireNotNull(fundingInputAdapter.fromJson(json)).map { part ->
+        val account = accounts.firstOrNull { it.publicId == part.accountId && !it.archived && it.currencyCode == part.accountCurrency }
+        part.copy(accountVersion = account?.rowVersion ?: part.accountVersion, accountName = account?.name ?: "原付款账户（现不可用）")
+    })

@@ -22,6 +22,7 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.R
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.viewmodel.DebtAction
+import com.ticketbox.ui.screens.DebtDetailNavigation
 import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.DebtDetailViewModel
@@ -57,7 +58,7 @@ class DebtAdjustmentRoomContinuityTest {
         installModels()
         compose.setContent {
             val model = detail.value ?: return@setContent
-            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
+            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, DebtDetailNavigation({})) }
         }
         compose.waitUntil(10_000) { detail.value?.state?.value?.canWriteActions == true }
         val originalDebt = fixture.network.current
@@ -136,7 +137,7 @@ class DebtAdjustmentRoomContinuityTest {
         installModels()
         compose.setContent {
             val model = detail.value ?: return@setContent
-            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
+            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, DebtDetailNavigation({})) }
         }
         compose.waitUntil(10_000) { detail.value?.state?.value?.debt != null }
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("调整本金"))
@@ -319,7 +320,7 @@ class DebtAdjustmentRoomContinuityTest {
             else fixture.session.copy(bindingRevision = "new-revision")
         installModels()
         compose.setContent { detail.value?.let { model ->
-            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, {}) }
+            TicketboxTheme(skin = AppSkin.Paper) { DebtDetailScreen(model, proposals, history, DebtDetailNavigation({})) }
         } }
         compose.waitUntil(10_000) { detail.value?.state?.value?.pendingWrites?.singleOrNull() != null }
         val state = requireNotNull(detail.value).state.value
