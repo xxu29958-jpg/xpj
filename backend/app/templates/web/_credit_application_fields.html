@@ -1,0 +1,16 @@
+{% if task == 'apply_credit' %}
+<p class="product-feedback">使用账户里已有的钱，不新增扣款或消费。请核对下面的来源、欠款和金额；涉及分期时，还需核对剩余排期。</p>
+{% for field, label, choices in [('credit_source_id', '使用哪笔余额', account.credit_applications.credits), ('credit_draw_id', '抵扣哪笔欠款或费用', account.credit_applications.obligations)] %}
+<div class="product-field"><label for="{{ field }}">{{ label }}</label><select class="product-input" id="{{ field }}" name="{{ field }}" required data-credit-application-choice>
+<option value="">请选择</option>
+{% for choice in choices %}<option value="{{ choice.public_id }}" {{ 'selected' if values[field] == choice.public_id }}>{{ choice.note }} · {{ choice.occurred_on }} · 剩余 {{ money(choice.remaining_minor, account.currency_code) }}</option>{% endfor %}
+{% if values[field] and values[field] not in choices|map(attribute='public_id')|list %}<option value="{{ values[field] }}" selected>原选择已变化，请重新核对</option>{% endif %}
+</select></div>
+{% endfor %}
+<div class="product-field"><label for="credit-apply-amount">抵扣金额（{{ account.currency_code }}）</label><input class="product-input" id="credit-apply-amount" name="activity_amount" value="{{ values.activity_amount }}" inputmode="decimal" required></div>
+{% else %}
+{% for row in account.credit_applications.history if row.public_id == values.credit_review_id %}
+<div class="product-surface"><strong>{{ row.credit_note }} → {{ row.draw_note }}</strong><p>原抵扣 {{ money(row.amount_minor, account.currency_code) }} · 当前生效 {{ money(row.applied_minor, account.currency_code) }}</p><p class="meta">原核对依据：{{ row.reason }}</p>{% if row.void_reason %}<p>已撤销：{{ row.void_reason }}</p>{% endif %}</div>
+{% endfor %}
+<p>撤销这条抵扣后，原余额恢复待分配，原欠款恢复待核对；不会撤销原退款或原付款。</p>{% endif %}
+<div class="product-field"><label for="credit-apply-reason">{{ '核对说明（必填）' if task == 'apply_credit' else '撤销原因（必填）' }}</label><input class="product-input" id="credit-apply-reason" name="note" value="{{ values.note }}" maxlength="255" required></div>

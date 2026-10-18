@@ -12,7 +12,7 @@ from app.tenants import AuthContext
 
 FUNDS_COLLECTION_SCOPES = {
     **dict.fromkeys(("financial_accounts", "credit_facilities", "expense_funding", "account_movements",
-        "credit_settlement_allocations", "account_balance_observations", "installment_agreements",
+        "credit_settlement_allocations", "credit_application_reviews", "account_balance_observations", "installment_agreements",
         "credit_fee_obligations", "installment_draws", "installment_periods", "installment_payments", "envelope_books",
         "envelope_sources", "envelope_allocations", "envelope_revisions"), "ledger"),
     "payment_captures": "account",
@@ -60,9 +60,11 @@ def funds_queries(auth: AuthContext, record: Callable[[type[Base], str, ColumnEl
         (m.AccountMovement, "id public_id tenant_id account_id event_public_id component_id kind amount_minor home_amount_cents "
             "home_currency_code valuation_snapshot settlement_targets occurred_on note actor_account_id funding_id repayment_id "
             "offset_id debt_id reversal_of_id created_at", m.AccountMovement.id.in_(movements)),
-        (m.CreditSettlementAllocation, "id repayment_id credit_movement_id draw_movement_id amount_minor home_amount_cents "
+        (m.CreditSettlementAllocation, "id repayment_id review_id credit_movement_id draw_movement_id amount_minor home_amount_cents "
             "invalidated_by_movement_id created_at", and_(m.CreditSettlementAllocation.credit_movement_id.in_(movements),
             m.CreditSettlementAllocation.draw_movement_id.in_(movements))),
+        (m.CreditApplicationReview, "id public_id account_id credit_movement_id draw_movement_id amount_minor reason "
+            "actor_account_id created_at voided_at void_reason void_actor_account_id", m.CreditApplicationReview.account_id.in_(accounts)),
         (m.AccountBalanceObservation, "id account_id observed_minor recorded_minor occurred_on source adjustment_movement_id "
             "actor_account_id created_at", m.AccountBalanceObservation.account_id.in_(accounts)),
         (m.CreditFeeObligation, "expense_id account_id period_id", m.CreditFeeObligation.account_id.in_(accounts)),

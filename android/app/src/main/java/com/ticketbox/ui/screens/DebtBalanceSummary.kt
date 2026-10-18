@@ -92,7 +92,7 @@ internal fun DebtRemainingCard(debt: Debt) {
                 modifier = Modifier.fillMaxWidth(), role = AppAmountRole.Hero)
             DebtStatusBadge(
                 text = stringResource(if (debt.isMember) memberDebtStatusLabelRes(debt.status)
-                    else debtLinkStatusLabelRes(debt.status)),
+                    else debtLinkStatusLabelRes(debt.status, debt.sourceType)),
                 tone = if (debt.isMember) memberDebtStatusTone(debt.status) else debtLinkStatusTone(debt.status),
             )
             if (debt.isMember) Text(

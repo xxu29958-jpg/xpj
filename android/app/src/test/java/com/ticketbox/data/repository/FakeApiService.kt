@@ -89,6 +89,8 @@ internal class FakeApiService(
     override suspend fun fundsAccountChoices(): List<com.ticketbox.data.remote.dto.AccountChoiceDto> = error("Funds response not configured")
     override suspend fun existingFundDebts(): List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto> = error("Funds response not configured")
     override suspend fun voidCreditPayment(id: String, body: com.ticketbox.data.remote.dto.CreditPaymentVoidDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")
+    override suspend fun applyRetainedCredit(id: String, body: com.ticketbox.data.remote.dto.CreditApplicationCreateDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")
+    override suspend fun voidCreditApplication(id: String, body: com.ticketbox.data.remote.dto.CreditApplicationVoidDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")
     override suspend fun incurCreditFee(id: String, body: com.ticketbox.data.remote.dto.CreditFeeCreateDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")
     override suspend fun installments(id: String): com.ticketbox.data.remote.dto.InstallmentsDto = error("Funds response not configured")
     override suspend fun saveInstallments(id: String, body: com.ticketbox.data.remote.dto.InstallmentCommandDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")

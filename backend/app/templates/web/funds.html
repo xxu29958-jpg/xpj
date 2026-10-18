@@ -16,7 +16,7 @@
 {% endif %}
 {% set kinds = {'cash': '现金', 'bank': '银行卡', 'wallet': '余额账户', 'credit': '信用账户'} %}
 {% set kind_icons = {'cash': 'banknote', 'bank': 'landmark', 'wallet': 'wallet', 'credit': 'credit-card'} %}
-{% set actions = {'incur_fee': '记录已发生费用', 'create': '添加账户', 'edit': '编辑账户', 'repay': '记录还款', 'income': '记录实际收入', 'loan': '记录贷款到账', 'transfer': '账户间转账', 'reconciliation': '核对余额', 'installments': '记录真实分期', 'void_repayment': '撤销错误的还款'} %}
+{% set actions = {'apply_credit': '用余额抵扣欠款', 'void_credit': '撤销余额抵扣', 'incur_fee': '记录已发生费用', 'create': '添加账户', 'edit': '编辑账户', 'repay': '记录还款', 'income': '记录实际收入', 'loan': '记录贷款到账', 'transfer': '账户间转账', 'reconciliation': '核对余额', 'installments': '记录分期', 'void_repayment': '撤销错误的还款'} %}
 {% block title %}资金账户 · 小票夹{% endblock %}
 {% block page_scripts %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
@@ -42,7 +42,7 @@
 {{ csrf_field|safe }}
 <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
 <input type="hidden" name="draft_scope" value="{{ funds_scope|tojson|forceescape }}">
-{% set editable = ['activity_amount', 'note', 'fee_period_id', 'occurred_on'] if task == 'incur_fee' else ['note', 'occurred_on'] if task == 'void_repayment' else ['name', 'opening_source', 'occurred_on'] if task == 'installments' else ['name', 'institution', 'tail', 'archived'] if task == 'edit' else ['payer_public_id', 'principal_amount', 'payer_amount', 'payer_fee_amount', 'occurred_on', 'note', 'new_fee', 'fee_note', 'overpayment'] if task == 'repay' else ['activity_amount', 'other_amount', 'apply_adjustment', 'loan_name', 'loan_currency_code', 'loan_principal_amount', 'payer_public_id', 'note', 'occurred_on'] if task in ['income', 'loan', 'transfer', 'reconciliation'] else ['name', 'kind', 'currency_code', 'visibility', 'institution', 'tail', 'opening_amount', 'occurred_on', 'opening_source'] %}
+{% set editable = ['credit_source_id', 'credit_draw_id', 'activity_amount', 'note'] if task == 'apply_credit' else ['note'] if task == 'void_credit' else ['activity_amount', 'note', 'fee_period_id', 'occurred_on'] if task == 'incur_fee' else ['note', 'occurred_on'] if task == 'void_repayment' else ['name', 'opening_source', 'occurred_on'] if task == 'installments' else ['name', 'institution', 'tail', 'archived'] if task == 'edit' else ['payer_public_id', 'principal_amount', 'payer_amount', 'payer_fee_amount', 'occurred_on', 'note', 'new_fee', 'fee_note', 'overpayment'] if task == 'repay' else ['activity_amount', 'other_amount', 'apply_adjustment', 'loan_name', 'loan_currency_code', 'loan_principal_amount', 'payer_public_id', 'note', 'occurred_on'] if task in ['income', 'loan', 'transfer', 'reconciliation'] else ['name', 'kind', 'currency_code', 'visibility', 'institution', 'tail', 'opening_amount', 'occurred_on', 'opening_source'] %}
 {% if task in ['create', 'edit'] %}{% set editable = editable + ['credit_limit', 'available_credit', 'credit_observed_on', 'credit_source', 'statement_day', 'payment_due_day'] %}{% endif %}
 {% if task == 'create' %}{% set editable = editable + ['existing_debt'] %}{% endif %}
 {% if task == 'edit' %}{% set editable = editable + ['edit_visibility'] %}{% endif %}
@@ -89,12 +89,14 @@
 <div class="product-field"><label for="fund-archive">账户状态</label><select class="product-input" id="fund-archive" name="archived"><option value="false" {{ 'selected' if values.archived == 'false' }}>正在使用</option><option value="true" {{ 'selected' if values.archived == 'true' }}>归档，保留全部历史</option></select></div>
 {% endif %}
 {% include '_funds_credit_terms.html' %}
+{% elif task in ['apply_credit', 'void_credit'] %}
+{% include '_credit_application_fields.html' %}
 {% elif task == 'incur_fee' %}
 {% include '_credit_fee_fields.html' %}
 {% elif task in ['income', 'loan', 'transfer', 'reconciliation'] %}
 {% include '_funds_post_fields.html' %}
 {% else %}
-<p class="product-feedback">{{ account.name }} · 当前{% if account.balance_minor is none %}欠款待核对{% elif account.balance_minor <= 0 %}欠款 {{ money(-account.balance_minor, account.currency_code) }}{% else %}溢缴款 {{ money(account.balance_minor, account.currency_code) }}{% endif %}。还本金只改变账户和欠款，不再计一次消费。</p>
+<p class="product-feedback">{{ account.name }} · 当前{% if account.balance_minor is none %}欠款待核对{% elif account.balance_minor <= 0 %}已记录净欠款 {{ money(-account.balance_minor, account.currency_code) }}{% else %}已记录净余额 {{ money(account.balance_minor, account.currency_code) }}{% endif %}。还本金只改变账户和欠款，不再计一次消费。</p>
 <div class="product-field"><label for="fund-payer">实际扣款账户</label><select class="product-input" id="fund-payer" name="payer_public_id" required><option value="">选择银行卡、余额或现金</option>{% for row in accounts if row.kind != 'credit' and not row.archived %}<option value="{{ row.public_id }}" data-version="{{ row.row_version }}" data-currency="{{ row.currency_code }}" {{ 'selected' if values.payer_public_id == row.public_id }}>{{ row.name }} · {{ row.currency_code }}</option>{% endfor %}</select></div>
 <div class="product-field"><label for="fund-principal">清偿本金（{{ account.currency_code }}）</label><input class="product-input" id="fund-principal" name="principal_amount" value="{{ values.principal_amount }}" inputmode="decimal" required><p class="hint">仅付费用时本金填 0。超过欠款的部分请在下方明确分配为溢缴款。</p></div>
 <div class="product-field"><label for="fund-paid">本金实际扣款 <span data-funds-payer-currency>{{ values.payer_currency_code }}</span></label><input class="product-input" id="fund-paid" name="payer_amount" value="{{ values.payer_amount }}" inputmode="decimal" required><p class="hint">这里只填写偿还本金的扣款；下方新费用另加到实际支出。</p></div>
@@ -104,7 +106,7 @@
 {% include '_credit_fee_payment_fields.html' %}
 {% include '_installment_payment_fields.html' %}
 {% endif %}
-{% if task != 'edit' %}<div class="product-field"><label for="fund-date">{{ '期初日期' if task == 'create' else '实际日期' }}</label><input class="product-input" type="date" id="fund-date" name="occurred_on" value="{{ values.occurred_on }}" required></div>{% endif %}
+{% if task not in ['edit', 'apply_credit', 'void_credit'] %}<div class="product-field"><label for="fund-date">{{ '期初日期' if task == 'create' else '实际日期' }}</label><input class="product-input" type="date" id="fund-date" name="occurred_on" value="{{ values.occurred_on }}" required></div>{% endif %}
 </div>
 <p class="hint" data-funds-draft-status role="status"></p>
 <p class="hint" data-funds-review-note hidden>核对只准备继续编辑，保留原输入；确认前不会改变账户或记账。</p>
@@ -115,19 +117,29 @@
 </form>
 {% elif account %}
 <section class="product-section"><h2 class="product-panel-title">{{ account.name }}{% if account.tail %} · {{ account.tail }}{% endif %}</h2>
-<p class="product-amount">{% if account.balance_minor is none %}余额待核对{% elif account.kind == 'credit' and account.balance_minor <= 0 %}欠款 {{ money(-account.balance_minor, account.currency_code) }}{% elif account.kind == 'credit' %}溢缴款 {{ money(account.balance_minor, account.currency_code) }}{% else %}{{ money(account.balance_minor, account.currency_code) }}{% endif %}</p>
-<p class="meta">{{ kinds[account.kind] }} · {{ '仅自己' if account.visibility == 'private' else '当前账本共享' }} · 期初 {{ account.opening_date }} · {{ account.opening_source }}</p>
-{% if account.unallocated_credit_minor %}<p class="hint">其中 {{ money(account.unallocated_credit_minor, account.currency_code) }} 是尚未指定到逐笔本金的退款或预付款。已计入账户余额，不表示其它购买或分期期次已经还清。</p>{% endif %}
+<p class="product-amount">{% if account.balance_minor is none %}余额待核对{% elif account.kind == 'credit' and account.balance_minor <= 0 %}已记录净欠款 {{ money(-account.balance_minor, account.currency_code) }}{% elif account.kind == 'credit' %}已记录净余额 {{ money(account.balance_minor, account.currency_code) }}{% else %}{{ money(account.balance_minor, account.currency_code) }}{% endif %}</p>
+<p class="meta">{{ kinds[account.kind] }} · {{ '仅自己' if account.visibility == 'private' else '当前账本共享' }}</p>
+{% if account.unallocated_credit_minor %}<p class="hint">退款或预付款还剩 {{ money(account.unallocated_credit_minor, account.currency_code) }}，已计入上方余额。核对用途后可抵扣欠款。</p>{% endif %}
+{% if account.balance_minor is none %}<p class="hint">期初未核对；已记录净变动 {{ money(account.recorded_change_minor, account.currency_code) }}，这不是可用余额。</p>{% endif %}
+{% if account.observation %}<p class="meta">上次核对 {{ account.observation.occurred_on }} · {{ account.observation.source }}：{{ money(account.observation.observed_minor, account.currency_code) }}；待核对差额 {{ money(account.observation.difference_minor, account.currency_code) }}。{% if account.observation.adjusted %}已保留核对更正记录。{% endif %}</p>{% endif %}
+{% if not account.archived and funds_can_write %}<div class="product-task-actions">
+{% for key in (['repay'] if account.kind == 'credit' else ['income', 'transfer']) %}<a class="product-button {{ 'product-button--primary' if key == 'repay' else 'product-button--quiet' }}" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&task={{ key }}&account_id={{ account.public_id }}">{{ actions[key] }}</a>{% endfor %}
+{% if account.credit_applications and account.credit_applications.credits and account.credit_applications.obligations %}<a class="product-button product-button--quiet" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&task=apply_credit&account_id={{ account.public_id }}">用余额抵扣欠款</a>{% endif %}</div>{% endif %}
+<details class="fact-disclosure"><summary>账户资料与更多操作</summary>
+<p class="meta">期初 {{ account.opening_date }} · {{ account.opening_source }}</p>
 {% if account.credit_terms %}{% set terms = account.credit_terms %}<p>授信额度 {{ money(terms.credit_limit_minor, account.currency_code) if terms.credit_limit_minor is not none else '未记录' }} · 可用额度 {{ money(terms.available_credit_minor, account.currency_code) if terms.available_credit_minor is not none else '未记录' }}</p>
 {% if terms.observed_on %}<p class="meta">{{ terms.observed_on }} 查询 · {{ terms.source }}</p>{% endif %}
 {% if terms.statement_day or terms.payment_due_day %}<p class="meta">每月账单日 {{ terms.statement_day or '未记录' }} · 还款日 {{ terms.payment_due_day or '未记录' }}，以实际账单为准。</p>{% endif %}{% endif %}
-{% if account.balance_minor is none %}<p class="hint">期初未核对；已记录净变动 {{ money(account.recorded_change_minor, account.currency_code) }}，这不是可用余额。</p>{% endif %}
-{% if account.observation %}<p class="meta">外部快照 {{ account.observation.occurred_on }} · {{ account.observation.source }}：{{ money(account.observation.observed_minor, account.currency_code) }}；待解释差异 {{ money(account.observation.difference_minor, account.currency_code) }}。{% if account.observation.adjusted %}已保留核对更正记录。{% endif %}</p>{% endif %}
-<div class="product-task-actions">{% if account.can_edit and funds_can_write %}<a class="product-button product-button--quiet" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&task=edit&account_id={{ account.public_id }}">编辑账户</a>{% endif %}
-{% if not account.archived and funds_can_write %}{% for key in (['repay', 'incur_fee'] if account.kind == 'credit' else ['income', 'transfer', 'loan']) + (['reconciliation'] if account.can_edit else []) %}<a class="product-button product-button--quiet" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&task={{ key }}&account_id={{ account.public_id }}">{{ actions[key] }}</a>{% endfor %}{% endif %}</div>
+{% if funds_can_write %}<div class="product-task-actions">
+{% if account.can_edit %}<a class="product-button product-button--quiet" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&task=edit&account_id={{ account.public_id }}">编辑账户</a>{% endif %}
+{% if not account.archived %}
+{% for key in (['incur_fee'] if account.kind == 'credit' else ['loan']) + (['reconciliation'] if account.can_edit else []) %}<a class="product-button product-button--quiet" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&task={{ key }}&account_id={{ account.public_id }}">{{ actions[key] }}</a>{% endfor %}
+{% if account.kind == 'credit' and not installments.agreements %}<a class="product-button product-button--quiet" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&task=installments&account_id={{ account.public_id }}">记录分期合约</a>{% endif %}
+{% endif %}</div>{% endif %}</details>
 </section>
 {% if account.fee_obligations %}<section class="product-section"><h2 class="product-panel-title">已发生费用</h2><p class="hint">已计入消费和欠款；付款只清偿，不新增消费。</p>{% for fee in account.fee_obligations %}<p>{{ fee.note }} · {{ fee.occurred_on }} · 待付 {{ money(fee.remaining_minor, account.currency_code) }} <a href="/web/expenses/{{ fee.expense_id }}/edit?ledger_id={{ selected_ledger_id|urlencode }}">查看原费用</a></p>{% endfor %}</section>{% endif %}
-{% if installments %}{% include '_installments_read.html' %}{% endif %}
+{% include '_credit_applications_read.html' %}
+{% if installments and installments.agreements %}{% include '_installments_read.html' %}{% endif %}
 <section class="product-section"><h2 class="product-panel-title">实际变动</h2>
   <div class="product-entry-list">
     {% for row in account.movements %}
@@ -151,7 +163,7 @@
   <a class="product-entry" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&account_id={{ row.public_id }}{% if source_capture %}&task=repay&source_repayment_draft_id={{ source_capture.public_id }}{% endif %}">
     <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg?v={{ asset_version }}#{{ kind_icons[row.kind] }}"/></svg></span>
     <span class="product-entry-copy">
-      <span class="product-entry-heading"><strong>{{ row.name }}{% if row.tail %} · {{ row.tail }}{% endif %}</strong><strong class="product-entry-amount">{% if row.balance_minor is none %}待核对{% elif row.kind == 'credit' and row.balance_minor <= 0 %}欠款 {{ money(-row.balance_minor, row.currency_code) }}{% elif row.kind == 'credit' %}溢缴款 {{ money(row.balance_minor, row.currency_code) }}{% else %}{{ money(row.balance_minor, row.currency_code) }}{% endif %}</strong></span>
+      <span class="product-entry-heading"><strong>{{ row.name }}{% if row.tail %} · {{ row.tail }}{% endif %}</strong><strong class="product-entry-amount">{% if row.balance_minor is none %}待核对{% elif row.kind == 'credit' and row.balance_minor <= 0 %}已记录净欠款 {{ money(-row.balance_minor, row.currency_code) }}{% elif row.kind == 'credit' %}已记录净余额 {{ money(row.balance_minor, row.currency_code) }}{% else %}{{ money(row.balance_minor, row.currency_code) }}{% endif %}</strong></span>
       <span>{{ kinds[row.kind] }} · {{ '仅自己' if row.visibility == 'private' else '账本共享' }}{% if row.archived %} · 已归档{% endif %}</span>
     </span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>

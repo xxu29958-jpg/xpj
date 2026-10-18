@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.errors import AppError
 from app.models import AccountMovement, CreditFacility, CreditSettlementAllocation, Debt, FinancialAccount
-from app.services.credit_allocation_service import allocate_credit
+from app.services.credit_allocation_service import active_allocation_condition, allocate_credit
 from app.services.funds_commands import movement, require_account_version
 from app.services.funds_query import account_balance, get_account
 from app.services.ledger_calendar_service import current_ledger_date
@@ -85,7 +85,7 @@ def _reversed_allocations(db: Session, rows: list[AccountMovement], account_ids:
     affected = set(roots.values())
     allocations: dict[int, list[CreditSettlementAllocation]] = {}
     for allocation in db.scalars(select(CreditSettlementAllocation).where(
-            CreditSettlementAllocation.invalidated_by_movement_id.is_(None),
+            active_allocation_condition(),
             or_(CreditSettlementAllocation.credit_movement_id.in_(affected),
                 CreditSettlementAllocation.draw_movement_id.in_(affected)))):
         for identifier in {allocation.credit_movement_id, allocation.draw_movement_id} & affected:

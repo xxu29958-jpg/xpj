@@ -19,6 +19,7 @@ from app.routes._web_funds_capture import capture_context, funds_result_href
 from app.routes._web_funds_values import (
     account_create_payload,
     account_edit_payload,
+    credit_application_payload,
     credit_fee_payload,
     form_defaults,
     payment_payload,
@@ -35,6 +36,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas.funds import CreditPaymentVoid, FinancialAccountView
+from app.services.credit_application_commands import apply_retained_credit, void_credit_application
 from app.services.credit_fee_commands import incur_credit_fee
 from app.services.credit_history_adoption import existing_debt_choices
 from app.services.currency_common import minor_amount_label, supported_currency_codes
@@ -79,6 +81,9 @@ def _render(request: Request, db: Session, *, ledger_id: str, task: str = "", ac
     installments = installments_view(db, get_account(db, ledger_id=selected, actor_account_id=auth.account_id,
         public_id=account_id)) if account and account.kind == "credit" else None
     defaults.update(selected_installment_values(installments, agreement_id, defaults["currency_code"]))
+    if task == "void_credit":
+        defaults["credit_review_id"] = request.query_params.get("application_id", "")
+        defaults["task_id"] += ":" + defaults["credit_review_id"]
     source_id = values.get("source_repayment_draft_id", "") if values is not None else request.query_params.get("source_repayment_draft_id", "")
     capture, captured_values = capture_context(db, auth, source_id, account)
     if capture and task in {"repay", "create"}:
@@ -97,7 +102,7 @@ def _render(request: Request, db: Session, *, ledger_id: str, task: str = "", ac
 @router.get("")
 def web_funds(request: Request, ledger_id: str = "", task: str = "", account_id: str = "",
         agreement_id: str = "", repayment_id: str = "", _local: None = LocalOnly, db: Session = Depends(get_db)):
-    if task not in {"", "create", "edit", "repay", "income", "loan", "transfer", "reconciliation", "installments", "void_repayment", "incur_fee"} or (task not in {"", "create"} and not account_id):
+    if task not in {"", "create", "edit", "repay", "income", "loan", "transfer", "reconciliation", "installments", "void_repayment", "incur_fee", "apply_credit", "void_credit"} or (task not in {"", "create"} and not account_id):
         raise AppError("invalid_request", "请从资金账户选择要办理的事项。", status_code=422)
     return _render(request, db, ledger_id=ledger_id, task=task, account_id=account_id, agreement_id=agreement_id, repayment_id=repayment_id)
 
@@ -116,6 +121,10 @@ def _run(db, auth, values, payload, handler, operation, review) -> FinancialAcco
 
 def _execute(db: Session, auth: AuthContext, values: dict[str, str], *, review: bool = False) -> FinancialAccountView | None:
     mode = values["mode"]
+    if mode in {"apply_credit", "void_credit"}:
+        handler, operation = ((apply_retained_credit, "apply_retained_credit") if mode == "apply_credit"
+            else (void_credit_application, "void_credit_application"))
+        return _run(db, auth, values, credit_application_payload(db, auth, values), handler, operation, review)
     if mode == "incur_fee":
         return _run(db, auth, values, credit_fee_payload(db, auth, values), incur_credit_fee, "incur_credit_fee", review)
     if mode == "void_repayment":

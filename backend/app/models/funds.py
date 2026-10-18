@@ -121,6 +121,7 @@ class CreditSettlementAllocation(Base):
     __table_args__ = (*money_check_constraints_for_table("credit_settlement_allocations"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     repayment_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("repayments.id"))
+    review_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("credit_application_reviews.id"))
     credit_movement_id: Mapped[int] = mapped_column(Integer, ForeignKey("account_movements.id"), nullable=False)
     draw_movement_id: Mapped[int] = mapped_column(Integer, ForeignKey("account_movements.id"), nullable=False)
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)

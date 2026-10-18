@@ -2,6 +2,7 @@
 from app.money_contract_types import MoneyColumn, MoneySign
 
 FUNDS_MONEY_COLUMNS = (
+    MoneyColumn("credit_application_reviews", "amount_minor", MoneySign.POSITIVE, False),
     MoneyColumn("envelope_allocations", "allocated_minor", MoneySign.NONNEGATIVE, False),
     MoneyColumn("financial_accounts", "credit_limit_minor", MoneySign.NONNEGATIVE, True),
     MoneyColumn("financial_accounts", "available_credit_minor", MoneySign.NONNEGATIVE, True),

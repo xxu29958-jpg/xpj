@@ -12051,6 +12051,202 @@
         "title": "ConfirmedOffsetStreamProjection",
         "type": "object"
       },
+      "CreditApplicationChoice": {
+        "properties": {
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "remaining_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Remaining Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "public_id",
+          "note",
+          "occurred_on",
+          "remaining_minor"
+        ],
+        "title": "CreditApplicationChoice",
+        "type": "object"
+      },
+      "CreditApplicationCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "credit_public_id": {
+            "minLength": 1,
+            "title": "Credit Public Id",
+            "type": "string"
+          },
+          "draw_public_id": {
+            "minLength": 1,
+            "title": "Draw Public Id",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "credit_public_id",
+          "draw_public_id",
+          "amount_minor",
+          "reason"
+        ],
+        "title": "CreditApplicationCreate",
+        "type": "object"
+      },
+      "CreditApplicationHistory": {
+        "properties": {
+          "amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "applied_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Applied Minor",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "credit_note": {
+            "title": "Credit Note",
+            "type": "string"
+          },
+          "draw_note": {
+            "title": "Draw Note",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "void_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Void Reason"
+          }
+        },
+        "required": [
+          "public_id",
+          "credit_note",
+          "draw_note",
+          "amount_minor",
+          "applied_minor",
+          "reason",
+          "created_at",
+          "void_reason"
+        ],
+        "title": "CreditApplicationHistory",
+        "type": "object"
+      },
+      "CreditApplicationVoid": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "review_public_id": {
+            "minLength": 1,
+            "title": "Review Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "review_public_id",
+          "reason"
+        ],
+        "title": "CreditApplicationVoid",
+        "type": "object"
+      },
+      "CreditApplicationsView": {
+        "properties": {
+          "credits": {
+            "items": {
+              "$ref": "#/components/schemas/CreditApplicationChoice"
+            },
+            "title": "Credits",
+            "type": "array"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/CreditApplicationHistory"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "obligations": {
+            "items": {
+              "$ref": "#/components/schemas/CreditApplicationChoice"
+            },
+            "title": "Obligations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "credits",
+          "obligations",
+          "history"
+        ],
+        "title": "CreditApplicationsView",
+        "type": "object"
+      },
       "CreditDrawPaymentPart": {
         "additionalProperties": false,
         "properties": {
@@ -18462,6 +18658,16 @@
           "can_edit": {
             "title": "Can Edit",
             "type": "boolean"
+          },
+          "credit_applications": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreditApplicationsView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "credit_kind": {
             "anyOf": [
@@ -42890,6 +43096,224 @@
           }
         },
         "summary": "Post Funds Activity",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
+    "/api/funds/accounts/{public_id}/credit-applications": {
+      "post": {
+        "operationId": "post_credit_application_api_funds_accounts__public_id__credit_applications_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditApplicationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccountView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Credit Application",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
+    "/api/funds/accounts/{public_id}/credit-applications/void": {
+      "post": {
+        "operationId": "post_credit_application_void_api_funds_accounts__public_id__credit_applications_void_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditApplicationVoid"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccountView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Credit Application Void",
         "tags": [
           "funds"
         ]

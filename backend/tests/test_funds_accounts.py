@@ -160,6 +160,7 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     assert extra.status_code == 201, extra.text
     credit = client.get("/api/funds/accounts/" + credit["public_id"], headers=identity.app_headers).json()
     assert (credit["balance_minor"], credit["unallocated_credit_minor"]) == (1000, 1500)
+    _apply_and_correct_spare_credit(client, identity, credit)
     debt = client.get("/api/debts/" + credit["debt_public_id"], headers=identity.app_headers)
     assert debt.status_code == 200, debt.text
     assert debt.json()["remaining_amount_cents"] == 0
@@ -168,12 +169,42 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"void_reason": "这笔退款已被撤回", "expected_row_version": offset["row_version"]})
     assert voided.status_code == 201, voided.text
+    credit = client.get("/api/funds/accounts/" + credit["public_id"], headers=identity.app_headers).json()
+    assert credit["credit_applications"]["history"][0]["applied_minor"] == 0
     debt = client.get("/api/debts/" + credit["debt_public_id"], headers=identity.app_headers).json()
     assert debt["remaining_amount_cents"] == 1790
 
     _correct_captured_payment(client, identity, draft_id, resolved["correction_versions"], bank, credit)
     assert client.post(url, headers=headers, json=payment).json() == result.json()
     _export_funds_history(client, identity, bank, credit)
+
+
+def _apply_and_correct_spare_credit(client, identity, credit):
+    url = "/api/funds/accounts/" + credit["public_id"]
+    options = credit["credit_applications"]
+    source, target = options["credits"][0], options["obligations"][0]
+    body = {"expected_row_version": credit["row_version"], "credit_public_id": source["public_id"],
+        "draw_public_id": target["public_id"], "amount_minor": 500, "reason": "退款经平台确认抵扣另一笔购买"}
+    with SessionLocal() as db:
+        before = tuple(db.scalar(select(func.count()).select_from(model)) for model in (Expense, AccountMovement, Repayment))
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    applied = client.post(url + "/credit-applications", json=body, headers=headers)
+    assert applied.status_code == 200, applied.text
+    assert client.post(url + "/credit-applications", json=body, headers=headers).json() == applied.json()
+    result = applied.json()
+    assert (result["balance_minor"], result["unallocated_credit_minor"]) == (1000, 1000)
+    review = result["credit_applications"]["history"][0]
+    assert review["applied_minor"] == 500
+    undone = client.post(url + "/credit-applications/void", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": result["row_version"], "review_public_id": review["public_id"], "reason": "核对材料有误，恢复待分配"})
+    assert undone.status_code == 200, undone.text
+    assert (undone.json()["balance_minor"], undone.json()["unallocated_credit_minor"]) == (1000, 1500)
+    assert undone.json()["credit_applications"]["history"][0]["void_reason"] == "核对材料有误，恢复待分配"
+    again = client.post(url + "/credit-applications", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={**body, "expected_row_version": undone.json()["row_version"], "reason": "再次核实抵扣，后续退款撤回也须恢复欠款"})
+    assert again.status_code == 200 and again.json()["unallocated_credit_minor"] == 1000, again.text
+    with SessionLocal() as db:
+        assert tuple(db.scalar(select(func.count()).select_from(model)) for model in (Expense, AccountMovement, Repayment)) == before
 
 
 def _assert_purchase_rolls_back(client, identity, monkeypatch, credit):
@@ -222,7 +253,7 @@ def _export_funds_history(client, identity, bank, credit):
     _, token = _mint_member_actor(role="viewer")
     member = _export_records(client, _member_headers(token))
     assert credit["debt_public_id"] not in {row["public_id"] for row in member["debts"]}
-    assert member["credit_facilities"] == member["repayments"] == member["payment_captures"] == member["installment_agreements"] == member["credit_fee_obligations"] == []
+    assert member["credit_facilities"] == member["repayments"] == member["payment_captures"] == member["installment_agreements"] == member["credit_fee_obligations"] == member["credit_application_reviews"] == []
     assert [row["public_id"] for row in member["financial_accounts"]] == [bank["public_id"]]
     hidden = [row for row in member["expense_funding"] if row["account_redaction_reason"]]
     assert hidden and all(row["account_id"] is None and row["account_amount_minor"] is None for row in hidden)
@@ -239,6 +270,7 @@ def _assert_owner_funds_export(owner, member, credit):
     assert credit["public_id"] in {row["public_id"] for row in owner["financial_accounts"]}
     assert all(owner[name] for name in ("credit_facilities", "credit_settlement_allocations", "repayment_voids"))
     assert owner["repayments"][0]["settlement_kind"] == "credit"
+    assert sorted((row["amount_minor"], row["voided_at"] is not None) for row in owner["credit_application_reviews"]) == [(500, False), (500, True)]
     assert sum(row["amount_minor"] for row in owner["account_movements"]
         if row["account_id"] == next(a["id"] for a in owner["financial_accounts"] if a["public_id"] == credit["public_id"])) == -5990
     fee = owner["credit_fee_obligations"][0]

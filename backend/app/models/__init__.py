@@ -53,6 +53,7 @@ from app.models.classification import (
     RuleApplicationBatch,
     RuleApplicationChange,
 )
+from app.models.credit_application import CreditApplicationReview
 from app.models.credit_fee import CreditFeeObligation
 from app.models.currency_binding import (
     InstallationCurrencyAuditLog,
@@ -114,7 +115,7 @@ from app.models.system import (
 )
 
 __all__ = [
-    "CreditFeeObligation",
+    "CreditApplicationReview", "CreditFeeObligation",
     "EnvelopeBook", "EnvelopeSource", "EnvelopeAllocation", "EnvelopeRevision",
     "FinancialAccount", "CreditFacility", "ExpenseFunding", "AccountMovement", "CreditSettlementAllocation",
     "InstallmentAgreement", "InstallmentDraw", "InstallmentPeriod", "InstallmentPayment", "AccountBalanceObservation",

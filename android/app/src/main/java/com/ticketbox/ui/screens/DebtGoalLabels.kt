@@ -37,9 +37,9 @@ internal fun debtGoalEvaluationLabelRes(state: String): Int = when (state) {
 }
 
 @StringRes
-internal fun debtLinkStatusLabelRes(status: String): Int = when (status) {
+internal fun debtLinkStatusLabelRes(status: String, sourceType: String? = null): Int = when (status) {
     DebtLinkStatuses.OPEN -> R.string.debt_link_status_open
-    DebtLinkStatuses.CLEARED -> R.string.debt_link_status_cleared
+    DebtLinkStatuses.CLEARED -> if (sourceType == "credit_facility") R.string.funds_credit_zero_net_debt else R.string.debt_link_status_cleared
     DebtLinkStatuses.VOIDED -> R.string.debt_link_status_voided
     else -> R.string.debt_link_status_unknown
 }

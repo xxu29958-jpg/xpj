@@ -24,6 +24,7 @@ data class FinancialAccountDto(
     @param:Json(name = "can_edit") val canEdit: Boolean,
     val movements: List<FundMovementDto> = emptyList(),
     @param:Json(name = "fee_obligations") val feeObligations: List<CreditFeeViewDto> = emptyList(),
+    @param:Json(name = "credit_applications") val creditApplications: CreditApplicationsDto? = null,
     @param:Json(name = "unallocated_credit_minor") val unallocatedCreditMinor: Long = 0,
     @param:Json(name = "credit_kind") val creditKind: String? = null,
     val observation: BalanceObservationDto? = null,

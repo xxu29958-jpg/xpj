@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.routes._web_installments import payment_allocations
+from app.schemas.credit_application import CreditApplicationCreate, CreditApplicationVoid
 from app.schemas.credit_fee import CreditFeeCreate
 from app.schemas.funds import (
     AccountCreate,
@@ -25,6 +26,7 @@ def form_defaults(account: FinancialAccountView | None, task: str, home_currency
                   repayment_id: str) -> dict[str, str]:
     values = dict.fromkeys(("account_id", "task_id", "name", "institution", "tail", "opening_amount",
         "expected_row_version", "calendar_revision", "payer_public_id", "payer_row_version", "payer_currency_code",
+        "credit_source_id", "credit_draw_id", "credit_review_id", "credit_source_label", "credit_draw_label",
         "fee_period_id", "payer_fee_amount", "principal_amount", "payer_amount", "note", "activity_amount", "other_amount", "loan_name",
         "loan_principal_amount", "new_fee", "fee_note", "supersedes_public_id", "overpayment", "existing_debt",
         "credit_limit", "available_credit", "credit_observed_on", "credit_source", "statement_day", "payment_due_day"), "")
@@ -37,9 +39,23 @@ def form_defaults(account: FinancialAccountView | None, task: str, home_currency
             expected_row_version=str(account.row_version), calendar_revision=str(account.calendar_revision),
             archived=str(account.archived).lower(), loan_currency_code=account.currency_code)
         values.update(_credit_terms_values(account))
+        if task == "apply_credit":
+            values.update(_credit_application_defaults(account))
     if task == "void_repayment" and repayment_id:
         values["task_id"] += ":" + repayment_id
     return values
+
+
+def _credit_application_defaults(account: FinancialAccountView) -> dict[str, str]:
+    choices = account.credit_applications
+    if choices is None:
+        return {}
+    source = choices.credits[0] if len(choices.credits) == 1 else None
+    target = choices.obligations[0] if len(choices.obligations) == 1 else None
+    return {"credit_source_id": source.public_id if source else "", "credit_source_label": source.note if source else "",
+        "credit_draw_id": target.public_id if target else "", "credit_draw_label": target.note if target else "",
+        "activity_amount": minor_amount_value(min(source.remaining_minor, target.remaining_minor), account.currency_code)
+            if source and target else ""}
 
 
 def _credit_terms_values(account: FinancialAccountView) -> dict[str, str]:
@@ -133,3 +149,13 @@ def credit_fee_payload(db, auth, values):
     return CreditFeeCreate(expected_row_version=values["expected_row_version"], calendar_revision=values["calendar_revision"],
         amount_minor=major_amount_to_minor(values["activity_amount"], account.currency_code),
         occurred_on=values["occurred_on"], note=values["note"], period_public_id=values.get("fee_period_id") or None)
+
+
+def credit_application_payload(db, auth, values):
+    account = _captured_account(db, auth, values["account_id"], values["currency_code"])
+    if values["mode"] == "void_credit":
+        return CreditApplicationVoid(expected_row_version=values["expected_row_version"],
+            review_public_id=values["credit_review_id"], reason=values["note"])
+    return CreditApplicationCreate(expected_row_version=values["expected_row_version"],
+        credit_public_id=values["credit_source_id"], draw_public_id=values["credit_draw_id"],
+        amount_minor=major_amount_to_minor(values["activity_amount"], account.currency_code), reason=values["note"])

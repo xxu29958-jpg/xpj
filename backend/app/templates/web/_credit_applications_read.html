@@ -1,0 +1,10 @@
+{% if account.credit_applications and account.credit_applications.history %}
+<section class="product-section"><h2 class="product-panel-title">余额抵扣记录</h2><div class="product-entry-list">
+{% for row in account.credit_applications.history %}<div class="product-entry product-entry--static">
+<span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span><div class="product-entry-copy">
+<div class="product-entry-heading"><strong>{{ row.credit_note }} → {{ row.draw_note }}</strong><strong class="product-entry-amount">{{ money(row.amount_minor, account.currency_code) }}</strong></div>
+<span>{{ row.reason }} · 当前抵扣 {{ money(row.applied_minor, account.currency_code) }}</span>
+{% if row.void_reason %}<span>已撤销：{{ row.void_reason }}</span>{% elif row.applied_minor < row.amount_minor %}<span>来源或欠款已变化，请核对原记录。</span>{% endif %}
+{% if not row.void_reason and funds_can_write %}<a class="text-link" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&account_id={{ account.public_id }}&task=void_credit&application_id={{ row.public_id }}">撤销这条抵扣</a>{% endif %}
+</div></div>{% endfor %}</div></section>
+{% endif %}

@@ -133,10 +133,13 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
     }
     fun finish() = runAction { binding ->
         val continueCapture = state.value.captureRequested && state.value.task.input?.mode == "create"
+        val accountId = state.value.task.input?.accountId?.takeIf(String::isNotBlank)
         repository.finish(binding).onSuccess {
+        if (state.value.access?.binding != binding) return@onSuccess
         mutable.value = mutable.value.copy(task = FundsInputState(null), editing = false, detail = null, captureRequested = continueCapture)
         val month = state.value.envelopeMonth
         if (month != null) refreshEnvelopes(binding, month) else refreshAccounts(binding)
+        if (month == null && accountId != null && state.value.access?.binding == binding) open(accountId)
     } }
 
     private fun runAction(action: suspend (LogicalSessionBinding) -> Result<Unit>) {

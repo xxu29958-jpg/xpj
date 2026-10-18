@@ -43,6 +43,12 @@ interface FundsReadApi {
 }
 
 interface FundsWriteApi {
+    @POST("api/funds/accounts/{id}/credit-applications")
+    suspend fun applyRetainedCredit(@Path("id") id: String, @Body body: com.ticketbox.data.remote.dto.CreditApplicationCreateDto,
+        @Header("Idempotency-Key") key: String): FinancialAccountDto
+    @POST("api/funds/accounts/{id}/credit-applications/void")
+    suspend fun voidCreditApplication(@Path("id") id: String, @Body body: com.ticketbox.data.remote.dto.CreditApplicationVoidDto,
+        @Header("Idempotency-Key") key: String): FinancialAccountDto
     @POST("api/funds/accounts/{id}/fees")
     suspend fun incurCreditFee(@Path("id") id: String, @Body body: com.ticketbox.data.remote.dto.CreditFeeCreateDto,
         @Header("Idempotency-Key") key: String): FinancialAccountDto

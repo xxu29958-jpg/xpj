@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas._money import NonNegativeMoneyMinor, PositiveMoneyMinor, SignedMoneyAggregate, SignedMoneyMinor
+from app.schemas.credit_application import CreditApplicationsView
 from app.schemas.credit_fee import CreditFeePaymentPart, CreditFeeView
 from app.schemas.installment import CreditDrawPaymentPart, InstallmentPaymentPart
 from app.services.currency_common import normalize_currency_code
@@ -258,4 +259,5 @@ class FinancialAccountView(BaseModel):
     observation: BalanceObservationView | None = None
     movements: list[MovementView] = Field(default_factory=list)
     fee_obligations: list[CreditFeeView] = Field(default_factory=list)
+    credit_applications: CreditApplicationsView | None = None
     credit_terms: CreditTerms | None = None

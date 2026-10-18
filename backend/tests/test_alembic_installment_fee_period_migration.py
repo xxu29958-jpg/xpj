@@ -8,7 +8,15 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app.database import SessionLocal, engine
-from app.models import CreditFeeObligation, Expense, FinancialAccount, InstallmentAgreement, InstallmentPeriod
+from app.models import (
+    AccountMovement,
+    CreditApplicationReview,
+    CreditFeeObligation,
+    Expense,
+    FinancialAccount,
+    InstallmentAgreement,
+    InstallmentPeriod,
+)
 from tests._infra.c07_money_migration import reset_schema, run_alembic, seed_owner
 from tests._infra.currency import activate_test_currency_authority
 
@@ -16,9 +24,11 @@ pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
 
 def test_fee_only_period_survives_upgrade_and_refuses_lossy_downgrade():
-    parent, head = "20261019_0001", "20261019_0003"
+    parent, head = "20261019_0001", "20261019_0004"
     reset_schema()
     try:
+        run_alembic(command.upgrade, head)
+        run_alembic(command.downgrade, "20261019_0003")
         run_alembic(command.upgrade, head)
         run_alembic(command.downgrade, "20261019_0002")
         run_alembic(command.upgrade, head)
@@ -42,9 +52,12 @@ def test_fee_only_period_survives_upgrade_and_refuses_lossy_downgrade():
             db.add_all([period, expense])
             db.flush()
             db.add(CreditFeeObligation(expense_id=expense.id, account_id=account.id, period_id=period.id))
+            _seed_review(db, account, actor)
         for value in (-1, 0):
             with SessionLocal.begin() as db, pytest.raises(DBAPIError):
                 db.execute(text("UPDATE installment_periods SET planned_fee_minor=:value"), {"value": value})
+        with SessionLocal.begin() as db, pytest.raises(DBAPIError):
+            db.execute(text("UPDATE credit_application_reviews SET reason='rewrite history'"))
         with pytest.raises(RuntimeError, match="downgrade refused"):
             run_alembic(command.downgrade, parent)
         with engine.connect() as db:
@@ -52,3 +65,14 @@ def test_fee_only_period_survives_upgrade_and_refuses_lossy_downgrade():
             assert db.execute(text("SELECT principal_minor, planned_fee_minor FROM installment_periods")).one() == (0, 12345)
     finally:
         reset_schema()
+
+
+def _seed_review(db, account, actor):
+    facts = [AccountMovement(tenant_id="owner", account_id=account.id, event_public_id=str(uuid4()),
+        component_id="opening", kind="opening", amount_minor=amount, home_amount_cents=amount,
+        home_currency_code="KWD", occurred_on=date.today(), note="本人核对", actor_account_id=actor)
+        for amount in (12345, -12345)]
+    db.add_all(facts)
+    db.flush()
+    db.add(CreditApplicationReview(account_id=account.id, credit_movement_id=facts[0].id,
+        draw_movement_id=facts[1].id, amount_minor=12345, reason="明确抵扣", actor_account_id=actor))

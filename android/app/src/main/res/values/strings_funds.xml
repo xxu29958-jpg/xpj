@@ -127,10 +127,10 @@
     <string name="funds_record_transfer">账户间转账</string>
     <string name="funds_reconcile">核对余额</string>
     <string name="funds_funding_title">付款来源</string>
-    <string name="funds_record_installments">记录真实分期</string>
+    <string name="funds_record_installments">记录分期</string>
     <string name="funds_unknown_balance">余额待核对</string>
-    <string name="funds_debt_balance">欠款 %1$s</string>
-    <string name="funds_overpayment_balance">溢缴款 %1$s</string>
+    <string name="funds_debt_balance">已记录净欠款 %1$s</string>
+    <string name="funds_overpayment_balance">已记录净余额 %1$s</string>
     <string name="funds_task_title">资金任务</string>
     <string name="funds_accounts_subtitle">现金、余额、银行卡与信用</string>
     <string name="funds_cached_note">当前显示上次读取的账户；联网后刷新核对。</string>
@@ -145,9 +145,9 @@
     <string name="funds_ledger_visibility">账本共享</string>
     <string name="funds_tail_suffix"> · 尾号 %1$s</string>
     <string name="funds_opening_line">期初 %1$s · %2$s</string>
-    <string name="funds_unallocated_credit_note">其中 %1$s 是尚未指定到逐笔本金的退款或预付款。已计入账户余额，不表示其它购买或分期期次已经还清。</string>
+    <string name="funds_unallocated_credit_note">退款或预付款还剩 %1$s，已计入上方余额。核对用途后可抵扣欠款。</string>
     <string name="funds_recorded_change_note">已记录净变动 %1$s，这不是可用余额。</string>
-    <string name="funds_observation_line">外部快照 %1$s · %2$s：%3$s\n待解释差异 %4$s</string>
+    <string name="funds_observation_line">上次核对 %1$s · %2$s：%3$s\n待核对差额 %4$s</string>
     <string name="funds_movements_title">实际变动</string>
     <string name="funds_resume_task">继续上次的资金任务</string>
     <string name="funds_net_worth">已纳入账户净资产 %1$s</string>
@@ -155,7 +155,8 @@
     <string name="funds_valuation_scope">%1$s 估值 · %2$s 个账户。%3$s 个余额待核对，%4$s 个待补汇率，尚未计入。</string>
     <string name="funds_empty_accounts">从一张常用的卡开始。期初填零表示已核对为零，留空表示尚未核对。</string>
     <string name="funds_archived_suffix"> · 已归档</string>
-    <string name="funds_record_actual_repayment">记录实际还款</string>
+    <string name="funds_record_actual_repayment">记录还款</string>
+    <string name="funds_account_more">账户资料与更多操作</string>
     <string name="funds_installment_note">按已经成立的合约填写。逐期本金只重排已有欠款，未来费用还不会记为消费。</string>
     <string name="funds_agreement_name">合约名称</string>
     <string name="funds_agreement_source">合约来源与变更依据</string>
@@ -180,7 +181,7 @@
     <string name="funds_missing_allocation">原分配已不在当前待还项目中：本金 %1$s，费用 %2$s。原输入保留，请核对。</string>
     <string name="funds_remove_allocation">移除此项原分配</string>
     <string name="funds_overpayment">全部清偿后多付的溢缴款</string>
-    <string name="funds_installment_title">真实分期</string>
+    <string name="funds_installment_title">分期</string>
     <string name="funds_add_agreement">记录分期合约</string>
     <string name="funds_active_agreement">当前合约</string>
     <string name="funds_history_agreement">历史合约</string>
@@ -208,4 +209,20 @@
     <string name="funds_fee_original_unavailable">原费用 %1$s 当前不可读，请核对；清空本项可取消本次分配。</string>
     <string name="funds_fee_settle_amount">本次清偿已记费用（%1$s）</string>
     <string name="funds_fee_actual_debit">已记费用实际扣款（%1$s）</string>
+    <string name="funds_apply_credit">用余额抵扣欠款</string>
+    <string name="funds_void_credit">撤销这条抵扣</string>
+    <string name="funds_apply_credit_note">使用账户里已有的钱，不新增扣款或消费。请核对下面的来源、欠款和金额；涉及分期时，还需核对剩余排期。</string>
+    <string name="funds_void_credit_note">撤销后原余额恢复待分配，原欠款恢复待核对；不撤销原退款或付款。</string>
+    <string name="funds_application_source">使用哪笔余额</string>
+    <string name="funds_credit_target">抵扣哪笔欠款或费用</string>
+    <string name="funds_credit_apply_amount">抵扣金额（%1$s）</string>
+    <string name="funds_credit_review_reason">核对说明（必填）</string>
+    <string name="funds_credit_void_reason">撤销原因（必填）</string>
+    <string name="funds_credit_choice">%1$s · %2$s · 剩余 %3$s</string>
+    <string name="funds_credit_no_choices">当前没有可选记录；原选择保留，请刷新核对。</string>
+    <string name="funds_credit_history">余额抵扣记录</string>
+    <string name="funds_credit_applied">原抵扣 %1$s · 当前生效 %2$s</string>
+    <string name="funds_credit_voided">已撤销：%1$s</string>
+    <string name="funds_credit_changed">来源或欠款已变化，请核对原记录。</string>
+    <string name="funds_credit_zero_net_debt">净欠款为零</string>
 </resources>

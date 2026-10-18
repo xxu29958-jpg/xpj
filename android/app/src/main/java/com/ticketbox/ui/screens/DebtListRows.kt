@@ -84,7 +84,7 @@ internal fun DebtListRow(
                 // Only member or terminal-state rows need a separate status badge (D03).
                 if (debt.isMember || debt.status != DebtLinkStatuses.OPEN) DebtStatusBadge(
                     text = stringResource(if (debt.isMember) memberDebtStatusLabelRes(debt.status)
-                        else debtLinkStatusLabelRes(debt.status)),
+                        else debtLinkStatusLabelRes(debt.status, debt.sourceType)),
                     tone = if (debt.isMember) memberDebtStatusTone(debt.status) else debtLinkStatusTone(debt.status),
                 )
                 if (debt.originalCurrencyCode != null && debt.originalCurrencyCode != debt.homeCurrencyCode &&

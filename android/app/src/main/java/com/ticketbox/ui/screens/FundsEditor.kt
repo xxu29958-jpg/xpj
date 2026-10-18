@@ -53,7 +53,7 @@ internal fun FundsEditor(state: FundsUiState, input: FundsInput, vm: FundsViewMo
         if (input.binding != state.access?.binding) Text(stringResource(R.string.funds_original_binding_note))
         key(input.key) {
             FundsInputFields(state, input, enabled, vm)
-            if (input.mode !in setOf("edit", "funding", "envelopes")) FundsField("${if (input.mode == "create") stringResource(R.string.funds_opening_date) else stringResource(R.string.funds_actual_date)}（YYYY-MM-DD）", input.date, enabled) { value -> vm.edit { it.copy(date = value) } }
+            if (input.mode !in setOf("edit", "funding", "envelopes", "apply_credit", "void_credit")) FundsField("${if (input.mode == "create") stringResource(R.string.funds_opening_date) else stringResource(R.string.funds_actual_date)}（YYYY-MM-DD）", input.date, enabled) { value -> vm.edit { it.copy(date = value) } }
         }
         FundsSubmission(state, enabled, vm)
     }
@@ -62,6 +62,7 @@ internal fun FundsEditor(state: FundsUiState, input: FundsInput, vm: FundsViewMo
 @Composable
 private fun FundsInputFields(state: FundsUiState, input: FundsInput, enabled: Boolean, vm: FundsViewModel) {
     when (input.mode) {
+            "apply_credit", "void_credit" -> CreditApplicationFields(state, input, enabled, vm)
             "incur_fee" -> CreditFeeFields(state, input, enabled, vm)
             "envelopes" -> EnvelopeFields(state, input, enabled, vm)
             "void_repayment" -> {

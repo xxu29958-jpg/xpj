@@ -8,6 +8,7 @@ import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.InstallmentInputWire
 import com.ticketbox.data.repository.InstallmentPeriodInput
 import com.ticketbox.data.repository.fundingInputs
+import com.ticketbox.data.repository.withCreditApplicationSuggestion
 import java.time.LocalDate
 import java.util.UUID
 
@@ -36,6 +37,12 @@ fun FundsViewModel.voidPayment(id: String) {
     if (state.value.task.input != null) { resume(); return }
     start("void_repayment")
     edit { it.copy(repaymentId = id) }
+}
+
+fun FundsViewModel.voidCreditApplication(id: String) {
+    if (state.value.task.input != null) { resume(); return }
+    start("void_credit")
+    edit { it.copy(creditReviewId = id) }
 }
 
 fun FundsViewModel.reviseAgreement(agreement: InstallmentViewDto) {
@@ -68,7 +75,11 @@ private fun FundsUiState.accountInput(binding: LogicalSessionBinding, mode: Stri
     val value = base.copy(accountId = account.publicId, version = account.rowVersion, calendarRevision = account.calendarRevision,
         name = account.name, kind = account.kind, currency = account.currencyCode, visibility = account.visibility,
         institution = account.institution.orEmpty(), tail = account.tail.orEmpty(), archived = account.archived, loanCurrency = account.currencyCode)
-    return if (mode == "edit") value.withCreditTerms(account.creditTerms) else value
+    return when (mode) {
+        "edit" -> value.withCreditTerms(account.creditTerms)
+        "apply_credit" -> value.withCreditApplicationSuggestion(account.creditApplications)
+        else -> value
+    }
 }
 
 private fun FundsInput.withCreditTerms(terms: com.ticketbox.data.remote.dto.CreditTermsDto?): FundsInput {

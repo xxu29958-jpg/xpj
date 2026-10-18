@@ -12,7 +12,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import com.ticketbox.data.remote.dto.FinancialAccountDto
@@ -36,6 +35,7 @@ internal fun fundKinds() = linkedMapOf("cash" to stringResource(R.string.funds_k
 @Composable
 internal fun fundActions() = mapOf("create" to stringResource(R.string.funds_add_account), "edit" to stringResource(R.string.funds_edit_account), "repay" to stringResource(R.string.funds_record_repayment),
     "incur_fee" to stringResource(R.string.funds_incur_fee),
+    "apply_credit" to stringResource(R.string.funds_apply_credit), "void_credit" to stringResource(R.string.funds_void_credit),
     "void_repayment" to stringResource(R.string.funds_void_payment),
     "envelopes" to stringResource(R.string.envelopes_edit),
     "income" to stringResource(R.string.funds_record_income), "loan" to stringResource(R.string.funds_record_loan), "transfer" to stringResource(R.string.funds_record_transfer), "reconciliation" to stringResource(R.string.funds_reconcile), "funding" to stringResource(R.string.funds_funding_title), "installments" to stringResource(R.string.funds_record_installments))
@@ -126,12 +126,14 @@ private fun AccountDetailHeader(state: FundsUiState, detail: FinancialAccountDto
         Text(detail.balanceLabel(), style = MaterialTheme.typography.headlineMedium)
         Text("${fundKinds()[detail.kind]} · ${if (detail.visibility == "private") stringResource(R.string.funds_private_visibility) else stringResource(R.string.funds_ledger_visibility)}" +
             (detail.tail?.let { stringResource(R.string.funds_tail_suffix, it) } ?: ""))
-        Text(stringResource(R.string.funds_opening_line, detail.openingDate, detail.openingSource), style = MaterialTheme.typography.bodySmall)
-        detail.creditTerms?.let { FundsCreditTermsRead(it, detail.currencyCode) }
         if (detail.unallocatedCreditMinor > 0) Text(stringResource(R.string.funds_unallocated_credit_note, money(detail.unallocatedCreditMinor, detail.currencyCode)))
         if (detail.balanceMinor == null) Text(stringResource(R.string.funds_recorded_change_note, money(detail.recordedChangeMinor, detail.currencyCode)))
         detail.observation?.let { check -> Text(stringResource(R.string.funds_observation_line, check.occurredOn, check.source, money(check.observedMinor, detail.currencyCode), money(check.differenceMinor, detail.currencyCode))) }
         AccountActions(state, detail, viewModel)
+        AccountMore(state, detail, viewModel)
+        CreditApplicationsRead(detail, state.access?.canModify == true, viewModel)
+        if (!state.installments?.agreements.isNullOrEmpty())
+            InstallmentHistory(state.installments, !detail.archived && state.access?.canModify == true, viewModel)
         Text(stringResource(R.string.funds_movements_title), style = MaterialTheme.typography.titleMedium)
     }
 
@@ -164,20 +166,4 @@ private fun LazyListScope.accountsOverview(state: FundsUiState, viewModel: Funds
         }
     }
 
-}
-
-@Composable
-private fun AccountActions(state: FundsUiState, detail: FinancialAccountDto, viewModel: FundsViewModel) {
-    if (detail.canEdit && state.access?.canModify == true) AppSecondaryButton(stringResource(R.string.funds_edit_account)) { viewModel.start("edit") }
-    if (detail.kind == "credit" && !detail.archived && state.access?.canModify == true) {
-        AppSecondaryButton(stringResource(R.string.funds_incur_fee)) { viewModel.start("incur_fee") }
-        AppPrimaryButton(stringResource(R.string.funds_record_actual_repayment)) { viewModel.start("repay") }
-    }
-    if (!detail.archived && state.access?.canModify == true) {
-        if (detail.kind != "credit") listOf("income", "transfer", "loan").forEach { mode ->
-            AppSecondaryButton(requireNotNull(fundActions()[mode])) { viewModel.start(mode) }
-        }
-        if (detail.canEdit) AppSecondaryButton(stringResource(R.string.funds_reconcile)) { viewModel.start("reconciliation") }
-    }
-    if (detail.kind == "credit") InstallmentHistory(state.installments, !detail.archived && state.access?.canModify == true, viewModel)
 }

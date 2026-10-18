@@ -1,4 +1,4 @@
-<section class="product-section"><div class="product-panel-header"><h2 class="product-panel-title">真实分期</h2>{% if funds_can_write and not account.archived %}<a href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&account_id={{ account.public_id }}&task=installments">记录合约</a>{% endif %}</div>
+<section class="product-section"><div class="product-panel-header"><h2 class="product-panel-title">分期</h2>{% if funds_can_write and not account.archived %}<a href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&account_id={{ account.public_id }}&task=installments">记录合约</a>{% endif %}</div>
 {% for agreement in installments.agreements %}<details class="fact-disclosure" {{ 'open' if agreement.active }}><summary>{{ agreement.name }} · 版本 {{ agreement.revision }} · {{ '当前合约' if agreement.active else '历史合约' }}</summary><p class="meta">{{ agreement.agreed_on }} · {{ agreement.source }}</p>
 {% if agreement.needs_review %}<p class="product-feedback">来源本金已被退款或更正改变。已付费用和历史仍保留，请按实际合约核对剩余排期。</p>{% endif %}
 {% if not agreement.periods %}<p class="hint">本版合约没有剩余排期，先前的付款记录保留在历史版本。</p>{% endif %}
