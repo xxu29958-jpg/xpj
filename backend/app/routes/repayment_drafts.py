@@ -33,6 +33,7 @@ from app.schemas import (
     RepaymentDraftListResponse,
     RepaymentDraftResponse,
 )
+from app.schemas.payment_capture import PaymentCaptureResponse, RepaymentAsExpense
 from app.services.debt_service import (
     create_repayment_draft,
     dismiss_repayment_draft,
@@ -40,12 +41,11 @@ from app.services.debt_service import (
     list_repayment_drafts,
     repayment_draft_response,
 )
+from app.services.payment_capture_commands import repayment_as_expense
 from app.services.repayment_draft_command_service import (
     confirm_repayment_draft_idempotently,
 )
 from app.tenants import AuthContext
-from app.schemas.payment_capture import PaymentCaptureResponse, RepaymentAsExpense
-from app.services.payment_capture_commands import repayment_as_expense
 
 router = APIRouter(
     prefix="/api/repayment-drafts",

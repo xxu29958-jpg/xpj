@@ -55,6 +55,12 @@ private const val RepaymentDraftFlashDismissMillis = 4000L
 /** 一条还款草稿卡的动作态：空闲可操作 / 本卡正在处理 / 禁用（只读账本或别的卡在处理中）。 */
 private enum class DraftRowAction { Idle, Busy, Disabled }
 
+data class RepaymentDraftNavigation(
+    val onBack: () -> Unit,
+    val onOpenDebt: (String) -> Unit,
+    val onOpenExpense: (Long) -> Unit,
+)
+
 /**
  * ADR-0049 §杠杆③ (slice 3a) NLS 还款捕获复核箱 —— 列 pending 还款草稿，每条「选债确认」（底部抽屉选一笔
  * open 外部手动欠款 → 记还款）或「忽略」。镜像 [DebtListScreen]：列表走 [AppScrollableContent] + in-content
@@ -66,15 +72,9 @@ fun RepaymentDraftInboxScreen(
     viewModel: RepaymentDraftInboxViewModel,
     showHistory: Boolean,
     onHistoryChange: (Boolean) -> Unit,
-    onBack: () -> Unit,
-    onOpenDebt: (String) -> Unit,
-    onOpenExpense: (Long) -> Unit,
+    navigation: RepaymentDraftNavigation,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    if (state.reviewId != null) {
-        RepaymentReviewScreen(state, viewModel, onOpenDebt, onOpenExpense)
-        return
-    }
 
     LaunchedEffect(state.flashMessage) {
         if (state.flashMessage == null) return@LaunchedEffect
@@ -88,7 +88,7 @@ fun RepaymentDraftInboxScreen(
             title = stringResource(R.string.repayment_draft_topbar_title),
             subtitle = stringResource(R.string.repayment_draft_intro_body),
             backText = stringResource(R.string.repayment_draft_topbar_back),
-            onBack = onBack,
+            onBack = navigation.onBack,
             hasBottomBar = false,
             verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
         ),
@@ -110,10 +110,7 @@ fun RepaymentDraftInboxScreen(
         }
         if (!showHistory) state.resolutions.filter { it.status == PendingMutationStatus.Done }
             .maxByOrNull { it.id }?.paymentCaptureReceipt()?.let { receipt ->
-                item {
-                    PaymentCaptureReceiptCard(receipt, onOpenExpense,
-                        onOpenRepayment = { viewModel.reviewEditor.openReview(it) })
-                }
+                item { PaymentCaptureReceiptCard(receipt, navigation.onOpenExpense, viewModel.reviewEditor::openReview) }
             }
         item {
             RepaymentDraftReadHeader(state, showHistory, onHistoryChange)
@@ -129,7 +126,7 @@ fun RepaymentDraftInboxScreen(
             showHistory = showHistory,
             onRetry = viewModel::refresh,
             actions = RepaymentDraftListActions(
-                onOpenDebt = onOpenDebt,
+                onOpenDebt = navigation.onOpenDebt,
                 onOpenPicker = { draft -> viewModel.reviewEditor.openReview(draft.publicId) },
                 onDismiss = { id -> viewModel.reviewEditor.openReview(id); viewModel.dismiss(id) },
             ),

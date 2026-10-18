@@ -104,8 +104,8 @@ internal fun PaymentCaptureReceiptCard(receipt: PaymentCaptureDto, onOpenExpense
 }
 
 private fun paymentKindLabel(kind: String): Int = when (kind) {
-    "expense" -> R.string.notification_capture_expense
-    "repayment" -> R.string.notification_capture_repayment
+    "expense" -> R.string.payment_capture_kind_expense
+    "repayment" -> R.string.payment_capture_kind_repayment
     "dismissed" -> R.string.repayment_draft_dismiss
     "refund" -> R.string.payment_capture_refund
     else -> R.string.payment_capture_amount

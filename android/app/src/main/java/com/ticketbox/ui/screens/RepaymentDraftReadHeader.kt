@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
+import com.ticketbox.data.repository.paymentCaptureReceipt
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.RepaymentDraftStatuses
@@ -45,7 +46,10 @@ internal fun RepaymentDraftReadHeader(state: RepaymentDraftInboxUiState, history
             })
         }
         if (!state.isLoading && state.capturesFetchedAt != null && state.focusedDraftPublicId != null &&
-            state.drafts.none { it.publicId == state.focusedDraftPublicId }) {
+            state.drafts.none { it.publicId == state.focusedDraftPublicId } &&
+            state.uncertainCaptures.none { it.publicId == state.focusedDraftPublicId } &&
+            state.resolutions.none { it.paymentCaptureReceipt()?.publicId == state.focusedDraftPublicId } &&
+            state.captureReadError == null) {
             AppStatusBanner(UiText.res(if (state.capturesFromCache) R.string.repayment_draft_original_missing_cache
                 else R.string.repayment_draft_original_unavailable), MessageTone.Info)
         }

@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateIndex, CreateTable, MetaData
 
-ALLOWED_EXTERNAL_METADATA_CALLABLES = frozenset({("uuid", "uuid4")})
+ALLOWED_EXTERNAL_METADATA_CALLABLES = frozenset({("uuid", "uuid4"), ("builtins", "list")})
 ALLOWED_APPLICATION_METADATA_BUILTINS = frozenset({"str"})
 
 

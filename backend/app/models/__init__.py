@@ -16,7 +16,6 @@ from app.models.ai_advisor import (
     BudgetAdvisorQuotaLock,
 )
 from app.models.app_meta import AppMeta
-from app.models.payment_capture import PaymentCapture
 from app.models.auth import (
     DesktopActivationAttempt,
     DeviceEnrollmentAttempt,
@@ -91,6 +90,7 @@ from app.models.learning import AlgorithmDecision, LedgerLearningEvent
 from app.models.ledger_calendar import LedgerCalendarRevision
 from app.models.monthly_arrangement import MonthlyArrangement, MonthlyArrangementRevision
 from app.models.ocr_facts import OcrFact
+from app.models.payment_capture import PaymentCapture
 from app.models.recurring import RecurringItem
 from app.models.recurring_item_revision import RecurringItemRevision
 from app.models.recurring_occurrence import RecurringOccurrence, RecurringOccurrenceRevision

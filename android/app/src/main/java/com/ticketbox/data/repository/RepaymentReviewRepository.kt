@@ -27,12 +27,16 @@ data class RepaymentReviewState(val input: RepaymentReviewInputEntity?, val orig
         original?.status == PendingMutationStatus.Pending && bindingChanged
 }
 
+sealed interface RepaymentReviewChange {
+    data class Money(val currency: String, val amount: String) : RepaymentReviewChange
+    data class Date(val value: String) : RepaymentReviewChange
+    data class TargetDebt(val debt: Debt) : RepaymentReviewChange
+}
+
 interface RepaymentReviewActions {
     fun observe(binding: LogicalSessionBinding, draftId: String): Flow<RepaymentReviewState>
     suspend fun open(binding: LogicalSessionBinding, draft: RepaymentDraft, suggested: Debt? = null): Result<Unit>
-    suspend fun money(binding: LogicalSessionBinding, draftId: String, currency: String, amount: String): Result<Unit>
-    suspend fun date(binding: LogicalSessionBinding, draftId: String, value: String): Result<Unit>
-    suspend fun select(binding: LogicalSessionBinding, draftId: String, debt: Debt): Result<Unit>
+    suspend fun edit(binding: LogicalSessionBinding, draftId: String, change: RepaymentReviewChange): Result<Unit>
     suspend fun submit(binding: LogicalSessionBinding, draft: RepaymentDraft, dismiss: Boolean): Result<Long>
     suspend fun recover(binding: LogicalSessionBinding, draftId: String, stop: Boolean): Result<Unit>
     suspend fun recoverOriginal(binding: LogicalSessionBinding, row: OutboxRow, stop: Boolean): Result<Unit>
@@ -110,22 +114,17 @@ class RepaymentReviewRepository internal constructor(
         }
     }
 
-    override suspend fun money(binding: LogicalSessionBinding, draftId: String, currency: String, amount: String): Result<Unit> =
-        edit(binding, draftId) { it.copy(currency = currency, amountText = amount) }
-
-    override suspend fun select(binding: LogicalSessionBinding, draftId: String, debt: Debt): Result<Unit> =
-        edit(binding, draftId) { it.selectDebt(binding, debt) }
-
-    override suspend fun date(binding: LogicalSessionBinding, draftId: String, value: String): Result<Unit> =
-        edit(binding, draftId) { it.copy(paymentDate = value) }
-
-    private suspend fun edit(binding: LogicalSessionBinding, draftId: String,
-        transform: (RepaymentReviewInputEntity) -> RepaymentReviewInputEntity): Result<Unit> = errors.safeCall {
+    override suspend fun edit(binding: LogicalSessionBinding, draftId: String,
+        change: RepaymentReviewChange): Result<Unit> = errors.safeCall {
         outbox.withActiveBinding(guard.bindExact(binding)) {
             database.withTransaction {
                 val input = requireInput(binding, draftId)
                 require(input.submittedAction == null) { "原提交已保存；请先核对结果，不能改写正在处理的内容。" }
-                inputs.put(transform(input))
+                inputs.put(when (change) {
+                    is RepaymentReviewChange.Money -> input.copy(currency = change.currency, amountText = change.amount)
+                    is RepaymentReviewChange.Date -> input.copy(paymentDate = change.value)
+                    is RepaymentReviewChange.TargetDebt -> input.selectDebt(binding, change.debt)
+                })
             }
         }
     }

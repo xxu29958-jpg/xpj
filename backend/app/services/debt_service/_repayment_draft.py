@@ -136,6 +136,16 @@ def _repayment_draft_key(
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
+def _corrected_expense_id(draft: RepaymentDraft) -> int | None:
+    db = object_session(draft)
+    if db is None or draft.status != "dismissed":
+        return None
+    return db.scalar(select(Expense.id).join(PaymentCapture, Expense.public_id == PaymentCapture.expense_public_id)
+        .where(PaymentCapture.tenant_id == draft.tenant_id, PaymentCapture.actor_account_id == draft.created_by_account_id,
+            PaymentCapture.repayment_public_id == draft.public_id, PaymentCapture.kind == "expense",
+            Expense.tenant_id == draft.tenant_id))
+
+
 def repayment_draft_response(
     draft: RepaymentDraft, *, suggested_debt_public_id: str | None = None
 ) -> RepaymentDraftResponse:
@@ -144,13 +154,8 @@ def repayment_draft_response(
     # confirm / dismiss responses, the confirm idempotency-replay re-serialize) returns a
     # draft with no suggestion: a freshly-captured draft is for the NLS poster (which never
     # uses the match) and a resolved draft is already linked.
-    db = object_session(draft)
-    corrected = db.scalar(select(Expense.id).join(PaymentCapture, Expense.public_id == PaymentCapture.expense_public_id)
-        .where(PaymentCapture.tenant_id == draft.tenant_id, PaymentCapture.actor_account_id == draft.created_by_account_id,
-            PaymentCapture.repayment_public_id == draft.public_id, PaymentCapture.kind == "expense",
-            Expense.tenant_id == draft.tenant_id)) if db is not None and draft.status == "dismissed" else None
     return RepaymentDraftResponse(
-        corrected_expense_id=corrected,
+        corrected_expense_id=_corrected_expense_id(draft),
         public_id=draft.public_id,
         source=draft.source,
         amount_cents=draft.amount_cents,
@@ -346,6 +351,8 @@ class RepaymentDraftAuditRow:
     resolved_at: datetime | None = None
     source_expense_public_id: str | None = None
     source_expense_requires_review: bool = False
+    source_expense_id: int | None = None
+    corrected_expense_id: int | None = None
 
 
 def _debt_counterparty_labels(db: Session, public_ids: set[str]) -> dict[str, str | None]:
@@ -405,15 +412,19 @@ def list_repayment_draft_audit_for_account(
         elif draft.status == "confirmed" and draft.committed_debt_public_id is not None:
             referenced.add(draft.committed_debt_public_id)
     labels = _debt_counterparty_labels(db, referenced)
+    source_ids = {draft.source_expense_public_id for draft in drafts if draft.source_expense_public_id}
+    sources = {(tenant, source): identifier for tenant, source, identifier in db.execute(
+        select(Expense.tenant_id, Expense.public_id, Expense.id).where(Expense.public_id.in_(source_ids))
+    )} if source_ids else {}
     return [
         _repayment_audit_row(draft, suggested_by_draft.get(draft.id), labels,
-            candidates_by_tenant.get(draft.tenant_id, []))
+            candidates_by_tenant.get(draft.tenant_id, []), sources.get((draft.tenant_id, draft.source_expense_public_id)))
         for draft in drafts
     ]
 
 
 def _repayment_audit_row(draft: RepaymentDraft, suggested_id: str | None, labels: dict[str, str | None],
-    candidates: list[RepaymentMatchCandidate]) -> RepaymentDraftAuditRow:
+    candidates: list[RepaymentMatchCandidate], source_expense_id: int | None) -> RepaymentDraftAuditRow:
     """Project captured money separately from eligible targets and a resolved fact's label."""
     committed_id = draft.committed_debt_public_id if draft.status == "confirmed" else None
     return RepaymentDraftAuditRow(
@@ -432,6 +443,8 @@ def _repayment_audit_row(draft: RepaymentDraft, suggested_id: str | None, labels
         committed_debt_public_id=committed_id,
         resolved_at=draft.resolved_at,
         source_expense_public_id=draft.source_expense_public_id,
+        source_expense_id=source_expense_id,
+        corrected_expense_id=_corrected_expense_id(draft),
         source_expense_requires_review=(draft.source_expense_public_id is not None
             and draft.source_expense_row_version is None and draft.status == "pending"),
         suggested_debt_public_id=suggested_id,

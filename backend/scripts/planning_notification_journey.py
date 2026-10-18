@@ -19,7 +19,7 @@ class NotificationJourney:
         from sqlalchemy import select
 
         from app.database import SessionLocal
-        from app.models import Debt, Expense, Repayment, RepaymentDraft, PaymentCapture
+        from app.models import Debt, Expense, PaymentCapture, Repayment, RepaymentDraft
 
         with SessionLocal() as db:
             drafts = list(db.scalars(select(RepaymentDraft).where(RepaymentDraft.tenant_id == self.fixture.ledger_id)))

@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
+from app.models import Expense, PaymentCapture
+from app.routes._web_debt_write import repayment_scope
 from app.routes._web_repayment_review import _audit_row_view, render_review, submit_review
 from app.routes.web_common import (
     LocalOnly,
@@ -20,14 +24,11 @@ from app.routes.web_common import (
     templates,
 )
 from app.routes.web_debts import _web_viewer_account_id
+from app.services.currency_common import minor_amount_label
 from app.services.debt_service import (
     list_repayment_draft_audit_for_account,
 )
-from app.models import PaymentCapture, Expense
 from app.services.payment_capture_identity import capture_query, capture_response
-from app.routes._web_debt_write import repayment_scope
-from app.services.currency_common import minor_amount_label
-from uuid import uuid4
 
 router = APIRouter(prefix="/web/repayment-drafts", tags=["web"])
 
