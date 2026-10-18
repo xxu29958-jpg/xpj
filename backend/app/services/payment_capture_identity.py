@@ -19,6 +19,12 @@ def capture_query(tenant_id: str, actor_account_id: int):
         PaymentCapture.actor_account_id == actor_account_id)
 
 
+def list_review_captures(db: Session, *, tenant_id: str, actor_account_id: int) -> list[PaymentCaptureResponse]:
+    rows = db.scalars(capture_query(tenant_id, actor_account_id).where(PaymentCapture.kind == "review")
+        .order_by(PaymentCapture.captured_at.desc(), PaymentCapture.id.desc()))
+    return [capture_response(db, row) for row in rows]
+
+
 def identity_hash(notification_key: str) -> str:
     return hashlib.sha256(notification_key.encode()).hexdigest()
 

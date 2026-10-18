@@ -6,13 +6,11 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import Expense, PaymentCapture
 from app.routes._web_debt_write import repayment_scope
 from app.routes._web_repayment_review import _audit_row_view, render_review, submit_review
 from app.routes.web_common import (
@@ -28,7 +26,7 @@ from app.services.currency_common import minor_amount_label
 from app.services.debt_service import (
     list_repayment_draft_audit_for_account,
 )
-from app.services.payment_capture_identity import capture_query, capture_response
+from app.services.payment_capture_identity import list_review_captures
 
 router = APIRouter(prefix="/web/repayment-drafts", tags=["web"])
 
@@ -71,21 +69,13 @@ def _render_repayment_drafts(
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
     ctx["rows"] = [_audit_row_view(row) for row in rows]
-    corrected = dict(db.execute(select(PaymentCapture.repayment_public_id, Expense.id)
-        .join(Expense, Expense.public_id == PaymentCapture.expense_public_id)
-        .where(PaymentCapture.tenant_id == selected_id, PaymentCapture.actor_account_id == account_id,
-            Expense.tenant_id == selected_id, PaymentCapture.kind == "expense")).all()) if account_id else {}
-    for view in ctx["rows"]:
-        if view["public_id"] in corrected:
-            view.update(status_label="已改为消费", corrected_expense_id=corrected[view["public_id"]])
     ctx["empty_title"] = _EMPTY_TITLE
     ctx["empty_body"] = _EMPTY_BODY
     ctx["form_error"] = form_error
     ctx["error_draft_public_id"] = error_draft_public_id
     ctx["flash_message"] = flash_message
-    captures = list(db.scalars(capture_query(selected_id, account_id).where(PaymentCapture.kind == "review")
-        .order_by(PaymentCapture.captured_at.desc()))) if account_id is not None else []
-    ctx.update(uncertain_captures=[capture_response(db, row) for row in captures], capture_result=capture_result,
+    captures = list_review_captures(db, tenant_id=selected_id, actor_account_id=account_id) if account_id is not None else []
+    ctx.update(uncertain_captures=captures, capture_result=capture_result,
         capture_values=capture_values or {}, capture_scope=repayment_scope(request, db), new_intent_key=lambda: str(uuid4()),
         capture_amount_label=minor_amount_label)
     return templates.TemplateResponse(

@@ -50,7 +50,7 @@ def capture_legacy_expense(db: Session, payload: NotificationDraftCreateRequest,
     return _finish_expense(db, expense, fx_task)
 
 
-def capture_legacy_repayment(db, payload, *, tenant_id, actor_account_id):
+def capture_legacy_repayment(db, payload, *, tenant_id, actor_account_id) -> RepaymentDraft:
     from app.services.debt_service._repayment_capture import stage_repayment_draft
 
     capture = None

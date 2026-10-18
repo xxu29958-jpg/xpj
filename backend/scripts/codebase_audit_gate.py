@@ -139,18 +139,18 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 142,  # First-original association carries the existing bill's OCC version.
-    "mutate_token_exempted": 151,  # Owner retention cleanup adapts the existing bounded maintenance commands.
+    "mutate_token_carriers": 144,  # Capture decision and browser review carry the reviewed fact versions.
+    "mutate_token_exempted": 153,  # Capture creation and source-locked repayment reclassification.
     "mutate_token_reason_admin_single_writer": 16,
     "mutate_token_reason_append_only_fact": 3,
     "mutate_token_reason_batch_db_write": 17,
-    "mutate_token_reason_create_row": 42,  # New rows with original-key receipts; existing OCC routes unchanged.
+    "mutate_token_reason_create_row": 43,  # Includes original notification identity creation; no confirmed fact on capture.
     "mutate_token_reason_enqueue_task": 2,
     "mutate_token_reason_external_side_effect": 7,  # Owner FX save-and-fetch now also upserts fx_rates.
     "mutate_token_reason_governance_action": 8,
     "mutate_token_reason_read_only_compute": 6,
     "mutate_token_reason_session_rotation": 8,
-    "mutate_token_reason_terminal_flag_flip": 35,
+    "mutate_token_reason_terminal_flag_flip": 36,  # Reclassification locks the capture and validates correction_versions for committed facts.
     "mutate_token_reason_upsert_bucket": 7,
 }
 STRICT_EQUALITY_BASELINE.update(load_current_test_count_baselines())

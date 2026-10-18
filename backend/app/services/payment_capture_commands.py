@@ -85,7 +85,7 @@ def _require_repayment_identity(draft, capture, notification_key):
             raise AppError("capture_identity_mismatch", "原通知身份不一致，请重新打开原采集核对。", status_code=409)
 
 
-def _capture_for_repayment(db, auth, draft, notification_key):
+def _capture_for_repayment(db, auth, draft, notification_key) -> PaymentCapture:
     capture = db.scalar(capture_query(auth.tenant_id, auth.account_id)
         .where(PaymentCapture.repayment_public_id == draft.public_id).with_for_update())
     if capture is None and draft.source_expense_public_id:
@@ -115,7 +115,7 @@ def _capture_for_repayment(db, auth, draft, notification_key):
     return capture
 
 
-def repayment_as_expense(db, *, auth, public_id, payload, idempotency_key):
+def repayment_as_expense(db, *, auth, public_id, payload, idempotency_key) -> PaymentCaptureResponse:
     claim = _claim(db, auth, public_id, payload, idempotency_key, "repayment_as_expense")
     if claim is None:
         return _accepted_receipt(db, auth, idempotency_key)

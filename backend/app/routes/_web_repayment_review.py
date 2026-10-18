@@ -64,19 +64,23 @@ REVIEW_TIME_FIELDS = ("payment_date", "calendar_revision", "reason", "correction
 
 
 def _initial_review_values(scope, selected_id, public_id, row, can_create, calendar=None, values=None):
-    suggested = next((item for item in row.target_debts if item.public_id == row.suggested_debt_public_id), None) if row else None
     initial = {
         "draft_public_id": public_id, "ledger_id": selected_id,
         "origin_binding": json.dumps(scope, ensure_ascii=False, sort_keys=True),
-        "review_action": "expense" if row and row.status == "confirmed" else "confirm",
-        "target_with_expected_row_version": f"{suggested.public_id}:{suggested.row_version}" if suggested else "",
-        "original_currency": row.original_currency_code if row else "",
-        "original_amount": _minor_amount_value(row.original_amount_minor, row.original_currency_code) if row else "",
+        "review_action": "confirm", "target_with_expected_row_version": "",
+        "original_currency": "", "original_amount": "",
         "idempotency_key": str(uuid4()) if can_create else "",
         "payment_date": "", "calendar_revision": str(calendar.revision) if calendar else "",
         "reason": "",
-        "correction_versions": row.correction_versions.model_dump_json() if row and row.correction_versions else "",
+        "correction_versions": "",
     }
+    if row is not None:
+        suggested = next((item for item in row.target_debts if item.public_id == row.suggested_debt_public_id), None)
+        initial.update(review_action="expense" if row.status == "confirmed" else "confirm",
+            target_with_expected_row_version=f"{suggested.public_id}:{suggested.row_version}" if suggested else "",
+            original_currency=row.original_currency_code,
+            original_amount=_minor_amount_value(row.original_amount_minor, row.original_currency_code),
+            correction_versions=row.correction_versions.model_dump_json() if row.correction_versions else "")
     if values is not None:
         initial.update(values)
         for name in REVIEW_TIME_FIELDS:
@@ -176,7 +180,7 @@ def submit_review(request: Request, db: Session, *, options, selected_id: str, p
                 raise AppError("session_binding_changed", "当前身份或账本已变化，请回到原账号和账本处理。", status_code=409)
             correction = repayment_as_expense(db, auth=auth, public_id=public_id,
                 payload=RepaymentAsExpense(reason=values.get("reason", ""),
-                    correction_versions=json.loads(values["correction_versions"]) if values.get("correction_versions") else None), idempotency_key=values["idempotency_key"])
+                    correction_versions=json.loads(values.get("correction_versions") or "null")), idempotency_key=values["idempotency_key"])
             receipt = get_repayment_draft_response(db, tenant_id=selected_id, actor_account_id=account_id, public_id=public_id)
         else:
             raise AppError("invalid_request", "请选择消费、还款或忽略通知。", status_code=422)

@@ -5,10 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
-from app.models import PaymentCapture
 from app.schemas.payment_capture import PaymentCaptureCreate, PaymentCaptureDecision, PaymentCaptureResponse
 from app.services.payment_capture_commands import decide_capture
-from app.services.payment_capture_identity import capture_query, capture_response, require_capture
+from app.services.payment_capture_identity import capture_response, list_review_captures, require_capture
 from app.services.payment_capture_service import capture_notification
 from app.tenants import AuthContext
 
@@ -17,9 +16,7 @@ router = APIRouter(prefix="/api/payment-captures", tags=["payment-captures"])
 
 @router.get("", response_model=list[PaymentCaptureResponse])
 def list_captures(auth: AuthContext = Depends(get_current_app_context), db: Session = Depends(get_db)):
-    rows = db.scalars(capture_query(auth.tenant_id, auth.account_id).where(PaymentCapture.kind == "review")
-        .order_by(PaymentCapture.captured_at.desc(), PaymentCapture.id.desc()))
-    return [capture_response(db, row) for row in rows]
+    return list_review_captures(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id)
 
 
 @router.post("", response_model=PaymentCaptureResponse, status_code=201)

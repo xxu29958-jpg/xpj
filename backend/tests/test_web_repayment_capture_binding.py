@@ -35,6 +35,10 @@ def _form(text, action):
     return {name: native.one(name) for name in native.fields}
 
 
+def _original_fields(values):
+    return {name: value for name, value in values.items() if name != "csrf_token"}
+
+
 def test_installed_wrong_repayment_returns_one_pending_expense_and_retains_original(installed_web):
     from app.models import Expense, PaymentCapture
     with SessionLocal() as db:
@@ -100,7 +104,7 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
         refused = installed_web.browser.post(action, data=attempted, headers=headers)
         assert refused.status_code == 409, (axis, refused.text)
         retained = _form(refused.text, action)
-        assert {name: retained.get(name) for name in attempted if name != "csrf_token"} == {name: value for name, value in attempted.items() if name != "csrf_token"}
+        assert _original_fields(retained) == _original_fields(attempted)
         assert "data-repayment-ack=" not in refused.text
         with SessionLocal() as db:
             assert list(db.scalars(select(Repayment))) == []
@@ -115,7 +119,7 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
     assert unknown.status_code == 503, unknown.text
     assert 'data-repayment-result="submitted"' in unknown.text
     retained = _form(unknown.text, action)
-    assert {name: retained.get(name) for name in original if name != "csrf_token"} == {name: value for name, value in original.items() if name != "csrf_token"}
+    assert _original_fields(retained) == _original_fields(original)
     monkeypatch.setattr(review, "confirm_repayment_draft_idempotently", writer)
     reader = review.list_repayment_draft_audit_for_account
 

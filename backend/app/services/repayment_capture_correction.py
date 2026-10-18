@@ -10,7 +10,7 @@ from app.services.debt_service._void import void_repayment
 from app.services.expense_offset_lifecycle_service import void_expense_offset
 
 
-def restore_misclassified_repayment(db, *, draft, versions, actor_account_id, reason, key):
+def restore_misclassified_repayment(db, *, draft, versions, actor_account_id, reason, key) -> tuple[Expense | None, Repayment]:
     # Same order as confirmation: original Expense, then parent Debt. The capture
     # command already owns its draft lock and publishes the single final receipt.
     if draft.source_expense_public_id:

@@ -16,7 +16,7 @@ def repayment_source_rows(db, draft):
     return source, offset
 
 
-def repayment_correction_versions(db, draft):
+def repayment_correction_versions(db, draft) -> RepaymentCorrectionVersions | None:
     if draft.status != "confirmed":
         return None
     debt = db.scalar(select(Debt).where(Debt.tenant_id == draft.tenant_id,

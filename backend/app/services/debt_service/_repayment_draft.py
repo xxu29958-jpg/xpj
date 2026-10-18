@@ -257,16 +257,21 @@ def list_repayment_draft_audit_for_account(
         elif draft.status == "confirmed" and draft.committed_debt_public_id is not None:
             referenced.add(draft.committed_debt_public_id)
     labels = _debt_counterparty_labels(db, referenced)
-    source_ids = {draft.source_expense_public_id for draft in drafts if draft.source_expense_public_id}
-    sources = {(tenant, source): identifier for tenant, source, identifier in db.execute(
-        select(Expense.tenant_id, Expense.public_id, Expense.id).where(
-            Expense.tenant_id.in_({draft.tenant_id for draft in drafts}), Expense.public_id.in_(source_ids))
-    )} if source_ids else {}
+    sources = _audit_source_expenses(db, drafts)
     return [
         _repayment_audit_row(draft, suggested_by_draft.get(draft.id), labels,
             candidates_by_tenant.get(draft.tenant_id, []), sources.get((draft.tenant_id, draft.source_expense_public_id)))
         for draft in drafts
     ]
+
+
+def _audit_source_expenses(db: Session, drafts: list[RepaymentDraft]) -> dict[tuple[str, str], int]:
+    source_ids = {draft.source_expense_public_id for draft in drafts if draft.source_expense_public_id}
+    if not source_ids:
+        return {}
+    return {(tenant, source): identifier for tenant, source, identifier in db.execute(
+        select(Expense.tenant_id, Expense.public_id, Expense.id).where(
+            Expense.tenant_id.in_({draft.tenant_id for draft in drafts}), Expense.public_id.in_(source_ids)))}
 
 
 def _repayment_audit_row(draft: RepaymentDraft, suggested_id: str | None, labels: dict[str, str | None],
