@@ -94,6 +94,22 @@ example = "logging.basicConfig(filename='raw.log')"
     assert result.returncode == 0, result.stdout + result.stderr
     assert any(item["path"].endswith("new_handler.py") and item["status"] == "INHERITED"
         for item in json.loads(result.stdout)["findings"])
+    # An unrelated edit before an unchanged Kotlin extension is not a new
+    # terminal boundary. A change inside that extension still requires review.
+    path = "android/app/src/main/java/com/ticketbox/ExistingStore.kt"
+    source = 'fun Store.restore() { require(status == 401) }\nfun Store.persist(): Boolean { try { save(); return true } catch (_: Exception) { return false } }'
+    _save(guard_repo[0], path, source)
+    _git(guard_repo[0], "add", ".")
+    _git(guard_repo[0], "commit", "-qm", "existing extension boundary")
+    baseline = (guard_repo[0], _git(guard_repo[0], "rev-parse", "HEAD"))
+    _git(guard_repo[0], "commit", "--allow-empty", "-qm", "candidate extension consumer")
+    _save(guard_repo[0], path, source.replace("401", "404"))
+    result = _run(baseline)
+    assert result.returncode == 0, result.stdout + result.stderr
+    _save(guard_repo[0], path, source.replace("return false", "return true"))
+    result = _run(baseline)
+    assert result.returncode == 1 and any(item.get("symbol") == "persist" and item["status"] == "NEEDS_REVIEW"
+        for item in json.loads(result.stdout)["findings"]), result.stdout + result.stderr
 
 
 @pytest.mark.parametrize("target,old,new", [

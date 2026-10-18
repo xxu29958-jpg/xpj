@@ -16,7 +16,7 @@
 {% endif %}
 {% set kinds = {'cash': '现金', 'bank': '银行卡', 'wallet': '余额账户', 'credit': '信用账户'} %}
 {% set kind_icons = {'cash': 'banknote', 'bank': 'landmark', 'wallet': 'wallet', 'credit': 'credit-card'} %}
-{% set actions = {'apply_credit': '用余额抵扣欠款', 'void_credit': '撤销余额抵扣', 'incur_fee': '记录已发生费用', 'create': '添加账户', 'edit': '编辑账户', 'repay': '记录还款', 'income': '记录实际收入', 'loan': '记录贷款到账', 'transfer': '账户间转账', 'reconciliation': '核对余额', 'installments': '记录分期', 'void_repayment': '撤销错误的还款'} %}
+{% set actions = {'void_activity': '撤销资金记录', 'apply_credit': '用余额抵扣欠款', 'void_credit': '撤销余额抵扣', 'incur_fee': '记录已发生费用', 'create': '添加账户', 'edit': '编辑账户', 'repay': '记录还款', 'income': '记录实际收入', 'loan': '记录贷款到账', 'transfer': '账户间转账', 'reconciliation': '核对余额', 'installments': '记录分期', 'void_repayment': '撤销错误的还款'} %}
 {% block title %}资金账户 · 小票夹{% endblock %}
 {% block page_scripts %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
@@ -47,6 +47,7 @@
 {% if task == 'create' %}{% set editable = editable + ['existing_debt'] %}{% endif %}
 {% if task == 'edit' %}{% set editable = editable + ['edit_visibility'] %}{% endif %}
 {% if task == 'void_repayment' %}{% set editable = editable + ['reviewed_debt_amount'] %}{% endif %}
+{% if task == 'void_activity' %}{% set editable = ['note', 'occurred_on'] %}{% endif %}
 {% if task == 'repay' and source_capture %}{% set editable = editable + ['source_amount_basis', 'source_review_reason'] %}{% endif %}
 {% for name, value in values.items() if name not in editable and name not in ['csrf_token', 'draft_scope', 'ledger_id', 'review_latest'] %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
 <div class="product-form-grid">
@@ -58,6 +59,10 @@
 {% endif %}
 {% if task == 'installments' %}
 {% include '_installment_fields.html' %}
+{% elif task == 'void_activity' %}
+<p class="product-feedback">将冲回下列资金变化，保留原记录和后续真实交易。实际到账的收入、转账或贷款仍然有效时，不应撤销。</p>
+<p data-funds-activity-summary>{{ values.activity_summary }}</p>
+<div class="product-field"><label for="fund-activity-reason">撤销依据</label><input class="product-input" id="fund-activity-reason" name="note" value="{{ values.note }}" maxlength="255" required></div>
 {% elif task == 'void_repayment' %}
 {% set prior = account.prior_repayments and values.repayment_public_id in account.prior_repayments.items|map(attribute='public_id')|list %}
 {% if prior %}
@@ -161,6 +166,9 @@
       <div class="product-entry-copy">
         <div class="product-entry-heading"><strong>{{ row.note }}</strong><strong class="product-entry-amount">{{ money(row.amount_minor, account.currency_code) }}</strong></div>
         <span>{{ row.occurred_on }}</span>
+        {% if row.voided %}<span>已撤销，原记录保留</span>{% endif %}
+        {% if row.correction_parts and funds_can_write %}<a href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&account_id={{ account.public_id }}&task=void_activity&event_id={{ row.event_public_id }}">撤销这笔记录</a>{% endif %}
+        {% if row.kind in ['opening', 'reconciliation'] and account.can_edit and funds_can_write %}<a href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&account_id={{ account.public_id }}&task=reconciliation">重新核对余额</a>{% endif %}
         {% if row.expense_id %}<a href="/web/expenses/{{ row.expense_id }}/edit?ledger_id={{ selected_ledger_id|urlencode }}">查看消费</a>{% endif %}
         {% if row.can_void_repayment and funds_can_write %}<a href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&account_id={{ account.public_id }}&task=void_repayment&repayment_id={{ row.repayment_public_id }}">撤销错误的还款</a>{% endif %}
       </div>

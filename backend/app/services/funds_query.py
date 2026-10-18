@@ -16,6 +16,7 @@ from app.models import (
 )
 from app.money_contract import projection_sum_to_int
 from app.schemas.funds import BalanceObservationView, CreditTerms, FinancialAccountView, FundsOverview, MovementView
+from app.schemas.funds_activity import ActivityCorrectionPart
 from app.services.credit_allocation_service import unallocated_credit_minor
 from app.services.credit_application_query import credit_applications_view
 from app.services.credit_fee_query import fee_views
@@ -50,7 +51,7 @@ def account_balance(db, account, *, cutoff=None):
 
 
 def account_view(db: Session, row: FinancialAccount, *, actor_account_id: int,
-        with_movements: bool = False) -> FinancialAccountView:
+        with_movements: bool = False, ledger_id: str | None = None) -> FinancialAccountView:
     balance = account_balance(db, row)
     debt = db.scalar(select(Debt).join(CreditFacility, CreditFacility.debt_id == Debt.id)
         .where(CreditFacility.account_id == row.id))
@@ -68,7 +69,8 @@ def account_view(db: Session, row: FinancialAccount, *, actor_account_id: int,
             difference_minor=observation.observed_minor - account_balance(db, row, cutoff=observation.occurred_on),
             occurred_on=observation.occurred_on, source=observation.source,
             adjusted=observation.adjustment_movement_id is not None) if observation else None,
-        can_edit=row.owner_account_id == actor_account_id, movements=_movement_views(db, row) if with_movements else [],
+        can_edit=row.owner_account_id == actor_account_id,
+        movements=_movement_views(db, row, ledger_id or row.tenant_id, actor_account_id) if with_movements else [],
         prior_repayments=prior_repayments(db, row.id) if credit_detail else None,
         fee_obligations=fee_views(db, row.id) if credit_detail else [],
         credit_applications=credit_applications_view(db, row.id) if credit_detail else None,
@@ -77,20 +79,42 @@ def account_view(db: Session, row: FinancialAccount, *, actor_account_id: int,
             payment_due_day=row.payment_due_day) if row.kind == "credit" else None)
 
 
-def _movement_views(db, account):
-    records = db.execute(select(AccountMovement, ExpenseFunding.expense_id, Repayment.public_id, RepaymentVoid.id)
+def _movement_views(db, account, ledger_id, actor_account_id):
+    records = list(db.execute(select(AccountMovement, ExpenseFunding.expense_id, Repayment.public_id, RepaymentVoid.id)
         .outerjoin(ExpenseFunding, ExpenseFunding.id == AccountMovement.funding_id)
         .outerjoin(Repayment, Repayment.id == AccountMovement.repayment_id)
         .outerjoin(RepaymentVoid, RepaymentVoid.repayment_id == Repayment.id)
-        .where(AccountMovement.account_id == account.id).order_by(AccountMovement.occurred_on.desc(), AccountMovement.id.desc()))
+        .where(AccountMovement.account_id == account.id).order_by(AccountMovement.occurred_on.desc(), AccountMovement.id.desc())))
+    by_id = {row.id: row.public_id for row, *_ in records}
+    voided = {row.reversal_of_id for row, *_ in records if row.reversal_of_id is not None}
+    corrections = _activity_corrections(db, ledger_id, actor_account_id, [row for row, *_ in records if row.id not in voided])
     return [MovementView(public_id=m.public_id, event_public_id=m.event_public_id, kind=m.kind,
         amount_minor=m.amount_minor, occurred_on=m.occurred_on, note=m.note, expense_id=expense_id,
+        reversal_of_id=by_id.get(m.reversal_of_id), voided=m.id in voided, correction_parts=corrections.get(m.event_public_id, []),
         repayment_public_id=repayment, can_void_repayment=account.kind == "credit" and m.kind == "repayment"
             and repayment is not None and void_id is None) for m, expense_id, repayment, void_id in records]
 
 
+def _activity_corrections(db, ledger_id, actor_account_id, records):
+    events = {row.event_public_id for row in records if row.kind in {"income", "transfer", "loan"}}
+    if not events:
+        return {}
+    visible = {a.id: a for a in db.scalars(account_query(ledger_id, actor_account_id))}
+    parts = {}
+    hidden = set()
+    for row in db.scalars(select(AccountMovement).where(AccountMovement.event_public_id.in_(events)).order_by(AccountMovement.id)):
+        account = visible.get(row.account_id)
+        if account is None:
+            hidden.add(row.event_public_id)
+            continue
+        parts.setdefault(row.event_public_id, []).append(ActivityCorrectionPart(account_public_id=account.public_id,
+            account_row_version=account.row_version, account_name=account.name, currency_code=account.currency_code,
+            amount_minor=-row.amount_minor))
+    return {event: values for event, values in parts.items() if event not in hidden}
+
+
 def list_accounts(db, *, ledger_id, actor_account_id):
-    return [account_view(db, row, actor_account_id=actor_account_id) for row in db.scalars(
+    return [account_view(db, row, actor_account_id=actor_account_id, ledger_id=ledger_id) for row in db.scalars(
         account_query(ledger_id, actor_account_id).order_by(FinancialAccount.archived_at.asc().nullsfirst(), FinancialAccount.id))]
 
 

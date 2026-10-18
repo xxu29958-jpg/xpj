@@ -45,6 +45,13 @@ fun FundsViewModel.voidCreditApplication(id: String) {
     edit { it.copy(creditReviewId = id) }
 }
 
+fun FundsViewModel.voidActivity(row: com.ticketbox.data.remote.dto.FundMovementDto) {
+    if (state.value.task.input != null) { resume(); return }
+    if (row.correctionParts.isEmpty()) return
+    start("void_activity")
+    edit { it.copy(activityEventId = row.eventPublicId, activityLabel = row.note, activityParts = row.correctionParts) }
+}
+
 fun FundsViewModel.reviseAgreement(agreement: InstallmentViewDto) {
     if (state.value.task.input != null) { resume(); return }
     start("installments")

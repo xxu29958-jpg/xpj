@@ -24,6 +24,8 @@ from app.routes._web_funds_values import (
     form_defaults,
     payment_payload,
     posting_payload,
+    selected_activity_values,
+    void_activity_payload,
     void_payment_payload,
 )
 from app.routes._web_installments import installment_payload, selected_installment_values
@@ -42,6 +44,7 @@ from app.services.credit_fee_commands import incur_credit_fee
 from app.services.credit_history_adoption import existing_debt_choices
 from app.services.currency_common import minor_amount_label, supported_currency_codes
 from app.services.funds_account_choices import ACCOUNT_CHOICES
+from app.services.funds_activity_correction import void_account_activity
 from app.services.funds_commands import (
     claim_funds,
     create_account,
@@ -75,13 +78,18 @@ def _render(request: Request, db: Session, *, ledger_id: str, task: str = "", ac
     options, selected, auth = _scope(request, db, ledger_id)
     accounts = list_accounts(db, ledger_id=selected, actor_account_id=auth.account_id)
     account = account_view(db, get_account(db, ledger_id=selected, actor_account_id=auth.account_id,
-        public_id=account_id), actor_account_id=auth.account_id, with_movements=True) if account_id else None
+        public_id=account_id), actor_account_id=auth.account_id, with_movements=True, ledger_id=selected) if account_id else None
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected, page_title="资金账户")
     defaults = form_defaults(account, task, ctx["home_currency_code"],
         current_ledger_date(db, ledger_id=account.ledger_id if account else selected), repayment_id)
     installments = installments_view(db, get_account(db, ledger_id=selected, actor_account_id=auth.account_id,
         public_id=account_id)) if account and account.kind == "credit" else None
     defaults.update(selected_installment_values(installments, agreement_id, defaults["currency_code"]))
+    if task == "void_activity":
+        event_id = values["activity_event_id"] if values is not None else request.query_params.get("event_id", "")
+        defaults["task_id"] += ":" + event_id
+        if values is None:
+            defaults.update(selected_activity_values(account, event_id))
     if task == "void_credit":
         defaults["credit_review_id"] = request.query_params.get("application_id", "")
         defaults["task_id"] += ":" + defaults["credit_review_id"]
@@ -103,7 +111,7 @@ def _render(request: Request, db: Session, *, ledger_id: str, task: str = "", ac
 @router.get("")
 def web_funds(request: Request, ledger_id: str = "", task: str = "", account_id: str = "",
         agreement_id: str = "", repayment_id: str = "", _local: None = LocalOnly, db: Session = Depends(get_db)):
-    if task not in {"", "create", "edit", "repay", "income", "loan", "transfer", "reconciliation", "installments", "void_repayment", "incur_fee", "apply_credit", "void_credit"} or (task not in {"", "create"} and not account_id):
+    if task not in {"", "create", "edit", "repay", "income", "loan", "transfer", "reconciliation", "installments", "void_repayment", "void_activity", "incur_fee", "apply_credit", "void_credit"} or (task not in {"", "create"} and not account_id):
         raise AppError("invalid_request", "请从资金账户选择要办理的事项。", status_code=422)
     return _render(request, db, ledger_id=ledger_id, task=task, account_id=account_id, agreement_id=agreement_id, repayment_id=repayment_id)
 
@@ -122,6 +130,8 @@ def _run(db, auth, values, payload, handler, operation, review) -> FinancialAcco
 
 def _execute(db: Session, auth: AuthContext, values: dict[str, str], *, review: bool = False) -> FinancialAccountView | None:
     mode = values["mode"]
+    if mode == "void_activity":
+        return _run(db, auth, values, void_activity_payload(values), void_account_activity, "void_account_activity", review)
     if mode in {"apply_credit", "void_credit"}:
         handler, operation = ((apply_retained_credit, "apply_retained_credit") if mode == "apply_credit"
             else (void_credit_application, "void_credit_application"))
@@ -163,10 +173,13 @@ async def web_save_funds(request: Request, expected_row_version: str = Form(""),
                     receipt=original, next_href=href) or _web_redirect("/web/funds", ledger, account_id=original.public_id)
             if values.get("account_id"):
                 current = account_view(db, get_account(db, ledger_id=ledger, actor_account_id=auth.account_id,
-                    public_id=values["account_id"]), actor_account_id=auth.account_id)
+                    public_id=values["account_id"]), actor_account_id=auth.account_id,
+                    with_movements=values["mode"] == "void_activity", ledger_id=ledger)
                 if current.currency_code != values["currency_code"]:
                     raise AppError("state_conflict", "原输入币种与账户不一致，请核对原输入。", status_code=409)
                 values.update(expected_row_version=str(current.row_version), calendar_revision=str(current.calendar_revision))
+                if values["mode"] == "void_activity":
+                    values.update(selected_activity_values(current, values["activity_event_id"]))
             if values.get("payer_public_id"):
                 payer = get_account(db, ledger_id=ledger, actor_account_id=auth.account_id, public_id=values["payer_public_id"])
                 if payer.currency_code != values["payer_currency_code"]:

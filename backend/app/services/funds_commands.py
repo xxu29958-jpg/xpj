@@ -1,6 +1,7 @@
 """Atomic account writes using the existing credential, OCC and receipt boundaries."""
 from uuid import uuid4
 
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,7 +20,7 @@ from app.services.time_service import now_utc
 from app.tenants import AuthContext
 
 
-def claim_funds(db, auth, payload, key, operation, target=None):
+def claim_funds(db: Session, auth: AuthContext, payload: BaseModel, key: str, operation: str, target: str | None = None):
     lock_and_revalidate_mutation_actor(db, auth, actor_account_id=auth.account_id, ledger_id=auth.ledger_id)
     require_write_expense(auth)
     resolve_write_capability(db)
@@ -61,7 +62,10 @@ def funds_request_is_unpublished(db, auth, key):
 
 def finish_funds(db, auth, claim, account):
     db.flush()
-    result = account_view(db, account, actor_account_id=auth.account_id, with_movements=True)
+    result = account_view(db, account, actor_account_id=auth.account_id, with_movements=True, ledger_id=auth.ledger_id)
+    # An accepted receipt is historical; other accounts' current action
+    # candidates belong only to an authorized detail read, not durable replay.
+    result.movements = [row.model_copy(update={"correction_parts": []}) for row in result.movements]
     mark_idempotency_succeeded(db, claim, resource_type="financial_account", resource_id=account.public_id,
         response_body=result.model_dump(mode="json"))
     db.commit()

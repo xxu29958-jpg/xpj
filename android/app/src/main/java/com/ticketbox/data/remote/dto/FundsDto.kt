@@ -72,6 +72,8 @@ data class FundMovementDto(
     @param:Json(name = "expense_id") val expenseId: Long?,
     @param:Json(name = "repayment_public_id") val repaymentPublicId: String?,
     @param:Json(name = "can_void_repayment") val canVoidRepayment: Boolean = false,
+    val voided: Boolean = false,
+    @param:Json(name = "correction_parts") val correctionParts: List<ActivityCorrectionPartDto> = emptyList(),
 )
 
 @JsonClass(generateAdapter = true)

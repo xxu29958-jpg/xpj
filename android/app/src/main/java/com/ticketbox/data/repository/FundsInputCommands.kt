@@ -2,7 +2,6 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.AccountPostingDto
 import com.ticketbox.data.remote.dto.CreditPaymentDto
-import com.ticketbox.data.remote.dto.CreditPaymentVoidDto
 import com.ticketbox.data.remote.dto.FinancialAccountCreateDto
 import com.ticketbox.data.remote.dto.FinancialAccountEditDto
 import com.ticketbox.data.remote.dto.ExpenseFundingCommandDto
@@ -19,10 +18,10 @@ internal fun FundsInput.command(): FundsCommand {
             require(note.isNotBlank()) { "请填写已经发生的费用依据。" }
             FundsCommand(revision = 2, binding = binding, accountId = accountId,
                 fee = com.ticketbox.data.remote.dto.CreditFeeCreateDto(version, calendarRevision,
-                    amount(activityAmount, currency), date, note, feePeriodId.takeIf(String::isNotBlank)))
+                    fundsInputAmount(activityAmount, currency), date, note, feePeriodId.takeIf(String::isNotBlank)))
         }
         "envelopes" -> envelopeCommand()
-        "void_repayment" -> voidPaymentCommand()
+        "void_repayment", "void_activity" -> correctionCommand()
         "installments" -> installmentsCommand()
         "funding" -> fundingCommand()
         "create" -> createCommand()
@@ -37,10 +36,10 @@ private fun FundsInput.envelopeCommand(): FundsCommand {
     java.time.YearMonth.parse(envelopeMonth)
     return FundsCommand(binding = binding, accountId = "", envelopeMonth = envelopeMonth,
         envelopes = com.ticketbox.data.remote.dto.EnvelopeSaveDto(version, currency, envelopeAccounts,
-            envelopeAccountVersions, envelopeAmounts.mapValues { amount(it.value, currency) }, note))
+            envelopeAccountVersions, envelopeAmounts.mapValues { fundsInputAmount(it.value, currency) }, note))
 }
 
-private fun amount(text: String, code: String, signed: Boolean = false): Long = requireNotNull(parseExactMoneyMinor(text,
+internal fun fundsInputAmount(text: String, code: String, signed: Boolean = false): Long = requireNotNull(parseExactMoneyMinor(text,
         requireNotNull(CurrencyCode.fromStorageKeyOrNull(code)) { "请先选择原币种。" }, allowNegative = signed)) { "请核对金额及币种的小数位。" }
 
 private fun FundsInput.creditTerms(): com.ticketbox.data.remote.dto.CreditTermsDto? {
@@ -52,18 +51,10 @@ private fun FundsInput.creditTerms(): com.ticketbox.data.remote.dto.CreditTermsD
             java.time.LocalDate.parse(creditObservedOn)
             require(creditSource.isNotBlank()) { "请填写额度查询来源。" }
         }
-        return com.ticketbox.data.remote.dto.CreditTermsDto(creditLimit.takeIf(String::isNotBlank)?.let { amount(it, currency) },
-            availableCredit.takeIf(String::isNotBlank)?.let { amount(it, currency) }, creditObservedOn.ifBlank { null },
+        return com.ticketbox.data.remote.dto.CreditTermsDto(creditLimit.takeIf(String::isNotBlank)?.let { fundsInputAmount(it, currency) },
+            availableCredit.takeIf(String::isNotBlank)?.let { fundsInputAmount(it, currency) }, creditObservedOn.ifBlank { null },
             day(statementDay), day(paymentDueDay), creditSource.ifBlank { null })
     }
-
-private fun FundsInput.voidPaymentCommand(): FundsCommand {
-    require(repaymentId.isNotBlank() && note.isNotBlank()) { "请保留原还款并填写撤销依据。" }
-    require(!legacyRepayment || reviewedDebtAmount.isNotBlank()) { "请核对接入旧还款后的当前欠款。" }
-    val reviewed = reviewedDebtAmount.takeIf(String::isNotBlank)?.let { -amount(it, currency, signed = true) }
-    return FundsCommand(revision = if (reviewed != null) 4 else 1, binding = binding, accountId = accountId,
-        voidPayment = CreditPaymentVoidDto(version, repaymentId, date, note, reviewed))
-}
 
 private fun FundsInput.installmentsCommand(): FundsCommand = FundsCommand(binding = binding, accountId = accountId, installments = installmentCommand())
 
@@ -85,7 +76,7 @@ private fun FundsInput.createCommand(): FundsCommand {
             }
             return FundsCommand(binding = binding, accountId = "", create = FinancialAccountCreateDto(name.trim(), kind, currency,
                 visibility, institution.trim().ifBlank { null }, tail.trim().ifBlank { null },
-                opening.takeIf { it.isNotBlank() }?.let { amount(it, currency, signed = true) }, date, source, creditTerms(), adoption))
+                opening.takeIf { it.isNotBlank() }?.let { fundsInputAmount(it, currency, signed = true) }, date, source, creditTerms(), adoption))
 }
 
 private fun FundsInput.editCommand(): FundsCommand = FundsCommand(binding = binding, accountId = accountId, edit = FinancialAccountEditDto(version,
@@ -95,22 +86,22 @@ private fun FundsInput.paymentCommand(): FundsCommand {
     require(payerId.isNotBlank() && payerVersion > 0 && note.isNotBlank()) { "请选择实际扣款账户并填写说明。" }
             val (periods, draws) = paymentAllocation()
             return FundsCommand(revision = if (feePayments.isEmpty()) 1 else 2, binding = binding, accountId = accountId, payment = CreditPaymentDto(version, calendarRevision,
-                payerId, payerVersion, amount(principal, currency), amount(paid, payerCurrency), date, note,
-                newFee.takeIf { it.isNotBlank() }?.let { amount(it, payerCurrency) } ?: 0L, feeNote.ifBlank { null },
-                periods, draws, overpayment.takeIf(String::isNotBlank)?.let { amount(it, currency) } ?: 0L,
+                payerId, payerVersion, fundsInputAmount(principal, currency), fundsInputAmount(paid, payerCurrency), date, note,
+                newFee.takeIf { it.isNotBlank() }?.let { fundsInputAmount(it, payerCurrency) } ?: 0L, feeNote.ifBlank { null },
+                periods, draws, overpayment.takeIf(String::isNotBlank)?.let { fundsInputAmount(it, currency) } ?: 0L,
                 sourceRepaymentDraftId.takeIf(String::isNotBlank), sourceAmountBasis,
                 sourceReviewReason.takeIf(String::isNotBlank),
                 feePayments.filterValues(String::isNotBlank).map { (id, value) ->
-                    com.ticketbox.data.remote.dto.CreditFeePaymentPartDto(id.toLong(), amount(value, currency))
-                }.filter { it.amountMinor > 0 }, payerFeeAmount.takeIf(String::isNotBlank)?.let { amount(it, payerCurrency) } ?: 0L))
+                    com.ticketbox.data.remote.dto.CreditFeePaymentPartDto(id.toLong(), fundsInputAmount(value, currency))
+                }.filter { it.amountMinor > 0 }, payerFeeAmount.takeIf(String::isNotBlank)?.let { fundsInputAmount(it, payerCurrency) } ?: 0L))
 }
 
 private fun FundsInput.activityCommand(): FundsCommand {
     require(note.isNotBlank()) { "请填写实际来源或核对依据。" }
             return FundsCommand(binding = binding, accountId = accountId, activity = AccountPostingDto(version, mode,
-                amount(activityAmount, currency, signed = mode == "reconciliation") * if (mode == "reconciliation" && kind == "credit") -1 else 1,
+                fundsInputAmount(activityAmount, currency, signed = mode == "reconciliation") * if (mode == "reconciliation" && kind == "credit") -1 else 1,
                 date, note, calendarRevision, payerId.takeIf { mode == "transfer" }, payerVersion.takeIf { mode == "transfer" },
-                if (mode == "transfer") amount(otherAmount, payerCurrency) else null, applyAdjustment,
+                if (mode == "transfer") fundsInputAmount(otherAmount, payerCurrency) else null, applyAdjustment,
                 loanName.takeIf { mode == "loan" }, loanCurrency.takeIf { mode == "loan" },
-                if (mode == "loan") amount(loanPrincipal, loanCurrency) else null))
+                if (mode == "loan") fundsInputAmount(loanPrincipal, loanCurrency) else null))
 }

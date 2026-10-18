@@ -70,7 +70,7 @@ def _correct_adopted_payment(client, identity, account, original_debt, historica
     prior = client.get(account_url, headers=identity.app_headers).json()["prior_repayments"]
     assert prior["items"][0]["amount_cents"] == 3000
     body = {"expected_row_version": account["row_version"], "repayment_public_id": prior["items"][0]["public_id"],
-        "occurred_on": str(date.today()), "reason": "旧30元还款未发生，平台核对当前欠款98元"}
+        "occurred_on": account["opening_date"], "reason": "旧30元还款未发生，平台核对当前欠款98元"}
     headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
     refused = client.post(account_url + "/repayments/void", headers=headers, json=body)
     assert refused.status_code == 422 and refused.json()["error"] == "balance_review_required"
@@ -600,6 +600,28 @@ def _native_envelope_arrangement(installed, headers):
     resumed = installed.browser.post("/web/envelopes/save", headers=headers, data=stale)
     assert resumed.status_code == 200, resumed.text
     assert resumed.json()["receipt"]["unassigned_minor"] == 45000
+    _native_activity_correction(installed, headers, bank["public_id"])
+
+
+def _native_activity_correction(installed, headers, account_id):
+    page = installed.browser.get(f"/web/funds?task=income&account_id={account_id}", headers=headers)
+    fields = hidden_post_forms(page.text)["/web/funds/save"]
+    fields.update(activity_amount="20", note="错误的额外收入", occurred_on=str(date.today()))
+    saved = installed.browser.post("/web/funds/save", data=fields, headers=headers)
+    assert saved.status_code == 200, saved.text
+    original = next(row for row in saved.json()["receipt"]["movements"] if row["kind"] == "income")
+    assert original["correction_parts"] == []  # Historical receipts do not retain another account's current authority.
+    page = installed.browser.get(f"/web/funds?task=void_activity&account_id={account_id}&event_id={original['event_public_id']}", headers=headers)
+    assert page.status_code == 200 and "错误的额外收入" in page.text, page.text
+    values = hidden_post_forms(page.text)["/web/funds/save"]
+    assert json.loads(values["activity_parts_json"])[0]["amount_minor"] == -2000
+    values.update(note="银行确认并无此到账", occurred_on=str(date.today()))
+    corrected = installed.browser.post("/web/funds/save", data=values, headers=headers)
+    assert corrected.status_code == 200, corrected.text
+    assert corrected.json()["receipt"]["balance_minor"] == 100000
+    assert installed.browser.post("/web/funds/save", data=values, headers=headers).json() == corrected.json()
+    history = installed.browser.get(corrected.json()["next"], headers=headers)
+    assert "已撤销，原记录保留" in history.text and "银行确认并无此到账" in history.text
 
 
 def _native_share_account(installed, headers, bank):
@@ -753,6 +775,7 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
         assert db.scalar(select(func.count()).select_from(Debt)) == 2  # one revolving facility and one loan
     summary = get("/api/funds/accounts/summary/net-worth")
     assert summary["net_worth_minor"] == 91350  # loan and transfer do not manufacture net assets
+    _correct_cash_events(post, get, bank_url, wallet_url)
     # A real native minor unit may round below one home unit; settling it still clears the debt.
     from decimal import Decimal
 
@@ -774,6 +797,42 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
     with SessionLocal() as db:
         native_payment = db.scalar(select(Repayment).where(Repayment.original_currency_code == "IDR"))
         assert native_payment.original_amount_minor == 1 and native_payment.amount_cents == 0
+
+
+def _activity_void_input(account, kind):
+    original = next(row for row in account["movements"] if row["kind"] == kind and not row["voided"])
+    return {"expected_row_version": account["row_version"], "event_public_id": original["event_public_id"],
+        "account_row_versions": {part["account_public_id"]: part["account_row_version"] for part in original["correction_parts"]},
+        "occurred_on": str(date.today()), "reason": "核对后撤销错误资金记录"}
+
+
+def _correct_cash_events(post, get, bank_url, wallet_url):
+    loan = next(row for row in get("/api/funds/accounts") if row["name"] == "固定本金贷款")
+    loan_url = "/api/funds/accounts/" + loan["public_id"]
+    wallet = get(wallet_url)
+    original = _activity_void_input(wallet, "loan")
+    loan = post(loan_url + "/repay", {"expected_row_version": loan["row_version"], "calendar_revision": loan["calendar_revision"],
+        "payer_public_id": wallet["public_id"], "payer_row_version": wallet["row_version"], "principal_minor": 1000,
+        "payer_amount_minor": 1000, "occurred_on": str(date.today()), "note": "到账后实际还款"})
+    post(wallet_url + "/activities/void", {**original, "expected_row_version": get(wallet_url)["row_version"]}, expected=409)
+    assert get(wallet_url)["balance_minor"] == 5000 and get(loan_url)["balance_minor"] == -4000
+    undo = _activity_void_input(get(wallet_url), "loan")
+    key = str(uuid4())
+    corrected = post(wallet_url + "/activities/void", undo, key=key)
+    assert corrected["balance_minor"] == 0 and post(wallet_url + "/activities/void", undo, key=key) == corrected
+    assert get(loan_url)["balance_minor"] == 1000 and get(loan_url)["unallocated_credit_minor"] == 1000
+    post(wallet_url + "/activities/void", {**undo, "expected_row_version": corrected["row_version"],
+        "account_row_versions": {row["public_id"]: row["row_version"] for row in (corrected, get(loan_url))}}, expected=409)
+    bank = post(bank_url + "/activities/void", _activity_void_input(get(bank_url), "transfer"))
+    assert bank["balance_minor"] == 90850 and get(wallet_url)["balance_minor"] == -1000
+    assert get("/api/funds/accounts/summary/net-worth")["net_worth_minor"] == 91350
+    post(bank_url + "/activities", {"expected_row_version": bank["row_version"], "calendar_revision": bank["calendar_revision"],
+        "kind": "income", "amount_minor": 2000, "occurred_on": str(date.today()), "note": "误记重复收入"})
+    bank = post(bank_url + "/activities/void", _activity_void_input(get(bank_url), "income"))
+    assert bank["balance_minor"] == 90850
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(Expense)) == 4
+        assert db.scalar(select(func.count()).select_from(Debt)) == 2
 
 
 def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, original_payment):

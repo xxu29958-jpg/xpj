@@ -6,7 +6,16 @@ import com.ticketbox.data.remote.dto.FinancialAccountDto
 internal suspend fun FundsQueries.reviewFundsInput(old: FundsInput, accounts: List<FinancialAccountDto>): FundsInput = when (old.mode) {
     "envelopes" -> reviewEnvelopes(old)
     "funding" -> reviewFunding(old, accounts)
+    "void_activity" -> reviewActivity(old)
     else -> reviewAccount(old, accounts)
+}
+
+private suspend fun FundsQueries.reviewActivity(old: FundsInput): FundsInput {
+    val read = detail(old.binding, old.accountId).getOrThrow()
+    require(!read.fromCache) { "请联网核对所有相关账户，原输入保留。" }
+    val source = requireNotNull(read.value.movements.find { it.eventPublicId == old.activityEventId }) { "原资金记录当前不可用。" }
+    require(source.correctionParts.isNotEmpty()) { "原记录已撤销或相关账户当前不可用，请查看原记录。" }
+    return old.copy(version = read.value.rowVersion, activityParts = source.correctionParts)
 }
 
 private suspend fun FundsQueries.reviewEnvelopes(old: FundsInput): FundsInput {

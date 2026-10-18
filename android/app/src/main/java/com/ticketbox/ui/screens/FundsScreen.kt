@@ -29,6 +29,7 @@ import com.ticketbox.viewmodel.FundsUiState
 import com.ticketbox.viewmodel.FundsViewModel
 import com.ticketbox.viewmodel.start
 import com.ticketbox.viewmodel.voidPayment
+import com.ticketbox.viewmodel.voidActivity
 
 @Composable
 internal fun fundKinds() = linkedMapOf("cash" to stringResource(R.string.funds_kind_cash), "bank" to stringResource(R.string.funds_kind_bank), "wallet" to stringResource(R.string.funds_kind_wallet), "credit" to stringResource(R.string.funds_kind_credit))
@@ -37,6 +38,7 @@ internal fun fundActions() = mapOf("create" to stringResource(R.string.funds_add
     "incur_fee" to stringResource(R.string.funds_incur_fee),
     "apply_credit" to stringResource(R.string.funds_apply_credit), "void_credit" to stringResource(R.string.funds_void_credit),
     "void_repayment" to stringResource(R.string.funds_void_payment),
+    "void_activity" to stringResource(R.string.funds_void_activity),
     "envelopes" to stringResource(R.string.envelopes_edit),
     "income" to stringResource(R.string.funds_record_income), "loan" to stringResource(R.string.funds_record_loan), "transfer" to stringResource(R.string.funds_record_transfer), "reconciliation" to stringResource(R.string.funds_reconcile), "funding" to stringResource(R.string.funds_funding_title), "installments" to stringResource(R.string.funds_record_installments))
 internal fun money(value: Long, currency: String) = formatDisplayAmount(value, CurrencyDisplay.forRecord(currency))
@@ -110,6 +112,9 @@ private fun LazyListScope.accountDetail(state: FundsUiState, detail: FinancialAc
         AppListRow(onClick = row.expenseId?.let { id -> { onExpense(id) } }) {
             Column(Modifier.weight(1f)) {
                 Text(row.note); Text(row.occurredOn, style = MaterialTheme.typography.bodySmall)
+                if (row.voided) Text(stringResource(R.string.funds_activity_voided))
+                if (row.correctionParts.isNotEmpty() && state.access?.canModify == true)
+                    TextButton(onClick = { viewModel.voidActivity(row) }) { Text(stringResource(R.string.funds_void_activity)) }
                 if (row.canVoidRepayment && row.repaymentPublicId != null && state.access?.canModify == true)
                     TextButton(onClick = { viewModel.voidPayment(row.repaymentPublicId) }) { Text(stringResource(R.string.funds_void_payment)) }
             }

@@ -19,12 +19,14 @@ from app.schemas.funds import (
     FinancialAccountView,
     FundsOverview,
 )
+from app.schemas.funds_activity import AccountActivityVoid
 from app.schemas.installment import InstallmentCommand, InstallmentsView
 from app.services.credit_application_commands import apply_retained_credit, void_credit_application
 from app.services.credit_fee_commands import incur_credit_fee
 from app.services.credit_history_adoption import existing_debt_choices
 from app.services.expense_funding_command import expense_funding_view, save_expense_funding
 from app.services.funds_account_choices import ACCOUNT_CHOICES
+from app.services.funds_activity_correction import void_account_activity
 from app.services.funds_commands import create_account, edit_account
 from app.services.funds_credit_payment import pay_credit
 from app.services.funds_payment_correction import void_credit_payment
@@ -79,7 +81,7 @@ def get_accounts(auth: AuthContext = Depends(get_current_app_context), db: Sessi
 @router.get("/{public_id}", response_model=FinancialAccountView)
 def get_account_details(public_id: str, auth: AuthContext = Depends(get_current_app_context), db: Session = Depends(get_db)):
     row = get_account(db, ledger_id=auth.tenant_id, actor_account_id=auth.account_id, public_id=public_id)
-    return account_view(db, row, actor_account_id=auth.account_id, with_movements=True)
+    return account_view(db, row, actor_account_id=auth.account_id, with_movements=True, ledger_id=auth.ledger_id)
 
 
 @router.get("/summary/net-worth", response_model=FundsOverview)
@@ -115,6 +117,12 @@ def post_funds_activity(public_id: str, payload: AccountPosting, key: str = Head
 def post_credit_payment_void(public_id: str, payload: CreditPaymentVoid, key: str = Header(alias="Idempotency-Key"),
         auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return void_credit_payment(db, auth=auth, public_id=public_id, payload=payload, key=key)
+
+
+@router.post("/{public_id}/activities/void", response_model=FinancialAccountView)
+def post_funds_activity_void(public_id: str, payload: AccountActivityVoid, key: str = Header(alias="Idempotency-Key"),
+        auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
+    return void_account_activity(db, auth=auth, public_id=public_id, payload=payload, key=key)
 
 
 @router.post("/{public_id}/fees", response_model=FinancialAccountView)

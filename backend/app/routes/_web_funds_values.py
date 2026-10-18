@@ -1,4 +1,5 @@
 """Translate retained Web inputs to the existing funds command schemas."""
+import json
 from datetime import date
 from uuid import uuid4
 
@@ -18,14 +19,15 @@ from app.schemas.funds import (
     DebtAdoption,
     FinancialAccountView,
 )
-from app.services.currency_common import major_amount_to_minor, minor_amount_value
+from app.schemas.funds_activity import AccountActivityVoid
+from app.services.currency_common import major_amount_to_minor, minor_amount_label, minor_amount_value
 from app.services.funds_query import get_account
 from app.tenants import AuthContext
 
 
 def form_defaults(account: FinancialAccountView | None, task: str, home_currency: str, today: date,
                   repayment_id: str) -> dict[str, str]:
-    values = dict.fromkeys(("account_id", "task_id", "name", "institution", "tail", "opening_amount",
+    values = dict.fromkeys(("activity_event_id", "activity_parts_json", "activity_summary", "account_id", "task_id", "name", "institution", "tail", "opening_amount",
         "expected_row_version", "calendar_revision", "payer_public_id", "payer_row_version", "payer_currency_code",
         "credit_source_id", "credit_draw_id", "credit_review_id", "credit_source_label", "credit_draw_label",
         "fee_period_id", "payer_fee_amount", "principal_amount", "payer_amount", "note", "activity_amount", "other_amount", "loan_name", "reviewed_debt_amount",
@@ -65,6 +67,24 @@ def void_payment_payload(db, auth, values):
     return CreditPaymentVoid(expected_row_version=values["expected_row_version"],
         repayment_public_id=values["repayment_public_id"], occurred_on=values["occurred_on"], reason=values["note"],
         reviewed_balance_minor=-major_amount_to_minor(reviewed, account.currency_code, allow_negative=True) if reviewed else None)
+
+
+def selected_activity_values(account, event_id):
+    original = next((row for row in account.movements if row.event_public_id == event_id), None)
+    if original is None or not original.correction_parts:
+        raise AppError("state_conflict", "原记录已更正或相关账户当前不可用，请查看历史记录。", status_code=409)
+    return {"activity_event_id": event_id,
+        "activity_parts_json": json.dumps([part.model_dump() for part in original.correction_parts], ensure_ascii=False),
+        "activity_summary": original.note + "\n" + "\n".join(
+            f"{part.account_name}：{minor_amount_label(part.amount_minor, part.currency_code)}"
+            for part in original.correction_parts)}
+
+
+def void_activity_payload(values):
+    parts = json.loads(values["activity_parts_json"])
+    return AccountActivityVoid(expected_row_version=values["expected_row_version"], event_public_id=values["activity_event_id"],
+        account_row_versions={part["account_public_id"]: part["account_row_version"] for part in parts},
+        occurred_on=values["occurred_on"], reason=values["note"])
 
 
 def _credit_terms_values(account: FinancialAccountView) -> dict[str, str]:

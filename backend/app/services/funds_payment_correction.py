@@ -46,7 +46,8 @@ def void_credit_payment(db: Session, *, auth: AuthContext, public_id: str,
     return finish_funds(db, auth, claim, account)
 
 
-def _void_adopted_payment(db, auth, account, repayment, payload, key, claim):
+def _void_adopted_payment(db: Session, auth: AuthContext, account: FinancialAccount, repayment: Repayment,
+        payload: CreditPaymentVoid, key: str, claim) -> FinancialAccountView:
     from app.models import AccountBalanceObservation
     from app.services.funds_fact_service import refresh_credit
     from app.services.funds_query import account_balance

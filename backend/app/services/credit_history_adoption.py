@@ -32,7 +32,7 @@ def existing_debt_choices(db, *, ledger_id, actor_account_id):
         for row in db.scalars(eligible_debts(ledger_id, actor_account_id).order_by(Debt.id))]
 
 
-def prior_repayments(db, account_id):
+def prior_repayments(db: Session, account_id: int) -> RepaymentFactListResponse | None:
     from app.services.debt_service._repayment_activity import repayment_fact_response
     adopted = db.execute(select(CreditFacility, Debt).join(Debt, Debt.id == CreditFacility.debt_id)
         .where(CreditFacility.account_id == account_id, CreditFacility.adopted_at.is_not(None))).one_or_none()

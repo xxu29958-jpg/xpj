@@ -68,6 +68,7 @@ private fun FundsInputFields(state: FundsUiState, input: FundsInput, enabled: Bo
             "void_repayment" -> {
                 FundsVoidPaymentFields(input, enabled, vm)
             }
+            "void_activity" -> FundsActivityCorrectionFields(input, enabled, vm)
             "funding" -> {
                 CurrencyCode.fromStorageKeyOrNull(input.currency)?.let { currency ->
                     ExpenseFundingFields(input.fundingJson, currency, enabled) { value -> vm.edit { it.copy(fundingJson = value) } }

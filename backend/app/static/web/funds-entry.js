@@ -6,11 +6,11 @@
     "activity_amount", "other_amount", "reviewed_debt_amount", "apply_adjustment", "loan_name", "loan_currency_code", "loan_principal_amount", "new_fee", "fee_note", "fee_period_id", "payer_fee_amount",
     "draw_ids_json", "periods_json", "supersedes_public_id", "allocation_json", "overpayment", "repayment_public_id",
     "credit_limit", "available_credit", "credit_observed_on", "credit_source", "statement_day", "payment_due_day", "existing_debt",
-    "source_repayment_draft_id", "source_amount_basis", "source_review_reason"];
+    "source_repayment_draft_id", "source_amount_basis", "source_review_reason", "activity_event_id", "activity_parts_json", "activity_summary"];
   const definition = {family: "funds", label: "资金任务", list: "/web/funds", idField: "task_id", titleField: "name",
     editLabel: "继续资金任务", creationLabel: "继续资金任务",
     create: fields, edit: fields, commandKeyField: "idempotency_key", reviewName: "review_latest",
-    legacyMissing: ["reviewed_debt_amount", "credit_source_id", "credit_draw_id", "credit_review_id", "credit_source_label", "credit_draw_label", "fee_period_id", "payer_fee_amount","source_repayment_draft_id", "source_amount_basis", "source_review_reason", "edit_visibility"],
+    legacyMissing: ["activity_event_id", "activity_parts_json", "activity_summary", "reviewed_debt_amount", "credit_source_id", "credit_draw_id", "credit_review_id", "credit_source_label", "credit_draw_label", "fee_period_id", "payer_fee_amount","source_repayment_draft_id", "source_amount_basis", "source_review_reason", "edit_visibility"],
     reviewRequiresRejection: true, reviewWhileEditing: true, submitSelector: "[data-funds-submit]",
     href: (record, scope) => {
       const next = new URL("/web/funds", window.location.href);
@@ -20,6 +20,7 @@
       if (record?.values.source_repayment_draft_id) next.searchParams.set("source_repayment_draft_id", record.values.source_repayment_draft_id);
       if (record?.values.repayment_public_id) next.searchParams.set("repayment_id", record.values.repayment_public_id);
       if (record?.values.credit_review_id) next.searchParams.set("application_id", record.values.credit_review_id);
+      if (record?.values.activity_event_id) next.searchParams.set("event_id", record.values.activity_event_id);
       if (record) next.hash = "funds-" + (record.values.task_id ? "edit-" : "create-") + record.clientRef;
       return next.href;
     },
@@ -29,6 +30,8 @@
     updatePresentation: (form, state) => {
       const choice = form.querySelector("[data-funds-choice]");
       if (choice) choice.disabled = !state.editable;
+      const summary = form.querySelector("[data-funds-activity-summary]");
+      if (summary) summary.textContent = form.elements.namedItem("activity_summary").value;
       form.dispatchEvent(new Event("ticketbox:funds-state"));
     },
   };

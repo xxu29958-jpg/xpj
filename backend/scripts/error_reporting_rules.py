@@ -156,7 +156,7 @@ def kotlin_boundaries(text: str) -> list[dict]:
     pattern = re.compile(r"\bcatch\s*\(\s*\w+\s*:\s*(?:" + "|".join(sorted(broad_names)) +
         r")\b|\b(?:" + "|".join(sorted(log_names)) + r")\s*\.\s*[ew]\s*\(")
     for match in pattern.finditer(code):
-        preceding = list(re.finditer(r"\bfun\s+(?:<[^>]+>\s*)?(\w+)\s*\(", code[:match.start()]))
+        preceding = list(re.finditer(r"\bfun\s+(?:<[^>]+>\s*)?(?:[\w.]+(?:<[^>]+>)?\??\.)?(\w+)\s*\(", code[:match.start()]))
         symbol = preceding[-1].group(1) if preceding else "<module>"
         # Preserve the entire function text for exact reviewed exceptions, not only the catch count.
         start = preceding[-1].start() if preceding else 0

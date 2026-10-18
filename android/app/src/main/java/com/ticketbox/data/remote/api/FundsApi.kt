@@ -42,12 +42,9 @@ interface FundsReadApi {
     suspend fun fundsAccount(@Path("id") id: String): FinancialAccountDto
 }
 
-interface FundsWriteApi {
+interface FundsWriteApi : FundsCorrectionApi {
     @POST("api/funds/accounts/{id}/credit-applications")
     suspend fun applyRetainedCredit(@Path("id") id: String, @Body body: com.ticketbox.data.remote.dto.CreditApplicationCreateDto,
-        @Header("Idempotency-Key") key: String): FinancialAccountDto
-    @POST("api/funds/accounts/{id}/credit-applications/void")
-    suspend fun voidCreditApplication(@Path("id") id: String, @Body body: com.ticketbox.data.remote.dto.CreditApplicationVoidDto,
         @Header("Idempotency-Key") key: String): FinancialAccountDto
     @POST("api/funds/accounts/{id}/fees")
     suspend fun incurCreditFee(@Path("id") id: String, @Body body: com.ticketbox.data.remote.dto.CreditFeeCreateDto,
@@ -56,9 +53,6 @@ interface FundsWriteApi {
     suspend fun saveEnvelopes(@Path("month") month: String,
         @Body body: com.ticketbox.data.remote.dto.EnvelopeSaveDto,
         @Header("Idempotency-Key") key: String): com.ticketbox.data.remote.dto.EnvelopesDto
-    @POST("api/funds/accounts/{id}/repayments/void")
-    suspend fun voidCreditPayment(@Path("id") id: String, @Body body: CreditPaymentVoidDto,
-        @Header("Idempotency-Key") key: String): FinancialAccountDto
     @POST("api/funds/accounts/{id}/installments")
     suspend fun saveInstallments(@Path("id") id: String, @Body body: InstallmentCommandDto,
         @Header("Idempotency-Key") key: String): FinancialAccountDto
@@ -75,5 +69,18 @@ interface FundsWriteApi {
         @Header("Idempotency-Key") key: String): FinancialAccountDto
     @POST("api/funds/accounts/{id}/activities")
     suspend fun postFundsActivity(@Path("id") id: String, @Body body: AccountPostingDto,
+        @Header("Idempotency-Key") key: String): FinancialAccountDto
+}
+
+/** Corrections share the original fact owners and stable command receipts. */
+interface FundsCorrectionApi {
+    @POST("api/funds/accounts/{id}/activities/void")
+    suspend fun voidFundsActivity(@Path("id") id: String, @Body body: com.ticketbox.data.remote.dto.AccountActivityVoidDto,
+        @Header("Idempotency-Key") key: String): FinancialAccountDto
+    @POST("api/funds/accounts/{id}/credit-applications/void")
+    suspend fun voidCreditApplication(@Path("id") id: String, @Body body: com.ticketbox.data.remote.dto.CreditApplicationVoidDto,
+        @Header("Idempotency-Key") key: String): FinancialAccountDto
+    @POST("api/funds/accounts/{id}/repayments/void")
+    suspend fun voidCreditPayment(@Path("id") id: String, @Body body: CreditPaymentVoidDto,
         @Header("Idempotency-Key") key: String): FinancialAccountDto
 }

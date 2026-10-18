@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="funds_void_activity">撤销这笔资金记录</string>
+    <string name="funds_void_activity_hint">将冲回下列资金变化，保留原记录和后续真实交易。实际到账的收入、转账或贷款仍然有效时，不应撤销。</string>
+    <string name="funds_activity_voided">已撤销，原记录保留</string>
     <string name="funds_capture_open">还信用卡、花呗或其他信用账户</string>
     <string name="funds_capture_original">原通知：%1$s · %2$s</string>
     <string name="funds_capture_choose">选择此次实际偿还的信用账户，再核对扣款账户、本金和费用。</string>

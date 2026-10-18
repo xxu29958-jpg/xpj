@@ -103,6 +103,52 @@
         "title": "AcceptedInvitationImpact",
         "type": "object"
       },
+      "AccountActivityVoid": {
+        "additionalProperties": false,
+        "properties": {
+          "account_row_versions": {
+            "additionalProperties": {
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "maxProperties": 8,
+            "minProperties": 1,
+            "title": "Account Row Versions",
+            "type": "object"
+          },
+          "event_public_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Event Public Id",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "event_public_id",
+          "account_row_versions",
+          "occurred_on",
+          "reason"
+        ],
+        "title": "AccountActivityVoid",
+        "type": "object"
+      },
       "AccountChoice": {
         "properties": {
           "institution": {
@@ -675,6 +721,42 @@
           }
         },
         "title": "AccountingTimeSnapshot",
+        "type": "object"
+      },
+      "ActivityCorrectionPart": {
+        "properties": {
+          "account_name": {
+            "title": "Account Name",
+            "type": "string"
+          },
+          "account_public_id": {
+            "title": "Account Public Id",
+            "type": "string"
+          },
+          "account_row_version": {
+            "title": "Account Row Version",
+            "type": "integer"
+          },
+          "amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency_code": {
+            "title": "Currency Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_public_id",
+          "account_row_version",
+          "account_name",
+          "currency_code",
+          "amount_minor"
+        ],
+        "title": "ActivityCorrectionPart",
         "type": "object"
       },
       "AdminDeviceRenameRequest": {
@@ -23365,6 +23447,13 @@
             "title": "Can Void Repayment",
             "type": "boolean"
           },
+          "correction_parts": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityCorrectionPart"
+            },
+            "title": "Correction Parts",
+            "type": "array"
+          },
           "debt_public_id": {
             "anyOf": [
               {
@@ -23429,6 +23518,11 @@
               }
             ],
             "title": "Reversal Of Id"
+          },
+          "voided": {
+            "default": false,
+            "title": "Voided",
+            "type": "boolean"
           }
         },
         "required": [
@@ -43120,6 +43214,115 @@
           }
         },
         "summary": "Post Funds Activity",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
+    "/api/funds/accounts/{public_id}/activities/void": {
+      "post": {
+        "operationId": "post_funds_activity_void_api_funds_accounts__public_id__activities_void_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountActivityVoid"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccountView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Funds Activity Void",
         "tags": [
           "funds"
         ]

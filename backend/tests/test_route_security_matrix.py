@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
         ("POST", "/api/funds/accounts/account_missing/credit-applications", {"json": {}}),
         ("POST", "/api/funds/accounts/account_missing/credit-applications/void", {"json": {}}),
         ("POST", "/api/funds/accounts/account_missing/activities", {"json": {}}),
+        ("POST", "/api/funds/accounts/account_missing/activities/void", {"json": {}}),
         ("POST", "/api/funds/accounts/account_missing/repayments/void", {"json": {}}),
         ("POST", "/api/expenses/1/funding", {"json": {}}),
         ("POST", "/api/expenses/1/fx", {"json": {"expected_row_version": 1}}),

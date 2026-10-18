@@ -8,6 +8,7 @@ from app.schemas._debts import RepaymentFactListResponse
 from app.schemas._money import NonNegativeMoneyMinor, PositiveMoneyMinor, SignedMoneyAggregate, SignedMoneyMinor
 from app.schemas.credit_application import CreditApplicationsView
 from app.schemas.credit_fee import CreditFeePaymentPart, CreditFeeView
+from app.schemas.funds_activity import ActivityCorrectionPart
 from app.schemas.installment import CreditDrawPaymentPart, InstallmentPaymentPart
 from app.services.currency_common import normalize_currency_code
 
@@ -216,6 +217,8 @@ class MovementView(BaseModel):
     debt_public_id: str | None = None
     reversal_of_id: str | None = None
     can_void_repayment: bool = False
+    voided: bool = False
+    correction_parts: list[ActivityCorrectionPart] = Field(default_factory=list)
 
 
 class BalanceObservationView(BaseModel):
