@@ -61,20 +61,12 @@ def test_existing_debt_becomes_one_credit_account_without_rewriting_history(clie
 
 
 def test_credit_purchases_and_bank_principal_share_one_financial_history(client, identity, monkeypatch):
-    def account(name, kind, opening):
-        result = client.post("/api/funds/accounts", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-            json={"name": name, "kind": kind, "currency_code": "CNY", "opening_amount_minor": opening,
-                "opening_date": date.today().isoformat(), "opening_source": "已核对对账单", "visibility": "private",
-                "credit_terms": {"credit_limit_minor": 2000000, "available_credit_minor": 1500000,
-                    "observed_on": str(date.today()), "source": "平台页面", "statement_day": 2, "payment_due_day": 15} if kind == "credit" else None})
-        assert result.status_code == 200, result.text
-        return result.json()
-    bank = account("工资卡 1234", "bank", 100000)
+    bank = _create_funds_account(client, identity, "工资卡 1234", "bank", 100000)
     templates = client.get("/api/funds/accounts/templates/list", headers=identity.app_headers)
     assert templates.status_code == 200, templates.text
     huabei = next(row for row in templates.json() if row["key"] == "huabei")
-    credit = account(huabei["name"], huabei["kind"], 0)
-    unknown = account("待核对零钱", "wallet", None)
+    credit = _create_funds_account(client, identity, huabei["name"], huabei["kind"], 0)
+    unknown = _create_funds_account(client, identity, "待核对零钱", "wallet", None)
     assert unknown["balance_minor"] is None
     assert int(credit["balance_minor"]) == 0
     assert credit["credit_terms"]["available_credit_minor"] == 1500000
@@ -123,7 +115,7 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     assert client.post(url, headers=headers, json=payment).json() == result.json()
     assert int(result.json()["balance_minor"]) == -2290
     resolved = client.get("/api/repayment-drafts/" + draft_id, headers=identity.app_headers).json()
-    assert resolved["status"] == "confirmed" and resolved["committed_debt_public_id"] == credit["debt_public_id"]
+    assert (resolved["status"], resolved["committed_debt_public_id"]) == ("confirmed", credit["debt_public_id"])
     repeated = client.post(url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json=payment)
     assert repeated.status_code == 409 and repeated.json()["error"] == "state_conflict"
     bank = client.get("/api/funds/accounts/" + bank["public_id"], headers=identity.app_headers).json()
@@ -177,7 +169,7 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())})
     assert extra.status_code == 201, extra.text
     credit = client.get("/api/funds/accounts/" + credit["public_id"], headers=identity.app_headers).json()
-    assert credit["balance_minor"] == 1000 and credit["unallocated_credit_minor"] == 1500
+    assert (credit["balance_minor"], credit["unallocated_credit_minor"]) == (1000, 1500)
     debt = client.get("/api/debts/" + credit["debt_public_id"], headers=identity.app_headers)
     assert debt.status_code == 200, debt.text
     assert debt.json()["remaining_amount_cents"] == 0
@@ -191,6 +183,16 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
 
     _correct_captured_payment(client, identity, draft_id, resolved["correction_versions"], bank, credit)
     assert client.post(url, headers=headers, json=payment).json() == result.json()
+
+
+def _create_funds_account(client, identity, name, kind, opening):
+    result = client.post("/api/funds/accounts", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"name": name, "kind": kind, "currency_code": "CNY", "opening_amount_minor": opening,
+            "opening_date": date.today().isoformat(), "opening_source": "已核对对账单", "visibility": "private",
+            "credit_terms": {"credit_limit_minor": 2000000, "available_credit_minor": 1500000,
+                "observed_on": str(date.today()), "source": "平台页面", "statement_day": 2, "payment_due_day": 15} if kind == "credit" else None})
+    assert result.status_code == 200, result.text
+    return result.json()
 
 
 def _correct_captured_payment(client, identity, draft_id, reviewed_versions, bank, credit):
