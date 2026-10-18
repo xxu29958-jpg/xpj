@@ -47,13 +47,13 @@ fun FundsViewModel.reviseAgreement(agreement: InstallmentViewDto) {
     edit { input -> input.copy(name = agreement.name, source = "", previousAgreement = agreement.publicId,
         drawIds = current.installments?.draws.orEmpty().filter { it.publicId in agreement.drawPublicIds && it.remainingMinor > 0 }.map { it.publicId },
         periodsJson = InstallmentInputWire.periods.toJson(agreement.periods.filter {
-            it.principalMinor > it.paidPrincipalMinor || it.plannedFeeMinor > it.paidFeeMinor
+            it.principalMinor > it.paidPrincipalMinor || it.unincurredFeeMinor > 0
         }.map {
-            InstallmentPeriodInput(it.dueOn, amount(it.principalMinor - it.paidPrincipalMinor), amount(it.plannedFeeMinor - it.paidFeeMinor)) })) }
+            InstallmentPeriodInput(it.dueOn, amount(it.principalMinor - it.paidPrincipalMinor), amount(it.unincurredFeeMinor)) })) }
 }
 
 private fun FundsUiState.accountInput(binding: LogicalSessionBinding, mode: String): FundsInput {
-    var base = FundsInput(binding, mode, UUID.randomUUID().toString(), date = LocalDate.now().toString(),
+    var base = FundsInput(binding, mode, UUID.randomUUID().toString(), date = overview?.valuationDate ?: LocalDate.now().toString(),
         currency = overview?.homeCurrencyCode.orEmpty())
     if (mode in setOf("create", "repay")) repaymentCapture?.takeIf { it.isPending }?.let { capture ->
         val digits = com.ticketbox.domain.model.CurrencyCode.fromStorageKey(capture.originalCurrencyCode).minorUnitDigits

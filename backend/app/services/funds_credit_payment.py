@@ -17,9 +17,11 @@ from app.models import (
     Repayment,
     RepaymentDraft,
 )
+from app.money_contract import ensure_money_minor
 from app.schemas._accounting_time import AccountingTimeInput
 from app.schemas.funds import CreditPayment, FinancialAccountView
 from app.services.credit_allocation_service import allocate_credit
+from app.services.credit_fee_settlement import reviewed_fee_settlement
 from app.services.debt_service._repayment_time import resolve_repayment_time
 from app.services.funds_commands import claim_funds, finish_funds, movement, replay_funds, require_account_version
 from app.services.funds_fact_service import validate_movement_date
@@ -45,17 +47,23 @@ def pay_credit(db: Session, *, auth: AuthContext, public_id: str, payload: Credi
         .where(CreditFacility.account_id == credit.id).with_for_update(of=Debt))
     if debt.debt_kind == "one_off" and payload.principal_minor > max(0, -account_balance(db, credit)):
         raise AppError("debt_amount_invalid", "固定本金贷款的本次清偿不能超过未偿本金。", status_code=422)
+    fee_allocations, fee_amount = reviewed_fee_settlement(db, credit, payer, payload)
     allocations, periods = reviewed_settlement(db, credit, payer, payload)
+    allocations.update(fee_allocations)
+    credit_amount = ensure_money_minor(payload.principal_minor + fee_amount, sign="nonnegative", label="credit.total_payment")
+    payer_amount = ensure_money_minor(payload.payer_amount_minor + payload.payer_fee_amount_minor, sign="nonnegative", label="credit.payer_payment")
     repayment, home_principal, snapshot = _repayment_fact(db, auth, credit, debt, payload, key)
     event = str(uuid4())
     fee = _payment_fee(db, auth, credit, payer, payload, key, event, repayment)
     credit_movement = None
-    if payload.principal_minor:
-        credit_movement = movement(db, auth, credit, event=event, component="credit", kind="repayment", amount=payload.principal_minor,
+    if credit_amount:
+        home_principal, snapshot = valuation(db, ledger_id=credit.tenant_id, currency=credit.currency_code,
+            amount_minor=credit_amount, occurred_on=payload.occurred_on, required=True)
+        credit_movement = movement(db, auth, credit, event=event, component="credit", kind="repayment", amount=credit_amount,
             home_amount=home_principal, valuation_snapshot=snapshot, occurred_on=payload.occurred_on,
             note=payload.note, repayment_id=repayment.id,
             settlement_targets={str(identifier): amount for identifier, amount in allocations.items()})
-        movement(db, auth, payer, event=event, component="payer", kind="repayment", amount=-payload.payer_amount_minor,
+        movement(db, auth, payer, event=event, component="payer", kind="repayment", amount=-payer_amount,
             occurred_on=payload.occurred_on, note=payload.note, repayment_id=repayment.id)
     db.flush()
     record_installment_payments(db, repayment, periods, fee)

@@ -2,6 +2,7 @@
 import json
 
 from app.errors import AppError
+from app.schemas.credit_fee import CreditFeePaymentPart
 from app.schemas.installment import (
     CreditDrawPaymentPart,
     InstallmentCommand,
@@ -13,8 +14,8 @@ from app.services.currency_common import major_amount_to_minor, minor_amount_val
 
 def installment_form_values(agreement, currency):
     periods = [{"due_on": str(row.due_on), "principal": minor_amount_value(row.principal_minor - row.paid_principal_minor, currency),
-        "fee": minor_amount_value(row.planned_fee_minor - row.paid_fee_minor, currency)}
-        for row in agreement.periods if row.principal_minor > row.paid_principal_minor or row.planned_fee_minor > row.paid_fee_minor]
+        "fee": minor_amount_value(row.unincurred_fee_minor, currency)}
+        for row in agreement.periods if row.principal_minor > row.paid_principal_minor or row.unincurred_fee_minor > 0]
     return {"name": agreement.name, "supersedes_public_id": agreement.public_id,
         "draw_ids_json": json.dumps(agreement.draw_public_ids), "periods_json": json.dumps(periods), "opening_source": ""}
 
@@ -31,7 +32,7 @@ def installment_payload(values):
 
 def payment_allocations(values):
     currency = values["currency_code"]
-    periods, draws = [], []
+    periods, draws, fees = [], [], []
     for row in json.loads(values.get("allocation_json", "[]")):
         if not row.get("principal", "").strip() and not row.get("fee", "").strip():
             continue
@@ -39,9 +40,12 @@ def payment_allocations(values):
         if row["kind"] == "period":
             periods.append(InstallmentPaymentPart(period_public_id=row["public_id"], principal_minor=principal,
                 fee_minor=major_amount_to_minor(row["fee"], currency) if row.get("fee", "").strip() else 0))
+        elif row["kind"] == "fee":
+            if principal:
+                fees.append(CreditFeePaymentPart(expense_id=int(row["public_id"]), amount_minor=principal))
         else:
             draws.append(CreditDrawPaymentPart(draw_public_id=row["public_id"], principal_minor=principal))
-    return {"period_allocations": periods, "draw_allocations": draws,
+    return {"period_allocations": periods, "draw_allocations": draws, "fee_payments": fees,
         "overpayment_minor": major_amount_to_minor(values["overpayment"], currency) if values.get("overpayment", "").strip() else 0}
 
 

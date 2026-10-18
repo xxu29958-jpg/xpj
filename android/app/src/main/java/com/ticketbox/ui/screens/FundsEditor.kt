@@ -62,6 +62,7 @@ internal fun FundsEditor(state: FundsUiState, input: FundsInput, vm: FundsViewMo
 @Composable
 private fun FundsInputFields(state: FundsUiState, input: FundsInput, enabled: Boolean, vm: FundsViewModel) {
     when (input.mode) {
+            "incur_fee" -> CreditFeeFields(state, input, enabled, vm)
             "envelopes" -> EnvelopeFields(state, input, enabled, vm)
             "void_repayment" -> {
                 Text(stringResource(R.string.funds_void_payment_note))
@@ -76,6 +77,7 @@ private fun FundsInputFields(state: FundsUiState, input: FundsInput, enabled: Bo
             "repay" -> {
                 FundsCaptureFields(input, enabled, vm)
                 FundsPaymentFields(input, state.accounts, enabled, vm)
+                CreditFeePaymentFields(state, input, enabled, vm)
                 InstallmentPaymentFields(input, state.installments, enabled, vm)
             }
             "installments" -> InstallmentFields(input, state.installments, enabled, vm)

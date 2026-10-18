@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
+from app.schemas.credit_fee import CreditFeeCreate
 from app.schemas.funds import (
     AccountChoice,
     AccountCreate,
@@ -18,6 +19,7 @@ from app.schemas.funds import (
     FundsOverview,
 )
 from app.schemas.installment import InstallmentCommand, InstallmentsView
+from app.services.credit_fee_commands import incur_credit_fee
 from app.services.credit_history_adoption import existing_debt_choices
 from app.services.expense_funding_command import expense_funding_view, save_expense_funding
 from app.services.funds_account_choices import ACCOUNT_CHOICES
@@ -111,3 +113,9 @@ def post_funds_activity(public_id: str, payload: AccountPosting, key: str = Head
 def post_credit_payment_void(public_id: str, payload: CreditPaymentVoid, key: str = Header(alias="Idempotency-Key"),
         auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return void_credit_payment(db, auth=auth, public_id=public_id, payload=payload, key=key)
+
+
+@router.post("/{public_id}/fees", response_model=FinancialAccountView)
+def post_credit_fee(public_id: str, payload: CreditFeeCreate, key: str = Header(alias="Idempotency-Key"),
+        auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
+    return incur_credit_fee(db, auth=auth, public_id=public_id, payload=payload, key=key)

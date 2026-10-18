@@ -149,23 +149,7 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     assert (int(overview["assets_minor"]), int(overview["liabilities_minor"]), int(overview["net_worth_minor"])) == (95880, 1290, 94590)
     assert overview["unknown_accounts"] == 1
 
-    # A failure after the expense insert must not publish the purchase alone.
-    from app.services import expense_funding_service
-    def interrupted(*args, **kwargs):
-        raise RuntimeError("funds publication interrupted")
-    retry_body = {**body, "client_ref": str(uuid4()), "funding": [{**body["funding"][0],
-        "component_id": str(uuid4()), "account_row_version": credit["row_version"]}]}
-    with SessionLocal() as db:
-        before_failure = tuple(db.scalar(select(func.count()).select_from(model)) for model in (Expense, AccountMovement))
-    import pytest
-    with monkeypatch.context() as patch:
-        patch.setattr(expense_funding_service, "movement", interrupted)
-        with pytest.raises(RuntimeError, match="funds publication interrupted"):
-            client.post("/api/expenses/manual", headers=identity.app_headers, json=retry_body)
-    with SessionLocal() as db:
-        assert tuple(db.scalar(select(func.count()).select_from(model)) for model in (Expense, AccountMovement)) == before_failure
-    resumed = client.post("/api/expenses/manual", headers=identity.app_headers, json=retry_body)
-    assert resumed.status_code == 200, resumed.text
+    _assert_purchase_rolls_back(client, identity, monkeypatch, credit)
     # Refunding an already partly settled purchase retains spare credit instead of settling an unrelated older purchase.
     credit = client.get("/api/funds/accounts/" + credit["public_id"], headers=identity.app_headers).json()
     source = client.get(f"/api/expenses/{purchase_ids[0]}", headers=identity.app_headers).json()
@@ -190,6 +174,27 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     _correct_captured_payment(client, identity, draft_id, resolved["correction_versions"], bank, credit)
     assert client.post(url, headers=headers, json=payment).json() == result.json()
     _export_funds_history(client, identity, bank, credit)
+
+
+def _assert_purchase_rolls_back(client, identity, monkeypatch, credit):
+    # A failure after the expense insert must not publish the purchase alone.
+    from app.services import expense_funding_service
+    def interrupted(*args, **kwargs):
+        raise RuntimeError("funds publication interrupted")
+    retry_body = {"client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 500,
+        "merchant": "实际购买", "category": "购物", "funding": [{"component_id": str(uuid4()),
+            "account_public_id": credit["public_id"], "account_row_version": credit["row_version"],
+            "expense_amount_minor": 500, "account_amount_minor": 500}]}
+    with SessionLocal() as db:
+        before_failure = tuple(db.scalar(select(func.count()).select_from(model)) for model in (Expense, AccountMovement))
+    with monkeypatch.context() as patch:
+        patch.setattr(expense_funding_service, "movement", interrupted)
+        with pytest.raises(RuntimeError, match="funds publication interrupted"):
+            client.post("/api/expenses/manual", headers=identity.app_headers, json=retry_body)
+    with SessionLocal() as db:
+        assert tuple(db.scalar(select(func.count()).select_from(model)) for model in (Expense, AccountMovement)) == before_failure
+    resumed = client.post("/api/expenses/manual", headers=identity.app_headers, json=retry_body)
+    assert resumed.status_code == 200, resumed.text
 
 
 def _export_records(client, headers):
@@ -217,7 +222,7 @@ def _export_funds_history(client, identity, bank, credit):
     _, token = _mint_member_actor(role="viewer")
     member = _export_records(client, _member_headers(token))
     assert credit["debt_public_id"] not in {row["public_id"] for row in member["debts"]}
-    assert member["credit_facilities"] == member["repayments"] == member["payment_captures"] == member["installment_agreements"] == []
+    assert member["credit_facilities"] == member["repayments"] == member["payment_captures"] == member["installment_agreements"] == member["credit_fee_obligations"] == []
     assert [row["public_id"] for row in member["financial_accounts"]] == [bank["public_id"]]
     hidden = [row for row in member["expense_funding"] if row["account_redaction_reason"]]
     assert hidden and all(row["account_id"] is None and row["account_amount_minor"] is None for row in hidden)
@@ -227,13 +232,20 @@ def _export_funds_history(client, identity, bank, credit):
     assert "account_public_id" not in private_receipt["response_body"]["parts"][0]
     assert all(row["resource_type"] != "payment_capture" for row in member["accepted_operations"])
     owner = _export_records(client, identity.app_headers)
+    _assert_owner_funds_export(owner, member, credit)
+
+
+def _assert_owner_funds_export(owner, member, credit):
     assert credit["public_id"] in {row["public_id"] for row in owner["financial_accounts"]}
-    assert owner["credit_facilities"] and owner["credit_settlement_allocations"] and owner["repayment_voids"]
+    assert all(owner[name] for name in ("credit_facilities", "credit_settlement_allocations", "repayment_voids"))
     assert owner["repayments"][0]["settlement_kind"] == "credit"
     assert sum(row["amount_minor"] for row in owner["account_movements"]
-        if row["account_id"] == next(a["id"] for a in owner["financial_accounts"] if a["public_id"] == credit["public_id"])) == -5790
+        if row["account_id"] == next(a["id"] for a in owner["financial_accounts"] if a["public_id"] == credit["public_id"])) == -5990
+    fee = owner["credit_fee_obligations"][0]
+    assert next(row for row in owner["expenses"] if row["id"] == fee["expense_id"])["original_amount_minor"] == 200
+    assert fee["account_id"] in {row["id"] for row in owner["financial_accounts"]}
     assert owner["payment_captures"][0]["kind"] == "expense"
-    assert owner["installment_agreements"] and owner["installment_periods"] and owner["installment_draws"]
+    assert all(owner[name] for name in ("installment_agreements", "installment_periods", "installment_draws"))
     assert [(row["purpose"], row["allocated_minor"]) for row in owner["envelope_allocations"]] == [("savings", 1000)]
     assert owner["envelope_revisions"] == member["envelope_revisions"]
     assert {"envelope_book", "payment_capture"} <= {row["resource_type"] for row in owner["accepted_operations"]}
@@ -263,6 +275,12 @@ def _prepare_exported_plans(client, identity, bank, credit):
         "agreed_on": str(date.today()), "draw_public_ids": [draw["public_id"]], "periods": [{
             "due_on": str(date.today()+timedelta(days=20)), "principal_minor": draw["remaining_minor"], "planned_fee_minor": 0}]})
     assert agreed.status_code == 200, agreed.text
+    account = agreed.json()
+    fee = client.post("/api/funds/accounts/" + credit["public_id"] + "/fees",
+        headers={**headers, "Idempotency-Key": str(uuid4())}, json={
+            "expected_row_version": account["row_version"], "calendar_revision": account["calendar_revision"],
+            "occurred_on": str(date.today()), "amount_minor": 200, "note": "已入账尚未付款的利息"})
+    assert fee.status_code == 200, fee.text
 
 
 def _create_funds_account(client, identity, name, kind, opening, *, visibility="private"):
@@ -447,6 +465,7 @@ def test_native_funds_entry_keeps_private_accounts_and_consumes_actual_funding(i
         assert db.scalar(select(func.count()).select_from(ExpenseFunding).where(ExpenseFunding.voided_at.is_(None))) == 1
     _confirm_pending_with_funding(installed, headers, receipt)
     _native_envelope_arrangement(installed, headers)
+    _native_recorded_fee(installed, headers, receipt["public_id"])
 
 
 def _native_envelope_arrangement(installed, headers):
@@ -529,9 +548,9 @@ def _confirm_pending_with_funding(installed, headers, account):
 
 
 def test_actual_installments_refund_revision_and_cash_movements(client, identity):
-    def post(path, body, *, key=None):
+    def post(path, body, *, key=None, expected=None):
         response = client.post(path, json=body, headers={**identity.app_headers, "Idempotency-Key": key or str(uuid4())})
-        assert response.is_success, response.text
+        assert response.is_success if expected is None else response.status_code == expected, response.text
         return response.json()
 
     def get(path):
@@ -626,7 +645,7 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
         "loan_currency_code": "CNY", "loan_principal_minor": 5000})
     assert wallet["balance_minor"] == 6000
     with SessionLocal() as db:
-        assert db.scalar(select(func.count()).select_from(Expense)) == 3  # one purchase and two actually incurred fees
+        assert db.scalar(select(func.count()).select_from(Expense)) == 4  # one purchase, one paid fee and two incurred fees; clearing them adds no Expense
         assert db.scalar(select(func.count()).select_from(Debt)) == 2  # one revolving facility and one loan
     summary = get("/api/funds/accounts/summary/net-worth")
     assert summary["net_worth_minor"] == 91350  # loan and transfer do not manufacture net assets
@@ -675,8 +694,62 @@ def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, 
     assert post(credit_url + "/installments", revision, key=key) == credit
     current = get(credit_url + "/installments")["agreements"][0]
     assert not current["needs_review"] and get(bank_url)["balance_minor"] == 90980
-    return post(credit_url + "/repay", {**payment, "expected_row_version": credit["row_version"],
-        "payer_row_version": get(bank_url)["row_version"], "principal_minor": 0, "payer_amount_minor": 0,
-        "new_fee_minor": 130, "fee_note": "合约费用本次实际发生并支付", "period_allocations": [
-            {"period_public_id": row["public_id"], "principal_minor": 0, "fee_minor": row["planned_fee_minor"]}
-            for row in current["periods"]]})
+    for period in current["periods"]:
+        key = str(uuid4())
+        fee = {"expected_row_version": credit["row_version"], "calendar_revision": credit["calendar_revision"],
+            "amount_minor": period["planned_fee_minor"], "period_public_id": period["public_id"],
+            "occurred_on": str(date.today()), "note": "账单已产生费用，本次未支付"}
+        credit = post(credit_url + "/fees", fee, key=key)
+        assert post(credit_url + "/fees", fee, key=key) == credit
+        expense_id = next(row["expense_id"] for row in credit["fee_obligations"] if row["period_public_id"] == period["public_id"])
+        history = get(f"/api/expenses/{expense_id}/revisions")
+        assert history["items"][0]["after"]["funding"][0]["expense_amount_minor"] == fee["amount_minor"]
+    assert credit["balance_minor"] == -130 and get(bank_url)["balance_minor"] == 90980
+    current = get(credit_url + "/installments")["agreements"][0]
+    assert all(row["unincurred_fee_minor"] == 0 and row["paid_fee_minor"] == 0 for row in current["periods"])
+    legacy = {**payment, "expected_row_version": credit["row_version"], "payer_row_version": get(bank_url)["row_version"],
+        "principal_minor": 130, "payer_amount_minor": 130, "period_allocations": []}
+    post(credit_url + "/repay", legacy, expected=422)  # old clients cannot reinterpret fees as principal
+    return _pay_and_correct_recorded_fees(post, get, credit_url, bank_url, credit, legacy)
+
+
+def _pay_and_correct_recorded_fees(post, get, credit_url, bank_url, credit, payment):
+    facts = get(credit_url)["fee_obligations"]
+    with SessionLocal() as db:
+        before = db.scalar(select(func.count()).select_from(Expense))
+    body = {**payment, "principal_minor": 0, "payer_amount_minor": 0, "payer_fee_amount_minor": 130,
+        "fee_payments": [{"expense_id": row["expense_id"], "amount_minor": row["remaining_minor"]} for row in facts]}
+    key = str(uuid4())
+    credit = post(credit_url + "/repay", body, key=key)
+    assert post(credit_url + "/repay", body, key=key) == credit
+    detail = get(credit_url)
+    assert detail["balance_minor"] == 0 and get(bank_url)["balance_minor"] == 90850
+    assert all(fee["remaining_minor"] == 0 for fee in detail["fee_obligations"])
+    paid = get(credit_url + "/installments")["agreements"][0]["periods"]
+    assert [p["paid_fee_minor"] for p in paid] == [30, 100]
+    original = next(row for row in detail["movements"] if row["can_void_repayment"])
+    credit = post(credit_url + "/repayments/void", {"expected_row_version": credit["row_version"],
+        "repayment_public_id": original["repayment_public_id"], "occurred_on": str(date.today()), "reason": "扣款尚未成功，撤销付款保留已记费用"})
+    assert credit["balance_minor"] == -130 and get(bank_url)["balance_minor"] == 90980
+    assert sum(row["paid_fee_minor"] for row in get(credit_url + "/installments")["agreements"][0]["periods"]) == 0
+    credit = post(credit_url + "/repay", {**body, "expected_row_version": credit["row_version"], "payer_row_version": get(bank_url)["row_version"]})
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(Expense)) == before
+    return credit
+
+
+def _native_recorded_fee(installed, headers, account_id):
+    page = installed.browser.get("/web/funds?task=incur_fee&account_id=" + account_id, headers=headers)
+    assert page.status_code == 200, page.text
+    values = hidden_post_forms(page.text)["/web/funds/save"]
+    values.update(activity_amount="3.33", note="银行确认本期已产生利息", occurred_on=str(date.today()), fee_period_id="")
+    result = installed.browser.post("/web/funds/save", data=values, headers=headers)
+    assert result.status_code == 200, result.text
+    assert installed.browser.post("/web/funds/save", data=values, headers=headers).json() == result.json()
+    detail = installed.browser.get(result.json()["next"], headers=headers)
+    assert detail.status_code == 200 and "银行确认本期已产生利息" in detail.text
+    page = installed.browser.get("/web/funds?task=repay&account_id=" + account_id, headers=headers)
+    assert page.status_code == 200 and "清偿已记费用" in page.text and "3.33" in page.text
+    with SessionLocal() as db:
+        fees = list(db.scalars(select(Expense).where(Expense.note == "银行确认本期已产生利息")))
+        assert len(fees) == 1 and fees[0].original_amount_minor == 333

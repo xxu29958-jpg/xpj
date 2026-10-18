@@ -35,6 +35,7 @@ import com.ticketbox.viewmodel.voidPayment
 internal fun fundKinds() = linkedMapOf("cash" to stringResource(R.string.funds_kind_cash), "bank" to stringResource(R.string.funds_kind_bank), "wallet" to stringResource(R.string.funds_kind_wallet), "credit" to stringResource(R.string.funds_kind_credit))
 @Composable
 internal fun fundActions() = mapOf("create" to stringResource(R.string.funds_add_account), "edit" to stringResource(R.string.funds_edit_account), "repay" to stringResource(R.string.funds_record_repayment),
+    "incur_fee" to stringResource(R.string.funds_incur_fee),
     "void_repayment" to stringResource(R.string.funds_void_payment),
     "envelopes" to stringResource(R.string.envelopes_edit),
     "income" to stringResource(R.string.funds_record_income), "loan" to stringResource(R.string.funds_record_loan), "transfer" to stringResource(R.string.funds_record_transfer), "reconciliation" to stringResource(R.string.funds_reconcile), "funding" to stringResource(R.string.funds_funding_title), "installments" to stringResource(R.string.funds_record_installments))
@@ -100,6 +101,11 @@ private fun FundingReadPanel(state: FundsUiState, viewModel: FundsViewModel) {
 private fun LazyListScope.accountDetail(state: FundsUiState, detail: FinancialAccountDto, viewModel: FundsViewModel, onExpense: (Long) -> Unit) {
 
     item { AccountDetailHeader(state, detail, viewModel) }
+    items(detail.feeObligations, key = { "fee:${it.expenseId}" }) { fee ->
+        AppListRow(onClick = { onExpense(fee.expenseId) }) {
+            Text(stringResource(R.string.funds_fee_owed, fee.note, fee.occurredOn, money(fee.remainingMinor, detail.currencyCode)))
+        }
+    }
     items(detail.movements, key = { it.publicId }) { row ->
         AppListRow(onClick = row.expenseId?.let { id -> { onExpense(id) } }) {
             Column(Modifier.weight(1f)) {
@@ -163,8 +169,10 @@ private fun LazyListScope.accountsOverview(state: FundsUiState, viewModel: Funds
 @Composable
 private fun AccountActions(state: FundsUiState, detail: FinancialAccountDto, viewModel: FundsViewModel) {
     if (detail.canEdit && state.access?.canModify == true) AppSecondaryButton(stringResource(R.string.funds_edit_account)) { viewModel.start("edit") }
-    if (detail.kind == "credit" && !detail.archived && state.access?.canModify == true)
+    if (detail.kind == "credit" && !detail.archived && state.access?.canModify == true) {
+        AppSecondaryButton(stringResource(R.string.funds_incur_fee)) { viewModel.start("incur_fee") }
         AppPrimaryButton(stringResource(R.string.funds_record_actual_repayment)) { viewModel.start("repay") }
+    }
     if (!detail.archived && state.access?.canModify == true) {
         if (detail.kind != "credit") listOf("income", "transfer", "loan").forEach { mode ->
             AppSecondaryButton(requireNotNull(fundActions()[mode])) { viewModel.start(mode) }

@@ -36,9 +36,13 @@ internal suspend fun FundsViewModel.refreshAccounts(binding: LogicalSessionBindi
         onFailure = { error -> mutable.value = mutable.value.copy(overview = null, error = error.toUiText()) })
 }
 
-internal suspend fun FundsViewModel.reloadSchedule(binding: LogicalSessionBinding, accountId: String) {
-    val target = repository.reads.detail(binding, accountId).getOrNull()?.value ?: return
-    if (target.kind != "credit") return
+internal suspend fun FundsViewModel.reloadTaskAccount(binding: LogicalSessionBinding, accountId: String) {
+    val target = repository.reads.detail(binding, accountId).onFailure { error ->
+        if (state.value.access?.binding == binding) mutable.value = mutable.value.copy(error = error.toUiText())
+    }.getOrNull() ?: return
+    if (state.value.access?.binding != binding || state.value.task.input?.accountId != accountId) return
+    mutable.value = mutable.value.copy(detail = target.value, fromCache = mutable.value.fromCache || target.fromCache)
+    if (target.value.kind != "credit") return
     repository.reads.installments(binding, accountId).fold(
         onSuccess = { read -> if (state.value.access?.binding == binding && state.value.task.input?.accountId == accountId)
             mutable.value = mutable.value.copy(installments = read.value, fromCache = mutable.value.fromCache || read.fromCache) },

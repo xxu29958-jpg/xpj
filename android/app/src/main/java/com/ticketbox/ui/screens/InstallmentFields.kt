@@ -66,11 +66,11 @@ internal fun InstallmentPaymentFields(input: FundsInput, data: InstallmentsDto?,
     data?.agreements.orEmpty().filter { it.active }.forEach { agreement ->
         Text(stringResource(R.string.funds_agreement_version, agreement.name, agreement.revision))
         if (agreement.needsReview) Text(stringResource(R.string.funds_replan_required), color = MaterialTheme.colorScheme.error)
-        agreement.periods.filter { it.principalMinor > it.paidPrincipalMinor || it.plannedFeeMinor > it.paidFeeMinor }.forEach { period ->
+        agreement.periods.filter { it.principalMinor > it.paidPrincipalMinor || it.unincurredFeeMinor > 0 }.forEach { period ->
             validIds.add(period.publicId)
             val row = allocations.firstOrNull { it.id == period.publicId } ?: CreditAllocationInput(period.publicId, "period")
             Text(stringResource(R.string.funds_outstanding_period, period.position, period.dueOn, amount(period.principalMinor - period.paidPrincipalMinor, input.currency)))
-            Text(stringResource(R.string.funds_remaining_period_fee, amount(period.plannedFeeMinor - period.paidFeeMinor, input.currency)))
+            Text(stringResource(R.string.funds_remaining_period_fee, amount(period.unincurredFeeMinor, input.currency)))
             FundsField(stringResource(R.string.funds_principal_payment), row.principal, enabled, money = true) { put(row.copy(principal = it)) }
             FundsField(stringResource(R.string.funds_new_period_fee), row.fee, enabled, money = true) { put(row.copy(fee = it)) }
         }

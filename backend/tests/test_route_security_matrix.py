@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
         ("PATCH", "/api/funds/accounts/account_missing", {"json": {}}),
         ("POST", "/api/funds/accounts/account_missing/installments", {"json": {}}),
         ("POST", "/api/funds/accounts/account_missing/repay", {"json": {}}),
+        ("POST", "/api/funds/accounts/account_missing/fees", {"json": {}}),
         ("POST", "/api/funds/accounts/account_missing/activities", {"json": {}}),
         ("POST", "/api/funds/accounts/account_missing/repayments/void", {"json": {}}),
         ("POST", "/api/expenses/1/funding", {"json": {}}),

@@ -13,7 +13,7 @@ from app.tenants import AuthContext
 FUNDS_COLLECTION_SCOPES = {
     **dict.fromkeys(("financial_accounts", "credit_facilities", "expense_funding", "account_movements",
         "credit_settlement_allocations", "account_balance_observations", "installment_agreements",
-        "installment_draws", "installment_periods", "installment_payments", "envelope_books",
+        "credit_fee_obligations", "installment_draws", "installment_periods", "installment_payments", "envelope_books",
         "envelope_sources", "envelope_allocations", "envelope_revisions"), "ledger"),
     "payment_captures": "account",
 }
@@ -65,6 +65,7 @@ def funds_queries(auth: AuthContext, record: Callable[[type[Base], str, ColumnEl
             m.CreditSettlementAllocation.draw_movement_id.in_(movements))),
         (m.AccountBalanceObservation, "id account_id observed_minor recorded_minor occurred_on source adjustment_movement_id "
             "actor_account_id created_at", m.AccountBalanceObservation.account_id.in_(accounts)),
+        (m.CreditFeeObligation, "expense_id account_id period_id", m.CreditFeeObligation.account_id.in_(accounts)),
         (m.InstallmentAgreement, "id public_id account_id series_id revision supersedes_id name source agreed_on actor_account_id created_at",
             m.InstallmentAgreement.id.in_(agreements)),
         (m.InstallmentDraw, "id agreement_id movement_id principal_minor", m.InstallmentDraw.agreement_id.in_(agreements)),

@@ -23,6 +23,7 @@ data class FinancialAccountDto(
     @param:Json(name = "debt_public_id") val debtPublicId: String?,
     @param:Json(name = "can_edit") val canEdit: Boolean,
     val movements: List<FundMovementDto> = emptyList(),
+    @param:Json(name = "fee_obligations") val feeObligations: List<CreditFeeViewDto> = emptyList(),
     @param:Json(name = "unallocated_credit_minor") val unallocatedCreditMinor: Long = 0,
     @param:Json(name = "credit_kind") val creditKind: String? = null,
     val observation: BalanceObservationDto? = null,
@@ -120,6 +121,8 @@ data class CreditPaymentDto(
     @param:Json(name = "source_repayment_draft_id") val sourceRepaymentDraftId: String? = null,
     @param:Json(name = "source_amount_basis") val sourceAmountBasis: String = "payer_total",
     @param:Json(name = "source_review_reason") val sourceReviewReason: String? = null,
+    @param:Json(name = "fee_payments") val feePayments: List<CreditFeePaymentPartDto> = emptyList(),
+    @param:Json(name = "payer_fee_amount_minor") val payerFeeAmountMinor: Long = 0,
 )
 
 @JsonClass(generateAdapter = true)

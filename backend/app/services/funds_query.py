@@ -17,6 +17,7 @@ from app.models import (
 from app.money_contract import projection_sum_to_int
 from app.schemas.funds import BalanceObservationView, CreditTerms, FinancialAccountView, FundsOverview, MovementView
 from app.services.credit_allocation_service import unallocated_credit_minor
+from app.services.credit_fee_query import fee_views
 from app.services.funds_money import valuation
 from app.services.ledger_calendar_service import current_calendar, current_ledger_date
 
@@ -76,6 +77,7 @@ def account_view(db: Session, row: FinancialAccount, *, actor_account_id: int,
             occurred_on=observation.occurred_on, source=observation.source,
             adjusted=observation.adjustment_movement_id is not None) if observation else None,
         can_edit=row.owner_account_id == actor_account_id, movements=movements,
+        fee_obligations=fee_views(db, row.id) if with_movements and row.kind == "credit" else [],
         credit_terms=CreditTerms(credit_limit_minor=row.credit_limit_minor, available_credit_minor=row.available_credit_minor,
             observed_on=row.credit_observed_on, source=row.credit_source, statement_day=row.statement_day,
             payment_due_day=row.payment_due_day) if row.kind == "credit" else None)

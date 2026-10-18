@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.routes._web_installments import payment_allocations
+from app.schemas.credit_fee import CreditFeeCreate
 from app.schemas.funds import (
     AccountCreate,
     AccountEdit,
@@ -24,7 +25,7 @@ def form_defaults(account: FinancialAccountView | None, task: str, home_currency
                   repayment_id: str) -> dict[str, str]:
     values = dict.fromkeys(("account_id", "task_id", "name", "institution", "tail", "opening_amount",
         "expected_row_version", "calendar_revision", "payer_public_id", "payer_row_version", "payer_currency_code",
-        "principal_amount", "payer_amount", "note", "activity_amount", "other_amount", "loan_name",
+        "fee_period_id", "payer_fee_amount", "principal_amount", "payer_amount", "note", "activity_amount", "other_amount", "loan_name",
         "loan_principal_amount", "new_fee", "fee_note", "supersedes_public_id", "overpayment", "existing_debt",
         "credit_limit", "available_credit", "credit_observed_on", "credit_source", "statement_day", "payment_due_day"), "")
     values.update(mode=task, kind="bank", currency_code=home_currency, loan_currency_code=home_currency,
@@ -98,6 +99,7 @@ def payment_payload(db: Session, auth: AuthContext, values: dict[str, str]) -> C
         payer_amount_minor=major_amount_to_minor(values["payer_amount"], payer.currency_code),
         occurred_on=values["occurred_on"], note=values["note"],
         new_fee_minor=major_amount_to_minor(values["new_fee"], payer.currency_code) if values.get("new_fee", "").strip() else 0,
+        payer_fee_amount_minor=major_amount_to_minor(values["payer_fee_amount"], payer.currency_code) if values.get("payer_fee_amount", "").strip() else 0,
         fee_note=values.get("fee_note") or None, source_repayment_draft_id=values.get("source_repayment_draft_id") or None,
         source_amount_basis=values.get("source_amount_basis") or "payer_total",
         source_review_reason=values.get("source_review_reason") or None, **payment_allocations(values))
@@ -124,3 +126,10 @@ def _credit_terms(values: dict[str, str]) -> CreditTerms:
     return CreditTerms(credit_limit_minor=amount("credit_limit"), available_credit_minor=amount("available_credit"),
         observed_on=values.get("credit_observed_on") or None, source=values.get("credit_source") or None,
         statement_day=values.get("statement_day") or None, payment_due_day=values.get("payment_due_day") or None)
+
+
+def credit_fee_payload(db, auth, values):
+    account = _captured_account(db, auth, values["account_id"], values["currency_code"])
+    return CreditFeeCreate(expected_row_version=values["expected_row_version"], calendar_revision=values["calendar_revision"],
+        amount_minor=major_amount_to_minor(values["activity_amount"], account.currency_code),
+        occurred_on=values["occurred_on"], note=values["note"], period_public_id=values.get("fee_period_id") or None)

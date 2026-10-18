@@ -88,6 +88,21 @@ def _purpose(key: str, amount: int | None, planned: int | None, spending: Envelo
         available_minor=available, reserved_minor=0 if amount is None else reserved)
 
 
+def _monthly_reservations(months, month, amounts, targets, spending):
+    month_views, purposes = [], []
+    for value in months:
+        keys = {key for (row_month, key) in amounts if row_month == value}
+        selected_targets = targets if value == month else {}
+        keys.update(selected_targets)
+        rows = [_purpose(key, amounts.get((value, key)), selected_targets.get(key),
+                         spending.get((value, key), EnvelopeSpending())) for key in sorted(keys)]
+        month_views.append(EnvelopeMonthView(month=value, reserved_minor=sum_projected_amounts(
+            (row.reserved_minor for row in rows), label="envelope.month_reserved")))
+        if value == month:
+            purposes = rows
+    return month_views, purposes
+
+
 def envelopes_view(db: Session, *, tenant_id: str, actor_account_id: int, month: str) -> EnvelopesView:
     month = clean_month(month)
     book = db.get(EnvelopeBook, tenant_id)
@@ -104,17 +119,7 @@ def envelopes_view(db: Session, *, tenant_id: str, actor_account_id: int, month:
     spending = spending_by_purpose(db, tenant_id=tenant_id, home=home, purchases=purchases, category_purposes=categories)
     targets = _plan_targets(db, tenant_id=tenant_id, month=month, home=home)
     accounts, cash = _cash_accounts(db, tenant_id=tenant_id, actor_account_id=actor_account_id, home=home, today=today)
-    month_views, purposes = [], []
-    for value in months:
-        keys = {key for (row_month, key) in amounts if row_month == value}
-        if value == month:
-            keys.update(targets)
-        rows = [_purpose(key, amounts.get((value, key)), targets.get(key) if value == month else None,
-                         spending.get((value, key), EnvelopeSpending())) for key in sorted(keys)]
-        month_views.append(EnvelopeMonthView(month=value, reserved_minor=sum_projected_amounts(
-            (row.reserved_minor for row in rows), label="envelope.month_reserved")))
-        if value == month:
-            purposes = rows
+    month_views, purposes = _monthly_reservations(months, month, amounts, targets, spending)
     reserved = sum_projected_amounts((row.reserved_minor for row in month_views), label="envelope.reserved")
     notices = _notices(cash, reserved, purchases)
     if any(row.month is None and row.amount_minor != 0 for row in purchases):

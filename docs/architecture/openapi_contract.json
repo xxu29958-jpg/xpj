@@ -12124,6 +12124,134 @@
         "title": "CreditDrawView",
         "type": "object"
       },
+      "CreditFeeCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "calendar_revision": {
+            "minimum": 1.0,
+            "title": "Calendar Revision",
+            "type": "integer"
+          },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "note": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "period_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Public Id"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "calendar_revision",
+          "amount_minor",
+          "occurred_on",
+          "note"
+        ],
+        "title": "CreditFeeCreate",
+        "type": "object"
+      },
+      "CreditFeePaymentPart": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "expense_id": {
+            "minimum": 1.0,
+            "title": "Expense Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expense_id",
+          "amount_minor"
+        ],
+        "title": "CreditFeePaymentPart",
+        "type": "object"
+      },
+      "CreditFeeView": {
+        "properties": {
+          "expense_id": {
+            "title": "Expense Id",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "original_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Original Minor",
+            "type": "integer"
+          },
+          "period_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Public Id"
+          },
+          "remaining_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Remaining Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expense_id",
+          "note",
+          "occurred_on",
+          "original_minor",
+          "remaining_minor",
+          "period_public_id"
+        ],
+        "title": "CreditFeeView",
+        "type": "object"
+      },
       "CreditPayment": {
         "additionalProperties": false,
         "properties": {
@@ -12157,6 +12285,14 @@
             ],
             "title": "Fee Note"
           },
+          "fee_payments": {
+            "items": {
+              "$ref": "#/components/schemas/CreditFeePaymentPart"
+            },
+            "maxItems": 120,
+            "title": "Fee Payments",
+            "type": "array"
+          },
           "new_fee_minor": {
             "default": 0,
             "format": "int64",
@@ -12189,6 +12325,14 @@
             "maximum": 9000000000000.0,
             "minimum": 0.0,
             "title": "Payer Amount Minor",
+            "type": "integer"
+          },
+          "payer_fee_amount_minor": {
+            "default": 0,
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Payer Fee Amount Minor",
             "type": "integer"
           },
           "payer_public_id": {
@@ -18355,6 +18499,13 @@
             ],
             "title": "Debt Public Id"
           },
+          "fee_obligations": {
+            "items": {
+              "$ref": "#/components/schemas/CreditFeeView"
+            },
+            "title": "Fee Obligations",
+            "type": "array"
+          },
           "institution": {
             "anyOf": [
               {
@@ -20305,6 +20456,14 @@
           "public_id": {
             "title": "Public Id",
             "type": "string"
+          },
+          "unincurred_fee_minor": {
+            "default": 0,
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Unincurred Fee Minor",
+            "type": "integer"
           }
         },
         "required": [
@@ -42731,6 +42890,115 @@
           }
         },
         "summary": "Post Funds Activity",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
+    "/api/funds/accounts/{public_id}/fees": {
+      "post": {
+        "operationId": "post_credit_fee_api_funds_accounts__public_id__fees_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditFeeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccountView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Credit Fee",
         "tags": [
           "funds"
         ]

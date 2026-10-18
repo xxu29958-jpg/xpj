@@ -42,13 +42,13 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
     (ANDROID + "viewmodel/FundsViewModel.kt", "runAction"): {
-        "sha256": "283a403b37f5229e070fd5033a99c4e30fe7932a9c97b86112ab4d9f2a415a4b",
+        "sha256": "f17605aa43a5316b882490fc49c3f35cd89b01ad14c80e2bfb582ade4ad10636",
         "owner": "existing UiText error projection and sanitized TicketboxNetwork Logcat",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt",
         "reason": "This UI boundary reports unexpected action failures through the existing sanitized sink; toUiText renders known local/domain failures or a generic message. The captured binding limits updates to the original session, finally releases busy state, and cancellation propagates. Funds input and its original Outbox command remain owned by FundsRepository. The referenced test qualifies the shared sink; retained-input and binding behavior additionally use the funds consumer journey.",
     },
     (ANDROID + "data/repository/FundsCommand.kt", "dispatch"): {
-        "sha256": "69e20c4fd44abb642f0341a26416ed5893884bf6b37f720f5feae333cfe5eab8",
+        "sha256": "ab212ea3fcde413cfc5f6c1554a402868e182cf1ebdee3dc9015002f1e628571",
         "owner": "existing NetworkErrorHandler and sanitized TicketboxNetwork Logcat",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::fundsReplayFailureReportsSafelyWithoutRetryingOrConsumingTheCommand",
         "reason": "HTTP failures use NetworkErrorHandler. Unknown response failures report through logNetworkWarning and block the unchanged original command for review, without retrying or claiming acceptance. Cancellation propagates; transport interruption retains the existing retry owner. No financial inputs or raw exception messages are emitted.",

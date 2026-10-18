@@ -36,7 +36,7 @@ def review_capture_amount(db: Session, draft: RepaymentDraft | None, credit: Fin
         return
     currency, amount = ((credit.currency_code, payload.principal_minor)
         if payload.source_amount_basis == "principal"
-        else (payer.currency_code, payload.payer_amount_minor + payload.new_fee_minor))
+        else (payer.currency_code, payload.payer_amount_minor + payload.payer_fee_amount_minor + payload.new_fee_minor))
     if currency != draft.original_currency_code or amount != draft.original_amount_minor:
         raise AppError("funding_amount_mismatch",
             "还款组成与通知金额不一致，请核对这条金额是扣款总额还是清偿本金；识别有误可填写更正依据。", status_code=422)

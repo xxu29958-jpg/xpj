@@ -8,6 +8,7 @@ from app.errors import AppError
 from app.models import AccountMovement, FinancialAccount, InstallmentDraw, InstallmentPayment, InstallmentPeriod
 from app.schemas.funds import CreditPayment
 from app.schemas.installment import InstallmentPaymentPart
+from app.services.credit_fee_query import fee_period_totals
 from app.services.installment_query import active_agreements, draw_balances, paid_by_period
 
 
@@ -77,19 +78,22 @@ def _review_period_allocations(db: Session, parts: list[InstallmentPaymentPart],
     records = list(db.scalars(select(InstallmentPeriod).where(InstallmentPeriod.agreement_id.in_(sources))))
     by_public_id = {period.public_id: period for period in records}
     paid = paid_by_period(db, [period.id for period in records])
+    incurred = fee_period_totals(db, [period.id for period in records])
     scheduled: dict[int, int] = defaultdict(int)
     for period in records:
         scheduled[period.agreement_id] += period.principal_minor - paid[period.id][0]
     remaining = {identifier: sum(balances.get(draw, 0) for draw in draws) for identifier, draws in sources.items()}
     reviewed = []
     for part in parts:
+        if not part.principal_minor and not part.fee_minor:
+            continue
         period = by_public_id.get(part.period_public_id)
         if period is None:
             raise AppError("state_conflict", "分期期次已变更，请核对最新合约。", status_code=409)
         if remaining[period.agreement_id] != scheduled[period.agreement_id]:
             raise AppError("installment_review_required", "退款或更正已改变分期本金，请按实际合约更新剩余排期后继续；已付费用保留。", status_code=409)
         principal, fees = paid[period.id]
-        if part.principal_minor > period.principal_minor - principal or part.fee_minor > period.planned_fee_minor - fees:
+        if part.principal_minor > period.principal_minor - principal or part.fee_minor > period.planned_fee_minor - fees - incurred[period.id][0] + incurred[period.id][1]:
             raise AppError("installment_amount_mismatch", "本次分配超过该期未付金额；合约有变更时先更新合约。", status_code=422)
         reviewed.append((period, part))
     return reviewed

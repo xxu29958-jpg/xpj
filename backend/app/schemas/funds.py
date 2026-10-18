@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas._money import NonNegativeMoneyMinor, PositiveMoneyMinor, SignedMoneyAggregate, SignedMoneyMinor
+from app.schemas.credit_fee import CreditFeePaymentPart, CreditFeeView
 from app.schemas.installment import CreditDrawPaymentPart, InstallmentPaymentPart
 from app.services.currency_common import normalize_currency_code
 
@@ -138,6 +139,8 @@ class CreditPayment(BaseModel):
     payer_amount_minor: NonNegativeMoneyMinor
     occurred_on: date
     note: str = Field(min_length=1, max_length=255)
+    fee_payments: list[CreditFeePaymentPart] = Field(default_factory=list, max_length=120)
+    payer_fee_amount_minor: NonNegativeMoneyMinor = 0
     new_fee_minor: NonNegativeMoneyMinor = 0
     fee_note: str | None = Field(default=None, max_length=255)
     period_allocations: list[InstallmentPaymentPart] = Field(default_factory=list, max_length=120)
@@ -149,8 +152,10 @@ class CreditPayment(BaseModel):
 
     @model_validator(mode="after")
     def require_actual_payment(self):
-        if not self.principal_minor and not self.new_fee_minor:
-            raise ValueError("请填写本次实际清偿本金或新发生并支付的费用")
+        if not self.principal_minor and not self.new_fee_minor and not self.fee_payments:
+            raise ValueError("请填写实际清偿本金、已记费用或本次新发生费用")
+        if bool(self.fee_payments) != bool(self.payer_fee_amount_minor):
+            raise ValueError("已记费用的清偿分配和实际扣款须同时填写")
         if bool(self.principal_minor) != bool(self.payer_amount_minor):
             raise ValueError("本金清偿与本金扣款须同时填写；仅付费用时两者填零")
         if self.source_repayment_draft_id is None and (self.source_amount_basis != "payer_total" or self.source_review_reason):
@@ -252,4 +257,5 @@ class FinancialAccountView(BaseModel):
     credit_kind: str | None = None
     observation: BalanceObservationView | None = None
     movements: list[MovementView] = Field(default_factory=list)
+    fee_obligations: list[CreditFeeView] = Field(default_factory=list)
     credit_terms: CreditTerms | None = None

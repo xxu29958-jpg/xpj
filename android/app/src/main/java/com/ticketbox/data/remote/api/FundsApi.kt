@@ -43,6 +43,9 @@ interface FundsReadApi {
 }
 
 interface FundsWriteApi {
+    @POST("api/funds/accounts/{id}/fees")
+    suspend fun incurCreditFee(@Path("id") id: String, @Body body: com.ticketbox.data.remote.dto.CreditFeeCreateDto,
+        @Header("Idempotency-Key") key: String): FinancialAccountDto
     @PUT("api/budget/envelopes/{month}")
     suspend fun saveEnvelopes(@Path("month") month: String,
         @Body body: com.ticketbox.data.remote.dto.EnvelopeSaveDto,

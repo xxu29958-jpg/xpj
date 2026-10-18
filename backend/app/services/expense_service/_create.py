@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import Expense
+from app.models import CreditFeeObligation, Expense
 from app.schemas import ExpenseManualCreateRequest, ExpenseResponse, NotificationDraftCreateRequest
 from app.services import permission_service
 from app.services.category_preference_service import ensure_category_preference_for_name
@@ -115,6 +115,7 @@ def _insert_manual_expense(
     draft_request_fingerprint: str,
     actor_account_id: int,
     actor_device_id: int,
+    credit_fee: CreditFeeObligation | None = None,
 ) -> Expense:
     resolve_write_capability(db)
     home = payload.home_currency_code
@@ -170,6 +171,10 @@ def _insert_manual_expense(
     _materialize_category_preference(db, expense)
     db.add(expense)
     db.flush()
+    if credit_fee is not None:
+        credit_fee.expense_id = expense.id
+        db.add(credit_fee)
+        db.flush()
     sync_expense_tags(db, expense)
     mark_duplicate_status(db, expense)
     publish_expense_funding(db, expense=expense, parts=payload.funding, actor_account_id=actor_account_id)
@@ -185,7 +190,8 @@ def _insert_manual_expense(
     return expense
 
 
-def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext, *, commit: bool = True) -> ExpenseResponse:
+def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext, *, commit: bool = True,
+                          credit_fee: CreditFeeObligation | None = None) -> ExpenseResponse:
     """Accept the original manual request and its typed response in one transaction."""
     from app.services.pending_fx_task_service import prepare_pending_expense_fx, submit_pending_expense_fx
     lock_and_revalidate_mutation_actor(
@@ -212,7 +218,8 @@ def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth
             raise _manual_review_error(existing.id)
         validate_currency_payload_money_command(payload, amount_was_explicit=payload.amount_cents is not None)
         expense = _insert_manual_expense(db, payload, tenant_id, draft_idempotency_key=key,
-            draft_request_fingerprint=fingerprint, actor_account_id=auth.account_id, actor_device_id=auth.device_id)
+            draft_request_fingerprint=fingerprint, actor_account_id=auth.account_id, actor_device_id=auth.device_id,
+            credit_fee=credit_fee)
         fx_task = prepare_pending_expense_fx(db, expense=expense,
             initiator_account_id=auth.account_id, initiator_device_id=auth.device_id)
         receipt = expense_to_response(db, tenant_id=tenant_id, expense=expense)

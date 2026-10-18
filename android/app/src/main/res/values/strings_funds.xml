@@ -96,7 +96,7 @@
     <string name="funds_archive_note">归档账户，保留全部历史</string>
     <string name="funds_institution">银行或平台（选填）</string>
     <string name="funds_tail">尾号（选填，最多 4 位）</string>
-    <string name="funds_payment_note">记录 %1$s 的实际还款。本金不重复计消费；仅支付新费用时，两项本金填 0。</string>
+    <string name="funds_payment_note">记录 %1$s 的实际还款。本金不重复计消费；仅支付费用时，两项本金填 0。</string>
     <string name="funds_choose_payer">选择实际扣款账户</string>
     <string name="funds_payer_account">实际扣款账户</string>
     <string name="funds_principal">清偿本金（%1$s）</string>
@@ -194,7 +194,18 @@
     <string name="funds_funding_refreshed">已读取最新消费和账户。原付款金额与币种已保留，请核对后再确认。</string>
     <string name="funds_funding_not_ready">付款来源尚未读取完成，请稍后重试。</string>
     <string name="funds_refund_review_required">请核对退款去向。</string>
-    <string name="funds_remaining_period_fee">计划未付费用 %1$s；实际发生并支付时再记录。</string>
+    <string name="funds_remaining_period_fee">尚未发生的计划费用 %1$s；实际发生并支付时再记录。</string>
     <string name="funds_no_remaining_periods">本版合约没有剩余排期，先前付款保留在历史版本。</string>
     <string name="funds_fee_only_schedule">本金已清偿的期次填 0；全部免除剩余费用时移除期次并说明依据。</string>
+    <string name="funds_incur_fee">记录已发生费用</string>
+    <string name="funds_incur_fee_note">记录已经发生、尚未支付的利息或手续费。保存后记一次消费和待付费用，实际付款时只清偿。</string>
+    <string name="funds_incurred_amount">已发生费用（%1$s）</string>
+    <string name="funds_fee_no_period">不属于已记录的分期期次</string>
+    <string name="funds_fee_period_selected">原期次：%1$s</string>
+    <string name="funds_fee_period_choice">%1$s · 第 %2$d 期 · 尚未记录 %3$s</string>
+    <string name="funds_settle_recorded_fee_note">清偿已记费用：以下费用已经计过消费，本次付款不再新增消费。</string>
+    <string name="funds_fee_owed">%1$s · %2$s · 已记费用待付 %3$s</string>
+    <string name="funds_fee_original_unavailable">原费用 %1$s 当前不可读，请核对；清空本项可取消本次分配。</string>
+    <string name="funds_fee_settle_amount">本次清偿已记费用（%1$s）</string>
+    <string name="funds_fee_actual_debit">已记费用实际扣款（%1$s）</string>
 </resources>

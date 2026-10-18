@@ -9,6 +9,7 @@ from app.errors import AppError
 from app.models import (
     AccountMovement,
     CreditFacility,
+    CreditFeeObligation,
     Debt,
     Expense,
     ExpenseFunding,
@@ -100,11 +101,15 @@ def _review_funding_accounts(db: Session, expense: Expense, parts: list[FundingP
     debts = dict(db.execute(select(CreditFacility.account_id, Debt).join(Debt, CreditFacility.debt_id == Debt.id)
         .where(CreditFacility.account_id.in_([row.id for row in accounts.values()])).order_by(Debt.id)
         .with_for_update(of=Debt)).all())
+    fee = db.get(CreditFeeObligation, expense.id)
+    if fee is not None and (len(parts) != 1 or accounts[parts[0].account_public_id].id != fee.account_id
+            or parts[0].included_in_opening or expense.original_currency_code != accounts[parts[0].account_public_id].currency_code):
+        raise AppError("funding_review_required", "已发生信用费用须保留原信用账户和币种；付款从还款入口清偿，不再改成银行卡消费。", status_code=409)
     for part in parts:
         row = accounts[part.account_public_id]
         validate_funding_currency(part, row, expense.original_currency_code or expense.home_currency_code)
         debt = debts.get(row.id)
-        if debt is not None and debt.debt_kind == "one_off":
+        if debt is not None and debt.debt_kind == "one_off" and fee is None:
             raise AppError("invalid_request", "固定本金贷款不能再次作为购物授信；请选择实际付款账户。", status_code=422)
         if part.included_in_opening:
             if not row.balance_known or expense.accounting_date > row.opening_date:

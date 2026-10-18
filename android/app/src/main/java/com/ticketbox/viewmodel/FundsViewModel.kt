@@ -115,7 +115,7 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
         val input = state.value.task.input ?: return
         if (input.mode == "envelopes") { openEnvelopes(input.envelopeMonth); return }
         if (input.accountId.isBlank()) return
-        viewModelScope.launch { reloadSchedule(input.binding, input.accountId) }
+        viewModelScope.launch { reloadTaskAccount(input.binding, input.accountId) }
     }
 
 
@@ -128,7 +128,7 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
             return@runAction Result.success(Unit)
         }
         repository.review(binding, fresh.value).onSuccess {
-            state.value.task.input?.accountId?.takeIf(String::isNotBlank)?.let { reloadSchedule(binding, it) }
+            state.value.task.input?.accountId?.takeIf(String::isNotBlank)?.let { reloadTaskAccount(binding, it) }
         }
     }
     fun finish() = runAction { binding ->

@@ -18,11 +18,13 @@ from app.models import (
 from app.money_contract import round_minor_ratio_half_up
 from app.schemas.installment import CreditDrawView, InstallmentPeriodView, InstallmentsView, InstallmentView
 from app.services.credit_allocation_service import active_credit_movements, allocation_totals
+from app.services.credit_fee_query import fee_movement_ids, fee_period_totals
 from app.services.expense_offset_summary import expense_financial_summary
 
 
 def draw_balances(db, account_id):
-    draws = [row for row in active_credit_movements(db, account_id) if row.amount_minor < 0]
+    fee_ids = set(db.scalars(fee_movement_ids(account_id)))
+    draws = [row for row in active_credit_movements(db, account_id) if row.amount_minor < 0 and row.id not in fee_ids]
     used, _, _ = allocation_totals(db, [row.id for row in draws])
     return {row.id: -row.amount_minor - int(used.get(row.id, 0)) for row in draws}
 
@@ -37,7 +39,8 @@ def paid_by_period(db: Session, period_ids: list[int]) -> dict[int, tuple[int, i
         principal, fees = totals[payment.period_id]
         totals[payment.period_id] = (principal + (payment.principal_minor if payment.repayment_id not in voided else 0),
             fees + retained_fees.get(payment.id, 0))
-    return totals
+    incurred = fee_period_totals(db, period_ids)
+    return {identifier: (principal, fees + incurred[identifier][1]) for identifier, (principal, fees) in totals.items()}
 
 
 def _retained_fee_payments(db: Session, payments: list[InstallmentPayment]) -> dict[int, int]:
@@ -80,11 +83,13 @@ def installment_view(db, agreement, *, active, balances=None):
     periods = []
     recorded = list(db.scalars(select(InstallmentPeriod).where(InstallmentPeriod.agreement_id == agreement.id).order_by(InstallmentPeriod.position)))
     paid = paid_by_period(db, [period.id for period in recorded])
+    incurred = fee_period_totals(db, [period.id for period in recorded])
     for period in recorded:
         principal, fees = paid[period.id]
         periods.append(InstallmentPeriodView(public_id=period.public_id, position=period.position, due_on=period.due_on,
             principal_minor=period.principal_minor, planned_fee_minor=period.planned_fee_minor,
-            paid_principal_minor=principal, paid_fee_minor=fees))
+            paid_principal_minor=principal, paid_fee_minor=fees,
+            unincurred_fee_minor=max(0, period.planned_fee_minor - fees - incurred[period.id][0] + incurred[period.id][1])))
     draws = list(db.scalars(select(AccountMovement).join(InstallmentDraw, InstallmentDraw.movement_id == AccountMovement.id)
         .where(InstallmentDraw.agreement_id == agreement.id)))
     balances = draw_balances(db, agreement.account_id) if balances is None else balances
@@ -105,7 +110,7 @@ def installments_view(db, account):
     draws = [CreditDrawView(public_id=row.public_id, note=row.note, occurred_on=row.occurred_on,
         original_minor=-row.amount_minor, remaining_minor=balances.get(row.id, 0), agreement_public_id=assigned.get(row.id))
         for row in db.scalars(select(AccountMovement).where(AccountMovement.account_id == account.id,
-            AccountMovement.amount_minor < 0, AccountMovement.reversal_of_id.is_(None)).order_by(AccountMovement.id))]
+            AccountMovement.amount_minor < 0, AccountMovement.id.not_in(fee_movement_ids(account.id)), AccountMovement.reversal_of_id.is_(None)).order_by(AccountMovement.id))]
     agreements = [installment_view(db, row, active=row.id in active, balances=balances) for row in db.scalars(
         select(InstallmentAgreement).where(InstallmentAgreement.account_id == account.id).order_by(InstallmentAgreement.id.desc()))]
     return InstallmentsView(account_public_id=account.public_id, account_row_version=account.row_version,

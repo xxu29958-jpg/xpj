@@ -14,6 +14,12 @@ internal fun FundsInput.command(): FundsCommand {
     if (mode !in setOf("funding", "envelopes")) java.time.LocalDate.parse(date)
     require(tail.isEmpty() || tail.matches(Regex("[0-9]{1,4}"))) { "尾号只需填写最后 1 至 4 位数字。" }
     return when (mode) {
+        "incur_fee" -> {
+            require(note.isNotBlank()) { "请填写已经发生的费用依据。" }
+            FundsCommand(revision = 2, binding = binding, accountId = accountId,
+                fee = com.ticketbox.data.remote.dto.CreditFeeCreateDto(version, calendarRevision,
+                    amount(activityAmount, currency), date, note, feePeriodId.takeIf(String::isNotBlank)))
+        }
         "envelopes" -> envelopeCommand()
         "void_repayment" -> voidPaymentCommand()
         "installments" -> installmentsCommand()
@@ -85,12 +91,15 @@ private fun FundsInput.editCommand(): FundsCommand = FundsCommand(binding = bind
 private fun FundsInput.paymentCommand(): FundsCommand {
     require(payerId.isNotBlank() && payerVersion > 0 && note.isNotBlank()) { "请选择实际扣款账户并填写说明。" }
             val (periods, draws) = paymentAllocation()
-            return FundsCommand(binding = binding, accountId = accountId, payment = CreditPaymentDto(version, calendarRevision,
+            return FundsCommand(revision = if (feePayments.isEmpty()) 1 else 2, binding = binding, accountId = accountId, payment = CreditPaymentDto(version, calendarRevision,
                 payerId, payerVersion, amount(principal, currency), amount(paid, payerCurrency), date, note,
                 newFee.takeIf { it.isNotBlank() }?.let { amount(it, payerCurrency) } ?: 0L, feeNote.ifBlank { null },
                 periods, draws, overpayment.takeIf(String::isNotBlank)?.let { amount(it, currency) } ?: 0L,
                 sourceRepaymentDraftId.takeIf(String::isNotBlank), sourceAmountBasis,
-                sourceReviewReason.takeIf(String::isNotBlank)))
+                sourceReviewReason.takeIf(String::isNotBlank),
+                feePayments.filterValues(String::isNotBlank).map { (id, value) ->
+                    com.ticketbox.data.remote.dto.CreditFeePaymentPartDto(id.toLong(), amount(value, currency))
+                }.filter { it.amountMinor > 0 }, payerFeeAmount.takeIf(String::isNotBlank)?.let { amount(it, payerCurrency) } ?: 0L))
 }
 
 private fun FundsInput.activityCommand(): FundsCommand {

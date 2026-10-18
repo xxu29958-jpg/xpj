@@ -1,0 +1,10 @@
+{% if account.fee_obligations %}
+<section class="product-section"><h2 class="product-panel-title">清偿已记费用 · {{ account.currency_code }}</h2>
+<p class="hint">这些费用已经计过消费。本次只付款，不要再填到“同时支付的新费用”。</p>
+{% for fee in account.fee_obligations if fee.remaining_minor > 0 %}
+<div class="product-form-grid" data-allocation-kind="fee" data-allocation-id="{{ fee.expense_id }}">
+<p>{{ fee.note }} · {{ fee.occurred_on }} · 待付 {{ money(fee.remaining_minor, account.currency_code) }}</p>
+<label class="product-field">本次清偿费用<input class="product-input" data-allocation-principal inputmode="decimal"></label>
+</div>{% endfor %}
+</section>{% endif %}
+<label class="product-field" for="fund-fee-paid">已记费用实际扣款 <span data-funds-payer-currency>{{ values.payer_currency_code }}</span><input class="product-input" id="fund-fee-paid" name="payer_fee_amount" value="{{ values.payer_fee_amount }}" inputmode="decimal"><span class="hint">只填写上方已记费用的实际扣款；没有清偿已记费用时留空。</span></label>

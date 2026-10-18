@@ -39,7 +39,9 @@ data class FundsInput(val binding: LogicalSessionBinding, val mode: String, val 
     val sourceReviewReason: String = "", val sourceCurrency: String = "", val sourceAmount: String = "",
     val sourceLabel: String = "", val envelopeMonth: String = "",
     val envelopeAccounts: List<String> = emptyList(), val envelopeAccountVersions: Map<String, Long> = emptyMap(),
-    val envelopeAmounts: Map<String, String> = emptyMap(), val visibilityEdit: String? = null)
+    val envelopeAmounts: Map<String, String> = emptyMap(), val visibilityEdit: String? = null,
+    val feePeriodId: String = "", val feePeriodLabel: String = "", val feePayments: Map<String, String> = emptyMap(),
+    val payerFeeAmount: String = "")
 
 @JsonClass(generateAdapter = true)
 data class FundsCommand(val revision: Int = 1, val binding: LogicalSessionBinding, val accountId: String,
@@ -47,8 +49,8 @@ data class FundsCommand(val revision: Int = 1, val binding: LogicalSessionBindin
     val payment: CreditPaymentDto? = null, val activity: AccountPostingDto? = null,
     val expenseId: Long? = null, val funding: ExpenseFundingCommandDto? = null, val installments: InstallmentCommandDto? = null,
     val voidPayment: CreditPaymentVoidDto? = null, val envelopes: com.ticketbox.data.remote.dto.EnvelopeSaveDto? = null,
-    val envelopeMonth: String = "") {
-    val version: Long get() = edit?.expectedRowVersion ?: payment?.expectedRowVersion ?: activity?.expectedRowVersion ?: funding?.expectedRowVersion ?: installments?.expectedRowVersion ?: voidPayment?.expectedRowVersion ?: envelopes?.expectedRowVersion ?: 0L
+    val envelopeMonth: String = "", val fee: com.ticketbox.data.remote.dto.CreditFeeCreateDto? = null) {
+    val version: Long get() = fee?.expectedRowVersion ?: edit?.expectedRowVersion ?: payment?.expectedRowVersion ?: activity?.expectedRowVersion ?: funding?.expectedRowVersion ?: installments?.expectedRowVersion ?: voidPayment?.expectedRowVersion ?: envelopes?.expectedRowVersion ?: 0L
     fun target(key: String) = when {
         envelopes != null -> "funds:envelopes:$envelopeMonth"
         funding != null -> "funds:expense:$expenseId"
@@ -119,13 +121,14 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
     private fun original(row: OutboxRow) = runCatching {
             require(row.type == type && !row.idempotencyKey.isNullOrBlank())
             val value = requireNotNull(FundsWire.command.fromJson(row.payloadJson))
-            require(value.revision == 1 && listOf(value.create, value.edit, value.payment, value.activity, value.funding, value.installments, value.voidPayment, value.envelopes).count { it != null } == 1)
+            require(value.revision in 1..2 && listOf(value.create, value.edit, value.payment, value.activity, value.funding, value.installments, value.voidPayment, value.envelopes, value.fee).count { it != null } == 1)
             require(row.expectedRowVersion == value.version && row.targetId == value.target(requireNotNull(row.idempotencyKey)))
             value
         }.getOrNull()
 
     private suspend fun accountResult(original: FundsCommand, api: ApiService, key: String): FinancialAccountDto {
         val result = when {
+                original.fee != null -> api.incurCreditFee(original.accountId, original.fee, key)
                 original.create != null -> api.createFundsAccount(original.create, key)
                 original.edit != null -> api.editFundsAccount(original.accountId, original.edit, key)
                 original.activity != null -> api.postFundsActivity(original.accountId, original.activity, key)
@@ -151,7 +154,7 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
                         "funding_review_required", "funding_opening_mismatch", "funding_opening_review_required",
                         "expense_reversal_active", "funds_date_outside_coverage", "funding_requires_confirmation", "repayment_already_voided",
                         "credit_adoption_unavailable", "credit_adoption_date_conflict", "credit_account_required",
-                        "installment_source_in_use", "installment_amount_mismatch", "installment_allocation_required", "installment_review_required")
+                        "installment_source_required", "installment_source_in_use", "installment_amount_mismatch", "installment_allocation_required", "installment_review_required")
                     DispatchResult.Failure((if (refused) FUNDS_REFUSED else "") + parsed.message,
                         definitelyRejected = refused, credentialRejected = error.code() == 401)
                 }
