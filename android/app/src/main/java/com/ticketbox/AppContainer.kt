@@ -374,7 +374,8 @@ class AppContainer(context: Context) {
                 outboxRequestGuard, outboxAdapters.debtVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
             ),
             com.ticketbox.data.repository.ConfirmRepaymentDraftDispatcher(outboxRequestGuard,
-                outboxAdapters.repaymentReviewAdapter, outboxAdapters.repaymentDraftReceiptAdapter),
+                outboxAdapters.repaymentReviewAdapter, outboxAdapters.repaymentDraftReceiptAdapter,
+                ::publishExpenseFactBundle),
             com.ticketbox.data.repository.DismissRepaymentDraftDispatcher(outboxRequestGuard,
                 outboxAdapters.repaymentDismissAdapter, outboxAdapters.repaymentDraftReceiptAdapter),
             com.ticketbox.data.repository.VoidDebtRepaymentDispatcher(

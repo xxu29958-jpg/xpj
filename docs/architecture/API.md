@@ -183,7 +183,7 @@ Authorization: Bearer <admin_token>
 | `/api/imports/csv/{public_id}/errors.csv` | GET | `backend/app/routes/imports.py` | 无 | path `public_id` | streaming `text/csv` | Session Token | `backend/tests/test_csv_import_batches.py` | v1.0 下载导入错误行 |
 | `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseManualCreateRequest` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_expenses.py` | gray/internal |
 | `/api/expenses/notification-drafts` | POST | `backend/app/routes/expenses.py` | `createNotificationDraft(request)` | `NotificationDraftCreateRequest` / `NotificationDraftRequestDto` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_notification_drafts.py`, `ExpenseDtoContractTest`, `ExpenseRepositoryBindingTest` | v0.6；结构化草稿，不上传通知原文 |
-| `/api/expenses/{id}/repayment-draft` | POST | `backend/app/routes/expenses.py` | `createRepaymentDraftFromExpense(id,request)` | `ExpenseRepaymentDraftCreateRequest` / `ExpenseRepaymentDraftCreateRequestDto` | `RepaymentDraftResponse` / `RepaymentDraftDto` | Session Token，owner/member 写权限 | `backend/tests/test_repayment_drafts.py`, `ExpenseEditViewModelTest` | 将已入账流水转入还款复核箱；不修改原 Expense，不自动抵扣欠款 |
+| `/api/expenses/{id}/repayment-draft` | POST | `backend/app/routes/expenses.py` | `createRepaymentDraftFromExpense(id,request)` | `ExpenseRepaymentDraftCreateRequest` / `ExpenseRepaymentDraftCreateRequestDto` | `RepaymentDraftResponse` / `RepaymentDraftDto` | Session Token，owner/member 写权限 | `backend/tests/test_repayment_drafts.py`, `ExpenseEditViewModelTest` | 将已入账流水转入还款复核箱；创建时保留原 Expense；人工确认后在同一事务冲正原消费并记录还款 |
 | `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | internal/debug 读取详情 |
 | `/api/expenses/{id}/items` | GET | `backend/app/routes/expenses.py` | `expenseItems(id)` | path `id` | `ExpenseItemsResponse` | Session Token | `backend/tests/test_expense_items.py` | v1.0 账单明细行；viewer 可读 |
 | `/api/expenses/{id}/items` | PUT | `backend/app/routes/expenses.py` | `replaceExpenseItems(id,request)` | `ExpenseItemReplaceRequest` | `ExpenseItemsResponse` | Session Token，owner/member 写权限 | `backend/tests/test_expense_items.py` | v1.0 整体替换账单明细行 |
@@ -1393,7 +1393,7 @@ Content-Type: application/json
 }
 ```
 
-把一条已经入账的 `Expense` 显式转入还款复核箱，返回 `RepaymentDraftResponse`。该接口不修改原 `Expense`，不自动选择欠款，也不自动记录 `Repayment`；后续仍由 `/api/repayment-drafts/{public_id}/confirm` 在用户确认目标欠款后抵扣欠款。
+把一条已经入账的 `Expense` 显式转入还款复核箱，返回 `RepaymentDraftResponse`。该接口不修改原 `Expense`，不自动选择欠款，也不自动记录 `Repayment`；后续由 `/api/repayment-drafts/{public_id}/confirm` 在用户确认目标欠款后，同一事务创建原消费的冲正事实与还款，原流水、原件和历史保留。还款被拒时冲正一并回滚。草稿保存 `source_expense_public_id` 与核对时的原流水版本；原流水变化后必须重新核对。旧草稿可恢复原流水身份但没有历史版本，返回 `source_expense_requires_review=true`，须从原流水重新发起，不能据此自动冲正历史消费。忽略草稿不改变消费。
 
 规则：
 - 只接受 `confirmed` 且 `amount_cents > 0` 的流水，否则返回 `409 state_conflict` 或 `400 amount_required`。

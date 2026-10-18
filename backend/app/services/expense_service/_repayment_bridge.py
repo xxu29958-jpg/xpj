@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import Expense, RepaymentDraft
+from app.models import Expense, ExpenseOffsetFact, RepaymentDraft
 from app.services.accounting_time_service import accounting_time_snapshot
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service._query import get_expense
@@ -48,13 +48,16 @@ def _expense_repayment_label(expense: Expense) -> str | None:
     return None
 
 
-def _expense_repayment_draft_key(*, tenant_id: str, actor_account_id: int, expense_public_id: str) -> str:
+def _expense_repayment_draft_key(
+    *, tenant_id: str, actor_account_id: int, expense_public_id: str, row_version: int,
+) -> str:
     material = "|".join(
         [
             "repayment_expense",
             tenant_id,
             str(actor_account_id),
             expense_public_id,
+            str(row_version),
         ]
     )
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
@@ -71,7 +74,8 @@ def create_repayment_draft_from_expense(
 ) -> RepaymentDraft:
     """Create or return the pending repayment draft for a confirmed Expense.
 
-    The source Expense is not mutated. ``expected_row_version`` fences the user's
+    Creation leaves the source Expense intact; confirmation reverses it in the
+    same transaction as the repayment. ``expected_row_version`` fences the user's
     intent against an amount/merchant/category snapshot that has changed since
     the edit page loaded. The resulting draft is account-scoped through its
     stable idempotency key, so repeated taps on the same Expense do not create
@@ -85,11 +89,16 @@ def create_repayment_draft_from_expense(
         raise AppError("state_conflict", status_code=409)
     if expense.amount_cents is None or expense.amount_cents <= 0:
         raise AppError("amount_required", status_code=400)
+    if db.scalar(ledger_scoped_select(ExpenseOffsetFact, tenant_id)
+        .where(ExpenseOffsetFact.expense_id == expense.id, ExpenseOffsetFact.status == "active")
+        .limit(1)) is not None:
+        raise AppError("state_conflict", "这笔流水已有退款或冲正，请先核对原流水。", status_code=409)
 
     idempotency_key = _expense_repayment_draft_key(
         tenant_id=tenant_id,
         actor_account_id=actor_account_id,
         expense_public_id=expense.public_id,
+        row_version=expected_row_version,
     )
     existing = db.scalar(
         ledger_scoped_select(RepaymentDraft, tenant_id)
@@ -113,6 +122,8 @@ def create_repayment_draft_from_expense(
         merchant_label=_expense_repayment_label(expense),
         captured_at=captured_at,
         accounting_time_snapshot=payment_time.model_dump(mode="json") if payment_time else None,
+        source_expense_public_id=expense.public_id,
+        source_expense_row_version=expected_row_version,
         draft_idempotency_key=idempotency_key,
         status="pending",
         created_at=now,

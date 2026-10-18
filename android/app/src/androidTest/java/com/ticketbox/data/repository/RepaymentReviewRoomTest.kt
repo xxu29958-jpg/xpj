@@ -26,9 +26,11 @@ class RepaymentReviewRoomTest {
         "pending", createdAt = "2026-09-01T00:00:01Z", originalCurrencyCode = "CNY", originalAmountMinor = 10000)
     private var loseReply = true
     private var refuseReview = false
+    private var sourceCorrection = false
+    private var sourcePublications = 0
     private var expectedReviewDate: String? = null
     private val confirmCalls = mutableListOf<Pair<String, RepaymentDraftConfirmRequestDto>>()
-    private val fixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext()) { api ->
+    private val fixture: ExpenseCorrectionConnectedFixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext()) { api ->
         object : ApiService by api {
             override suspend fun repaymentDraft(publicId: String): RepaymentDraftDto {
                 assertEquals(capture.publicId, publicId)
@@ -42,7 +44,12 @@ class RepaymentReviewRoomTest {
                 assertEquals(expectedReviewDate, request.timeInput?.userLocalDate)
                 refuseReviewIfRequired()
                 if (loseReply) throw IOException("isolated lost reply")
-                return capture.copy(status = "confirmed", committedDebtPublicId = "original-debt", committedRepaymentPublicId = "original-repayment")
+                return capture.copy(status = "confirmed", committedDebtPublicId = "original-debt", committedRepaymentPublicId = "original-repayment",
+                    sourceExpensePublicId = if (sourceCorrection) fixture.network.current.publicId else null)
+            }
+            override suspend fun expenseFactBundle(id: String): com.ticketbox.data.remote.dto.ExpenseFactBundleDto {
+                assertEquals(fixture.network.current.publicId, id)
+                return api.expenseFactBundle(fixture.network.current.id.toString())
             }
             override suspend fun dismissRepaymentDraft(publicId: String, request: RepaymentDraftDismissRequestDto): RepaymentDraftDto {
                 assertEquals(capture.publicId, publicId)
@@ -90,12 +97,18 @@ class RepaymentReviewRoomTest {
         assertTrue(graph.repaymentReviewRepository.date(binding, capture.publicId, "2026-09-15").isFailure)
         assertEquals(id, graph.repaymentReviewRepository.submit(binding, capture.toDomain(), false).getOrThrow())
         loseReply = false
+        sourceCorrection = true
+        drain()
+        assertEquals("pending", fixture.stored().single()["status"])
+        graph = fixture.reopen()
         drain()
         val completed = fixture.stored().single()
         assertEquals("done", completed["status"])
         assertEquals(original["payload"], completed["payload"])
         assertEquals(original["idempotencyKey"], completed["idempotencyKey"])
-        assertEquals(2, confirmCalls.size)
+        assertEquals(3, confirmCalls.size)
+        assertEquals(2, sourcePublications)
+        assertTrue(fixture.expenseDao.observeConfirmed(binding.ledgerId).first().any { it.publicId == fixture.network.current.publicId })
         assertEquals(confirmCalls.first(), confirmCalls.last())
         assertEquals(original["idempotencyKey"], confirmCalls.first().first)
         val sent = confirmCalls.first().second
@@ -175,7 +188,13 @@ class RepaymentReviewRoomTest {
         val adapters = OutboxAdapterGraph()
         val guard = LedgerRequestGuard(fixture.apiProvider)
         OutboxDrainEngine(fixture.outbox, listOf(
-            ConfirmRepaymentDraftDispatcher(guard, adapters.repaymentReviewAdapter, adapters.repaymentDraftReceiptAdapter),
+            ConfirmRepaymentDraftDispatcher(guard, adapters.repaymentReviewAdapter, adapters.repaymentDraftReceiptAdapter,
+                { ledgerId, bundle ->
+                    sourcePublications++
+                    if (sourcePublications == 1) throw IOException("isolated cache publication failure")
+                    val projection = bundle.toCacheProjection(ledgerId)
+                    fixture.expenseDao.applyExpenseFactBundle(ledgerId, projection.root, projection.activeOffsets)
+                }),
             DismissRepaymentDraftDispatcher(guard, adapters.repaymentDismissAdapter, adapters.repaymentDraftReceiptAdapter),
         ), now = fixture.clock::millis).drainOnce()
     }

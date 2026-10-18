@@ -617,6 +617,10 @@ class RepaymentDraft(Base):
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     accounting_time_snapshot: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
 
+    # Old bridges retain identity but require review because no OCC token was stored.
+    source_expense_public_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    source_expense_row_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # --- dedup + lifecycle -------------------------------------------------------
     draft_idempotency_key: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(

@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import Debt, RepaymentDraft
-from app.schemas import RepaymentCreateRequest
+from app.models import Debt, Expense, RepaymentDraft
+from app.schemas import ExpenseOffsetCreateRequest, RepaymentCreateRequest
 from app.schemas._accounting_time import AccountingTimeInput, AccountingTimeSnapshot
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import minor_amount_value
@@ -38,6 +38,29 @@ def _lock_pending_draft(db: Session, *, tenant_id: str, actor_account_id: int, p
     if draft is None:
         raise AppError("repayment_draft_not_found", status_code=404)
     return draft
+
+
+def _reverse_source_expense(db: Session, draft: RepaymentDraft, actor_account_id: int) -> None:
+    """Keep the original fact and cancel its spending effect, atomically with repayment."""
+    if draft.source_expense_public_id is None:
+        return
+    # Expense offsets also project bill-split debt changes; import at command time
+    # rather than creating an eager package initialization cycle.
+    from app.services.expense_offset_service import create_expense_offset
+
+    source = db.scalar(ledger_scoped_select(Expense, draft.tenant_id)
+        .where(Expense.public_id == draft.source_expense_public_id).with_for_update())
+    if (source is None or draft.source_expense_row_version is None
+        or source.row_version != draft.source_expense_row_version):
+        raise AppError("state_conflict", "原流水已变化，请回到原流水重新核对后作为还款处理。", status_code=409)
+    if source.accounting_date is None:
+        raise AppError("accounting_time_invalid", "请先补齐原流水的账务日期，再作为还款处理。", status_code=409)
+    create_expense_offset(db, tenant_id=draft.tenant_id, expense_id=source.id,
+        payload=ExpenseOffsetCreateRequest(kind="reversal", accounting_date=source.accounting_date,
+            reason="误记为消费，已确认为还款", expected_row_version=draft.source_expense_row_version),
+        effective_expected_row_version=draft.source_expense_row_version, actor_account_id=actor_account_id,
+        actor_device_public_id=None, actor_device_name=None,
+        idempotency_key=f"repayment-source:{draft.public_id}", commit=False)
 
 
 def confirm_repayment_draft(
@@ -77,6 +100,10 @@ def confirm_repayment_draft(
     )
     if target_home is not None and target_home != draft.home_currency_code:
         raise AppError("currency_binding_drift", status_code=409)
+
+    # Lock order follows the existing source correction path (Expense before Debt).
+    # A rejected repayment rolls this reversal and its idempotency claim back too.
+    _reverse_source_expense(db, draft, actor_account_id)
 
     if original_currency is not None or original_amount is not None:
         money = {"original_currency": original_currency, "original_amount": original_amount}

@@ -192,6 +192,7 @@ def test_list_pending_draft_carries_server_suggestion(client: TestClient, *, ide
     assert listed["suggested_debt_public_id"] == debt["public_id"]
 
 
+
 def test_confirmed_expense_can_enter_repayment_draft_model(
     client: TestClient, *, identity
 ) -> None:
@@ -218,6 +219,33 @@ def test_confirmed_expense_can_enter_repayment_draft_model(
     listed = _listed(client, identity, public_id=draft["public_id"])
     assert listed["suggested_debt_public_id"] == debt["public_id"]
 
+    assert draft["source_expense_public_id"] == expense["public_id"]
+    from app.models import Expense, ExpenseOffsetFact, Repayment
+    from app.services.expense_offset_summary import expense_financial_summary
+
+    confirm_url = f"/api/repayment-drafts/{draft['public_id']}/confirm"
+    body = {"target_debt_public_id": debt["public_id"], "expected_row_version": debt["row_version"]}
+    rejected = client.post(confirm_url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={**body, "original_currency": "CNY", "original_amount": "6000.00"})
+    assert rejected.status_code == 422, rejected.json()
+    with SessionLocal() as db:
+        assert not db.scalars(select(ExpenseOffsetFact).where(ExpenseOffsetFact.expense_id == expense["id"])).all()
+        assert db.get(Expense, expense["id"]).row_version == expense["row_version"]
+
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    saved = client.post(confirm_url, headers=headers, json=body)
+    assert saved.status_code == 201, saved.json()
+    replay = client.post(confirm_url, headers=headers, json=body)
+    assert replay.status_code == 201 and replay.json() == saved.json()
+    with SessionLocal() as db:
+        original = db.get(Expense, expense["id"])
+        offsets = list(db.scalars(select(ExpenseOffsetFact).where(ExpenseOffsetFact.expense_id == original.id)))
+        assert original.status == "confirmed" and original.amount_cents == expense["amount_cents"]
+        assert len(offsets) == 1 and offsets[0].kind == "reversal"
+        assert offsets[0].accounting_date == original.accounting_date
+        assert expense_financial_summary(original, offsets).lineage_home_net_cents == 0
+        assert len(db.scalars(select(Repayment).where(Repayment.debt_id == db.scalar(select(Debt.id).where(Debt.public_id == debt["public_id"])))).all()) == 1
+
 
 def test_expense_repayment_draft_dedupes_same_expense(
     client: TestClient, *, identity
@@ -241,6 +269,13 @@ def test_expense_repayment_draft_dedupes_same_expense(
 
     listing = client.get("/api/repayment-drafts", headers=identity.app_headers).json()
     assert sum(1 for d in listing["items"] if d["public_id"] == first.json()["public_id"]) == 1
+    dismissed = client.post(f"/api/repayment-drafts/{first.json()['public_id']}/dismiss",
+        headers=identity.app_headers, json={})
+    assert dismissed.status_code == 201
+    from app.models import Expense, ExpenseOffsetFact
+    with SessionLocal() as db:
+        assert db.get(Expense, expense["id"]).row_version == expense["row_version"]
+        assert not db.scalars(select(ExpenseOffsetFact).where(ExpenseOffsetFact.expense_id == expense["id"])).all()
 
 
 def test_expense_repayment_draft_uses_existing_learning(
@@ -285,6 +320,25 @@ def test_expense_repayment_draft_rejects_stale_expense_snapshot(
     )
     assert response.status_code == 409, response.json()
     assert response.json()["error"] == "state_conflict"
+    draft = client.post(f"/api/expenses/{expense['id']}/repayment-draft", headers=identity.app_headers,
+        json={"expected_row_version": expense["row_version"]}).json()
+    edited = client.post(f"/api/expenses/{expense['id']}/corrections",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": expense["row_version"], "reason": "核对商家", "merchant": "真实商家"})
+    assert edited.status_code == 201, edited.json()
+    debt = _create_external_debt(client, identity, counterparty_label="京东白条", principal_amount_cents=500000)
+    refused = client.post(f"/api/repayment-drafts/{draft['public_id']}/confirm",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"target_debt_public_id": debt["public_id"], "expected_row_version": debt["row_version"]})
+    assert refused.status_code == 409 and refused.json()["error"] == "state_conflict"
+    from app.models import ExpenseOffsetFact, Repayment
+    with SessionLocal() as db:
+        assert not db.scalars(select(ExpenseOffsetFact)).all()
+        assert not db.scalars(select(Repayment)).all()
+    reviewed = client.post(f"/api/expenses/{expense['id']}/repayment-draft", headers=identity.app_headers,
+        json={"expected_row_version": edited.json()["expense"]["row_version"]})
+    assert reviewed.status_code == 201 and reviewed.json()["public_id"] != draft["public_id"]
+    _confirm_draft_to_debt(client, identity, draft_public_id=reviewed.json()["public_id"], debt=debt)
 
 
 def test_list_suggestion_absent_when_ambiguous(client: TestClient, *, identity) -> None:

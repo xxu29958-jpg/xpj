@@ -308,8 +308,8 @@
     <string name="expense_edit_bill_split_cancel_failed">撤回失败，请稍后再试。</string>
 
     <!-- 已入账流水转入还款复核箱 -->
-    <string name="expense_edit_repayment_draft_card_title">关联到欠款</string>
-    <string name="expense_edit_repayment_draft_card_subtitle">把这条已入账流水放到还款待确认，再选择对应欠款。</string>
+    <string name="expense_edit_repayment_draft_card_title">这笔其实是还款</string>
+    <string name="expense_edit_repayment_draft_card_subtitle">放入还款待确认，再选择对应欠款。确认还款时会同时冲正这笔误记消费，保留原流水和历史。</string>
     <string name="expense_edit_repayment_draft_button">作为还款处理</string>
     <string name="expense_edit_repayment_draft_processing_button">处理中</string>
     <string name="expense_edit_repayment_draft_created">已放入还款待确认。</string>
