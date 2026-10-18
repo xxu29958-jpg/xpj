@@ -100,7 +100,7 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
         refused = installed_web.browser.post(action, data=attempted, headers=headers)
         assert refused.status_code == 409, (axis, refused.text)
         retained = _form(refused.text, action)
-        assert all(retained[name] == value for name, value in attempted.items() if name != "csrf_token")
+        assert {name: retained.get(name) for name in attempted if name != "csrf_token"} == {name: value for name, value in attempted.items() if name != "csrf_token"}
         assert "data-repayment-ack=" not in refused.text
         with SessionLocal() as db:
             assert list(db.scalars(select(Repayment))) == []
@@ -115,7 +115,7 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
     assert unknown.status_code == 503, unknown.text
     assert 'data-repayment-result="submitted"' in unknown.text
     retained = _form(unknown.text, action)
-    assert all(retained[name] == value for name, value in original.items() if name != "csrf_token")
+    assert {name: retained.get(name) for name in original if name != "csrf_token"} == {name: value for name, value in original.items() if name != "csrf_token"}
     monkeypatch.setattr(review, "confirm_repayment_draft_idempotently", writer)
     reader = review.list_repayment_draft_audit_for_account
 

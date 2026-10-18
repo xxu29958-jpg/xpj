@@ -115,7 +115,7 @@ def web_edit_get(
             return_context=return_context,
         )
         return templates.TemplateResponse(request=request, name="expense_fact.html", context=fact_ctx)
-    if ctx["expense"]["status"] == "pending" and not ctx["expense_review_inspection"]:
+    if ctx["expense"]["status"] == "pending" and ctx["can_write"] and not ctx["expense_review_inspection"]:
         ctx["learning_suggestions"] = suggestions_for_pending_expense(
             db, tenant_id=selected_id, expense=get_expense(db, expense_id, selected_id),
             actor_account_id=resolve_web_actor(db, request, selected_id)[0])

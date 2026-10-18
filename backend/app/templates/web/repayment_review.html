@@ -73,6 +73,7 @@
         <div class="product-field">
           <label for="review-action">处理方式</label>
           <select class="product-input" name="review_action" id="review-action">
+            {% if row and row.can_correct_confirmed and review['values']['review_action'] != 'expense' %}<option value="{{ review['values']['review_action'] }}" selected>核实原提交的结果</option>{% endif %}
             {% for value, label in ([('expense', '撤销错误还款，按消费核对')] if row and row.can_correct_confirmed else [('confirm', '记为还款'), ('expense', '这笔其实是消费，转为消费待核对'), ('dismiss', '忽略这条通知，不记账')]) %}<option value="{{ value }}"{% if review['values']['review_action'] == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
           </select>
         </div>

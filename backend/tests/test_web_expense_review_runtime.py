@@ -834,7 +834,7 @@ def test_standalone_decision_recovers_original_or_explicitly_reviews_a_refusal(
 def test_keep_api_and_web_share_the_existing_original_decision(related_review_browser, confirmation_store, monkeypatch, first_surface):
     client = related_review_browser
     client.app.include_router(expenses.router)
-    client.app.dependency_overrides[expenses.get_current_writer_context] = lambda: SimpleNamespace(tenant_id="owner", device_id=None)
+    client.app.dependency_overrides[expenses.get_current_writer_context] = lambda: SimpleNamespace(tenant_id="owner", device_id=None, account_id=None)
     monkeypatch.setattr(expenses, "expense_to_response", expense_review_command_service.expense_to_response)
     fields = {**_related_keep_fields(), "fragment": "1"}
 

@@ -50,12 +50,12 @@ from app.schemas import (
     RepaymentDraftResponse,
 )
 from app.schemas.payment_capture import RepaymentCorrectionVersions
+from app.services.debt_service._repayment_correction_context import repayment_correction_versions
 from app.services.debt_service._repayment_draft_match import (
     RepaymentMatchCandidate,
     list_repayment_match_candidates,
     suggest_debt_for_draft,
 )
-from app.services.debt_service._repayment_correction_context import repayment_correction_versions
 
 
 def _corrected_expense_id(draft: RepaymentDraft) -> int | None:

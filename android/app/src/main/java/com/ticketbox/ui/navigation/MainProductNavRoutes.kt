@@ -213,7 +213,7 @@ private fun NavGraphBuilder.addRepaymentDraftRoute(dependencies: MainProductRout
                     screenFactory = screenFactory,
                     focusedDraftPublicId = entry.arguments?.getString(REPAYMENT_DRAFT_FOCUS_ARG),
                     onBack = onBack,
-                    onOpenExpense = navController::openExpense,
+                    onOpenExpense = runtime.navController::openExpense,
                 )
             }
         }

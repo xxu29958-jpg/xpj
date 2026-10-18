@@ -128,7 +128,8 @@ def record_pending_suggestion_event(
     context = decision_context(expense, decision.decision_type, actor_account_id)
     if source_category_before is not None:
         context["category"] = source_category_before
-    if payload.get("_decision_context") != context or decision.status == "superseded":
+    if (context not in (payload.get("_decision_context"), payload.get("_resolved_context"))
+            or decision.status == "superseded"):
         # A financial edit is still valid if its old advice became stale. Do not
         # learn from that old advice; explicit feedback must reload its source.
         if source_category_before is not None:
