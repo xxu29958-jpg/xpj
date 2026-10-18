@@ -63,7 +63,7 @@ REVIEW_FIELDS = (
 REVIEW_TIME_FIELDS = ("payment_date", "calendar_revision", "reason", "correction_versions")
 
 
-def _initial_review_values(scope, selected_id, public_id, row, can_create, calendar=None, values=None):
+def _initial_review_values(scope, selected_id, public_id, row, can_create, calendar=None, values=None) -> dict[str, str]:
     initial = {
         "draft_public_id": public_id, "ledger_id": selected_id,
         "origin_binding": json.dumps(scope, ensure_ascii=False, sort_keys=True),
@@ -172,15 +172,7 @@ def submit_review(request: Request, db: Session, *, options, selected_id: str, p
         elif values["review_action"] == "dismiss":
             receipt = dismiss_repayment_draft(db, tenant_id=selected_id, actor_account_id=account_id, public_id=public_id, commit=True)
         elif values["review_action"] == "expense":
-            from app.schemas.payment_capture import RepaymentAsExpense
-            from app.services.payment_capture_commands import repayment_as_expense
-
-            auth = getattr(request.state, "web_session_auth", None)
-            if auth is None or auth.account_id != account_id or auth.tenant_id != selected_id:
-                raise AppError("session_binding_changed", "当前身份或账本已变化，请回到原账号和账本处理。", status_code=409)
-            correction = repayment_as_expense(db, auth=auth, public_id=public_id,
-                payload=RepaymentAsExpense(reason=values.get("reason", ""),
-                    correction_versions=json.loads(values.get("correction_versions") or "null")), idempotency_key=values["idempotency_key"])
+            correction = _convert_to_expense(request, db, selected_id, public_id, account_id, values)
             receipt = get_repayment_draft_response(db, tenant_id=selected_id, actor_account_id=account_id, public_id=public_id)
         else:
             raise AppError("invalid_request", "请选择消费、还款或忽略通知。", status_code=422)
@@ -197,6 +189,18 @@ def submit_review(request: Request, db: Session, *, options, selected_id: str, p
     return render_review(request, db, options=options, selected_id=selected_id, public_id=public_id, account_id=account_id, ack=ack)
 
 
+
+
+def _convert_to_expense(request: Request, db: Session, selected_id: str, public_id: str, account_id: int, values: dict[str, str]):
+    from app.schemas.payment_capture import RepaymentAsExpense
+    from app.services.payment_capture_commands import repayment_as_expense
+
+    auth = getattr(request.state, "web_session_auth", None)
+    if auth is None or auth.account_id != account_id or auth.tenant_id != selected_id:
+        raise AppError("session_binding_changed", "当前身份或账本已变化，请回到原账号和账本处理。", status_code=409)
+    return repayment_as_expense(db, auth=auth, public_id=public_id,
+        payload=RepaymentAsExpense(reason=values.get("reason", ""), correction_versions=json.loads(values.get("correction_versions") or "null")),
+        idempotency_key=values["idempotency_key"])
 
 
 def _error_message(exc: AppError) -> str:

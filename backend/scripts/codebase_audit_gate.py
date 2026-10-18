@@ -179,6 +179,13 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # ADR-0038 create_row / terminal_flag_flip, notification continuity contract:
+    # new capture has no predecessor token; original event identity is unique.
+    # Reclassification serializes that source; committed correction additionally
+    # requires Debt/Expense/Offset OCC and one receipt. No existing carrier retires.
+    # test_repayment_drafts and test_web_repayment_capture_binding exercise these
+    # source-lock/OCC/old-key/refused-write boundaries. Exact transition only.
+    ("343046c58fa62f9883d620535a1d1d47d5a9fec1", 151, 153),
     # ADR-0038 batch_db_write: one Local Owner adapter previews and confirms
     # existing retention cleanup. Device eligibility is rechecked under the
     # identity lifecycle lock; AI audit rows use their stored retention window.
