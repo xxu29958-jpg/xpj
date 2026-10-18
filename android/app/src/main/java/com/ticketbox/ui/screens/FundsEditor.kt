@@ -12,11 +12,18 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +37,9 @@ import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppTextInput
+import com.ticketbox.ui.components.AppTextInputState
+import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.CurrencyChoiceField
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.FundsUiState
@@ -41,8 +51,10 @@ internal fun FundsEditor(state: FundsUiState, input: FundsInput, vm: FundsViewMo
     val enabled = !state.task.frozen && !state.busy && state.access?.canModify == true && state.access.binding == input.binding
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         if (input.binding != state.access?.binding) Text(stringResource(R.string.funds_original_binding_note))
-        FundsInputFields(state, input, enabled, vm)
-        if (input.mode !in setOf("edit", "funding")) FundsField("${if (input.mode == "create") stringResource(R.string.funds_opening_date) else stringResource(R.string.funds_actual_date)}（YYYY-MM-DD）", input.date, enabled) { value -> vm.edit { it.copy(date = value) } }
+        key(input.key) {
+            FundsInputFields(state, input, enabled, vm)
+            if (input.mode !in setOf("edit", "funding", "envelopes")) FundsField("${if (input.mode == "create") stringResource(R.string.funds_opening_date) else stringResource(R.string.funds_actual_date)}（YYYY-MM-DD）", input.date, enabled) { value -> vm.edit { it.copy(date = value) } }
+        }
         FundsSubmission(state, enabled, vm)
     }
 }
@@ -50,6 +62,7 @@ internal fun FundsEditor(state: FundsUiState, input: FundsInput, vm: FundsViewMo
 @Composable
 private fun FundsInputFields(state: FundsUiState, input: FundsInput, enabled: Boolean, vm: FundsViewModel) {
     when (input.mode) {
+            "envelopes" -> EnvelopeFields(state, input, enabled, vm)
             "void_repayment" -> {
                 Text(stringResource(R.string.funds_void_payment_note))
                 FundsField(stringResource(R.string.funds_void_reason), input.note, enabled) { value -> vm.edit { it.copy(note = value) } }
@@ -111,9 +124,6 @@ private fun FundsAccountFields(input: FundsInput, enabled: Boolean, vm: FundsVie
             fundKinds().forEach { (kind, label) -> FilterChip(input.kind == kind, { vm.edit { it.copy(kind = kind) } }, { Text(label) }, enabled = enabled) }
         }
         CurrencyChoiceField(CurrencyCode.fromStorageKeyOrNull(input.currency), enabled, title = stringResource(R.string.funds_choose_currency)) { value -> vm.edit { it.copy(currency = value.storageKey) } }
-        Row { Switch(input.visibility == "ledger", { shared -> vm.edit { it.copy(visibility = if (shared) "ledger" else "private") } }, enabled = enabled)
-            Text(stringResource(R.string.funds_share_with_ledger)) }
-        Text(stringResource(R.string.funds_privacy_note), style = MaterialTheme.typography.bodySmall)
         FundsField(if (input.kind == "credit") stringResource(R.string.funds_opening_debt, input.currency) else stringResource(R.string.funds_opening_balance, input.currency), input.opening, enabled, money = true) { value -> vm.edit { it.copy(opening = value) } }
         Text(stringResource(R.string.funds_opening_unknown_note), style = MaterialTheme.typography.bodySmall)
         FundsField(stringResource(R.string.funds_opening_source), input.source, enabled) { value -> vm.edit { it.copy(source = value) } }
@@ -122,6 +132,12 @@ private fun FundsAccountFields(input: FundsInput, enabled: Boolean, vm: FundsVie
         Text(stringResource(R.string.funds_archive_note))
     }
     FundsField(stringResource(R.string.funds_institution), input.institution, enabled) { value -> vm.edit { it.copy(institution = value) } }
+    Row { Switch((input.visibilityEdit ?: input.visibility) == "ledger", { shared -> vm.edit {
+        val value = if (shared) "ledger" else "private"
+        if (it.mode == "edit") it.copy(visibilityEdit = value) else it.copy(visibility = value)
+    } }, enabled = enabled)
+        Text(stringResource(R.string.funds_share_with_ledger)) }
+    Text(stringResource(R.string.funds_privacy_note), style = MaterialTheme.typography.bodySmall)
     FundsField(stringResource(R.string.funds_tail), input.tail, enabled) { value -> vm.edit { it.copy(tail = value) } }
 }
 
@@ -170,6 +186,18 @@ private fun FundsSubmission(state: FundsUiState, editable: Boolean, vm: FundsVie
 
 @Composable
 internal fun FundsField(label: String, value: String, enabled: Boolean, money: Boolean = false, change: (String) -> Unit) {
-    OutlinedTextField(value, change, enabled = enabled, label = { Text(label) }, modifier = Modifier.fillMaxWidth(),
-        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = if (money) KeyboardType.Decimal else KeyboardType.Text))
+    val editor = rememberTextFieldState(value)
+    val onChange by rememberUpdatedState(change)
+    var published by remember { mutableStateOf(value) }
+    LaunchedEffect(editor) {
+        snapshotFlow { editor.text.toString() }.collect { latest ->
+            if (latest != published) { published = latest; onChange(latest) }
+        }
+    }
+    SideEffect {
+        if (value != published) { published = value; editor.setTextAndPlaceCursorAtEnd(value) }
+    }
+    AppTextInput(AppTextInputState(label, value, enabled = enabled, editorState = editor,
+        keyboardOptions = KeyboardOptions(keyboardType = if (money) KeyboardType.Decimal else KeyboardType.Text)),
+        AppTextInputActions(onValueChange = change))
 }

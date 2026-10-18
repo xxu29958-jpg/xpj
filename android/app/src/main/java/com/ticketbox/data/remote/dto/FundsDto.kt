@@ -99,6 +99,7 @@ data class FinancialAccountEditDto(
     @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
     val name: String, val institution: String?, val tail: String?, val archived: Boolean,
     @param:Json(name = "credit_terms") val creditTerms: CreditTermsDto? = null,
+    val visibility: String? = null,
 )
 
 @JsonClass(generateAdapter = true)

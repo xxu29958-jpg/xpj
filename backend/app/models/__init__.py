@@ -69,6 +69,7 @@ from app.models.debt import (
     RepaymentDraft,
     RepaymentVoid,
 )
+from app.models.envelopes import EnvelopeAllocation, EnvelopeBook, EnvelopeRevision, EnvelopeSource
 from app.models.exchange import ExchangeRate, FxRate
 from app.models.expense import Expense, ExpenseItem, ExpenseSplit
 from app.models.expense_offset import ExpenseOffsetFact, ExpenseOffsetRevision
@@ -112,6 +113,7 @@ from app.models.system import (
 )
 
 __all__ = [
+    "EnvelopeBook", "EnvelopeSource", "EnvelopeAllocation", "EnvelopeRevision",
     "FinancialAccount", "CreditFacility", "ExpenseFunding", "AccountMovement", "CreditSettlementAllocation",
     "InstallmentAgreement", "InstallmentDraw", "InstallmentPeriod", "InstallmentPayment", "AccountBalanceObservation",
     "BudgetRevision",

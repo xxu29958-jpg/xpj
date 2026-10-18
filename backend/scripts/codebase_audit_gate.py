@@ -139,7 +139,7 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 152,  # Funds: six API commands plus two native forms carry existing account/expense OCC.
+    "mutate_token_carriers": 154,  # Envelopes API and native Web form share the ledger-wide assignment OCC.
     "mutate_token_exempted": 154,  # Adds new account creation; adoption still checks the original Debt OCC.
     "mutate_token_reason_admin_single_writer": 16,
     "mutate_token_reason_append_only_fact": 3,

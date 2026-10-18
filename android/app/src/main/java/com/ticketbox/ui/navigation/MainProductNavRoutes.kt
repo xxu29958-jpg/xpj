@@ -166,7 +166,7 @@ internal fun NavGraphBuilder.addObligationRoutes(
                         com.ticketbox.viewmodel.FundsViewModel(screenFactory.fundsRepository,
                             repaymentDraftId = entry.arguments?.getString("capture"), captures = screenFactory.repaymentDraftRepository) as T
                 })
-            val binding = model.state.collectAsStateWithLifecycle().value.access?.binding
+            val binding = model.state.value.access?.binding
             val accountId = entry.arguments?.getString("account")
             LaunchedEffect(binding, accountId) { if (binding != null && accountId != null) model.open(accountId) }
             com.ticketbox.ui.screens.FundsScreen(model, onBack, runtime.navController::openExpense)

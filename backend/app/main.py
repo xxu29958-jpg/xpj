@@ -45,6 +45,7 @@ from app.routes import (
     desktop,
     devices,
     duplicates,
+    envelopes,
     exchange_rates,
     expense_corrections,
     expense_originals,
@@ -91,6 +92,7 @@ from app.routes import (
     web_debt_proposal_actions,
     web_debts,
     web_duplicates,
+    web_envelopes,
     web_expense_correction,
     web_expense_create,
     web_expense_edit,
@@ -383,6 +385,7 @@ app.include_router(debt_split_changes.router)
 app.include_router(repayment_drafts.router)
 app.include_router(payment_captures.router)
 app.include_router(funds.router)
+app.include_router(envelopes.router)
 app.include_router(funds.expense_router)
 app.include_router(dashboard.router)
 app.include_router(rules.router)
@@ -412,6 +415,7 @@ app.include_router(web_bill_split.router)
 app.include_router(web_dashboard.router)
 app.include_router(web_expense_create.router)
 app.include_router(web_funds.router)
+app.include_router(web_envelopes.router)
 app.include_router(web_expense_funding.router)
 app.include_router(web_expense_edit.router)
 app.include_router(web_expense_recognition.router)

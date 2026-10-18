@@ -27,6 +27,7 @@
 {% block content %}
 <header class="product-page-header"><div class="product-page-heading"><h1 class="page-title">{{ '选择此次还款的信用账户' if source_capture and source_capture.status == 'pending' and not task else actions.get(task, '资金账户') }}</h1>
 <p class="product-page-summary">记清钱从哪里付、欠款还有多少。这里只记录实际资金。</p></div></header>
+{% if not task and not account and not source_capture %}<a class="text-link" href="/web/envelopes?ledger_id={{ selected_ledger_id|urlencode }}">信封分配 · 按实际现金安排用途</a>{% endif %}
 {% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
 {% if source_capture %}<section class="product-surface product-surface--plain" aria-label="来源还款采集">
 <strong>{{ source_capture.merchant_label or '还款通知' }} · 原采集 {{ money(source_capture.original_amount_minor, source_capture.original_currency_code) }}</strong>
@@ -44,6 +45,7 @@
 {% set editable = ['note', 'occurred_on'] if task == 'void_repayment' else ['name', 'opening_source', 'occurred_on'] if task == 'installments' else ['name', 'institution', 'tail', 'archived'] if task == 'edit' else ['payer_public_id', 'principal_amount', 'payer_amount', 'occurred_on', 'note', 'new_fee', 'fee_note', 'overpayment'] if task == 'repay' else ['activity_amount', 'other_amount', 'apply_adjustment', 'loan_name', 'loan_currency_code', 'loan_principal_amount', 'payer_public_id', 'note', 'occurred_on'] if task in ['income', 'loan', 'transfer', 'reconciliation'] else ['name', 'kind', 'currency_code', 'visibility', 'institution', 'tail', 'opening_amount', 'occurred_on', 'opening_source'] %}
 {% if task in ['create', 'edit'] %}{% set editable = editable + ['credit_limit', 'available_credit', 'credit_observed_on', 'credit_source', 'statement_day', 'payment_due_day'] %}{% endif %}
 {% if task == 'create' %}{% set editable = editable + ['existing_debt'] %}{% endif %}
+{% if task == 'edit' %}{% set editable = editable + ['edit_visibility'] %}{% endif %}
 {% if task == 'repay' and source_capture %}{% set editable = editable + ['source_amount_basis', 'source_review_reason'] %}{% endif %}
 {% for name, value in values.items() if name not in editable and name not in ['csrf_token', 'draft_scope', 'ledger_id', 'review_latest'] %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
 <div class="product-form-grid">
@@ -69,6 +71,11 @@
 <div class="product-field"><label for="fund-visibility">谁可以查看和使用</label><select class="product-input" id="fund-visibility" name="visibility"><option value="private" {{ 'selected' if values.visibility == 'private' }}>仅我自己</option><option value="ledger" {{ 'selected' if values.visibility == 'ledger' }}>当前账本成员</option></select><p class="hint">私人账户用于家庭消费时，其他成员不会因此看到你的账户余额。</p></div>
 {% endif %}
 <div class="product-field"><label for="fund-institution">银行或平台（选填）</label><input class="product-input" id="fund-institution" name="institution" value="{{ values.institution }}" maxlength="120"></div>
+{% if task == 'edit' %}<div class="product-field"><label for="fund-sharing">谁可以查看和使用</label><select class="product-input" id="fund-sharing" name="edit_visibility">
+<option value="">保持当前：{{ '仅我自己' if values.visibility == 'private' else '当前账本成员' }}</option>
+<option value="private" {{ 'selected' if values.get('edit_visibility') == 'private' }}>改为仅我自己</option>
+<option value="ledger" {{ 'selected' if values.get('edit_visibility') == 'ledger' }}>向当前账本成员共享</option></select>
+<p class="hint">共享后，成员能查看余额和账户流水，并用于信封资金池。取消共享前须先从资金池移出。</p></div>{% endif %}
 <div class="product-field"><label for="fund-tail">尾号（选填，最多 4 位）</label><input class="product-input" id="fund-tail" name="tail" value="{{ values.tail }}" maxlength="4" inputmode="numeric" pattern="[0-9]{1,4}"><p class="hint">不用填写完整卡号。</p></div>
 {% if task == 'create' %}
 <div class="product-field"><label for="fund-opening" data-funds-opening-label>期初余额 / 信用账户期初欠款</label><input class="product-input" id="fund-opening" name="opening_amount" value="{{ values.opening_amount }}" inputmode="decimal"><p class="hint">填 0 表示已核对为零；留空表示尚未核对，不会按零计算。</p></div>

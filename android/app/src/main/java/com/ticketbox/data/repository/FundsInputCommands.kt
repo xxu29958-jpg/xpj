@@ -11,9 +11,10 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.parseExactMoneyMinor
 
 internal fun FundsInput.command(): FundsCommand {
-    if (mode != "funding") java.time.LocalDate.parse(date)
+    if (mode !in setOf("funding", "envelopes")) java.time.LocalDate.parse(date)
     require(tail.isEmpty() || tail.matches(Regex("[0-9]{1,4}"))) { "尾号只需填写最后 1 至 4 位数字。" }
     return when (mode) {
+        "envelopes" -> envelopeCommand()
         "void_repayment" -> voidPaymentCommand()
         "installments" -> installmentsCommand()
         "funding" -> fundingCommand()
@@ -23,6 +24,13 @@ internal fun FundsInput.command(): FundsCommand {
         "income", "loan", "transfer", "reconciliation" -> activityCommand()
         else -> error("原资金任务类型无法确认，输入仍保留。")
     }
+}
+
+private fun FundsInput.envelopeCommand(): FundsCommand {
+    java.time.YearMonth.parse(envelopeMonth)
+    return FundsCommand(binding = binding, accountId = "", envelopeMonth = envelopeMonth,
+        envelopes = com.ticketbox.data.remote.dto.EnvelopeSaveDto(version, currency, envelopeAccounts,
+            envelopeAccountVersions, envelopeAmounts.mapValues { amount(it.value, currency) }, note))
 }
 
 private fun amount(text: String, code: String, signed: Boolean = false): Long = requireNotNull(parseExactMoneyMinor(text,
@@ -72,7 +80,7 @@ private fun FundsInput.createCommand(): FundsCommand {
 }
 
 private fun FundsInput.editCommand(): FundsCommand = FundsCommand(binding = binding, accountId = accountId, edit = FinancialAccountEditDto(version,
-            name.trim(), institution.trim().ifBlank { null }, tail.trim().ifBlank { null }, archived, creditTerms()))
+            name.trim(), institution.trim().ifBlank { null }, tail.trim().ifBlank { null }, archived, creditTerms(), visibilityEdit))
 
 private fun FundsInput.paymentCommand(): FundsCommand {
     require(payerId.isNotBlank() && payerVersion > 0 && note.isNotBlank()) { "请选择实际扣款账户并填写说明。" }

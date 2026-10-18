@@ -16,11 +16,16 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 
 interface FundsApi : FundsReadApi, FundsWriteApi
 
 interface FundsReadApi {
+    @GET("api/budget/envelopes/history/list")
+    suspend fun envelopeHistory(@retrofit2.http.Query("before_version") beforeVersion: Long?): List<com.ticketbox.data.remote.dto.EnvelopeRevisionDto>
+    @GET("api/budget/envelopes/{month}")
+    suspend fun envelopes(@Path("month") month: String): com.ticketbox.data.remote.dto.EnvelopesDto
     @GET("api/funds/accounts/existing-debts/list")
     suspend fun existingFundDebts(): List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto>
     @GET("api/funds/accounts/templates/list")
@@ -38,6 +43,10 @@ interface FundsReadApi {
 }
 
 interface FundsWriteApi {
+    @PUT("api/budget/envelopes/{month}")
+    suspend fun saveEnvelopes(@Path("month") month: String,
+        @Body body: com.ticketbox.data.remote.dto.EnvelopeSaveDto,
+        @Header("Idempotency-Key") key: String): com.ticketbox.data.remote.dto.EnvelopesDto
     @POST("api/funds/accounts/{id}/repayments/void")
     suspend fun voidCreditPayment(@Path("id") id: String, @Body body: CreditPaymentVoidDto,
         @Header("Idempotency-Key") key: String): FinancialAccountDto

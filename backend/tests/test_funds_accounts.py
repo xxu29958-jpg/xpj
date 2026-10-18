@@ -4,12 +4,11 @@ from datetime import date, timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import func, select
-
 from app.database import SessionLocal
 from app.middleware.csrf import CSRF_COOKIE_NAME
 from app.models import AccountMovement, CreditFacility, Debt, Expense, ExpenseFunding, Repayment
 from app.routes.web_auth import SESSION_COOKIE_NAME
+from sqlalchemy import func, select
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._web_native_form_support import hidden_post_forms
 
@@ -29,7 +28,7 @@ def test_existing_debt_becomes_one_credit_account_without_rewriting_history(clie
     assert choices[0]["remaining_home_minor"] == 7000
     headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
     body = {"name": "原信用卡", "kind": "credit", "currency_code": "CNY", "opening_amount_minor": 6800,
-        "opening_date": str(date.today()), "opening_source": "平台核对为68元；原记录存在2元差异", "visibility": "ledger",
+        "opening_date": choices[0]["earliest_opening_date"], "opening_source": "平台核对为68元；原记录存在2元差异", "visibility": "ledger",
         "existing_debt": {"public_id": debt["public_id"], "expected_row_version": debt["row_version"]}}
     stale = client.post("/api/funds/accounts", headers=headers, json=body)
     assert stale.status_code == 409 and stale.json()["error"] == "state_conflict"
@@ -185,14 +184,90 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     assert client.post(url, headers=headers, json=payment).json() == result.json()
 
 
-def _create_funds_account(client, identity, name, kind, opening):
+def _create_funds_account(client, identity, name, kind, opening, *, visibility="private"):
     result = client.post("/api/funds/accounts", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"name": name, "kind": kind, "currency_code": "CNY", "opening_amount_minor": opening,
-            "opening_date": date.today().isoformat(), "opening_source": "已核对对账单", "visibility": "private",
+            "opening_date": date.today().isoformat(), "opening_source": "已核对对账单", "visibility": visibility,
             "credit_terms": {"credit_limit_minor": 2000000, "available_credit_minor": 1500000,
                 "observed_on": str(date.today()), "source": "平台页面", "statement_day": 2, "payment_due_day": 15} if kind == "credit" else None})
     assert result.status_code == 200, result.text
     return result.json()
+
+
+def test_cash_envelopes_reserve_unsettled_purchases_without_spending_principal_twice(client, identity):
+    bank = _create_funds_account(client, identity, "共同生活费", "bank", 100000, visibility="ledger")
+    credit = _create_funds_account(client, identity, "花呗", "credit", 0)
+    month = date.today().strftime("%Y-%m")
+    url = "/api/budget/envelopes/" + month
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    body = {"expected_row_version": 0, "home_currency_code": "CNY", "account_public_ids": [bank["public_id"]],
+        "account_row_versions": {bank["public_id"]: bank["row_version"]},
+        "allocations": {"spending": 30000, "savings": 20000, "buffer": 0}, "reason": "按现有现金分配用途"}
+    funded = client.put(url, headers=headers, json=body)
+    assert funded.status_code == 200, funded.text
+    assert (funded.json()["cash_minor"], funded.json()["reserved_minor"], funded.json()["unassigned_minor"]) == (100000, 50000, 50000)
+    assert all(row["planned_minor"] is None for row in funded.json()["purposes"])
+    assert client.put(url, headers=headers, json=body).json() == funded.json()
+    budget = client.put("/api/budgets/monthly/" + month,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "expected_row_version": None, "total_amount_cents": 0})
+    assert budget.status_code == 200, budget.text
+    planned = client.get(url, headers=identity.app_headers).json()
+    assert next(row for row in planned["purposes"] if row["purpose"] == "spending")["planned_minor"] == 0
+    assert (planned["reserved_minor"], planned["unassigned_minor"]) == (50000, 50000)
+    hidden = client.patch("/api/funds/accounts/" + bank["public_id"],
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": bank["row_version"], "name": bank["name"], "visibility": "private"})
+    assert (hidden.status_code, hidden.json()["error"]) == (409, "fund_account_in_envelopes")
+    history_url = "/api/budget/envelopes/history/list"
+    history = client.get(history_url, headers=identity.app_headers).json()
+    assert (history[0]["row_version"], history[0]["allocation_snapshot"]["allocations"]) == (1, body["allocations"])
+    assert client.get(history_url + "?before_version=1", headers=identity.app_headers).json() == []
+    future = (date.today().replace(day=28) + timedelta(days=4)).strftime("%Y-%m")
+    refused = client.put("/api/budget/envelopes/" + future,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={**body,
+            "expected_row_version": 1, "allocations": {"spending": 60000}})
+    assert (refused.status_code, refused.json()["error"]) == (409, "envelope_cash_insufficient")
+    purchase = client.post("/api/expenses/manual", headers=identity.app_headers,
+        json={"client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 10000,
+            "merchant": "实际购买", "category": "购物", "funding": [{"component_id": str(uuid4()),
+                "account_public_id": credit["public_id"], "account_row_version": credit["row_version"],
+                "expense_amount_minor": 10000, "account_amount_minor": 10000}]})
+    assert purchase.status_code == 200, purchase.text
+    used = client.get(url, headers=identity.app_headers).json()
+    spending = next(row for row in used["purposes"] if row["purpose"] == "spending")
+    assert (spending["available_minor"], spending["unpaid_credit_minor"], used["reserved_minor"], used["unassigned_minor"]) == (20000, 10000, 50000, 50000)
+    credit = client.get("/api/funds/accounts/" + credit["public_id"], headers=identity.app_headers).json()
+    draws = client.get("/api/funds/accounts/" + credit["public_id"] + "/installments", headers=identity.app_headers).json()["draws"]
+    payment = client.post("/api/funds/accounts/" + credit["public_id"] + "/repay",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
+            "expected_row_version": credit["row_version"], "calendar_revision": credit["calendar_revision"],
+            "payer_public_id": bank["public_id"], "payer_row_version": bank["row_version"],
+            "principal_minor": 10000, "payer_amount_minor": 10000, "occurred_on": date.today().isoformat(),
+            "note": "用已留出的现金还款", "draw_allocations": [{"draw_public_id": draws[0]["public_id"], "principal_minor": 10000}]})
+    assert payment.status_code == 200, payment.text
+    paid = client.get(url, headers=identity.app_headers).json()
+    spending = next(row for row in paid["purposes"] if row["purpose"] == "spending")
+    assert (spending["available_minor"], spending["unpaid_credit_minor"], paid["cash_minor"], paid["reserved_minor"], paid["unassigned_minor"]) == (20000, 0, 90000, 40000, 50000)
+    _envelope_unlinked_purchase(client, identity, url, bank)
+
+
+def _envelope_unlinked_purchase(client, identity, url, bank):
+    unknown = client.post("/api/expenses/manual", headers=identity.app_headers,
+        json={"client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 5000, "category": "购物"})
+    assert unknown.status_code == 200, unknown.text
+    pending = client.get(url, headers=identity.app_headers).json()
+    spending = next(row for row in pending["purposes"] if row["purpose"] == "spending")
+    assert (spending["available_minor"], spending["unlinked_minor"], pending["unassigned_minor"]) == (15000, 5000, 50000)
+    bank = client.get("/api/funds/accounts/" + bank["public_id"], headers=identity.app_headers).json()
+    linked = client.post(f"/api/expenses/{unknown.json()['id']}/funding",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
+            "expected_row_version": unknown.json()["row_version"], "reason": "核对实际扣款卡",
+            "parts": [{"component_id": str(uuid4()), "account_public_id": bank["public_id"],
+                "account_row_version": bank["row_version"], "expense_amount_minor": 5000, "account_amount_minor": 5000}]})
+    assert linked.status_code == 200, linked.text
+    settled = client.get(url, headers=identity.app_headers).json()
+    assert (settled["cash_minor"], settled["reserved_minor"], settled["unassigned_minor"]) == (85000, 35000, 50000)
 
 
 def _correct_captured_payment(client, identity, draft_id, reviewed_versions, bank, credit):
@@ -290,6 +365,48 @@ def test_native_funds_entry_keeps_private_accounts_and_consumes_actual_funding(i
         assert db.scalar(select(func.sum(AccountMovement.amount_minor))) == -1234
         assert db.scalar(select(func.count()).select_from(ExpenseFunding).where(ExpenseFunding.voided_at.is_(None))) == 1
     _confirm_pending_with_funding(installed, headers, receipt)
+    _native_envelope_arrangement(installed, headers)
+
+
+def _native_envelope_arrangement(installed, headers):
+    page = installed.browser.get("/web/funds?task=create", headers=headers)
+    account = hidden_post_forms(page.text)["/web/funds/save"]
+    account.update(name="信封生活费", kind="bank", currency_code="CNY", opening_amount="1000",
+                   opening_source="银行余额已核对", visibility="private", institution="", tail="", occurred_on=date.today().isoformat())
+    created = installed.browser.post("/web/funds/save", headers=headers, data=account)
+    assert created.status_code == 200, created.text
+    bank = _native_share_account(installed, headers, created.json()["receipt"])
+    page = installed.browser.get("/web/envelopes", headers=headers)
+    assert page.status_code == 200, page.text
+    fields = hidden_post_forms(page.text)["/web/envelopes/save"]
+    fields.update(note="先留生活费和储蓄", **{"source:" + bank["public_id"]: "1",
+        "allocation:spending": "300", "allocation:savings": "200", "allocation:buffer": "0"})
+    saved = installed.browser.post("/web/envelopes/save", headers=headers, data=fields)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["receipt"]["unassigned_minor"] == 50000
+    assert installed.browser.post("/web/envelopes/save", headers=headers, data=fields).json() == saved.json()
+    stale = {**fields, "idempotency_key": str(uuid4()), "allocation:savings": "250"}
+    rejected = installed.browser.post("/web/envelopes/save", headers=headers, data=stale)
+    assert (rejected.status_code, rejected.json()["draft_result"]) == (409, "rejected")
+    reviewed = installed.browser.post("/web/envelopes/save", headers=headers, data={**stale, "review_latest": "1"})
+    assert reviewed.status_code == 200, reviewed.text
+    original_key = stale["idempotency_key"]
+    stale.update(hidden_post_forms(reviewed.text)["/web/envelopes/save"])
+    assert stale["idempotency_key"] != original_key
+    resumed = installed.browser.post("/web/envelopes/save", headers=headers, data=stale)
+    assert resumed.status_code == 200, resumed.text
+    assert resumed.json()["receipt"]["unassigned_minor"] == 45000
+
+
+def _native_share_account(installed, headers, bank):
+    page = installed.browser.get("/web/funds?task=edit&account_id=" + bank["public_id"], headers=headers)
+    values = hidden_post_forms(page.text)["/web/funds/save"]
+    values.update(name=bank["name"], institution="", tail="", archived="false", edit_visibility="ledger")
+    shared = installed.browser.post("/web/funds/save", headers=headers, data=values)
+    assert shared.status_code == 200, shared.text
+    assert shared.json()["receipt"]["visibility"] == "ledger"
+    assert installed.browser.post("/web/funds/save", headers=headers, data=values).json() == shared.json()
+    return shared.json()["receipt"]
 
 
 def _confirm_pending_with_funding(installed, headers, account):

@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens
 
 import com.ticketbox.ui.asString
 import com.ticketbox.R
+import com.ticketbox.viewmodel.openEnvelopes
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ticketbox.data.remote.dto.FinancialAccountDto
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppListRow
@@ -36,6 +36,7 @@ internal fun fundKinds() = linkedMapOf("cash" to stringResource(R.string.funds_k
 @Composable
 internal fun fundActions() = mapOf("create" to stringResource(R.string.funds_add_account), "edit" to stringResource(R.string.funds_edit_account), "repay" to stringResource(R.string.funds_record_repayment),
     "void_repayment" to stringResource(R.string.funds_void_payment),
+    "envelopes" to stringResource(R.string.envelopes_edit),
     "income" to stringResource(R.string.funds_record_income), "loan" to stringResource(R.string.funds_record_loan), "transfer" to stringResource(R.string.funds_record_transfer), "reconciliation" to stringResource(R.string.funds_reconcile), "funding" to stringResource(R.string.funds_funding_title), "installments" to stringResource(R.string.funds_record_installments))
 internal fun money(value: Long, currency: String) = formatDisplayAmount(value, CurrencyDisplay.forRecord(currency))
 @Composable
@@ -48,24 +49,34 @@ private fun FinancialAccountDto.balanceLabel(): String = when {
 
 @Composable
 fun FundsScreen(viewModel: FundsViewModel, onBack: () -> Unit, onExpense: (Long) -> Unit) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
+    val state by viewModel.state
     val input = state.task.input
     val detail = state.detail
     AppSecondaryScrollableContent(
-        chrome = AppSecondaryPageChrome(AppPageRole.Ledger, if (state.editing) fundActions()[input?.mode] ?: stringResource(R.string.funds_task_title)
-            else if (state.fundingPage) stringResource(R.string.funds_funding_title) else detail?.name ?: stringResource(R.string.funds_accounts_title), stringResource(R.string.funds_accounts_subtitle), stringResource(R.string.funds_back), { if (!viewModel.back()) onBack() }),
+        chrome = AppSecondaryPageChrome(AppPageRole.Ledger, fundsTitle(state),
+            stringResource(if (state.envelopeMonth != null) R.string.envelopes_subtitle else R.string.funds_accounts_subtitle),
+            stringResource(R.string.funds_back), { if (!viewModel.back()) onBack() }),
         refresh = AppSecondaryRefreshState(state.loading, viewModel::refresh),
     ) {
         state.error?.let { message -> item { Text(message.asString(), color = MaterialTheme.colorScheme.error) } }
         if (state.fromCache) item { Text(stringResource(R.string.funds_cached_note), style = MaterialTheme.typography.bodySmall) }
         when {
             state.editing && input != null -> item { FundsEditor(state, input, viewModel) }
+            state.envelopeMonth != null -> item { EnvelopeOverview(state, viewModel) }
             state.fundingPage -> item { FundingReadPanel(state, viewModel) }
             state.captureRequested -> captureAccounts(state, viewModel)
             detail != null -> accountDetail(state, detail, viewModel, onExpense)
             else -> accountsOverview(state, viewModel)
         }
     }
+}
+
+@Composable
+private fun fundsTitle(state: FundsUiState): String = when {
+    state.editing -> fundActions()[state.task.input?.mode] ?: stringResource(R.string.funds_task_title)
+    state.envelopeMonth != null -> stringResource(R.string.envelopes_title)
+    state.fundingPage -> stringResource(R.string.funds_funding_title)
+    else -> state.detail?.name ?: stringResource(R.string.funds_accounts_title)
 }
 
 @Composable
@@ -132,6 +143,7 @@ private fun LazyListScope.accountsOverview(state: FundsUiState, viewModel: Funds
                 Text(stringResource(R.string.funds_valuation_scope, summary.valuationDate, summary.includedAccounts, summary.unknownAccounts, summary.missingRateAccounts), style = MaterialTheme.typography.bodySmall)
             }
             if (state.access?.canModify == true) AppPrimaryButton(stringResource(R.string.funds_add_account)) { viewModel.start("create") }
+            AppSecondaryButton(stringResource(R.string.envelopes_title)) { viewModel.openEnvelopes() }
             if (state.accounts.isEmpty() && !state.loading) Text(stringResource(R.string.funds_empty_accounts))
         }
     }

@@ -2,6 +2,16 @@ package com.ticketbox.data.repository
 
 /** Session-bound funds projections; no command publication or input ownership. */
 class FundsQueries internal constructor(private val queries: DebtQueryReader) {
+    suspend fun envelopeHistory(binding: LogicalSessionBinding, before: Long?) = queries.read(binding,
+        DebtQueryScope(debtScope(binding, "envelope_history", before?.toString() ?: "latest")),
+        DebtReadSpec(FundsWire.envelopeHistory, { envelopeHistory(before) }, validate = { rows ->
+            require(rows.all { it.rowVersion > 0 && (before == null || it.rowVersion < before) })
+        }, isNewer = { _, _ -> false }, project = { value, _ -> value }))
+    suspend fun envelopes(binding: LogicalSessionBinding, month: String) = queries.read(binding,
+        DebtQueryScope(debtScope(binding, "cash_envelopes", month)),
+        DebtReadSpec(FundsWire.envelopes, { envelopes(month) }, validate = {
+            require(it.ledgerId == binding.ledgerId && it.month == month && it.rowVersion >= 0)
+        }, isNewer = { old, incoming -> incoming.rowVersion > old.rowVersion }, project = { value, _ -> value }))
     suspend fun accountChoices(binding: LogicalSessionBinding) = queries.read(binding,
         DebtQueryScope(debtScope(binding, "funds_account_choices", "all")),
         DebtReadSpec(FundsWire.choices, { fundsAccountChoices() }, validate = { rows ->

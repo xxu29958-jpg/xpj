@@ -6,9 +6,7 @@ from datetime import date
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
-from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
-
+from app.models import Expense
 from app.services.category_service import normalize_category
 from app.services.money_projection_service import (
     CategorySpend,
@@ -18,6 +16,8 @@ from app.services.money_projection_service import (
     sum_projected_amounts,
 )
 from app.services.spending_contract_service import confirmed_stream_query
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
 
 if TYPE_CHECKING:
     from app.schemas._expense_stream import ConfirmedExpenseStreamItem
@@ -44,6 +44,44 @@ class SpendingPeriodProjection:
     @property
     def undated_expense_count(self) -> int:
         return sum(self.undated_by_category.values())
+
+
+@dataclass(frozen=True)
+class PurchaseSpending:
+    expense_id: int
+    month: str | None
+    category: str
+    amount_minor: int | None
+
+
+def read_purchase_spending(db: Session, *, tenant_id: str, months: list[str], home: str,
+                          as_of: date) -> list[PurchaseSpending]:
+    """Envelope refunds restore the original purpose; reports retain their event dates.
+
+    Reuse the confirmed stream's reversal, refund and recorded-FX semantics. This
+    groups by the current purchase identity instead of moving a refund to an
+    unrelated month's allocation. Unknown dates/amounts remain unknown.
+    """
+    from app.services.spending_contract_service import calendar_month_bounds
+    stream = confirmed_stream_query(tenant_id=tenant_id)
+    ranges = [calendar_month_bounds(month) for month in months]
+    dates = or_(*((Expense.accounting_date >= start) & (Expense.accounting_date < end)
+                  for start, end in ranges))
+    query = select(stream, Expense.accounting_date.label("purchase_date"),
+        Expense.category.label("purchase_category")).join(Expense, Expense.id == stream.c.root_expense_id).where(
+            Expense.tenant_id == tenant_id, or_(dates, Expense.accounting_date.is_(None)),
+            or_(stream.c.stream_date <= as_of, stream.c.stream_date.is_(None)))
+    rows = list(db.execute(query))
+    entries = _project_rows(db, tenant_id=tenant_id, home=home, rows=rows)
+    grouped: dict[int, PurchaseSpending] = {}
+    for row, entry in zip(rows, entries, strict=True):
+        previous = grouped.get(entry.root_expense_id)
+        amount = sum_projected_amounts((previous.amount_minor if previous else 0, entry.amount_cents),
+                                       label="envelope.purchase")
+        grouped[entry.root_expense_id] = PurchaseSpending(entry.root_expense_id,
+            row.purchase_date.strftime("%Y-%m") if row.purchase_date else None,
+            normalize_category(row.purchase_category), amount)
+    return list(grouped.values())
 
 
 def projected_category_spend(entries: Iterable[ProjectedSpendingEntry]) -> dict[str, CategorySpend]:

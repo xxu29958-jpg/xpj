@@ -1,11 +1,8 @@
 """Atomic account writes using the existing credential, OCC and receipt boundaries."""
 from uuid import uuid4
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from app.errors import AppError
-from app.models import AccountMovement, ApiIdempotencyKey, CreditFacility, Debt, FinancialAccount
+from app.models import AccountMovement, ApiIdempotencyKey, CreditFacility, Debt, EnvelopeSource, FinancialAccount
 from app.schemas.funds import AccountCreate, FinancialAccountView
 from app.services.credit_history_adoption import adopt_existing_debt
 from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
@@ -17,6 +14,8 @@ from app.services.permission_service import require_write_expense
 from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
 from app.services.time_service import now_utc
 from app.tenants import AuthContext
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 
 def claim_funds(db, auth, payload, key, operation, target=None):
@@ -24,6 +23,9 @@ def claim_funds(db, auth, payload, key, operation, target=None):
     require_write_expense(auth)
     resolve_write_capability(db)
     body = payload.model_dump(mode="json", exclude={"expected_row_version"})
+    if body.get("visibility") is None:
+        # Retained edits from older clients never changed account visibility.
+        body.pop("visibility", None)
     if body.get("source_repayment_draft_id") is None:
         # Old retained account repayments did not carry capture review fields.
         # Keep their original fingerprint so an accepted key remains replayable.
@@ -121,6 +123,7 @@ def edit_account(db, *, auth, public_id, payload, key):
     if row.owner_account_id != auth.account_id:
         raise AppError("permission_denied", "只有账户所有者可以修改名称或归档账户。", status_code=403)
     require_account_version(row, payload.expected_row_version, allow_archived=True)
+    _edit_visibility(db, auth, row, payload.visibility)
     row.name, row.institution, row.tail = payload.name, payload.institution, payload.tail
     if "credit_terms" in payload.model_fields_set:
         apply_credit_terms(db, row, payload.credit_terms)
@@ -132,6 +135,16 @@ def edit_account(db, *, auth, public_id, payload, key):
         debt.row_version += 1
         debt.updated_at = now_utc()
     return finish_funds(db, auth, claim, row)
+
+
+def _edit_visibility(db, auth, row, visibility):
+    if visibility is None or visibility == row.visibility:
+        return
+    if row.tenant_id != auth.tenant_id:
+        raise AppError("invalid_request", "请在创建这个账户的账本内调整可见范围。", status_code=422)
+    if visibility == "private" and db.get(EnvelopeSource, row.id) is not None:
+        raise AppError("fund_account_in_envelopes", "这个账户正在提供信封资金。请先在信封分配中移出，再改为仅自己可见。", status_code=409)
+    row.visibility = visibility
 
 
 def apply_credit_terms(db, account, terms):

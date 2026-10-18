@@ -37,16 +37,23 @@ data class FundsInput(val binding: LogicalSessionBinding, val mode: String, val 
     val existingDebtId: String = "", val existingDebtVersion: Long = 0, val existingDebtLabel: String = "",
     val sourceRepaymentDraftId: String = "", val sourceAmountBasis: String = "payer_total",
     val sourceReviewReason: String = "", val sourceCurrency: String = "", val sourceAmount: String = "",
-    val sourceLabel: String = "")
+    val sourceLabel: String = "", val envelopeMonth: String = "",
+    val envelopeAccounts: List<String> = emptyList(), val envelopeAccountVersions: Map<String, Long> = emptyMap(),
+    val envelopeAmounts: Map<String, String> = emptyMap(), val visibilityEdit: String? = null)
 
 @JsonClass(generateAdapter = true)
 data class FundsCommand(val revision: Int = 1, val binding: LogicalSessionBinding, val accountId: String,
     val create: FinancialAccountCreateDto? = null, val edit: FinancialAccountEditDto? = null,
     val payment: CreditPaymentDto? = null, val activity: AccountPostingDto? = null,
     val expenseId: Long? = null, val funding: ExpenseFundingCommandDto? = null, val installments: InstallmentCommandDto? = null,
-    val voidPayment: CreditPaymentVoidDto? = null) {
-    val version: Long get() = edit?.expectedRowVersion ?: payment?.expectedRowVersion ?: activity?.expectedRowVersion ?: funding?.expectedRowVersion ?: installments?.expectedRowVersion ?: voidPayment?.expectedRowVersion ?: 0L
-    fun target(key: String) = if (funding != null) "funds:expense:$expenseId" else "funds:${accountId.ifBlank { key }}"
+    val voidPayment: CreditPaymentVoidDto? = null, val envelopes: com.ticketbox.data.remote.dto.EnvelopeSaveDto? = null,
+    val envelopeMonth: String = "") {
+    val version: Long get() = edit?.expectedRowVersion ?: payment?.expectedRowVersion ?: activity?.expectedRowVersion ?: funding?.expectedRowVersion ?: installments?.expectedRowVersion ?: voidPayment?.expectedRowVersion ?: envelopes?.expectedRowVersion ?: 0L
+    fun target(key: String) = when {
+        envelopes != null -> "funds:envelopes:$envelopeMonth"
+        funding != null -> "funds:expense:$expenseId"
+        else -> "funds:${accountId.ifBlank { key }}"
+    }
 }
 
 internal object FundsWire {
@@ -54,9 +61,12 @@ internal object FundsWire {
     val input = moshi.adapter(FundsInput::class.java)
     val command = moshi.adapter(FundsCommand::class.java)
     val account = moshi.adapter(FinancialAccountDto::class.java)
+    val envelopeHistory = moshi.adapter<List<com.ticketbox.data.remote.dto.EnvelopeRevisionDto>>(
+        Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.EnvelopeRevisionDto::class.java))
     val overview = moshi.adapter(FundsOverviewDto::class.java)
     val funding = moshi.adapter(ExpenseFundingViewDto::class.java)
     val installments = moshi.adapter(InstallmentsDto::class.java)
+    val envelopes = moshi.adapter(com.ticketbox.data.remote.dto.EnvelopesDto::class.java)
     val listing = moshi.adapter<List<FinancialAccountDto>>(Types.newParameterizedType(List::class.java, FinancialAccountDto::class.java))
     val choices = moshi.adapter<List<com.ticketbox.data.remote.dto.AccountChoiceDto>>(
         Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.AccountChoiceDto::class.java))
@@ -76,6 +86,13 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
             val bound = guard.bindExact(original.binding)
             val api = bound.serviceFor(requireNotNull(row.bindingOrNull()))
             val key = requireNotNull(row.idempotencyKey)
+            if (original.envelopes != null) {
+                val result = api.saveEnvelopes(original.envelopeMonth, original.envelopes, key)
+                require(result.ledgerId == original.binding.ledgerId && result.month == original.envelopeMonth &&
+                    result.homeCurrencyCode == original.envelopes.homeCurrencyCode && result.rowVersion > original.version)
+                bound.requireStillActive()
+                return DispatchResult.Success(receiptJson = FundsWire.envelopes.toJson(result))
+            }
             if (original.funding != null) {
                 val result = api.saveExpenseFunding(requireNotNull(original.expenseId), original.funding, key)
                 require(result.expenseId == original.expenseId && result.expenseRowVersion > original.version)
@@ -102,7 +119,7 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
     private fun original(row: OutboxRow) = runCatching {
             require(row.type == type && !row.idempotencyKey.isNullOrBlank())
             val value = requireNotNull(FundsWire.command.fromJson(row.payloadJson))
-            require(value.revision == 1 && listOf(value.create, value.edit, value.payment, value.activity, value.funding, value.installments, value.voidPayment).count { it != null } == 1)
+            require(value.revision == 1 && listOf(value.create, value.edit, value.payment, value.activity, value.funding, value.installments, value.voidPayment, value.envelopes).count { it != null } == 1)
             require(row.expectedRowVersion == value.version && row.targetId == value.target(requireNotNull(row.idempotencyKey)))
             value
         }.getOrNull()
@@ -129,7 +146,8 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
                 parsed.errorCode == "state_conflict" -> DispatchResult.Conflict(parsed.message)
                 else -> {
                     val refused = parsed.errorCode in setOf("invalid_request", "amount_invalid", "funding_amount_mismatch",
-                        "fund_account_archived", "credit_opening_unknown", "exchange_rate_pending", "calendar_revision_conflict",
+                        "envelope_cash_unknown", "envelope_cash_insufficient",
+                        "fund_account_archived", "fund_account_in_envelopes", "credit_opening_unknown", "exchange_rate_pending", "calendar_revision_conflict",
                         "funding_review_required", "funding_opening_mismatch", "funding_opening_review_required",
                         "expense_reversal_active", "funds_date_outside_coverage", "funding_requires_confirmation", "repayment_already_voided",
                         "credit_adoption_unavailable", "credit_adoption_date_conflict", "credit_account_required",

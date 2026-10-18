@@ -81,6 +81,7 @@ class AccountEdit(BaseModel):
     tail: str | None = Field(default=None, pattern=r"^[0-9]{1,4}$")
     archived: bool = False
     credit_terms: CreditTerms | None = None
+    visibility: Literal["private", "ledger"] | None = None
 
 
 class FundingPart(BaseModel):

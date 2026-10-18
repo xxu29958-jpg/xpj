@@ -295,6 +295,21 @@
               }
             ],
             "title": "Tail"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "enum": [
+                  "private",
+                  "ledger"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
           }
         },
         "required": [
@@ -8335,6 +8350,17 @@
         "title": "Body_web_rules_undo_web_rules__rule_id__undo_post",
         "type": "object"
       },
+      "Body_web_save_envelopes_web_envelopes_save_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_save_envelopes_web_envelopes_save_post",
+        "type": "object"
+      },
       "Body_web_save_funds_web_funds_save_post": {
         "properties": {
           "expected_row_version": {
@@ -14567,6 +14593,417 @@
           "shortfall_cents"
         ],
         "title": "DiscretionaryResponse",
+        "type": "object"
+      },
+      "EnvelopeAccountView": {
+        "properties": {
+          "balance_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Minor"
+          },
+          "can_select": {
+            "title": "Can Select",
+            "type": "boolean"
+          },
+          "currency_code": {
+            "title": "Currency Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "selected": {
+            "title": "Selected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "public_id",
+          "name",
+          "currency_code",
+          "balance_minor",
+          "row_version",
+          "selected",
+          "can_select"
+        ],
+        "title": "EnvelopeAccountView",
+        "type": "object"
+      },
+      "EnvelopeMonthView": {
+        "properties": {
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "reserved_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserved Minor"
+          }
+        },
+        "required": [
+          "month",
+          "reserved_minor"
+        ],
+        "title": "EnvelopeMonthView",
+        "type": "object"
+      },
+      "EnvelopePurposeView": {
+        "properties": {
+          "allocated_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Allocated Minor",
+            "type": "integer"
+          },
+          "available_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Minor"
+          },
+          "funded": {
+            "title": "Funded",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "planned_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Minor"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "reserved_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserved Minor"
+          },
+          "spent_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spent Minor"
+          },
+          "unlinked_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unlinked Minor"
+          },
+          "unpaid_credit_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpaid Credit Minor"
+          }
+        },
+        "required": [
+          "purpose",
+          "label",
+          "planned_minor",
+          "funded",
+          "allocated_minor",
+          "spent_minor",
+          "unpaid_credit_minor",
+          "unlinked_minor",
+          "available_minor",
+          "reserved_minor"
+        ],
+        "title": "EnvelopePurposeView",
+        "type": "object"
+      },
+      "EnvelopeRevisionView": {
+        "properties": {
+          "allocation_snapshot": {
+            "additionalProperties": true,
+            "title": "Allocation Snapshot",
+            "type": "object"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "row_version",
+          "month",
+          "reason",
+          "allocation_snapshot",
+          "recorded_at"
+        ],
+        "title": "EnvelopeRevisionView",
+        "type": "object"
+      },
+      "EnvelopeSave": {
+        "additionalProperties": false,
+        "properties": {
+          "account_public_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Account Public Ids",
+            "type": "array"
+          },
+          "account_row_versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "maxProperties": 100,
+            "title": "Account Row Versions",
+            "type": "object"
+          },
+          "allocations": {
+            "additionalProperties": {
+              "format": "int64",
+              "maximum": 9000000000000.0,
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "maxProperties": 100,
+            "title": "Allocations",
+            "type": "object"
+          },
+          "expected_row_version": {
+            "minimum": 0.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "home_currency_code",
+          "account_public_ids",
+          "account_row_versions",
+          "allocations",
+          "reason"
+        ],
+        "title": "EnvelopeSave",
+        "type": "object"
+      },
+      "EnvelopesView": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/EnvelopeAccountView"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "cash_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash Minor"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "months": {
+            "items": {
+              "$ref": "#/components/schemas/EnvelopeMonthView"
+            },
+            "title": "Months",
+            "type": "array"
+          },
+          "notices": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notices",
+            "type": "array"
+          },
+          "purposes": {
+            "items": {
+              "$ref": "#/components/schemas/EnvelopePurposeView"
+            },
+            "title": "Purposes",
+            "type": "array"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "reserved_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserved Minor"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "unassigned_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unassigned Minor"
+          },
+          "valuation_date": {
+            "format": "date",
+            "title": "Valuation Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "month",
+          "home_currency_code",
+          "row_version",
+          "read_at",
+          "valuation_date",
+          "cash_minor",
+          "reserved_minor",
+          "unassigned_minor",
+          "accounts",
+          "purposes",
+          "months",
+          "notices"
+        ],
+        "title": "EnvelopesView",
         "type": "object"
       },
       "ErrorResponse": {
@@ -32003,6 +32440,293 @@
         "summary": "Get Discretionary",
         "tags": [
           "budget-advisor"
+        ]
+      }
+    },
+    "/api/budget/envelopes/history/list": {
+      "get": {
+        "operationId": "get_envelope_history_api_budget_envelopes_history_list_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EnvelopeRevisionView"
+                  },
+                  "title": "Response Get Envelope History Api Budget Envelopes History List Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Envelope History",
+        "tags": [
+          "envelopes"
+        ]
+      }
+    },
+    "/api/budget/envelopes/{month}": {
+      "get": {
+        "operationId": "get_envelopes_api_budget_envelopes__month__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopesView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Envelopes",
+        "tags": [
+          "envelopes"
+        ]
+      },
+      "put": {
+        "operationId": "put_envelopes_api_budget_envelopes__month__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "month",
+            "required": true,
+            "schema": {
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnvelopeSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvelopesView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Put Envelopes",
+        "tags": [
+          "envelopes"
         ]
       }
     },
@@ -60606,6 +61330,112 @@
           }
         },
         "summary": "Web Duplicate Reject Original",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/envelopes": {
+      "get": {
+        "operationId": "web_envelopes_web_envelopes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Month",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Envelopes",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/envelopes/save": {
+      "post": {
+        "operationId": "web_save_envelopes_web_envelopes_save_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_save_envelopes_web_envelopes_save_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Save Envelopes",
         "tags": [
           "web"
         ]

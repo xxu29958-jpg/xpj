@@ -321,7 +321,8 @@
       if (!commandAllowed() || actionUnavailable() || phase === "editing") return;
       const record = store.read(ref), body = new window.FormData();
       if (!record || !store.matches(record.scope, scope)) return;
-      definition.body(body, record.values);
+      if (definition.body) definition.body(body, record.values);
+      else names.forEach(name => body.set(name, record.values[name]));
       body.set("csrf_token", field("csrf_token").value); body.set("draft_scope", JSON.stringify(record.scope));
       body.set("idempotency_key", commandKey(record));
       const native = document.createElement("form"); native.method = "post"; native.action = form.action;

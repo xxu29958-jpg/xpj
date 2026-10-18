@@ -92,15 +92,7 @@ class FundsRepository internal constructor(private val provider: ApiServiceProvi
         val old = requireNotNull(state.input)
         val row = requireNotNull(state.original)
         requireReviewable(old, row, binding)
-        val target = accounts.firstOrNull { it.publicId == old.accountId }
-        val payer = accounts.firstOrNull { it.publicId == old.payerId }
-        require(old.mode in setOf("create", "funding") || target != null) { "账户当前不可用，原输入保留。" }
-        require(target == null || target.currencyCode == old.currency) { "账户币种已变化，请核对原输入。" }
-        require(payer == null || payer.currencyCode == old.payerCurrency) { "付款币种已变化，请核对原输入。" }
-        val funding = if (old.mode == "funding") reads.funding(binding, requireNotNull(old.expenseId)).getOrThrow().also {
-            require(!it.fromCache && it.value.currencyCode == old.currency && it.value.canEdit) { "请联网核对消费及付款权限；原输入保留。" }
-        }.value else null
-        val reviewedParts = if (funding != null) reviewedAccountVersions(old.fundingJson, accounts) else null
+        val reviewed = reads.reviewFundsInput(old, accounts)
         val bound = guard.bindExact(binding)
         outbox.withActiveBinding(bound) { active -> database.withTransaction {
             require(com.ticketbox.domain.model.ledgerRoleCanModify(provider.currentLedgerRole())) { "当前角色只读，原输入已保留。" }
@@ -108,20 +100,11 @@ class FundsRepository internal constructor(private val provider: ApiServiceProvi
                 active.ledgerId, row.status.wireValue, java.time.Instant.now().toString()) == 1) {
                 "原提交状态已变化，请重新核对。"
             }
-            val next = old.copy(key = java.util.UUID.randomUUID().toString(), version = funding?.expenseRowVersion ?: target?.rowVersion ?: 0,
-                calendarRevision = target?.calendarRevision ?: 0, payerVersion = payer?.rowVersion ?: 0,
-                fundingJson = reviewedParts?.let(fundingInputAdapter::toJson) ?: old.fundingJson)
+            val next = reviewed.copy(key = java.util.UUID.randomUUID().toString())
             inputs.put(FundsInputEntity(binding.serverUrl, binding.ownerKey, binding.ledgerId, next.key, FundsWire.input.toJson(next)))
         } }
     }
 }
-
-private fun reviewedAccountVersions(json: String, accounts: List<FinancialAccountDto>) =
-    requireNotNull(fundingInputAdapter.fromJson(json)).map { part ->
-        val account = requireNotNull(accounts.firstOrNull { it.publicId == part.accountId }) { "原付款账户当前不可用。" }
-        require(account.currencyCode == part.accountCurrency) { "原付款币种已变化，请保留原输入核对。" }
-        part.copy(accountVersion = account.rowVersion)
-    }
 
 private fun requireReviewable(old: FundsInput, row: OutboxRow, binding: LogicalSessionBinding) {
         require(old.binding == binding && (row.status == PendingMutationStatus.Conflict ||

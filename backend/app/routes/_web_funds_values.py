@@ -28,7 +28,7 @@ def form_defaults(account: FinancialAccountView | None, task: str, home_currency
         "loan_principal_amount", "new_fee", "fee_note", "supersedes_public_id", "overpayment", "existing_debt",
         "credit_limit", "available_credit", "credit_observed_on", "credit_source", "statement_day", "payment_due_day"), "")
     values.update(mode=task, kind="bank", currency_code=home_currency, loan_currency_code=home_currency,
-        visibility="private", opening_source="本人核对", occurred_on=str(today), archived="false", apply_adjustment="false",
+        visibility="private", edit_visibility="", opening_source="本人核对", occurred_on=str(today), archived="false", apply_adjustment="false",
         idempotency_key=str(uuid4()), draw_ids_json="[]", periods_json="[]", allocation_json="[]", repayment_public_id=repayment_id)
     if account is not None:
         values.update({name: getattr(account, name) or "" for name in ("name", "kind", "currency_code", "visibility", "institution", "tail")})
@@ -63,7 +63,8 @@ def account_create_payload(values: dict[str, str]) -> AccountCreate:
 
 def account_edit_payload(values: dict[str, str]) -> AccountEdit:
     payload = AccountEdit(name=values["name"], institution=values.get("institution") or None, tail=values.get("tail") or None,
-        archived=values["archived"] == "true", expected_row_version=values["expected_row_version"])
+        archived=values["archived"] == "true", expected_row_version=values["expected_row_version"],
+        visibility=values.get("edit_visibility") or None)
     if values.get("kind") == "credit" and "credit_limit" in values:
         payload.credit_terms = _credit_terms(values)
     return payload

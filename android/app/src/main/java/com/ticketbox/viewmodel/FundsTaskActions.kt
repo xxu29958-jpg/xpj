@@ -10,23 +10,22 @@ import com.ticketbox.data.repository.InstallmentPeriodInput
 import com.ticketbox.data.repository.fundingInputs
 import java.time.LocalDate
 import java.util.UUID
-import kotlinx.coroutines.flow.update
 
 fun FundsViewModel.start(mode: String) {
     val current = state.value
     val access = current.access?.takeIf { it.canModify } ?: return
-    if (current.task.input != null) { mutable.update { it.copy(editing = true) }; return }
+    if (current.task.input != null) { mutable.value = mutable.value.copy(editing = true); return }
     if (mode == "funding") {
         val source = current.funding?.takeIf { it.canEdit } ?: return
         val value = FundsInput(access.binding, mode, UUID.randomUUID().toString(),
             expenseId = source.expenseId, version = source.expenseRowVersion, currency = source.currencyCode,
             fundingJson = fundingInputs(source))
-        mutable.update { it.copy(task = FundsInputState(value), editing = true, error = null) }
+        mutable.value = mutable.value.copy(task = FundsInputState(value), editing = true, error = null)
         save(value)
         return
     }
     val value = current.accountInput(access.binding, mode)
-    mutable.update { it.copy(task = FundsInputState(value), editing = true, error = null) }
+    mutable.value = mutable.value.copy(task = FundsInputState(value), editing = true, error = null)
     save(value)
 }
 

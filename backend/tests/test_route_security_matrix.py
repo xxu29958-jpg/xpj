@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 @pytest.mark.parametrize(
     ("method", "path", "kwargs"),
     [
+        ("PUT", "/api/budget/envelopes/2026-10", {"json": {}}),
         ("POST", "/api/funds/accounts", {"json": {}}),
         ("PATCH", "/api/funds/accounts/account_missing", {"json": {}}),
         ("POST", "/api/funds/accounts/account_missing/installments", {"json": {}}),

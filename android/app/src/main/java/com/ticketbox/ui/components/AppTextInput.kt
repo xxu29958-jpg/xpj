@@ -15,10 +15,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldDecorator
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,7 +48,7 @@ import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.asAmount
 import com.ticketbox.ui.design.tabularNum
 
-@Immutable
+@Stable
 data class AppTextInputState(
     val label: String,
     val value: String,
@@ -59,6 +62,7 @@ data class AppTextInputState(
     val emphasis: AppTextInputEmphasis = AppTextInputEmphasis.Standard,
     val keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     val readOnly: Boolean = false,
+    val editorState: TextFieldState? = null,
 )
 
 enum class AppTextInputEmphasis {
@@ -153,13 +157,21 @@ private fun AppTextInputField(
     focusState: AppTextInputFocusState,
     decorations: AppTextInputDecorations,
 ) {
+    val editorState = state.editorState
+    val fieldModifier = decorations.fieldModifier.fillMaxWidth()
+        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+        .onFocusChanged(focusState.onFocusChanged)
+    if (editorState != null) {
+        BasicTextField(state = editorState, modifier = fieldModifier, enabled = state.enabled, readOnly = state.readOnly,
+            lineLimits = if (state.singleLine) TextFieldLineLimits.SingleLine else TextFieldLineLimits.MultiLine(state.minLines, state.maxLines),
+            keyboardOptions = state.keyboardOptions, textStyle = appTextInputTextStyle(state, decorations.amountRole),
+            decorator = TextFieldDecorator { innerTextField -> AppTextInputDecoration(state, focusState, decorations, innerTextField) })
+        return
+    }
     BasicTextField(
         value = state.value,
         onValueChange = actions.onValueChange,
-        modifier = decorations.fieldModifier
-            .fillMaxWidth()
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .onFocusChanged(focusState.onFocusChanged),
+        modifier = fieldModifier,
         enabled = state.enabled,
         readOnly = state.readOnly,
         singleLine = state.singleLine,
@@ -168,29 +180,33 @@ private fun AppTextInputField(
         keyboardOptions = state.keyboardOptions,
         keyboardActions = actions.keyboardActions,
         textStyle = appTextInputTextStyle(state, decorations.amountRole),
-        decorationBox = { innerTextField ->
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-                AppTextInputHeader(state, decorations.headerTrailingContent)
-                AppTextInputFrame(state = state, focused = focusState.focused, decorations = decorations) {
-                    val showPlaceholder = state.value.isEmpty() &&
-                        state.placeholder.isNotBlank() &&
-                        !(focusState.focused && state.emphasis == AppTextInputEmphasis.Amount)
-                    if (showPlaceholder) {
-                        Text(
-                            text = state.placeholder,
-                            color = LocalThemeVisuals.current.textMeta,
-                            style = if (state.emphasis == AppTextInputEmphasis.Amount) {
-                                MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
-                            } else {
-                                appTextInputTextStyle(state)
-                            },
-                        )
-                    }
-                    innerTextField()
-                }
-            }
-        },
+        decorationBox = { innerTextField -> AppTextInputDecoration(state, focusState, decorations, innerTextField) },
     )
+}
+
+@Composable
+private fun AppTextInputDecoration(state: AppTextInputState, focusState: AppTextInputFocusState,
+    decorations: AppTextInputDecorations, innerTextField: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+        AppTextInputHeader(state, decorations.headerTrailingContent)
+        AppTextInputFrame(state = state, focused = focusState.focused, decorations = decorations) {
+            val showPlaceholder = state.value.isEmpty() &&
+                state.placeholder.isNotBlank() &&
+                !(focusState.focused && state.emphasis == AppTextInputEmphasis.Amount)
+            if (showPlaceholder) {
+                Text(
+                    text = state.placeholder,
+                    color = LocalThemeVisuals.current.textMeta,
+                    style = if (state.emphasis == AppTextInputEmphasis.Amount) {
+                        MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium)
+                    } else {
+                        appTextInputTextStyle(state)
+                    },
+                )
+            }
+            innerTextField()
+        }
+    }
 }
 
 @Composable
