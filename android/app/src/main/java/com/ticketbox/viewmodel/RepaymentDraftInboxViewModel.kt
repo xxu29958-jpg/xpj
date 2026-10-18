@@ -12,6 +12,7 @@ import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RepaymentDraftActions
 import com.ticketbox.data.repository.RepaymentReviewActions
+import com.ticketbox.data.repository.RepaymentReviewChange
 import com.ticketbox.data.repository.RepaymentReviewState
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.RepaymentDraft
@@ -171,7 +172,7 @@ class RepaymentDraftInboxViewModel(
             val draftResult = drafts.readDrafts(binding)
             val captureResult = drafts.readCaptures(binding)
             val debtSnapshot = debts.listDebts(expectedBinding = binding).getOrNull()
-            val repayable = debtSnapshot?.value?.debts?.filter(::isRepayableDebt)
+            val repayable = debtSnapshot?.value?.debts?.filter { it.isOpen && it.isDirectWritable }
                 ?.filter { adjustmentSnapshot?.acceptsCanonical(it) == true }
             // Drop a load superseded by a newer refresh (which set isLoading and owns clearing it).
             if (gen != loadGeneration || !ownsAdjustmentBinding(binding)) return@launch
@@ -272,8 +273,6 @@ class RepaymentDraftInboxViewModel(
     }
 
     /** 可作还款对象的欠款：open + 外部手动（镜像后端 `guard_direct_fact_writable`；成员/拆账债走提案流不可直记）。 */
-    private fun isRepayableDebt(debt: Debt): Boolean = debt.isOpen && debt.isDirectWritable
-
     private fun ownsAdjustmentBinding(binding: LogicalSessionBinding): Boolean =
         binding == adjustmentBinding && binding == writes.currentAccess()?.binding
 
@@ -312,7 +311,8 @@ class RepaymentDraftInboxViewModel(
 
 private suspend fun RepaymentReviewActions.publishReview(binding: LogicalSessionBinding, capture: RepaymentDraft, debt: Debt?): Result<Long> {
     open(binding, capture).exceptionOrNull()?.let { return Result.failure(it) }
-    if (debt != null) select(binding, capture.publicId, debt).exceptionOrNull()?.let { return Result.failure(it) }
+    if (debt != null) edit(binding, capture.publicId, RepaymentReviewChange.TargetDebt(debt))
+        .exceptionOrNull()?.let { return Result.failure(it) }
     return submit(binding, capture, dismiss = debt == null)
 }
 

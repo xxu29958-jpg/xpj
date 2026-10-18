@@ -182,6 +182,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("GET", "/web/repayment-drafts"): "local-only-rendering",
     ("GET", "/web/repayment-drafts/{public_id}"): "local-only-rendering",
     ("POST", "/web/repayment-drafts/{public_id}/review"): "writer-only",
+    ("POST", "/web/payment-captures/{public_id}/decision"): "writer-only",
     # Receivables (ADR-0049 债务域 web 面 ⑤c-3 欠我的/应收只读, account-scoped cross-ledger)
     ("GET", "/web/receivables"): "local-only-rendering",
     # Bilateral split changes retain native input; only the four commands write.

@@ -73,7 +73,8 @@ internal class PaymentCaptureResolutionDispatcher(private val guard: LedgerReque
             DispatchResult.RetryableFailure("notification_capture_connection_interrupted")
         } catch (_: RepositoryException) {
             DispatchResult.RetryableFailure("notification_capture_binding_changed")
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            logNetworkWarning("Payment capture resolution response unverified", error)
             DispatchResult.RetryableFailure("notification_capture_response_unverified")
         }
     }

@@ -36,7 +36,8 @@ internal class ConfirmRepaymentDraftDispatcher(
                     publishSource(row.ledgerId, bundle)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
-                } catch (_: Exception) {
+                } catch (error: Exception) {
+                    logNetworkWarning("Accepted repayment source projection refresh pending", error)
                     return@deliverRepaymentReview DispatchResult.RetryableFailure("repayment_source_refresh_pending")
                 }
             }

@@ -37,6 +37,8 @@ import com.ticketbox.ui.screens.DebtSettleCelebrationOverlay
 import com.ticketbox.ui.screens.IncomePlanScreen
 import com.ticketbox.ui.screens.ReceivablesScreen
 import com.ticketbox.ui.screens.RepaymentDraftInboxScreen
+import com.ticketbox.ui.screens.RepaymentDraftNavigation
+import com.ticketbox.ui.screens.RepaymentReviewScreen
 import com.ticketbox.ui.screens.RelationsListChrome
 import com.ticketbox.upload.prepareScreenshotUpload
 import com.ticketbox.viewmodel.BudgetViewModel
@@ -497,9 +499,12 @@ internal fun RepaymentDraftRoute(
     LaunchedEffect(focused?.publicId, focused?.status) { if (focused != null) showHistory = !focused.isPending }
     var linkedDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val linked = linkedDebtId
-    if (linked == null) RepaymentDraftInboxScreen(viewModel, showHistory,
-        onHistoryChange = { showHistory = it }, onBack = onBack, onOpenDebt = { linkedDebtId = it }, onOpenExpense = onOpenExpense)
-    else RepaymentDraftLinkedDebt(screenFactory, linked) { linkedDebtId = null; viewModel.refresh() }
+    when {
+        linked != null -> RepaymentDraftLinkedDebt(screenFactory, linked) { linkedDebtId = null; viewModel.refresh() }
+        state.reviewId != null -> RepaymentReviewScreen(state, viewModel, { linkedDebtId = it }, onOpenExpense)
+        else -> RepaymentDraftInboxScreen(viewModel, showHistory, onHistoryChange = { showHistory = it },
+            navigation = RepaymentDraftNavigation(onBack, { linkedDebtId = it }, onOpenExpense))
+    }
 }
 
 @Composable

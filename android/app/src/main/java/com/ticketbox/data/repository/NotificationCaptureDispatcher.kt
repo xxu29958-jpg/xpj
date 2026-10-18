@@ -47,7 +47,8 @@ internal class NotificationCaptureDispatcher(
         } catch (_: RepositoryException) {
             // A response may have committed before identity changed. Preserve the original for replay.
             DispatchResult.RetryableFailure("notification_capture_binding_changed")
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            logNetworkWarning("Notification capture response unverified", error)
             DispatchResult.Failure("notification_capture_response_unverified")
         }
     }

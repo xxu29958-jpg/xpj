@@ -1,5 +1,7 @@
 <resources>
     <string name="payment_capture_review_title">支付通知待核对</string>
+    <string name="payment_capture_kind_expense">消费</string>
+    <string name="payment_capture_kind_repayment">还款</string>
     <string name="payment_capture_review_body">这条通知的类型或金额不明确。请核对原支付记录，再选择消费、还款或忽略；当前尚未记账。</string>
     <string name="payment_capture_as_expense">这笔其实是消费</string>
     <string name="payment_capture_correction_explanation">关闭这份还款草稿，转为消费草稿后再核对金额、商家和分类。原采集与更正原因会保留，不会直接记账。若来自已有流水，则返回原流水。</string>

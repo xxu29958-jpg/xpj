@@ -192,6 +192,12 @@ internal fun NavGraphBuilder.addObligationRoutes(
             )
         }
         addObligationSyncRoute(dependencies)
+        addRepaymentDraftRoute(dependencies)
+    }
+}
+
+private fun NavGraphBuilder.addRepaymentDraftRoute(dependencies: MainProductRouteDependencies) {
+    with(dependencies) {
         composable(
             route = "$REPAYMENT_DRAFT_ROUTE&$NOTIFICATION_QUERY",
             arguments = listOf(notificationArgument,
@@ -203,12 +209,12 @@ internal fun NavGraphBuilder.addObligationRoutes(
             ),
         ) { entry ->
             NotificationTaskBoundary(entry, screenFactory, onBack) {
-            RepaymentDraftRoute(
-                screenFactory = screenFactory,
-                focusedDraftPublicId = entry.arguments?.getString(REPAYMENT_DRAFT_FOCUS_ARG),
-                onBack = onBack,
-                onOpenExpense = navController::openExpense,
-            )
+                RepaymentDraftRoute(
+                    screenFactory = screenFactory,
+                    focusedDraftPublicId = entry.arguments?.getString(REPAYMENT_DRAFT_FOCUS_ARG),
+                    onBack = onBack,
+                    onOpenExpense = navController::openExpense,
+                )
             }
         }
     }

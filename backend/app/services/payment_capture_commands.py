@@ -9,7 +9,12 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import normalize_currency_code
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.payment_capture_identity import (
-    append_decision, capture_query, capture_response, identity_hash, require_capture, reserve_capture,
+    append_decision,
+    capture_query,
+    capture_response,
+    identity_hash,
+    require_capture,
+    reserve_capture,
 )
 from app.services.payment_capture_service import stage_capture_target
 from app.services.time_service import now_utc
@@ -66,14 +71,7 @@ def decide_capture(db, *, auth, public_id, payload, idempotency_key):
     return _commit(db, capture, claim, fx_task)
 
 
-def _capture_for_repayment(db, auth, draft, notification_key):
-    capture = db.scalar(capture_query(auth.tenant_id, auth.account_id)
-        .where(PaymentCapture.repayment_public_id == draft.public_id).with_for_update())
-    if capture is None and draft.source_expense_public_id:
-        capture = db.scalar(capture_query(auth.tenant_id, auth.account_id)
-            .where(PaymentCapture.expense_public_id == draft.source_expense_public_id).with_for_update())
-        if capture is not None:
-            capture.repayment_public_id = draft.public_id
+def _require_repayment_identity(draft, capture, notification_key):
     if notification_key:
         from app.services.debt_service._repayment_draft import _repayment_draft_key
 
@@ -85,11 +83,22 @@ def _capture_for_repayment(db, auth, draft, notification_key):
             raise AppError("capture_identity_mismatch", "原通知与这条草稿不匹配，请重新打开原采集。", status_code=409)
         if capture and capture.identity_hash not in (None, identity_hash(notification_key)):
             raise AppError("capture_identity_mismatch", status_code=409)
+
+
+def _capture_for_repayment(db, auth, draft, notification_key):
+    capture = db.scalar(capture_query(auth.tenant_id, auth.account_id)
+        .where(PaymentCapture.repayment_public_id == draft.public_id).with_for_update())
+    if capture is None and draft.source_expense_public_id:
+        capture = db.scalar(capture_query(auth.tenant_id, auth.account_id)
+            .where(PaymentCapture.expense_public_id == draft.source_expense_public_id).with_for_update())
+        if capture is not None:
+            capture.repayment_public_id = draft.public_id
+    _require_repayment_identity(draft, capture, notification_key)
     if capture is None:
-        values = dict(source=draft.source, captured_at=draft.captured_at,
-            original_currency=draft.original_currency_code or draft.home_currency_code,
-            original_amount_minor=draft.original_amount_minor or draft.amount_cents, merchant=draft.merchant_label,
-            parser_version="legacy", candidates=[], kind="repayment")
+        values = {"source": draft.source, "captured_at": draft.captured_at,
+            "original_currency": draft.original_currency_code or draft.home_currency_code,
+            "original_amount_minor": draft.original_amount_minor or draft.amount_cents, "merchant": draft.merchant_label,
+            "parser_version": "legacy", "candidates": [], "kind": "repayment"}
         if notification_key:
             capture, _ = reserve_capture(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
                 notification_key=notification_key, **values)

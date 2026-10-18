@@ -57,21 +57,21 @@ class RepaymentDraftInboxViewModelTest {
         val saved = androidx.lifecycle.SavedStateHandle()
         val drafts = FakeRepaymentDraftActions(listResult = Result.success(listOf(draft("original"))))
         val debts = FakeRepayableDebtActions()
-        val first = RepaymentDraftInboxViewModel(drafts, debts, FakeDebtWriteActions(), drafts, savedStateHandle = saved)
+        val first = RepaymentDraftInboxViewModel(drafts, debts, FakeDebtWriteActions(), drafts.reviews, savedStateHandle = saved)
         first.reload()
         advanceUntilIdle()
         first.reviewEditor.openReview("original")
         advanceUntilIdle()
         first.viewModelScope.cancel()
         fun restoredState() = androidx.lifecycle.SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
-        val restored = RepaymentDraftInboxViewModel(drafts, debts, FakeDebtWriteActions(), drafts, savedStateHandle = restoredState())
+        val restored = RepaymentDraftInboxViewModel(drafts, debts, FakeDebtWriteActions(), drafts.reviews, savedStateHandle = restoredState())
         restored.reload()
         advanceUntilIdle()
         assertEquals("original", restored.state.value.reviewId)
         restored.viewModelScope.cancel()
         val writes = FakeDebtWriteActions()
         writes.access.value = requireNotNull(writes.access.value).copy(binding = adjustmentBinding().copy(bindingRevision = "renewed"))
-        val rebound = RepaymentDraftInboxViewModel(drafts, debts, writes, drafts, savedStateHandle = restoredState())
+        val rebound = RepaymentDraftInboxViewModel(drafts, debts, writes, drafts.reviews, savedStateHandle = restoredState())
         rebound.reload()
         advanceUntilIdle()
         assertNull(rebound.state.value.reviewId)
@@ -647,13 +647,9 @@ private class FakeRepaymentDraftActions(
     var listResult: Result<List<RepaymentDraft>> = Result.success(emptyList()),
     var confirmResult: Result<RepaymentDraft> = Result.success(draft("d1", status = RepaymentDraftStatuses.CONFIRMED)),
     var dismissResult: Result<RepaymentDraft> = Result.success(draft("d1", status = RepaymentDraftStatuses.DISMISSED)),
-) : RepaymentDraftActions, com.ticketbox.data.repository.RepaymentReviewActions {
+) : RepaymentDraftActions {
     override suspend fun readCaptures(binding: com.ticketbox.data.repository.LogicalSessionBinding) =
         Result.success(ReadSnapshot(emptyList<com.ticketbox.data.remote.dto.PaymentCaptureDto>(), "2026-10-18T00:00:00Z", false))
-    override fun observeResolutions() = kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.OutboxRow>())
-    override suspend fun correctAsExpense(binding: com.ticketbox.data.repository.LogicalSessionBinding, draft: RepaymentDraft, reason: String): Result<Long> = error("Not configured")
-    override suspend fun resolveCapture(binding: com.ticketbox.data.repository.LogicalSessionBinding, captureId: String,
-        decision: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String): Result<Long> = error("Not configured")
     var listCalls = 0
     val confirmCalls = mutableListOf<ConfirmCall>()
     val confirmBindings = mutableListOf<com.ticketbox.data.repository.LogicalSessionBinding>()
@@ -673,31 +669,36 @@ private class FakeRepaymentDraftActions(
         return captured.map { ReadSnapshot(it, "2026-09-30T00:00:00Z", false) }
     }
 
-    private val selected = mutableMapOf<String, Debt>()
-    override fun observe(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String) =
-        kotlinx.coroutines.flow.flowOf(com.ticketbox.data.repository.RepaymentReviewState(null))
-    override suspend fun open(binding: com.ticketbox.data.repository.LogicalSessionBinding, draft: RepaymentDraft, suggested: Debt?) = Result.success(Unit)
-    override suspend fun money(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String, currency: String, amount: String) = Result.success(Unit)
-    override suspend fun date(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String, value: String) = Result.success(Unit)
-    override suspend fun select(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String, debt: Debt): Result<Unit> {
-        selected[draftId] = debt
-        return Result.success(Unit)
-    }
-    override suspend fun submit(binding: com.ticketbox.data.repository.LogicalSessionBinding, draft: RepaymentDraft, dismiss: Boolean): Result<Long> {
-        if (dismiss) {
-            dismissCalls += draft.publicId
-            return dismissResult.map { 1L }
+    val reviews = object : com.ticketbox.data.repository.RepaymentReviewActions {
+        override fun observeResolutions() = kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.OutboxRow>())
+        override suspend fun correctAsExpense(binding: com.ticketbox.data.repository.LogicalSessionBinding, draft: RepaymentDraft, reason: String): Result<Long> = error("Not configured")
+        override suspend fun resolveCapture(binding: com.ticketbox.data.repository.LogicalSessionBinding, captureId: String,
+            decision: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String): Result<Long> = error("Not configured")
+        private val selected = mutableMapOf<String, Debt>()
+        override fun observe(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String) =
+            kotlinx.coroutines.flow.flowOf(com.ticketbox.data.repository.RepaymentReviewState(null))
+        override suspend fun open(binding: com.ticketbox.data.repository.LogicalSessionBinding, draft: RepaymentDraft, suggested: Debt?) = Result.success(Unit)
+        override suspend fun edit(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String,
+            change: com.ticketbox.data.repository.RepaymentReviewChange): Result<Unit> {
+            if (change is com.ticketbox.data.repository.RepaymentReviewChange.TargetDebt) selected[draftId] = change.debt
+            return Result.success(Unit)
         }
-        val target = requireNotNull(selected[draft.publicId])
-        confirmCalls += ConfirmCall(draft.publicId, target.publicId, target.rowVersion)
-        confirmBindings += binding
-        val captured = confirmResult
-        confirmGate?.await()
-        return captured.map { 1L }
+        override suspend fun submit(binding: com.ticketbox.data.repository.LogicalSessionBinding, draft: RepaymentDraft, dismiss: Boolean): Result<Long> {
+            if (dismiss) {
+                dismissCalls += draft.publicId
+                return dismissResult.map { 1L }
+            }
+            val target = requireNotNull(selected[draft.publicId])
+            confirmCalls += ConfirmCall(draft.publicId, target.publicId, target.rowVersion)
+            confirmBindings += binding
+            val captured = confirmResult
+            confirmGate?.await()
+            return captured.map { 1L }
+        }
+        override suspend fun recover(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String, stop: Boolean) = Result.success(Unit)
+        override suspend fun recoverOriginal(binding: com.ticketbox.data.repository.LogicalSessionBinding, row: com.ticketbox.data.repository.OutboxRow, stop: Boolean) = Result.success(Unit)
+        override suspend fun reviewAgain(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String) = Result.success(Unit)
     }
-    override suspend fun recover(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String, stop: Boolean) = Result.success(Unit)
-    override suspend fun recoverOriginal(binding: com.ticketbox.data.repository.LogicalSessionBinding, row: com.ticketbox.data.repository.OutboxRow, stop: Boolean) = Result.success(Unit)
-    override suspend fun reviewAgain(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String) = Result.success(Unit)
 
 }
 
@@ -779,4 +780,4 @@ private fun debt(
 )
 
 private fun inboxModel(drafts: FakeRepaymentDraftActions, debts: DebtActions,
-    writes: com.ticketbox.data.repository.DebtWriteActions) = RepaymentDraftInboxViewModel(drafts, debts, writes, drafts)
+    writes: com.ticketbox.data.repository.DebtWriteActions) = RepaymentDraftInboxViewModel(drafts, debts, writes, drafts.reviews)
