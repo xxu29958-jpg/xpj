@@ -6,6 +6,9 @@ from datetime import date
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
+
 from app.models import Expense
 from app.services.category_service import normalize_category
 from app.services.money_projection_service import (
@@ -16,8 +19,6 @@ from app.services.money_projection_service import (
     sum_projected_amounts,
 )
 from app.services.spending_contract_service import confirmed_stream_query
-from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
 
 if TYPE_CHECKING:
     from app.schemas._expense_stream import ConfirmedExpenseStreamItem

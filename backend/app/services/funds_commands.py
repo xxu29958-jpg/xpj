@@ -1,6 +1,9 @@
 """Atomic account writes using the existing credential, OCC and receipt boundaries."""
 from uuid import uuid4
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.errors import AppError
 from app.models import AccountMovement, ApiIdempotencyKey, CreditFacility, Debt, EnvelopeSource, FinancialAccount
 from app.schemas.funds import AccountCreate, FinancialAccountView
@@ -14,8 +17,6 @@ from app.services.permission_service import require_write_expense
 from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
 from app.services.time_service import now_utc
 from app.tenants import AuthContext
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 
 def claim_funds(db, auth, payload, key, operation, target=None):

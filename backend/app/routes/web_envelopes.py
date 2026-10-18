@@ -20,6 +20,7 @@ from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
     _list_ledger_options,
+    _require_selected_ledger_write,
     _resolve_selected_ledger_id,
     _web_redirect,
     templates,
@@ -114,6 +115,7 @@ async def web_save_envelopes(request: Request, expected_row_version: str = Form(
     values["expected_row_version"] = expected_row_version
     ledger, month = str(values.get("ledger_id", "")), str(values.get("month", ""))
     try:
+        _require_selected_ledger_write(_list_ledger_options(db), ledger)
         auth = require_draft_binding(db, request, ledger_id=ledger, draft_scope=values.get("draft_scope", ""))
         _native_values(values)
         payload = _payload(values)

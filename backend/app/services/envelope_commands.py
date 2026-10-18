@@ -1,4 +1,8 @@
 """One atomic owner for cash-purpose assignments; actual financial facts stay independent."""
+from sqlalchemy import delete, or_, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
 from app.errors import AppError
 from app.models import (
     ApiIdempotencyKey,
@@ -19,9 +23,6 @@ from app.services.session_credential_lock import lock_and_revalidate_mutation_ac
 from app.services.spending_contract_service import clean_month
 from app.services.time_service import now_utc
 from app.tenants import AuthContext
-from sqlalchemy import delete, or_, select
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 
 def _lock_sources(db: Session, auth: AuthContext, payload: EnvelopeSave) -> list[FinancialAccount]:

@@ -1,13 +1,14 @@
 """Reuse purchase/settlement facts to distinguish spent cash from cash still owed."""
 from dataclasses import dataclass
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.models import AccountMovement, Expense, ExpenseFunding, FinancialAccount
 from app.money_contract import round_minor_ratio_half_up
 from app.services.credit_allocation_service import allocation_totals
 from app.services.money_projection_service import project_recorded_amount, sum_projected_amounts
 from app.services.spending_projection_service import PurchaseSpending
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 
 @dataclass(frozen=True)

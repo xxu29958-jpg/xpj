@@ -82,6 +82,8 @@ Classification = Literal[
 
 # (method, path) -> classification. Keep sorted by path for diff readability.
 _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
+    ("GET", "/web/envelopes"): "principal-read",
+    ("POST", "/web/envelopes/save"): "writer-only",
     ("GET", "/web/funds"): "principal-read",
     ("POST", "/web/funds/save"): "writer-only",
     ("GET", "/web/expenses/{expense_id}/funding"): "principal-read",

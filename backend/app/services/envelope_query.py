@@ -2,6 +2,9 @@
 from collections import defaultdict
 from datetime import date
 
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
 from app.models import (
     AccountMovement,
     Budget,
@@ -27,8 +30,6 @@ from app.services.money_projection_service import project_recorded_amount, sum_p
 from app.services.spending_contract_service import clean_month
 from app.services.spending_projection_service import read_purchase_spending
 from app.services.time_service import now_utc
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
 
 PURPOSE_LABELS = {"spending": "其他消费", "savings": "储蓄", "buffer": "备用金"}
 

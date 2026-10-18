@@ -16,8 +16,15 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app import models as m
 from app.database_model_registry import Base
+from app.services.credit_balance_projection import credit_visible
 from app.services.original_reference_queries import original_receipt_references_query
 from app.services.permission_service import can_manage_members
+from app.services.portable_funds_queries import (
+    FUNDS_COLLECTION_SCOPES,
+    funds_queries,
+    funds_receipts_allowed,
+    private_funding_receipt,
+)
 from app.tenants import AuthContext
 
 # These explicit fields have been reviewed as ledger business records. Retained
@@ -113,7 +120,7 @@ _LEDGER_RECORDS = (
 
 _DEBT_CHILDREN = (
     (m.Repayment, "id public_id debt_id amount_cents original_currency_code original_amount_minor exchange_rate_to_cny "
-        "exchange_rate_date exchange_rate_source paid_at accounting_time_snapshot actor_account_id proposal_id idempotency_key created_at"),
+        "exchange_rate_date exchange_rate_source paid_at accounting_time_snapshot actor_account_id proposal_id idempotency_key settlement_kind created_at"),
     (m.DebtAdjustment, "id public_id debt_id amount_cents reason actor_account_id idempotency_key created_at"),
     (m.DebtVoid, "id public_id debt_id reason actor_account_id idempotency_key created_at"),
     (m.DebtForgiveness, "id public_id debt_id amount_cents actor_account_id idempotency_key created_at"),
@@ -132,6 +139,7 @@ _SPLIT_SNAPSHOT_FIELDS = (
 # Explicit query ownership: collection names are labels, not permission rules.
 # Mixed projections combine authorized ledger facts with personal references.
 PORTABLE_COLLECTION_SCOPES = {
+    **FUNDS_COLLECTION_SCOPES,
     **dict.fromkeys((model.__tablename__ for model, _ in (*_LEDGER_RECORDS, *_DEBT_CHILDREN)), "ledger"),
     **dict.fromkeys(("ledgers", "ledger_members", "device_references", "ledger_calendar_revisions",
         "currency_interpretation", "repayment_voids", "debt_goal_links", "bill_split_source_relationships"), "ledger"),
@@ -158,8 +166,12 @@ def _sent(auth: AuthContext) -> ColumnElement[bool]:
         m.BillSplitInvitation.sender_account_id == auth.account_id)
 
 
+def _ledger_debts(auth: AuthContext) -> ColumnElement[bool]:
+    return and_(m.Debt.tenant_id == auth.ledger_id, credit_visible(auth.ledger_id, auth.account_id))
+
+
 def _ledger_relationships(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
-    debts = select(m.Debt.id).where(m.Debt.tenant_id == auth.ledger_id)
+    debts = select(m.Debt.id).where(_ledger_debts(auth))
     repayments = select(m.Repayment.id).where(m.Repayment.debt_id.in_(debts))
     children = tuple((model.__tablename__, _record(model, fields, model.debt_id.in_(debts)))
         for model, fields in _DEBT_CHILDREN)
@@ -168,10 +180,11 @@ def _ledger_relationships(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
             "id public_id repayment_id reason actor_account_id idempotency_key created_at",
             m.RepaymentVoid.repayment_id.in_(repayments))),
         ("debt_goal_links", _record(m.DebtGoalLink, "id goal_id goal_version debt_id created_at",
-            m.DebtGoalLink.goal_id.in_(select(m.Goal.id).where(m.Goal.tenant_id == auth.ledger_id)))),
+            and_(m.DebtGoalLink.debt_id.in_(debts),
+                m.DebtGoalLink.goal_id.in_(select(m.Goal.id).where(m.Goal.tenant_id == auth.ledger_id))))),
         ("repayment_drafts", _record(m.RepaymentDraft, "id public_id tenant_id created_by_account_id source "
             "amount_cents home_currency_code original_currency_code original_amount_minor "
-            "merchant_label captured_at accounting_time_snapshot draft_idempotency_key status "
+            "merchant_label captured_at accounting_time_snapshot source_expense_public_id source_expense_row_version draft_idempotency_key status "
             "committed_debt_public_id committed_repayment_public_id resolved_at resolved_by_account_id created_at",
             _owned_drafts(auth))),
     )
@@ -233,7 +246,8 @@ def _participant_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
 
 
 def _cross_ledger_participant(auth: AuthContext) -> ColumnElement[bool]:
-    return and_(m.Debt.tenant_id != auth.ledger_id, m.Debt.counterparty_account_id == auth.account_id)
+    return and_(m.Debt.tenant_id != auth.ledger_id, m.Debt.counterparty_account_id == auth.account_id,
+        credit_visible(auth.ledger_id, auth.account_id))
 
 
 def _split_agreement_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
@@ -261,7 +275,7 @@ def _split_agreement_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...
             or_(account_id.in_(members), debt_id.in_(participant_debts))).scalar_subquery().label(label)
 
     result = []
-    for prefix, visible in (("", m.Debt.tenant_id == auth.ledger_id), ("account_", _cross_ledger_participant(auth))):
+    for prefix, visible in (("", _ledger_debts(auth)), ("account_", _cross_ledger_participant(auth))):
         debts = select(m.Debt.id).where(visible)
         for model, fields in ((proposal, proposal_fields), (change, change_fields)):
             query = _record(model, fields, model.original_debt_id.in_(debts)).add_columns(
@@ -285,7 +299,7 @@ def _split_agreement_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...
 
 def _authorized_debt_receipts(auth: AuthContext) -> ColumnElement[bool]:
     receipt = m.ApiIdempotencyKey
-    debts = select(m.Debt.id).where(or_(m.Debt.tenant_id == auth.ledger_id, _cross_ledger_participant(auth)))
+    debts = select(m.Debt.id).where(or_(_ledger_debts(auth), _cross_ledger_participant(auth)))
     debt = and_(receipt.resource_type == "debt", receipt.resource_id.in_(
         select(m.Debt.public_id).where(m.Debt.id.in_(debts))))
     repayment = and_(receipt.resource_type == "repayment", receipt.resource_id.in_(
@@ -303,6 +317,7 @@ def _accepted_operations(auth: AuthContext) -> Select:
         "income_plan", "recurring_item", "recurring_occurrence", "category_rule", "rule_application_batch", "exchange_rate",
         "ledger_calendar_revision", "upload_receipt", "merchant_catalog", "merchant_alias", "saved_view"))
     debt_relationships = _authorized_debt_receipts(auth)
+    funds = funds_receipts_allowed(auth)
     drafts = and_(receipt.resource_type == "repayment_draft", receipt.resource_id.in_(
         select(m.RepaymentDraft.public_id).where(_owned_drafts(auth))))
     splits = and_(receipt.resource_type == "bill_split_invitation", receipt.resource_id.in_(
@@ -329,9 +344,10 @@ def _accepted_operations(auth: AuthContext) -> Select:
     return _record(receipt, "id tenant_id idempotency_key operation target_type target_id request_fingerprint "
         "status resource_type resource_id created_at completed_at expires_at",
         and_(receipt.tenant_id == auth.ledger_id, receipt.status == "succeeded",
-            or_(shared, debt_relationships, drafts, splits))).add_columns(
+            or_(shared, debt_relationships, drafts, splits, funds))).add_columns(
             receipt.response_body,
-            case((or_(redacted_upload, redacted_fx_task), "personal_task_scope"),
+            case((private_funding_receipt(auth), "private_funding_scope"),
+                (or_(redacted_upload, redacted_fx_task), "personal_task_scope"),
                 else_=None).label("response_body_redaction_reason"))
 
 
@@ -385,6 +401,10 @@ def _identity_queries(auth: AuthContext, business: tuple[tuple[str, Select], ...
                 select(m.Repayment.id).where(m.Repayment.debt_id.in_(participant_debts))))
         rows = query.order_by(None).subquery()
         fields = references.intersection(rows.c.keys())
+        if name in FUNDS_COLLECTION_SCOPES:
+            # These account_id foreign keys identify FinancialAccount, not an
+            # authenticated person. Never expand a coincident integer identity.
+            fields.discard("account_id")
         if name in {"account_bill_split_inbox", "bill_split_sent"}:
             fields.difference_update({"sender_account_id", "receiver_account_id"})
         account_ids.extend(select(rows.c[field]) for field in sorted(fields))
@@ -409,6 +429,8 @@ def portable_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
     records = []
     for model, fields in _LEDGER_RECORDS:
         query = _record(model, fields, model.tenant_id == auth.ledger_id)
+        if model is m.Debt:
+            query = query.where(credit_visible(auth.ledger_id, auth.account_id))
         if model is m.Expense:
             invitation = m.BillSplitInvitation
             query = query.add_columns(select(invitation.public_id).where(
@@ -419,7 +441,7 @@ def portable_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
             ).scalar_subquery().label("split_origin_invitation_public_id"))
         records.append((model.__tablename__, query))
     business = (
-        *records,
+        *records, *funds_queries(auth, _record),
         *_ledger_relationships(auth), *_split_queries(auth), *_split_agreement_queries(auth),
         *_participant_queries(auth), *_history_queries(auth),
     )

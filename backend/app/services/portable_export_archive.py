@@ -34,6 +34,13 @@ manifest.json 说明范围、快照时间、记录数量和文件摘要；record
 expenses.original_reference_id 对应 originals.jsonl；该索引列出每个原件的状态及包内文件。
 缺失、损坏、已清理和旧件未核验分别说明，不用缩略图代替原件。
 每个集合的 scope 标明账本、当前账号、混合或 Owner 范围；不凭集合名称推断所有权。
+financial_accounts、account_movements、credit_facilities、credit_settlement_allocations 保留已授权资金账户、原币变动和清偿关联；
+installment_ 系列保存合约版本、逐期约定和实际分配；envelope_ 系列保存资金来源、用途与调整历史，不另计资产。
+这些账户事实仅属于所选账本；expense_funding 的其他账本账户引用须在有权访问时从对应账本另行导出。
+私人付款账户在共享消费中只保留消费侧组成，account_redaction_reason 说明被隐藏的账户和账户币金额；账号身份与资金账户的 id 不可混用。
+payment_captures 仅包含当前账号的采集及分类更正历史。资金账户当前不可见时，其私人债务、分期和回执也不导出。
+付款组成旧回执涉及私人账户时，隐藏该回执中账户字段，保留消费侧金额；逐项授权信息见 expense_funding。
+信封旧回执省略当时的可选账户和操作资格，保留已接受的用途和现金口径；当前账户权限以 financial_accounts 为准。
 混合集合含账本事实和当前账号获准的引用/结果；账号集合不是对方私有账本的副本。
 bill_split_change_proposals 保留各状态提议；bill_split_agreement_changes 保留双方已接受的约定变更。
 同名 account_ 集合只含获准读取的跨账本关系。invitation_public_id、proposal_public_id 和
@@ -43,6 +50,7 @@ original_debt_public_id / return_debt_public_id 关联原约定、提议与两�
 
 本包不包含尚未提交到服务器的手机或浏览器草稿，也不包含有效登录凭据。
 这是可阅读的业务数据和原件出口，不是安装恢复包或可执行命令队列。
+CSV 只承载消费及退款事件；本包新增的账户、还款、转账、分期和信封记录不能改名当消费 CSV 导入。
 文件内容是敏感的个人财务资料，请保存在你控制的位置。
 """
 
@@ -133,6 +141,13 @@ def _receipt_business_body(source: dict[str, object], *, redact_task: bool) -> d
 def _receipt_record(result: dict[str, object]) -> dict[str, object]:
     body = result.get("response_body")
     resource = result.get("resource_type")
+    if isinstance(body, dict) and resource == "envelope_book":
+        return {**result, "response_body": {key: value for key, value in body.items() if key != "accounts"},
+                "response_body_redaction_reason": "account_choices_require_current_authorization"}
+    if isinstance(body, dict) and result.get("response_body_redaction_reason") == "private_funding_scope":
+        parts = [{key: value for key, value in part.items() if key in {
+            "component_id", "expense_amount_minor", "included_in_opening"}} for part in body.get("parts", [])]
+        return {**result, "response_body": {**body, "parts": parts, "can_edit": False}}
     if not isinstance(body, dict) or resource not in {"expense", "expense_offset", "upload_receipt"}:
         return result
     exported = dict(body)

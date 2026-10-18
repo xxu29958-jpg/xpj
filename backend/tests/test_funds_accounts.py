@@ -1,14 +1,17 @@
 """One real PostgreSQL journey owns the purchase/funds/credit invariant."""
 import json
 from datetime import date, timedelta
+from io import BytesIO
 from uuid import uuid4
+from zipfile import ZipFile
 
 import pytest
+from sqlalchemy import func, select
+
 from app.database import SessionLocal
 from app.middleware.csrf import CSRF_COOKIE_NAME
 from app.models import AccountMovement, CreditFacility, Debt, Expense, ExpenseFunding, Repayment
 from app.routes.web_auth import SESSION_COOKIE_NAME
-from sqlalchemy import func, select
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._web_native_form_support import hidden_post_forms
 
@@ -59,6 +62,7 @@ def test_existing_debt_becomes_one_credit_account_without_rewriting_history(clie
     assert client.get("/api/funds/accounts/existing-debts/list", headers=identity.app_headers).json() == []
 
 
+@pytest.mark.real_db  # The portable outlet owns a separate read-only snapshot connection.
 def test_credit_purchases_and_bank_principal_share_one_financial_history(client, identity, monkeypatch):
     bank = _create_funds_account(client, identity, "工资卡 1234", "bank", 100000)
     templates = client.get("/api/funds/accounts/templates/list", headers=identity.app_headers)
@@ -86,6 +90,8 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     assert funding.status_code == 200, funding.text
     assert funding.json()["total_minor"] == 3790
     assert funding.json()["parts"][0]["account_public_id"] == credit["public_id"]
+    _save_reviewed_funding(client, identity, funding.json(), credit)
+    credit = client.get("/api/funds/accounts/" + credit["public_id"], headers=identity.app_headers).json()
     debts = client.get("/api/debts", headers=identity.app_headers)
     assert debts.status_code == 200, debts.text
     tracked = next(row for row in debts.json()["items"] if row["public_id"] == credit["debt_public_id"])
@@ -122,7 +128,7 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     with SessionLocal() as db:
         assert db.scalar(select(func.sum(Expense.amount_cents)).where(Expense.id.in_(purchase_ids))) == 6290
         assert db.scalar(select(func.count()).select_from(CreditFacility)) == 1
-        assert db.scalar(select(func.count()).select_from(ExpenseFunding)) == 4
+        assert db.scalar(select(func.count()).select_from(ExpenseFunding).where(ExpenseFunding.voided_at.is_(None))) == 4
         assert db.scalar(select(func.count()).select_from(Repayment)) == 1
         assert db.scalar(select(func.count()).select_from(Debt)) == 1
         assert db.scalar(select(func.sum(Expense.amount_cents))) == 6410
@@ -149,14 +155,15 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
         raise RuntimeError("funds publication interrupted")
     retry_body = {**body, "client_ref": str(uuid4()), "funding": [{**body["funding"][0],
         "component_id": str(uuid4()), "account_row_version": credit["row_version"]}]}
+    with SessionLocal() as db:
+        before_failure = tuple(db.scalar(select(func.count()).select_from(model)) for model in (Expense, AccountMovement))
     import pytest
     with monkeypatch.context() as patch:
         patch.setattr(expense_funding_service, "movement", interrupted)
         with pytest.raises(RuntimeError, match="funds publication interrupted"):
             client.post("/api/expenses/manual", headers=identity.app_headers, json=retry_body)
     with SessionLocal() as db:
-        assert db.scalar(select(func.count()).select_from(Expense)) == 4
-        assert db.scalar(select(func.count()).select_from(AccountMovement)) == 9
+        assert tuple(db.scalar(select(func.count()).select_from(model)) for model in (Expense, AccountMovement)) == before_failure
     resumed = client.post("/api/expenses/manual", headers=identity.app_headers, json=retry_body)
     assert resumed.status_code == 200, resumed.text
     # Refunding an already partly settled purchase retains spare credit instead of settling an unrelated older purchase.
@@ -182,6 +189,80 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
 
     _correct_captured_payment(client, identity, draft_id, resolved["correction_versions"], bank, credit)
     assert client.post(url, headers=headers, json=payment).json() == result.json()
+    _export_funds_history(client, identity, bank, credit)
+
+
+def _export_records(client, headers):
+    response = client.get("/api/exports/portable", headers=headers)
+    assert response.status_code == 200, response.text
+    with ZipFile(BytesIO(response.content)) as archive:
+        return {name.removeprefix("records/").removesuffix(".jsonl"):
+            [json.loads(line) for line in archive.read(name).splitlines()]
+            for name in archive.namelist() if name.startswith("records/")}
+
+
+def _save_reviewed_funding(client, identity, funding, credit):
+    reviewed = client.post(f"/api/expenses/{funding['expense_id']}/funding",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
+            "expected_row_version": funding["expense_row_version"], "reason": "重新核对实际付款来源",
+            "parts": [{"component_id": str(uuid4()), "account_public_id": credit["public_id"],
+                "account_row_version": credit["row_version"], "expense_amount_minor": funding["total_minor"],
+                "account_amount_minor": funding["total_minor"]}]})
+    assert reviewed.status_code == 200, reviewed.text
+
+
+def _export_funds_history(client, identity, bank, credit):
+    from tests.debt_proposal_helpers import _member_headers, _mint_member_actor
+    _prepare_exported_plans(client, identity, bank, credit)
+    _, token = _mint_member_actor(role="viewer")
+    member = _export_records(client, _member_headers(token))
+    assert credit["debt_public_id"] not in {row["public_id"] for row in member["debts"]}
+    assert member["credit_facilities"] == member["repayments"] == member["payment_captures"] == member["installment_agreements"] == []
+    assert [row["public_id"] for row in member["financial_accounts"]] == [bank["public_id"]]
+    hidden = [row for row in member["expense_funding"] if row["account_redaction_reason"]]
+    assert hidden and all(row["account_id"] is None and row["account_amount_minor"] is None for row in hidden)
+    assert all(row["resource_id"] != credit["public_id"] for row in member["accepted_operations"])
+    private_receipt = next(row for row in member["accepted_operations"] if row["operation"] == "save_expense_funding")
+    assert private_receipt["response_body_redaction_reason"] == "private_funding_scope"
+    assert "account_public_id" not in private_receipt["response_body"]["parts"][0]
+    assert all(row["resource_type"] != "payment_capture" for row in member["accepted_operations"])
+    owner = _export_records(client, identity.app_headers)
+    assert credit["public_id"] in {row["public_id"] for row in owner["financial_accounts"]}
+    assert owner["credit_facilities"] and owner["credit_settlement_allocations"] and owner["repayment_voids"]
+    assert owner["repayments"][0]["settlement_kind"] == "credit"
+    assert sum(row["amount_minor"] for row in owner["account_movements"]
+        if row["account_id"] == next(a["id"] for a in owner["financial_accounts"] if a["public_id"] == credit["public_id"])) == -5790
+    assert owner["payment_captures"][0]["kind"] == "expense"
+    assert owner["installment_agreements"] and owner["installment_periods"] and owner["installment_draws"]
+    assert [(row["purpose"], row["allocated_minor"]) for row in owner["envelope_allocations"]] == [("savings", 1000)]
+    assert owner["envelope_revisions"] == member["envelope_revisions"]
+    assert {"envelope_book", "payment_capture"} <= {row["resource_type"] for row in owner["accepted_operations"]}
+    original = next(row for row in owner["accepted_operations"] if row["operation"] == "save_expense_funding")
+    assert original["response_body"]["parts"][0]["account_public_id"] == credit["public_id"]
+
+
+def _prepare_exported_plans(client, identity, bank, credit):
+    headers = identity.app_headers
+    bank_url = "/api/funds/accounts/" + bank["public_id"]
+    bank = client.get(bank_url, headers=headers).json()
+    shared = client.patch(bank_url, headers={**headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": bank["row_version"], "name": bank["name"], "visibility": "ledger"})
+    assert shared.status_code == 200, shared.text
+    bank = shared.json()
+    saved = client.put("/api/budget/envelopes/" + date.today().strftime("%Y-%m"),
+        headers={**headers, "Idempotency-Key": str(uuid4())}, json={"expected_row_version": 0,
+            "home_currency_code": "CNY", "account_public_ids": [bank["public_id"]],
+            "account_row_versions": {bank["public_id"]: bank["row_version"]},
+            "allocations": {"savings": 1000}, "reason": "已确认的储蓄用途"})
+    assert saved.status_code == 200, saved.text
+    path = "/api/funds/accounts/" + credit["public_id"] + "/installments"
+    source = client.get(path, headers=headers).json()
+    draw = next(row for row in source["draws"] if row["remaining_minor"] > 0)
+    agreed = client.post(path, headers={**headers, "Idempotency-Key": str(uuid4())}, json={
+        "expected_row_version": source["account_row_version"], "name": "实际剩余一期", "source": "对账单核对",
+        "agreed_on": str(date.today()), "draw_public_ids": [draw["public_id"]], "periods": [{
+            "due_on": str(date.today()+timedelta(days=20)), "principal_minor": draw["remaining_minor"], "planned_fee_minor": 0}]})
+    assert agreed.status_code == 200, agreed.text
 
 
 def _create_funds_account(client, identity, name, kind, opening, *, visibility="private"):

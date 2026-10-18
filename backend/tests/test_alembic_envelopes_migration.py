@@ -3,9 +3,10 @@ from importlib import import_module
 
 import pytest
 from alembic import command
-from app.database import SessionLocal, engine
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
+
+from app.database import SessionLocal, engine
 from tests._infra.c07_money_migration import reset_schema, run_alembic, seed_owner
 
 pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
