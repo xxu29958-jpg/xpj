@@ -179,6 +179,13 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # ADR-0038 create_row, TICKETBOX_CREDIT_PAYMENT_CONTINUITY_CONTRACT §4:
+    # POST /api/funds/accounts creates a new identity, protected by the existing
+    # actor lock and idempotent receipt. An adopted Debt still requires its OCC
+    # token; all subsequent account/credit writes remain carriers. The existing
+    # test_funds_accounts journeys prove replay, adoption conflict and privacy.
+    # Admit only this exact main/count edge, not future exemption growth.
+    ("dd2305c044859f67009975c485f982b9cd98d0d7", 153, 154),
     # ADR-0038 create_row / terminal_flag_flip, notification continuity contract:
     # new capture has no predecessor token; original event identity is unique.
     # Reclassification serializes that source; committed correction additionally
