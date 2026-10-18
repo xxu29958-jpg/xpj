@@ -461,8 +461,14 @@ class DebtQueryReadTest {
         val reader = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
         val first = reader.detail(fixture.binding, "jpy-debt").getOrThrow()
         assertFalse(first.fromCache)
+        val ledger = reader.list(fixture.binding, com.ticketbox.domain.model.DebtListLens.Ledger).getOrThrow()
+        api.list = { DebtListResponseDto(emptyList(), "JPY") }
+        reader.list(fixture.binding, com.ticketbox.domain.model.DebtListLens.GoalCandidates).getOrThrow()
+        assertEquals("goal_candidates", api.requestedLens)
         api.offline = true
         val reopened = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        assertEquals(ledger.value, reopened.list(fixture.binding, com.ticketbox.domain.model.DebtListLens.Ledger).getOrThrow().value)
+        assertTrue(reopened.list(fixture.binding, com.ticketbox.domain.model.DebtListLens.GoalCandidates).getOrThrow().value.debts.isEmpty())
         val saved = reopened.detail(fixture.binding, "jpy-debt").getOrThrow()
         assertTrue(saved.fromCache)
         assertEquals(first.value, saved.value)
@@ -666,6 +672,7 @@ private class DebtReadApi(memberDebt: Boolean = false) : ApiService by FakeApiSe
         DebtListResponseDto(listOf(originalDebt, originalDebt.copy(publicId = "other-debt")), "JPY")
     }
     var commands = 0
+    var requestedLens: String? = null
     var commandFailure: Throwable? = null
     var acceptBeforeFailure = false
     var commandReplyGate: (suspend () -> Unit)? = null
@@ -702,6 +709,7 @@ private class DebtReadApi(memberDebt: Boolean = false) : ApiService by FakeApiSe
     override suspend fun debt(publicId: String): DebtDto { checkTransport(); return detail().copy(publicId = publicId) }
     override suspend fun debts(lens: String?): DebtListResponseDto {
         checkTransport()
+        requestedLens = lens
         return list()
     }
     override suspend fun repaymentProposals(publicId: String): MemberRepaymentProposalListResponseDto {

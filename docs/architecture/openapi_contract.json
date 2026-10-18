@@ -14194,6 +14194,17 @@
       "DebtGoalLinkView": {
         "description": "One linked Debt's shell for a debt_repayment goal's evaluation block.\n\nThe Debt is in the goal's own ledger (the service rejects cross-tenant links),\nso this is the owner's own obligation shell — no cross-account redaction needed.",
         "properties": {
+          "completion_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Note"
+          },
           "counterparty_label": {
             "anyOf": [
               {
@@ -14222,18 +14233,48 @@
             "type": "string"
           },
           "principal_amount_cents": {
-            "format": "int64",
-            "maximum": 9000000000000.0,
-            "minimum": 1.0,
-            "title": "Principal Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principal Amount Cents"
           },
           "remaining_amount_cents": {
-            "format": "int64",
-            "maximum": 9007199254740991.0,
-            "minimum": 0.0,
-            "title": "Remaining Amount Cents",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Amount Cents"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "source_type": {
+            "default": "manual",
+            "title": "Source Type",
+            "type": "string"
           },
           "status": {
             "title": "Status",
@@ -33865,7 +33906,8 @@
               "default": "ledger",
               "enum": [
                 "ledger",
-                "payables"
+                "payables",
+                "goal_candidates"
               ],
               "title": "Lens",
               "type": "string"

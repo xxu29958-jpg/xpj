@@ -23,6 +23,7 @@ from app.schemas import (
 from app.services.credit_balance_projection import credit_projection_available, credit_visible
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service import compute_remaining, derive_status
+from app.services.goal_credit_projection import CreditGoalReading, read_credit_goal, redact_credit_goal_receipt
 from app.services.goal_debt_repayment_kpi import external_payoff_kpi
 from app.services.idempotency import (
     IdempotencyOutcome,
@@ -107,17 +108,19 @@ def _current_version_debts(db: Session, goal: Goal) -> list[Debt]:
 def _evaluate_links(
     db: Session,
     goal: Goal,
-) -> tuple[list[DebtGoalLinkView], list[Debt], list[str], bool, bool]:
+) -> tuple[list[DebtGoalLinkView], list[Debt], list[str], bool, bool, dict[int, CreditGoalReading]]:
     """Fold current-version debts into views and evaluation rollup flags."""
     debts = _current_version_debts(db, goal)
+    credit = {debt.id: read_credit_goal(db, debt, goal.tenant_id) for debt in debts if debt.source_type == "credit_facility"}
     link_views: list[DebtGoalLinkView] = []
     voided_public_ids: list[str] = []
     non_voided_debts: list[Debt] = []
     any_voided = False
     all_cleared = bool(debts)
     for debt in debts:
-        remaining = compute_remaining(db, debt)
-        status = derive_status(debt, remaining)
+        reading = credit.get(debt.id)
+        remaining = reading.remaining_home_minor if reading else compute_remaining(db, debt)
+        status = reading.status if reading else derive_status(debt, remaining)
         if status == "voided":
             any_voided = True
             voided_public_ids.append(debt.public_id)
@@ -131,13 +134,16 @@ def _evaluate_links(
                 status=status,
                 direction=debt.direction,
                 counterparty_type=debt.counterparty_type,
-                counterparty_label=debt.counterparty_label,
-                principal_amount_cents=projection_sum_to_int(
+                counterparty_label=None if status == "unavailable" else debt.counterparty_label,
+                principal_amount_cents=None if reading else projection_sum_to_int(
                     debt.principal_amount_cents,
                     label="debt_goal_link.principal",
                 ),
                 remaining_amount_cents=remaining,
                 home_currency_code=debt.home_currency_code,
+                source_type=debt.source_type,
+                source_id=reading.account_public_id if reading else debt.source_id,
+                completion_note=reading.note if reading else None,
             )
         )
     return (
@@ -146,6 +152,7 @@ def _evaluate_links(
         voided_public_ids,
         any_voided,
         all_cleared,
+        credit,
     )
 
 
@@ -163,12 +170,14 @@ def _evaluate_and_maybe_latch(
         voided_public_ids,
         any_voided,
         all_cleared,
+        credit,
     ) = _evaluate_links(db, goal)
+    any_unavailable = any(link.status == "unavailable" for link in link_views)
 
     already_latched = goal.achieved_version == goal.goal_version
     if already_latched:
         state = "achieved"
-    elif any_voided:
+    elif any_voided or any_unavailable:
         state = "not_evaluable"
     elif all_cleared:
         state = "achieved"
@@ -182,13 +191,14 @@ def _evaluate_and_maybe_latch(
         latched = True
 
     integrity_acknowledged = goal.integrity_reviewed_version == goal.goal_version
-    needs_review = any_voided and not (state == "achieved" and integrity_acknowledged)
+    needs_review = any_unavailable or (any_voided and not (state == "achieved" and integrity_acknowledged))
 
     kpi = external_payoff_kpi(
         db,
-        non_voided_debts,
+        [] if any_unavailable else non_voided_debts,
         now=now,
         target_date=goal.target_date,
+        credit_readings=credit,
     )
     evaluation = DebtRepaymentEvaluation(
         goal_version=goal.goal_version,
@@ -402,7 +412,7 @@ def create_debt_repayment_goal_idempotently(
     )
     if claim.kind is IdempotencyOutcomeKind.HIT:
         if claim.row.response_body:
-            return GoalResponse.model_validate(claim.row.response_body)
+            return redact_credit_goal_receipt(db, tenant_id, GoalResponse.model_validate(claim.row.response_body))
         if not allow_legacy_current:
             raise AppError(
                 "goal_original_requires_review",

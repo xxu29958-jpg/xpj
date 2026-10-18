@@ -686,7 +686,7 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
 
     def account(name, kind, opening):
         return post("/api/funds/accounts", {"name": name, "kind": kind, "currency_code": "CNY", "opening_amount_minor": opening,
-            "opening_date": str(date.today()), "opening_source": "本人对账", "visibility": "private"})
+            "opening_date": str(date.today()), "opening_source": "本人对账", "visibility": "ledger" if kind == "credit" else "private"})
 
     bank, credit = account("付款卡", "bank", 100000), account("信用账户", "credit", 0)
     credit_url, bank_url = "/api/funds/accounts/" + credit["public_id"], "/api/funds/accounts/" + bank["public_id"]
@@ -702,6 +702,11 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
     accepted = post(credit_url + "/installments", agreement, key=key)
     assert post(credit_url + "/installments", agreement, key=key) == accepted
     assert accepted["balance_minor"] == -10000
+    goal_body = {"name": "按实际分期还清", "goal_type": "debt_repayment", "debt_public_ids": [accepted["debt_public_id"]]}
+    goal_key = str(uuid4())
+    goal = post("/api/goals", goal_body, key=goal_key)
+    goal_url = "/api/goals/" + goal["public_id"]
+    assert goal["debt_repayment"]["projected_payoff_date"] == agreement["periods"][-1]["due_on"]
     schedule = get(credit_url + "/installments")["agreements"][0]
     first_payment = {"expected_row_version": accepted["row_version"], "calendar_revision": credit["calendar_revision"],
         "payer_public_id": bank["public_id"], "payer_row_version": bank["row_version"], "principal_minor": 1000, "payer_amount_minor": 1000,
@@ -739,6 +744,7 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
             {"account_public_id": credit["public_id"], "account_row_version": credit["row_version"], "original_amount_minor": 1000, "received_amount_minor": 1000}]})
     updated = get(credit_url + "/installments")
     assert updated["agreements"][0]["needs_review"]
+    assert get(goal_url)["debt_repayment"]["projected_payoff_date"] is None
     revised = {**agreement, "expected_row_version": updated["account_row_version"], "supersedes_public_id": schedule["public_id"],
         "source": "退款后平台重排确认单", "periods": [{"due_on": str(date.today()+timedelta(days=20)), "principal_minor": 2500, "planned_fee_minor": 30},
             {"due_on": str(date.today()+timedelta(days=50)), "principal_minor": 5500, "planned_fee_minor": 100}]}
@@ -746,8 +752,12 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
     history = get(credit_url + "/installments")["agreements"]
     assert len(history) == 2 and history[0]["active"] and not history[1]["active"]
     assert history[1]["periods"][0]["paid_fee_minor"] == 20 and not history[0]["needs_review"]
-    credit = _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, history[0], first_payment)
+    assert get(goal_url)["debt_repayment"]["projected_payoff_date"] == revised["periods"][-1]["due_on"]
+    credit = _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, history[0], first_payment, goal_url)
     assert credit["balance_minor"] == 0
+    assert get(goal_url)["debt_repayment"]["evaluation_state"] == "achieved"
+    _hide_credit_goal_account(client, identity, credit_url, credit, goal, goal_body, goal_key)
+    credit = get(credit_url)
     bank = get(bank_url)
     assert bank["balance_minor"] == 90850
     source = get(f"/api/expenses/{purchase['id']}")
@@ -799,6 +809,37 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
         assert native_payment.original_amount_minor == 1 and native_payment.amount_cents == 0
 
 
+def _hide_credit_goal_account(client, identity, account_url, account, goal, goal_body, goal_key):
+    goal_url = "/api/goals/" + goal["public_id"]
+    headers = {**identity.app_headers, "Idempotency-Key": goal_key}
+    assert client.post("/api/goals", headers=headers, json=goal_body).json() == goal
+    date_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    date_body = {"expected_row_version": goal["row_version"], "target_date": str(date.today() + timedelta(days=60))}
+    dated = client.post(goal_url + "/target-date", headers=date_headers, json=date_body)
+    assert dated.status_code == 200, dated.text
+    result = client.patch(account_url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": account["row_version"], "name": "不再共享的信用账户", "visibility": "private"})
+    assert result.status_code == 200, result.text
+    response = client.get(goal_url, headers=identity.app_headers)
+    assert response.status_code == 200, response.text
+    evaluation = response.json()["debt_repayment"]
+    link = evaluation["linked_debts"][0]
+    assert link["status"] == "unavailable" and evaluation["needs_review"]
+    assert link["remaining_amount_cents"] is None and link["principal_amount_cents"] is None
+    assert link["counterparty_label"] is None and link["source_id"] is None
+    choices = client.get("/api/debts?lens=goal_candidates", headers=identity.app_headers).json()
+    assert account["debt_public_id"] not in {item["public_id"] for item in choices["items"]}
+    for replay in [client.post("/api/goals", headers=headers, json=goal_body),
+            client.post(goal_url + "/target-date", headers=date_headers, json=date_body)]:
+        assert replay.status_code in {200, 201}, replay.text
+        retained = replay.json()
+        hidden = retained["debt_repayment"]["linked_debts"][0]
+        assert hidden["counterparty_label"] is None and hidden["remaining_amount_cents"] is None
+        assert hidden["principal_amount_cents"] is None and hidden["source_id"] is None
+        assert retained["public_id"] == goal["public_id"] and retained["debt_repayment"]["needs_review"]
+        assert retained["debt_repayment"]["projected_payoff_date"] is None
+
+
 def _activity_void_input(account, kind):
     original = next(row for row in account["movements"] if row["kind"] == kind and not row["voided"])
     return {"expected_row_version": account["row_version"], "event_public_id": original["event_public_id"],
@@ -835,7 +876,7 @@ def _correct_cash_events(post, get, bank_url, wallet_url):
         assert db.scalar(select(func.count()).select_from(Debt)) == 2
 
 
-def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, original_payment):
+def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, original_payment, goal_url):
     from app.routes._web_installments import selected_installment_values
     from app.schemas.installment import InstallmentsView
     payment = {**original_payment, "expected_row_version": credit["row_version"], "payer_row_version": get(bank_url)["row_version"],
@@ -844,6 +885,13 @@ def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, 
             {"period_public_id": row["public_id"], "principal_minor": row["principal_minor"]} for row in schedule["periods"]]}
     credit = post(credit_url + "/repay", payment)
     assert (credit["balance_minor"], get(bank_url)["balance_minor"]) == (0, 90980)
+    evaluation = get(goal_url)["debt_repayment"]
+    assert evaluation["evaluation_state"] == "in_progress"
+    assert evaluation["linked_debts"][0]["remaining_amount_cents"] == 0
+    assert evaluation["linked_debts"][0]["status"] == "open"
+    assert "费用" in evaluation["linked_debts"][0]["completion_note"]
+    candidates = get("/api/debts?lens=goal_candidates")["items"]
+    assert next(row for row in candidates if row["public_id"] == credit["debt_public_id"])["status"] == "open"
     source = get(credit_url + "/installments")
     values = selected_installment_values(InstallmentsView.model_validate(source), schedule["public_id"], "CNY")
     assert [row["fee"] for row in json.loads(values["periods_json"])] == ["0.30", "1.00"]

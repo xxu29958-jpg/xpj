@@ -13,6 +13,7 @@ from app.schemas import (
     GoalResponse,
 )
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.goal_credit_projection import redact_credit_goal_receipt
 from app.services.goal_debt_repayment_commands import (
     acknowledge_integrity_review,
     replace_debt_repayment_goal_links,
@@ -67,7 +68,7 @@ def _mutation_claim(
         if not outcome.row.response_body:
             raise AppError("goal_original_requires_review",
                 "原操作已被接受，但缺少原回执。请核对当前目标，勿重复提交。", status_code=409)
-        return GoalResponse.model_validate(outcome.row.response_body)
+        return redact_credit_goal_receipt(db, tenant_id, GoalResponse.model_validate(outcome.row.response_body))
     if outcome.kind is IdempotencyOutcomeKind.IN_PROGRESS:
         raise AppError("idempotency_key_in_progress", status_code=409)
     if outcome.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:

@@ -34,7 +34,7 @@ from app.routes.web_common import (
 )
 from app.routes.web_debt_goal_views import _debt_choice_view, _debt_goal_view, _web_viewer_account_id
 from app.schemas import DebtGoalLinksReplaceRequest, DebtGoalTargetDateRequest, GoalCreateRequest, GoalResponse
-from app.services.debt_service import list_debts
+from app.services.goal_credit_projection import list_goal_debts
 from app.services.goal_debt_repayment_service import (
     create_debt_repayment_goal_idempotently,
     replace_debt_repayment_goal_links_idempotently,
@@ -90,7 +90,7 @@ def _render_entry(request: Request, db: Session, options: list[LedgerOption], se
     scope, binding_required = rendered_draft_scope(db, request, values.get("draft_scope"))
     selected = values["debt_public_ids"]
     linked = prefill.get("linked_debt_ids", [])
-    debts = list_debts(db, tenant_id=selected_id,
+    debts = list_goal_debts(db, tenant_id=selected_id,
         viewer_account_id=_web_viewer_account_id(request, db, selected_id)).items
     choices = [_debt_choice_view(debt) for debt in debts
         if debt.status == "open" or debt.public_id in selected or debt.public_id in linked]

@@ -196,10 +196,12 @@ private fun PlanAmountLine(evaluation: DebtRepaymentEvaluation) {
     // R14-3：record 口径——共享码由服务端 evaluation 给出（调用方已守非空），未知码原样亮码，
     // 不用恒 Base 的环境 display。
     val currency = CurrencyDisplay.forRecord(evaluation.sharedHomeCurrencyCode)
-    val total = formatDisplayAmount(evaluation.principalSumCents, currency)
-    val remaining = formatDisplayAmount(evaluation.remainingSumCents, currency)
+    val total = evaluation.principalSumCents?.let { formatDisplayAmount(it, currency) }
+    val remaining = evaluation.remainingSumCents?.let { formatDisplayAmount(it, currency) }
     val isMember = evaluation.composition == DebtGoalComposition.Member
     val text = when {
+        remaining == null -> stringResource(R.string.debt_goal_balance_pending)
+        total == null -> stringResource(R.string.debt_goal_recorded_remaining, remaining)
         evaluation.remainingCount == 0 ->
             if (isMember) {
                 stringResource(R.string.debt_plan_amount_member_done, total)
@@ -231,7 +233,7 @@ internal fun DebtGoalLinkRow(
     val isMember = link.counterpartyType == DebtCounterpartyTypes.MEMBER
     AppListRow(
         modifier = Modifier.fillMaxWidth(),
-        onClick = if (link.isVoided) null else { { onClick(link.debtPublicId) } },
+        onClick = if (link.isVoided || link.status == "unavailable" && link.sourceId == null) null else { { onClick(link.debtPublicId) } },
         settled = link.isVoided || link.isCleared,
         showDivider = showDivider,
     ) {
@@ -241,7 +243,7 @@ internal fun DebtGoalLinkRow(
         ) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    debtLinkCounterparty(link),
+                    if (link.status == "unavailable") stringResource(R.string.debt_goal_account_unavailable) else debtLinkCounterparty(link),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
@@ -258,7 +260,7 @@ internal fun DebtGoalLinkRow(
                     )
                 }
             }
-            if (!link.isVoided) {
+            if (!link.isVoided && link.principalAmountCents != null && link.remainingAmountCents != null) {
                 AppProgressBar(
                     fraction = link.clearedFraction,
                     tone = if (link.isCleared) {
@@ -277,6 +279,12 @@ internal fun DebtGoalLinkRow(
 /** 每笔行的一句话：成员行暖语（已两清 / 进度程度语 / 这件事不算了），外部行会计 meta。 */
 @Composable
 private fun DebtGoalLinkNote(link: DebtGoalLink, isMember: Boolean) {
+    if (link.sourceType == "credit_facility") {
+        val amount = link.remainingAmountCents?.let { formatDisplayAmount(it, CurrencyDisplay.forRecord(link.homeCurrencyCode)) }
+        Text(listOfNotNull(amount?.let { stringResource(R.string.debt_goal_credit_remaining, it) }, link.completionNote).joinToString(" · "),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
     if (isMember) {
         val res = when {
             link.isVoided -> R.string.debt_link_member_note_voided
@@ -295,8 +303,8 @@ private fun DebtGoalLinkNote(link: DebtGoalLink, isMember: Boolean) {
             stringResource(
                 R.string.debt_goal_link_meta,
                 stringResource(debtDirectionLabelRes(link.direction)),
-                formatDisplayAmount(link.remainingAmountCents, currency),
-                formatDisplayAmount(link.principalAmountCents, currency),
+                link.remainingAmountCents?.let { formatDisplayAmount(it, currency) } ?: stringResource(R.string.debt_goal_balance_pending),
+                link.principalAmountCents?.let { formatDisplayAmount(it, currency) } ?: stringResource(R.string.debt_goal_balance_pending),
             ),
             style = MaterialTheme.typography.bodySmall.tabularNum(),
             color = MaterialTheme.colorScheme.onSurfaceVariant,

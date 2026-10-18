@@ -30,4 +30,7 @@ fun DebtGoalLinkViewDto.toDomain(): DebtGoalLink = DebtGoalLink(
     principalAmountCents = principalAmountCents,
     remainingAmountCents = remainingAmountCents,
     homeCurrencyCode = homeCurrencyCode,
+    sourceType = sourceType,
+    sourceId = sourceId,
+    completionNote = completionNote,
 )

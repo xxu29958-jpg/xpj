@@ -94,6 +94,7 @@ from app.services.debt_service import (
     list_repayment_facts,
     list_repayment_proposals,
 )
+from app.services.goal_credit_projection import list_goal_debts
 from app.tenants import AuthContext
 
 router = APIRouter(
@@ -104,7 +105,7 @@ router = APIRouter(
 
 @router.get("", response_model=DebtListResponse)
 def get_debts(
-    lens: Literal["ledger", "payables"] = Query(default="ledger"),
+    lens: Literal["ledger", "payables", "goal_candidates"] = Query(default="ledger"),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> DebtListResponse:
@@ -112,6 +113,8 @@ def get_debts(
     # Omission deliberately retains the ledger-wide contract used by other consumers.
     if lens == "payables":
         return list_payables_for_account(db, tenant_id=auth.tenant_id, account_id=auth.account_id)
+    if lens == "goal_candidates":
+        return list_goal_debts(db, tenant_id=auth.tenant_id, viewer_account_id=auth.account_id)
     return list_debts(db, tenant_id=auth.tenant_id, viewer_account_id=auth.account_id)
 
 
