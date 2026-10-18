@@ -175,6 +175,9 @@ internal class MainShellState(val launchAction: LaunchActionState = LaunchAction
         navigationRequest = MainNavigationRequest.OpenSecondary(page, route, singleTop)
     }
 
+    fun openCreditAccount(publicId: String) = openSecondaryPage(ProductSecondaryPage.Funds,
+        "${ProductSecondaryPage.Funds.route}?account=${android.net.Uri.encode(publicId)}")
+
     fun openBudget(month: String) {
         navigationRequest = MainNavigationRequest.OpenSecondary(
             page = ProductSecondaryPage.Budget, route = budgetRoute(month),

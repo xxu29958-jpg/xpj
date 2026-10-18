@@ -73,6 +73,7 @@ fun DebtDetailScreen(
     historyViewModel: DebtActivityViewModel,
     onBack: () -> Unit,
     splitAgreement: SplitAgreementPanel? = null,
+    onOpenCredit: (String) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val observedProposalState by proposalViewModel.state.collectAsStateWithLifecycle()
@@ -102,6 +103,7 @@ fun DebtDetailScreen(
         onSelectKind = viewModel::selectKind,
         onOpenAction = viewModel::openAction,
         onRecoverDebtWrite = viewModel::recoverDebtWrite,
+        onOpenCredit = onOpenCredit,
     )
     DebtDetailContent(
         state = state,

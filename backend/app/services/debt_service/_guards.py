@@ -26,6 +26,11 @@ from app.errors import AppError
 from app.models import Debt
 
 
+def guard_ordinary_debt(debt: Debt) -> None:
+    if debt.source_type == "credit_facility":
+        raise AppError("credit_account_required", "这笔欠款由资金账户管理。请打开对应信用账户核对本金、付款来源或分期；原输入已保留。", status_code=409)
+
+
 def guard_direct_fact_writable(debt: Debt) -> None:
     """Refuse a direct committed fact write on an adverse-interest Debt (§5.2).
 
@@ -34,6 +39,7 @@ def guard_direct_fact_writable(debt: Debt) -> None:
     Rejected as ``state_conflict`` (409) — the obligation exists but cannot be
     mutated this way yet.
     """
+    guard_ordinary_debt(debt)
     if debt.counterparty_type != "external" or debt.source_type != "manual":
         raise AppError("state_conflict", status_code=409)
 

@@ -58,9 +58,12 @@ class FinancialAccount(Base):
 
 class CreditFacility(Base):
     __tablename__ = "credit_facilities"
+    __table_args__ = (CheckConstraint("(adopted_at IS NULL) = (adopted_from IS NULL)", name="ck_credit_facility_adoption"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     account_id: Mapped[int] = mapped_column(Integer, ForeignKey("financial_accounts.id"), unique=True, nullable=False)
     debt_id: Mapped[int] = mapped_column(Integer, ForeignKey("debts.id"), unique=True, nullable=False)
+    adopted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    adopted_from: Mapped[dict | None] = mapped_column(JSON)
 
 
 class ExpenseFunding(Base):

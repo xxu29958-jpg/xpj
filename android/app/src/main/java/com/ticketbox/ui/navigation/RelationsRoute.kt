@@ -134,6 +134,7 @@ internal fun RelationsRoute(
                 chrome = chrome,
                 listRefreshRevision = listRefreshRevision,
                 onOpenSyncStatus = composer.actions.onOpenSyncStatus,
+                onOpenCredit = shellState::openCreditAccount,
             )
         },
     )
@@ -349,11 +350,12 @@ private fun RelationsPrimaryPane(
     chrome: RelationsListChrome,
     listRefreshRevision: Int,
     onOpenSyncStatus: () -> Unit,
+    onOpenCredit: (String) -> Unit,
 ) {
     when (selectedView) {
         ObligationsView.I_OWE -> DebtRoute(
             screenFactory = screenFactory,
-            context = DebtRouteContext(onBack = {}, onOpenSyncStatus = onOpenSyncStatus),
+            context = DebtRouteContext(onBack = {}, onOpenSyncStatus = onOpenSyncStatus, onOpenCredit = onOpenCredit),
             chromeOverride = chrome,
             lens = DebtListLens.Payables,
             listRefreshRevision = listRefreshRevision,
@@ -362,6 +364,7 @@ private fun RelationsPrimaryPane(
         ObligationsView.OWED_TO_ME -> ReceivablesRoute(
             screenFactory = screenFactory,
             onBack = {},
+            onOpenCredit = onOpenCredit,
             chromeOverride = chrome,
             listRefreshRevision = listRefreshRevision,
         )

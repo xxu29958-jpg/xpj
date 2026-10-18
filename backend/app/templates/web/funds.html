@@ -27,6 +27,7 @@
 <input type="hidden" name="draft_scope" value="{{ funds_scope|tojson|forceescape }}">
 {% set editable = ['note', 'occurred_on'] if task == 'void_repayment' else ['name', 'opening_source', 'occurred_on'] if task == 'installments' else ['name', 'institution', 'tail', 'archived'] if task == 'edit' else ['payer_public_id', 'principal_amount', 'payer_amount', 'occurred_on', 'note', 'new_fee', 'fee_note', 'overpayment'] if task == 'repay' else ['activity_amount', 'other_amount', 'apply_adjustment', 'loan_name', 'loan_currency_code', 'loan_principal_amount', 'payer_public_id', 'note', 'occurred_on'] if task in ['income', 'loan', 'transfer', 'reconciliation'] else ['name', 'kind', 'currency_code', 'visibility', 'institution', 'tail', 'opening_amount', 'occurred_on', 'opening_source'] %}
 {% if task in ['create', 'edit'] %}{% set editable = editable + ['credit_limit', 'available_credit', 'credit_observed_on', 'credit_source', 'statement_day', 'payment_due_day'] %}{% endif %}
+{% if task == 'create' %}{% set editable = editable + ['existing_debt'] %}{% endif %}
 {% for name, value in values.items() if name not in editable and name not in ['csrf_token', 'draft_scope', 'ledger_id', 'review_latest'] %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
 <div class="product-form-grid">
 {% if task == 'installments' %}
@@ -49,6 +50,11 @@
 {% if task == 'create' %}
 <div class="product-field"><label for="fund-opening" data-funds-opening-label>期初余额 / 信用账户期初欠款</label><input class="product-input" id="fund-opening" name="opening_amount" value="{{ values.opening_amount }}" inputmode="decimal"><p class="hint">填 0 表示已核对为零；留空表示尚未核对，不会按零计算。</p></div>
 <div class="product-field"><label for="fund-source">期初依据</label><input class="product-input" id="fund-source" name="opening_source" value="{{ values.opening_source }}" maxlength="255" required placeholder="如：银行 10 月 18 日余额"></div>
+<div class="product-field"><label for="fund-existing-debt">接入已记录的欠款（仅信用账户）</label><select class="product-input" id="fund-existing-debt" name="existing_debt">
+<option value="">新账户，没有对应的旧欠款</option>
+{% if values.existing_debt %}<option value="{{ values.existing_debt }}" selected>保留上次选择；核对下方最新余款后重新选择</option>{% endif %}
+{% for debt in existing_debts %}<option value="{{ debt.public_id }}|{{ debt.row_version }}">{{ debt.name }} · 原记录余款 {{ money(debt.remaining_home_minor, debt.home_currency_code) }} · 期初不早于 {{ debt.earliest_opening_date }}</option>{% endfor %}
+</select><p class="hint">保留原欠款和还款历史，由本账户承接，不新增另一笔负债。原余款只是核对参考；请按银行或平台记录填写实际币种和期初欠款。接入后的欠款遵循上方可见范围；之前的购买不能再次计入期初。</p></div>
 {% else %}
 <div class="product-field"><label for="fund-archive">账户状态</label><select class="product-input" id="fund-archive" name="archived"><option value="false" {{ 'selected' if values.archived == 'false' }}>正在使用</option><option value="true" {{ 'selected' if values.archived == 'true' }}>归档，保留全部历史</option></select></div>
 {% endif %}

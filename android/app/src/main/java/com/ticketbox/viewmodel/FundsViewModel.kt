@@ -31,7 +31,8 @@ data class FundsUiState(val access: LedgerAccessContext? = null, val accounts: L
     val editing: Boolean = false, val loading: Boolean = false, val busy: Boolean = false,
     val fromCache: Boolean = false, val error: String? = null, val overview: FundsOverviewDto? = null,
     val funding: ExpenseFundingViewDto? = null, val fundingPage: Boolean = false, val installments: InstallmentsDto? = null,
-    val accountChoices: List<com.ticketbox.data.remote.dto.AccountChoiceDto> = emptyList())
+    val accountChoices: List<com.ticketbox.data.remote.dto.AccountChoiceDto> = emptyList(),
+    val existingDebts: List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto> = emptyList())
 
 class FundsViewModel(private val repository: FundsRepository, private val expenseId: Long? = null) : ViewModel() {
     private val mutable = MutableStateFlow(FundsUiState())
@@ -65,6 +66,10 @@ class FundsViewModel(private val repository: FundsRepository, private val expens
         val choices = repository.accountChoices(binding)
         if (mutable.value.access?.binding != binding) return
         choices.onSuccess { read -> mutable.update { it.copy(accountChoices = read.value) } }
+        val existing = repository.existingDebts(binding)
+        if (mutable.value.access?.binding != binding) return
+        existing.fold(onSuccess = { read -> mutable.update { it.copy(existingDebts = read.value, fromCache = it.fromCache || read.fromCache) } },
+            onFailure = { error -> mutable.update { it.copy(error = error.message) } })
         if (expenseId != null) {
             val funding = repository.funding(binding, expenseId)
             if (mutable.value.access?.binding == binding) funding.fold(

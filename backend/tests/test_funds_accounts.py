@@ -14,6 +14,52 @@ from tests._local_web_identity_support import _connect_local_session, installed_
 from tests._web_native_form_support import hidden_post_forms
 
 
+def test_existing_debt_becomes_one_credit_account_without_rewriting_history(client, identity):
+    from app.services.debt_service._fold import compute_remaining_as_of
+    from app.services.time_service import now_utc
+    from tests.debt_repayment_goal_helpers import _create_external_debt, _repay_debt
+
+    debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
+    url = f"/api/debts/{debt['public_id']}"
+    before = now_utc()
+    _repay_debt(client, identity.app_headers, debt, amount_cents=3000)
+    after_payment = now_utc()
+    current = client.get(url, headers=identity.app_headers).json()
+    choices = client.get("/api/funds/accounts/existing-debts/list", headers=identity.app_headers).json()
+    assert choices[0]["remaining_home_minor"] == 7000
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    body = {"name": "原信用卡", "kind": "credit", "currency_code": "CNY", "opening_amount_minor": 6800,
+        "opening_date": str(date.today()), "opening_source": "平台核对为68元；原记录存在2元差异", "visibility": "ledger",
+        "existing_debt": {"public_id": debt["public_id"], "expected_row_version": debt["row_version"]}}
+    stale = client.post("/api/funds/accounts", headers=headers, json=body)
+    assert stale.status_code == 409 and stale.json()["error"] == "state_conflict"
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(CreditFacility)) == 0
+    body["existing_debt"]["expected_row_version"] = current["row_version"]
+    headers["Idempotency-Key"] = str(uuid4())
+    saved = client.post("/api/funds/accounts", headers=headers, json=body)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["debt_public_id"] == debt["public_id"] and saved.json()["balance_minor"] == -6800
+    assert client.post("/api/funds/accounts", headers=headers, json=body).json() == saved.json()
+    with SessionLocal() as db:
+        original = db.scalar(select(Debt).where(Debt.public_id == debt["public_id"]))
+        assert db.scalar(select(func.count()).select_from(Debt)) == 1
+        assert original.principal_amount_cents == 10000
+        assert compute_remaining_as_of(db, original, before) == 10000
+        assert compute_remaining_as_of(db, original, after_payment) == 7000
+        assert compute_remaining_as_of(db, original, now_utc()) == 6800
+        adopted = db.scalar(select(CreditFacility))
+        assert adopted.adopted_from["remaining_home_minor"] == 7000
+        assert adopted.adopted_from["opening_amount_minor"] == 6800
+    current = client.get(url, headers=identity.app_headers).json()
+    assert current["remaining_amount_cents"] == 6800 and current["paid_amount_cents"] == 3000
+    for path, payload in (("/kind", {"debt_kind": "one_off"}), ("/repayments", {"amount_cents": 100})):
+        refused = client.post(url + path, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+            json={**payload, "expected_row_version": current["row_version"]})
+        assert refused.status_code == 409 and refused.json()["error"] == "credit_account_required"
+    assert client.get("/api/funds/accounts/existing-debts/list", headers=identity.app_headers).json() == []
+
+
 def test_credit_purchases_and_bank_principal_share_one_financial_history(client, identity, monkeypatch):
     def account(name, kind, opening):
         result = client.post("/api/funds/accounts", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},

@@ -6,6 +6,7 @@ from sqlalchemy import select
 from app.errors import AppError
 from app.models import AccountMovement, ApiIdempotencyKey, CreditFacility, Debt, FinancialAccount
 from app.schemas.funds import FinancialAccountView
+from app.services.credit_history_adoption import adopt_existing_debt
 from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
 from app.services.funds_money import valuation
 from app.services.funds_query import account_view, get_account
@@ -69,11 +70,13 @@ def create_account(db, *, auth, payload, key):
         raise AppError("funds_date_outside_coverage", "期初必须来自已经发生的余额核对，不能使用未来日期。", status_code=422)
     row = FinancialAccount(tenant_id=auth.tenant_id, owner_account_id=auth.account_id,
         balance_known=payload.opening_amount_minor is not None,
-        **payload.model_dump(exclude={"opening_amount_minor", "credit_terms"}))
+        **payload.model_dump(exclude={"opening_amount_minor", "credit_terms", "existing_debt"}))
     apply_credit_terms(db, row, payload.credit_terms)
     db.add(row)
     db.flush()
-    if row.kind == "credit":
+    if payload.existing_debt is not None:
+        adopt_existing_debt(db, auth=auth, account=row, payload=payload)
+    elif row.kind == "credit":
         debt = Debt(tenant_id=auth.tenant_id, owner_account_id=auth.account_id, created_by_account_id=auth.account_id,
             direction="i_owe", counterparty_type="external", counterparty_label=row.name, debt_kind="revolving",
             principal_amount_cents=0, home_currency_code=require_runtime_home_currency_code(db),

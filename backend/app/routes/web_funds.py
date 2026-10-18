@@ -24,7 +24,16 @@ from app.routes.web_common import (
     _web_redirect,
     templates,
 )
-from app.schemas.funds import AccountCreate, AccountEdit, AccountPosting, CreditPayment, CreditPaymentVoid, CreditTerms
+from app.schemas.funds import (
+    AccountCreate,
+    AccountEdit,
+    AccountPosting,
+    CreditPayment,
+    CreditPaymentVoid,
+    CreditTerms,
+    DebtAdoption,
+)
+from app.services.credit_history_adoption import existing_debt_choices
 from app.services.currency_common import major_amount_to_minor, minor_amount_label, supported_currency_codes
 from app.services.funds_account_choices import ACCOUNT_CHOICES
 from app.services.funds_commands import claim_funds, create_account, edit_account, replay_funds
@@ -67,7 +76,7 @@ def _render(request, db, *, ledger_id, task="", account_id="", values=None, erro
         "loan_currency_code": account.currency_code if account else ctx["home_currency_code"],
         "loan_principal_amount": "", "new_fee": "", "fee_note": "", "idempotency_key": str(uuid4()),
         "draw_ids_json": "[]", "periods_json": "[]", "supersedes_public_id": "", "allocation_json": "[]", "overpayment": "",
-        "repayment_public_id": repayment_id}
+        "repayment_public_id": repayment_id, "existing_debt": ""}
     terms = account.credit_terms if account else None
     def credit_amount(value):
         from app.services.currency_common import minor_amount_value
@@ -92,7 +101,8 @@ def _render(request, db, *, ledger_id, task="", account_id="", values=None, erro
     ctx.update(accounts=accounts, account=account, task=task, values=defaults if values is None else values,
         funds_scope=browser_draft_scope(db, request), funds_result=result, error=error,
         currency_options=sorted(supported_currency_codes()), money=minor_amount_label,
-        funds_can_write=auth.role in {"owner", "member"}, installments=installments, account_choices=ACCOUNT_CHOICES)
+        funds_can_write=auth.role in {"owner", "member"}, installments=installments, account_choices=ACCOUNT_CHOICES,
+        existing_debts=existing_debt_choices(db, ledger_id=selected, actor_account_id=auth.account_id) if task == "create" else [])
     ctx["funds_overview"] = funds_overview(db, ledger_id=selected, actor_account_id=auth.account_id)
     return templates.TemplateResponse(request=request, name="funds.html", context=ctx, status_code=status,
         headers={"Cache-Control": "no-store"})
@@ -134,7 +144,8 @@ def _execute(db, auth, values, *, review=False):
             visibility=values["visibility"], institution=values.get("institution") or None, tail=values.get("tail") or None,
             opening_amount_minor=major_amount_to_minor(values["opening_amount"], values["currency_code"], allow_negative=True)
                 if values["opening_amount"].strip() else None,
-            opening_date=values["occurred_on"], opening_source=values["opening_source"])
+            opening_date=values["occurred_on"], opening_source=values["opening_source"],
+            existing_debt=_existing_debt(values))
         payload.credit_terms = _credit_terms(values) if payload.kind == "credit" else None
         return _run(db, auth, values, payload, create_account, "create_financial_account", review)
     if mode == "edit":
@@ -177,6 +188,14 @@ def _execute(db, auth, values, *, review=False):
         new_fee_minor=major_amount_to_minor(values["new_fee"], payer.currency_code) if values.get("new_fee", "").strip() else 0,
         fee_note=values.get("fee_note") or None, **payment_allocations(values))
     return _run(db, auth, values, payload, pay_credit, "pay_credit_from_account", review)
+
+
+def _existing_debt(values):
+    value = values.get("existing_debt", "")
+    if not value:
+        return None
+    public_id, version = value.split("|")
+    return DebtAdoption(public_id=public_id, expected_row_version=version)
 
 
 def _credit_terms(values):

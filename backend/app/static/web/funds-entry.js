@@ -5,7 +5,7 @@
     "calendar_revision", "payer_public_id", "payer_row_version", "payer_currency_code", "principal_amount", "payer_amount", "note", "idempotency_key",
     "activity_amount", "other_amount", "apply_adjustment", "loan_name", "loan_currency_code", "loan_principal_amount", "new_fee", "fee_note",
     "draw_ids_json", "periods_json", "supersedes_public_id", "allocation_json", "overpayment", "repayment_public_id",
-    "credit_limit", "available_credit", "credit_observed_on", "credit_source", "statement_day", "payment_due_day"];
+    "credit_limit", "available_credit", "credit_observed_on", "credit_source", "statement_day", "payment_due_day", "existing_debt"];
   const definition = {family: "funds", label: "资金任务", list: "/web/funds", idField: "task_id", titleField: "name",
     create: fields, edit: fields, commandKeyField: "idempotency_key", reviewName: "review_latest",
     reviewRequiresRejection: true, reviewWhileEditing: true, submitSelector: "[data-funds-submit]",
@@ -32,6 +32,8 @@
   const field = name => form.elements.namedItem(name);
   const creditPanel = form.querySelector("[data-credit-terms]");
   function showCreditTerms() {
+    const originalDebt = field("existing_debt")?.selectedOptions?.[0];
+    if (originalDebt?.value && originalDebt.text === originalDebt.value) originalDebt.text = "保留原欠款选择，请重新核对";
     if (form.querySelector("[data-funds-choice]")) form.querySelector("[data-funds-choice]").disabled = form.dataset.fundsCanWrite !== "true" || (!!form.dataset.fundsDraftPhase && form.dataset.fundsDraftPhase !== "editing");
     if (creditPanel) creditPanel.hidden = field("kind")?.value !== "credit";
   }

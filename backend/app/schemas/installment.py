@@ -3,7 +3,7 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas._money import NonNegativeMoneyMinor, PositiveMoneyMinor
+from app.schemas._money import NonNegativeMoneyAggregate, NonNegativeMoneyMinor, PositiveMoneyMinor
 
 
 class InstallmentPeriodInput(BaseModel):
@@ -41,10 +41,10 @@ class InstallmentPeriodView(BaseModel):
     public_id: str
     position: int
     due_on: date
-    principal_minor: int
-    planned_fee_minor: int
-    paid_principal_minor: int
-    paid_fee_minor: int
+    principal_minor: NonNegativeMoneyMinor
+    planned_fee_minor: NonNegativeMoneyMinor
+    paid_principal_minor: NonNegativeMoneyAggregate
+    paid_fee_minor: NonNegativeMoneyAggregate
 
 
 class InstallmentView(BaseModel):
@@ -56,7 +56,7 @@ class InstallmentView(BaseModel):
     agreed_on: date
     active: bool
     needs_review: bool
-    remaining_principal_minor: int
+    remaining_principal_minor: NonNegativeMoneyAggregate
     periods: list[InstallmentPeriodView]
     draw_public_ids: list[str]
 
@@ -65,8 +65,8 @@ class CreditDrawView(BaseModel):
     public_id: str
     note: str
     occurred_on: date
-    original_minor: int
-    remaining_minor: int
+    original_minor: NonNegativeMoneyMinor
+    remaining_minor: NonNegativeMoneyMinor
     agreement_public_id: str | None = None
 
 

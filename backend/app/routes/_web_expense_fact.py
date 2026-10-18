@@ -32,11 +32,13 @@ from app.routes._web_expense_return_context import (
     return_href,
     return_label,
 )
+from app.routes._web_funding import funding_options
 from app.routes._web_money_views import _minor_amount_label
 from app.routes.web_common import _web_redirect, templates
 from app.schemas import ExpenseOffsetRevisionResponse
 from app.services import invitation_members
 from app.services.expense_fact_history import list_expense_fact_history
+from app.services.expense_funding_command import expense_funding_view
 from app.services.expense_service import get_expense
 from app.services.spending_contract_service import accounting_datetime_label
 
@@ -436,8 +438,6 @@ def web_fact_context(
         can_write=ctx["can_write"],
     )
     ctx.update(expense_offset_fact_view(db, selected_id, expense_id, ctx["can_write"], request))
-    from app.routes._web_funding import funding_options
-    from app.services.expense_funding_command import expense_funding_view
     auth = getattr(request.state, "web_session_auth", None)
     ctx["funding_accounts"] = funding_options(db, auth) if auth else []
     ctx["expense_funding"] = expense_funding_view(db, ledger_id=selected_id,

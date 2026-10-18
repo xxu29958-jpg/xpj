@@ -72,6 +72,7 @@ def record_context(monkeypatch):
     monkeypatch.setattr(correction, "require_runtime_home_currency_code", lambda _db: "USD")
     monkeypatch.setattr(fact, "build_split_invite_context", lambda *_a, **_k: None)
     monkeypatch.setattr(fact, "expense_offset_fact_view", lambda *_a: {})
+    monkeypatch.setattr(fact, "expense_funding_view", lambda *_a, **_k: None)
     monkeypatch.setattr(fact.invitation_members, "list_members", lambda *_a, **_k: [])
     monkeypatch.setattr(fact, "list_expense_fact_history", lambda *_a, **_k: ExpenseRevisionListResponse(
         items=[], page=1, page_size=50, total=0, snapshot_revision=1))

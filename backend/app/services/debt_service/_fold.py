@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.models import Debt, DebtAdjustment, DebtForgiveness, Repayment, RepaymentVoid
 from app.money_contract import fold_sum_to_int, projection_sum_to_int
 from app.services.credit_balance_projection import credit_home_balance
+from app.services.credit_history_adoption import uses_credit_at
 from app.services.time_service import ensure_utc
 
 
@@ -241,7 +242,7 @@ def compute_remaining_as_of(db: Session, debt: Debt, cutoff: datetime) -> int:
     """
     if ensure_utc(debt.created_at) > ensure_utc(cutoff):
         return 0
-    if debt.source_type == "credit_facility":
+    if uses_credit_at(db, debt, cutoff):
         return credit_home_balance(db, debt, cutoff=cutoff)[0]
     principal = projection_sum_to_int(
         debt.principal_amount_cents,

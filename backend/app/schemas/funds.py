@@ -32,6 +32,21 @@ class AccountChoice(BaseModel):
     institution: str
 
 
+class ExistingDebtChoice(BaseModel):
+    public_id: str
+    row_version: int
+    name: str
+    remaining_home_minor: SignedMoneyAggregate
+    home_currency_code: str
+    earliest_opening_date: date
+
+
+class DebtAdoption(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    public_id: str = Field(min_length=1, max_length=36)
+    expected_row_version: int = Field(ge=1)
+
+
 class AccountCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     name: str = Field(min_length=1, max_length=120)
@@ -44,6 +59,13 @@ class AccountCreate(BaseModel):
     opening_date: date
     opening_source: str = Field(min_length=1, max_length=255)
     credit_terms: CreditTerms | None = None
+    existing_debt: DebtAdoption | None = None
+
+    @model_validator(mode="after")
+    def adoption_requires_reviewed_credit(self):
+        if self.existing_debt is not None and (self.kind != "credit" or self.opening_amount_minor is None):
+            raise ValueError("承接已有欠款时，请选择信用账户并核对实际币种与期初欠款，不能留空。")
+        return self
 
     @field_validator("currency_code")
     @classmethod

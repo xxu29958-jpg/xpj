@@ -201,8 +201,10 @@ def _disabled_member_summary() -> MemberSummary:
     )
 
 
-def test_web_fact_context_keeps_disabled_member_identity_in_revision_projection() -> None:
+def test_web_fact_context_keeps_disabled_member_identity_in_revision_projection(monkeypatch) -> None:
+    monkeypatch.setattr("app.routes._web_expense_fact.expense_funding_view", lambda *_a, **_k: None)
     class RequestStub:
+        state = SimpleNamespace()
         query_params: dict[str, str] = {}
 
     with (
@@ -287,12 +289,14 @@ class _AnchoredTimelineReader:
         )
 
 
-def test_anchored_timeline_pager_keeps_one_snapshot_across_pages() -> None:
+def test_anchored_timeline_pager_keeps_one_snapshot_across_pages(monkeypatch) -> None:
     """同一快照内 page±1 都回传同一 rev_snapshot；上行文案不兼任「刷新到最新」。"""
 
     reader = _AnchoredTimelineReader()
+    monkeypatch.setattr("app.routes._web_expense_fact.expense_funding_view", lambda *_a, **_k: None)
 
     class RequestStub:
+        state = SimpleNamespace()
         query_params = {
             "ledger_id": "owner",
             "rev_page": "2",

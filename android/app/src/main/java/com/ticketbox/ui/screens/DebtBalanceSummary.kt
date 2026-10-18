@@ -82,7 +82,7 @@ internal fun DebtSummaryCard(debt: Debt) {
 }
 
 @Composable
-private fun DebtRemainingCard(debt: Debt) {
+internal fun DebtRemainingCard(debt: Debt) {
     AppPaperCard {
         Column(Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {

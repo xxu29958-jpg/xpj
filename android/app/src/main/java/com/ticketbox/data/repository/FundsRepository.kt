@@ -38,6 +38,12 @@ class FundsRepository internal constructor(private val provider: ApiServiceProvi
             incoming.any { row -> previous[row.publicId]?.rowVersion?.let { it < row.rowVersion } == true }
         } }, project = { rows, _ -> rows }))
 
+    suspend fun existingDebts(binding: LogicalSessionBinding) = queries.read(binding,
+        DebtQueryScope(debtScope(binding, "funds_existing_debts", "all")),
+        DebtReadSpec(FundsWire.existingDebts, { existingFundDebts() }, validate = { rows ->
+            require(rows.all { it.rowVersion > 0 } && rows.map { it.publicId }.distinct().size == rows.size)
+        }, isNewer = { _, _ -> false }, project = { rows, _ -> rows }))
+
     suspend fun detail(binding: LogicalSessionBinding, id: String) = queries.read(binding,
         DebtQueryScope(debtScope(binding, "funds_account", id)),
         DebtReadSpec(FundsWire.account, { fundsAccount(id) }, validate = { require(it.publicId == id) },

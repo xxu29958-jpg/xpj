@@ -15,12 +15,12 @@ def funding_options(db, auth):
 
 
 def parse_funding(db, *, ledger_id, actor_account_id, raw, currency_code):
-    if actor_account_id is None:
-        raise AppError("invalid_token", "请先登录原身份再核对资金来源。", status_code=401)
     try:
         rows = json.loads(raw or "[]")
         if not isinstance(rows, list) or len(rows) > 8:
             raise ValueError("funding_parts")
+        if rows and actor_account_id is None:
+            raise AppError("invalid_token", "请先登录原身份再核对资金来源。", status_code=401)
         parts = []
         for item in rows:
             account = get_account(db, ledger_id=ledger_id, actor_account_id=actor_account_id,

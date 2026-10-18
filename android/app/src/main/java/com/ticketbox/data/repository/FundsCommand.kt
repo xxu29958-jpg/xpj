@@ -35,7 +35,8 @@ data class FundsInput(val binding: LogicalSessionBinding, val mode: String, val 
     val expenseId: Long? = null, val fundingJson: String = "[]", val previousAgreement: String = "",
     val drawIds: List<String> = emptyList(), val periodsJson: String = "[]", val allocationJson: String = "[]", val overpayment: String = "",
     val repaymentId: String = "", val creditLimit: String = "", val availableCredit: String = "",
-    val creditObservedOn: String = "", val creditSource: String = "", val statementDay: String = "", val paymentDueDay: String = "")
+    val creditObservedOn: String = "", val creditSource: String = "", val statementDay: String = "", val paymentDueDay: String = "",
+    val existingDebtId: String = "", val existingDebtVersion: Long = 0, val existingDebtLabel: String = "")
 
 @JsonClass(generateAdapter = true)
 data class FundsCommand(val revision: Int = 1, val binding: LogicalSessionBinding, val accountId: String,
@@ -58,6 +59,8 @@ internal object FundsWire {
     val listing = moshi.adapter<List<FinancialAccountDto>>(Types.newParameterizedType(List::class.java, FinancialAccountDto::class.java))
     val choices = moshi.adapter<List<com.ticketbox.data.remote.dto.AccountChoiceDto>>(
         Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.AccountChoiceDto::class.java))
+    val existingDebts = moshi.adapter<List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto>>(
+        Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.ExistingDebtChoiceDto::class.java))
 }
 
 internal fun FundsInput.command(): FundsCommand {
@@ -95,9 +98,13 @@ internal fun FundsInput.command(): FundsCommand {
         }
         "create" -> {
             require(name.isNotBlank() && source.isNotBlank()) { "请填写账户名称和期初依据。" }
+            val adoption = existingDebtId.takeIf(String::isNotBlank)?.let {
+                require(kind == "credit" && opening.isNotBlank() && existingDebtVersion > 0) { "接入旧欠款时，请选择信用账户并核对实际币种和期初欠款。" }
+                com.ticketbox.data.remote.dto.DebtAdoptionDto(it, existingDebtVersion)
+            }
             FundsCommand(binding = binding, accountId = "", create = FinancialAccountCreateDto(name.trim(), kind, currency,
                 visibility, institution.trim().ifBlank { null }, tail.trim().ifBlank { null },
-                opening.takeIf { it.isNotBlank() }?.let { amount(it, currency, signed = true) }, date, source, creditTerms()))
+                opening.takeIf { it.isNotBlank() }?.let { amount(it, currency, signed = true) }, date, source, creditTerms(), adoption))
         }
         "edit" -> FundsCommand(binding = binding, accountId = accountId, edit = FinancialAccountEditDto(version,
             name.trim(), institution.trim().ifBlank { null }, tail.trim().ifBlank { null }, archived, creditTerms()))
@@ -172,6 +179,7 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
                         "fund_account_archived", "credit_opening_unknown", "exchange_rate_pending", "calendar_revision_conflict",
                         "funding_review_required", "funding_opening_mismatch", "funding_opening_review_required",
                         "expense_reversal_active", "funds_date_outside_coverage", "funding_requires_confirmation", "repayment_already_voided",
+                        "credit_adoption_unavailable", "credit_adoption_date_conflict", "credit_account_required",
                         "installment_source_in_use", "installment_amount_mismatch", "installment_allocation_required", "installment_review_required")
                     DispatchResult.Failure((if (refused) FUNDS_REFUSED else "") + parsed.message,
                         definitelyRejected = refused, credentialRejected = error.code() == 401)

@@ -30,6 +30,22 @@ data class FinancialAccountDto(
 )
 
 @JsonClass(generateAdapter = true)
+data class DebtAdoptionDto(
+    @param:Json(name = "public_id") val publicId: String,
+    @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
+)
+
+@JsonClass(generateAdapter = true)
+data class ExistingDebtChoiceDto(
+    @param:Json(name = "public_id") val publicId: String,
+    @param:Json(name = "row_version") val rowVersion: Long,
+    val name: String,
+    @param:Json(name = "remaining_home_minor") val remainingHomeMinor: Long,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
+    @param:Json(name = "earliest_opening_date") val earliestOpeningDate: String,
+)
+
+@JsonClass(generateAdapter = true)
 data class CreditTermsDto(
     @param:Json(name = "credit_limit_minor") val creditLimitMinor: Long? = null,
     @param:Json(name = "available_credit_minor") val availableCreditMinor: Long? = null,
@@ -75,6 +91,7 @@ data class FinancialAccountCreateDto(
     @param:Json(name = "opening_date") val openingDate: String,
     @param:Json(name = "opening_source") val openingSource: String,
     @param:Json(name = "credit_terms") val creditTerms: CreditTermsDto? = null,
+    @param:Json(name = "existing_debt") val existingDebt: DebtAdoptionDto? = null,
 )
 
 @JsonClass(generateAdapter = true)

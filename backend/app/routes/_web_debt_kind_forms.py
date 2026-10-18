@@ -40,7 +40,7 @@ def add_kind_detail_context(
     can_view_original = not ctx["debt"]["is_member"] or debt.ledger_id is not None and debt.viewer_is_debtor is True
     ctx["kind_form"] = kind_context(request, db, selected_id=selected_id, public_id=public_id,
         expected=str(debt.row_version), debt_kind=debt.debt_kind,
-        can_create=ctx["can_write"] and ((not ctx["debt"]["is_member"] and debt.status == "open") or ctx["can_change_member_kind"]),
+        can_create=ctx["can_write"] and debt.source_type != "credit_facility" and ((not ctx["debt"]["is_member"] and debt.status == "open") or ctx["can_change_member_kind"]),
         can_recover=ctx["can_write"] and can_view_original,
         values=values if kind == "kind" else None,
         error=error if kind == "kind" else "", result=result, ack=ack, rejected=rejected)

@@ -103,6 +103,339 @@
         "title": "AcceptedInvitationImpact",
         "type": "object"
       },
+      "AccountChoice": {
+        "properties": {
+          "institution": {
+            "title": "Institution",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "kind",
+          "institution"
+        ],
+        "title": "AccountChoice",
+        "type": "object"
+      },
+      "AccountCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "credit_terms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreditTerms"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "currency_code": {
+            "title": "Currency Code",
+            "type": "string"
+          },
+          "existing_debt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DebtAdoption"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "institution": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Institution"
+          },
+          "kind": {
+            "enum": [
+              "cash",
+              "bank",
+              "wallet",
+              "credit"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "opening_amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": -9000000000000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opening Amount Minor"
+          },
+          "opening_date": {
+            "format": "date",
+            "title": "Opening Date",
+            "type": "string"
+          },
+          "opening_source": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Opening Source",
+            "type": "string"
+          },
+          "tail": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9]{1,4}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tail"
+          },
+          "visibility": {
+            "default": "private",
+            "enum": [
+              "private",
+              "ledger"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "currency_code",
+          "opening_date",
+          "opening_source"
+        ],
+        "title": "AccountCreate",
+        "type": "object"
+      },
+      "AccountEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "default": false,
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "credit_terms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreditTerms"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "institution": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Institution"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "tail": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9]{1,4}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tail"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "name"
+        ],
+        "title": "AccountEdit",
+        "type": "object"
+      },
+      "AccountPosting": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "apply_adjustment": {
+            "default": false,
+            "title": "Apply Adjustment",
+            "type": "boolean"
+          },
+          "calendar_revision": {
+            "minimum": 1.0,
+            "title": "Calendar Revision",
+            "type": "integer"
+          },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "income",
+              "loan",
+              "transfer",
+              "reconciliation"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "loan_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loan Currency Code"
+          },
+          "loan_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loan Name"
+          },
+          "loan_principal_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loan Principal Minor"
+          },
+          "note": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "other_account_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Account Public Id"
+          },
+          "other_account_row_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Account Row Version"
+          },
+          "other_amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Amount Minor"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "kind",
+          "amount_minor",
+          "occurred_on",
+          "note",
+          "calendar_revision"
+        ],
+        "title": "AccountPosting",
+        "type": "object"
+      },
       "AccountProfileRenameRequest": {
         "additionalProperties": false,
         "properties": {
@@ -831,6 +1164,54 @@
           "created_at"
         ],
         "title": "BackgroundTaskResponse",
+        "type": "object"
+      },
+      "BalanceObservationView": {
+        "properties": {
+          "adjusted": {
+            "title": "Adjusted",
+            "type": "boolean"
+          },
+          "difference_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Difference Minor",
+            "type": "integer"
+          },
+          "observed_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
+            "title": "Observed Minor",
+            "type": "integer"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "recorded_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
+            "title": "Recorded Minor",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "observed_minor",
+          "recorded_minor",
+          "difference_minor",
+          "occurred_on",
+          "source",
+          "adjusted"
+        ],
+        "title": "BalanceObservationView",
         "type": "object"
       },
       "BillSplitAcceptRequest": {
@@ -3533,6 +3914,17 @@
             "title": "Fragment",
             "type": "integer"
           },
+          "funding_json": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funding Json"
+          },
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
@@ -4210,6 +4602,11 @@
             "title": "Expected Row Version",
             "type": "string"
           },
+          "funding_json": {
+            "default": "[]",
+            "title": "Funding Json",
+            "type": "string"
+          },
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
@@ -4876,6 +5273,17 @@
             "default": 0,
             "title": "Fragment",
             "type": "integer"
+          },
+          "funding_json": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funding Json"
           },
           "idempotency_key": {
             "default": "",
@@ -6981,6 +7389,17 @@
             "title": "Fragment",
             "type": "integer"
           },
+          "funding_json": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funding Json"
+          },
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
@@ -7273,6 +7692,17 @@
             "title": "Fragment",
             "type": "integer"
           },
+          "funding_json": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funding Json"
+          },
           "idempotency_key": {
             "default": "",
             "title": "Idempotency Key",
@@ -7543,6 +7973,17 @@
             "default": 0,
             "title": "Fragment",
             "type": "integer"
+          },
+          "funding_json": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funding Json"
           },
           "idempotency_key": {
             "default": "",
@@ -7947,6 +8388,17 @@
             "default": 0,
             "title": "Fragment",
             "type": "integer"
+          },
+          "funding_json": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funding Json"
           },
           "idempotency_key": {
             "default": "",
@@ -11551,6 +12003,304 @@
         "title": "ConfirmedOffsetStreamProjection",
         "type": "object"
       },
+      "CreditDrawPaymentPart": {
+        "additionalProperties": false,
+        "properties": {
+          "draw_public_id": {
+            "title": "Draw Public Id",
+            "type": "string"
+          },
+          "principal_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Principal Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "draw_public_id",
+          "principal_minor"
+        ],
+        "title": "CreditDrawPaymentPart",
+        "type": "object"
+      },
+      "CreditDrawView": {
+        "properties": {
+          "agreement_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreement Public Id"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "original_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Original Minor",
+            "type": "integer"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "remaining_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Remaining Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "public_id",
+          "note",
+          "occurred_on",
+          "original_minor",
+          "remaining_minor"
+        ],
+        "title": "CreditDrawView",
+        "type": "object"
+      },
+      "CreditPayment": {
+        "additionalProperties": false,
+        "properties": {
+          "calendar_revision": {
+            "minimum": 1.0,
+            "title": "Calendar Revision",
+            "type": "integer"
+          },
+          "draw_allocations": {
+            "items": {
+              "$ref": "#/components/schemas/CreditDrawPaymentPart"
+            },
+            "maxItems": 120,
+            "title": "Draw Allocations",
+            "type": "array"
+          },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "fee_note": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Note"
+          },
+          "new_fee_minor": {
+            "default": 0,
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "New Fee Minor",
+            "type": "integer"
+          },
+          "note": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "overpayment_minor": {
+            "default": 0,
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Overpayment Minor",
+            "type": "integer"
+          },
+          "payer_amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Payer Amount Minor",
+            "type": "integer"
+          },
+          "payer_public_id": {
+            "title": "Payer Public Id",
+            "type": "string"
+          },
+          "payer_row_version": {
+            "minimum": 1.0,
+            "title": "Payer Row Version",
+            "type": "integer"
+          },
+          "period_allocations": {
+            "items": {
+              "$ref": "#/components/schemas/InstallmentPaymentPart"
+            },
+            "maxItems": 120,
+            "title": "Period Allocations",
+            "type": "array"
+          },
+          "principal_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Principal Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "calendar_revision",
+          "payer_public_id",
+          "payer_row_version",
+          "principal_minor",
+          "payer_amount_minor",
+          "occurred_on",
+          "note"
+        ],
+        "title": "CreditPayment",
+        "type": "object"
+      },
+      "CreditPaymentVoid": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "repayment_public_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Repayment Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "repayment_public_id",
+          "occurred_on",
+          "reason"
+        ],
+        "title": "CreditPaymentVoid",
+        "type": "object"
+      },
+      "CreditTerms": {
+        "additionalProperties": false,
+        "properties": {
+          "available_credit_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available Credit Minor"
+          },
+          "credit_limit_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Limit Minor"
+          },
+          "observed_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed On"
+          },
+          "payment_due_day": {
+            "anyOf": [
+              {
+                "maximum": 31.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Due Day"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "statement_day": {
+            "anyOf": [
+              {
+                "maximum": 31.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statement Day"
+          }
+        },
+        "title": "CreditTerms",
+        "type": "object"
+      },
       "CsvImportApplyRequest": {
         "additionalProperties": false,
         "properties": {
@@ -12527,6 +13277,28 @@
         "title": "DebtAdjustmentCreateRequest",
         "type": "object"
       },
+      "DebtAdoption": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "public_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id",
+          "expected_row_version"
+        ],
+        "title": "DebtAdoption",
+        "type": "object"
+      },
       "DebtBillParseResponse": {
         "description": "ADR-0049 §D 债务账单解析建议（瞬态，不落库、不建债）。\n\n一张「欠款截图」OCR 后的**建议**还款条款，用于预填建/编外部债表单。所有字段\n可空（缺字段=留给用户手填）；§8 红线：这是建议非事实，``source_text`` 是模型回的\n源文本片段（防编数字），用户在表单确认/改后才落账。未配视觉 provider 时全字段为空\n（回落手填），端点仍 200。",
         "properties": {
@@ -13392,7 +14164,7 @@
               {
                 "format": "int64",
                 "maximum": 9000000000000.0,
-                "minimum": 1.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -13422,7 +14194,7 @@
           "principal_amount_cents": {
             "format": "int64",
             "maximum": 9000000000000.0,
-            "minimum": 1.0,
+            "minimum": 0.0,
             "title": "Principal Amount Cents",
             "type": "integer"
           },
@@ -14121,6 +14893,48 @@
         "title": "ExchangeRateResponse",
         "type": "object"
       },
+      "ExistingDebtChoice": {
+        "properties": {
+          "earliest_opening_date": {
+            "format": "date",
+            "title": "Earliest Opening Date",
+            "type": "string"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "remaining_home_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Remaining Home Minor",
+            "type": "integer"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "public_id",
+          "row_version",
+          "name",
+          "remaining_home_minor",
+          "home_currency_code",
+          "earliest_opening_date"
+        ],
+        "title": "ExistingDebtChoice",
+        "type": "object"
+      },
       "ExpenseAcknowledgeItemsMismatchRequest": {
         "additionalProperties": false,
         "description": "ADR-0038 PR-2e: ``POST /api/expenses/{id}/items/acknowledge-mismatch``.\n\nAcknowledging \"原小票如此\" flips ``items_sum_status`` from\n``mismatch_known`` to ``mismatch_acknowledged``. Without the token,\na stale page open before a peer edited amount/items would let the\nuser blindly accept a *new* mismatch as if it were the one they\nsaw. The service uses ``claim_row_with_token`` with the predicate\n``items_sum_status == \"mismatch_known\"`` so:\n\n- row not visible / vanished → 404 ``expense_not_found``\n- status != ``mismatch_known`` → 409 ``items_sum_not_in_mismatch``\n  (existing UX, preserved)\n- else → 409 ``state_conflict``",
@@ -14143,6 +14957,22 @@
           "expected_row_version": {
             "title": "Expected Row Version",
             "type": "integer"
+          },
+          "funding": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FundingPart"
+                },
+                "maxItems": 8,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funding"
           }
         },
         "required": [
@@ -14340,6 +15170,22 @@
               }
             ],
             "title": "Expense Time"
+          },
+          "funding": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FundingPart"
+                },
+                "maxItems": 8,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funding"
           },
           "items": {
             "anyOf": [
@@ -14645,6 +15491,89 @@
           "root_stream_amount_cents"
         ],
         "title": "ExpenseFinancialSummary",
+        "type": "object"
+      },
+      "ExpenseFundingCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/FundingPart"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Parts",
+            "type": "array"
+          },
+          "reason": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "parts",
+          "reason"
+        ],
+        "title": "ExpenseFundingCommand",
+        "type": "object"
+      },
+      "ExpenseFundingView": {
+        "properties": {
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "currency_code": {
+            "title": "Currency Code",
+            "type": "string"
+          },
+          "expense_id": {
+            "title": "Expense Id",
+            "type": "integer"
+          },
+          "expense_row_version": {
+            "title": "Expense Row Version",
+            "type": "integer"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/FundingViewPart"
+            },
+            "title": "Parts",
+            "type": "array"
+          },
+          "total_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Minor"
+          }
+        },
+        "required": [
+          "expense_id",
+          "expense_row_version",
+          "currency_code",
+          "total_minor",
+          "can_edit",
+          "parts"
+        ],
+        "title": "ExpenseFundingView",
         "type": "object"
       },
       "ExpenseItemReplaceRequest": {
@@ -15084,6 +16013,22 @@
             ],
             "title": "Expense Time"
           },
+          "funding": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FundingPart"
+                },
+                "maxItems": 8,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funding"
+          },
           "home_currency_code": {
             "anyOf": [
               {
@@ -15291,6 +16236,22 @@
             "title": "Correction Reason",
             "type": "string"
           },
+          "destinations": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RefundDestination"
+                },
+                "maxItems": 8,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destinations"
+          },
           "expected_row_version": {
             "minimum": 1.0,
             "title": "Expected Row Version",
@@ -15335,6 +16296,22 @@
             "format": "date",
             "title": "Accounting Date",
             "type": "string"
+          },
+          "destinations": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RefundDestination"
+                },
+                "maxItems": 8,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destinations"
           },
           "expected_row_version": {
             "minimum": 0.0,
@@ -16646,6 +17623,22 @@
             ],
             "title": "Expense Time"
           },
+          "funding": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FundingPart"
+                },
+                "maxItems": 8,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Funding"
+          },
           "manual_exchange_rate": {
             "anyOf": [
               {
@@ -16801,6 +17794,389 @@
           "expected_row_version"
         ],
         "title": "ExpenseUpdateRequest",
+        "type": "object"
+      },
+      "FinancialAccountView": {
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "balance_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Minor"
+          },
+          "calendar_revision": {
+            "title": "Calendar Revision",
+            "type": "integer"
+          },
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "credit_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Kind"
+          },
+          "credit_terms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreditTerms"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "currency_code": {
+            "title": "Currency Code",
+            "type": "string"
+          },
+          "debt_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debt Public Id"
+          },
+          "institution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Institution"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "movements": {
+            "items": {
+              "$ref": "#/components/schemas/MovementView"
+            },
+            "title": "Movements",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "observation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BalanceObservationView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "opening_date": {
+            "format": "date",
+            "title": "Opening Date",
+            "type": "string"
+          },
+          "opening_source": {
+            "title": "Opening Source",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "recorded_change_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Recorded Change Minor",
+            "type": "integer"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "tail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tail"
+          },
+          "unallocated_credit_minor": {
+            "default": 0,
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Unallocated Credit Minor",
+            "type": "integer"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id",
+          "name",
+          "ledger_id",
+          "calendar_revision",
+          "kind",
+          "currency_code",
+          "visibility",
+          "institution",
+          "tail",
+          "row_version",
+          "archived",
+          "balance_minor",
+          "recorded_change_minor",
+          "opening_date",
+          "opening_source",
+          "can_edit"
+        ],
+        "title": "FinancialAccountView",
+        "type": "object"
+      },
+      "FundingPart": {
+        "additionalProperties": false,
+        "properties": {
+          "account_amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Account Amount Minor",
+            "type": "integer"
+          },
+          "account_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Currency Code"
+          },
+          "account_public_id": {
+            "title": "Account Public Id",
+            "type": "string"
+          },
+          "account_row_version": {
+            "minimum": 1.0,
+            "title": "Account Row Version",
+            "type": "integer"
+          },
+          "component_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Component Id",
+            "type": "string"
+          },
+          "expense_amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Expense Amount Minor",
+            "type": "integer"
+          },
+          "expense_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Currency Code"
+          },
+          "included_in_opening": {
+            "default": false,
+            "title": "Included In Opening",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "component_id",
+          "account_public_id",
+          "account_row_version",
+          "expense_amount_minor",
+          "account_amount_minor"
+        ],
+        "title": "FundingPart",
+        "type": "object"
+      },
+      "FundingViewPart": {
+        "properties": {
+          "account_amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Amount Minor"
+          },
+          "account_name": {
+            "title": "Account Name",
+            "type": "string"
+          },
+          "account_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Public Id"
+          },
+          "account_row_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Row Version"
+          },
+          "component_id": {
+            "title": "Component Id",
+            "type": "string"
+          },
+          "currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency Code"
+          },
+          "expense_amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Expense Amount Minor",
+            "type": "integer"
+          },
+          "included_in_opening": {
+            "title": "Included In Opening",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "component_id",
+          "account_public_id",
+          "account_row_version",
+          "account_name",
+          "currency_code",
+          "expense_amount_minor",
+          "account_amount_minor",
+          "included_in_opening"
+        ],
+        "title": "FundingViewPart",
+        "type": "object"
+      },
+      "FundsOverview": {
+        "properties": {
+          "assets_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Assets Minor",
+            "type": "integer"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "included_accounts": {
+            "title": "Included Accounts",
+            "type": "integer"
+          },
+          "liabilities_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Liabilities Minor",
+            "type": "integer"
+          },
+          "missing_rate_accounts": {
+            "title": "Missing Rate Accounts",
+            "type": "integer"
+          },
+          "net_worth_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Net Worth Minor",
+            "type": "integer"
+          },
+          "unknown_accounts": {
+            "title": "Unknown Accounts",
+            "type": "integer"
+          },
+          "valuation_date": {
+            "format": "date",
+            "title": "Valuation Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "home_currency_code",
+          "valuation_date",
+          "assets_minor",
+          "liabilities_minor",
+          "net_worth_minor",
+          "included_accounts",
+          "unknown_accounts",
+          "missing_rate_accounts"
+        ],
+        "title": "FundsOverview",
         "type": "object"
       },
       "GoalCreateRequest": {
@@ -18265,6 +19641,301 @@
           "claim_generation"
         ],
         "title": "InstallationOwnerBootstrapResponse",
+        "type": "object"
+      },
+      "InstallmentCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "agreed_on": {
+            "format": "date",
+            "title": "Agreed On",
+            "type": "string"
+          },
+          "draw_public_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 120,
+            "minItems": 1,
+            "title": "Draw Public Ids",
+            "type": "array"
+          },
+          "expected_row_version": {
+            "minimum": 1.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/InstallmentPeriodInput"
+            },
+            "maxItems": 120,
+            "minItems": 1,
+            "title": "Periods",
+            "type": "array"
+          },
+          "source": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "supersedes_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Public Id"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "name",
+          "source",
+          "agreed_on",
+          "draw_public_ids",
+          "periods"
+        ],
+        "title": "InstallmentCommand",
+        "type": "object"
+      },
+      "InstallmentPaymentPart": {
+        "additionalProperties": false,
+        "properties": {
+          "fee_minor": {
+            "default": 0,
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Fee Minor",
+            "type": "integer"
+          },
+          "period_public_id": {
+            "title": "Period Public Id",
+            "type": "string"
+          },
+          "principal_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Principal Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period_public_id",
+          "principal_minor"
+        ],
+        "title": "InstallmentPaymentPart",
+        "type": "object"
+      },
+      "InstallmentPeriodInput": {
+        "additionalProperties": false,
+        "properties": {
+          "due_on": {
+            "format": "date",
+            "title": "Due On",
+            "type": "string"
+          },
+          "planned_fee_minor": {
+            "default": 0,
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Planned Fee Minor",
+            "type": "integer"
+          },
+          "principal_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Principal Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "due_on",
+          "principal_minor"
+        ],
+        "title": "InstallmentPeriodInput",
+        "type": "object"
+      },
+      "InstallmentPeriodView": {
+        "properties": {
+          "due_on": {
+            "format": "date",
+            "title": "Due On",
+            "type": "string"
+          },
+          "paid_fee_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Paid Fee Minor",
+            "type": "integer"
+          },
+          "paid_principal_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Paid Principal Minor",
+            "type": "integer"
+          },
+          "planned_fee_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Planned Fee Minor",
+            "type": "integer"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "principal_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 0.0,
+            "title": "Principal Minor",
+            "type": "integer"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id",
+          "position",
+          "due_on",
+          "principal_minor",
+          "planned_fee_minor",
+          "paid_principal_minor",
+          "paid_fee_minor"
+        ],
+        "title": "InstallmentPeriodView",
+        "type": "object"
+      },
+      "InstallmentView": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "agreed_on": {
+            "format": "date",
+            "title": "Agreed On",
+            "type": "string"
+          },
+          "draw_public_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Draw Public Ids",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "needs_review": {
+            "title": "Needs Review",
+            "type": "boolean"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/InstallmentPeriodView"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "remaining_principal_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Remaining Principal Minor",
+            "type": "integer"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "series_id": {
+            "title": "Series Id",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id",
+          "series_id",
+          "revision",
+          "name",
+          "source",
+          "agreed_on",
+          "active",
+          "needs_review",
+          "remaining_principal_minor",
+          "periods",
+          "draw_public_ids"
+        ],
+        "title": "InstallmentView",
+        "type": "object"
+      },
+      "InstallmentsView": {
+        "properties": {
+          "account_public_id": {
+            "title": "Account Public Id",
+            "type": "string"
+          },
+          "account_row_version": {
+            "title": "Account Row Version",
+            "type": "integer"
+          },
+          "agreements": {
+            "items": {
+              "$ref": "#/components/schemas/InstallmentView"
+            },
+            "title": "Agreements",
+            "type": "array"
+          },
+          "currency_code": {
+            "title": "Currency Code",
+            "type": "string"
+          },
+          "draws": {
+            "items": {
+              "$ref": "#/components/schemas/CreditDrawView"
+            },
+            "title": "Draws",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account_public_id",
+          "account_row_version",
+          "currency_code",
+          "agreements",
+          "draws"
+        ],
+        "title": "InstallmentsView",
         "type": "object"
       },
       "InvitationAcceptRequest": {
@@ -20796,6 +22467,97 @@
           "items"
         ],
         "title": "MonthsResponse",
+        "type": "object"
+      },
+      "MovementView": {
+        "properties": {
+          "amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": -9000000000000.0,
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "can_void_repayment": {
+            "default": false,
+            "title": "Can Void Repayment",
+            "type": "boolean"
+          },
+          "debt_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debt Public Id"
+          },
+          "event_public_id": {
+            "title": "Event Public Id",
+            "type": "string"
+          },
+          "expense_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Id"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "repayment_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repayment Public Id"
+          },
+          "reversal_of_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversal Of Id"
+          }
+        },
+        "required": [
+          "public_id",
+          "event_public_id",
+          "kind",
+          "amount_minor",
+          "occurred_on",
+          "note"
+        ],
+        "title": "MovementView",
         "type": "object"
       },
       "MyDeviceListResponse": {
@@ -23532,6 +25294,42 @@
         "title": "RefreshSessionResponse",
         "type": "object"
       },
+      "RefundDestination": {
+        "additionalProperties": false,
+        "properties": {
+          "account_public_id": {
+            "title": "Account Public Id",
+            "type": "string"
+          },
+          "account_row_version": {
+            "minimum": 1.0,
+            "title": "Account Row Version",
+            "type": "integer"
+          },
+          "original_amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Original Amount Minor",
+            "type": "integer"
+          },
+          "received_amount_minor": {
+            "format": "int64",
+            "maximum": 9000000000000.0,
+            "minimum": 1.0,
+            "title": "Received Amount Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "account_public_id",
+          "account_row_version",
+          "original_amount_minor",
+          "received_amount_minor"
+        ],
+        "title": "RefundDestination",
+        "type": "object"
+      },
       "RepaymentAsExpense": {
         "additionalProperties": false,
         "properties": {
@@ -23914,7 +25712,7 @@
               {
                 "format": "int64",
                 "maximum": 9000000000000.0,
-                "minimum": 1.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -23944,7 +25742,7 @@
           "principal_amount_cents": {
             "format": "int64",
             "maximum": 9000000000000.0,
-            "minimum": 1.0,
+            "minimum": 0.0,
             "title": "Principal Amount Cents",
             "type": "integer"
           },
@@ -24451,7 +26249,7 @@
           "amount_cents": {
             "format": "int64",
             "maximum": 9000000000000.0,
-            "minimum": 1.0,
+            "minimum": 0.0,
             "title": "Amount Cents",
             "type": "integer"
           },
@@ -24505,7 +26303,7 @@
               {
                 "format": "int64",
                 "maximum": 9000000000000.0,
-                "minimum": 1.0,
+                "minimum": 0.0,
                 "type": "integer"
               },
               {
@@ -35965,6 +37763,197 @@
         ]
       }
     },
+    "/api/expenses/{expense_id}/funding": {
+      "get": {
+        "operationId": "get_expense_funding_api_expenses__expense_id__funding_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseFundingView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Expense Funding",
+        "tags": [
+          "funds"
+        ]
+      },
+      "post": {
+        "operationId": "post_expense_funding_api_expenses__expense_id__funding_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseFundingCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseFundingView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Expense Funding",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
     "/api/expenses/{expense_id}/fx": {
       "get": {
         "operationId": "get_expense_fx_api_expenses__expense_id__fx_get",
@@ -39213,6 +41202,1125 @@
         "summary": "Export Portable",
         "tags": [
           "exports"
+        ]
+      }
+    },
+    "/api/funds/accounts": {
+      "get": {
+        "operationId": "get_accounts_api_funds_accounts_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FinancialAccountView"
+                  },
+                  "title": "Response Get Accounts Api Funds Accounts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Accounts",
+        "tags": [
+          "funds"
+        ]
+      },
+      "post": {
+        "operationId": "post_account_api_funds_accounts_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccountView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Account",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
+    "/api/funds/accounts/existing-debts/list": {
+      "get": {
+        "operationId": "get_existing_debts_api_funds_accounts_existing_debts_list_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExistingDebtChoice"
+                  },
+                  "title": "Response Get Existing Debts Api Funds Accounts Existing Debts List Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Existing Debts",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
+    "/api/funds/accounts/summary/net-worth": {
+      "get": {
+        "operationId": "get_funds_overview_api_funds_accounts_summary_net_worth_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundsOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Funds Overview",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
+    "/api/funds/accounts/templates/list": {
+      "get": {
+        "operationId": "get_account_choices_api_funds_accounts_templates_list_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountChoice"
+                  },
+                  "title": "Response Get Account Choices Api Funds Accounts Templates List Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Account Choices",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
+    "/api/funds/accounts/{public_id}": {
+      "get": {
+        "operationId": "get_account_details_api_funds_accounts__public_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccountView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Account Details",
+        "tags": [
+          "funds"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_account_api_funds_accounts__public_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccountView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Patch Account",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
+    "/api/funds/accounts/{public_id}/activities": {
+      "post": {
+        "operationId": "post_funds_activity_api_funds_accounts__public_id__activities_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountPosting"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccountView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Funds Activity",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
+    "/api/funds/accounts/{public_id}/installments": {
+      "get": {
+        "operationId": "get_installments_api_funds_accounts__public_id__installments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallmentsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Installments",
+        "tags": [
+          "funds"
+        ]
+      },
+      "post": {
+        "operationId": "post_installments_api_funds_accounts__public_id__installments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallmentCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccountView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Installments",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
+    "/api/funds/accounts/{public_id}/repay": {
+      "post": {
+        "operationId": "post_credit_payment_api_funds_accounts__public_id__repay_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditPayment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccountView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Credit Payment",
+        "tags": [
+          "funds"
+        ]
+      }
+    },
+    "/api/funds/accounts/{public_id}/repayments/void": {
+      "post": {
+        "operationId": "post_credit_payment_void_api_funds_accounts__public_id__repayments_void_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreditPaymentVoid"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialAccountView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Credit Payment Void",
+        "tags": [
+          "funds"
         ]
       }
     },
@@ -58587,6 +61695,94 @@
         ]
       }
     },
+    "/web/expenses/{expense_id}/funding": {
+      "get": {
+        "operationId": "read_funding_web_expenses__expense_id__funding_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Funding",
+        "tags": [
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "write_funding_web_expenses__expense_id__funding_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Funding",
+        "tags": [
+          "web"
+        ]
+      }
+    },
     "/web/expenses/{expense_id}/fx": {
       "post": {
         "operationId": "web_request_expense_fx_web_expenses__expense_id__fx_post",
@@ -60118,6 +63314,106 @@
         "summary": "Web Ledger Rename",
         "tags": [
           "web-app"
+        ]
+      }
+    },
+    "/web/funds": {
+      "get": {
+        "operationId": "web_funds_web_funds_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Task",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agreement_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Agreement Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repayment_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Repayment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Funds",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/funds/save": {
+      "post": {
+        "operationId": "web_save_funds_web_funds_save_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Web Save Funds",
+        "tags": [
+          "web"
         ]
       }
     },

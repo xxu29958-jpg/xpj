@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -165,6 +167,7 @@ private fun FundsEditor(state: FundsUiState, input: FundsInput, vm: FundsViewMod
             "create", "edit" -> {
                 if (input.mode == "create") FundsAccountChoices(state.accountChoices, enabled, vm)
                 FundsAccountFields(input, enabled, vm)
+                if (input.mode == "create") ExistingDebtField(input, state.existingDebts, enabled, vm)
                 if (input.kind == "credit") FundsCreditTermsFields(input, enabled, vm)
             }
             else -> FundsActivityFields(input, state.accounts, enabled, vm)
@@ -172,6 +175,26 @@ private fun FundsEditor(state: FundsUiState, input: FundsInput, vm: FundsViewMod
         if (input.mode !in setOf("edit", "funding")) FundsField("${if (input.mode == "create") "期初日期" else "实际日期"}（YYYY-MM-DD）", input.date, enabled) { value -> vm.edit { it.copy(date = value) } }
         FundsSubmission(state, enabled, vm)
     }
+}
+
+@Composable
+private fun ExistingDebtField(input: FundsInput, choices: List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto>, enabled: Boolean, vm: FundsViewModel) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    TextButton(onClick = { expanded = true }, enabled = enabled) {
+        Text(if (input.existingDebtId.isBlank()) "接入已记录的欠款（选填）" else "已选：${input.existingDebtLabel} · 重新核对")
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenuItem(text = { Text("没有对应的旧欠款") }, onClick = {
+            vm.edit { it.copy(existingDebtId = "", existingDebtVersion = 0, existingDebtLabel = "") }; expanded = false
+        }, enabled = enabled)
+        choices.forEach { debt -> DropdownMenuItem(text = {
+            Text("${debt.name} · 原余款 ${money(debt.remainingHomeMinor, debt.homeCurrencyCode)}\n期初不早于 ${debt.earliestOpeningDate}")
+        }, onClick = {
+            vm.edit { it.copy(kind = "credit", existingDebtId = debt.publicId, existingDebtVersion = debt.rowVersion,
+                existingDebtLabel = "${debt.name} · 原余款 ${money(debt.remainingHomeMinor, debt.homeCurrencyCode)}") }; expanded = false
+        }, enabled = enabled) }
+    }
+    if (input.existingDebtId.isNotBlank()) Text("保留原欠款和还款历史，由本账户承接，不新增另一笔负债。请按银行或平台记录核对实际币种和期初欠款。接入后的欠款遵循本账户可见范围，之前的购买不能再次计入期初。", style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable

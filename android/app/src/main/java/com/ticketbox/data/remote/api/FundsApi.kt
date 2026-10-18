@@ -19,6 +19,8 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 
 interface FundsApi {
+    @GET("api/funds/accounts/existing-debts/list")
+    suspend fun existingFundDebts(): List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto>
     @GET("api/funds/accounts/templates/list")
     suspend fun fundsAccountChoices(): List<com.ticketbox.data.remote.dto.AccountChoiceDto>
     @POST("api/funds/accounts/{id}/repayments/void")

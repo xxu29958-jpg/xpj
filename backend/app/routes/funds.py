@@ -11,12 +11,14 @@ from app.schemas.funds import (
     AccountPosting,
     CreditPayment,
     CreditPaymentVoid,
+    ExistingDebtChoice,
     ExpenseFundingCommand,
     ExpenseFundingView,
     FinancialAccountView,
     FundsOverview,
 )
 from app.schemas.installment import InstallmentCommand, InstallmentsView
+from app.services.credit_history_adoption import existing_debt_choices
 from app.services.expense_funding_command import expense_funding_view, save_expense_funding
 from app.services.funds_account_choices import ACCOUNT_CHOICES
 from app.services.funds_commands import create_account, edit_account
@@ -35,6 +37,11 @@ expense_router = APIRouter(prefix="/api/expenses", tags=["funds"])
 @router.get("/templates/list", response_model=list[AccountChoice])
 def get_account_choices(auth: AuthContext = Depends(get_current_app_context)):
     return ACCOUNT_CHOICES
+
+
+@router.get("/existing-debts/list", response_model=list[ExistingDebtChoice])
+def get_existing_debts(auth: AuthContext = Depends(get_current_app_context), db: Session = Depends(get_db)):
+    return existing_debt_choices(db, ledger_id=auth.ledger_id, actor_account_id=auth.account_id)
 
 
 @router.get("/{public_id}/installments", response_model=InstallmentsView)

@@ -204,6 +204,7 @@ internal fun DebtGoalRoute(
     onBack: () -> Unit,
     context: DebtGoalRouteContext,
     onOpenRecycleBin: () -> Unit,
+    onOpenCredit: (String) -> Unit = {},
 ) {
     val creationOwner = context.creationOwner
     val originalCreationId = context.originalCreationId
@@ -249,6 +250,7 @@ internal fun DebtGoalRoute(
         DebtDetailHost(
             splitAgreement = screenFactory.debtRepository.splitAgreement,
             openDebtId = openLinkedDebtId,
+            onOpenCredit = onOpenCredit,
             models = routeModels.linked,
             onBack = {
                 linkedDebtId = null
@@ -273,6 +275,7 @@ internal data class DebtRouteContext(
     val onBack: () -> Unit,
     val onOpenSyncStatus: () -> Unit,
     val creationOwner: ViewModelStoreOwner? = null,
+    val onOpenCredit: (String) -> Unit = {},
 )
 
 @Composable
@@ -321,6 +324,7 @@ internal fun DebtRoute(
         DebtDetailHost(
             splitAgreement = screenFactory.debtRepository.splitAgreement,
             openDebtId = openDebtId,
+            onOpenCredit = context.onOpenCredit,
             models = DebtDetailHostModels(detailViewModel, proposalViewModel, repaymentHistoryViewModel),
             onBack = {
                 detailDebtId = null
@@ -373,6 +377,7 @@ private fun DebtDetailHost(
     openDebtId: String,
     models: DebtDetailHostModels,
     onBack: () -> Unit,
+    onOpenCredit: (String) -> Unit,
 ) {
     val detailViewModel = models.detail
     val proposalViewModel = models.proposal
@@ -399,6 +404,7 @@ private fun DebtDetailHost(
             proposalViewModel = proposalViewModel,
             historyViewModel = historyViewModel,
             onBack = returnFromDetail,
+            onOpenCredit = onOpenCredit,
             splitAgreement = splitModel?.let { model -> com.ticketbox.ui.screens.SplitAgreementPanel(model) { id ->
                 if (id != displayedDebtId) relatedTrail = relatedTrail + id
             } },
@@ -425,6 +431,7 @@ internal fun ReceivablesRoute(
     onBack: () -> Unit,
     chromeOverride: RelationsListChrome? = null,
     listRefreshRevision: Int = 0,
+    onOpenCredit: (String) -> Unit = {},
 ) {
     val viewModel: ReceivablesViewModel = viewModel(
         key = ReceivablesViewModelKey,
@@ -456,6 +463,7 @@ internal fun ReceivablesRoute(
                 detailDebtId = null
                 viewModel.refresh()
             },
+            onOpenCredit = onOpenCredit,
         )
     } else {
         ReceivablesScreen(
@@ -477,6 +485,7 @@ internal fun RepaymentDraftRoute(
     focusedDraftPublicId: String? = null,
     onBack: () -> Unit,
     onOpenExpense: (Long) -> Unit,
+    onOpenCredit: (String) -> Unit = {},
 ) {
     val launchFocusedDraftPublicId = remember { focusedDraftPublicId }
     val viewModel: RepaymentDraftInboxViewModel = viewModel(
@@ -500,7 +509,7 @@ internal fun RepaymentDraftRoute(
     var linkedDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val linked = linkedDebtId
     when {
-        linked != null -> RepaymentDraftLinkedDebt(screenFactory, linked) { linkedDebtId = null; viewModel.refresh() }
+        linked != null -> RepaymentDraftLinkedDebt(screenFactory, linked, onOpenCredit) { linkedDebtId = null; viewModel.refresh() }
         state.reviewId != null -> RepaymentReviewScreen(state, viewModel, { linkedDebtId = it }, onOpenExpense)
         else -> RepaymentDraftInboxScreen(viewModel, showHistory, onHistoryChange = { showHistory = it },
             navigation = RepaymentDraftNavigation(onBack, { linkedDebtId = it }, onOpenExpense))
@@ -508,12 +517,12 @@ internal fun RepaymentDraftRoute(
 }
 
 @Composable
-private fun RepaymentDraftLinkedDebt(screenFactory: MainScreenFactory, publicId: String, onBack: () -> Unit) {
+private fun RepaymentDraftLinkedDebt(screenFactory: MainScreenFactory, publicId: String, onOpenCredit: (String) -> Unit, onBack: () -> Unit) {
     val detail: DebtDetailViewModel = viewModel(key = "repayment-capture-debt", factory =
         debtDetailViewModelFactory(screenFactory.debtRepository, screenFactory.debtWriteRepository))
     val proposal: MemberRepaymentProposalViewModel = viewModel(key = "repayment-capture-proposal", factory =
         memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals))
     val history: DebtActivityViewModel = viewModel(key = "repayment-capture-history", factory =
         debtActivityViewModelFactory(screenFactory.debtActivityRepository))
-    DebtDetailHost(screenFactory.debtRepository.splitAgreement, publicId, DebtDetailHostModels(detail, proposal, history), onBack)
+    DebtDetailHost(screenFactory.debtRepository.splitAgreement, publicId, DebtDetailHostModels(detail, proposal, history), onBack, onOpenCredit)
 }

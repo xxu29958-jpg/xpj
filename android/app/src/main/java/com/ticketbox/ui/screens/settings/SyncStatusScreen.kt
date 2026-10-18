@@ -74,6 +74,7 @@ fun SyncStatusScreen(
             onOpenRateSubmission = navigation.onOpenRateSubmission,
             onRepairCorrectionRate = navigation.onRepairCorrectionRate,
             onOpenArrangement = navigation.onOpenArrangement,
+            onOpenFunds = navigation.onOpenFunds,
         )
     }
     SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = navigation.onOpenInbox,
@@ -92,6 +93,7 @@ data class SyncStatusNavigation(
     val onOpenRateSubmission: (Long) -> Unit,
     val onRepairCorrectionRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction,
     val onOpenArrangement: (String) -> Unit = {},
+    val onOpenFunds: () -> Unit = {},
 )
 
 /** Row callbacks grouped to keep the content API small and testable. */
@@ -112,6 +114,7 @@ internal data class SyncStatusActions(
     val onOpenRateSubmission: (Long) -> Unit,
     val onRepairCorrectionRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction,
     val onOpenArrangement: (String) -> Unit = {},
+    val onOpenFunds: () -> Unit = {},
 )
 
 internal data class SyncStatusActionButton(
@@ -204,6 +207,12 @@ private fun SyncStatusPageBody(
     SyncStatusBillSplitSection(state, actions)
     SyncStatusExpenseReviewSection(state, actions)
     SyncStatusUploadSection(state, onOpenInbox)
+    if ((status.conflicts + status.failed).any { it.type == PendingMutationType.FinancialAccountCommand }) {
+        SettingsSection(title = stringResource(R.string.sync_status_mutation_funds_command)) {
+            Text("原账户、金额和提交已保留。进入资金任务核实原结果或重新核对，不会重复记账。")
+            TextButton(onClick = actions.onOpenFunds) { Text("继续原资金任务") }
+        }
+    }
 
     SyncStatusDebtSections(state, actions)
 
@@ -250,7 +259,7 @@ private fun SyncStatusPageBody(
 }
 
 private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CreateExpense, PendingMutationType.CreateBillSplitInvitation, PendingMutationType.AcceptBillSplitInvitation,
-    PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)
+    PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment, PendingMutationType.FinancialAccountCommand)
 
 @Composable
 private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () -> Unit) {
@@ -501,6 +510,7 @@ private val failedCardDangerLabels = mapOf(
 )
 
 internal val syncStatusMutationLabelResources = mapOf(
+    PendingMutationType.FinancialAccountCommand to R.string.sync_status_mutation_funds_command,
     PendingMutationType.UploadScreenshot to R.string.sync_status_mutation_upload_screenshot,
     PendingMutationType.OriginalAttachment to R.string.original_title,
     PendingMutationType.PatchExpense to R.string.sync_status_mutation_patch_expense,
