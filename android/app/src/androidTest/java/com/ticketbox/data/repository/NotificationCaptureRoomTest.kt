@@ -3,8 +3,8 @@ package com.ticketbox.data.repository
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.data.local.AppDatabase
-import com.ticketbox.domain.model.NotificationDraft
-import com.ticketbox.domain.model.NotificationDraftSource
+import com.ticketbox.notification.PaymentNotificationParser
+import com.ticketbox.notification.PaymentNotificationSnapshot
 import com.ticketbox.domain.model.RepaymentDraftSource
 import com.ticketbox.domain.model.RepaymentNotificationDraft
 import com.ticketbox.notification.PaymentNotificationResult
@@ -22,8 +22,10 @@ import org.junit.Test
 class NotificationCaptureRoomTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val fixture = ExpenseCorrectionConnectedFixture(context)
-    private val expense = PaymentNotificationResult.Expense(NotificationDraft(NotificationDraftSource.WeChat,
-        2680, "星巴克", "餐饮", "2026-09-30T08:00:00Z"))
+    private val expense = requireNotNull(PaymentNotificationParser.parse(PaymentNotificationSnapshot(
+        "com.eg.android.AlipayGphone", "交易提醒",
+        "你有一笔37.90元的支出，领1元生活缴费红包。使用花呗支付，确认收货的订单请及时还款。",
+        null, null, 1792213999283)))
     private val repayment = PaymentNotificationResult.Repayment(RepaymentNotificationDraft(RepaymentDraftSource.Alipay,
         50000, "花呗", "2026-09-30T08:00:00Z"))
 
@@ -34,6 +36,8 @@ class NotificationCaptureRoomTest {
         var provider = fixture.notificationDependencies.apiServiceProvider
         val origin = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
         val repository = NotificationCaptureRepository(provider, fixture.outbox)
+        assertTrue(expense is PaymentNotificationResult.Expense)
+        assertEquals(3790L, (expense as PaymentNotificationResult.Expense).draft.amountCents)
         val id = repository.accept(expense, origin, "expense-post").getOrThrow()
         val repaymentId = repository.accept(repayment, origin, "repayment-post").getOrThrow()
         assertNotEquals(id, repaymentId)

@@ -33,7 +33,8 @@ from app.services.debt_service import (
     dismiss_repayment_draft,
     list_repayment_draft_audit_for_account,
 )
-from app.services.debt_service._repayment_draft import REPAYMENT_DRAFT_SOURCE_LABELS, get_repayment_draft_response
+from app.services.debt_service._repayment_capture import REPAYMENT_DRAFT_SOURCE_LABELS
+from app.services.debt_service._repayment_draft import get_repayment_draft_response
 from app.services.debt_service._repayment_time import repayment_calendar
 from app.services.repayment_draft_command_service import confirm_repayment_draft_idempotently
 
@@ -47,7 +48,7 @@ _DRAFT_ERROR_MESSAGES = {
     "debt_overpay_rejected": "本次还款超过欠款剩余，请核对金额与目标。",
     "direct_fact_requires_external": "还款捕获只能记到外部欠款。",
     "direct_fact_requires_manual": "这笔往来需要走成员确认，不能直接记入还款。",
-    "state_conflict": "这条还款捕获或欠款刚被更新过，请刷新后重新确认。",
+    "state_conflict": "还款捕获、来源流水或欠款已变化，请重新核对；来源流水变化时请从原流水重新发起。",
     "idempotency_key_required": "页面凭据缺失，请刷新后重新提交。",
     "idempotency_key_reused": "这个提交编号已用于其他内容，请核对原提交；当前不能认定本次处理成功。",
     "idempotency_key_in_progress": "同一笔确认正在处理中，请稍候刷新查看。",
@@ -59,21 +60,27 @@ REVIEW_FIELDS = (
     "draft_public_id", "ledger_id", "origin_binding", "review_action",
     "target_with_expected_row_version", "original_currency", "original_amount",
 )
-REVIEW_TIME_FIELDS = ("payment_date", "calendar_revision")
+REVIEW_TIME_FIELDS = ("payment_date", "calendar_revision", "reason", "correction_versions")
 
 
-def _initial_review_values(scope, selected_id, public_id, row, can_create, calendar=None, values=None):
-    suggested = next((item for item in row.target_debts if item.public_id == row.suggested_debt_public_id), None) if row else None
+def _initial_review_values(scope, selected_id, public_id, row, can_create, calendar=None, values=None) -> dict[str, str]:
     initial = {
         "draft_public_id": public_id, "ledger_id": selected_id,
         "origin_binding": json.dumps(scope, ensure_ascii=False, sort_keys=True),
-        "review_action": "confirm",
-        "target_with_expected_row_version": f"{suggested.public_id}:{suggested.row_version}" if suggested else "",
-        "original_currency": row.original_currency_code if row else "",
-        "original_amount": _minor_amount_value(row.original_amount_minor, row.original_currency_code) if row else "",
+        "review_action": "confirm", "target_with_expected_row_version": "",
+        "original_currency": "", "original_amount": "",
         "idempotency_key": str(uuid4()) if can_create else "",
         "payment_date": "", "calendar_revision": str(calendar.revision) if calendar else "",
+        "reason": "",
+        "correction_versions": "",
     }
+    if row is not None:
+        suggested = next((item for item in row.target_debts if item.public_id == row.suggested_debt_public_id), None)
+        initial.update(review_action="expense" if row.status == "confirmed" else "confirm",
+            target_with_expected_row_version=f"{suggested.public_id}:{suggested.row_version}" if suggested else "",
+            original_currency=row.original_currency_code,
+            original_amount=_minor_amount_value(row.original_amount_minor, row.original_currency_code),
+            correction_versions=row.correction_versions.model_dump_json() if row.correction_versions else "")
     if values is not None:
         initial.update(values)
         for name in REVIEW_TIME_FIELDS:
@@ -91,7 +98,7 @@ def render_review(request: Request, db: Session, *, options, selected_id: str, p
         rows = list_repayment_draft_audit_for_account(
             db, account_id=account_id, tenant_id=selected_id, public_id=public_id)
         row = rows[0] if rows else None
-        if row and row.status == "pending":
+        if row and (row.status == "pending" or row.correction_versions is not None):
             calendar = repayment_calendar(db, ledger_id=selected_id)
         if row is None:
             read_error = "原采集不在当前账号和账本中。请回到原身份查看。"
@@ -151,6 +158,7 @@ def _review_error(exc):
 
 def submit_review(request: Request, db: Session, *, options, selected_id: str, public_id: str,
                   account_id: int, values: dict[str, str]) -> HTMLResponse:
+    correction = None
     try:
         require_repayment_binding(request, db, values=values, public_id=public_id, target_field="draft_public_id")
         _require_selected_ledger_write(options, selected_id)
@@ -163,9 +171,12 @@ def submit_review(request: Request, db: Session, *, options, selected_id: str, p
                 payload=payload, idempotency_key=values["idempotency_key"].strip() or None)
         elif values["review_action"] == "dismiss":
             receipt = dismiss_repayment_draft(db, tenant_id=selected_id, actor_account_id=account_id, public_id=public_id, commit=True)
+        elif values["review_action"] == "expense":
+            correction = _convert_to_expense(request, db, selected_id, public_id, account_id, values)
+            receipt = get_repayment_draft_response(db, tenant_id=selected_id, actor_account_id=account_id, public_id=public_id)
         else:
-            raise AppError("invalid_request", "请选择记为还款或忽略通知。", status_code=422)
-    except (AppError, ValidationError, SQLAlchemyError) as exc:
+            raise AppError("invalid_request", "请选择消费、还款或忽略通知。", status_code=422)
+    except (AppError, ValidationError, SQLAlchemyError, json.JSONDecodeError) as exc:
         retain_handled_error(request, exc)
         db.rollback()
         return render_review(request, db, options=options, selected_id=selected_id, public_id=public_id,
@@ -173,9 +184,23 @@ def submit_review(request: Request, db: Session, *, options, selected_id: str, p
     ack = {"scope": scope, "clientRef": values["idempotency_key"], "resultPublicId": receipt.public_id,
         "values": {name: values[name] for name in (*REVIEW_FIELDS, *REVIEW_TIME_FIELDS) if name in values},
         "repaymentPublicId": receipt.committed_repayment_public_id, "status": receipt.status}
+    if correction:
+        ack.update(status="converted", expenseId=correction.expense_id, expensePublicId=correction.expense_public_id)
     return render_review(request, db, options=options, selected_id=selected_id, public_id=public_id, account_id=account_id, ack=ack)
 
 
+
+
+def _convert_to_expense(request: Request, db: Session, selected_id: str, public_id: str, account_id: int, values: dict[str, str]):
+    from app.schemas.payment_capture import RepaymentAsExpense
+    from app.services.payment_capture_commands import repayment_as_expense
+
+    auth = getattr(request.state, "web_session_auth", None)
+    if auth is None or auth.account_id != account_id or auth.tenant_id != selected_id:
+        raise AppError("session_binding_changed", "当前身份或账本已变化，请回到原账号和账本处理。", status_code=409)
+    return repayment_as_expense(db, auth=auth, public_id=public_id,
+        payload=RepaymentAsExpense(reason=values.get("reason", ""), correction_versions=json.loads(values.get("correction_versions") or "null")),
+        idempotency_key=values["idempotency_key"])
 
 
 def _error_message(exc: AppError) -> str:
@@ -201,6 +226,8 @@ def _audit_row_view(
 
     view: dict = {
         "public_id": row.public_id,
+        "source_expense_id": row.source_expense_id,
+        "corrected_expense_id": row.corrected_expense_id,
         "source_label": REPAYMENT_DRAFT_SOURCE_LABELS.get(row.source, row.source),
         "merchant": (row.merchant_label or "").strip() or None,
         "amount_label": _home_amount_label(
@@ -210,10 +237,13 @@ def _audit_row_view(
         "conversion_pending": row.status == "pending" and row.amount_cents is None,
         "home_currency_code": row.home_currency_code,
         "captured_label": _day_label(row.captured_at),
-        "status_label": _STATUS_LABELS.get(row.status, _STATUS_LABELS["pending"]),
+        "status_label": "已改为消费" if row.corrected_expense_id else _STATUS_LABELS.get(row.status, _STATUS_LABELS["pending"]),
         "status_tone": _STATUS_TONE.get(row.status, ""),
         "is_pending": row.status == "pending",
+        "can_correct_confirmed": row.correction_versions is not None,
         "committed_debt_public_id": row.committed_debt_public_id,
+        "source_expense_public_id": row.source_expense_public_id,
+        "source_expense_requires_review": row.source_expense_requires_review,
         "resolved_label": _day_label(row.resolved_at),
     }
     if row.status == "confirmed":

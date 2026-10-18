@@ -4,7 +4,7 @@
   const repaymentNames = ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
     "expected_row_version", "amount_major", "paid_at", "paid_at_timezone"];
   const repaymentTimeNames = ["time_precision", "calendar_revision"];
-  const captureTimeNames = ["payment_date", "calendar_revision"];
+  const captureTimeNames = ["payment_date", "calendar_revision", "reason", "correction_versions"];
   const voidNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id"];
   const kindNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "debt_kind"];
   const fieldNames = {repayment:repaymentNames, "debt-void":voidNames, "repayment-void":voidNames,
@@ -401,8 +401,9 @@
 
   function acknowledgesCommand(ack) {
     if (typedCorrection && ack.resultPublicId !== target) return false;
-    if (captureReview) return ack.status === {confirm:"confirmed", dismiss:"dismissed"}[ack.values.review_action] &&
-      (ack.status !== "confirmed" || uuid.test(ack.repaymentPublicId));
+    if (captureReview) return ack.status === {confirm:"confirmed", dismiss:"dismissed", expense:"converted"}[ack.values.review_action] &&
+      (ack.status !== "confirmed" || uuid.test(ack.repaymentPublicId)) &&
+      (ack.status !== "converted" || uuid.test(ack.expensePublicId) && Number.isInteger(ack.expenseId));
     if (kindCorrection) return ack.debtKind === ack.values.debt_kind;
     return true;
   }

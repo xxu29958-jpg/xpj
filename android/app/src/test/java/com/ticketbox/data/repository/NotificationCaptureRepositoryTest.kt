@@ -56,12 +56,19 @@ class NotificationCaptureRepositoryTest {
         assertEquals(0, f.api.calls)
     }
 
-    @Test fun responseLossReplaysOriginalKeysForBothKindsAndDoesNotCreateOrConfirmTwice() = runTest {
+    @Test fun responseLossReplaysOriginalKeysForBothKindsBeforePublishingReceipt() = runTest {
         val f = CaptureFixture()
         f.api.offline = false
         f.api.loseReply = true
         f.accept().getOrThrow()
         f.repository.accept(f.repayment, f.binding, "repayment-delivery").getOrThrow()
+        // A pre-upgrade Room original has neither parser metadata nor candidates.
+        // It must use the same unified identity endpoint without rewriting that intent.
+        val legacy = f.dao.rows.values.first()
+        val oldPayload = requireNotNull(NotificationCaptureWire.payload.fromJson(legacy.payload)).copy(
+            revision = 1, parserVersion = "legacy", candidates = emptyList())
+        f.dao.rows[legacy.id] = legacy.copy(payload = NotificationCaptureWire.payload.toJson(oldPayload)
+            .replace(",\"parserVersion\":\"legacy\"", "").replace(",\"candidates\":[]", ""))
         f.dao.runnableBatches += f.dao.rows.keys.toList()
         f.engine().drainOnce()
         assertEquals(2, f.api.accepted.size)
@@ -76,10 +83,8 @@ class NotificationCaptureRepositoryTest {
         assertEquals(originals, f.dao.rows.values.associate { it.id to (it.payload to it.idempotencyKey) })
         assertEquals(2, f.dao.rows.values.count { it.status == "done" && it.receiptJson != null })
         assertEquals(listOf("expense:pending", "repayment:pending"), f.published)
-        assertEquals("26.80", f.api.repaymentRequests.single().originalAmount)
-        assertEquals("CNY", f.api.repaymentRequests.single().originalCurrency)
-        assertEquals("CNY", f.api.expenseRequests.single().originalCurrency)
-        assertEquals("26.80", f.api.expenseRequests.single().originalAmount)
+        assertEquals(setOf("expense", "repayment"), f.api.requests.map { it.suggestedKind }.toSet())
+        assertTrue(f.api.requests.all { it.originalCurrency == "CNY" && it.originalAmountMinor == 2680L })
     }
 
     @Test fun switchingPrincipalBeforeAcceptanceOrDrainNeverSendsIntoTheNewOwner() = runTest {
@@ -164,7 +169,7 @@ private class CaptureFixture {
         bindingProvider = { provider.currentSession().toOutboxBinding() }, onEnqueued = { scheduledDepths += dao.rows.size })
     fun engine(queue: OutboxRepository = outbox, at: Clock = clock) = OutboxDrainEngine(queue,
         listOf(NotificationCaptureDispatcher(LedgerRequestGuard(provider),
-            { _, result -> published += "expense:${result.status}" }, { _, result -> published += "repayment:${result.status}" })), now = at::millis)
+            { _, result -> published += "expense:${result.status}" }, { _, result -> published += "repayment:${result.status}" }, { _, _ -> published += "review" })), now = at::millis)
 }
 
 private class CaptureResponseProbe : ApiService by FakeApiService(mutableListOf(), 0) {
@@ -173,24 +178,29 @@ private class CaptureResponseProbe : ApiService by FakeApiService(mutableListOf(
     var loseReply = false
     var refusal: Int? = null
     val accepted = linkedSetOf<String>()
-    val expenseRequests = linkedSetOf<NotificationDraftRequestDto>()
-    val repaymentRequests = linkedSetOf<RepaymentDraftCreateRequestDto>()
+    val requests = linkedSetOf<com.ticketbox.data.remote.dto.PaymentCaptureCreateDto>()
     private val expenseApi = FakeApiService(mutableListOf(), 0)
-    override suspend fun createNotificationDraft(request: NotificationDraftRequestDto): com.ticketbox.data.remote.dto.ExpenseDto {
+    override suspend fun capturePayment(request: com.ticketbox.data.remote.dto.PaymentCaptureCreateDto): com.ticketbox.data.remote.dto.PaymentCaptureDto {
         beforeRequest()
-        accepted += "expense:${request.notificationKey}"
-        expenseRequests += request
+        accepted += request.notificationKey
+        requests += request
         if (loseReply) throw IOException("reply lost after commit")
-        return expenseApi.createNotificationDraft(request)
+        return com.ticketbox.data.remote.dto.PaymentCaptureDto("capture-${request.notificationKey}", 1, request.source,
+            request.capturedAt, request.originalCurrency, request.originalAmountMinor, request.merchant, request.suggestedKind,
+            request.parserVersion, request.candidates, 12L.takeIf { request.suggestedKind == "expense" },
+            "8f939f48-e646-4afb-b54f-7bb6b536d9ef".takeIf { request.suggestedKind == "expense" },
+            "draft-original".takeIf { request.suggestedKind == "repayment" })
     }
-    override suspend fun createRepaymentDraft(request: RepaymentDraftCreateRequestDto): RepaymentDraftDto {
-        beforeRequest()
-        accepted += "repayment:${request.notificationKey}"
-        repaymentRequests += request
-        if (loseReply) throw IOException("reply lost after commit")
-        val capturedMinor = requireNotNull(request.originalAmount).toBigDecimal().movePointRight(2).longValueExact()
-        return RepaymentDraftDto("draft-original", request.source, capturedMinor, "CNY", request.merchantLabel,
-            requireNotNull(request.capturedAt), "pending", createdAt = requireNotNull(request.capturedAt))
+    override suspend fun expense(id: Long): com.ticketbox.data.remote.dto.ExpenseDto {
+        val original = requests.single { it.suggestedKind == "expense" }
+        return expenseApi.createNotificationDraft(NotificationDraftRequestDto(source = original.source,
+            originalCurrency = original.originalCurrency, originalAmount = java.math.BigDecimal.valueOf(requireNotNull(original.originalAmountMinor), 2).toPlainString(),
+            merchant = original.merchant, category = null, expenseTime = original.capturedAt, notificationKey = original.notificationKey))
+    }
+    override suspend fun repaymentDraft(publicId: String): RepaymentDraftDto {
+        val original = requests.single { it.suggestedKind == "repayment" }
+        return RepaymentDraftDto(publicId, original.source, original.originalAmountMinor, "CNY", original.merchant,
+            original.capturedAt, "pending", createdAt = original.capturedAt)
     }
 
     private fun beforeRequest() {

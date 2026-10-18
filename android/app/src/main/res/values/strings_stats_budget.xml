@@ -958,8 +958,8 @@
 
     <!-- ADR-0049 §杠杆③ (slice 3a)：NLS 还款捕获复核箱 -->
     <string name="repayment_draft_topbar_back">返回</string>
-    <string name="repayment_draft_topbar_title">还款采集</string>
-    <string name="repayment_draft_intro_body">手机采集的还款信息，核对后才记账。</string>
+    <string name="repayment_draft_topbar_title">支付通知核对</string>
+    <string name="repayment_draft_intro_body">先核对待确认的支付通知，再记为消费或还款。</string>
     <string name="repayment_draft_captured_at">捕获于 %1$s</string>
     <string name="repayment_draft_confirm">对应欠款</string>
     <string name="repayment_draft_dismiss">忽略</string>
@@ -977,6 +977,9 @@
     <string name="repayment_draft_error_title">还款采集暂时打不开</string>
     <string name="repayment_draft_debts_load_failed">欠款列表没能加载，请下拉刷新后再确认还款。</string>
     <string name="repayment_draft_confirm_done">已记入这笔还款。</string>
+    <string name="repayment_review_source_reversal">确认还款时会同时冲正来源流水的消费金额；原流水、原件和历史继续保留。忽略不会改变原流水。</string>
+    <string name="repayment_review_source_refresh">还款已确认，正在同步原流水的冲正结果。重试不会重复记账。</string>
+    <string name="repayment_review_source_recheck">这份旧草稿未保留原流水的复核版本。请回到原流水重新选择“作为还款处理”，或忽略这份草稿。</string>
     <string name="repayment_draft_confirm_failed">这笔还款没有记成功。</string>
     <string name="repayment_draft_dismiss_done">已忽略这条还款。</string>
     <string name="repayment_draft_dismiss_failed">操作失败，请稍后再试。</string>

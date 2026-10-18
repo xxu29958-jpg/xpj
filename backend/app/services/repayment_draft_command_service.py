@@ -8,8 +8,10 @@ semantics.
 
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models import ApiIdempotencyKey
 from app.schemas import RepaymentDraftConfirmRequest, RepaymentDraftResponse
 from app.services.debt_service import (
     confirm_repayment_draft,
@@ -41,7 +43,7 @@ def confirm_repayment_draft_idempotently(
     payload: RepaymentDraftConfirmRequest,
     idempotency_key: str | None,
 ) -> RepaymentDraftResponse:
-    """Confirm one draft exactly once and return its canonical current state."""
+    """Confirm once; replay the accepted receipt even after a later correction."""
 
     claim = claim_idempotent_request(
         db,
@@ -61,6 +63,11 @@ def confirm_repayment_draft_idempotently(
         expected_row_version=payload.expected_row_version,
     )
     if claim is None:
+        receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.tenant_id == tenant_id,
+            ApiIdempotencyKey.idempotency_key == idempotency_key))
+        if receipt.response_body is not None:
+            return RepaymentDraftResponse.model_validate(receipt.response_body)
+        # Old successful claims predate response snapshots. Keep their historical reader.
         return get_repayment_draft_response(
             db,
             tenant_id=tenant_id,
@@ -81,11 +88,13 @@ def confirm_repayment_draft_idempotently(
         time_input=payload.time_input,
         commit=False,
     )
+    result = repayment_draft_response(draft)
     mark_idempotency_succeeded(
         db,
         claim,
         resource_type=_DRAFT_TARGET_TYPE,
         resource_id=draft.public_id,
+        response_body=result.model_dump(mode="json"),
     )
     db.commit()
-    return repayment_draft_response(draft)
+    return result

@@ -30,15 +30,21 @@
   <span class="product-amount-label">{{ row.source_label }} · 采集于 {{ row.captured_label }}</span>
   <strong>{{ row.merchant or '还款通知' }} · 原金额 {{ row.currency_code }} {{ row.amount_label }}</strong>
   <span class="product-status">{{ row.status_label }}</span>
+  {% if row.corrected_expense_id %}<a href="/web/expenses/{{ row.corrected_expense_id }}/edit?ledger_id={{ selected_ledger_id }}">打开更正后的消费，继续核对</a>{% endif %}
   {% if row.conversion_pending %}<p class="product-amount-meta">确认时按核对后的还款日期换算为 {{ row.home_currency_code }}；未更改日期时沿用原采集时间。</p>{% endif %}
   {% if row.provenance %}<p class="product-amount-meta">{{ row.provenance }}。请核对后选择。</p>{% endif %}
+  {% if row.is_pending and row.source_expense_public_id %}
+  <p class="product-amount-meta">{% if row.source_expense_requires_review %}这份旧草稿未保留原流水的复核版本。请回到原流水重新选择“作为还款处理”，或忽略这份草稿。{% else %}确认还款时会同时冲正来源流水的消费金额；原流水、原件和历史继续保留。忽略不会改变原流水。{% endif %}</p>
+  {% if row.source_expense_id %}<a href="/web/expenses/{{ row.source_expense_id }}/edit?ledger_id={{ selected_ledger_id }}">查看来源流水</a>{% endif %}
+  {% endif %}
   {% if row.resolved_label %}<p class="product-amount-meta">处理日期：{{ row.resolved_label }}</p>{% endif %}
   {% if row.committed_debt_public_id %}<a class="product-page-summary" href="/web/debts/{{ row.committed_debt_public_id }}?ledger_id={{ selected_ledger_id }}">{{ row.linked_line }} · 查看还款事实</a>{% endif %}
 </section>
 {% endif %}
 {% if not can_write %}<p class="product-feedback product-section">当前角色只可查看；原输入保留，处理需要写权限。</p>{% endif %}
 <div class="product-section">
-  {% if review.ack %}<p class="product-feedback" role="status" data-repayment-ack="{{ review.ack | tojson | forceescape }}">{{ '原确认已接受，已记入一笔还款。' if review.ack.status == 'confirmed' else '原忽略已完成，没有新增还款。' }}<span data-repayment-ack-status></span></p>{% endif %}
+  {% if review.ack %}<p class="product-feedback" role="status" data-repayment-ack="{{ review.ack | tojson | forceescape }}">{{ '原确认已接受，已记入一笔还款。' if review.ack.status == 'confirmed' else ('已改为消费；原错误还款已撤销或草稿已关闭，采集和原因继续保留。' if review.ack.status == 'converted' else '原忽略已完成，没有新增还款。') }}<span data-repayment-ack-status></span></p>
+  {% if review.ack.status == 'converted' %}<a class="product-button product-button--primary" href="/web/expenses/{{ review.ack.expenseId }}/edit?ledger_id={{ selected_ledger_id }}">打开消费，继续核对</a>{% endif %}{% endif %}
   {% if review.ack and review.ack.status == 'confirmed' %}<section class="product-surface" aria-label="原提交">
     <span class="product-amount-label">原提交金额 · {{ review.ack['values']['original_currency'] }}</span>
     <output class="product-amount">{{ review.ack['values']['original_amount'] }}</output>
@@ -53,10 +59,12 @@
           data-repayment-can-recover="{{ 'true' if review.can_recover else 'false' }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       {% for name in ['draft_public_id', 'ledger_id', 'origin_binding', 'idempotency_key'] %}<input type="hidden" name="{{ name }}" value="{{ review['values'][name] }}">{% endfor %}
+      <input type="hidden" name="correction_versions" value="{{ review['values'].get('correction_versions', '') }}">
+      {% if row and row.can_correct_confirmed %}<p class="product-feedback" role="note">更正会撤销这笔还款的抵债效果，恢复相应欠款。若原消费曾因此冲正，将恢复原消费；否则生成消费待核对。原事实和更正原因保留，错误还款不再用于推荐。</p>{% endif %}
       <input type="hidden" name="calendar_revision" value="{{ review['values'].get('calendar_revision', '') }}"{% if 'calendar_revision' not in review['values'] %} disabled{% endif %}>
       {% if review.error %}<p class="product-feedback product-feedback--danger" role="alert">{{ review.error }}</p>{% endif %}
       <p data-repayment-status role="status" hidden></p>
-      <div class="product-surface">
+      <div class="product-surface"{% if row and row.can_correct_confirmed %} hidden{% endif %}>
         <label class="product-amount-label" for="review-amount" id="review-amount-label">本次还款金额</label>
         <input class="product-amount" id="review-amount" name="original_amount" inputmode="decimal" value="{{ review['values']['original_amount'] }}" autocomplete="off">
         <output class="product-amount" data-repayment-original-amount aria-labelledby="review-amount-label" hidden></output>
@@ -65,10 +73,11 @@
         <div class="product-field">
           <label for="review-action">处理方式</label>
           <select class="product-input" name="review_action" id="review-action">
-            {% for value, label in [('confirm', '记为还款'), ('dismiss', '忽略这条通知，不记账')] %}<option value="{{ value }}"{% if review['values']['review_action'] == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            {% if row and row.can_correct_confirmed and review['values']['review_action'] != 'expense' %}<option value="{{ review['values']['review_action'] }}" selected>核实原提交的结果</option>{% endif %}
+            {% for value, label in ([('expense', '撤销错误还款，按消费核对')] if row and row.can_correct_confirmed else [('confirm', '记为还款'), ('expense', '这笔其实是消费，转为消费待核对'), ('dismiss', '忽略这条通知，不记账')]) %}<option value="{{ value }}"{% if review['values']['review_action'] == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
           </select>
         </div>
-        <div class="product-field">
+        <div class="product-field"{% if row and row.can_correct_confirmed %} hidden{% endif %}>
           <label for="review-target">对应欠款</label>
           <select class="product-input" name="target_with_expected_row_version" id="review-target">
             <option value="">请选择欠款</option>
@@ -82,20 +91,21 @@
           </select>
           <p class="hint" data-repayment-target-description hidden></p>
         </div>
-        <div class="product-field">
+        <div class="product-field"{% if row and row.can_correct_confirmed %} hidden{% endif %}>
           <label for="review-currency">本次还款币种</label>
           <select class="product-input" name="original_currency" id="review-currency">
             {% for code in currencies %}<option value="{{ code }}"{% if review['values']['original_currency'] == code %} selected{% endif %}>{{ code }}</option>{% endfor %}
             {% if review['values']['original_currency'] not in currencies %}<option value="{{ review['values']['original_currency'] }}" selected>原币种：{{ review['values']['original_currency'] }}</option>{% endif %}
           </select>
         </div>
-        <div class="product-field">
+        <div class="product-field"{% if row and row.can_correct_confirmed %} hidden{% endif %}>
           <label for="review-date">更正还款日期（可选）</label>
           <input class="product-input" id="review-date" name="payment_date" type="date" value="{{ review['values'].get('payment_date', '') }}" aria-describedby="review-date-help"{% if 'payment_date' not in review['values'] %} disabled{% endif %}>
           <p class="hint" id="review-date-help">留空沿用原采集时间；更正只记录这一天，不推测具体时刻。采集原值保持不变。</p>
         </div>
       </div>
-      <p class="hint">忽略通知时无需选择欠款。输入保存在此浏览器，提交后会沿用同一份金额、选择和版本核实结果。</p>
+      <div class="product-field"><label for="review-reason">更正原因（转为消费时填写）</label><input class="product-input" id="review-reason" name="reason" value="{{ review['values'].get('reason', '') }}" maxlength="255"></div>
+      {% if row and row.can_correct_confirmed %}<p class="hint">金额和来源沿用原记录；更正成功后打开消费继续核对。输入保存在此浏览器。</p>{% else %}<p class="hint">转为消费会关闭这份还款草稿，保留原采集与原因；在消费草稿里继续核对金额和商家，不直接记账。转为消费或忽略通知时无需选择欠款。输入保存在此浏览器，提交后沿用原提交核实结果。</p>{% endif %}
       {% if row and row.is_pending and not row.targets %}<p>当前账本没有可对应的欠款。<a href="/web/debts?ledger_id={{ selected_ledger_id }}">去「欠款」建一笔</a>，或忽略这条通知。</p>{% endif %}
       <div data-void-rejection-review{% if not review.rejected %} hidden{% endif %}>
         <p>这次处理没有接受。先核对当前记录，再结束这份原提交并重新填写。</p>

@@ -61,6 +61,7 @@ from app.routes import (
     monthly_arrangements,
     owner_console,
     owner_ledgers,
+    payment_captures,
     recurring,
     recycle_bin,
     repayment_drafts,
@@ -107,6 +108,7 @@ from app.routes import (
     web_merchants,
     web_monthly_arrangement,
     web_originals,
+    web_payment_captures,
     web_pending,
     web_receivables,
     web_recurring,
@@ -376,6 +378,7 @@ app.include_router(debts.router)
 app.include_router(debt_bills.router)
 app.include_router(debt_split_changes.router)
 app.include_router(repayment_drafts.router)
+app.include_router(payment_captures.router)
 app.include_router(dashboard.router)
 app.include_router(rules.router)
 app.include_router(saved_views.router)
@@ -438,6 +441,7 @@ app.include_router(web_split_agreement.router)
 app.include_router(web_debt_goals.router)
 app.include_router(web_debt_goal_entry.router)
 app.include_router(web_repayment_drafts.router)
+app.include_router(web_payment_captures.router)
 app.include_router(web_recycle_bin.router)
 app.include_router(web_receivables.router)
 app.include_router(web_categories.router)

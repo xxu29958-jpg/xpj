@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RepaymentReviewActions
+import com.ticketbox.data.repository.RepaymentReviewChange
 import com.ticketbox.data.repository.RepaymentReviewState
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.UiText
@@ -66,15 +67,15 @@ internal class RepaymentReviewEditor(private val reviews: RepaymentReviewActions
     fun updateReviewMoney(currency: String, amount: String) {
         val input = context.state.value.review.input ?: return
         context.state.update { it.copy(review = it.review.copy(input = input.copy(currency = currency, amountText = amount))) }
-        reviewAction { binding, publicId -> reviews.money(binding, publicId, currency, amount) }
+        reviewAction { binding, publicId -> reviews.edit(binding, publicId, RepaymentReviewChange.Money(currency, amount)) }
     }
 
-    fun selectReviewDebt(debt: Debt) = reviewAction { binding, publicId -> reviews.select(binding, publicId, debt) }
+    fun selectReviewDebt(debt: Debt) = reviewAction { binding, publicId -> reviews.edit(binding, publicId, RepaymentReviewChange.TargetDebt(debt)) }
 
     fun updateReviewDate(value: String) {
         val input = context.state.value.review.input ?: return
         context.state.update { it.copy(review = it.review.copy(input = input.copy(paymentDate = value))) }
-        reviewAction { binding, publicId -> reviews.date(binding, publicId, value) }
+        reviewAction { binding, publicId -> reviews.edit(binding, publicId, RepaymentReviewChange.Date(value)) }
     }
 
     fun submitReview() {

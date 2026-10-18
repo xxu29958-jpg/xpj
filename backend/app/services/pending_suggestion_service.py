@@ -19,7 +19,6 @@ from app.services._json_types import JsonObject
 from app.services.learning_service import (
     DecisionDraft,
     EventDraft,
-    active_decision_for_subject,
     compute_category_suggestion,
     record_decision,
     record_event,
@@ -35,6 +34,7 @@ from app.services.learning_service._algorithm_registry import (
 from app.services.learning_service._algorithm_registry import (
     get as get_algorithm_type,
 )
+from app.services.learning_service._source_eligibility import decision_context
 
 DecisionPayload: TypeAlias = JsonObject
 
@@ -65,37 +65,37 @@ class PendingSuggestions:
 
 
 def suggestions_for_pending_expense(
-    db: Session, *, tenant_id: str, expense: Expense
+    db: Session, *, tenant_id: str, expense: Expense, actor_account_id: int | None = None
 ) -> PendingSuggestions:
     if expense.status != "pending":
         return PendingSuggestions()
     return PendingSuggestions(
-        category_suggestion=_category_suggestion(db, tenant_id=tenant_id, expense=expense),
-        duplicate_candidates=_duplicate_candidates(db, tenant_id=tenant_id, expense=expense),
+        category_suggestion=_category_suggestion(db, tenant_id=tenant_id, expense=expense, actor_account_id=actor_account_id),
+        duplicate_candidates=_duplicate_candidates(db, tenant_id=tenant_id, expense=expense, actor_account_id=actor_account_id),
     )
 
 
-def record_category_choice(db: Session, *, expense: Expense, previous_category: str | None, previous_merchant: str | None) -> None:
+def record_category_choice(db: Session, *, expense: Expense, previous_category: str | None, previous_merchant: str | None, actor_account_id: int | None = None) -> None:
     """Remember an explicit category edit in the same successful financial transaction."""
     if expense.category == previous_category or expense.merchant != previous_merchant:
         return
-    decision = active_decision_for_subject(db, tenant_id=expense.tenant_id,
-        decision_type=CATEGORY_SUGGESTION.decision_type, subject_kind="expense", subject_id=expense.id)
+    decision = _active_decision(db, tenant_id=expense.tenant_id,
+        decision_type=CATEGORY_SUGGESTION.decision_type, expense_id=expense.id, actor_account_id=actor_account_id)
     if decision is not None:
         payload = _loads(decision.output_payload)
         if payload.get("merchant", expense.merchant) != expense.merchant:
             return
         record_pending_suggestion_event(db, tenant_id=expense.tenant_id, expense_id=expense.id,
-            decision_public_id=decision.public_id, actor_account_id=None,
-            event_type="accept" if payload.get("category") == expense.category else "reject")
+            decision_public_id=decision.public_id, actor_account_id=actor_account_id,
+            event_type="accept" if payload.get("category") == expense.category else "reject", source_category_before=previous_category)
 
 
-def record_duplicate_choice(db: Session, *, expense: Expense) -> None:
+def record_duplicate_choice(db: Session, *, expense: Expense, actor_account_id: int | None = None) -> None:
     """A successful 'keep both' command also teaches the existing duplicate scorer."""
-    suggestions = _duplicate_candidates(db, tenant_id=expense.tenant_id, expense=expense)
+    suggestions = _duplicate_candidates(db, tenant_id=expense.tenant_id, expense=expense, actor_account_id=actor_account_id)
     for suggestion in suggestions:
         record_pending_suggestion_event(db, tenant_id=expense.tenant_id, expense_id=expense.id,
-            decision_public_id=suggestion.decision_public_id, event_type="reject", actor_account_id=None)
+            decision_public_id=suggestion.decision_public_id, event_type="reject", actor_account_id=actor_account_id)
 
 
 def record_pending_suggestion_event(
@@ -106,6 +106,7 @@ def record_pending_suggestion_event(
     decision_public_id: str,
     event_type: str,
     actor_account_id: int | None,
+    source_category_before: str | None = None,
 ) -> None:
     if event_type not in {"accept", "reject"}:
         raise ValueError("unsupported pending suggestion event")
@@ -120,13 +121,27 @@ def record_pending_suggestion_event(
     )
     if decision is None:
         raise ValueError("pending suggestion decision does not exist")
+    expense = db.scalar(select(Expense).where(Expense.tenant_id == tenant_id, Expense.id == expense_id))
+    if expense is None:
+        raise ValueError("pending suggestion source does not exist")
+    payload = _loads(decision.output_payload)
+    context = decision_context(expense, decision.decision_type, actor_account_id)
+    if source_category_before is not None:
+        context["category"] = source_category_before
+    if (context not in (payload.get("_decision_context"), payload.get("_resolved_context"))
+            or decision.status == "superseded"):
+        # A financial edit is still valid if its old advice became stale. Do not
+        # learn from that old advice; explicit feedback must reload its source.
+        if source_category_before is not None:
+            return
+        raise ValueError("建议依据已变化，请重新打开当前账目核对")
     if _already_recorded_event(
         db,
         tenant_id=tenant_id,
         decision_id=decision.id,
         subject_kind="expense",
         subject_id=expense_id,
-        event_type=event_type,
+        event_type=event_type, actor_account_id=actor_account_id,
     ):
         return
 
@@ -147,6 +162,7 @@ def record_pending_suggestion_event(
             signal_marker=marker,
         ),
     )
+    decision.output_payload = json.dumps({**payload, "_resolved_context": decision_context(expense, decision.decision_type, actor_account_id)}, ensure_ascii=False, sort_keys=True)
     # Close the decision row to match the user's verdict. accept ->
     # 'accepted' (longer retention — positive signal worth keeping
     # for the next algorithm to learn from); reject -> 'dismissed'
@@ -177,6 +193,7 @@ def _already_recorded_event(
     subject_kind: str,
     subject_id: int,
     event_type: str,
+    actor_account_id: int | None,
 ) -> bool:
     existing_id = db.scalar(
         select(LedgerLearningEvent.id)
@@ -185,19 +202,20 @@ def _already_recorded_event(
         .where(LedgerLearningEvent.subject_kind == subject_kind)
         .where(LedgerLearningEvent.subject_id == subject_id)
         .where(LedgerLearningEvent.event_type == event_type)
+        .where(LedgerLearningEvent.actor_account_id == actor_account_id)
         .limit(1)
     )
     return existing_id is not None
 
 
 def _category_suggestion(
-    db: Session, *, tenant_id: str, expense: Expense
+    db: Session, *, tenant_id: str, expense: Expense, actor_account_id: int | None = None
 ) -> PendingCategorySuggestion | None:
     suggestion = compute_category_suggestion(
         db,
         tenant_id=tenant_id,
         merchant=expense.merchant,
-        expense_id=expense.id,
+        expense_id=expense.id, actor_account_id=actor_account_id,
     )
     if suggestion is None:
         return None
@@ -215,7 +233,7 @@ def _category_suggestion(
         decision_type=CATEGORY_SUGGESTION.decision_type,
         algorithm_version=suggestion.algorithm_version,
         payload=payload,
-        score=suggestion.score,
+        score=suggestion.score, actor_account_id=actor_account_id,
     )
     if decision is None:
         return None
@@ -229,7 +247,7 @@ def _category_suggestion(
 
 
 def _duplicate_candidates(
-    db: Session, *, tenant_id: str, expense: Expense
+    db: Session, *, tenant_id: str, expense: Expense, actor_account_id: int | None = None
 ) -> list[PendingDuplicateCandidate]:
     if expense.duplicate_of_id is None:
         return []
@@ -242,7 +260,7 @@ def _duplicate_candidates(
     if candidate is None:
         return []
     scored = score_duplicate_candidates(
-        db, tenant_id=tenant_id, expense=expense, candidates=[candidate]
+        db, tenant_id=tenant_id, expense=expense, candidates=[candidate], actor_account_id=actor_account_id
     )
     results: list[PendingDuplicateCandidate] = []
     for item in scored:
@@ -263,7 +281,7 @@ def _duplicate_candidates(
             decision_type=DUPLICATE_CANDIDATE.decision_type,
             algorithm_version=item.algorithm_version,
             payload=payload,
-            score=item.score,
+            score=item.score, actor_account_id=actor_account_id,
         )
         if decision is None:
             continue
@@ -280,6 +298,14 @@ def _duplicate_candidates(
     return results
 
 
+def _active_decision(db, *, tenant_id, decision_type, expense_id, actor_account_id):
+    rows = db.scalars(select(AlgorithmDecision).where(AlgorithmDecision.tenant_id == tenant_id,
+        AlgorithmDecision.subject_kind == "expense", AlgorithmDecision.subject_id == expense_id,
+        AlgorithmDecision.decision_type == decision_type, AlgorithmDecision.status == "active")
+        .order_by(AlgorithmDecision.id.desc()))
+    return next((row for row in rows if _loads(row.output_payload).get("_decision_context", {}).get("actor_account_id") == actor_account_id), None)
+
+
 def _ensure_decision(
     db: Session,
     *,
@@ -289,7 +315,9 @@ def _ensure_decision(
     algorithm_version: str,
     payload: DecisionPayload,
     score: float | None,
+    actor_account_id: int | None,
 ) -> AlgorithmDecision | None:
+    payload = {**payload, "_decision_context": decision_context(expense, decision_type, actor_account_id)}
     closed = db.scalars(select(AlgorithmDecision).where(
         AlgorithmDecision.tenant_id == tenant_id, AlgorithmDecision.subject_kind == "expense",
         AlgorithmDecision.subject_id == expense.id, AlgorithmDecision.decision_type == decision_type,
@@ -299,17 +327,10 @@ def _ensure_decision(
     marker = build_feedback_marker(decision_type, payload)
     for row in closed:
         previous = _loads(row.output_payload)
-        if build_feedback_marker(decision_type, previous) == marker and (
-            decision_type != CATEGORY_SUGGESTION.decision_type or previous.get("merchant", expense.merchant) == expense.merchant
-        ):
+        if build_feedback_marker(decision_type, previous) == marker and previous.get("_resolved_context", previous.get("_decision_context")) == payload["_decision_context"]:
             return None
-    existing = active_decision_for_subject(
-        db,
-        tenant_id=tenant_id,
-        decision_type=decision_type,
-        subject_kind="expense",
-        subject_id=expense.id,
-    )
+    existing = _active_decision(db, tenant_id=tenant_id, decision_type=decision_type,
+        expense_id=expense.id, actor_account_id=actor_account_id)
     if (
         existing is not None
         and existing.algorithm_version == algorithm_version

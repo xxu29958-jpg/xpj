@@ -271,6 +271,8 @@ def _run_consumers(args, native, fixture):
 def _native_failure(native, pairing_code):
     try:
         native.capture("failure", redact=pairing_code)
+        crash = native.adb("logcat", "-b", "crash", "-d")
+        (native.evidence / "android-crash.txt").write_text(crash.replace(pairing_code, "[redacted]") if pairing_code else crash, encoding="utf-8")
     except (AssertionError, RuntimeError, OSError, ValueError, ET.ParseError, subprocess.SubprocessError):
         print("Native failure capture was unavailable")
 

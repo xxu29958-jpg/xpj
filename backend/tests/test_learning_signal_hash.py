@@ -22,6 +22,7 @@ from app.services.learning_service import (
 from app.services.learning_service._duplicate_scoring import (
     _has_recent_reject,
 )
+from tests._infra.identity import seeded_owner_account_id
 
 
 def _seed_confirmed(category: str, *, merchant: str = "麦当劳") -> int:
@@ -70,6 +71,7 @@ def test_record_event_populates_signal_columns(*, identity) -> None:
                 subject_id=42,
                 signal_type=CATEGORY_SUGGESTION.decision_type,
                 signal_marker=marker,
+                actor_account_id=seeded_owner_account_id(),
             ),
         )
         db.commit()
@@ -88,6 +90,7 @@ def test_event_without_marker_keeps_signal_columns_null(*, identity) -> None:
                 event_type="manual_override",
                 subject_kind="expense",
                 subject_id=1,
+                actor_account_id=seeded_owner_account_id(),
             ),
         )
         db.commit()
@@ -101,27 +104,27 @@ def test_category_reject_via_signal_hash_suppresses_suggestion(
     *, identity,
 ) -> None:
     # Build the merchant→category history first.
-    for _ in range(4):
-        _seed_confirmed("餐饮", merchant="老乡鸡")
+    history_ids = [_seed_confirmed("餐饮", merchant="老乡鸡") for _ in range(4)]
 
     marker = build_feedback_marker(
         CATEGORY_SUGGESTION.decision_type, {"category": "餐饮"}
     )
 
     with SessionLocal() as db:
-        for _ in range(2):
+        for subject_id in history_ids[:2]:
             record_event(
                 db,
                 EventDraft(
                     tenant_id="owner",
                     event_type="reject",
                     subject_kind="expense",
-                    subject_id=1,
+                    subject_id=subject_id,
                     signal_type=CATEGORY_SUGGESTION.decision_type,
                     signal_marker=marker,
                     # Intentionally leave before_payload empty so the
                     # legacy LIKE fallback cannot save the test — the
                     # signal_hash path has to do the work.
+                    actor_account_id=seeded_owner_account_id(),
                 ),
             )
         db.commit()
@@ -131,15 +134,17 @@ def test_category_reject_via_signal_hash_suppresses_suggestion(
             tenant_id="owner",
             merchant="老乡鸡",
             reject_threshold=2,
+            actor_account_id=seeded_owner_account_id(),
         )
         # Two indexed rejects → suppressed.
         assert result is None
 
 
 def test_duplicate_reject_via_signal_hash(*, identity) -> None:
+    source_id = _seed_confirmed("餐饮", merchant="Cafe")
     marker = build_feedback_marker(
         DUPLICATE_CANDIDATE.decision_type,
-        {"amount_cents": 2000, "merchant": "cafe"},
+        {"amount_cents": 1000, "merchant": "cafe"},
     )
     with SessionLocal() as db:
         record_event(
@@ -148,9 +153,10 @@ def test_duplicate_reject_via_signal_hash(*, identity) -> None:
                 tenant_id="owner",
                 event_type="reject",
                 subject_kind="expense",
-                subject_id=10,
+                subject_id=source_id,
                 signal_type=DUPLICATE_CANDIDATE.decision_type,
                 signal_marker=marker,
+                actor_account_id=seeded_owner_account_id(),
             ),
         )
         db.commit()
@@ -163,8 +169,9 @@ def test_duplicate_reject_via_signal_hash(*, identity) -> None:
                 db,
                 tenant_id="owner",
                 merchant="cafe",
-                amount_cents=2000,
+                amount_cents=1000,
                 horizon_days=90,
+                actor_account_id=seeded_owner_account_id(),
             )
             is True
         )
@@ -173,8 +180,9 @@ def test_duplicate_reject_via_signal_hash(*, identity) -> None:
                 db,
                 tenant_id="owner",
                 merchant="other",
-                amount_cents=2000,
+                amount_cents=1000,
                 horizon_days=90,
+                actor_account_id=seeded_owner_account_id(),
             )
             is False
         )
@@ -212,6 +220,7 @@ def test_legacy_rows_with_null_signal_hash_no_longer_counted(
             tenant_id="owner",
             merchant="legacy_path",
             reject_threshold=2,
+            actor_account_id=seeded_owner_account_id(),
         )
         # Pre-backfill legacy rows are NOT picked up anymore; the
         # suggestion fires normally.
@@ -220,7 +229,7 @@ def test_legacy_rows_with_null_signal_hash_no_longer_counted(
 
 
 @pytest.mark.real_db
-def test_backfilled_row_via_signal_hash_suppresses_suggestion(
+def test_backfilled_marker_without_source_context_stays_reviewable(
     *, identity,
 ) -> None:
     """After the backfill migration runs, rows that used to live with
@@ -257,5 +266,6 @@ def test_backfilled_row_via_signal_hash_suppresses_suggestion(
             tenant_id="owner",
             merchant="backfilled_path",
             reject_threshold=2,
+            actor_account_id=seeded_owner_account_id(),
         )
-        assert result is None
+        assert result is not None  # A marker backfill cannot invent source or actor evidence.

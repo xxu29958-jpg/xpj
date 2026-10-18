@@ -50,7 +50,7 @@ import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 
 @Composable
 internal fun RepaymentReviewScreen(state: RepaymentDraftInboxUiState, model: RepaymentDraftInboxViewModel,
-    onOpenDebt: (String) -> Unit) {
+    onOpenDebt: (String) -> Unit, onOpenExpense: (Long) -> Unit) {
     BackHandler { model.reviewEditor.closeReview() }
     var choosingDebt by rememberSaveable { mutableStateOf(false) }
     AppSecondaryScrollableContent(chrome = AppSecondaryPageChrome(role = AppPageRole.Stats,
@@ -72,7 +72,16 @@ internal fun RepaymentReviewScreen(state: RepaymentDraftInboxUiState, model: Rep
                     Text(stringResource(R.string.repayment_review_unsubmitted_history), style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                RepaymentDraftResolved(capture) { capture.committedDebtPublicId?.let(onOpenDebt) }
+                if (capture.correctionVersions != null && capture.correctedExpenseId == null) {
+                    RepaymentAsExpenseAction(state.canModify && !state.isLoading && !state.review.bindingChanged,
+                        model::correctAsExpense, confirmed = true)
+                }
+                if (capture.correctedExpenseId != null) {
+                    Text(stringResource(R.string.payment_capture_corrected))
+                    TextButton(onClick = { onOpenExpense(capture.correctedExpenseId) }) {
+                        Text(stringResource(R.string.payment_capture_open_expense))
+                    }
+                } else RepaymentDraftResolved(capture) { capture.committedDebtPublicId?.let(onOpenDebt) }
             }
         }
     }
@@ -99,6 +108,10 @@ private fun RepaymentReviewSource(capture: RepaymentDraft) {
             }
             Text(stringResource(R.string.repayment_draft_captured_at, capture.capturedAt.take(10)),
                 style = MaterialTheme.typography.bodySmall, color = muted)
+            if (capture.isPending && capture.sourceExpensePublicId != null) {
+                Text(stringResource(if (capture.sourceExpenseRequiresReview) R.string.repayment_review_source_recheck
+                    else R.string.repayment_review_source_reversal), style = MaterialTheme.typography.bodySmall, color = muted)
+            }
         }
     }
 }
@@ -111,6 +124,7 @@ private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: Repa
     val editable = unsubmitted && !state.review.bindingChanged && state.canModify && state.pendingActionDraftId == null
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+        if (unsubmitted) RepaymentAsExpenseAction(editable, model::correctAsExpense)
         RepaymentReviewMoney(input.currency, input.amountText, editable, model.reviewEditor::updateReviewMoney)
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
             if (editable) {
@@ -134,6 +148,25 @@ private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: Repa
             }
         }
     }
+}
+
+@Composable
+private fun RepaymentAsExpenseAction(enabled: Boolean, onSubmit: (String) -> Unit, confirmed: Boolean = false) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    var reason by rememberSaveable { mutableStateOf("") }
+    TextButton(onClick = { open = true }, enabled = enabled) { Text(stringResource(R.string.payment_capture_as_expense)) }
+    if (open) AlertDialog(onDismissRequest = { open = false },
+        title = { Text(stringResource(R.string.payment_capture_as_expense)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
+                Text(stringResource(if (confirmed) R.string.payment_capture_confirmed_correction_explanation else R.string.payment_capture_correction_explanation))
+                com.ticketbox.ui.components.AppTextInput(com.ticketbox.ui.components.AppTextInputState(
+                    stringResource(R.string.payment_capture_reason), reason),
+                    com.ticketbox.ui.components.AppTextInputActions({ reason = it }))
+            }
+        }, confirmButton = { TextButton(onClick = { onSubmit(reason); open = false }, enabled = reason.isNotBlank()) {
+            Text(stringResource(R.string.payment_capture_create_expense))
+        } }, dismissButton = { TextButton(onClick = { open = false }) { Text(stringResource(android.R.string.cancel)) } })
 }
 
 /** Which debt this repayment goes to: the choice and the way to change it sit on one line. */
@@ -164,7 +197,8 @@ private fun RepaymentReviewActions(state: RepaymentDraftInboxUiState, model: Rep
     AppFloatingActionBar {
         if (unsubmitted) AppPrimaryButton(text = stringResource(R.string.repayment_review_confirm),
             onClick = model.reviewEditor::submitReview, modifier = Modifier.fillMaxWidth(),
-            enabled = state.canModify && !state.isLoading && !state.review.bindingChanged && state.pendingActionDraftId == null)
+            enabled = state.canModify && !state.isLoading && !state.review.bindingChanged && state.pendingActionDraftId == null
+                && state.drafts.none { it.publicId == input?.draftPublicId && it.sourceExpenseRequiresReview })
         else if (state.review.canRetry) AppPrimaryButton(text = stringResource(R.string.repayment_review_retry),
             onClick = { model.reviewEditor.recoverReview(false) }, enabled = state.canModify, modifier = Modifier.fillMaxWidth())
         if (unsubmitted || state.review.canRetry) TextButton(onClick = model.reviewEditor::closeReview, modifier = Modifier.fillMaxWidth()) {
@@ -227,7 +261,8 @@ private fun RepaymentReviewDelivery(state: RepaymentDraftInboxUiState, model: Re
             Text(stringResource(R.string.repayment_review_original), style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold)
             Text(stringResource(when (row?.status) {
-                PendingMutationStatus.Done -> R.string.repayment_review_done
+                PendingMutationStatus.Done -> if (row.type == com.ticketbox.data.local.PendingMutationType.ResolvePaymentCapture)
+                    R.string.payment_capture_corrected else R.string.repayment_review_done
                 PendingMutationStatus.Abandoned -> R.string.repayment_review_stopped
                 null -> R.string.repayment_review_receipt_missing
                 else -> R.string.repayment_review_waiting
@@ -254,6 +289,7 @@ private fun RepaymentReviewDelivery(state: RepaymentDraftInboxUiState, model: Re
 @Composable
 private fun repaymentReviewError(error: String): String = when (error) {
     "repayment_review_connection_interrupted" -> stringResource(R.string.repayment_review_interrupted)
+    "repayment_source_refresh_pending" -> stringResource(R.string.repayment_review_source_refresh)
     "repayment_review_binding_changed" -> stringResource(R.string.debt_write_original_binding_changed)
     "repayment_review_payload_unsupported", "repayment_review_response_unverified" -> stringResource(R.string.repayment_review_unverified)
     else -> if (error.startsWith("outbox_row_expired")) stringResource(R.string.debt_write_expired) else error

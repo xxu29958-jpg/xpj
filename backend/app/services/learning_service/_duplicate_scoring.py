@@ -39,6 +39,7 @@ from app.services.learning_service._algorithm_registry import (
     DUPLICATE_CANDIDATE,
     canonical_marker_hash,
 )
+from app.services.learning_service._source_eligibility import eligible_feedback
 from app.services.time_service import ensure_utc, now_utc
 
 # Source of truth lives in the algorithm registry.
@@ -74,7 +75,7 @@ def _has_recent_reject(
     tenant_id: str,
     merchant: str,
     amount_cents: int | None,
-    horizon_days: int,
+    horizon_days: int, actor_account_id: int | None = None,
 ) -> bool:
     """Look for prior user rejection of a duplicate candidate matching
     this (merchant, amount) pair.
@@ -92,10 +93,10 @@ def _has_recent_reject(
         {"amount_cents": amount_cents, "merchant": merchant}
     )
     indexed_hash = canonical_marker_hash(marker)
-    return indexed_hash in _recent_reject_hashes(db, tenant_id=tenant_id, hashes=[indexed_hash], horizon_days=horizon_days)
+    return indexed_hash in _recent_reject_hashes(db, tenant_id=tenant_id, hashes=[indexed_hash], horizon_days=horizon_days, actor_account_id=actor_account_id)
 
 
-def duplicate_feedback_expense_ids(db: Session, *, tenant_id: str, expenses: Iterable[Expense]) -> set[int]:
+def duplicate_feedback_expense_ids(db: Session, *, tenant_id: str, expenses: Iterable[Expense], actor_account_id: int | None = None) -> set[int]:
     """Read the same scoring feedback for a whole review page in one indexed query."""
     markers = {
         row.id: canonical_marker_hash(DUPLICATE_CANDIDATE.build_marker(
@@ -103,16 +104,16 @@ def duplicate_feedback_expense_ids(db: Session, *, tenant_id: str, expenses: Ite
         for row in expenses if _normalised_merchant(row.merchant) and row.amount_cents is not None
     }
     rejected = _recent_reject_hashes(db, tenant_id=tenant_id, hashes=list(set(markers.values())),
-        horizon_days=DEFAULT_REJECT_HORIZON_DAYS)
+        horizon_days=DEFAULT_REJECT_HORIZON_DAYS, actor_account_id=actor_account_id)
     return {expense_id for expense_id, marker in markers.items() if marker in rejected}
 
 
-def _recent_reject_hashes(db: Session, *, tenant_id: str, hashes: list[str | None], horizon_days: int) -> set[str]:
+def _recent_reject_hashes(db: Session, *, tenant_id: str, hashes: list[str | None], horizon_days: int, actor_account_id: int | None = None) -> set[str]:
     if not hashes:
         return set()
     cutoff = now_utc() - timedelta(days=max(horizon_days, 0))
     found = db.scalars(
-        select(LedgerLearningEvent.signal_hash).distinct()
+        select(LedgerLearningEvent)
         .where(LedgerLearningEvent.tenant_id == tenant_id)
         .where(LedgerLearningEvent.subject_kind == "expense")
         .where(LedgerLearningEvent.event_type == "reject")
@@ -123,7 +124,8 @@ def _recent_reject_hashes(db: Session, *, tenant_id: str, hashes: list[str | Non
         )
         .where(LedgerLearningEvent.signal_hash.in_(hashes))
     )
-    return {value for value in found if value is not None}
+    return {row.signal_hash for row in eligible_feedback(db, tenant_id=tenant_id, events=list(found),
+        actor_account_id=actor_account_id) if row.signal_hash is not None}
 
 
 def _score_one_candidate(
@@ -191,6 +193,7 @@ def score_duplicate_candidates(
     expense: Expense,
     candidates: Iterable[Expense],
     reject_horizon_days: int = DEFAULT_REJECT_HORIZON_DAYS,
+    actor_account_id: int | None = None,
 ) -> list[DuplicateCandidateScore]:
     """Score each candidate against ``expense`` and return them sorted
     by score descending.
@@ -206,7 +209,7 @@ def score_duplicate_candidates(
         tenant_id=tenant_id,
         merchant=_normalised_merchant(expense.merchant),
         amount_cents=expense.amount_cents,
-        horizon_days=reject_horizon_days,
+        horizon_days=reject_horizon_days, actor_account_id=actor_account_id,
     )
     scores = [
         _score_one_candidate(

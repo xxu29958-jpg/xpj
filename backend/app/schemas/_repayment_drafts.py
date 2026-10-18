@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.schemas._accounting_time import AccountingTimeInput, AccountingTimeSnapshot
 from app.schemas._money import PositiveCanonicalDecimalInput, PositiveMoneyMinor
+from app.schemas.payment_capture import RepaymentCorrectionVersions
 from app.services.time_service import to_iso
 
 __all__ = [
@@ -84,6 +85,8 @@ class RepaymentDraftDismissRequest(BaseModel):
 
 
 class RepaymentDraftResponse(BaseModel):
+    correction_versions: RepaymentCorrectionVersions | None = None
+    corrected_expense_id: int | None = None
     public_id: str
     source: str
     amount_cents: PositiveMoneyMinor | None
@@ -101,6 +104,8 @@ class RepaymentDraftResponse(BaseModel):
     suggested_debt_public_id: str | None = None
     committed_debt_public_id: str | None = None
     committed_repayment_public_id: str | None = None
+    source_expense_public_id: str | None = None
+    source_expense_requires_review: bool = False
     created_at: datetime
     resolved_at: datetime | None = None
 

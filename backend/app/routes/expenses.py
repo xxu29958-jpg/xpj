@@ -115,7 +115,7 @@ def get_pending_expenses(
             _expense_response_with_suggestions(
                 db,
                 tenant_id=auth.tenant_id,
-                expense=expense,
+                expense=expense, actor_account_id=auth.account_id,
                 raw_text_by_id=raw_text_by_id,
                 fx_tasks_by_id=fx_tasks_by_id,
             )
@@ -413,7 +413,7 @@ def get_expense_detail(
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     expense = get_expense(db, expense_id, auth.tenant_id)
-    response = _expense_response_with_suggestions(db, tenant_id=auth.tenant_id, expense=expense)
+    response = _expense_response_with_suggestions(db, tenant_id=auth.tenant_id, expense=expense, actor_account_id=auth.account_id)
     db.commit()
     return response
 
@@ -717,7 +717,7 @@ def post_mark_not_duplicate(
     )
     expense = submit_expense_duplicate_decision(db, tenant_id=auth.tenant_id, expense_id=expense_pk,
         idempotency_key=idempotency_key, expected_row_version=effective_row_version,
-        request_expected_row_version=payload.expected_row_version)
+        request_expected_row_version=payload.expected_row_version, actor_account_id=auth.account_id)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 
@@ -726,10 +726,11 @@ def _expense_response_with_suggestions(
     *,
     tenant_id: str,
     expense: Expense,
+    actor_account_id: int | None = None,
     raw_text_by_id: dict[int, str] | None = None,
     fx_tasks_by_id: dict[int, BackgroundTaskResponse] | None = None,
 ) -> ExpenseResponse:
-    suggestions = suggestions_for_pending_expense(db, tenant_id=tenant_id, expense=expense)
+    suggestions = suggestions_for_pending_expense(db, tenant_id=tenant_id, expense=expense, actor_account_id=actor_account_id)
     dto = expense_to_response(
         db,
         tenant_id=tenant_id,

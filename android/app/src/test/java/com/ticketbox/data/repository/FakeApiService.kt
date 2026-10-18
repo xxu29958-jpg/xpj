@@ -86,6 +86,10 @@ internal class FakeApiService(
     private val serverSettingsResult: ServerSettingsDto? = null,
     private val merchantApi: FakeMerchantApi = FakeMerchantApi(),
 ) : ApiService {
+    override suspend fun capturePayment(request: com.ticketbox.data.remote.dto.PaymentCaptureCreateDto): com.ticketbox.data.remote.dto.PaymentCaptureDto = error("Capture response not configured")
+    override suspend fun paymentCaptures(): List<com.ticketbox.data.remote.dto.PaymentCaptureDto> = error("Capture read not configured")
+    override suspend fun decidePaymentCapture(publicId: String, request: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String): com.ticketbox.data.remote.dto.PaymentCaptureDto = error("Capture decision not configured")
+    override suspend fun repaymentAsExpense(publicId: String, request: com.ticketbox.data.remote.dto.RepaymentAsExpenseDto, key: String): com.ticketbox.data.remote.dto.PaymentCaptureDto = error("Capture correction not configured")
     override suspend fun savedViews(): com.ticketbox.data.remote.dto.SavedViewListDto = error("Saved queries not configured")
     override suspend fun savedView(publicId: String): com.ticketbox.data.remote.dto.SavedViewDto = error("Saved query not configured")
     override suspend fun savedViewResults(publicId: String, page: Int): com.ticketbox.data.remote.dto.SavedViewResultsDto = error("Saved query results not configured")

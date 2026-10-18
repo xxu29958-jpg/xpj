@@ -506,6 +506,7 @@ internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.CorrectExpense to R.string.sync_status_mutation_correct_expense,
     PendingMutationType.CreateExpense to R.string.sync_status_mutation_create_expense,
     PendingMutationType.CapturePaymentNotification to R.string.notification_capture_payment,
+    PendingMutationType.ResolvePaymentCapture to R.string.payment_capture_submit,
     PendingMutationType.CreateBillSplitInvitation to R.string.sync_status_mutation_create_bill_split,
     PendingMutationType.AcceptBillSplitInvitation to R.string.bill_split_accept_recovery,
     PendingMutationType.CreateDebt to R.string.sync_status_mutation_create_debt,

@@ -24,11 +24,15 @@ import org.junit.Test
 class RepaymentReviewRoomTest {
     private val capture = RepaymentDraftDto("review-original", "alipay", null, "JPY", "原采集", "2026-09-01T00:00:00Z",
         "pending", createdAt = "2026-09-01T00:00:01Z", originalCurrencyCode = "CNY", originalAmountMinor = 10000)
+    private var loseCorrectionReply = true
+    private val correctionCalls = mutableListOf<Pair<String, com.ticketbox.data.remote.dto.RepaymentAsExpenseDto>>()
     private var loseReply = true
     private var refuseReview = false
+    private var sourceCorrection = false
+    private var sourcePublications = 0
     private var expectedReviewDate: String? = null
     private val confirmCalls = mutableListOf<Pair<String, RepaymentDraftConfirmRequestDto>>()
-    private val fixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext()) { api ->
+    private val fixture: ExpenseCorrectionConnectedFixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext()) { api ->
         object : ApiService by api {
             override suspend fun repaymentDraft(publicId: String): RepaymentDraftDto {
                 assertEquals(capture.publicId, publicId)
@@ -42,7 +46,23 @@ class RepaymentReviewRoomTest {
                 assertEquals(expectedReviewDate, request.timeInput?.userLocalDate)
                 refuseReviewIfRequired()
                 if (loseReply) throw IOException("isolated lost reply")
-                return capture.copy(status = "confirmed", committedDebtPublicId = "original-debt", committedRepaymentPublicId = "original-repayment")
+                return capture.copy(status = "confirmed", committedDebtPublicId = "original-debt", committedRepaymentPublicId = "original-repayment",
+                    sourceExpensePublicId = if (sourceCorrection) fixture.network.current.publicId else null)
+            }
+            override suspend fun expenseFactBundle(id: String): com.ticketbox.data.remote.dto.ExpenseFactBundleDto {
+                assertEquals(fixture.network.current.publicId, id)
+                return api.expenseFactBundle(fixture.network.current.id.toString())
+            }
+            override suspend fun repaymentAsExpense(publicId: String, request: com.ticketbox.data.remote.dto.RepaymentAsExpenseDto,
+                idempotencyKey: String): com.ticketbox.data.remote.dto.PaymentCaptureDto {
+                assertEquals(capture.publicId, publicId)
+                correctionCalls += idempotencyKey to request
+                assertEquals(8L, request.correctionVersions?.debtRowVersion)
+                assertEquals("原通知其实是消费", request.reason)
+                if (loseCorrectionReply) throw IOException("lost correction reply")
+                return com.ticketbox.data.remote.dto.PaymentCaptureDto("event-original", 3, "alipay", capture.capturedAt,
+                    "CNY", 9000, "原采集", "expense", "legacy", emptyList(), fixture.network.current.id,
+                    fixture.network.current.publicId, capture.publicId)
             }
             override suspend fun dismissRepaymentDraft(publicId: String, request: RepaymentDraftDismissRequestDto): RepaymentDraftDto {
                 assertEquals(capture.publicId, publicId)
@@ -58,9 +78,9 @@ class RepaymentReviewRoomTest {
         var graph = fixture.reopen()
         var binding = requireNotNull(graph.reportsRepository.dashboardAccess()).binding
         graph.repaymentReviewRepository.open(binding, capture.toDomain()).getOrThrow()
-        graph.repaymentReviewRepository.select(binding, capture.publicId, debt(binding)).getOrThrow()
-        graph.repaymentReviewRepository.money(binding, capture.publicId, "CNY", " 90.").getOrThrow()
-        graph.repaymentReviewRepository.date(binding, capture.publicId, "2026-08-31").getOrThrow()
+        graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.TargetDebt(debt(binding))).getOrThrow()
+        graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Money("CNY", " 90.")).getOrThrow()
+        graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Date("2026-08-31")).getOrThrow()
         val raw = graph.repaymentReviewRepository.observe(binding, capture.publicId).first()
         graph = fixture.reopen()
         graph.expenseRepository.clearLocalCache()
@@ -72,30 +92,36 @@ class RepaymentReviewRoomTest {
         assertEquals(" 90.", oldIdentity.input?.amountText)
         assertEquals("2026-08-31", oldIdentity.input?.paymentDate)
         assertEquals(3L, oldIdentity.input?.calendarRevision)
-        assertTrue(graph.repaymentReviewRepository.money(binding, capture.publicId, "CNY", "50.00").isFailure)
+        assertTrue(graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Money("CNY", "50.00")).isFailure)
         graph.repaymentReviewRepository.reviewAgain(binding, capture.publicId).getOrThrow()
         val reopened = graph.repaymentReviewRepository.observe(binding, capture.publicId).first()
         assertEquals(" 90.", reopened.input?.amountText)
         assertEquals("2026-08-31", reopened.input?.paymentDate)
         assertEquals(null, reopened.input?.debtPublicId)
         assertTrue(reopened.input?.originalKey != raw.input?.originalKey)
-        graph.repaymentReviewRepository.select(binding, capture.publicId, debt(binding)).getOrThrow()
-        graph.repaymentReviewRepository.money(binding, capture.publicId, "CNY", "90.00").getOrThrow()
+        graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.TargetDebt(debt(binding))).getOrThrow()
+        graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Money("CNY", "90.00")).getOrThrow()
         val id = graph.repaymentReviewRepository.submit(binding, capture.toDomain(), false).getOrThrow()
         val original = fixture.stored().single()
         drain()
         assertEquals("pending", fixture.stored().single()["status"])
         graph = fixture.reopen()
-        assertTrue(graph.repaymentReviewRepository.money(binding, capture.publicId, "CNY", "50.00").isFailure)
-        assertTrue(graph.repaymentReviewRepository.date(binding, capture.publicId, "2026-09-15").isFailure)
+        assertTrue(graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Money("CNY", "50.00")).isFailure)
+        assertTrue(graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Date("2026-09-15")).isFailure)
         assertEquals(id, graph.repaymentReviewRepository.submit(binding, capture.toDomain(), false).getOrThrow())
         loseReply = false
+        sourceCorrection = true
+        drain()
+        assertEquals("pending", fixture.stored().single()["status"])
+        graph = fixture.reopen()
         drain()
         val completed = fixture.stored().single()
         assertEquals("done", completed["status"])
         assertEquals(original["payload"], completed["payload"])
         assertEquals(original["idempotencyKey"], completed["idempotencyKey"])
-        assertEquals(2, confirmCalls.size)
+        assertEquals(3, confirmCalls.size)
+        assertEquals(2, sourcePublications)
+        assertTrue(fixture.expenseDao.observeConfirmed(binding.ledgerId).first().any { it.publicId == fixture.network.current.publicId })
         assertEquals(confirmCalls.first(), confirmCalls.last())
         assertEquals(original["idempotencyKey"], confirmCalls.first().first)
         val sent = confirmCalls.first().second
@@ -107,7 +133,22 @@ class RepaymentReviewRoomTest {
         graph = fixture.reopen()
         val receipt = graph.repaymentReviewRepository.observe(binding, capture.publicId).first().original
         assertTrue(requireNotNull(receipt?.receiptJson).contains("original-repayment"))
+        val confirmed = capture.copy(status = "confirmed", committedDebtPublicId = "original-debt",
+            committedRepaymentPublicId = "original-repayment", correctionVersions =
+                com.ticketbox.data.remote.dto.RepaymentCorrectionVersionsDto(8, 2, 1)).toDomain()
+        graph.repaymentReviewRepository.correctAsExpense(binding, confirmed, "原通知其实是消费").getOrThrow()
+        drain()
+        val correctionOriginal = fixture.stored().last()
+        assertEquals("pending", correctionOriginal["status"])
+        graph = fixture.reopen()
+        loseCorrectionReply = false
+        drain()
+        assertEquals("done", fixture.stored().last()["status"])
+        assertEquals(correctionOriginal["payload"], fixture.stored().last()["payload"])
+        assertEquals(correctionCalls.first(), correctionCalls.last())
+        assertEquals(receipt?.receiptJson, graph.repaymentReviewRepository.observe(binding, capture.publicId).first().original?.receiptJson)
         fixture.switchLedger()
+        assertTrue(graph.repaymentReviewRepository.correctAsExpense(binding, confirmed, "保留原身份").isFailure)
         assertTrue(graph.repaymentReviewRepository.submit(binding, capture.toDomain(), false).isFailure)
     }
 
@@ -133,8 +174,8 @@ class RepaymentReviewRoomTest {
         val binding = requireNotNull(graph.reportsRepository.dashboardAccess()).binding
         graph.repaymentReviewRepository.open(binding, capture.toDomain()).getOrThrow()
         if (!dismiss) {
-            graph.repaymentReviewRepository.select(binding, capture.publicId, debt(binding)).getOrThrow()
-            graph.repaymentReviewRepository.money(binding, capture.publicId, "CNY", "90.00").getOrThrow()
+            graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.TargetDebt(debt(binding))).getOrThrow()
+            graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Money("CNY", "90.00")).getOrThrow()
         }
         graph.repaymentReviewRepository.submit(binding, capture.toDomain(), dismiss).getOrThrow()
         val original = fixture.stored().single()
@@ -175,8 +216,15 @@ class RepaymentReviewRoomTest {
         val adapters = OutboxAdapterGraph()
         val guard = LedgerRequestGuard(fixture.apiProvider)
         OutboxDrainEngine(fixture.outbox, listOf(
-            ConfirmRepaymentDraftDispatcher(guard, adapters.repaymentReviewAdapter, adapters.repaymentDraftReceiptAdapter),
+            ConfirmRepaymentDraftDispatcher(guard, adapters.repaymentReviewAdapter, adapters.repaymentDraftReceiptAdapter,
+                { ledgerId, bundle ->
+                    sourcePublications++
+                    if (sourcePublications == 1) throw IOException("isolated cache publication failure")
+                    val projection = bundle.toCacheProjection(ledgerId)
+                    fixture.expenseDao.applyExpenseFactBundle(ledgerId, projection.root, projection.activeOffsets)
+                }),
             DismissRepaymentDraftDispatcher(guard, adapters.repaymentDismissAdapter, adapters.repaymentDraftReceiptAdapter),
+            PaymentCaptureResolutionDispatcher(guard) { _, _ -> },
         ), now = fixture.clock::millis).drainOnce()
     }
 

@@ -27,16 +27,24 @@ data class RepaymentReviewState(val input: RepaymentReviewInputEntity?, val orig
         original?.status == PendingMutationStatus.Pending && bindingChanged
 }
 
+sealed interface RepaymentReviewChange {
+    data class Money(val currency: String, val amount: String) : RepaymentReviewChange
+    data class Date(val value: String) : RepaymentReviewChange
+    data class TargetDebt(val debt: Debt) : RepaymentReviewChange
+}
+
 interface RepaymentReviewActions {
     fun observe(binding: LogicalSessionBinding, draftId: String): Flow<RepaymentReviewState>
     suspend fun open(binding: LogicalSessionBinding, draft: RepaymentDraft, suggested: Debt? = null): Result<Unit>
-    suspend fun money(binding: LogicalSessionBinding, draftId: String, currency: String, amount: String): Result<Unit>
-    suspend fun date(binding: LogicalSessionBinding, draftId: String, value: String): Result<Unit>
-    suspend fun select(binding: LogicalSessionBinding, draftId: String, debt: Debt): Result<Unit>
+    suspend fun edit(binding: LogicalSessionBinding, draftId: String, change: RepaymentReviewChange): Result<Unit>
     suspend fun submit(binding: LogicalSessionBinding, draft: RepaymentDraft, dismiss: Boolean): Result<Long>
     suspend fun recover(binding: LogicalSessionBinding, draftId: String, stop: Boolean): Result<Unit>
     suspend fun recoverOriginal(binding: LogicalSessionBinding, row: OutboxRow, stop: Boolean): Result<Unit>
     suspend fun reviewAgain(binding: LogicalSessionBinding, draftId: String): Result<Unit>
+    suspend fun correctAsExpense(binding: LogicalSessionBinding, draft: RepaymentDraft, reason: String): Result<Long>
+    suspend fun resolveCapture(binding: LogicalSessionBinding, captureId: String,
+        decision: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String): Result<Long>
+    fun observeResolutions(): Flow<List<OutboxRow>>
 }
 
 /** One input owner; acceptance atomically freezes that input beside its existing Outbox command. */
@@ -49,6 +57,51 @@ class RepaymentReviewRepository internal constructor(
     private val guard = LedgerRequestGuard(provider)
     private val inputs = database.repaymentReviewInputDao()
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "Repayment review")
+
+    override fun observeResolutions(): Flow<List<OutboxRow>> = outbox.observeActiveByTypes(
+        setOf(PendingMutationType.ResolvePaymentCapture), includeCompleted = true)
+
+    override suspend fun correctAsExpense(binding: LogicalSessionBinding, draft: RepaymentDraft, reason: String): Result<Long> = errors.safeCall {
+        require(ledgerRoleCanModify(provider.currentLedgerRole()) && reason.isNotBlank())
+        val bound = guard.bindExact(binding)
+        if (draft.correctionVersions != null && draft.correctedExpenseId == null) {
+            val versions = draft.correctionVersions
+            val payload = PaymentCaptureResolution(binding = binding, publicId = draft.publicId,
+                correction = com.ticketbox.data.remote.dto.RepaymentAsExpenseDto(reason.trim(), null,
+                    com.ticketbox.data.remote.dto.RepaymentCorrectionVersionsDto(versions.debtRowVersion,
+                        versions.sourceExpenseRowVersion, versions.sourceOffsetRowVersion)))
+            return@safeCall outbox.enqueue(bound, PendingMutationIntent(PendingMutationType.ResolvePaymentCapture,
+                "repayment-draft:${draft.publicId}", PaymentCaptureWire.resolution.toJson(payload),
+                versions.debtRowVersion, UUID.randomUUID().toString()), validateTargetRows = { rows ->
+                require(rows.none { it.status != PendingMutationStatus.Done }) { "请先核对原提交结果。" }
+            })
+        }
+        require(draft.isPending)
+        val input = requireInput(binding, draft.publicId)
+        require(input.submittedAction == null) { "请先核对原提交结果。" }
+        // A pre-upgrade capture retained the opaque original identity in its completed Outbox receipt.
+        val original = outbox.observeActiveByTypes(setOf(PendingMutationType.CapturePaymentNotification), includeCompleted = true)
+            .first().firstOrNull { row -> runCatching {
+                row.receiptJson?.let { NotificationCaptureWire.receipt.fromJson(it) }?.repaymentPublicId == draft.publicId
+            }.getOrDefault(false) }?.notificationCapture()
+        val payload = PaymentCaptureResolution(binding = binding, publicId = draft.publicId,
+            correction = com.ticketbox.data.remote.dto.RepaymentAsExpenseDto(reason.trim(), original?.notificationKey))
+        val command = PendingMutationIntent(PendingMutationType.ResolvePaymentCapture, "repayment-draft:${draft.publicId}",
+            PaymentCaptureWire.resolution.toJson(payload), 0, input.originalKey)
+        outbox.enqueue(bound, command, afterPersisted = {
+            require(requireInput(binding, draft.publicId) == input)
+            inputs.put(input.copy(submittedAction = command.type.wireValue))
+        })
+    }
+
+    override suspend fun resolveCapture(binding: LogicalSessionBinding, captureId: String,
+        decision: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String): Result<Long> = errors.safeCall {
+        require(ledgerRoleCanModify(provider.currentLedgerRole()) && decision.reason.isNotBlank())
+        val payload = PaymentCaptureResolution(binding = binding, publicId = captureId, decision = decision)
+        outbox.enqueue(guard.bindExact(binding), PendingMutationIntent(PendingMutationType.ResolvePaymentCapture,
+            "payment-capture:$captureId", PaymentCaptureWire.resolution.toJson(payload), decision.expectedRowVersion, key),
+            validateTargetRows = { rows -> require(rows.none { it.status != PendingMutationStatus.Done }) { "请先核对原提交结果。" } })
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun observe(binding: LogicalSessionBinding, draftId: String): Flow<RepaymentReviewState> =
@@ -74,22 +127,17 @@ class RepaymentReviewRepository internal constructor(
         }
     }
 
-    override suspend fun money(binding: LogicalSessionBinding, draftId: String, currency: String, amount: String): Result<Unit> =
-        edit(binding, draftId) { it.copy(currency = currency, amountText = amount) }
-
-    override suspend fun select(binding: LogicalSessionBinding, draftId: String, debt: Debt): Result<Unit> =
-        edit(binding, draftId) { it.selectDebt(binding, debt) }
-
-    override suspend fun date(binding: LogicalSessionBinding, draftId: String, value: String): Result<Unit> =
-        edit(binding, draftId) { it.copy(paymentDate = value) }
-
-    private suspend fun edit(binding: LogicalSessionBinding, draftId: String,
-        transform: (RepaymentReviewInputEntity) -> RepaymentReviewInputEntity): Result<Unit> = errors.safeCall {
+    override suspend fun edit(binding: LogicalSessionBinding, draftId: String,
+        change: RepaymentReviewChange): Result<Unit> = errors.safeCall {
         outbox.withActiveBinding(guard.bindExact(binding)) {
             database.withTransaction {
                 val input = requireInput(binding, draftId)
                 require(input.submittedAction == null) { "原提交已保存；请先核对结果，不能改写正在处理的内容。" }
-                inputs.put(transform(input))
+                inputs.put(when (change) {
+                    is RepaymentReviewChange.Money -> input.copy(currency = change.currency, amountText = change.amount)
+                    is RepaymentReviewChange.Date -> input.copy(paymentDate = change.value)
+                    is RepaymentReviewChange.TargetDebt -> input.selectDebt(binding, change.debt)
+                })
             }
         }
     }
@@ -127,7 +175,15 @@ class RepaymentReviewRepository internal constructor(
     }
 
     override suspend fun recoverOriginal(binding: LogicalSessionBinding, row: OutboxRow, stop: Boolean): Result<Unit> = errors.safeCall {
-        guard.bindExact(binding)
+        val bound = guard.bindExact(binding)
+        if (row.type == PendingMutationType.ResolvePaymentCapture) {
+            requireNotNull(row.paymentResolution())
+            require(row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict))
+            val changed = if (stop) outbox.abandonOriginalCommand(bound, row)
+                else outbox.resolveFailed(row.id, FailedResolution.Retry(), bound)
+            require(changed) { "原提交状态已变化，请刷新后核对。" }
+            return@safeCall
+        }
         require(row.type == PendingMutationType.DismissRepaymentDraft && row.targetId.startsWith("repayment-draft:"))
         val draftId = row.targetId.removePrefix("repayment-draft:")
         require(observe(binding, draftId).first().original?.id == row.id) { "请打开原采集核对这次提交。" }

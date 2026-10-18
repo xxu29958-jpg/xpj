@@ -43,7 +43,7 @@ from app.services.learning_service import (
     run_full_maintenance,
     set_decision_status,
 )
-from app.services.pending_suggestion_service import record_pending_suggestion_event
+from app.services.learning_service._source_eligibility import feedback_impact_preview
 
 if TYPE_CHECKING:
     from app.models import AlgorithmDecision
@@ -93,6 +93,7 @@ def _render_maintenance(
     ctx["decision_summaries"] = {row.id: _decision_summary(row) for row in ctx["active_decisions"]}
     ctx["message"] = {"dismissed": "建议已处理，当前待采纳列表已更新。账目和原件保持不变。",
                       "cleaned": "本次清理已完成，数量和结果已更新。账目和原件保持不变。"}.get(request.query_params.get("result"))
+    ctx["feedback_impact"] = feedback_impact_preview(db, tenant_id=selected.ledger_id) if selected else None
     ctx["algorithm_types"] = ALGORITHM_TYPES
     return templates.TemplateResponse(
         request=request,
@@ -148,11 +149,7 @@ def owner_learning_maintenance_dismiss_post(
             db, tenant_id=selected.ledger_id, public_id=decision_public_id
         )
         if decision is not None and decision.status == "active":
-            if decision.subject_kind == "expense" and decision.subject_id is not None and decision.decision_type in ("category_suggestion", "duplicate_candidate"):
-                record_pending_suggestion_event(db, tenant_id=selected.ledger_id, expense_id=decision.subject_id,
-                    decision_public_id=decision.public_id, event_type="reject", actor_account_id=None)
-            else:
-                set_decision_status(db, tenant_id=selected.ledger_id, decision_id=decision.id, new_status="dismissed")
+            set_decision_status(db, tenant_id=selected.ledger_id, decision_id=decision.id, new_status="dismissed")
             db.commit()
     except SQLAlchemyError as exc:
         db.rollback()

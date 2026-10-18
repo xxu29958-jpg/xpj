@@ -4,6 +4,7 @@ import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.RepaymentDraftDismissRequestDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
+import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
@@ -12,6 +13,7 @@ internal class ConfirmRepaymentDraftDispatcher(
     private val guard: LedgerRequestGuard,
     private val payload: JsonAdapter<RepaymentReviewPayload>,
     private val receipt: JsonAdapter<RepaymentDraftDto>,
+    private val publishSource: suspend (String, ExpenseFactBundleDto) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type = PendingMutationType.ConfirmRepaymentDraft
 
@@ -25,6 +27,20 @@ internal class ConfirmRepaymentDraftDispatcher(
             require(result.publicId == original.draftPublicId && result.status == "confirmed" &&
                 result.committedDebtPublicId == original.subject.publicId && !result.committedRepaymentPublicId.isNullOrBlank())
             bound.requireStillActive()
+            result.sourceExpensePublicId?.let { sourceId ->
+                // Acceptance is replayed with the original key until the coupled
+                // spending correction has also reached the local projection.
+                try {
+                    val bundle = bound.serviceForOriginalDebtWrite(row, original).expenseFactBundle(sourceId)
+                    bound.requireStillActive()
+                    publishSource(row.ledgerId, bundle)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    logNetworkWarning("Accepted repayment source projection refresh pending", error)
+                    return@deliverRepaymentReview DispatchResult.RetryableFailure("repayment_source_refresh_pending")
+                }
+            }
             DispatchResult.Success(receiptJson = receipt.toJson(result))
         }
     }

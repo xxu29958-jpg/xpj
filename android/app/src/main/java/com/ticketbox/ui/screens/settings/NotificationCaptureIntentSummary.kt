@@ -14,9 +14,9 @@ import com.ticketbox.ui.components.formatDisplayAmount
 @Composable
 internal fun NotificationCaptureIntentSummary(row: OutboxRow) {
     val original = remember(row.payloadJson) { row.notificationCapture() } ?: return
-    Text(stringResource(if (original.kind == "expense") R.string.notification_capture_expense else R.string.notification_capture_repayment))
+    Text(stringResource(when (original.kind) { "expense" -> R.string.notification_capture_expense; "repayment" -> R.string.notification_capture_repayment; else -> R.string.payment_capture_review_title }))
     Text(stringResource(R.string.notification_capture_original,
         original.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.notification_draft_created_merchant_missing),
-        formatDisplayAmount(original.originalAmountMinor, CurrencyDisplay.forRecord(original.originalCurrencyCode)), original.capturedAt))
+        original.originalAmountMinor?.let { formatDisplayAmount(it, CurrencyDisplay.forRecord(original.originalCurrencyCode)) } ?: stringResource(R.string.payment_capture_amount), original.capturedAt))
     Text(stringResource(R.string.notification_capture_pending_explanation))
 }

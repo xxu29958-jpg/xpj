@@ -35,6 +35,45 @@ def _form(text, action):
     return {name: native.one(name) for name in native.fields}
 
 
+def _original_fields(values):
+    return {name: value for name, value in values.items() if name != "csrf_token"}
+
+
+def test_installed_wrong_repayment_returns_one_pending_expense_and_retains_original(installed_web):
+    from app.models import Expense, PaymentCapture
+    with SessionLocal() as db:
+        draft = create_repayment_draft(db, tenant_id=installed_web.shared_ledger_id,
+            actor_account_id=installed_web.installation_account_id,
+            payload=RepaymentDraftCreateRequest(source="alipay", original_currency="CNY", original_amount="37.90",
+                merchant_label="花呗", notification_key="redacted-real-source", captured_at=datetime(2026, 10, 17, tzinfo=UTC)))
+        public_id = draft.public_id
+        # Historical deployment had a repayment draft but no cross-type identity row.
+        db.delete(db.scalar(select(PaymentCapture).where(PaymentCapture.repayment_public_id == public_id)))
+        db.commit()
+    url = f"/web/repayment-drafts/{public_id}?ledger_id={installed_web.shared_ledger_id}"
+    action = f"/web/repayment-drafts/{public_id}/review"
+    token = _connect_local_session(installed_web, next_url=url)
+    cookie = f"{SESSION_COOKIE_NAME}={token}"
+    page = installed_web.browser.get(url, headers={"Cookie": cookie})
+    headers = {"Cookie": f"{cookie}; {CSRF_COOKIE_NAME}={page.cookies.get(CSRF_COOKIE_NAME)}", "Origin": "http://127.0.0.1:8000"}
+    values = {**_form(page.text, action), "review_action": "expense", "reason": "实际是花呗消费，还款只是提醒"}
+    first = installed_web.browser.post(action, data=values, headers=headers)
+    assert first.status_code == 200, first.text
+    assert "已改为消费" in first.text
+    repeated = installed_web.browser.post(action, data=values, headers=headers)
+    assert repeated.status_code == 200, repeated.text
+    with SessionLocal() as db:
+        expenses = list(db.scalars(select(Expense)))
+        assert len(expenses) == 1 and expenses[0].status == "pending" and expenses[0].original_amount_minor == 3790
+        assert db.scalar(select(Repayment)) is None
+        source = db.scalar(select(RepaymentDraft).where(RepaymentDraft.public_id == public_id))
+        assert source.status == "dismissed" and source.original_amount_minor == 3790
+        correction = db.scalar(select(PaymentCapture).where(PaymentCapture.repayment_public_id == public_id))
+        assert correction.decisions[0]["reason"] == values["reason"]
+    reopened = installed_web.browser.get(url, headers=headers)
+    assert reopened.status_code == 200 and "打开更正后的消费" in reopened.text
+
+
 def test_installed_capture_review_retains_binding_money_and_version_through_lost_ack(installed_web, monkeypatch):
     debt_id = _seed_external_debt(installed_web)
     with SessionLocal() as db:
@@ -65,7 +104,7 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
         refused = installed_web.browser.post(action, data=attempted, headers=headers)
         assert refused.status_code == 409, (axis, refused.text)
         retained = _form(refused.text, action)
-        assert all(retained[name] == value for name, value in attempted.items() if name != "csrf_token")
+        assert _original_fields(retained) == _original_fields(attempted)
         assert "data-repayment-ack=" not in refused.text
         with SessionLocal() as db:
             assert list(db.scalars(select(Repayment))) == []
@@ -80,7 +119,7 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
     assert unknown.status_code == 503, unknown.text
     assert 'data-repayment-result="submitted"' in unknown.text
     retained = _form(unknown.text, action)
-    assert all(retained[name] == value for name, value in original.items() if name != "csrf_token")
+    assert _original_fields(retained) == _original_fields(original)
     monkeypatch.setattr(review, "confirm_repayment_draft_idempotently", writer)
     reader = review.list_repayment_draft_audit_for_account
 

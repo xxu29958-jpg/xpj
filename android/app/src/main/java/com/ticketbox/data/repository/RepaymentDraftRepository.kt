@@ -10,6 +10,7 @@ import com.ticketbox.domain.model.ledgerRoleCanModify
 interface RepaymentDraftActions {
     fun canModifyLedger(): Boolean
     suspend fun readDrafts(expectedBinding: LogicalSessionBinding? = null): Result<ReadSnapshot<List<RepaymentDraft>>>
+    suspend fun readCaptures(binding: LogicalSessionBinding): Result<ReadSnapshot<List<com.ticketbox.data.remote.dto.PaymentCaptureDto>>>
 }
 
 class RepaymentDraftRepository internal constructor(
@@ -35,6 +36,16 @@ class RepaymentDraftRepository internal constructor(
 
     internal fun captureDeferredLedgerBinding(): LogicalSessionBinding? =
         ledgerRequestGuard.captureLogicalBinding()
+
+    override suspend fun readCaptures(binding: LogicalSessionBinding): Result<ReadSnapshot<List<com.ticketbox.data.remote.dto.PaymentCaptureDto>>> =
+        errorHandler.safeCall {
+            ledgerRequestGuard.bindExact(binding)
+            val type = com.squareup.moshi.Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.PaymentCaptureDto::class.java)
+            val adapter = Moshi.Builder().build().adapter<List<com.ticketbox.data.remote.dto.PaymentCaptureDto>>(type)
+            queryReader.read(binding, DebtQueryScope(debtScope(binding, "payment_capture_list", "review")),
+                DebtReadSpec(adapter, { paymentCaptures() }, validate = { require(it.all { row -> row.kind == "review" }) },
+                    isNewer = { _, _ -> false }, project = { value, _ -> value })).getOrThrow()
+        }
 
     override suspend fun readDrafts(expectedBinding: LogicalSessionBinding?): Result<ReadSnapshot<List<RepaymentDraft>>> =
         errorHandler.safeCall {

@@ -14,6 +14,10 @@
   {% if message %}<div class="alert alert-success" role="status">{{ message }}</div>{% endif %}
   <section class="workspace-section" aria-label="学习记录维护详情">
     {% if selected_ledger %}
+    {% if feedback_impact %}<section class="workspace-learning-record"><h2>反馈来源核对</h2>
+      <p>当前有效 {{ feedback_impact.valid }} 条；来源已撤销 {{ feedback_impact.invalid }} 条；字段已更正 {{ feedback_impact.superseded }} 条；缺少证据待核对 {{ feedback_impact.needs_review }} 条。</p>
+      <p class="workspace-note">这是只读影响预览。后三类不参与后续建议；原反馈和未受影响字段保留。待核对不表示原记录一定错误，可在原小票重新明确核对相关字段。</p>
+    </section>{% endif %}
     <details id="learning-volume" class="workspace-disclosure workspace-task-group"{% if active_section == 'volume' %} open{% endif %}>
       <summary><span class="workspace-task__icon workspace-tone-green">{{ icon('database') }}</span><span class="workspace-task__text"><strong>过期记录清理</strong><span>查看数量、范围和上次结果</span></span><span class="workspace-view-label">查看</span>{{ icon('chevron-right') }}</summary>
       <div class="workspace-disclosure__body">
@@ -47,7 +51,7 @@
       <summary><span class="workspace-task__icon workspace-tone-apricot">{{ icon('list') }}</span><span class="workspace-task__text"><strong>近期候选</strong><span>{{ overview.active_decisions }} 条待采纳建议，可逐条核对</span></span><span class="workspace-view-label">查看</span>{{ icon('chevron-right') }}</summary>
       <div class="workspace-disclosure__body">
         <h2>待采纳建议 · {{ selected_ledger.name }}</h2>
-        <p class="workspace-note">最近 {{ active_decisions|length }} 条，最多显示 50 条。忽略会从本页关闭这条建议，并为分类或重复判断记下一次“不采用”；不会修改账单。请先展开核对。</p>
+        <p class="workspace-note">最近 {{ active_decisions|length }} 条，最多显示 50 条。忽略只关闭这条建议，不作为“不是重复”或分类错误的学习反馈；账单保持不变。请先展开核对。</p>
         {% for decision in active_decisions %}
         {% set entry = algorithm_types.get(decision.decision_type) %}
         {% set expense = decision_expenses.get(decision.subject_id) if decision.subject_kind == 'expense' else none %}
@@ -70,7 +74,7 @@
             <p class="workspace-note">建议内容（原始记录）</p><pre class="workspace-learning-payload">{{ decision.output_payload or '未提供内容' }}</pre>
               </div>
             </details>
-            <form method="post" action="/owner/learning-maintenance/dismiss-decision" data-confirm="关闭这条建议并记住不采用的反馈？账单和重复标记保持不变。">
+            <form method="post" action="/owner/learning-maintenance/dismiss-decision" data-confirm="仅关闭这条建议？不记录负面学习标签，账单和重复标记保持不变。">
               <input type="hidden" name="ledger_id" value="{{ selected_ledger.ledger_id }}">
               <input type="hidden" name="decision_public_id" value="{{ decision.public_id }}">
               <button type="submit" class="btn btn-danger">忽略这条建议</button>

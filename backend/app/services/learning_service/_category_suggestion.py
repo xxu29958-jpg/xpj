@@ -39,6 +39,7 @@ from app.services.learning_service._algorithm_registry import (
     CATEGORY_SUGGESTION,
     canonical_marker_hash,
 )
+from app.services.learning_service._source_eligibility import effective_expense_predicate, eligible_feedback
 from app.services.ledger_calendar_service import current_calendar
 from app.services.time_service import now_utc, strict_zone
 
@@ -78,7 +79,7 @@ def _count_recent_rejects(
     tenant_id: str,
     merchant: str,
     category: str,
-    horizon_days: int,
+    horizon_days: int, actor_account_id: int | None = None,
 ) -> int:
     """Count user rejects of (merchant, category) in the recent past.
 
@@ -92,8 +93,8 @@ def _count_recent_rejects(
     cutoff = now_utc() - timedelta(days=max(horizon_days, 0))
     marker = CATEGORY_SUGGESTION.build_marker({"category": category})
     indexed_hash = canonical_marker_hash(marker)
-    count = db.scalar(
-        select(func.count(LedgerLearningEvent.id))
+    events = list(db.scalars(
+        select(LedgerLearningEvent)
         .join(Expense, Expense.id == LedgerLearningEvent.subject_id)
         .where(LedgerLearningEvent.tenant_id == tenant_id)
         .where(Expense.tenant_id == tenant_id)
@@ -107,8 +108,8 @@ def _count_recent_rejects(
         )
         .where(LedgerLearningEvent.signal_hash == indexed_hash)
         .where(func.lower(func.trim(Expense.merchant)) == merchant)
-    )
-    return int(count or 0)
+    ))
+    return len(eligible_feedback(db, tenant_id=tenant_id, events=events, actor_account_id=actor_account_id))
 
 
 def compute_category_suggestion(
@@ -121,6 +122,7 @@ def compute_category_suggestion(
     look_back_days: int = DEFAULT_LOOK_BACK_DAYS,
     reject_threshold: int = DEFAULT_REJECT_THRESHOLD,
     feedback_horizon_days: int = DEFAULT_FEEDBACK_HORIZON_DAYS,
+    actor_account_id: int | None = None,
 ) -> CategorySuggestion | None:
     """Return the historically-most-frequent category for ``merchant``.
 
@@ -138,6 +140,7 @@ def compute_category_suggestion(
     conditions = [
         Expense.tenant_id == tenant_id,
         Expense.status == "confirmed",
+        effective_expense_predicate(),
         Expense.accounting_date >= cutoff,
         func.lower(func.trim(Expense.merchant)) == normalised,
     ]
@@ -165,7 +168,7 @@ def compute_category_suggestion(
         tenant_id=tenant_id,
         merchant=normalised,
         category=top_category,
-        horizon_days=feedback_horizon_days,
+        horizon_days=feedback_horizon_days, actor_account_id=actor_account_id,
     )
     if rejects >= max(reject_threshold, 1):
         return None

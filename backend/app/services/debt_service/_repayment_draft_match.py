@@ -51,7 +51,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ledger_scope import ledger_scoped_select
-from app.models import Debt, RepaymentDraft
+from app.models import Debt, Repayment, RepaymentDraft, RepaymentVoid
 from app.services.debt_service._fold import compute_remaining
 
 # Label match strength: a strictly-better strength wins; a tie at the best strength is
@@ -199,6 +199,12 @@ def learned_debt_for_signature(
     target = _normalize_label(merchant_label)
     rows = db.execute(
         select(RepaymentDraft.merchant_label, RepaymentDraft.committed_debt_public_id)
+        .join(Repayment, Repayment.public_id == RepaymentDraft.committed_repayment_public_id)
+        .join(Debt, Debt.id == Repayment.debt_id)
+        .where(Debt.tenant_id == RepaymentDraft.tenant_id)
+        .where(Debt.public_id == RepaymentDraft.committed_debt_public_id)
+        .where(Debt.status != "voided")
+        .where(~select(RepaymentVoid.id).where(RepaymentVoid.repayment_id == Repayment.id).exists())
         .where(RepaymentDraft.created_by_account_id == account_id)
         .where(RepaymentDraft.source == source)
         .where(RepaymentDraft.status == "confirmed")

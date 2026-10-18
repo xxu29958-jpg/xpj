@@ -91,7 +91,7 @@ def test_close_is_tenant_scoped(*, identity) -> None:
         assert decision.status == "active"
 
 
-def test_confirm_expense_records_chosen_category_and_closes_active_decisions(
+def test_confirm_expense_closes_advice_without_inventing_user_feedback(
     client: TestClient, *, identity
 ) -> None:
     expense_id = _seed_pending_expense()
@@ -107,11 +107,9 @@ def test_confirm_expense_records_chosen_category_and_closes_active_decisions(
             expected_row_version=expense.row_version,
         )
         decision = db.get(AlgorithmDecision, decision_id)
-        assert decision.status == "accepted"
-        assert decision.retention_days == CATEGORY_SUGGESTION.accepted_retention_days
-        event = db.query(LedgerLearningEvent).filter_by(decision_id=decision_id).one()
-        assert event.event_type == "accept"
-        assert event.subject_id == expense_id
+        assert decision.status == "dismissed"
+        assert decision.retention_days == CATEGORY_SUGGESTION.dismissed_retention_days
+        assert db.query(LedgerLearningEvent).filter_by(decision_id=decision_id).count() == 0
         assert expense.status == "confirmed"
         assert expense.category == "餐饮"
         assert expense.amount_cents == 1000

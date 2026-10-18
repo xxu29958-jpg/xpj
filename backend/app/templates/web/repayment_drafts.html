@@ -1,21 +1,27 @@
 {% extends "base.html" %}
 {% set product_body_domain = 'obligations' %}
-{% set page_title = '还款采集' %}
+{% set page_title = '支付通知核对' %}
 {% set page_readonly_notice = true %}
 {% set pending = rows|selectattr('is_pending')|list %}
 {% set processed = rows|rejectattr('is_pending')|list %}
-{% block title %}还款采集 · 小票夹{% endblock %}
+{% block title %}支付通知核对 · 小票夹{% endblock %}
 
 {% block page_header %}
 <header class="product-page-header">
   <div class="product-page-heading">
-    <h1 class="page-title">{{ '收到一条还款信息' if pending|length == 1 else '还款采集' }}</h1>
-    <p class="product-page-summary">先核对，再记入往来。</p>
+    <h1 class="page-title">支付通知核对</h1>
+    <p class="product-page-summary">类型或金额不明确的通知，以及待确认的还款，先核对再记账。</p>
   </div>
 </header>
 {% endblock %}
 
 {% block content %}
+{% if capture_result %}<section class="product-feedback" role="status">
+  核对结果已保存，原采集和原因继续保留。
+  {% if capture_result.kind == 'expense' %}<a href="/web/expenses/{{ capture_result.expense_id }}/edit?ledger_id={{ selected_ledger_id }}">打开消费草稿，继续核对</a>
+  {% elif capture_result.kind == 'repayment' %}<a href="/web/repayment-drafts/{{ capture_result.repayment_public_id }}?ledger_id={{ selected_ledger_id }}">选择对应欠款，继续确认</a>
+  {% else %}已忽略，没有新增账务。{% endif %}
+</section>{% endif %}
 {% if flash_message %}
 <div class="product-feedback" role="status">{{ flash_message }}</div>
 {% endif %}
@@ -25,6 +31,30 @@
 {% if not can_write %}
 <div class="product-feedback">只读角色可以查看还款捕获；确认与忽略需要该账本的可写权限。</div>
 {% endif %}
+
+{% for capture in uncertain_captures %}
+{% set saved = capture_values if capture_values.get('capture_public_id') == capture.public_id else {} %}
+<section class="product-surface product-section" aria-label="支付通知待核对">
+  <h2 class="product-panel-title">支付通知待核对 · {{ capture.captured_at.strftime('%Y-%m-%d') }}</h2>
+  <p>请核对原支付记录，再选择消费、还款或忽略；当前尚未记账。</p>
+  <ul>{% for candidate in capture.candidates %}{% if candidate.amount_minor %}<li>{{ {'expense':'消费候选', 'repayment':'还款候选', 'refund':'退款候选'}.get(candidate.kind, '金额候选') }}：{{ capture.original_currency }} {{ capture_amount_label(candidate.amount_minor, capture.original_currency) }}</li>{% endif %}{% endfor %}</ul>
+  <form class="product-form" method="post" action="/web/payment-captures/{{ capture.public_id }}/decision">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    <input type="hidden" name="origin_binding" value="{{ capture_scope | tojson | forceescape }}">
+    <input type="hidden" name="capture_public_id" value="{{ capture.public_id }}">
+    <input type="hidden" name="expected_row_version" value="{{ saved.get('expected_row_version', capture.row_version) }}">
+    <input type="hidden" name="original_currency" value="{{ capture.original_currency }}">
+    <input type="hidden" name="idempotency_key" value="{{ saved.get('idempotency_key') or new_intent_key() }}">
+    <div class="product-field"><label for="kind-{{ capture.public_id }}">处理方式</label><select id="kind-{{ capture.public_id }}" class="product-input" name="kind" required>
+      <option value="">请核对后选择</option>{% for value, label in [('expense','消费'),('repayment','还款'),('dismissed','忽略，不记账')] %}<option value="{{ value }}"{% if saved.get('kind') == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select></div>
+    <div class="product-field"><label for="amount-{{ capture.public_id }}">实际交易金额 · {{ capture.original_currency }}</label><input class="product-input" id="amount-{{ capture.public_id }}" inputmode="decimal" name="original_amount" value="{{ saved.get('original_amount','') }}"><p class="hint">忽略时可留空。请勿填写余额、账单总额或优惠金额。</p></div>
+    <div class="product-field"><label for="reason-{{ capture.public_id }}">核对原因</label><input class="product-input" id="reason-{{ capture.public_id }}" name="reason" value="{{ saved.get('reason','') }}" required maxlength="255"></div>
+    <button class="product-button product-button--primary"{% if not can_write %} disabled{% endif %}>保存核对结果</button>
+  </form>
+</section>
+{% endfor %}
 
 {% if pending %}
 <section class="product-entry-list" aria-label="待核对的还款采集">

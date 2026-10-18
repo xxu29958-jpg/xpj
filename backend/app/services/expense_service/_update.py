@@ -88,6 +88,7 @@ def update_expense(
     payload: ExpenseUpdateRequest,
     *,
     commit: bool = True,
+    actor_account_id: int | None = None,
 ) -> Expense:
     # ADR-0038: atomic UPDATE WHERE id, tenant_id, status, updated_at =
     # expected. Race-rejected at the DB layer (rowcount=0 → 404/409),
@@ -120,7 +121,7 @@ def update_expense(
     if expense.amount_cents != amount_before:
         validate_current_expense_split_allocation(db, expense=expense)
     if payload.category is not None:
-        record_category_choice(db, expense=expense, previous_category=category_before, previous_merchant=merchant_before)
+        record_category_choice(db, expense=expense, previous_category=category_before, previous_merchant=merchant_before, actor_account_id=actor_account_id)
 
     if commit:
         db.commit()
@@ -186,7 +187,7 @@ def _publish_confirmation(
     sync_expense_tags(db, expense)
     from app.services.learning_service import close_active_decisions_for_subject
 
-    record_category_choice(db, expense=expense, previous_category=None, previous_merchant=expense.merchant)
+    # Confirming an automatically prefilled field is not an explicit category verdict.
 
     close_active_decisions_for_subject(
         db,

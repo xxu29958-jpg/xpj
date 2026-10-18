@@ -33,6 +33,7 @@ from app.schemas import (
     RepaymentDraftListResponse,
     RepaymentDraftResponse,
 )
+from app.schemas.payment_capture import PaymentCaptureResponse, RepaymentAsExpense
 from app.services.debt_service import (
     create_repayment_draft,
     dismiss_repayment_draft,
@@ -40,6 +41,7 @@ from app.services.debt_service import (
     list_repayment_drafts,
     repayment_draft_response,
 )
+from app.services.payment_capture_commands import repayment_as_expense
 from app.services.repayment_draft_command_service import (
     confirm_repayment_draft_idempotently,
 )
@@ -49,6 +51,13 @@ router = APIRouter(
     prefix="/api/repayment-drafts",
     tags=["repayment-drafts"],
 )
+
+
+@router.post("/{public_id}/as-expense", response_model=PaymentCaptureResponse)
+def correct_as_expense(public_id: str, payload: RepaymentAsExpense,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
+    return repayment_as_expense(db, auth=auth, public_id=public_id, payload=payload, idempotency_key=idempotency_key)
 
 
 @router.get("", response_model=RepaymentDraftListResponse)

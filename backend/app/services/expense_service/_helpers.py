@@ -57,6 +57,8 @@ __all__ = [
 
 NOTIFICATION_DRAFT_WINDOW_MINUTES = 30
 NOTIFICATION_DRAFT_SOURCE_LABELS = {
+    "jd": "京东",
+    "meituan": "美团",
     "wechat": "微信",
     "alipay": "支付宝",
     "bank_sms": "银行短信",

@@ -196,6 +196,10 @@ ALLOWLIST: dict[str, Exempt] = {
     # expected_row_version token. NOT fold-changing (a captured draft is a review intent,
     # not a Repayment fact — the confirm route below IS fold-changing and carries the token).
     "POST /api/repayment-drafts": Exempt("create_row", "debts", _REPAYMENT_DRAFTS),
+    "POST /api/payment-captures": Exempt("create_row", "debts", ("payment_captures", "expenses", "repayment_drafts")),
+    # Locks the pending draft and shared original identity; creates only a pending expense.
+    "POST /api/repayment-drafts/{public_id}/as-expense": Exempt("terminal_flag_flip", "debts",
+        ("payment_captures", "repayment_drafts", "expenses", "api_idempotency_keys")),
     "POST /api/expenses/manual": Exempt("create_row", "expenses", ("expenses",)),
     # Explicit unused references have no predecessor version. The shared command
     # requires an idempotency key and keeps the original receipt; a duplicate

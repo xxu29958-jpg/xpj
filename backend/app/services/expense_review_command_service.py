@@ -42,6 +42,7 @@ _CONFIRM_OPERATION = "confirm_expense"
 def submit_expense_duplicate_decision(
     db: Session, *, tenant_id: str, expense_id: int, expected_row_version: int,
     request_expected_row_version: int | None, idempotency_key: str | None,
+    actor_account_id: int | None = None,
 ) -> Expense:
     """Accept one non-duplicate decision; replay reads current state without rewriting it."""
     try:
@@ -51,7 +52,7 @@ def submit_expense_duplicate_decision(
         if claim is None:
             return get_expense(db, expense_id, tenant_id)
         expense = mark_expense_not_duplicate(db, expense_id, tenant_id,
-            expected_row_version=expected_row_version, commit=False)
+            expected_row_version=expected_row_version, commit=False, actor_account_id=actor_account_id)
         mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_id))
         db.commit()
         db.refresh(expense)
@@ -167,7 +168,7 @@ def _save_then_confirm(
         expense_id,
         tenant_id,
         payload,
-        commit=False,
+        commit=False, actor_account_id=actor_account_id,
     )
     return confirm_expense(
         db,

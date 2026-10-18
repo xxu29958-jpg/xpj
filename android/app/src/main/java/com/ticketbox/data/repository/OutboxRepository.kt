@@ -554,7 +554,7 @@ class OutboxRepository private constructor(
         PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
         PendingMutationType.SetRecurringOccurrencePayment, PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
         PendingMutationType.CreateExpense, PendingMutationType.AcceptBillSplitInvitation, PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
-        PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
+        PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset, PendingMutationType.ConfirmRepaymentDraft)
 
 
     internal suspend fun prepareReadProtection(row: OutboxRow) {
@@ -747,7 +747,8 @@ class OutboxRepository private constructor(
 
     internal suspend fun abandonOriginalCommand(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean =
         withActiveBinding(boundRequest) { binding ->
-            require(row.type in DEBT_WRITE_TYPES || row.type in setOf(PendingMutationType.CreateGoal, PendingMutationType.DismissRepaymentDraft))
+            require(row.type in DEBT_WRITE_TYPES || row.type in setOf(PendingMutationType.CreateGoal,
+                PendingMutationType.DismissRepaymentDraft, PendingMutationType.ResolvePaymentCapture))
             dao.abandonOriginalCommand(row.id, binding.ownerStorageKey, binding.ledgerId,
                 row.status.wireValue, ISO.format(Instant.now(clock))) > 0
         }.also { changed -> if (changed) schedulePending() }

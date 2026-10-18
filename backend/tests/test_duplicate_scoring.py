@@ -13,6 +13,7 @@ from app.services.learning_service import (
     record_event,
     score_duplicate_candidates,
 )
+from tests._infra.identity import seeded_owner_account_id
 
 
 def _make_expense(
@@ -52,6 +53,7 @@ def test_image_hash_match_dominates_score(*, identity) -> None:
         scores = score_duplicate_candidates(
             db, tenant_id="owner", expense=db.get(Expense, a.id),
             candidates=candidates,
+            actor_account_id=seeded_owner_account_id(),
         )
         assert len(scores) == 1
         # Image hash alone = 0.50; no amount, no merchant, no time
@@ -77,6 +79,7 @@ def test_amount_plus_merchant_plus_time_stacks(*, identity) -> None:
             tenant_id="owner",
             expense=db.get(Expense, a.id),
             candidates=[db.get(Expense, b.id)],
+            actor_account_id=seeded_owner_account_id(),
         )
         assert len(scores) == 1
         # 0.30 amount + 0.15 merchant + 0.15 time_within_1h = 0.60
@@ -100,6 +103,7 @@ def test_far_time_only_gets_24h_bucket(*, identity) -> None:
             tenant_id="owner",
             expense=db.get(Expense, a.id),
             candidates=[db.get(Expense, b.id)],
+            actor_account_id=seeded_owner_account_id(),
         )
         # amount + merchant + time_within_24h = 0.30 + 0.15 + 0.05
         assert scores[0].score == pytest.approx(0.50)
@@ -126,6 +130,7 @@ def test_recent_user_reject_applies_penalty(*, identity) -> None:
                 before_payload=marker,
                 signal_type="duplicate_candidate",
                 signal_marker=marker,
+                actor_account_id=seeded_owner_account_id(),
             ),
         )
         db.commit()
@@ -134,6 +139,7 @@ def test_recent_user_reject_applies_penalty(*, identity) -> None:
             tenant_id="owner",
             expense=db.get(Expense, a.id),
             candidates=[db.get(Expense, b.id)],
+            actor_account_id=seeded_owner_account_id(),
         )
         # Without penalty: amount + merchant + time_within_1h = 0.60.
         # Penalty: -0.40 → 0.20.
@@ -170,6 +176,7 @@ def test_candidates_ranked_descending(*, identity) -> None:
                 db.get(Expense, medium.id),
                 db.get(Expense, high.id),
             ],
+            actor_account_id=seeded_owner_account_id(),
         )
         ordered_ids = [s.candidate_id for s in scores]
         assert ordered_ids == [high.id, medium.id, low.id]
@@ -185,6 +192,7 @@ def test_self_candidate_excluded(*, identity) -> None:
             tenant_id="owner",
             expense=db.get(Expense, a.id),
             candidates=[db.get(Expense, a.id)],
+            actor_account_id=seeded_owner_account_id(),
         )
         assert scores == []
 
@@ -206,6 +214,7 @@ def test_score_clamped_to_unit_range(*, identity) -> None:
                 before_payload=marker,
                 signal_type="duplicate_candidate",
                 signal_marker=marker,
+                actor_account_id=seeded_owner_account_id(),
             ),
         )
         db.commit()
@@ -214,6 +223,7 @@ def test_score_clamped_to_unit_range(*, identity) -> None:
             tenant_id="owner",
             expense=db.get(Expense, a.id),
             candidates=[db.get(Expense, b.id)],
+            actor_account_id=seeded_owner_account_id(),
         )
         # Penalty alone with no positive buckets → would be negative,
         # clamped to 0.
