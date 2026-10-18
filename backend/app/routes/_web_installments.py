@@ -14,7 +14,7 @@ from app.services.currency_common import major_amount_to_minor, minor_amount_val
 def installment_form_values(agreement, currency):
     periods = [{"due_on": str(row.due_on), "principal": minor_amount_value(row.principal_minor - row.paid_principal_minor, currency),
         "fee": minor_amount_value(row.planned_fee_minor - row.paid_fee_minor, currency)}
-        for row in agreement.periods if row.principal_minor > row.paid_principal_minor]
+        for row in agreement.periods if row.principal_minor > row.paid_principal_minor or row.planned_fee_minor > row.paid_fee_minor]
     return {"name": agreement.name, "supersedes_public_id": agreement.public_id,
         "draw_ids_json": json.dumps(agreement.draw_public_ids), "periods_json": json.dumps(periods), "opening_source": ""}
 

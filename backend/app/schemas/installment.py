@@ -1,7 +1,7 @@
 """Explicit dates and amounts from the actual agreement, never an average quote."""
 from datetime import date
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas._money import NonNegativeMoneyAggregate, NonNegativeMoneyMinor, PositiveMoneyMinor
 
@@ -9,8 +9,14 @@ from app.schemas._money import NonNegativeMoneyAggregate, NonNegativeMoneyMinor,
 class InstallmentPeriodInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     due_on: date
-    principal_minor: PositiveMoneyMinor
+    principal_minor: NonNegativeMoneyMinor
     planned_fee_minor: NonNegativeMoneyMinor = 0
+
+    @model_validator(mode="after")
+    def has_scheduled_amount(self):
+        if not self.principal_minor and not self.planned_fee_minor:
+            raise ValueError("没有待付本金或费用的期次请移除；费用减免请在修订依据中说明")
+        return self
 
 
 class InstallmentCommand(BaseModel):
@@ -20,8 +26,8 @@ class InstallmentCommand(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     source: str = Field(min_length=1, max_length=500)
     agreed_on: date
-    draw_public_ids: list[str] = Field(min_length=1, max_length=120)
-    periods: list[InstallmentPeriodInput] = Field(min_length=1, max_length=120)
+    draw_public_ids: list[str] = Field(max_length=120)
+    periods: list[InstallmentPeriodInput] = Field(max_length=120)
 
 
 class InstallmentPaymentPart(BaseModel):

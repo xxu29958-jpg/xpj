@@ -6,7 +6,7 @@ FUNDS_MONEY_COLUMNS = (
     MoneyColumn("financial_accounts", "credit_limit_minor", MoneySign.NONNEGATIVE, True),
     MoneyColumn("financial_accounts", "available_credit_minor", MoneySign.NONNEGATIVE, True),
     MoneyColumn("installment_draws", "principal_minor", MoneySign.POSITIVE, False),
-    MoneyColumn("installment_periods", "principal_minor", MoneySign.POSITIVE, False),
+    MoneyColumn("installment_periods", "principal_minor", MoneySign.NONNEGATIVE, False),
     MoneyColumn("installment_periods", "planned_fee_minor", MoneySign.NONNEGATIVE, False),
     MoneyColumn("installment_payments", "principal_minor", MoneySign.NONNEGATIVE, False),
     MoneyColumn("installment_payments", "fee_minor", MoneySign.NONNEGATIVE, False),

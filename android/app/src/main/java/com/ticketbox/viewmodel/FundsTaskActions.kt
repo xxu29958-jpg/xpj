@@ -46,7 +46,9 @@ fun FundsViewModel.reviseAgreement(agreement: InstallmentViewDto) {
     fun amount(value: Long) = java.math.BigDecimal.valueOf(value, currency.minorUnitDigits).toPlainString()
     edit { input -> input.copy(name = agreement.name, source = "", previousAgreement = agreement.publicId,
         drawIds = current.installments?.draws.orEmpty().filter { it.publicId in agreement.drawPublicIds && it.remainingMinor > 0 }.map { it.publicId },
-        periodsJson = InstallmentInputWire.periods.toJson(agreement.periods.filter { it.principalMinor > it.paidPrincipalMinor }.map {
+        periodsJson = InstallmentInputWire.periods.toJson(agreement.periods.filter {
+            it.principalMinor > it.paidPrincipalMinor || it.plannedFeeMinor > it.paidFeeMinor
+        }.map {
             InstallmentPeriodInput(it.dueOn, amount(it.principalMinor - it.paidPrincipalMinor), amount(it.plannedFeeMinor - it.paidFeeMinor)) })) }
 }
 

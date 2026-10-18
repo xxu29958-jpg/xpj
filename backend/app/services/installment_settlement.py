@@ -27,7 +27,7 @@ def reviewed_settlement(db: Session, account: FinancialAccount, payer: Financial
     if not explicit:
         return unambiguous_principal(balances, payload.principal_minor)
     _validate_total(payload)
-    sources: dict[int, list[int]] = defaultdict(list)
+    sources: dict[int, list[int]] = {row.id: [] for row in active}
     for agreement_id, movement_id in db.execute(select(InstallmentDraw.agreement_id, InstallmentDraw.movement_id)
             .where(InstallmentDraw.agreement_id.in_([row.id for row in active]))):
         sources[agreement_id].append(movement_id)

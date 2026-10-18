@@ -601,11 +601,7 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
     history = get(credit_url + "/installments")["agreements"]
     assert len(history) == 2 and history[0]["active"] and not history[1]["active"]
     assert history[1]["periods"][0]["paid_fee_minor"] == 20 and not history[0]["needs_review"]
-    bank = get(bank_url)
-    final_payment = {**first_payment, "expected_row_version": credit["row_version"], "payer_row_version": bank["row_version"],
-        "principal_minor": 8000, "payer_amount_minor": 8000, "new_fee_minor": 130, "fee_note": "修订合约实际费用", "note": "按修订合约提前清偿", "period_allocations": [
-            {"period_public_id": row["public_id"], "principal_minor": row["principal_minor"], "fee_minor": row["planned_fee_minor"]} for row in history[0]["periods"]]}
-    credit = post(credit_url + "/repay", final_payment)
+    credit = _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, history[0], first_payment)
     assert credit["balance_minor"] == 0
     bank = get(bank_url)
     assert bank["balance_minor"] == 90850
@@ -655,3 +651,32 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
     with SessionLocal() as db:
         native_payment = db.scalar(select(Repayment).where(Repayment.original_currency_code == "IDR"))
         assert native_payment.original_amount_minor == 1 and native_payment.amount_cents == 0
+
+
+def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, original_payment):
+    from app.routes._web_installments import selected_installment_values
+    from app.schemas.installment import InstallmentsView
+    payment = {**original_payment, "expected_row_version": credit["row_version"], "payer_row_version": get(bank_url)["row_version"],
+        "principal_minor": 8000, "payer_amount_minor": 8000, "new_fee_minor": 0, "fee_note": None,
+        "note": "先清偿全部本金，费用仍按合约待付", "period_allocations": [
+            {"period_public_id": row["public_id"], "principal_minor": row["principal_minor"]} for row in schedule["periods"]]}
+    credit = post(credit_url + "/repay", payment)
+    assert (credit["balance_minor"], get(bank_url)["balance_minor"]) == (0, 90980)
+    source = get(credit_url + "/installments")
+    values = selected_installment_values(InstallmentsView.model_validate(source), schedule["public_id"], "CNY")
+    assert [row["fee"] for row in json.loads(values["periods_json"])] == ["0.30", "1.00"]
+    revision = {"expected_row_version": credit["row_version"], "supersedes_public_id": schedule["public_id"],
+        "name": schedule["name"], "source": "平台确认本金结清后仅余费用排期", "agreed_on": str(date.today()),
+        "draw_public_ids": json.loads(values["draw_ids_json"]), "periods": [
+            {"due_on": row["due_on"], "principal_minor": 0, "planned_fee_minor": row["planned_fee_minor"]}
+            for row in schedule["periods"]]}
+    key = str(uuid4())
+    credit = post(credit_url + "/installments", revision, key=key)
+    assert post(credit_url + "/installments", revision, key=key) == credit
+    current = get(credit_url + "/installments")["agreements"][0]
+    assert not current["needs_review"] and get(bank_url)["balance_minor"] == 90980
+    return post(credit_url + "/repay", {**payment, "expected_row_version": credit["row_version"],
+        "payer_row_version": get(bank_url)["row_version"], "principal_minor": 0, "payer_amount_minor": 0,
+        "new_fee_minor": 130, "fee_note": "合约费用本次实际发生并支付", "period_allocations": [
+            {"period_public_id": row["public_id"], "principal_minor": 0, "fee_minor": row["planned_fee_minor"]}
+            for row in current["periods"]]})

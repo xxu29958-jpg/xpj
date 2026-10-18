@@ -24,7 +24,7 @@ def _unsettled_parts(db: Session, *, tenant_id: str, home: str, purchases: list[
         .join(FinancialAccount, FinancialAccount.id == ExpenseFunding.account_id)
         .join(Expense, Expense.id == ExpenseFunding.expense_id)
         .outerjoin(AccountMovement, AccountMovement.funding_id == ExpenseFunding.id)
-        .where(ExpenseFunding.tenant_id == tenant_id, ExpenseFunding.voided_at.is_(None),
+        .where(ExpenseFunding.tenant_id == tenant_id, Expense.tenant_id == tenant_id, ExpenseFunding.voided_at.is_(None),
                ExpenseFunding.expense_id.in_([purchase.expense_id for purchase in purchases]))))
     used, _, _ = allocation_totals(db, [movement.id for _, _, movement, _ in rows if movement])
     results: dict[int, tuple[int | None, int | None]] = {}

@@ -20151,7 +20151,6 @@
               "type": "string"
             },
             "maxItems": 120,
-            "minItems": 1,
             "title": "Draw Public Ids",
             "type": "array"
           },
@@ -20171,7 +20170,6 @@
               "$ref": "#/components/schemas/InstallmentPeriodInput"
             },
             "maxItems": 120,
-            "minItems": 1,
             "title": "Periods",
             "type": "array"
           },
@@ -20253,7 +20251,7 @@
           "principal_minor": {
             "format": "int64",
             "maximum": 9000000000000.0,
-            "minimum": 1.0,
+            "minimum": 0.0,
             "title": "Principal Minor",
             "type": "integer"
           }

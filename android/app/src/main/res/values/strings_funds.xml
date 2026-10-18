@@ -194,4 +194,7 @@
     <string name="funds_funding_refreshed">已读取最新消费和账户。原付款金额与币种已保留，请核对后再确认。</string>
     <string name="funds_funding_not_ready">付款来源尚未读取完成，请稍后重试。</string>
     <string name="funds_refund_review_required">请核对退款去向。</string>
+    <string name="funds_remaining_period_fee">计划未付费用 %1$s；实际发生并支付时再记录。</string>
+    <string name="funds_no_remaining_periods">本版合约没有剩余排期，先前付款保留在历史版本。</string>
+    <string name="funds_fee_only_schedule">本金已清偿的期次填 0；全部免除剩余费用时移除期次并说明依据。</string>
 </resources>

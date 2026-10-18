@@ -52,6 +52,7 @@ internal fun InstallmentFields(input: FundsInput, data: InstallmentsDto?, enable
     AppSecondaryButton(stringResource(R.string.funds_add_period), enabled = enabled && periods.size < 120) { vm.edit {
         it.copy(periodsJson = InstallmentInputWire.periods.toJson(periods + InstallmentPeriodInput())) } }
     Text(stringResource(R.string.funds_revision_note), style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(R.string.funds_fee_only_schedule), style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable
@@ -65,10 +66,11 @@ internal fun InstallmentPaymentFields(input: FundsInput, data: InstallmentsDto?,
     data?.agreements.orEmpty().filter { it.active }.forEach { agreement ->
         Text(stringResource(R.string.funds_agreement_version, agreement.name, agreement.revision))
         if (agreement.needsReview) Text(stringResource(R.string.funds_replan_required), color = MaterialTheme.colorScheme.error)
-        agreement.periods.filter { it.principalMinor > it.paidPrincipalMinor }.forEach { period ->
+        agreement.periods.filter { it.principalMinor > it.paidPrincipalMinor || it.plannedFeeMinor > it.paidFeeMinor }.forEach { period ->
             validIds.add(period.publicId)
             val row = allocations.firstOrNull { it.id == period.publicId } ?: CreditAllocationInput(period.publicId, "period")
             Text(stringResource(R.string.funds_outstanding_period, period.position, period.dueOn, amount(period.principalMinor - period.paidPrincipalMinor, input.currency)))
+            Text(stringResource(R.string.funds_remaining_period_fee, amount(period.plannedFeeMinor - period.paidFeeMinor, input.currency)))
             FundsField(stringResource(R.string.funds_principal_payment), row.principal, enabled, money = true) { put(row.copy(principal = it)) }
             FundsField(stringResource(R.string.funds_new_period_fee), row.fee, enabled, money = true) { put(row.copy(fee = it)) }
         }
@@ -94,6 +96,7 @@ internal fun InstallmentHistory(data: InstallmentsDto?, canModify: Boolean, vm: 
         Text(stringResource(R.string.funds_agreement_summary, agreement.name, agreement.revision, if (agreement.active) stringResource(R.string.funds_active_agreement) else stringResource(R.string.funds_history_agreement)))
         Text("${agreement.agreedOn} · ${agreement.source}", style = MaterialTheme.typography.bodySmall)
         if (agreement.needsReview) Text(stringResource(R.string.funds_revised_principal_note))
+        if (agreement.periods.isEmpty()) Text(stringResource(R.string.funds_no_remaining_periods))
         agreement.periods.forEach { period ->
             Text(stringResource(R.string.funds_period_history, period.position, period.dueOn, amount(period.principalMinor, data!!.currencyCode), amount(period.paidPrincipalMinor, data.currencyCode), amount(period.plannedFeeMinor, data.currencyCode), amount(period.paidFeeMinor, data.currencyCode)))
         }

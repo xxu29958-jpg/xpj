@@ -55,6 +55,11 @@ def _review_principal(db: Session, account: FinancialAccount, payload: Installme
     if occupied:
         raise AppError("installment_source_in_use", "所选本金已在其他生效合约中，不能再次安排。", status_code=409)
     remaining = draw_balances(db, account.id)
+    if not selected:
+        original_draws = list(db.scalars(select(InstallmentDraw.movement_id).where(
+            InstallmentDraw.agreement_id == previous.id))) if previous else []
+        if previous is None or any(remaining.get(identifier, 0) > 0 for identifier in original_draws):
+            raise AppError("installment_source_required", "仅余费用或免除剩余费用时须修订原合约，且原本金已结清；其他情况请选择实际未偿本金。", status_code=422)
     balances = {row.id: remaining.get(row.id, 0) for row in draws}
     _review_schedule(payload, balances)
     return balances

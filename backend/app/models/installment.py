@@ -39,6 +39,7 @@ class InstallmentDraw(Base):
 class InstallmentPeriod(Base):
     __tablename__ = "installment_periods"
     __table_args__ = (*money_check_constraints_for_table("installment_periods"),
+        CheckConstraint("principal_minor > 0 OR planned_fee_minor > 0", name="ck_installment_period_nonempty"),
         UniqueConstraint("agreement_id", "position", name="uq_installment_period_position"))
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     public_id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False, default=lambda: str(uuid4()))
