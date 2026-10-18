@@ -8816,6 +8816,17 @@
             ],
             "title": "Calendar Revision"
           },
+          "correction_versions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction Versions"
+          },
           "csrf_token": {
             "default": "",
             "title": "Csrf Token",
@@ -23524,6 +23535,16 @@
       "RepaymentAsExpense": {
         "additionalProperties": false,
         "properties": {
+          "correction_versions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepaymentCorrectionVersions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "notification_key": {
             "anyOf": [
               {
@@ -23567,6 +23588,45 @@
           "timezone_name"
         ],
         "title": "RepaymentCalendarResponse",
+        "type": "object"
+      },
+      "RepaymentCorrectionVersions": {
+        "additionalProperties": false,
+        "properties": {
+          "debt_row_version": {
+            "minimum": 1.0,
+            "title": "Debt Row Version",
+            "type": "integer"
+          },
+          "source_expense_row_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Expense Row Version"
+          },
+          "source_offset_row_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Offset Row Version"
+          }
+        },
+        "required": [
+          "debt_row_version"
+        ],
+        "title": "RepaymentCorrectionVersions",
         "type": "object"
       },
       "RepaymentCreateRequest": {
@@ -24220,6 +24280,16 @@
               }
             ],
             "title": "Corrected Expense Id"
+          },
+          "correction_versions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepaymentCorrectionVersions"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "anyOf": [

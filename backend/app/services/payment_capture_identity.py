@@ -80,6 +80,7 @@ def append_decision(capture: PaymentCapture, *, kind: str, reason: str, actor_ac
         "from_kind": capture.kind, "to_kind": kind, "reason": reason,
         "at": now_utc().isoformat(), "actor_account_id": actor_account_id,
         "previous_version": capture.row_version,
+        "expense_public_id": capture.expense_public_id, "repayment_public_id": capture.repayment_public_id,
     }]
     capture.kind = kind
     capture.row_version += 1

@@ -39,7 +39,7 @@ def review_capture(request: Request, public_id: str, ledger_id: str = Form(), or
         _require_selected_ledger_write(options, selected_id)
         auth = getattr(request.state, "web_session_auth", None)
         if auth is None or auth.tenant_id != selected_id:
-            raise AppError("session_binding_changed", status_code=409)
+            raise AppError("session_binding_changed", "当前身份或账本已变化，请回到原账号和账本处理。", status_code=409)
         payload = PaymentCaptureDecision(expected_row_version=expected_row_version, kind=kind,
             original_currency=original_currency, reason=reason,
             original_amount_minor=None if kind == "dismissed" else amount_major_to_minor(original_amount, original_currency))

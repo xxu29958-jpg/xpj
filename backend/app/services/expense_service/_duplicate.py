@@ -32,6 +32,7 @@ def mark_expense_not_duplicate(
     *,
     expected_row_version: int,
     commit: bool = True,
+    actor_account_id: int | None = None,
 ) -> Expense:
     """ADR-0038 PR-2b: claim-then-apply mark-not-duplicate.
 
@@ -75,7 +76,7 @@ def mark_expense_not_duplicate(
 
     if duplicate_of_id is not None:
         # The claim above holds the expense lock; retain the original candidate for feedback.
-        record_duplicate_choice(db, expense=pre_claim)
+        record_duplicate_choice(db, expense=pre_claim, actor_account_id=actor_account_id)
         for kind in ACTIVE_DUPLICATE_IGNORE_KINDS:
             _remember_duplicate_ignore(db, tenant_id, expense_id, duplicate_of_id, kind)
 

@@ -28,7 +28,7 @@ def _wrong_kind():
 
 
 def capture_legacy_expense(db: Session, payload: NotificationDraftCreateRequest, auth) -> Expense:
-    from app.services.expense_service._create import stage_notification_draft
+    from app.services.expense_service._notification_draft import stage_notification_draft
 
     capture = None
     if payload.notification_key:
@@ -51,7 +51,7 @@ def capture_legacy_expense(db: Session, payload: NotificationDraftCreateRequest,
 
 
 def capture_legacy_repayment(db, payload, *, tenant_id, actor_account_id):
-    from app.services.debt_service._repayment_draft import stage_repayment_draft
+    from app.services.debt_service._repayment_capture import stage_repayment_draft
 
     capture = None
     if payload.notification_key:
@@ -83,13 +83,13 @@ def stage_capture_target(db, capture, *, auth, kind, currency, amount, merchant,
     # A classification revision creates one pending target, never a confirmed fact.
     key = notification_key or f"capture:{capture.public_id}:{capture.row_version}:{kind}"
     if kind == "expense":
-        from app.services.expense_service._create import stage_notification_draft
+        from app.services.expense_service._notification_draft import stage_notification_draft
 
         expense, fx_task = stage_notification_draft(db, NotificationDraftCreateRequest(source=capture.source,
             original_currency=currency, original_amount=minor_amount_value(amount, currency),
             merchant=merchant, expense_time=capture.captured_at, notification_key=key), auth)
         return link_capture(db, capture, expense), fx_task
-    from app.services.debt_service._repayment_draft import stage_repayment_draft
+    from app.services.debt_service._repayment_capture import stage_repayment_draft
 
     draft = stage_repayment_draft(db, payload=RepaymentDraftCreateRequest(source=capture.source,
         original_currency=currency, original_amount=minor_amount_value(amount, currency),

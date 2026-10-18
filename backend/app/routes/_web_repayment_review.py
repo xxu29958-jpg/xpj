@@ -33,7 +33,8 @@ from app.services.debt_service import (
     dismiss_repayment_draft,
     list_repayment_draft_audit_for_account,
 )
-from app.services.debt_service._repayment_draft import REPAYMENT_DRAFT_SOURCE_LABELS, get_repayment_draft_response
+from app.services.debt_service._repayment_capture import REPAYMENT_DRAFT_SOURCE_LABELS
+from app.services.debt_service._repayment_draft import get_repayment_draft_response
 from app.services.debt_service._repayment_time import repayment_calendar
 from app.services.repayment_draft_command_service import confirm_repayment_draft_idempotently
 
@@ -59,7 +60,7 @@ REVIEW_FIELDS = (
     "draft_public_id", "ledger_id", "origin_binding", "review_action",
     "target_with_expected_row_version", "original_currency", "original_amount",
 )
-REVIEW_TIME_FIELDS = ("payment_date", "calendar_revision", "reason")
+REVIEW_TIME_FIELDS = ("payment_date", "calendar_revision", "reason", "correction_versions")
 
 
 def _initial_review_values(scope, selected_id, public_id, row, can_create, calendar=None, values=None):
@@ -67,13 +68,14 @@ def _initial_review_values(scope, selected_id, public_id, row, can_create, calen
     initial = {
         "draft_public_id": public_id, "ledger_id": selected_id,
         "origin_binding": json.dumps(scope, ensure_ascii=False, sort_keys=True),
-        "review_action": "confirm",
+        "review_action": "expense" if row and row.status == "confirmed" else "confirm",
         "target_with_expected_row_version": f"{suggested.public_id}:{suggested.row_version}" if suggested else "",
         "original_currency": row.original_currency_code if row else "",
         "original_amount": _minor_amount_value(row.original_amount_minor, row.original_currency_code) if row else "",
         "idempotency_key": str(uuid4()) if can_create else "",
         "payment_date": "", "calendar_revision": str(calendar.revision) if calendar else "",
         "reason": "",
+        "correction_versions": row.correction_versions.model_dump_json() if row and row.correction_versions else "",
     }
     if values is not None:
         initial.update(values)
@@ -92,7 +94,7 @@ def render_review(request: Request, db: Session, *, options, selected_id: str, p
         rows = list_repayment_draft_audit_for_account(
             db, account_id=account_id, tenant_id=selected_id, public_id=public_id)
         row = rows[0] if rows else None
-        if row and row.status == "pending":
+        if row and (row.status == "pending" or row.correction_versions is not None):
             calendar = repayment_calendar(db, ledger_id=selected_id)
         if row is None:
             read_error = "原采集不在当前账号和账本中。请回到原身份查看。"
@@ -171,13 +173,14 @@ def submit_review(request: Request, db: Session, *, options, selected_id: str, p
 
             auth = getattr(request.state, "web_session_auth", None)
             if auth is None or auth.account_id != account_id or auth.tenant_id != selected_id:
-                raise AppError("session_binding_changed", status_code=409)
+                raise AppError("session_binding_changed", "当前身份或账本已变化，请回到原账号和账本处理。", status_code=409)
             correction = repayment_as_expense(db, auth=auth, public_id=public_id,
-                payload=RepaymentAsExpense(reason=values.get("reason", "")), idempotency_key=values["idempotency_key"])
+                payload=RepaymentAsExpense(reason=values.get("reason", ""),
+                    correction_versions=json.loads(values["correction_versions"]) if values.get("correction_versions") else None), idempotency_key=values["idempotency_key"])
             receipt = get_repayment_draft_response(db, tenant_id=selected_id, actor_account_id=account_id, public_id=public_id)
         else:
             raise AppError("invalid_request", "请选择消费、还款或忽略通知。", status_code=422)
-    except (AppError, ValidationError, SQLAlchemyError) as exc:
+    except (AppError, ValidationError, SQLAlchemyError, json.JSONDecodeError) as exc:
         retain_handled_error(request, exc)
         db.rollback()
         return render_review(request, db, options=options, selected_id=selected_id, public_id=public_id,
@@ -229,6 +232,7 @@ def _audit_row_view(
         "status_label": "已改为消费" if row.corrected_expense_id else _STATUS_LABELS.get(row.status, _STATUS_LABELS["pending"]),
         "status_tone": _STATUS_TONE.get(row.status, ""),
         "is_pending": row.status == "pending",
+        "can_correct_confirmed": row.correction_versions is not None,
         "committed_debt_public_id": row.committed_debt_public_id,
         "source_expense_public_id": row.source_expense_public_id,
         "source_expense_requires_review": row.source_expense_requires_review,

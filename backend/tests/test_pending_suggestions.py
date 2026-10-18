@@ -267,7 +267,7 @@ def test_feedback_changes_the_next_real_review_without_changing_money(client, we
 
 
 def test_keep_both_changes_future_duplicate_evidence_and_preserves_both_bills(client, web_client, identity):
-    from api_contract_helpers import mark_not_duplicate_api
+    from api_contract_helpers import mark_not_duplicate_api, patch_expense
     from sqlalchemy import event
 
     first_id = _pending_notification(client, identity=identity, merchant="重复核对店")
@@ -301,3 +301,16 @@ def test_keep_both_changes_future_duplicate_evidence_and_preserves_both_bills(cl
     for expense_id in (first_id, second_id):
         expense = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
         assert expense["amount_cents"] == 1888 and expense["status"] == "pending"
+
+    # Correcting a field used by this duplicate verdict invalidates only that
+    # evidence. Its original event remains available in the impact preview.
+    changed = patch_expense(client, second_id, headers=identity.app_headers, fields={"amount_cents": 2888})
+    assert changed.status_code == 200, changed.text
+    next_id = _pending_notification(client, identity=identity, merchant="重复核对店")
+    next_read = client.get(f"/api/expenses/{next_id}", headers=identity.app_headers).json()
+    assert "recent_user_reject" not in next_read["duplicate_candidates"][0]["reasons"]
+    from app.services.learning_service._source_eligibility import feedback_impact_preview
+    with SessionLocal() as db:
+        preview = feedback_impact_preview(db, tenant_id="owner")
+        assert preview["superseded"] == 1
+        assert db.query(LedgerLearningEvent).filter(LedgerLearningEvent.subject_id == second_id).count() == 1

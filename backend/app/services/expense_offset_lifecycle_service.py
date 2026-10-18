@@ -236,6 +236,7 @@ def _complete_lifecycle_command(
     actor_device_name: str | None,
     idempotency_key: str,
     created_at: datetime,
+    commit: bool = True,
 ) -> ExpenseFactBundleResponse:
     _append_revision(
         db,
@@ -258,7 +259,8 @@ def _complete_lifecycle_command(
         resource_id=offset.public_id,
         response_body=result.model_dump(mode="json", exclude_computed_fields=True),
     )
-    db.commit()
+    if commit:
+        db.commit()
     return result
 
 
@@ -355,6 +357,7 @@ def void_expense_offset(
     actor_device_public_id: str | None,
     actor_device_name: str | None,
     idempotency_key: str | None,
+    commit: bool = True,
 ) -> ExpenseFactBundleResponse:
     claim_or_replay = claim_expense_offset_void(
         db,
@@ -406,6 +409,7 @@ def void_expense_offset(
         actor_device_name=actor_device_name,
         idempotency_key=idempotency_key,
         created_at=now,
+        commit=commit,
     )
 
 

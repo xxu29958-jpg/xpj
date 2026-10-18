@@ -32,7 +32,7 @@ internal fun OutboxRow.paymentResolution(): PaymentCaptureResolution? = runCatch
     val value = requireNotNull(PaymentCaptureWire.resolution.fromJson(payloadJson))
     require(value.revision == 1 && (value.decision == null) != (value.correction == null))
     require(targetId == "${if (value.correction != null) "repayment-draft" else "payment-capture"}:${value.publicId}")
-    require(expectedRowVersion == (value.decision?.expectedRowVersion ?: 0L))
+    require(expectedRowVersion == (value.decision?.expectedRowVersion ?: value.correction?.correctionVersions?.debtRowVersion ?: 0L))
     value
 }.getOrNull()
 

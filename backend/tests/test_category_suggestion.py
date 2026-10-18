@@ -23,6 +23,7 @@ from app.services.learning_service import (
     compute_category_suggestion,
     record_event,
 )
+from tests._infra.identity import seeded_owner_account_id
 
 
 def _make_confirmed(
@@ -62,6 +63,7 @@ def test_suggests_majority_category_for_merchant(*, identity) -> None:
             db,
             tenant_id="owner",
             merchant="麦当劳",
+            actor_account_id=seeded_owner_account_id(),
         )
         assert result is not None
         assert result.category == "餐饮"
@@ -78,6 +80,7 @@ def test_no_suggestion_when_under_sample_threshold(*, identity) -> None:
             db,
             tenant_id="owner",
             merchant="Newshop",
+            actor_account_id=seeded_owner_account_id(),
         )
         assert result is None
 
@@ -86,7 +89,8 @@ def test_no_suggestion_when_merchant_empty(*, identity) -> None:
     with SessionLocal() as db:
         assert (
             compute_category_suggestion(
-                db, tenant_id="owner", merchant=None
+                db, tenant_id="owner", merchant=None,
+                actor_account_id=seeded_owner_account_id(),
             )
             is None
         )
@@ -117,6 +121,7 @@ def test_suppressed_when_recently_rejected(*, identity) -> None:
                     after_payload={"category": "购物"},
                     signal_type="category_suggestion",
                     signal_marker={"category": "餐饮"},
+                    actor_account_id=seeded_owner_account_id(),
                 ),
             )
         db.commit()
@@ -125,6 +130,7 @@ def test_suppressed_when_recently_rejected(*, identity) -> None:
             db,
             tenant_id="owner",
             merchant="Costa",
+            actor_account_id=seeded_owner_account_id(),
         )
         assert result is None
 
@@ -149,6 +155,7 @@ def test_reject_suppression_is_merchant_scoped(*, identity) -> None:
                     after_payload={"category": "购物"},
                     signal_type="category_suggestion",
                     signal_marker={"category": "餐饮"},
+                    actor_account_id=seeded_owner_account_id(),
                 ),
             )
         db.commit()
@@ -157,11 +164,13 @@ def test_reject_suppression_is_merchant_scoped(*, identity) -> None:
             db,
             tenant_id="owner",
             merchant="Costa",
+            actor_account_id=seeded_owner_account_id(),
         )
         other = compute_category_suggestion(
             db,
             tenant_id="owner",
             merchant="Other Cafe",
+            actor_account_id=seeded_owner_account_id(),
         )
 
     assert costa is None
@@ -175,10 +184,12 @@ def test_tenant_isolation(*, identity) -> None:
 
     with SessionLocal() as db:
         owner_view = compute_category_suggestion(
-            db, tenant_id="owner", merchant="瑞幸"
+            db, tenant_id="owner", merchant="瑞幸",
+            actor_account_id=seeded_owner_account_id(),
         )
         tester_view = compute_category_suggestion(
-            db, tenant_id="tester_1", merchant="瑞幸"
+            db, tenant_id="tester_1", merchant="瑞幸",
+            actor_account_id=seeded_owner_account_id(),
         )
         assert owner_view is not None
         assert owner_view.category == "餐饮"
@@ -200,6 +211,7 @@ def test_exclude_self_when_expense_id_provided(*, identity) -> None:
             merchant="麦当劳",
             expense_id=self_id,
             min_samples=3,
+            actor_account_id=seeded_owner_account_id(),
         )
         # Two qualifying rows after exclusion → still below 3 → None.
         assert result is None
@@ -211,6 +223,7 @@ def test_exclude_self_when_expense_id_provided(*, identity) -> None:
             merchant="麦当劳",
             expense_id=self_id,
             min_samples=2,
+            actor_account_id=seeded_owner_account_id(),
         )
         assert result is not None
         assert result.sample_size == 2
@@ -224,7 +237,8 @@ def test_look_back_window_filters_old_rows(*, identity) -> None:
     with SessionLocal() as db:
         assert (
             compute_category_suggestion(
-                db, tenant_id="owner", merchant="OldShop"
+                db, tenant_id="owner", merchant="OldShop",
+                actor_account_id=seeded_owner_account_id(),
             )
             is None
         )
@@ -234,6 +248,7 @@ def test_look_back_window_filters_old_rows(*, identity) -> None:
             tenant_id="owner",
             merchant="OldShop",
             look_back_days=1000,
+            actor_account_id=seeded_owner_account_id(),
         )
         assert result is not None
         assert result.category == "购物"

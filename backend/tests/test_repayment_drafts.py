@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -59,22 +60,30 @@ def test_capture_dedupes_same_notification_identity(client: TestClient, *, ident
     assert wrong_type.status_code == 409, wrong_type.text
 
 
-def test_wrong_repayment_becomes_one_reviewable_expense_and_old_capture_cannot_return(client, identity, monkeypatch):
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_wrong_repayment_becomes_one_reviewable_expense_and_old_capture_cannot_return(client, identity, monkeypatch, confirmed):
     from app.models import Expense, PaymentCapture
     from app.services import payment_capture_commands
     key = "real-notification-redacted"
     draft = capture_repayment_draft(client, identity, amount_cents=3790, notification_key=key)
     url = f"/api/repayment-drafts/{draft['public_id']}/as-expense"
     body = {"reason": "花呗消费，末尾只是还款提醒", "notification_key": key}
+    if confirmed:
+        debt = _create_external_debt(client, identity, counterparty_label="卡一")
+        _create_external_debt(client, identity, counterparty_label="卡二")
+        _confirm_draft_to_debt(client, identity, draft_public_id=draft["public_id"], debt=debt)
+        current = client.get(f"/api/repayment-drafts/{draft['public_id']}", headers=identity.app_headers).json()
+        body["correction_versions"] = current["correction_versions"]
+        next_draft = capture_repayment_draft(client, identity, amount_cents=3790, notification_key="next-notification")
+        assert _listed(client, identity, public_id=next_draft["public_id"])["suggested_debt_public_id"] == debt["public_id"]
     headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
     def fail_after_target(*args, **kwargs):
         raise RuntimeError("injected before atomic commit")
     with monkeypatch.context() as patch:
         patch.setattr(payment_capture_commands, "append_decision", fail_after_target)
-        import pytest
         with pytest.raises(RuntimeError, match="before atomic commit"):
             client.post(url, headers=headers, json=body)
-    assert client.get(f"/api/repayment-drafts/{draft['public_id']}", headers=identity.app_headers).json()["status"] == "pending"
+    assert client.get(f"/api/repayment-drafts/{draft['public_id']}", headers=identity.app_headers).json()["status"] == ("confirmed" if confirmed else "pending")
     with SessionLocal() as db:
         assert db.scalar(select(Expense).where(Expense.original_amount_minor == 3790)) is None
     first = client.post(url, headers=headers, json=body)
@@ -86,7 +95,14 @@ def test_wrong_repayment_becomes_one_reviewable_expense_and_old_capture_cannot_r
     assert new_key.json()["expense_public_id"] == receipt["expense_public_id"]
     expense = client.get(f"/api/expenses/{receipt['expense_id']}", headers=identity.app_headers).json()
     assert expense["status"] == "pending" and expense["original_amount_minor"] == 3790
-    assert client.get(f"/api/repayment-drafts/{draft['public_id']}", headers=identity.app_headers).json()["status"] == "dismissed"
+    corrected = client.get(f"/api/repayment-drafts/{draft['public_id']}", headers=identity.app_headers).json()
+    assert corrected["corrected_expense_id"] == receipt["expense_id"]
+    if confirmed:
+        assert corrected["status"] == "confirmed"  # The original accepted receipt remains historical evidence.
+        assert client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json()["remaining_amount_cents"] == 50000
+        assert _listed(client, identity, public_id=next_draft["public_id"])["suggested_debt_public_id"] is None
+    else:
+        assert corrected["status"] == "dismissed"
     replay = client.post("/api/payment-captures", headers=identity.app_headers, json={
         "notification_key": key, "source": "alipay", "captured_at": draft["captured_at"],
         "original_currency": "CNY", "original_amount_minor": 3790, "merchant": "花呗",
@@ -259,7 +275,7 @@ def test_list_pending_draft_carries_server_suggestion(client: TestClient, *, ide
 
 
 def test_confirmed_expense_can_enter_repayment_draft_model(
-    client: TestClient, *, identity
+    client: TestClient, *, identity, monkeypatch
 ) -> None:
     debt = _create_external_debt(
         client,
@@ -325,6 +341,35 @@ def test_confirmed_expense_can_enter_repayment_draft_model(
         assert payments[0].accounting_time_snapshot["user_local_date"] == "2026-04-30"
         assert payments[0].accounting_time_snapshot["accounting_date"] == "2026-05-01"
         assert payments[0].accounting_time_snapshot["calendar_revision"] == calendar["revision"]
+
+    # Reverse the wrong confirmation through the same actual command. Its offset
+    # restoration must share the transaction, including a failure after both writes.
+    from app.models import RepaymentVoid
+    from app.services import payment_capture_commands
+    correction_url = f"/api/repayment-drafts/{draft['public_id']}/as-expense"
+    current = client.get(f"/api/repayment-drafts/{draft['public_id']}", headers=identity.app_headers).json()
+    correction = {"reason": "已核对原单，这是消费", "correction_versions": current["correction_versions"]}
+    correction_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    def fail_before_receipt(*args, **kwargs):
+        raise RuntimeError("restore before receipt")
+    with monkeypatch.context() as patch:
+        patch.setattr(payment_capture_commands, "append_decision", fail_before_receipt)
+        with pytest.raises(RuntimeError, match="restore before receipt"):
+            client.post(correction_url, headers=correction_headers, json=correction)
+    with SessionLocal() as db:
+        assert db.scalar(select(ExpenseOffsetFact).where(ExpenseOffsetFact.expense_id == expense["id"])).status == "active"
+        assert db.scalar(select(RepaymentVoid.id)) is None
+    restored = client.post(correction_url, headers=correction_headers, json=correction)
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["expense_id"] == expense["id"]
+    assert client.post(correction_url, headers=correction_headers, json=correction).json() == restored.json()
+    assert client.post(confirm_url, headers=headers, json=body).json() == saved.json()
+    with SessionLocal() as db:
+        original = db.get(Expense, expense["id"])
+        offsets = list(db.scalars(select(ExpenseOffsetFact).where(ExpenseOffsetFact.expense_id == original.id)))
+        assert offsets[0].status == "voided"
+        assert expense_financial_summary(original, [row for row in offsets if row.status == "active"]).lineage_home_net_cents == original.amount_cents
+        assert db.scalar(select(RepaymentVoid.id)) is not None
 
 
 def test_expense_repayment_draft_dedupes_same_expense(

@@ -4,7 +4,7 @@
   const repaymentNames = ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
     "expected_row_version", "amount_major", "paid_at", "paid_at_timezone"];
   const repaymentTimeNames = ["time_precision", "calendar_revision"];
-  const captureTimeNames = ["payment_date", "calendar_revision", "reason"];
+  const captureTimeNames = ["payment_date", "calendar_revision", "reason", "correction_versions"];
   const voidNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id"];
   const kindNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "debt_kind"];
   const fieldNames = {repayment:repaymentNames, "debt-void":voidNames, "repayment-void":voidNames,

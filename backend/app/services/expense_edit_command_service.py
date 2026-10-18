@@ -85,7 +85,7 @@ def edit_expense_submission(
             expense_id,
             tenant_id,
             update_payload.model_copy(update={"expected_row_version": expected_row_version}),
-            commit=False,
+            commit=False, actor_account_id=initiator_account_id,
         )
         fx_task = prepare_pending_expense_fx(db, expense=expense,
             initiator_account_id=initiator_account_id, initiator_device_id=initiator_device_id)

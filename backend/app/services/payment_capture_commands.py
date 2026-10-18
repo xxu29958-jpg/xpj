@@ -73,7 +73,7 @@ def decide_capture(db, *, auth, public_id, payload, idempotency_key):
 
 def _require_repayment_identity(draft, capture, notification_key):
     if notification_key:
-        from app.services.debt_service._repayment_draft import _repayment_draft_key
+        from app.services.debt_service._repayment_capture import _repayment_draft_key
 
         expected = _repayment_draft_key(source=draft.source, merchant=draft.merchant_label,
             amount_cents=draft.original_amount_minor or draft.amount_cents,
@@ -82,7 +82,7 @@ def _require_repayment_identity(draft, capture, notification_key):
         if expected != draft.draft_idempotency_key:
             raise AppError("capture_identity_mismatch", "原通知与这条草稿不匹配，请重新打开原采集。", status_code=409)
         if capture and capture.identity_hash not in (None, identity_hash(notification_key)):
-            raise AppError("capture_identity_mismatch", status_code=409)
+            raise AppError("capture_identity_mismatch", "原通知身份不一致，请重新打开原采集核对。", status_code=409)
 
 
 def _capture_for_repayment(db, auth, draft, notification_key):
@@ -103,7 +103,7 @@ def _capture_for_repayment(db, auth, draft, notification_key):
             capture, _ = reserve_capture(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
                 notification_key=notification_key, **values)
             if capture.repayment_public_id not in (None, draft.public_id):
-                raise AppError("capture_identity_mismatch", status_code=409)
+                raise AppError("capture_identity_mismatch", "原通知身份不一致，请重新打开原采集核对。", status_code=409)
             capture.repayment_public_id = draft.public_id
         else:
             capture = PaymentCapture(tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
@@ -124,13 +124,12 @@ def repayment_as_expense(db, *, auth, public_id, payload, idempotency_key):
         RepaymentDraft.created_by_account_id == auth.account_id, RepaymentDraft.public_id == public_id).with_for_update())
     if draft is None:
         raise AppError("repayment_draft_not_found", status_code=404)
-    if draft.status == "confirmed":
-        raise AppError("state_conflict", "这笔已确认还款，请先处理已入账的还款，不能再创建消费。", status_code=409)
     capture = _capture_for_repayment(db, auth, draft, payload.notification_key)
-    if capture.kind == "expense" and capture.expense_public_id and draft.status == "dismissed":
+    if capture.kind == "expense" and capture.expense_public_id and draft.status in {"dismissed", "confirmed"}:
         # Includes lost-response retry and a second click with a new intent key.
-        draft.status = "dismissed"
         return _commit(db, capture, claim)
+    if draft.status == "confirmed":
+        return _correct_confirmed_capture(db, auth, draft, capture, payload, idempotency_key, claim)
     if draft.status != "pending":
         raise AppError("state_conflict", "这条采集已处理，请刷新后查看。", status_code=409)
     fx_task = None
@@ -148,5 +147,23 @@ def repayment_as_expense(db, *, auth, public_id, payload, idempotency_key):
     draft.status = "dismissed"
     draft.resolved_at = now_utc()
     draft.resolved_by_account_id = auth.account_id
+    append_decision(capture, kind="expense", reason=payload.reason.strip(), actor_account_id=auth.account_id)
+    return _commit(db, capture, claim, fx_task)
+
+
+def _correct_confirmed_capture(db, auth, draft, capture, payload, key, claim):
+    from app.services.repayment_capture_correction import restore_misclassified_repayment
+
+    source, repayment = restore_misclassified_repayment(db, draft=draft, versions=payload.correction_versions,
+        actor_account_id=auth.account_id, reason=payload.reason.strip(), key=key)
+    fx_task = None
+    if source is not None:
+        capture.expense_public_id = source.public_id
+    else:
+        # The reviewed payment may differ from the original parser proposal.
+        # Use the committed amount, while retaining raw capture evidence/history.
+        capture, fx_task = stage_capture_target(db, capture, auth=auth, kind="expense",
+            currency=repayment.original_currency_code or draft.home_currency_code,
+            amount=repayment.original_amount_minor or repayment.amount_cents, merchant=capture.merchant)
     append_decision(capture, kind="expense", reason=payload.reason.strip(), actor_account_id=auth.account_id)
     return _commit(db, capture, claim, fx_task)

@@ -39,10 +39,18 @@ class PaymentCaptureDecision(BaseModel):
     reason: str = Field(min_length=1, max_length=255)
 
 
+class RepaymentCorrectionVersions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    debt_row_version: int = Field(ge=1)
+    source_expense_row_version: int | None = Field(default=None, ge=1)
+    source_offset_row_version: int | None = Field(default=None, ge=1)
+
+
 class RepaymentAsExpense(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reason: str = Field(min_length=1, max_length=255)
     notification_key: str | None = Field(default=None, min_length=1, max_length=512)
+    correction_versions: RepaymentCorrectionVersions | None = None
 
 
 class PaymentCaptureResponse(BaseModel):

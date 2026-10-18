@@ -72,6 +72,10 @@ internal fun RepaymentReviewScreen(state: RepaymentDraftInboxUiState, model: Rep
                     Text(stringResource(R.string.repayment_review_unsubmitted_history), style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                if (capture.correctionVersions != null && capture.correctedExpenseId == null) {
+                    RepaymentAsExpenseAction(state.canModify && !state.isLoading && !state.review.bindingChanged,
+                        model::correctAsExpense, confirmed = true)
+                }
                 if (capture.correctedExpenseId != null) {
                     Text(stringResource(R.string.payment_capture_corrected))
                     TextButton(onClick = { onOpenExpense(capture.correctedExpenseId) }) {
@@ -147,7 +151,7 @@ private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: Repa
 }
 
 @Composable
-private fun RepaymentAsExpenseAction(enabled: Boolean, onSubmit: (String) -> Unit) {
+private fun RepaymentAsExpenseAction(enabled: Boolean, onSubmit: (String) -> Unit, confirmed: Boolean = false) {
     var open by rememberSaveable { mutableStateOf(false) }
     var reason by rememberSaveable { mutableStateOf("") }
     TextButton(onClick = { open = true }, enabled = enabled) { Text(stringResource(R.string.payment_capture_as_expense)) }
@@ -155,7 +159,7 @@ private fun RepaymentAsExpenseAction(enabled: Boolean, onSubmit: (String) -> Uni
         title = { Text(stringResource(R.string.payment_capture_as_expense)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-                Text(stringResource(R.string.payment_capture_correction_explanation))
+                Text(stringResource(if (confirmed) R.string.payment_capture_confirmed_correction_explanation else R.string.payment_capture_correction_explanation))
                 com.ticketbox.ui.components.AppTextInput(com.ticketbox.ui.components.AppTextInputState(
                     stringResource(R.string.payment_capture_reason), reason),
                     com.ticketbox.ui.components.AppTextInputActions({ reason = it }))

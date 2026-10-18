@@ -83,6 +83,14 @@ data class RepaymentDraft(
     val sourceExpensePublicId: String? = null,
     val sourceExpenseRequiresReview: Boolean = false,
     val correctedExpenseId: Long? = null,
+    val correctionVersions: RepaymentCorrectionVersions? = null,
 ) {
     val isPending: Boolean get() = status == RepaymentDraftStatuses.PENDING
 }
+
+
+data class RepaymentCorrectionVersions(
+    val debtRowVersion: Long,
+    val sourceExpenseRowVersion: Long? = null,
+    val sourceOffsetRowVersion: Long? = null,
+)

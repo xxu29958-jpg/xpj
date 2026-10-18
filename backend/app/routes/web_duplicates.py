@@ -46,6 +46,7 @@ from app.routes._web_expense_helpers import (
     web_edit_context,
 )
 from app.routes._web_expense_return_context import flow_href, return_context_params
+from app.routes._web_session_common import resolve_web_actor
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -181,7 +182,8 @@ def web_duplicates(
     home = require_runtime_home_currency_code(db)
     pairs = [_duplicate_pair_view(row, originals_by_id.get(row.duplicate_of_id), home=home, selected_id=selected_id)
         for row in rows]
-    feedback_ids = duplicate_feedback_expense_ids(db, tenant_id=selected_id, expenses=rows)
+    feedback_ids = duplicate_feedback_expense_ids(db, tenant_id=selected_id, expenses=rows,
+        actor_account_id=resolve_web_actor(db, request, selected_id)[0])
     for row, pair in zip(rows, pairs, strict=True):
         pair["feedback_applied"] = row.id in feedback_ids
     ctx = _base_ctx(
@@ -314,7 +316,8 @@ def web_duplicate_keep(
         if parsed is None:
             raise AppError("state_conflict", _STALE_DUPLICATE_MSG, status_code=422)
         submit_expense_duplicate_decision(db, tenant_id=selected_id, expense_id=expense_id,
-            expected_row_version=parsed, request_expected_row_version=parsed, idempotency_key=form.keep_idempotency_key)
+            expected_row_version=parsed, request_expected_row_version=parsed, idempotency_key=form.keep_idempotency_key,
+            actor_account_id=resolve_web_actor(db, request, selected_id)[0])
     except AppError as exc:
         db.rollback()
         if response := draft_error_response(request, exc):

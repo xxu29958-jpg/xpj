@@ -62,8 +62,21 @@ class RepaymentReviewRepository internal constructor(
         setOf(PendingMutationType.ResolvePaymentCapture), includeCompleted = true)
 
     override suspend fun correctAsExpense(binding: LogicalSessionBinding, draft: RepaymentDraft, reason: String): Result<Long> = errors.safeCall {
-        require(ledgerRoleCanModify(provider.currentLedgerRole()) && draft.isPending && reason.isNotBlank())
+        require(ledgerRoleCanModify(provider.currentLedgerRole()) && reason.isNotBlank())
         val bound = guard.bindExact(binding)
+        if (draft.correctionVersions != null && draft.correctedExpenseId == null) {
+            val versions = draft.correctionVersions
+            val payload = PaymentCaptureResolution(binding = binding, publicId = draft.publicId,
+                correction = com.ticketbox.data.remote.dto.RepaymentAsExpenseDto(reason.trim(), null,
+                    com.ticketbox.data.remote.dto.RepaymentCorrectionVersionsDto(versions.debtRowVersion,
+                        versions.sourceExpenseRowVersion, versions.sourceOffsetRowVersion)))
+            return@safeCall outbox.enqueue(bound, PendingMutationIntent(PendingMutationType.ResolvePaymentCapture,
+                "repayment-draft:${draft.publicId}", PaymentCaptureWire.resolution.toJson(payload),
+                versions.debtRowVersion, UUID.randomUUID().toString()), validateTargetRows = { rows ->
+                require(rows.none { it.status != PendingMutationStatus.Done }) { "请先核对原提交结果。" }
+            })
+        }
+        require(draft.isPending)
         val input = requireInput(binding, draft.publicId)
         require(input.submittedAction == null) { "请先核对原提交结果。" }
         // A pre-upgrade capture retained the opaque original identity in its completed Outbox receipt.

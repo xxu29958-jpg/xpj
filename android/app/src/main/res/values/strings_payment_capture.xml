@@ -21,4 +21,5 @@
     <string name="payment_capture_expense_ready">已转为消费待核对，尚未确认记账。</string>
     <string name="payment_capture_repayment_ready">已转为还款草稿，请选择对应欠款后确认。</string>
     <string name="payment_capture_ignored">已忽略通知，核对记录已保留，没有记账。</string>
+    <string name="payment_capture_confirmed_correction_explanation">撤销这笔还款的抵债效果，恢复相应欠款；恢复原消费或生成消费待核对。原事实和更正原因保留，错误还款不再用于推荐。</string>
 </resources>

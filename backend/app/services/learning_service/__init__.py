@@ -109,6 +109,7 @@ from app.services.learning_service._model_versions import (
     list_algorithm_versions,
     withdraw_algorithm_version,
 )
+from app.services.learning_service._source_eligibility import capture_feedback_context
 from app.services.time_service import now_utc
 
 __all__ = [
@@ -287,7 +288,7 @@ def record_event(
         subject_kind=draft.subject_kind,
         subject_id=draft.subject_id,
         before_payload=_dumps(draft.before_payload),
-        after_payload=_dumps(draft.after_payload),
+        after_payload=_dumps(capture_feedback_context(db, draft)),
         signal_type=draft.signal_type,
         signal_hash=signal_hash,
         signal_payload=_dumps(draft.signal_marker),

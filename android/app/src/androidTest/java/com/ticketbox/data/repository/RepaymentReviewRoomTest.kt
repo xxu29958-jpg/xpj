@@ -24,6 +24,8 @@ import org.junit.Test
 class RepaymentReviewRoomTest {
     private val capture = RepaymentDraftDto("review-original", "alipay", null, "JPY", "原采集", "2026-09-01T00:00:00Z",
         "pending", createdAt = "2026-09-01T00:00:01Z", originalCurrencyCode = "CNY", originalAmountMinor = 10000)
+    private var loseCorrectionReply = true
+    private val correctionCalls = mutableListOf<Pair<String, com.ticketbox.data.remote.dto.RepaymentAsExpenseDto>>()
     private var loseReply = true
     private var refuseReview = false
     private var sourceCorrection = false
@@ -50,6 +52,17 @@ class RepaymentReviewRoomTest {
             override suspend fun expenseFactBundle(id: String): com.ticketbox.data.remote.dto.ExpenseFactBundleDto {
                 assertEquals(fixture.network.current.publicId, id)
                 return api.expenseFactBundle(fixture.network.current.id.toString())
+            }
+            override suspend fun repaymentAsExpense(publicId: String, request: com.ticketbox.data.remote.dto.RepaymentAsExpenseDto,
+                idempotencyKey: String): com.ticketbox.data.remote.dto.PaymentCaptureDto {
+                assertEquals(capture.publicId, publicId)
+                correctionCalls += idempotencyKey to request
+                assertEquals(8L, request.correctionVersions?.debtRowVersion)
+                assertEquals("原通知其实是消费", request.reason)
+                if (loseCorrectionReply) throw IOException("lost correction reply")
+                return com.ticketbox.data.remote.dto.PaymentCaptureDto("event-original", 3, "alipay", capture.capturedAt,
+                    "CNY", 9000, "原采集", "expense", "legacy", emptyList(), fixture.network.current.id,
+                    fixture.network.current.publicId, capture.publicId)
             }
             override suspend fun dismissRepaymentDraft(publicId: String, request: RepaymentDraftDismissRequestDto): RepaymentDraftDto {
                 assertEquals(capture.publicId, publicId)
@@ -120,7 +133,22 @@ class RepaymentReviewRoomTest {
         graph = fixture.reopen()
         val receipt = graph.repaymentReviewRepository.observe(binding, capture.publicId).first().original
         assertTrue(requireNotNull(receipt?.receiptJson).contains("original-repayment"))
+        val confirmed = capture.copy(status = "confirmed", committedDebtPublicId = "original-debt",
+            committedRepaymentPublicId = "original-repayment", correctionVersions =
+                com.ticketbox.data.remote.dto.RepaymentCorrectionVersionsDto(8, 2, 1)).toDomain()
+        graph.repaymentReviewRepository.correctAsExpense(binding, confirmed, "原通知其实是消费").getOrThrow()
+        drain()
+        val correctionOriginal = fixture.stored().last()
+        assertEquals("pending", correctionOriginal["status"])
+        graph = fixture.reopen()
+        loseCorrectionReply = false
+        drain()
+        assertEquals("done", fixture.stored().last()["status"])
+        assertEquals(correctionOriginal["payload"], fixture.stored().last()["payload"])
+        assertEquals(correctionCalls.first(), correctionCalls.last())
+        assertEquals(receipt?.receiptJson, graph.repaymentReviewRepository.observe(binding, capture.publicId).first().original?.receiptJson)
         fixture.switchLedger()
+        assertTrue(graph.repaymentReviewRepository.correctAsExpense(binding, confirmed, "保留原身份").isFailure)
         assertTrue(graph.repaymentReviewRepository.submit(binding, capture.toDomain(), false).isFailure)
     }
 
@@ -196,6 +224,7 @@ class RepaymentReviewRoomTest {
                     fixture.expenseDao.applyExpenseFactBundle(ledgerId, projection.root, projection.activeOffsets)
                 }),
             DismissRepaymentDraftDispatcher(guard, adapters.repaymentDismissAdapter, adapters.repaymentDraftReceiptAdapter),
+            PaymentCaptureResolutionDispatcher(guard) { _, _ -> },
         ), now = fixture.clock::millis).drainOnce()
     }
 
