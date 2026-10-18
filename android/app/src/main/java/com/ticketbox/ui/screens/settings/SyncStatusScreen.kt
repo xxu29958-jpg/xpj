@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import com.ticketbox.data.repository.manualCreateReviewExpenseId
+import com.ticketbox.data.repository.canReviewFunding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -303,7 +304,7 @@ internal fun ConflictCard(
 ) {
     // Only expense mutations can refresh state and retry as "keep mine".
     val originalOffset = row.type == PendingMutationType.CreateExpenseOffset
-    val reviewOriginal = row.type == PendingMutationType.UndoExpense || row.lastError in EXPENSE_ORIGINAL_REVIEW_ERRORS
+    val reviewOriginal = row.type == PendingMutationType.UndoExpense || row.lastError in EXPENSE_ORIGINAL_REVIEW_ERRORS || row.canReviewFunding()
     val canKeep = !reviewOriginal && row.type !in com.ticketbox.viewmodel.incomePlanSubmissionTypes && !originalOffset && row.type !in com.ticketbox.viewmodel.categoryRuleSubmissionTypes &&
         row.type !in setOf(PendingMutationType.CreateExpense, PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation) && row.targetId.startsWith("expense:")
     SettingsOpenPanel(

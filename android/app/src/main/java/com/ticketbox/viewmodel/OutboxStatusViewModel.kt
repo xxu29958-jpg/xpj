@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.canReviewFunding
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
@@ -432,6 +434,7 @@ data class OutboxStatusUiState(
 }
 
 private fun OutboxRow.refusesKeepMine(): Boolean =
+    canReviewFunding() ||
     type == PendingMutationType.SplitAgreement ||
     type == PendingMutationType.CreateExpense || type == PendingMutationType.UndoExpense ||
         lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ||

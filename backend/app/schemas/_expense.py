@@ -24,6 +24,7 @@ from app.schemas._money import (
     SignedMoneyMinor,
     expense_item_money_schema_extra,
 )
+from app.schemas.funds import FundingPart
 from app.services.time_service import to_iso
 from app.tag_text import validate_tags_fit_storage
 
@@ -78,6 +79,7 @@ class UploadResponse(BaseModel):
 
 
 class ExpenseManualCreateRequest(BaseModel):
+    funding: list[FundingPart] | None = Field(default=None, min_length=1, max_length=8)
     model_config = ConfigDict(extra="forbid")
 
     time_input: AccountingTimeInput | None = None
@@ -139,6 +141,7 @@ class NotificationDraftCreateRequest(BaseModel):
 
 
 class ExpenseFieldChanges(BaseModel):
+    funding: list[FundingPart] | None = Field(default=None, min_length=1, max_length=8)
     """Editable bill fields shared by pending review and explicit corrections."""
 
     model_config = ConfigDict(extra="forbid")
@@ -179,6 +182,7 @@ class ExpenseConfirmRequest(BaseModel):
     idempotent (200) regardless of the token — confirmed is terminal.
     """
 
+    funding: list[FundingPart] | None = Field(default=None, min_length=1, max_length=8)
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int

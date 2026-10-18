@@ -153,6 +153,15 @@ internal fun NavGraphBuilder.addObligationRoutes(
     dependencies: MainProductRouteDependencies,
 ) {
     with(dependencies) {
+        composable(ProductSecondaryPage.Funds.route) {
+            val model: com.ticketbox.viewmodel.FundsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+                factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                    @Suppress("UNCHECKED_CAST")
+                    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
+                        com.ticketbox.viewmodel.FundsViewModel(screenFactory.fundsRepository) as T
+                })
+            com.ticketbox.ui.screens.FundsScreen(model, onBack, runtime.navController::openExpense)
+        }
         composable(ProductSecondaryPage.BillSplits.route) { entry ->
             val draftOwner = remember(runtime.navController, entry) { runtime.navController.getBackStackEntry(MAIN_ROUTE) }
             BillSplitRoute(screenFactory = screenFactory, draftOwner = draftOwner, onBack = onBack,

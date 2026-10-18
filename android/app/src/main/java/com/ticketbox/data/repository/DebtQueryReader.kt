@@ -35,11 +35,13 @@ import retrofit2.HttpException
 data class DebtReadResourceDenial(val binding: LogicalSessionBinding, val debtPublicId: String,
     val failure: RepositoryException, val generation: Long)
 
-internal val DEBT_QUERY_MUTATION_TYPES = setOf(PendingMutationType.CreateDebt, PendingMutationType.RecordDebtRepayment,
+internal val DEBT_QUERY_MUTATION_TYPES = setOf(PendingMutationType.FinancialAccountCommand, PendingMutationType.CreateDebt, PendingMutationType.RecordDebtRepayment,
     PendingMutationType.RecordDebtAdjustment, PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment,
     PendingMutationType.SplitAgreement, PendingMutationType.SetDebtKind, PendingMutationType.AcceptBillSplitInvitation,
     PendingMutationType.ConfirmRepaymentDraft, PendingMutationType.DismissRepaymentDraft,
-    PendingMutationType.CapturePaymentNotification, PendingMutationType.ResolvePaymentCapture)
+    PendingMutationType.CapturePaymentNotification, PendingMutationType.ResolvePaymentCapture,
+    PendingMutationType.CreateExpense, PendingMutationType.ConfirmExpense, PendingMutationType.CorrectExpense,
+    PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
 
 private data class AcceptedDebtQuery(val query: StatsProjectionCacheEntity, val stored: DebtQueryCachePayload, val accessGeneration: Long)
 private val activeDebtDirectTokens = ConcurrentHashMap.newKeySet<String>()

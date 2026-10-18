@@ -104,6 +104,8 @@ def expense_edit_form_values(form: WebExpenseEditForm) -> dict[str, str]:
     values = _submitted_form_values(expected_row_version=form.expected_row_version, idempotency_key=form.idempotency_key,
         amount_yuan=form.amount_yuan, original_currency=form.original_currency, manual_exchange_rate=form.manual_exchange_rate,
         merchant=form.merchant, category=form.category, note=form.note, tags=form.tags, expense_time=form.expense_time)
+    if form.funding_json is not None:
+        values["funding_json"] = form.funding_json
     return {**values, **(form.time_fields or {}), **(form.score_fields or {})}
 
 
@@ -382,7 +384,7 @@ def apply_web_expense_form(
             amount_yuan=form.amount_yuan, original_currency=form.original_currency,
             manual_exchange_rate=form.manual_exchange_rate, merchant=form.merchant, category=form.category,
             note=form.note, tags=form.tags, expense_time=form.expense_time, time_fields=form.time_fields,
-            score_fields=form.score_fields,
+            score_fields=form.score_fields, funding_json=form.funding_json,
         )
         if payload is None:
             return prepared
@@ -447,6 +449,7 @@ def prepare_web_expense_form(
     manual_exchange_rate: str | None = None,
     time_fields: dict[str, str] | None = None,
     score_fields: dict[str, str] | None = None,
+    funding_json: str | None = None,
 ) -> tuple[ExpenseUpdateRequest | None, WebExpenseSaveOutcome]:
     """Parse one browser snapshot without owning its write transaction."""
 
@@ -465,6 +468,8 @@ def prepare_web_expense_form(
     if time_fields is not None:
         form_values.update(time_fields)
     form_values.update(score_fields or {})
+    if funding_json is not None:
+        form_values["funding_json"] = funding_json
     try:
         expense = get_expense(db, expense_id, selected_ledger_id)
         time_input = None

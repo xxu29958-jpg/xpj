@@ -57,6 +57,7 @@ _FACT_FIELD_LABELS: dict[str, str] = {
     "regret_score": "后悔指数",
     "items": "小票明细",
     "splits": "家庭拆账",
+    "funding": "付款组成",
 }
 
 # changed_fields 顺序稳定化：金额最先，明细/拆账最后。
@@ -94,7 +95,7 @@ def _format_fact_value(
         return _snapshot_time_label(value)
     if field == "accounting_time" and isinstance(value, dict):
         return accounting_snapshot_label(value)
-    if field in {"items", "splits"} and isinstance(value, list):
+    if field in {"items", "splits", "funding"} and isinstance(value, list):
         return f"共 {len(value)} 行"
     return str(value)
 
@@ -435,6 +436,12 @@ def web_fact_context(
         can_write=ctx["can_write"],
     )
     ctx.update(expense_offset_fact_view(db, selected_id, expense_id, ctx["can_write"], request))
+    from app.routes._web_funding import funding_options
+    from app.services.expense_funding_command import expense_funding_view
+    auth = getattr(request.state, "web_session_auth", None)
+    ctx["funding_accounts"] = funding_options(db, auth) if auth else []
+    ctx["expense_funding"] = expense_funding_view(db, ledger_id=selected_id,
+        actor_account_id=auth.account_id if auth else None, expense_id=expense_id)
     member_names = {
         member.member_id: member.account_name
         for member in invitation_members.list_members(

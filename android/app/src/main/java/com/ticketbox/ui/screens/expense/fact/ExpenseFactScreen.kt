@@ -179,6 +179,7 @@ private fun FactContentSections(
         onRetryBundle = viewModel::loadExpenseFactBundle,
     )
     FactReadingEntries(state, viewModel, originalContent)
+    com.ticketbox.ui.screens.ExpenseFundsPanel(expense.id, viewModel::retryLoadExpense)
     FactTimelineSection(
         state = state,
         onRetryLoad = viewModel::loadExpenseRevisions,

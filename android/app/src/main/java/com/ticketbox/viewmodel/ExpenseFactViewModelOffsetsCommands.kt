@@ -83,11 +83,19 @@ internal fun ExpenseFactViewModel.buildOffsetDraftOrMessage(): ExpenseOffsetDraf
     } catch (e: DateTimeParseException) {
         return rejectOffset(R.string.expense_offset_date_invalid)
     }
+    val destinations = try {
+        if (form.kind.isMoneyEvent) com.ticketbox.data.repository.readExpenseFunding(form.destinationsJson,
+            requireNotNull(form.sourceExpense).originalCurrencyCode) else emptyList()
+    } catch (error: IllegalArgumentException) {
+        _uiState.update { it.copy(offsetForm = it.offsetForm.copy(submitError = UiText.raw(error.message ?: "请核对退款去向。"))) }
+        return null
+    }
     return ExpenseOffsetDraft(
         kind = form.kind,
         originalAmountMinor = amountMinor,
         accountingDate = form.accountingDate.trim(),
         reason = form.reason.trim(),
+        destinations = destinations,
     )
 }
 

@@ -8,6 +8,7 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.ExpenseCommandAcceptance
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingExpenseCommand
+import com.ticketbox.data.repository.canReviewFunding
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -83,6 +84,14 @@ internal fun ExpenseEditViewModel.observeExpenseCommands() {
 internal fun ExpenseEditViewModel.reconcileExpenseCommands() {
     val observation = commandObservation ?: return
     if (observation.access?.binding != fxBinding || repository.captureDeferredLedgerBinding() != fxBinding) return
+    val outstanding = observation.commands.filter { it.row.targetId == "expense:${uiState.value.expense?.id}" &&
+        it.row.status != PendingMutationStatus.Done }
+    val fundingReview = outstanding.singleOrNull()?.row?.canReviewFunding() == true
+    _uiState.update { it.copy(fundingReviewAvailable = fundingReview) }
+    // Cold navigation has no SavedState command ids; the retained Outbox still owns this refusal.
+    if (fundingReview && uiState.value.commandRowIds.isEmpty()) {
+        _uiState.update { it.copy(commandRowIds = outstanding.map { row -> row.row.id }) }
+    }
     val ids = uiState.value.commandRowIds
     if (ids.isEmpty()) return
     applyExpenseCommandProgress(observation.commands.filter { it.row.id in ids }, ids)

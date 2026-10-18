@@ -38,7 +38,11 @@ def draft_refusal_result(exc: AppError) -> str:
         "amount_invalid", "recurring_merchant_required", "exchange_rate_pending",
         "expense_refund_exceeds_remaining", "expense_refund_exists", "expense_reversal_active",
         "expense_offset_not_active", "calendar_revision_conflict", "accounting_time_invalid",
-        "debt_amount_invalid", "debt_direction_invalid", "debt_counterparty_invalid", "debt_installment_invalid"} else "blocked"
+        "debt_amount_invalid", "debt_direction_invalid", "debt_counterparty_invalid", "debt_installment_invalid",
+        "funding_amount_mismatch", "fund_account_archived", "credit_opening_unknown", "funding_review_required",
+        "refund_destination_required", "funds_date_outside_coverage", "funding_opening_mismatch",
+        "installment_source_in_use", "installment_amount_mismatch", "installment_allocation_required",
+        "installment_review_required", "funding_opening_review_required"} else "blocked"
 
 
 def draft_error_response(request: Request, exc: AppError, *, refusal_result: str | None = None) -> JSONResponse | None:

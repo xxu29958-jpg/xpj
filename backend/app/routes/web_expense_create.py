@@ -40,6 +40,7 @@ from app.routes._web_expense_return_context import (
     return_href,
     return_label,
 )
+from app.routes._web_funding import funding_options, parse_funding
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -161,6 +162,7 @@ def _manual_expense_context(
             "form_device_public_id": form_device_public_id,
             "manual_draft_scope": manual_draft_scope(db, _session_writer_auth(request, selected_id)),
             "manual_draft_result": draft_result,
+            "funding_accounts": funding_options(db, _session_writer_auth(request, selected_id)),
             "max_upload_size_bytes": get_settings().max_upload_size_bytes,
             "manual_review_href": (
                 flow_href(
@@ -368,6 +370,7 @@ def web_manual_expense_create(
     category: str = Form(default=""),
     spent_at: str = Form(default=""),
     note: str = Form(default=""),
+    funding_json: str = Form(default="[]"),
     csrf_token: str = Form(default=""),
     return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     time_fields: dict[str, str] | None = Depends(accounting_time_form_fields),
@@ -390,6 +393,7 @@ def web_manual_expense_create(
         "category": category,
         "spent_at": spent_at,
         "note": note,
+        "funding_json": funding_json,
     }
     if time_fields is not None:
         values.update(time_fields)
@@ -413,6 +417,8 @@ def web_manual_expense_create(
             home_currency=home_currency_code,
             time_fields=time_fields,
         )
+        payload.funding = parse_funding(db, ledger_id=auth.ledger_id, actor_account_id=auth.account_id,
+            raw=funding_json, currency_code=currency_code)
         created = create_manual_expense(db, payload, auth)
     except (AppError, ValidationError, InvalidOperation) as exc:
         db.rollback()

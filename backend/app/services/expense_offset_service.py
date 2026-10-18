@@ -41,6 +41,7 @@ from app.services.expense_offset_relationship_projection import (
 from app.services.expense_offset_summary import expense_financial_summary
 from app.services.expense_response_service import expense_to_response
 from app.services.expense_service import get_expense
+from app.services.funds_refund_service import apply_offset_funds
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.ledger_calendar_service import calendar_revision, current_calendar
 from app.services.optimistic_concurrency import claim_row_with_token
@@ -455,6 +456,7 @@ def create_expense_offset(
         category=imported.category if imported is not None else None,
         time_values=time_values,
     )
+    apply_offset_funds(db, expense=expense, offset=offset, destinations=payload.destinations, actor_account_id=actor_account_id)
     reason_code = source_relationship_reason(payload.kind)
     relationship_result = settle_source_financial_change(
         db,

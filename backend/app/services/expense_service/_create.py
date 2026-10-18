@@ -22,6 +22,7 @@ from app.services.exchange_rate_service import (
     validate_currency_payload_money_command,
 )
 from app.services.expense_accounting_time_service import apply_expense_time_input, refresh_legacy_expense_time
+from app.services.expense_funding_service import publish_expense_funding
 from app.services.expense_response_service import expense_to_response
 from app.services.expense_revision_service import record_confirmation_revision
 from app.services.expense_service._helpers import (
@@ -171,6 +172,7 @@ def _insert_manual_expense(
     db.flush()
     sync_expense_tags(db, expense)
     mark_duplicate_status(db, expense)
+    publish_expense_funding(db, expense=expense, parts=payload.funding, actor_account_id=actor_account_id)
     if expense.status == "confirmed":
         record_confirmation_revision(
             db,
@@ -183,7 +185,7 @@ def _insert_manual_expense(
     return expense
 
 
-def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext) -> ExpenseResponse:
+def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth: AuthContext, *, commit: bool = True) -> ExpenseResponse:
     """Accept the original manual request and its typed response in one transaction."""
     from app.services.pending_fx_task_service import prepare_pending_expense_fx, submit_pending_expense_fx
     lock_and_revalidate_mutation_actor(
@@ -216,8 +218,9 @@ def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth
         receipt = expense_to_response(db, tenant_id=tenant_id, expense=expense)
         mark_idempotency_succeeded(db, claim.row, resource_type="expense", resource_id=str(receipt.id),
             response_body=receipt.model_dump(mode="json"))
-        db.commit()
-        if fx_task is not None:
+        if commit:
+            db.commit()
+        if fx_task is not None and commit:
             submit_pending_expense_fx(db, fx_task)
         return receipt
     except Exception:

@@ -2,7 +2,7 @@
 (function (window, document) {
   "use strict";
   const fields = ["ledger_id", "expense_id", "expected_row_version", "idempotency_key", "keep_idempotency_key", "reject_idempotency_key", "draft_ref", "save_before_confirm", "command_action",
-    "amount_yuan", "original_currency", "manual_exchange_rate", "merchant", "category", "note", "tags", "expense_time",
+    "amount_yuan", "original_currency", "manual_exchange_rate", "merchant", "category", "note", "tags", "expense_time", "funding_json",
     "time_precision", "calendar_revision", "user_local_date", "source_timezone", "source_utc_offset_seconds", "accounting_date", "value_score", "regret_score"];
   const names = [...fields, "return_context", "present_fields", "reject_row_version", "undo_idempotency_key"];
   document.addEventListener("click", event => {
@@ -46,6 +46,7 @@
     }
     const scores = form.querySelector(".score-fields");
     if (scores) scores.closest("details").hidden = !scores.querySelector("input");
+    if (!present.includes("funding_json")) form.querySelector("[data-review-funding]")?.remove();
   }
   function href(record, scope, form) {
     const values = record?.values || read(form);
@@ -88,13 +89,15 @@
       idField: "expense_id", titleField: "merchant", commandKeyField: saved =>
         ["keep", "reject"].includes(saved.command_action) ? saved.command_action + "_idempotency_key" : "idempotency_key", draftRefField: "draft_ref",
       submitSelector: "[data-expensereview-submit]", pendingLabel: "核实这次结果",
-      legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key", "value_score", "regret_score"],
+      legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key", "value_score", "regret_score", "funding_json"],
       embedded: options.embedded, onAccepted: options.onAccepted, multiple: !options.embedded,
       action: saved => saved.command_action === "keep" ? "/web/duplicates/" + saved.expense_id + "/keep" :
         "/web/expenses/" + saved.expense_id + "/" + (saved.command_action || "confirm"),
       continueAfterAcceptance: (saved, receipt) => saved.command_action === "reject" ?
         {...saved, command_action: "confirm", reject_row_version: String(receipt.row_version), undo_idempotency_key: receipt.undo_idempotency_key} :
-        saved.command_action === "keep" ? {...saved, command_action: "confirm"} : undefined,
+        saved.command_action === "keep" ? {...saved, command_action: "confirm"} :
+        saved.command_action === "save" && saved.funding_json && saved.funding_json !== "[]" ?
+          {...saved, command_action: "confirm", idempotency_key: window.crypto.randomUUID()} : undefined,
       reviewRequiresRejection: true, reviewWhileEditing: true,
       inactiveMessage: "账单已离开待确认状态。原输入仍保留；已发出的提交可核实原结果。",
       read, href, present: () => {},
@@ -112,6 +115,7 @@
         for (const [name, value] of Object.entries(JSON.parse(values.return_context))) put(current, name, value);
       },
       body(body, values) {
+        if (!JSON.parse(values.present_fields).includes("funding_json")) body.delete("funding_json");
         for (const name of JSON.parse(values.present_fields)) body.set(name, values[name]);
         for (const [name, value] of Object.entries(JSON.parse(values.return_context))) body.set(name, value);
       },
@@ -122,9 +126,11 @@
       acceptsDestination: (next, saved) => saved.command_action === "reject" ?
         (next.pathname === "/web/pending" || /^\/web\/recurring\/[^/]+\/occurrence$/.test(next.pathname)) && next.searchParams.get("undo") === saved.expense_id : saved.command_action === "keep" ?
         next.pathname === "/web/expenses/" + saved.expense_id + "/edit" && next.hash === "#expensereview-edit-" + saved.draft_ref : saved.command_action === "save" ?
-        next.pathname === "/web/expenses/" + saved.expense_id + "/edit" && next.searchParams.get("new_expensereview") === "1" :
+        next.pathname === "/web/expenses/" + saved.expense_id + "/edit" &&
+          (next.searchParams.get("new_expensereview") === "1" || next.hash === "#expensereview-edit-" + saved.draft_ref) :
         next.pathname === "/web/expenses/" + saved.expense_id + "/confirmation/" + saved.idempotency_key,
       updatePresentation(current, state) {
+        current.dispatchEvent(new Event("ticketbox:funding-state"));
         const pending = state.phase !== "editing";
         const basisChanged = !pending && requiresReview(current);
         current.classList.toggle("expense-review-needs-review", basisChanged);
@@ -189,6 +195,7 @@
       },
     });
     form.expenseReviewContinuity = continuity;
+    window.TicketboxExpenseFunding?.mount(form);
     return continuity;
   }
   function requiresReview(form) {
@@ -199,7 +206,7 @@
       const scope = JSON.parse(element.dataset.expensereviewScope), list = element.querySelector("ul");
       list.replaceChildren();
       const store = window.TicketboxDraftStore.createStore({prefix: "ticketbox:expensereview-edit-draft:v1:",
-        fields: [...names, "amount_placeholder", "amount_inputmode"], legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key"],
+        fields: [...names, "amount_placeholder", "amount_inputmode"], legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key", "value_score", "regret_score", "funding_json"],
         validRef: /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i});
       for (const record of store.list(scope)) {
         const item = document.createElement("li"), link = document.createElement("a");

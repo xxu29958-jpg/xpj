@@ -1,0 +1,54 @@
+package com.ticketbox.data.remote.api
+
+import com.ticketbox.data.remote.dto.CreditPaymentDto
+import com.ticketbox.data.remote.dto.CreditPaymentVoidDto
+import com.ticketbox.data.remote.dto.FinancialAccountCreateDto
+import com.ticketbox.data.remote.dto.FinancialAccountEditDto
+import com.ticketbox.data.remote.dto.FinancialAccountDto
+import com.ticketbox.data.remote.dto.AccountPostingDto
+import com.ticketbox.data.remote.dto.FundsOverviewDto
+import com.ticketbox.data.remote.dto.ExpenseFundingViewDto
+import com.ticketbox.data.remote.dto.ExpenseFundingCommandDto
+import com.ticketbox.data.remote.dto.InstallmentCommandDto
+import com.ticketbox.data.remote.dto.InstallmentsDto
+import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.PATCH
+import retrofit2.http.POST
+import retrofit2.http.Path
+
+interface FundsApi {
+    @GET("api/funds/accounts/templates/list")
+    suspend fun fundsAccountChoices(): List<com.ticketbox.data.remote.dto.AccountChoiceDto>
+    @POST("api/funds/accounts/{id}/repayments/void")
+    suspend fun voidCreditPayment(@Path("id") id: String, @Body body: CreditPaymentVoidDto,
+        @Header("Idempotency-Key") key: String): FinancialAccountDto
+    @GET("api/funds/accounts/{id}/installments")
+    suspend fun installments(@Path("id") id: String): InstallmentsDto
+    @POST("api/funds/accounts/{id}/installments")
+    suspend fun saveInstallments(@Path("id") id: String, @Body body: InstallmentCommandDto,
+        @Header("Idempotency-Key") key: String): FinancialAccountDto
+    @GET("api/expenses/{id}/funding")
+    suspend fun expenseFunding(@Path("id") id: Long): ExpenseFundingViewDto
+    @POST("api/expenses/{id}/funding")
+    suspend fun saveExpenseFunding(@Path("id") id: Long, @Body body: ExpenseFundingCommandDto,
+        @Header("Idempotency-Key") key: String): ExpenseFundingViewDto
+    @GET("api/funds/accounts/summary/net-worth")
+    suspend fun fundsOverview(): FundsOverviewDto
+    @GET("api/funds/accounts")
+    suspend fun fundsAccounts(): List<FinancialAccountDto>
+    @GET("api/funds/accounts/{id}")
+    suspend fun fundsAccount(@Path("id") id: String): FinancialAccountDto
+    @POST("api/funds/accounts")
+    suspend fun createFundsAccount(@Body body: FinancialAccountCreateDto, @Header("Idempotency-Key") key: String): FinancialAccountDto
+    @PATCH("api/funds/accounts/{id}")
+    suspend fun editFundsAccount(@Path("id") id: String, @Body body: FinancialAccountEditDto,
+        @Header("Idempotency-Key") key: String): FinancialAccountDto
+    @POST("api/funds/accounts/{id}/repay")
+    suspend fun payCreditAccount(@Path("id") id: String, @Body body: CreditPaymentDto,
+        @Header("Idempotency-Key") key: String): FinancialAccountDto
+    @POST("api/funds/accounts/{id}/activities")
+    suspend fun postFundsActivity(@Path("id") id: String, @Body body: AccountPostingDto,
+        @Header("Idempotency-Key") key: String): FinancialAccountDto
+}

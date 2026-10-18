@@ -5,6 +5,7 @@ data class ExpenseOffsetDraft(
     val originalAmountMinor: Long?,
     val accountingDate: String,
     val reason: String,
+    val destinations: List<ExpenseFunding> = emptyList(),
 )
 
 enum class ExpenseOffsetStatus { Active, Voided }

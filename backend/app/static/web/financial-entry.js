@@ -115,15 +115,15 @@
   });
   document.querySelectorAll("[data-offset-draft-scope]").forEach(form => {
     const fields = ["ledger_id", "expense_id", "task_id", "target_public_id", "kind", "original_amount", "original_currency_code",
-      "accounting_date", "reason", "void_reason", "expected_row_version", "idempotency_key", "draft_client_ref",
+      "accounting_date", "reason", "void_reason", "expected_row_version", "idempotency_key", "draft_client_ref", "funding_json",
       ...scalars.filter(name => name.startsWith("return_"))];
     const field = name => form.elements.namedItem(name);
     window.TicketboxPlanEntry.mount(form, {family: "offset", label: "退回与冲销", list: "/web/confirmed", multiple: true,
       idField: "task_id", titleField: "reason", amount: "original_amount", create: fields, edit: fields,
-      legacyMissing: ["return_duplicate_expense_id", "return_payment_month"],
+      legacyMissing: ["return_duplicate_expense_id", "return_payment_month", "funding_json"],
       draftRefField: "draft_client_ref", commandKeyField: "idempotency_key", reviewName: "review_latest",
       reviewRequiresRejection: true, reviewWhileEditing: true, submitSelector: "[data-offset-submit]",
-      updatePresentation: updateOffsetPreview,
+      updatePresentation: form => { updateOffsetPreview(form); form.dispatchEvent(new Event("ticketbox:funding-state")); },
       inactiveMessage: "当前事实不允许追加这项记录。原输入仍保留，可核实已提交的请求或放弃本地原稿。",
       relatedAction: submitter => submitter?.getAttribute("formaction") === "/web/expenses/" + field("expense_id").value + "/offset-rate",
       href: (record, scope) => {

@@ -64,7 +64,12 @@ class ConfirmExpenseDispatcher(
             val confirmed = apiProvider(row).confirmExpense(expenseRef, request, idempotencyKey)
             publishConfirmation(row, confirmed)
         } catch (e: HttpException) {
-            mapOutboxHttpException(e)
+            val result = mapOutboxHttpException(e)
+            if (!request.funding.isNullOrEmpty() && (result is DispatchResult.Discarded ||
+                    result is DispatchResult.Failure && result.definitelyRejected)) {
+                // A missing/revoked payer or invalid allocation requires review, never silent consumption of the input.
+                DispatchResult.Conflict("付款来源未被接受，请回到这笔待确认消费，保留原输入核对最新账户。")
+            } else result
         } catch (e: IOException) {
             DispatchResult.RetryableFailure(e.message ?: "network IO failure")
         } catch (e: CancellationException) {

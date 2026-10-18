@@ -15,6 +15,11 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Account, Debt, LedgerMember
 from app.schemas import DebtListResponse, DebtResponse
+from app.services.credit_balance_projection import (
+    credit_participant_allowed,
+    credit_projection_available,
+    credit_visible,
+)
 from app.services.currency_binding_service import (
     runtime_home_currency_code,
 )
@@ -55,6 +60,8 @@ def participant_can_access(debt: Debt, *, ledger_id: str, account_id: int | None
     The caller grants access when EITHER is true and uses ``is_ledger_member`` to
     decide whether the response keeps the (counterparty's) ledger id.
     """
+    if debt.source_type == "credit_facility" and not credit_participant_allowed(debt, ledger_id, account_id):
+        return False, False
     is_ledger_member = debt.tenant_id == ledger_id
     is_cross_ledger_counterparty = account_id is not None and account_id == debt.counterparty_account_id
     return is_ledger_member, is_cross_ledger_counterparty
@@ -178,7 +185,7 @@ def _viewer_is_debtor(debt: Debt, account_id: int | None) -> bool | None:
 
 
 def _debt_by_public_id(db: Session, *, tenant_id: str, public_id: str) -> Debt | None:
-    return db.scalar(ledger_scoped_select(Debt, tenant_id).where(Debt.public_id == public_id).limit(1))
+    return db.scalar(ledger_scoped_select(Debt, tenant_id).where(Debt.public_id == public_id, credit_visible(tenant_id, None)).limit(1))
 
 
 def get_debt(db: Session, *, tenant_id: str, public_id: str) -> Debt:
@@ -274,7 +281,7 @@ def list_debts(db: Session, *, tenant_id: str, viewer_account_id: int | None = N
     active owner on loopback) leaves every role ``None`` and the list degrades to the
     neutral third-party framing.
     """
-    statement = ledger_scoped_select(Debt, tenant_id).order_by(
+    statement = ledger_scoped_select(Debt, tenant_id).where(credit_visible(tenant_id, viewer_account_id), credit_projection_available()).order_by(
         Debt.status.asc(),
         Debt.created_at.asc(),
         Debt.id.asc(),
@@ -306,7 +313,7 @@ def _list_personal_ledger_debts(
     they can administer the shared ledger.
     """
     statement = (
-        ledger_scoped_select(Debt, tenant_id)
+        ledger_scoped_select(Debt, tenant_id).where(credit_projection_available())
         .where(
             or_(
                 and_(
@@ -496,6 +503,7 @@ def count_open_external_debts(db: Session, tenant_ids: list[str]) -> dict[str, i
     rows = db.execute(
         select(Debt.tenant_id, func.count())
         .where(Debt.tenant_id.in_(tenant_ids))
+        .where(credit_visible(None, None))
         .where(Debt.counterparty_type == "external")
         .where(Debt.status == "open")
         .group_by(Debt.tenant_id)

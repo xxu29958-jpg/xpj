@@ -20,6 +20,7 @@ from app.schemas import (
     GoalCreateRequest,
     GoalResponse,
 )
+from app.services.credit_balance_projection import credit_projection_available, credit_visible
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.debt_service import compute_remaining, derive_status
 from app.services.goal_debt_repayment_kpi import external_payoff_kpi
@@ -68,7 +69,9 @@ def _resolve_linked_debts(
             cleaned.append(public_id)
     if not cleaned:
         _require_at_least_one_debt()
-    rows = list(db.scalars(ledger_scoped_select(Debt, tenant_id).where(Debt.public_id.in_(cleaned))))
+    # Ledger goals are shared facts: linking must not publish another member's private account balance.
+    rows = list(db.scalars(ledger_scoped_select(Debt, tenant_id).where(Debt.public_id.in_(cleaned),
+        credit_visible(tenant_id, None), credit_projection_available())))
     by_public_id = {debt.public_id: debt for debt in rows}
     for public_id in cleaned:
         if public_id not in by_public_id:

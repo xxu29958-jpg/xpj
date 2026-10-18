@@ -9,6 +9,7 @@ from decimal import Decimal
 from sqlalchemy import CheckConstraint
 
 from app.errors import AppError
+from app.funds_money_contract import CREDIT_DEBT_MONEY_COLUMNS, FUNDS_MONEY_COLUMNS
 from app.money_contract_manifest import (
     GOAL_MONTH_SHAPE_CHECK_V1 as GOAL_MONTH_SHAPE_CHECK_V1,
 )
@@ -37,8 +38,8 @@ from app.money_contract_types import (
 from app.repayment_capture_money_contract import REPAYMENT_CAPTURE_MONEY_COLUMNS
 
 MONEY_COLUMNS_CURRENT = tuple(sorted(
-    tuple(column for column in MONEY_COLUMNS_V1 if column.table != "repayment_drafts")
-    + REPAYMENT_CAPTURE_MONEY_COLUMNS,
+    tuple(column for column in MONEY_COLUMNS_V1 if column.table not in {"repayment_drafts", "debts", "repayments"})
+    + REPAYMENT_CAPTURE_MONEY_COLUMNS + CREDIT_DEBT_MONEY_COLUMNS + FUNDS_MONEY_COLUMNS,
     key=lambda column: (column.table, column.column),
 ))
 

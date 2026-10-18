@@ -74,6 +74,14 @@ from app.models.expense import Expense, ExpenseItem, ExpenseSplit
 from app.models.expense_offset import ExpenseOffsetFact, ExpenseOffsetRevision
 from app.models.expense_revision import ExpenseRevision
 from app.models.financial_planning import MonthlyIncomePlan
+from app.models.funds import (
+    AccountBalanceObservation,
+    AccountMovement,
+    CreditFacility,
+    CreditSettlementAllocation,
+    ExpenseFunding,
+    FinancialAccount,
+)
 from app.models.goal_revision import GoalRevision
 from app.models.idempotency import ApiIdempotencyKey
 from app.models.identity import (
@@ -86,6 +94,7 @@ from app.models.identity import (
 )
 from app.models.import_csv import CsvImportBatch, CsvImportEvent, CsvImportRow
 from app.models.income_plan_revision import IncomePlanRevision
+from app.models.installment import InstallmentAgreement, InstallmentDraw, InstallmentPayment, InstallmentPeriod
 from app.models.learning import AlgorithmDecision, LedgerLearningEvent
 from app.models.ledger_calendar import LedgerCalendarRevision
 from app.models.monthly_arrangement import MonthlyArrangement, MonthlyArrangementRevision
@@ -103,6 +112,8 @@ from app.models.system import (
 )
 
 __all__ = [
+    "FinancialAccount", "CreditFacility", "ExpenseFunding", "AccountMovement", "CreditSettlementAllocation",
+    "InstallmentAgreement", "InstallmentDraw", "InstallmentPeriod", "InstallmentPayment", "AccountBalanceObservation",
     "BudgetRevision",
     "Account",
     "AiMemberAnonMap",

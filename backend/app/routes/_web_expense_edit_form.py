@@ -38,6 +38,7 @@ class WebExpenseEditForm:
     keep_idempotency_key: str = ""
     reject_idempotency_key: str = ""
     score_fields: dict[str, str] | None = None
+    funding_json: str | None = None
 
 
 def web_expense_edit_form(
@@ -63,6 +64,7 @@ def web_expense_edit_form(
     keep_idempotency_key: str = Form(default=""),
     reject_idempotency_key: str = Form(default=""),
     score_fields: dict[str, str] = Depends(expense_score_form_fields),
+    funding_json: str | None = Form(default=None),
 ) -> WebExpenseEditForm:
     """Bind one raw browser intent without giving the HTTP handler ownership."""
 
@@ -89,4 +91,5 @@ def web_expense_edit_form(
         keep_idempotency_key=keep_idempotency_key,
         reject_idempotency_key=reject_idempotency_key,
         score_fields=score_fields,
+        funding_json=funding_json,
     )

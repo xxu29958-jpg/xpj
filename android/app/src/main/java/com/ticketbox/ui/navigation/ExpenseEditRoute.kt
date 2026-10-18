@@ -42,6 +42,8 @@ import com.ticketbox.viewmodel.originalCommandAccepted
 import com.ticketbox.viewmodel.canLeaveOriginalSelection
 import com.ticketbox.viewmodel.reviewOriginalBaseline
 import com.ticketbox.viewmodel.refreshFx
+import com.ticketbox.viewmodel.editFunding
+import com.ticketbox.viewmodel.reviewPendingFunding
 import com.ticketbox.viewmodel.retryFx
 import com.ticketbox.viewmodel.loadFxReview
 import com.ticketbox.viewmodel.ExpenseEditUiState
@@ -117,6 +119,8 @@ internal fun ExpenseEditRoute(
     val canLeave = { original?.canLeaveOriginalSelection() != false }
     androidx.activity.compose.BackHandler { if (!editState.saving && canLeave()) editViewModel.closeOrRetain(exit) }
     ExpenseEditScreen(
+        onFundingChange = editViewModel::editFunding,
+        onFundingReview = { editViewModel.reviewPendingFunding(screenFactory.fundsRepository) },
         originalContent = { ExpenseEditOriginalTask(expenseId, screenFactory, editViewModel, editState) },
         screenState = ExpenseEditScreenState(
             expense = expense,

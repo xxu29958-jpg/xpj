@@ -202,6 +202,7 @@ data class ExpenseManualCreateRequestDto(
     val homeCurrencyCode: String? = null,
     @param:Json(name = "time_input")
     val timeInput: ExpenseTimeInputDto? = null,
+    val funding: List<ExpenseFundingPartDto>? = null,
 )
 
 /**
@@ -216,6 +217,7 @@ data class ExpenseManualCreateRequestDto(
 data class ExpenseStateTokenRequest(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
+    val funding: List<ExpenseFundingPartDto>? = null,
 )
 
 /**

@@ -381,7 +381,7 @@ class OutboxRepository private constructor(
 
     /** Room, rather than this instance's binding mutex, owns the original create's atomic acceptance. */
     internal suspend fun enqueueOriginalCreation(boundRequest: BoundLedgerRequest, intent: PendingMutationIntent): Long {
-        require(intent.type in setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.CreateGoal,
+        require(intent.type in setOf(PendingMutationType.FinancialAccountCommand, PendingMutationType.CreateIncomePlan, PendingMutationType.CreateGoal,
             PendingMutationType.CapturePaymentNotification, PendingMutationType.CreateDebt, PendingMutationType.AcceptBillSplitInvitation))
         val id = withActiveBinding(boundRequest) { binding ->
             binding.requireReadyForEnqueue()

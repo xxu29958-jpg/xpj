@@ -25,6 +25,7 @@ from app.schemas._money import (
     PositiveMoneyMinor,
     SignedMoneyAggregate,
 )
+from app.schemas.funds import RefundDestination
 from app.services.time_service import to_iso
 
 ExpenseOffsetKind = Literal["refund", "chargeback", "reversal"]
@@ -73,6 +74,7 @@ class ExpenseRelationshipImpacts(BaseModel):
 
 class ExpenseOffsetCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    destinations: list[RefundDestination] | None = Field(default=None, min_length=1, max_length=8)
 
     kind: ExpenseOffsetKind
     original_amount_minor: PositiveMoneyMinor | None = None
@@ -101,6 +103,7 @@ class ExpenseOffsetCreateRequest(BaseModel):
 
 
 class ExpenseOffsetCorrectionRequest(BaseModel):
+    destinations: list[RefundDestination] | None = Field(default=None, min_length=1, max_length=8)
     model_config = ConfigDict(extra="forbid")
 
     # Required full snapshot: refund/chargeback carry a positive amount;

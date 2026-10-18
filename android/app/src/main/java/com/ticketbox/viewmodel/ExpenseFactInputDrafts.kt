@@ -47,9 +47,11 @@ internal data class ExpenseFactInputDraft(
     val voidTarget: ExpenseOffsetFact? = null,
     val pendingReview: PendingReviewValues? = null,
     val version: Int = 1,
+    val destinationsJson: String = "[]",
+    val fundingJson: String = "[]",
 ) {
     fun offsetForm() = OffsetFormState(sourceExpense = baseline, kind = requireNotNull(offsetKind),
-        amountText = amountText, accountingDate = accountingDate, reason = reason)
+        amountText = amountText, accountingDate = accountingDate, reason = reason, destinationsJson = destinationsJson)
     fun voidForm() = VoidOffsetFormState(target = requireNotNull(voidTarget), reason = reason)
 }
 

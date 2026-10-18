@@ -17,6 +17,7 @@ from app.services.currency_binding_service import (
 )
 from app.services.duplicate_service import clear_duplicate_references_to
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
+from app.services.expense_funding_service import apply_funding_correction, funding_money_identity
 from app.services.expense_revision_service import record_confirmation_revision
 from app.services.expense_service._field_mutation import apply_expense_fields_to_claimed_row
 from app.services.expense_service._helpers import (
@@ -110,6 +111,7 @@ def update_expense(
         claimed_at=now_utc(),
     )
     amount_before = expense.amount_cents
+    original_before = funding_money_identity(expense)
     category_before, merchant_before = expense.category, expense.merchant
 
     apply_expense_fields_to_claimed_row(
@@ -118,6 +120,8 @@ def update_expense(
         tenant_id=tenant_id,
         payload=payload,
     )
+    apply_funding_correction(db, expense=expense, before_money=original_before,
+        payload=payload, actor_account_id=actor_account_id)
     if expense.amount_cents != amount_before:
         validate_current_expense_split_allocation(db, expense=expense)
     if payload.category is not None:
@@ -181,6 +185,7 @@ def _publish_confirmation(
     actor_account_id: int | None,
     actor_device_id: int | None,
     commit: bool,
+    funding=(),
 ) -> Expense:
     """Publish confirmation before cleanup; deferred callers own that first commit."""
     refresh_legacy_expense_time(db, expense)
@@ -195,6 +200,8 @@ def _publish_confirmation(
         subject_kind="expense",
         subject_id=expense.id,
     )
+    from app.services.expense_funding_service import publish_expense_funding
+    publish_expense_funding(db, expense=expense, parts=funding, actor_account_id=actor_account_id)
     record_confirmation_revision(
         db,
         expense,
@@ -219,6 +226,7 @@ def confirm_expense(
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
     commit: bool = True,
+    funding=(),
 ) -> Expense:
     """ADR-0038 PR-2b: confirm with optimistic concurrency.
 
@@ -242,6 +250,8 @@ def confirm_expense(
         expected_row_version=expected_row_version,
     )
     if not newly_confirmed:
+        if funding:
+            raise AppError("expense_correction_required", "消费已确认，请从付款来源补充或更正。", status_code=409)
         return expense
     if expense.status != "confirmed":
         raise AppError("server_error", status_code=500)
@@ -251,6 +261,7 @@ def confirm_expense(
         actor_account_id=actor_account_id,
         actor_device_id=actor_device_id,
         commit=commit,
+        funding=funding,
     )
 
 

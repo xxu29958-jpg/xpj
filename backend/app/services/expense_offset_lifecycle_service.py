@@ -308,6 +308,13 @@ def correct_expense_offset(
         payload=payload,
     )
     before = _offset_snapshot(offset)
+    from app.models import AccountMovement
+    from app.services.funds_fact_service import lock_reviewed_accounts, unreversed_movements
+    source_ids = list(db.scalars(unreversed_movements(select(AccountMovement).where(AccountMovement.offset_id == offset.id))) )
+    accounts = lock_reviewed_accounts(db, ledger_id=tenant_id, actor_account_id=actor_account_id,
+        source_account_ids=[row.account_id for row in source_ids], parts=payload.destinations or [])
+    from app.services.funds_refund_service import reverse_offset_funds
+    reverse_offset_funds(db, expense=expense, offset=offset, actor_account_id=actor_account_id, reason=payload.correction_reason)
     previous_version = offset.row_version
     now = now_utc()
     corrected = _persist_offset_update(
@@ -330,6 +337,10 @@ def correct_expense_offset(
         },
         now=now,
     )
+    from app.services.funds_refund_service import apply_offset_funds
+    destinations = [part.model_copy(update={"account_row_version": accounts[part.account_public_id].row_version})
+        for part in payload.destinations] if payload.destinations else None
+    apply_offset_funds(db, expense=expense, offset=corrected, destinations=destinations, actor_account_id=actor_account_id)
     return _complete_lifecycle_command(
         db,
         claim=claim_or_replay,
@@ -396,6 +407,8 @@ def void_expense_offset(
         },
         now=now,
     )
+    from app.services.funds_refund_service import reverse_offset_funds
+    reverse_offset_funds(db, expense=expense, offset=voided, actor_account_id=actor_account_id, reason=payload.void_reason)
     return _complete_lifecycle_command(
         db,
         claim=claim_or_replay,

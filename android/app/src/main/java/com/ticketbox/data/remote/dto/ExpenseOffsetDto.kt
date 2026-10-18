@@ -13,6 +13,15 @@ data class ExpenseOffsetCreateRequestDto(
     val reason: String,
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
+    val destinations: List<RefundDestinationDto>? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class RefundDestinationDto(
+    @param:Json(name = "account_public_id") val accountPublicId: String,
+    @param:Json(name = "account_row_version") val accountRowVersion: Long,
+    @param:Json(name = "original_amount_minor") val originalAmountMinor: Long,
+    @param:Json(name = "received_amount_minor") val receivedAmountMinor: Long,
 )
 
 @JsonClass(generateAdapter = true)

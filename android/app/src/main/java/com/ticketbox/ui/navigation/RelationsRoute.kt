@@ -74,6 +74,7 @@ internal enum class ObligationsView {
 }
 
 internal data class ObligationsNavigationActions(
+    val onOpenFunds: () -> Unit = {},
     val onOpenAllDebts: () -> Unit,
     val onOpenBillSplits: () -> Unit,
     val onOpenRepaymentReview: () -> Unit,
@@ -96,6 +97,7 @@ internal fun RelationsRoute(
     var selectedView by rememberSaveable { mutableStateOf(ObligationsView.I_OWE) }
     val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
     val navigationActions = ObligationsNavigationActions(
+        onOpenFunds = { shellState.openSecondaryPage(ProductSecondaryPage.Funds) },
         onOpenAllDebts = { shellState.openSecondaryPage(ProductSecondaryPage.AllDebts) },
         onOpenBillSplits = { shellState.openSecondaryPage(ProductSecondaryPage.BillSplits) },
         onOpenRepaymentReview = { shellState.openRepaymentDrafts() },
@@ -431,6 +433,7 @@ internal fun ObligationsTaskNavigation(
     ledgerName: String?,
 ) {
     Column {
+        ObligationsTaskRow(title = "资金账户", supporting = "现金、银行卡与信用", onClick = actions.onOpenFunds)
         // D03: secondary tasks read as quiet links under the same section-title level as the groups.
         Text(
             text = stringResource(R.string.relations_task_section_title),

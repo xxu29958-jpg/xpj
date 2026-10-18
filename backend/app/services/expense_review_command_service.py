@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import ApiIdempotencyKey, Expense
 from app.schemas import ExpenseResponse, ExpenseUpdateRequest
+from app.schemas.funds import FundingPart
 from app.services.cleanup_service import cleanup_after_confirm
 from app.services.expense_response_service import expense_to_response
 from app.services.expense_service import (
@@ -160,6 +161,7 @@ def _save_then_confirm(
     payload: ExpenseUpdateRequest,
     actor_account_id: int | None,
     actor_device_id: int | None,
+    funding=(),
 ) -> Expense:
     if payload.expected_row_version != expected_row_version:
         raise AppError("state_conflict", status_code=409)
@@ -167,7 +169,7 @@ def _save_then_confirm(
         db,
         expense_id,
         tenant_id,
-        payload,
+        payload.model_copy(update={"funding": None}),
         commit=False, actor_account_id=actor_account_id,
     )
     return confirm_expense(
@@ -178,6 +180,7 @@ def _save_then_confirm(
         actor_account_id=actor_account_id,
         actor_device_id=actor_device_id,
         commit=False,
+        funding=funding,
     )
 
 
@@ -194,6 +197,7 @@ def confirm_expense_submission(
     actor_account_id: int | None = None,
     actor_device_id: int | None = None,
     require_idempotency: bool = False,
+    funding: list[FundingPart] | None = None,
 ) -> ExpenseResponse:
     """Confirm one browser snapshot, optionally saving its edits atomically.
 
@@ -227,6 +231,7 @@ def confirm_expense_submission(
             if replayed is not None:
                 return replayed
 
+        reviewed_funding = funding if funding is not None else [FundingPart.model_validate(part) for part in intent_body.get("funding") or []]
         if update_payload is not None:
             confirmed = _save_then_confirm(
                 db,
@@ -236,6 +241,7 @@ def confirm_expense_submission(
                 payload=update_payload,
                 actor_account_id=actor_account_id,
                 actor_device_id=actor_device_id,
+                funding=reviewed_funding,
             )
         else:
             confirmed = confirm_expense(
@@ -246,6 +252,7 @@ def confirm_expense_submission(
                 actor_account_id=actor_account_id,
                 actor_device_id=actor_device_id,
                 commit=False,
+                funding=reviewed_funding,
             )
         receipt = expense_to_response(db, tenant_id=tenant_id, expense=confirmed)
         if claim is not None:

@@ -86,6 +86,11 @@ data class ExpenseEditUiState(
     val formRevision: Int = 0,
     val preservedFormTimestamp: String? = null,
     val originalBaselineRequired: Boolean = false,
+    val fundingJson: String = "[]",
+    val fundingReady: Boolean = false,
+    val fundingWriting: Boolean = false,
+    val fundingMessage: UiText? = null,
+    val fundingReviewAvailable: Boolean = false,
     val commandRowIds: List<Long> = emptyList(),
     val commandsCompleted: Boolean = false,
     val confirmationReceipt: com.ticketbox.data.remote.dto.ExpenseConfirmationReceiptDto? = null,
@@ -155,6 +160,7 @@ class ExpenseEditViewModel(
     }
     internal val fxBinding = repository.captureDeferredLedgerBinding().takeIf { commandBinding.admitsTaskBinding(it) }
     internal var commandObservation: ExpenseCommandObservation? = null
+    internal var fundingInputSession: ExpenseFactInputSession? = null
 
     internal val _uiState = MutableStateFlow(
         ExpenseEditUiState(readOnly = !repository.canModifyLedger(),
@@ -220,6 +226,7 @@ class ExpenseEditViewModel(
                     // and bill-split projections. Starting those reads here creates a hidden
                     // second page state behind ExpenseFactRoute.
                     if (expense.status != "confirmed") {
+                        reconcileExpenseCommands()
                         loadLegacyEditorDependencies(expense)
                     }
                 }
@@ -240,6 +247,7 @@ class ExpenseEditViewModel(
         // issue #65 slice 5: a not-yet-synced offline create (negative local id)
         // has no server-side image / line items / splits yet.
         if (expenseId > 0) {
+            loadPendingFunding(expense)
             loadThumbnail()
             loadExpenseItems()
             loadExpenseSplits()
@@ -408,7 +416,11 @@ class ExpenseEditViewModel(
             return
         }
         submitExpenseCommand(R.string.expense_edit_confirm_failed) { binding, expense ->
-            repository.saveAndConfirmExpense(binding, expense, draft)
+            val original = readyPendingFunding(draft)
+            if (original.isFailure) Result.failure(requireNotNull(original.exceptionOrNull()))
+            else repository.saveAndConfirmExpense(binding, expense, draft, original.getOrNull()).onSuccess {
+                fundingInputSession?.forget("pending_funding")
+            }
         }
     }
 

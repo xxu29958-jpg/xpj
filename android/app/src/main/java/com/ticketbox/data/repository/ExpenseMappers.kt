@@ -256,6 +256,9 @@ fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManual
     val submittedOriginalMinor = requireNotNull(originalAmountMinor ?: amountCents) { "Manual entry requires an amount" }
     val submittedCurrency = originalCurrencyCode ?: homeCurrency
     return ExpenseManualCreateRequestDto(
+        funding = funding.takeIf { it.isNotEmpty() }?.map { com.ticketbox.data.remote.dto.ExpenseFundingPartDto(
+            it.componentId, it.accountPublicId, it.accountRowVersion, it.expenseAmountMinor, it.accountAmountMinor,
+            it.includedInOpening, it.expenseCurrencyCode, it.accountCurrencyCode) },
         timeInput = timeInput?.toRequest(),
         originalCurrency = submittedCurrency.storageKey,
         originalAmount = minorToMajorText(submittedOriginalMinor, submittedCurrency),

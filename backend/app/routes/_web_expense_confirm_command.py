@@ -11,6 +11,7 @@ from app.fx_constants import FX_SOURCE_MANUAL, FX_STATUS_READY
 from app.routes._web_expense_edit_command import expense_edit_form_values, prepare_web_expense_form
 from app.routes._web_expense_edit_form import WebExpenseEditForm
 from app.routes._web_expense_form import web_form_error_status
+from app.routes._web_funding import parse_funding
 from app.routes._web_session_common import parse_form_row_version_token
 from app.schemas import ExpenseResponse, ExpenseUpdateRequest
 from app.services.expense_review_command_service import confirm_expense_submission, read_expense_confirmation_receipt
@@ -94,7 +95,7 @@ def prepare_web_expense_confirmation(
             return WebExpenseConfirmPreparation(
                 error="页面已过期，请刷新后重新确认。"
             )
-        return WebExpenseConfirmPreparation(expected_row_version=parsed)
+        return WebExpenseConfirmPreparation(expected_row_version=parsed, form_values=confirmation_form_values(form))
 
     payload, prepared = prepare_web_expense_form(
         db,
@@ -112,6 +113,7 @@ def prepare_web_expense_confirmation(
         expense_time=form.expense_time,
         time_fields=form.time_fields,
         score_fields=form.score_fields,
+        funding_json=form.funding_json,
     )
     if payload is None:
         return WebExpenseConfirmPreparation(
@@ -147,13 +149,15 @@ def _confirmation_intent_body(
         return {}
     metadata = {"expected_row_version", "idempotency_key"}
     return {
-        "save_before_confirm": True,
+        "save_before_confirm": "expected_row_version" in form_values,
         **{key: value for key, value in form_values.items() if key not in metadata},
     }
 
 
 def confirmation_form_values(form: WebExpenseEditForm) -> dict[str, str] | None:
-    return expense_edit_form_values(form) if form.save_before_confirm else None
+    if form.save_before_confirm:
+        return expense_edit_form_values(form)
+    return {"funding_json": form.funding_json} if form.funding_json is not None else None
 
 
 def confirm_web_expense(
@@ -179,6 +183,10 @@ def confirm_web_expense(
             return WebExpenseConfirmOutcome(error=prepared.error or "页面已过期，请刷新后重新确认。",
                 error_code="invalid_request", error_status=prepared.error_status,
                 form_values=prepared.form_values, field_errors=prepared.field_errors)
+        current = get_expense(db, expense_id, selected_ledger_id)
+        funding = parse_funding(db, ledger_id=selected_ledger_id, actor_account_id=actor_account_id,
+            raw=form.funding_json, currency_code=form.original_currency or current.original_currency_code or current.home_currency_code
+        ) if form.funding_json is not None else []
         receipt = confirm_expense_submission(
             db,
             expense_id=expense_id,
@@ -190,6 +198,7 @@ def confirm_web_expense(
             update_payload=prepared.update_payload,
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
+            funding=funding,
         )
     except AppError as exc:
         if form_values and exc.error in _ROTATE_IDEMPOTENCY_ERRORS:

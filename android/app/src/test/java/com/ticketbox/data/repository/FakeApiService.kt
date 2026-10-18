@@ -86,6 +86,19 @@ internal class FakeApiService(
     private val serverSettingsResult: ServerSettingsDto? = null,
     private val merchantApi: FakeMerchantApi = FakeMerchantApi(),
 ) : ApiService {
+    override suspend fun fundsAccountChoices(): List<com.ticketbox.data.remote.dto.AccountChoiceDto> = error("Funds response not configured")
+    override suspend fun voidCreditPayment(id: String, body: com.ticketbox.data.remote.dto.CreditPaymentVoidDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")
+    override suspend fun installments(id: String): com.ticketbox.data.remote.dto.InstallmentsDto = error("Funds response not configured")
+    override suspend fun saveInstallments(id: String, body: com.ticketbox.data.remote.dto.InstallmentCommandDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")
+    override suspend fun expenseFunding(id: Long): com.ticketbox.data.remote.dto.ExpenseFundingViewDto = error("Funds response not configured")
+    override suspend fun saveExpenseFunding(id: Long, body: com.ticketbox.data.remote.dto.ExpenseFundingCommandDto, key: String): com.ticketbox.data.remote.dto.ExpenseFundingViewDto = error("Funds response not configured")
+    override suspend fun fundsOverview(): com.ticketbox.data.remote.dto.FundsOverviewDto = error("Funds response not configured")
+    override suspend fun fundsAccounts(): List<com.ticketbox.data.remote.dto.FinancialAccountDto> = error("Funds response not configured")
+    override suspend fun fundsAccount(id: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")
+    override suspend fun createFundsAccount(body: com.ticketbox.data.remote.dto.FinancialAccountCreateDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")
+    override suspend fun editFundsAccount(id: String, body: com.ticketbox.data.remote.dto.FinancialAccountEditDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")
+    override suspend fun payCreditAccount(id: String, body: com.ticketbox.data.remote.dto.CreditPaymentDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")
+    override suspend fun postFundsActivity(id: String, body: com.ticketbox.data.remote.dto.AccountPostingDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")
     override suspend fun capturePayment(request: com.ticketbox.data.remote.dto.PaymentCaptureCreateDto): com.ticketbox.data.remote.dto.PaymentCaptureDto = error("Capture response not configured")
     override suspend fun paymentCaptures(): List<com.ticketbox.data.remote.dto.PaymentCaptureDto> = error("Capture read not configured")
     override suspend fun decidePaymentCapture(publicId: String, request: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String): com.ticketbox.data.remote.dto.PaymentCaptureDto = error("Capture decision not configured")

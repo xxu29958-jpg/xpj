@@ -29,6 +29,7 @@ from app.routes._web_expense_return_context import (
     return_context_params,
 )
 from app.routes._web_expense_split_presenter import web_split_members, web_split_rows
+from app.routes._web_funding import funding_options
 from app.routes._web_money_views import expense_fx_view
 from app.routes._web_pending_filters import review_queue_position
 from app.routes.web_common import (
@@ -274,6 +275,9 @@ def web_edit_context(
     if form_values and not conflict and form_values.get("expected_row_version"):
         expense_view["row_version"] = form_values["expected_row_version"]
     ctx["expense"] = expense_view
+    auth = getattr(request.state, "web_session_auth", None)
+    ctx["funding_accounts"] = funding_options(db, auth) if auth and auth.ledger_id == selected_id else []
+    ctx["funding_json"] = (form_values or {}).get("funding_json", "[]")
     ctx["expense_review_row_version"] = expense.row_version
     ctx["expense_review_basis_changed"] = str(expense_view["row_version"]) != str(expense.row_version)
     ctx["expense_fx"] = expense_fx_view(db, expense=expense)

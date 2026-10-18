@@ -86,6 +86,7 @@ internal fun MainNavGraph(
             if (revision > 0L) shell.markFinancialDataChanged()
         }
     }
+    CompositionLocalProvider(com.ticketbox.ui.screens.LocalFundsRepository provides runtime.screenFactory.fundsRepository) {
     NavHost(
         navController = runtime.navController,
         startDestination = MAIN_ROUTE,
@@ -139,6 +140,7 @@ internal fun MainNavGraph(
             )
             }
         }
+    }
     }
 }
 

@@ -92,7 +92,7 @@ class Debt(Base):
             name="ck_debts_status_valid",
         ),
         CheckConstraint(
-            "source_type IN ('manual', 'bill_split', 'bill_split_return')",
+            "source_type IN ('manual', 'bill_split', 'bill_split_return', 'credit_facility')",
             name="ck_debts_source_type_valid",
         ),
         # ADR-0049 §7.0 / 8e-6e: classifies an EXTERNAL debt's repayment rhythm so the
@@ -141,7 +141,7 @@ class Debt(Base):
             name="ck_debts_member_has_account",
         ),
         CheckConstraint(
-            "(source_type IN ('bill_split', 'bill_split_return')) = (source_id IS NOT NULL)",
+            "(source_type IN ('bill_split', 'bill_split_return', 'credit_facility')) = (source_id IS NOT NULL)",
             name="ck_debts_bill_split_has_source_id",
         ),
         # §10 hard constraint: a bill-split-sourced Debt is unique per
@@ -230,6 +230,9 @@ class Repayment(Base):
     __table_args__ = (
         *money_check_constraints_for_table("repayments"),
         _payment_time_constraint("repayments"),
+        CheckConstraint("settlement_kind IN ('ordinary', 'credit')", name="ck_repayments_settlement_kind"),
+        CheckConstraint("settlement_kind != 'credit' OR (original_currency_code IS NOT NULL AND original_amount_minor IS NOT NULL)",
+            name="ck_repayments_credit_native_amount"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -240,6 +243,7 @@ class Repayment(Base):
         Integer, ForeignKey("debts.id", name="fk_repayments_debt"), nullable=False, index=True
     )
     amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    settlement_kind: Mapped[str] = mapped_column(String(12), nullable=False, default="ordinary", server_default="ordinary")
     original_currency_code: Mapped[str | None] = mapped_column(String(3), nullable=True)
     original_amount_minor: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     exchange_rate_to_cny = mapped_column(Numeric(18, 8), nullable=True)
