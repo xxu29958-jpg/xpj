@@ -1,17 +1,22 @@
 """Actual income, loans, paired transfers and explicit balance observations."""
 from uuid import uuid4
 
+from sqlalchemy.orm import Session
+
 from app.errors import AppError
 from app.models import AccountBalanceObservation, CreditFacility, Debt, FinancialAccount
 from app.schemas._accounting_time import AccountingTimeInput
+from app.schemas.funds import AccountPosting, FinancialAccountView
 from app.services.debt_service._repayment_time import resolve_repayment_time
 from app.services.funds_commands import claim_funds, finish_funds, movement, replay_funds, require_account_version
 from app.services.funds_fact_service import refresh_credit, validate_movement_date
 from app.services.funds_money import valuation
 from app.services.funds_query import account_balance, get_account
+from app.tenants import AuthContext
 
 
-def post_account_activity(db, *, auth, public_id, payload, key):
+def post_account_activity(db: Session, *, auth: AuthContext, public_id: str,
+        payload: AccountPosting, key: str) -> FinancialAccountView:
     claim = claim_funds(db, auth, payload, key, "post_account_activity", public_id)
     if claim is None:
         return replay_funds(db, auth, key)
@@ -69,7 +74,7 @@ def _transfer(db, auth, account, other, payload, event):
     other.row_version += 1
 
 
-def _loan(db, auth, account, payload, event, time):
+def _loan(db, auth, account, payload, event, time) -> None:
     if not payload.loan_name or not payload.loan_currency_code or not payload.loan_principal_minor:
         raise AppError("invalid_request", "请填写贷款方、义务币种和实际本金；到账金额不能替代贷款本金。", status_code=422)
     home, snapshot = valuation(db, ledger_id=account.tenant_id, currency=payload.loan_currency_code,

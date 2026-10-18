@@ -5,15 +5,19 @@
     "calendar_revision", "payer_public_id", "payer_row_version", "payer_currency_code", "principal_amount", "payer_amount", "note", "idempotency_key",
     "activity_amount", "other_amount", "apply_adjustment", "loan_name", "loan_currency_code", "loan_principal_amount", "new_fee", "fee_note",
     "draw_ids_json", "periods_json", "supersedes_public_id", "allocation_json", "overpayment", "repayment_public_id",
-    "credit_limit", "available_credit", "credit_observed_on", "credit_source", "statement_day", "payment_due_day", "existing_debt"];
+    "credit_limit", "available_credit", "credit_observed_on", "credit_source", "statement_day", "payment_due_day", "existing_debt",
+    "source_repayment_draft_id", "source_amount_basis", "source_review_reason"];
   const definition = {family: "funds", label: "资金任务", list: "/web/funds", idField: "task_id", titleField: "name",
+    editLabel: "继续资金任务", creationLabel: "继续资金任务",
     create: fields, edit: fields, commandKeyField: "idempotency_key", reviewName: "review_latest",
+    legacyMissing: ["source_repayment_draft_id", "source_amount_basis", "source_review_reason"],
     reviewRequiresRejection: true, reviewWhileEditing: true, submitSelector: "[data-funds-submit]",
     href: (record, scope) => {
       const next = new URL("/web/funds", window.location.href);
       next.searchParams.set("ledger_id", scope.ledgerId);
       next.searchParams.set("task", record?.values.mode || "create");
       if (record?.values.account_id) next.searchParams.set("account_id", record.values.account_id);
+      if (record?.values.source_repayment_draft_id) next.searchParams.set("source_repayment_draft_id", record.values.source_repayment_draft_id);
       if (record?.values.repayment_public_id) next.searchParams.set("repayment_id", record.values.repayment_public_id);
       if (record) next.hash = "funds-" + (record.values.task_id ? "edit-" : "create-") + record.clientRef;
       return next.href;

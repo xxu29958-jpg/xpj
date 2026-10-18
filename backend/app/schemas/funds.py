@@ -142,6 +142,9 @@ class CreditPayment(BaseModel):
     period_allocations: list[InstallmentPaymentPart] = Field(default_factory=list, max_length=120)
     draw_allocations: list[CreditDrawPaymentPart] = Field(default_factory=list, max_length=120)
     overpayment_minor: NonNegativeMoneyMinor = 0
+    source_repayment_draft_id: str | None = Field(default=None, min_length=1, max_length=36)
+    source_amount_basis: Literal["payer_total", "principal", "corrected"] = "payer_total"
+    source_review_reason: str | None = Field(default=None, min_length=1, max_length=255)
 
     @model_validator(mode="after")
     def require_actual_payment(self):
@@ -149,6 +152,8 @@ class CreditPayment(BaseModel):
             raise ValueError("请填写本次实际清偿本金或新发生并支付的费用")
         if bool(self.principal_minor) != bool(self.payer_amount_minor):
             raise ValueError("本金清偿与本金扣款须同时填写；仅付费用时两者填零")
+        if self.source_repayment_draft_id is None and (self.source_amount_basis != "payer_total" or self.source_review_reason):
+            raise ValueError("通知金额核对必须关联原还款采集")
         return self
 
 

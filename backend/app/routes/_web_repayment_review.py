@@ -198,8 +198,14 @@ def _convert_to_expense(request: Request, db: Session, selected_id: str, public_
     auth = getattr(request.state, "web_session_auth", None)
     if auth is None or auth.account_id != account_id or auth.tenant_id != selected_id:
         raise AppError("session_binding_changed", "当前身份或账本已变化，请回到原账号和账本处理。", status_code=409)
+    versions = json.loads(values.get("correction_versions") or "null")
+    money = {}
+    if versions and versions.get("funds_account_versions"):
+        from app.services.currency_common import major_amount_to_minor
+        money = {"expense_currency": values["original_currency"],
+            "expense_amount_minor": major_amount_to_minor(values["original_amount"], values["original_currency"])}
     return repayment_as_expense(db, auth=auth, public_id=public_id,
-        payload=RepaymentAsExpense(reason=values.get("reason", ""), correction_versions=json.loads(values.get("correction_versions") or "null")),
+        payload=RepaymentAsExpense(reason=values.get("reason", ""), correction_versions=versions, **money),
         idempotency_key=values["idempotency_key"])
 
 
@@ -241,6 +247,7 @@ def _audit_row_view(
         "status_tone": _STATUS_TONE.get(row.status, ""),
         "is_pending": row.status == "pending",
         "can_correct_confirmed": row.correction_versions is not None,
+        "correction_needs_money": bool(row.correction_versions and row.correction_versions.funds_account_versions and not row.source_expense_public_id),
         "committed_debt_public_id": row.committed_debt_public_id,
         "source_expense_public_id": row.source_expense_public_id,
         "source_expense_requires_review": row.source_expense_requires_review,
@@ -250,11 +257,17 @@ def _audit_row_view(
         name = row.linked_debt_label or _COUNTERPARTY_FALLBACK["external"]
         view["linked_line"] = _LINKED_PREFIX.format(name)
     elif row.status == "pending":
-        view["targets"] = [
-            _target_option(candidate, suggested_id=row.suggested_debt_public_id)
-            for candidate in row.target_debts
-        ]
-        if row.has_suggestion:
-            name = row.suggested_debt_label or _COUNTERPARTY_FALLBACK["external"]
-            view["provenance"] = _SUGGESTION_PREFIX.format(name)
+        view.update(_pending_review_targets(row))
+    return view
+
+
+def _pending_review_targets(row: RepaymentDraftAuditRow) -> dict:
+    view = {}
+    view["targets"] = [
+        _target_option(candidate, suggested_id=row.suggested_debt_public_id)
+        for candidate in row.target_debts
+    ]
+    if row.has_suggestion:
+        name = row.suggested_debt_label or _COUNTERPARTY_FALLBACK["external"]
+        view["provenance"] = _SUGGESTION_PREFIX.format(name)
     return view

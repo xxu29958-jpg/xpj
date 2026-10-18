@@ -3,19 +3,29 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import AccountMovement, CreditFacility, Debt, ExpenseFunding, ExpenseOffsetFact
+from app.models import (
+    AccountMovement,
+    CreditFacility,
+    Debt,
+    Expense,
+    ExpenseFunding,
+    ExpenseOffsetFact,
+    FinancialAccount,
+)
 from app.money_contract import round_minor_ratio_half_up
+from app.schemas.funds import FundingPart
 from app.services.credit_allocation_service import allocate_credit
-from app.services.funds_commands import movement, require_account_version
+from app.services.funds_commands import movement
 from app.services.funds_fact_service import (
     lock_reviewed_accounts,
     reverse_movements,
     unreversed_movements,
     validate_movement_date,
 )
-from app.services.funds_query import account_balance, get_account
+from app.services.funds_query import account_balance
 from app.services.time_service import now_utc
 
 
@@ -26,36 +36,11 @@ def validate_funding_currency(part, account, currency):
         raise AppError("funding_amount_mismatch", "同币种付款金额应与消费组成一致。", status_code=422)
 
 
-def publish_expense_funding(db, *, expense, parts, actor_account_id):
+def publish_expense_funding(db: Session, *, expense: Expense, parts: list[FundingPart], actor_account_id: int | None) -> None:
     if not parts:
         return
-    if actor_account_id is None or expense.status != "confirmed" or expense.amount_cents is None:
-        raise AppError("funding_requires_confirmation", "付款组成已保留；请先补齐金额和汇率，再一起确认。", status_code=409)
-    if db.scalar(select(ExpenseOffsetFact.id).where(ExpenseOffsetFact.expense_id == expense.id,
-            ExpenseOffsetFact.kind == "reversal", ExpenseOffsetFact.status == "active").limit(1)):
-        raise AppError("expense_reversal_active", "原消费已冲销，不能再扣款；请从冲销记录核对。", status_code=409)
-    if db.scalar(select(ExpenseFunding.id).where(ExpenseFunding.tenant_id == expense.tenant_id,
-            ExpenseFunding.expense_id == expense.id, ExpenseFunding.voided_at.is_(None)).limit(1)) is not None:
-        raise AppError("funding_already_recorded", "这笔消费已有付款组成，请从来源记录更正，不能再次扣款。", status_code=409)
-    total = expense.original_amount_minor or expense.amount_cents
-    if sum(part.expense_amount_minor for part in parts) != total or len({part.component_id for part in parts}) != len(parts):
-        raise AppError("funding_amount_mismatch", "各项付款合计必须等于这笔消费的原币金额。", status_code=422)
-    accounts = {}
-    # All commands lock cash/credit accounts in public-id order, before their credit Debt.
-    for part in sorted(parts, key=lambda item: item.account_public_id):
-        row = get_account(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id,
-            public_id=part.account_public_id, lock=True)
-        require_account_version(row, part.account_row_version)
-        validate_funding_currency(part, row, expense.original_currency_code or expense.home_currency_code)
-        if row.kind == "credit" and db.scalar(select(Debt.debt_kind).join(CreditFacility, CreditFacility.debt_id == Debt.id)
-                .where(CreditFacility.account_id == row.id)) == "one_off":
-            raise AppError("invalid_request", "固定本金贷款不能再次作为购物授信；请选择实际付款账户。", status_code=422)
-        if part.included_in_opening:
-            if not row.balance_known or expense.accounting_date > row.opening_date:
-                raise AppError("funding_opening_mismatch", "只有已核对期初范围内的旧消费可以标记为纳入期初。", status_code=422)
-        else:
-            validate_movement_date(db, row, expense.accounting_date)
-        accounts[part.account_public_id] = row
+    total = _review_unfunded_expense(db, expense, parts, actor_account_id)
+    accounts, debts = _review_funding_accounts(db, expense, parts, actor_account_id)
     event, allocated_home = str(uuid4()), 0
     for index, part in enumerate(parts):
         row = accounts[part.account_public_id]
@@ -83,14 +68,50 @@ def publish_expense_funding(db, *, expense, parts, actor_account_id):
             note=expense.merchant or "消费付款", funding_id=funding.id)
     for row in accounts.values():
         row.row_version += 1
-        debt = db.scalar(select(Debt).join(CreditFacility, CreditFacility.debt_id == Debt.id)
-            .where(CreditFacility.account_id == row.id).with_for_update(of=Debt))
+        debt = debts.get(row.id)
         if debt is not None:
             allocate_credit(db, row)
             debt.row_version += 1
             debt.status = "cleared" if account_balance(db, row) >= 0 else "open"
             debt.updated_at = now_utc()
     db.flush()
+
+
+def _review_unfunded_expense(db: Session, expense: Expense, parts: list[FundingPart], actor_account_id: int | None) -> int:
+    if actor_account_id is None or expense.status != "confirmed" or expense.amount_cents is None:
+        raise AppError("funding_requires_confirmation", "付款组成已保留；请先补齐金额和汇率，再一起确认。", status_code=409)
+    if db.scalar(select(ExpenseOffsetFact.id).where(ExpenseOffsetFact.expense_id == expense.id,
+            ExpenseOffsetFact.kind == "reversal", ExpenseOffsetFact.status == "active").limit(1)):
+        raise AppError("expense_reversal_active", "原消费已冲销，不能再扣款；请从冲销记录核对。", status_code=409)
+    if db.scalar(select(ExpenseFunding.id).where(ExpenseFunding.tenant_id == expense.tenant_id,
+            ExpenseFunding.expense_id == expense.id, ExpenseFunding.voided_at.is_(None)).limit(1)) is not None:
+        raise AppError("funding_already_recorded", "这笔消费已有付款组成，请从来源记录更正，不能再次扣款。", status_code=409)
+    total = expense.original_amount_minor or expense.amount_cents
+    if sum(part.expense_amount_minor for part in parts) != total or len({part.component_id for part in parts}) != len(parts):
+        raise AppError("funding_amount_mismatch", "各项付款合计必须等于这笔消费的原币金额。", status_code=422)
+    return total
+
+
+def _review_funding_accounts(db: Session, expense: Expense, parts: list[FundingPart], actor_account_id: int
+                             ) -> tuple[dict[str, FinancialAccount], dict[int, Debt]]:
+    # Account locks always precede the corresponding credit Debt locks.
+    accounts = lock_reviewed_accounts(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id,
+        source_account_ids=[], parts=parts)
+    debts = dict(db.execute(select(CreditFacility.account_id, Debt).join(Debt, CreditFacility.debt_id == Debt.id)
+        .where(CreditFacility.account_id.in_([row.id for row in accounts.values()])).order_by(Debt.id)
+        .with_for_update(of=Debt)).all())
+    for part in parts:
+        row = accounts[part.account_public_id]
+        validate_funding_currency(part, row, expense.original_currency_code or expense.home_currency_code)
+        debt = debts.get(row.id)
+        if debt is not None and debt.debt_kind == "one_off":
+            raise AppError("invalid_request", "固定本金贷款不能再次作为购物授信；请选择实际付款账户。", status_code=422)
+        if part.included_in_opening:
+            if not row.balance_known or expense.accounting_date > row.opening_date:
+                raise AppError("funding_opening_mismatch", "只有已核对期初范围内的旧消费可以标记为纳入期初。", status_code=422)
+        else:
+            validate_movement_date(db, row, expense.accounting_date)
+    return accounts, debts
 
 
 def reverse_expense_funding(db, *, expense, actor_account_id, reason, occurred_on, offset_id=None):

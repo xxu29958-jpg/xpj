@@ -139,12 +139,12 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 144,  # Capture decision and browser review carry the reviewed fact versions.
-    "mutate_token_exempted": 153,  # Capture creation and source-locked repayment reclassification.
+    "mutate_token_carriers": 152,  # Funds: six API commands plus two native forms carry existing account/expense OCC.
+    "mutate_token_exempted": 154,  # Adds new account creation; adoption still checks the original Debt OCC.
     "mutate_token_reason_admin_single_writer": 16,
     "mutate_token_reason_append_only_fact": 3,
     "mutate_token_reason_batch_db_write": 17,
-    "mutate_token_reason_create_row": 43,  # Includes original notification identity creation; no confirmed fact on capture.
+    "mutate_token_reason_create_row": 44,  # Funds account creation has no predecessor account version.
     "mutate_token_reason_enqueue_task": 2,
     "mutate_token_reason_external_side_effect": 7,  # Owner FX save-and-fetch now also upserts fx_rates.
     "mutate_token_reason_governance_action": 8,

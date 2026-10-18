@@ -124,6 +124,8 @@ data class ExpenseEditMediaActions(
 
 data class ExpenseEditRelatedActions(
     val onKeepDuplicate: () -> Unit = {},
+    val onFundingChange: (String) -> Unit = {},
+    val onFundingReview: () -> Unit = {},
 )
 
 data class ExpenseEditItemizationActions(
@@ -159,8 +161,6 @@ fun ExpenseEditScreen(
     screenState: ExpenseEditScreenState,
     actions: ExpenseEditScreenActions,
     originalContent: (@Composable () -> Unit)? = null,
-    onFundingChange: (String) -> Unit = {},
-    onFundingReview: () -> Unit = {},
 ) {
     val expense = screenState.expense
     val state = screenState.editState
@@ -550,16 +550,7 @@ fun ExpenseEditScreen(
                 onEditSplits = if (allowsFactMutation(state.readOnly, commandOpen)) splitEditingActions.onEditSplits else null,
             ),
         )
-        if (isPendingExpense) {
-            ExpenseFundingFields(state.fundingJson, currency, canMutateFact && state.fundingReady && !state.saving,
-                change = onFundingChange)
-            state.fundingMessage?.let { Text(it.asString()) }
-            if (state.fundingWriting) Text("正在保留付款来源…")
-            if (state.fundingReviewAvailable || state.fundingReady && !commandOpen && state.fundingJson != "[]") {
-                androidx.compose.material3.TextButton(onClick = onFundingReview,
-                    enabled = !state.readOnly && !state.saving && !state.fundingWriting) { Text("保留原输入，核对最新账户") }
-            }
-        }
+        if (isPendingExpense) ExpenseFundingReview(state, currency, canMutateFact, commandOpen, relatedActions)
         ExpenseEditMoreSection(
             state = ExpenseEditMoreSectionState(
                 tags = tags,

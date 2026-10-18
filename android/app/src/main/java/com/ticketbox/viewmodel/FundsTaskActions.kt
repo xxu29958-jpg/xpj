@@ -20,7 +20,7 @@ fun FundsViewModel.start(mode: String) {
         val source = current.funding?.takeIf { it.canEdit } ?: return
         val value = FundsInput(access.binding, mode, UUID.randomUUID().toString(),
             expenseId = source.expenseId, version = source.expenseRowVersion, currency = source.currencyCode,
-            fundingJson = fundingInputs(source), note = if (source.parts.isEmpty()) "补充付款来源" else "更正付款来源")
+            fundingJson = fundingInputs(source))
         mutable.update { it.copy(task = FundsInputState(value), editing = true, error = null) }
         save(value)
         return
@@ -52,8 +52,16 @@ fun FundsViewModel.reviseAgreement(agreement: InstallmentViewDto) {
 }
 
 private fun FundsUiState.accountInput(binding: LogicalSessionBinding, mode: String): FundsInput {
-    val base = FundsInput(binding, mode, UUID.randomUUID().toString(), date = LocalDate.now().toString(),
+    var base = FundsInput(binding, mode, UUID.randomUUID().toString(), date = LocalDate.now().toString(),
         currency = overview?.homeCurrencyCode.orEmpty())
+    if (mode in setOf("create", "repay")) repaymentCapture?.takeIf { it.isPending }?.let { capture ->
+        val digits = com.ticketbox.domain.model.CurrencyCode.fromStorageKey(capture.originalCurrencyCode).minorUnitDigits
+        val amount = java.math.BigDecimal.valueOf(capture.originalAmountMinor, digits).toPlainString()
+        base = base.copy(kind = "credit", currency = capture.originalCurrencyCode,
+            sourceRepaymentDraftId = capture.publicId, sourceCurrency = capture.originalCurrencyCode,
+            sourceAmount = amount, sourceLabel = capture.merchantLabel.orEmpty(), note = capture.merchantLabel.orEmpty(),
+            date = capture.accountingTime?.accountingDate ?: base.date)
+    }
     if (mode == "create") return base
     val account = detail ?: return base
     val value = base.copy(accountId = account.publicId, version = account.rowVersion, calendarRevision = account.calendarRevision,

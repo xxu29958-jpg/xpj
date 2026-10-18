@@ -3,9 +3,11 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import AccountMovement, ExpenseFunding
+from app.models import AccountMovement, Expense, ExpenseFunding, ExpenseOffsetFact
+from app.schemas.funds import RefundDestination
 from app.services.expense_funding_service import reverse_expense_funding
 from app.services.funds_commands import movement, require_account_version
 from app.services.funds_fact_service import (
@@ -18,7 +20,8 @@ from app.services.funds_query import get_account
 from app.services.installment_query import draw_balances
 
 
-def apply_offset_funds(db, *, expense, offset, destinations, actor_account_id):
+def apply_offset_funds(db: Session, *, expense: Expense, offset: ExpenseOffsetFact,
+        destinations: list[RefundDestination] | None, actor_account_id: int) -> None:
     if offset.kind == "reversal":
         if destinations:
             raise AppError("invalid_request", "冲正按原付款来源撤销，请勿同时填写退款去向。", status_code=422)

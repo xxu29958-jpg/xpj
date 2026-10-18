@@ -3,7 +3,6 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.ExpenseFactOriginalInput
-import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.readExpenseFunding
 import com.ticketbox.data.repository.fundingInputAdapter
 import com.ticketbox.data.repository.FundsRepository
@@ -25,7 +24,7 @@ internal fun ExpenseEditViewModel.loadPendingFunding(expense: Expense) {
             runCatching {
                 val originals = inputs.filter { it.formKey == "pending_funding" }
                 val json = originals.singleOrNull()?.let { ExpenseFactInputCodec.decode(it.json, expense.id).fundingJson } ?: "[]"
-                requireNotNull(fundingInputAdapter.fromJson(json)) { "付款来源原稿无法读取，原输入仍保留在本机。" }
+                fundingInputAdapter.fromJson(json) ?: throw CorrectionValidationError(R.string.funds_funding_input_unreadable)
                 lateinit var session: ExpenseFactInputSession
                 session = ExpenseFactInputSession(binding, expense.id, repository.originalInputs, viewModelScope, originals) {
                     if (fundingInputSession === session) _uiState.update { it.copy(fundingWriting = session.writing,
@@ -62,13 +61,10 @@ fun ExpenseEditViewModel.reviewPendingFunding(funds: FundsRepository) {
     viewModelScope.launch {
         runCatching {
             fundingInputSession?.flush()?.getOrThrow()
-            val fresh = repository.fetchExpenseForFxReview(binding, expense.id).getOrThrow()
-            require(fresh.status == "pending") { "这笔消费已不在待确认状态，请返回查看最新账单；原提交仍保留。" }
-            val accounts = funds.reads.accounts(binding).getOrThrow()
-            require(!accounts.fromCache) { "请联网核对账户；原金额和币种已保留。" }
-            val json = if (rejected != null) reviewedFundingInputs(rejected, accounts.value)
-                else refreshedPendingFunding(state.fundingJson, accounts.value)
-            require(binding == repository.captureDeferredLedgerBinding()) { "身份已变化，请回到原账本核对。" }
+            val (fresh, accounts) = readCurrentFunding(funds, binding, expense.id)
+            val json = if (rejected != null) reviewedFundingInputs(rejected, accounts)
+                else refreshedPendingFunding(state.fundingJson, accounts)
+            if (binding != repository.captureDeferredLedgerBinding()) throw CorrectionValidationError(R.string.funds_original_binding_note)
             val draft = ExpenseFactInputDraft(fresh, fundingJson = json)
             if (rejected != null) {
                 val input = ExpenseFactOriginalInput(binding, expense.id, "pending_funding",
@@ -83,7 +79,7 @@ fun ExpenseEditViewModel.reviewPendingFunding(funds: FundsRepository) {
             _uiState.update { it.copy(expense = fresh, saving = false, fundingJson = json,
                 fundingReviewAvailable = false, commandRowIds = emptyList(), commandsCompleted = false,
                 done = false, confirmationReceipt = null, originalBaselineRequired = false, formRevision = it.formRevision + 1,
-                message = null, fundingMessage = UiText.raw("已读取最新消费和账户。原付款金额与币种已保留，请核对后再确认。")) }
+                message = null, fundingMessage = UiText.res(R.string.funds_funding_refreshed)) }
             if (rejected != null) loadPendingFunding(fresh)
         }.onFailure { error ->
             if (binding == repository.captureDeferredLedgerBinding()) _uiState.update {
@@ -93,19 +89,27 @@ fun ExpenseEditViewModel.reviewPendingFunding(funds: FundsRepository) {
     }
 }
 
+private suspend fun ExpenseEditViewModel.readCurrentFunding(funds: FundsRepository,
+    binding: com.ticketbox.data.repository.LogicalSessionBinding, expenseId: Long): Pair<Expense, List<com.ticketbox.data.remote.dto.FinancialAccountDto>> {
+    val expense = repository.fetchExpenseForFxReview(binding, expenseId).getOrThrow()
+    if (expense.status != "pending") throw CorrectionValidationError(R.string.funds_expense_no_longer_pending)
+    val accounts = funds.reads.accounts(binding).getOrThrow()
+    if (accounts.fromCache) throw CorrectionValidationError(R.string.funds_network_required)
+    return expense to accounts.value
+}
+
 internal suspend fun ExpenseEditViewModel.readyPendingFunding(draft: ExpenseDraft): Result<ExpenseFactOriginalInput?> {
-    val session = fundingInputSession ?: return Result.failure(RepositoryException("付款来源尚未读取完成，请稍后重试。"))
+    val session = fundingInputSession ?: return Result.failure(CorrectionValidationError(R.string.funds_funding_not_ready))
     val stored = session.flush()
     if (stored.isFailure) return Result.failure(requireNotNull(stored.exceptionOrNull()))
     val original = session.original("pending_funding") ?: return if (draft.funding.isEmpty()) Result.success(null)
-        else Result.failure(RepositoryException("付款来源原稿尚未保存，请保留输入重试。"))
+        else Result.failure(CorrectionValidationError(R.string.expense_fact_input_save_failed))
     val ready = session.ready("pending_funding")
     if (ready.isFailure) return Result.failure(requireNotNull(ready.exceptionOrNull()))
-    val values = session.draft("pending_funding") ?: return Result.failure(RepositoryException("付款来源原稿无法读取。"))
+    val values = session.draft("pending_funding") ?: return Result.failure(CorrectionValidationError(R.string.funds_funding_input_unreadable))
     return runCatching {
-        require(readExpenseFunding(values.fundingJson, requireNotNull(draft.originalCurrencyCode)) == draft.funding) {
-            "付款来源已变化，请重新核对原输入。"
-        }
+        if (readExpenseFunding(values.fundingJson, requireNotNull(draft.originalCurrencyCode)) != draft.funding)
+            throw CorrectionValidationError(R.string.expense_fact_input_review_required)
         original
     }
 }
@@ -113,5 +117,5 @@ internal suspend fun ExpenseEditViewModel.readyPendingFunding(draft: ExpenseDraf
 private fun refreshedPendingFunding(json: String, accounts: List<com.ticketbox.data.remote.dto.FinancialAccountDto>) =
     fundingInputAdapter.toJson(requireNotNull(fundingInputAdapter.fromJson(json)).map { part ->
         val account = accounts.firstOrNull { it.publicId == part.accountId && !it.archived && it.currencyCode == part.accountCurrency }
-        part.copy(accountVersion = account?.rowVersion ?: part.accountVersion, accountName = account?.name ?: "原付款账户（现不可用）")
+        part.copy(accountVersion = account?.rowVersion ?: part.accountVersion, accountName = account?.name ?: part.accountName)
     })

@@ -209,8 +209,8 @@ private fun SyncStatusPageBody(
     SyncStatusUploadSection(state, onOpenInbox)
     if ((status.conflicts + status.failed).any { it.type == PendingMutationType.FinancialAccountCommand }) {
         SettingsSection(title = stringResource(R.string.sync_status_mutation_funds_command)) {
-            Text("原账户、金额和提交已保留。进入资金任务核实原结果或重新核对，不会重复记账。")
-            TextButton(onClick = actions.onOpenFunds) { Text("继续原资金任务") }
+            Text(stringResource(R.string.funds_sync_note))
+            TextButton(onClick = actions.onOpenFunds) { Text(stringResource(R.string.funds_continue_task)) }
         }
     }
 

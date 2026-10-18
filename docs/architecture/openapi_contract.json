@@ -8335,6 +8335,17 @@
         "title": "Body_web_rules_undo_web_rules__rule_id__undo_post",
         "type": "object"
       },
+      "Body_web_save_funds_web_funds_save_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          }
+        },
+        "title": "Body_web_save_funds_web_funds_save_post",
+        "type": "object"
+      },
       "Body_web_save_web_expenses__expense_id__save_post": {
         "properties": {
           "amount_yuan": {
@@ -9733,6 +9744,17 @@
           }
         },
         "title": "Body_web_withdraw_repayment_proposal_web_debts__public_id__repayment_proposals__proposal_public_id__withdraw_post",
+        "type": "object"
+      },
+      "Body_write_funding_web_expenses__expense_id__funding_post": {
+        "properties": {
+          "expected_row_version": {
+            "default": "",
+            "title": "Expected Row Version",
+            "type": "string"
+          }
+        },
+        "title": "Body_write_funding_web_expenses__expense_id__funding_post",
         "type": "object"
       },
       "BootstrapOwnerRequest": {
@@ -12166,6 +12188,42 @@
             "minimum": 0.0,
             "title": "Principal Minor",
             "type": "integer"
+          },
+          "source_amount_basis": {
+            "default": "payer_total",
+            "enum": [
+              "payer_total",
+              "principal",
+              "corrected"
+            ],
+            "title": "Source Amount Basis",
+            "type": "string"
+          },
+          "source_repayment_draft_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Repayment Draft Id"
+          },
+          "source_review_reason": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Review Reason"
           }
         },
         "required": [
@@ -25343,6 +25401,33 @@
               }
             ]
           },
+          "expense_amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Amount Minor"
+          },
+          "expense_currency": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Currency"
+          },
           "notification_key": {
             "anyOf": [
               {
@@ -25395,6 +25480,20 @@
             "minimum": 1.0,
             "title": "Debt Row Version",
             "type": "integer"
+          },
+          "fee_expense_versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Fee Expense Versions",
+            "type": "object"
+          },
+          "funds_account_versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Funds Account Versions",
+            "type": "object"
           },
           "source_expense_row_version": {
             "anyOf": [
@@ -61757,6 +61856,15 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_write_funding_web_expenses__expense_id__funding_post"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -63401,6 +63509,15 @@
     "/web/funds/save": {
       "post": {
         "operationId": "web_save_funds_web_funds_save_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_save_funds_web_funds_save_post"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -63409,6 +63526,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Web Save Funds",

@@ -1,5 +1,6 @@
 """Account visibility and balances shared by real funds consumers."""
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import (
@@ -45,7 +46,8 @@ def account_balance(db, account, *, cutoff=None):
     return projection_sum_to_int(db.scalar(query), label="funds.recorded_balance")
 
 
-def account_view(db, row, *, actor_account_id, with_movements=False):
+def account_view(db: Session, row: FinancialAccount, *, actor_account_id: int,
+        with_movements: bool = False) -> FinancialAccountView:
     balance = account_balance(db, row)
     debt = db.scalar(select(Debt).join(CreditFacility, CreditFacility.debt_id == Debt.id)
         .where(CreditFacility.account_id == row.id))

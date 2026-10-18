@@ -20,6 +20,28 @@
       hint.hidden = event.target.value !== hint.dataset.categoryMerchant;
     });
   });
+  function continueAfterAcceptance(saved, receipt) {
+        switch (saved.command_action) {
+          case "reject": return {...saved, command_action: "confirm", reject_row_version: String(receipt.row_version),
+            undo_idempotency_key: receipt.undo_idempotency_key};
+          case "keep": return {...saved, command_action: "confirm"};
+          case "save":
+            if (saved.funding_json && saved.funding_json !== "[]") {
+              return {...saved, command_action: "confirm", idempotency_key: window.crypto.randomUUID()};
+            }
+        }
+      }
+  function acceptsDestination(next, saved) {
+        const edit = next.pathname === "/web/expenses/" + saved.expense_id + "/edit";
+        const retained = next.hash === "#expensereview-edit-" + saved.draft_ref;
+        switch (saved.command_action) {
+          case "reject": return (next.pathname === "/web/pending" || /^\/web\/recurring\/[^/]+\/occurrence$/.test(next.pathname)) &&
+            next.searchParams.get("undo") === saved.expense_id;
+          case "keep": return edit && retained;
+          case "save": return edit && (next.searchParams.get("new_expensereview") === "1" || retained);
+          default: return next.pathname === "/web/expenses/" + saved.expense_id + "/confirmation/" + saved.idempotency_key;
+        }
+      }
   function read(form) {
     const values = Object.fromEntries(fields.map(name => [name, form.elements.namedItem(name)?.value || ""]));
     values.present_fields = JSON.stringify(fields.filter(name => form.elements.namedItem(name) &&
@@ -93,11 +115,7 @@
       embedded: options.embedded, onAccepted: options.onAccepted, multiple: !options.embedded,
       action: saved => saved.command_action === "keep" ? "/web/duplicates/" + saved.expense_id + "/keep" :
         "/web/expenses/" + saved.expense_id + "/" + (saved.command_action || "confirm"),
-      continueAfterAcceptance: (saved, receipt) => saved.command_action === "reject" ?
-        {...saved, command_action: "confirm", reject_row_version: String(receipt.row_version), undo_idempotency_key: receipt.undo_idempotency_key} :
-        saved.command_action === "keep" ? {...saved, command_action: "confirm"} :
-        saved.command_action === "save" && saved.funding_json && saved.funding_json !== "[]" ?
-          {...saved, command_action: "confirm", idempotency_key: window.crypto.randomUUID()} : undefined,
+      continueAfterAcceptance,
       reviewRequiresRejection: true, reviewWhileEditing: true,
       inactiveMessage: "账单已离开待确认状态。原输入仍保留；已发出的提交可核实原结果。",
       read, href, present: () => {},
@@ -119,17 +137,14 @@
         for (const name of JSON.parse(values.present_fields)) body.set(name, values[name]);
         for (const [name, value] of Object.entries(JSON.parse(values.return_context))) body.set(name, value);
       },
-      relatedAction: submitter => form.dataset.expensereviewDraftPhase === "editing" &&
-        submitter?.name !== "review_latest" && submitter?.hasAttribute("formaction") &&
-        !/\/(save|confirm|keep|reject)$/.test(new URL(submitter.getAttribute("formaction"), window.location.href).pathname),
+      relatedAction: function (submitter) {
+        return form.dataset.expensereviewDraftPhase === "editing" &&
+          submitter?.name !== "review_latest" && submitter?.hasAttribute("formaction") &&
+          !/\/(save|confirm|keep|reject)$/.test(new URL(submitter.getAttribute("formaction"), window.location.href).pathname);
+      },
       receiptMatches,
-      acceptsDestination: (next, saved) => saved.command_action === "reject" ?
-        (next.pathname === "/web/pending" || /^\/web\/recurring\/[^/]+\/occurrence$/.test(next.pathname)) && next.searchParams.get("undo") === saved.expense_id : saved.command_action === "keep" ?
-        next.pathname === "/web/expenses/" + saved.expense_id + "/edit" && next.hash === "#expensereview-edit-" + saved.draft_ref : saved.command_action === "save" ?
-        next.pathname === "/web/expenses/" + saved.expense_id + "/edit" &&
-          (next.searchParams.get("new_expensereview") === "1" || next.hash === "#expensereview-edit-" + saved.draft_ref) :
-        next.pathname === "/web/expenses/" + saved.expense_id + "/confirmation/" + saved.idempotency_key,
-      updatePresentation(current, state) {
+      acceptsDestination,
+      updatePresentation: function (current, state) {
         current.dispatchEvent(new Event("ticketbox:funding-state"));
         const pending = state.phase !== "editing";
         const basisChanged = !pending && requiresReview(current);

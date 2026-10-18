@@ -2,12 +2,14 @@
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import CreditFacility, Debt
-from app.schemas.funds import ExistingDebtChoice
+from app.models import CreditFacility, Debt, FinancialAccount
+from app.schemas.funds import AccountCreate, ExistingDebtChoice
 from app.services.ledger_calendar_service import current_calendar
 from app.services.time_service import ensure_utc, now_utc
+from app.tenants import AuthContext
 
 
 def eligible_debts(ledger_id, actor_account_id):
@@ -29,7 +31,8 @@ def existing_debt_choices(db, *, ledger_id, actor_account_id):
         for row in db.scalars(eligible_debts(ledger_id, actor_account_id).order_by(Debt.id))]
 
 
-def adopt_existing_debt(db, *, auth, account, payload):
+def adopt_existing_debt(db: Session, *, auth: AuthContext, account: FinancialAccount,
+        payload: AccountCreate) -> None:
     from app.services.debt_service._fold import compute_remaining_for_write
     reference = payload.existing_debt
     debt = db.scalar(eligible_debts(auth.ledger_id, auth.account_id).where(Debt.public_id == reference.public_id)

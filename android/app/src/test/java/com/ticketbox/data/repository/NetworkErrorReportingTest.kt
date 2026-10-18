@@ -321,6 +321,44 @@ class NetworkErrorReportingTest {
         assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").all { it.throwable == null })
     }
 
+    @Test
+    fun fundsReplayFailureReportsSafelyWithoutRetryingOrConsumingTheCommand() = runTest {
+        val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun editFundsAccount(id: String, request: com.ticketbox.data.remote.dto.FinancialAccountEditDto,
+                key: String): com.ticketbox.data.remote.dto.FinancialAccountDto {
+                assertEquals("reviewed-account", id)
+                assertEquals(7L, request.expectedRowVersion)
+                assertEquals("original-funds-key", key)
+                throw IllegalStateException("password=synthetic-funds-secret", IOException("private financial text"))
+            }
+        }
+        val factory = object : com.ticketbox.data.remote.ApiServiceFactory {
+            override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = api
+        }
+        val provider = testApiServiceProvider(factory, TestSessionFixture().apply { saveToken("session-token") })
+        val guard = LedgerRequestGuard(provider)
+        val command = FundsCommand(binding = requireNotNull(guard.captureLogicalBinding()), accountId = "reviewed-account",
+            edit = com.ticketbox.data.remote.dto.FinancialAccountEditDto(7L, "本人核对", null, null, false))
+        val payload = FundsWire.command.toJson(command)
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao, bindingProvider = { provider.currentSession().toOutboxBinding() })
+        val id = outbox.enqueue(PendingMutationType.FinancialAccountCommand, command.target("original-funds-key"), payload,
+            command.version, idempotencyKey = "original-funds-key")
+        dao.runnableBatches += listOf(id)
+        val result = OutboxDrainEngine(outbox, listOf(FundsCommandDispatcher(guard))).drainOnce()
+        assertEquals(0, result.done)
+        assertEquals(1, result.failures)
+        val original = dao.rows.getValue(id)
+        assertEquals(PendingMutationStatus.Failed.wireValue, original.status)
+        assertEquals(payload, original.payload)
+        assertEquals("original-funds-key", original.idempotencyKey)
+        assertEquals(7L, original.expectedRowVersion)
+        assertNull(original.receiptJson)
+        val output = finalLog()
+        assertTrue(output.contains("FundsCommand.kt:") && output.contains("IllegalStateException"))
+        assertFalse(output.contains("synthetic-funds-secret") || output.contains("private financial text"))
+    }
+
     private fun assertLocated(output: String) {
         assertTrue(output.contains("operation=ReportingProbe"))
         assertTrue(output.contains("source_tree_sha256=${BuildConfig.SOURCE_FINGERPRINT}"))

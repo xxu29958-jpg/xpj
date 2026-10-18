@@ -38,11 +38,15 @@ data class PaymentCaptureDecisionDto(
 
 @JsonClass(generateAdapter = true)
 data class RepaymentAsExpenseDto(val reason: String, @Json(name = "notification_key") val notificationKey: String?,
-    @Json(name = "correction_versions") val correctionVersions: RepaymentCorrectionVersionsDto? = null)
+    @Json(name = "correction_versions") val correctionVersions: RepaymentCorrectionVersionsDto? = null,
+    @Json(name = "expense_currency") val expenseCurrency: String? = null,
+    @Json(name = "expense_amount_minor") val expenseAmountMinor: Long? = null)
 
 @JsonClass(generateAdapter = true)
 data class RepaymentCorrectionVersionsDto(
     @Json(name = "debt_row_version") val debtRowVersion: Long,
     @Json(name = "source_expense_row_version") val sourceExpenseRowVersion: Long? = null,
     @Json(name = "source_offset_row_version") val sourceOffsetRowVersion: Long? = null,
+    @Json(name = "funds_account_versions") val fundsAccountVersions: Map<String, Long> = emptyMap(),
+    @Json(name = "fee_expense_versions") val feeExpenseVersions: Map<String, Long> = emptyMap(),
 )

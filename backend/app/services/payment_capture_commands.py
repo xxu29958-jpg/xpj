@@ -23,10 +23,19 @@ from app.services.time_service import now_utc
 def _claim(db, auth, public_id, payload, key, operation):
     if not payload.reason.strip():
         raise AppError("decision_reason_required", "请说明这次核对的原因。", status_code=422)
+    body = payload.model_dump(mode="json", exclude={"expected_row_version"})
+    # Optional funds correction fields must not change pre-upgrade receipt identities.
+    for field in ("expense_currency", "expense_amount_minor"):
+        if body.get(field) is None:
+            body.pop(field, None)
+    if body.get("correction_versions"):
+        for field in ("funds_account_versions", "fee_expense_versions"):
+            if not body["correction_versions"].get(field):
+                body["correction_versions"].pop(field, None)
     return claim_idempotent_request(db, tenant_id=auth.tenant_id, idempotency_key=key,
         operation=operation, target_type="payment_capture", target_id=public_id,
         expected_row_version=getattr(payload, "expected_row_version", None),
-        body={**payload.model_dump(mode="json", exclude={"expected_row_version"}), "actor_account_id": auth.account_id})
+        body={**body, "actor_account_id": auth.account_id})
 
 
 def _commit(db, capture, claim, fx_task=None):
@@ -154,6 +163,9 @@ def repayment_as_expense(db, *, auth, public_id, payload, idempotency_key) -> Pa
 def _correct_confirmed_capture(db, auth, draft, capture, payload, key, claim):
     from app.services.repayment_capture_correction import restore_misclassified_repayment
 
+    if (payload.correction_versions and payload.correction_versions.funds_account_versions
+            and not draft.source_expense_public_id and (payload.expense_currency is None or payload.expense_amount_minor is None)):
+        raise AppError("invalid_request", "请按实际交易核对消费金额与币种；原还款本金和扣款总额不能代替消费金额。", status_code=422)
     source, repayment = restore_misclassified_repayment(db, draft=draft, versions=payload.correction_versions,
         actor_account_id=auth.account_id, reason=payload.reason.strip(), key=key)
     fx_task = None
@@ -163,7 +175,7 @@ def _correct_confirmed_capture(db, auth, draft, capture, payload, key, claim):
         # The reviewed payment may differ from the original parser proposal.
         # Use the committed amount, while retaining raw capture evidence/history.
         capture, fx_task = stage_capture_target(db, capture, auth=auth, kind="expense",
-            currency=repayment.original_currency_code or draft.home_currency_code,
-            amount=repayment.original_amount_minor or repayment.amount_cents, merchant=capture.merchant)
+            currency=payload.expense_currency or repayment.original_currency_code or draft.home_currency_code,
+            amount=payload.expense_amount_minor or repayment.original_amount_minor or repayment.amount_cents, merchant=capture.merchant)
     append_decision(capture, kind="expense", reason=payload.reason.strip(), actor_account_id=auth.account_id)
     return _commit(db, capture, claim, fx_task)

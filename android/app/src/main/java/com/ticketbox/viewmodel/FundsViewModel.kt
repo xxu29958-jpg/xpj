@@ -2,6 +2,8 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ticketbox.R
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.data.remote.dto.FinancialAccountDto
 import com.ticketbox.data.remote.dto.FundsOverviewDto
 import com.ticketbox.data.remote.dto.ExpenseFundingViewDto
@@ -23,19 +25,23 @@ import kotlinx.coroutines.sync.withLock
 data class FundsUiState(val access: LedgerAccessContext? = null, val accounts: List<FinancialAccountDto> = emptyList(),
     val detail: FinancialAccountDto? = null, val task: FundsInputState = FundsInputState(null),
     val editing: Boolean = false, val loading: Boolean = false, val busy: Boolean = false,
-    val fromCache: Boolean = false, val error: String? = null, val overview: FundsOverviewDto? = null,
+    val fromCache: Boolean = false, val error: UiText? = null, val overview: FundsOverviewDto? = null,
     val funding: ExpenseFundingViewDto? = null, val fundingPage: Boolean = false, val installments: InstallmentsDto? = null,
     val accountChoices: List<com.ticketbox.data.remote.dto.AccountChoiceDto> = emptyList(),
-    val existingDebts: List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto> = emptyList())
+    val existingDebts: List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto> = emptyList(),
+    val captureRequested: Boolean = false,
+    val repaymentCapture: com.ticketbox.domain.model.RepaymentDraft? = null)
 
-class FundsViewModel(internal val repository: FundsRepository, internal val expenseId: Long? = null) : ViewModel() {
+class FundsViewModel(internal val repository: FundsRepository, internal val expenseId: Long? = null,
+    internal val repaymentDraftId: String? = null,
+    internal val captures: com.ticketbox.data.repository.RepaymentDraftActions? = null) : ViewModel() {
     internal val mutable = MutableStateFlow(FundsUiState())
     val state = mutable.asStateFlow()
     private val writes = Mutex()
     init {
         viewModelScope.launch {
             repository.access().collectLatest { access ->
-                mutable.value = FundsUiState(access = access, fundingPage = expenseId != null)
+                mutable.value = FundsUiState(access = access, fundingPage = expenseId != null, captureRequested = repaymentDraftId != null)
                 if (access != null) coroutineScope {
                     launch {
                         repository.input(access.binding).collect { original ->
@@ -53,7 +59,7 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
 
 
     fun refresh() { state.value.access?.binding?.let { viewModelScope.launch { refreshAccounts(it) } } }
-    fun open(id: String) {
+    fun open(id: String, forCapture: Boolean = false) {
         val binding = state.value.access?.binding ?: return
         viewModelScope.launch {
             val result = repository.reads.detail(binding, id)
@@ -63,9 +69,10 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
                     if (read.value.kind == "credit") repository.reads.installments(binding, id).fold(
                         onSuccess = { schedule -> if (state.value.access?.binding == binding && state.value.detail?.publicId == id)
                             mutable.update { it.copy(installments = schedule.value, fromCache = it.fromCache || schedule.fromCache) } },
-                        onFailure = { error -> if (state.value.access?.binding == binding) mutable.update { it.copy(error = error.message) } })
+                        onFailure = { error -> if (state.value.access?.binding == binding) mutable.update { it.copy(error = error.toUiText()) } })
+                    if (forCapture && state.value.access?.binding == binding && state.value.repaymentCapture?.isPending == true) start("repay")
                 },
-                onFailure = { error -> mutable.update { it.copy(error = error.message) } })
+                onFailure = { error -> mutable.update { it.copy(error = error.toUiText()) } })
         }
     }
 
@@ -81,7 +88,7 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
 
     internal fun save(value: FundsInput) {
         viewModelScope.launch { writes.withLock {
-            repository.save(value).onFailure { error -> if (state.value.access?.binding == value.binding) mutable.update { it.copy(error = error.message) } }
+            repository.save(value).onFailure { error -> if (state.value.access?.binding == value.binding) mutable.update { it.copy(error = error.toUiText()) } }
         } }
     }
 
@@ -104,13 +111,18 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
     fun retry() = runAction { repository.retry(it) }
     fun review() = runAction { binding ->
         val fresh = repository.reads.accounts(binding).getOrThrow()
-        require(!fresh.fromCache) { "请联网核对最新账户；原输入已保留。" }
+        if (fresh.fromCache) {
+            mutable.update { it.copy(error = UiText.res(R.string.funds_network_required)) }
+            return@runAction Result.success(Unit)
+        }
         repository.review(binding, fresh.value).onSuccess {
             state.value.task.input?.accountId?.takeIf(String::isNotBlank)?.let { reloadSchedule(binding, it) }
         }
     }
-    fun finish() = runAction { binding -> repository.finish(binding).onSuccess {
-        mutable.update { it.copy(task = FundsInputState(null), editing = false, detail = null) }
+    fun finish() = runAction { binding ->
+        val continueCapture = state.value.captureRequested && state.value.task.input?.mode == "create"
+        repository.finish(binding).onSuccess {
+        mutable.update { it.copy(task = FundsInputState(null), editing = false, detail = null, captureRequested = continueCapture) }
         refreshAccounts(binding)
     } }
 
@@ -121,7 +133,10 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
         viewModelScope.launch {
             try { writes.withLock { action(binding).getOrThrow() } }
             catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-            catch (error: Exception) { if (state.value.access?.binding == binding) mutable.update { it.copy(error = error.message) } }
+            catch (error: Exception) {
+                com.ticketbox.data.repository.logNetworkWarning("Funds action failed", error)
+                if (state.value.access?.binding == binding) mutable.update { it.copy(error = error.toUiText()) }
+            }
             finally { if (state.value.access?.binding == binding) mutable.update { it.copy(busy = false) } }
         }
     }

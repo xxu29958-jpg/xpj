@@ -24,6 +24,7 @@ fun Throwable.toUiText(): UiText = toUiText(R.string.error_generic)
 /** As [toUiText] but with a screen-specific [fallback] when the failure carries
  *  no known code and no message (preserves each screen's prior fallback copy). */
 fun Throwable.toUiText(@StringRes fallback: Int): UiText {
+    if (this is CorrectionValidationError) return UiText.res(resId)
     (this as? RepositoryException)?.localFailure?.let { return localFailureText(it) }
     val code = (this as? RepositoryException)?.errorCode?.trim()
     errorCodeStringRes(code)?.let { return UiText.res(it) }

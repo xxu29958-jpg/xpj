@@ -26,7 +26,7 @@ fun RepaymentDraftDto.toDomain(): RepaymentDraft = RepaymentDraft(
     sourceExpenseRequiresReview = sourceExpenseRequiresReview,
     correctedExpenseId = correctedExpenseId,
     correctionVersions = correctionVersions?.let { com.ticketbox.domain.model.RepaymentCorrectionVersions(
-        it.debtRowVersion, it.sourceExpenseRowVersion, it.sourceOffsetRowVersion) },
+        it.debtRowVersion, it.sourceExpenseRowVersion, it.sourceOffsetRowVersion, it.fundsAccountVersions, it.feeExpenseVersions) },
 )
 
 /** The NLS-captured repayment as a create-request body (home-currency only; §杠杆③). */

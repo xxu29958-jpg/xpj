@@ -239,15 +239,7 @@ def web_create_expense_offset(
         draft["draft_scope"] = bind_offset_draft(db, request, selected_id, metadata)
         root = get_expense(db, expense_id, selected_id)
         currency = metadata.original_currency_code or root.original_currency_code
-        try:
-            payload = _create_payload(kind=kind, original_amount=original_amount, accounting_date=accounting_date,
-                reason=reason, expected_row_version=expected_row_version, original_currency_code=currency)
-            if kind != "reversal" and funding_json not in {"", "[]"}:
-                payload.destinations = parse_refund_destinations(db, request.state.web_session_auth, funding_json, currency)
-        except AppError:
-            if not metadata.review_latest:
-                raise
-            payload = None
+        payload = _retained_offset_payload(db, request, draft, currency, metadata.review_latest)
         account_id, device_public_id, device_name = _actor_snapshot(
             db,
             request,
@@ -417,3 +409,18 @@ def web_void_expense_offset(
         draft=draft,
         target_public_id=offset_public_id,
     )
+
+
+def _retained_offset_payload(db: Session, request: Request, draft: dict[str, str], currency: str,
+        review_latest: bool) -> ExpenseOffsetCreateRequest | None:
+    try:
+        payload = _create_payload(kind=draft["kind"], original_amount=draft["original_amount"],
+            accounting_date=draft["accounting_date"], reason=draft["reason"],
+            expected_row_version=draft["expected_row_version"], original_currency_code=currency)
+        if draft["kind"] != "reversal" and draft["funding_json"] not in {"", "[]"}:
+            payload.destinations = parse_refund_destinations(db, request.state.web_session_auth, draft["funding_json"], currency)
+        return payload
+    except AppError:
+        if not review_latest:
+            raise
+        return None

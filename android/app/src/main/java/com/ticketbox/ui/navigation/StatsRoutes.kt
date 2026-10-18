@@ -483,8 +483,7 @@ internal fun RepaymentDraftRoute(
     screenFactory: MainScreenFactory,
     focusedDraftPublicId: String? = null,
     onBack: () -> Unit,
-    onOpenExpense: (Long) -> Unit,
-    onOpenCredit: (String) -> Unit = {},
+    destinations: RepaymentDraftDestinations,
 ) {
     val launchFocusedDraftPublicId = remember { focusedDraftPublicId }
     val viewModel: RepaymentDraftInboxViewModel = viewModel(
@@ -508,12 +507,15 @@ internal fun RepaymentDraftRoute(
     var linkedDebtId by rememberSaveable { mutableStateOf<String?>(null) }
     val linked = linkedDebtId
     when {
-        linked != null -> RepaymentDraftLinkedDebt(screenFactory, linked, onOpenCredit) { linkedDebtId = null; viewModel.refresh() }
-        state.reviewId != null -> RepaymentReviewScreen(state, viewModel, { linkedDebtId = it }, onOpenExpense)
+        linked != null -> RepaymentDraftLinkedDebt(screenFactory, linked, destinations.openCredit) { linkedDebtId = null; viewModel.refresh() }
+        state.reviewId != null -> RepaymentReviewScreen(state, viewModel, { linkedDebtId = it }, destinations.openExpense, destinations.fundCapture)
         else -> RepaymentDraftInboxScreen(viewModel, showHistory, onHistoryChange = { showHistory = it },
-            navigation = RepaymentDraftNavigation(onBack, { linkedDebtId = it }, onOpenExpense))
+            navigation = RepaymentDraftNavigation(onBack, { linkedDebtId = it }, destinations.openExpense))
     }
 }
+
+internal data class RepaymentDraftDestinations(val openExpense: (Long) -> Unit,
+    val openCredit: (String) -> Unit, val fundCapture: (String) -> Unit)
 
 @Composable
 private fun RepaymentDraftLinkedDebt(screenFactory: MainScreenFactory, publicId: String, onOpenCredit: (String) -> Unit, onBack: () -> Unit) {

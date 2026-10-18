@@ -2,10 +2,11 @@
 from uuid import uuid4
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import AccountMovement, ApiIdempotencyKey, CreditFacility, Debt, FinancialAccount
-from app.schemas.funds import FinancialAccountView
+from app.schemas.funds import AccountCreate, FinancialAccountView
 from app.services.credit_history_adoption import adopt_existing_debt
 from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
 from app.services.funds_money import valuation
@@ -15,15 +16,22 @@ from app.services.ledger_calendar_service import current_ledger_date
 from app.services.permission_service import require_write_expense
 from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
 from app.services.time_service import now_utc
+from app.tenants import AuthContext
 
 
 def claim_funds(db, auth, payload, key, operation, target=None):
     lock_and_revalidate_mutation_actor(db, auth, actor_account_id=auth.account_id, ledger_id=auth.ledger_id)
     require_write_expense(auth)
     resolve_write_capability(db)
+    body = payload.model_dump(mode="json", exclude={"expected_row_version"})
+    if body.get("source_repayment_draft_id") is None:
+        # Old retained account repayments did not carry capture review fields.
+        # Keep their original fingerprint so an accepted key remains replayable.
+        for name in ("source_repayment_draft_id", "source_amount_basis", "source_review_reason"):
+            body.pop(name, None)
     return claim_idempotent_request(db, tenant_id=auth.tenant_id, idempotency_key=key,
         operation=operation, target_type="financial_account", target_id=target,
-        body={**payload.model_dump(mode="json", exclude={"expected_row_version"}), "actor_account_id": auth.account_id},
+        body={**body, "actor_account_id": auth.account_id},
         expected_row_version=getattr(payload, "expected_row_version", None))
 
 
@@ -71,7 +79,7 @@ def movement(db, auth, account, *, event, component, kind, amount, occurred_on, 
     return row
 
 
-def create_account(db, *, auth, payload, key):
+def create_account(db: Session, *, auth: AuthContext, payload: AccountCreate, key: str) -> FinancialAccountView:
     claim = claim_funds(db, auth, payload, key, "create_financial_account")
     if claim is None:
         return replay_funds(db, auth, key)
@@ -86,19 +94,23 @@ def create_account(db, *, auth, payload, key):
     if payload.existing_debt is not None:
         adopt_existing_debt(db, auth=auth, account=row, payload=payload)
     elif row.kind == "credit":
-        debt = Debt(tenant_id=auth.tenant_id, owner_account_id=auth.account_id, created_by_account_id=auth.account_id,
-            direction="i_owe", counterparty_type="external", counterparty_label=row.name, debt_kind="revolving",
-            principal_amount_cents=0, home_currency_code=require_runtime_home_currency_code(db),
-            original_currency_code=row.currency_code, original_amount_minor=0, source_type="credit_facility",
-            source_id=row.public_id, status="cleared" if payload.opening_amount_minor == 0 else "open")
-        db.add(debt)
-        db.flush()
-        db.add(CreditFacility(account_id=row.id, debt_id=debt.id))
+        _create_credit_facility(db, auth, row, opening=payload.opening_amount_minor)
     if payload.opening_amount_minor is not None:
         amount = payload.opening_amount_minor * (-1 if row.kind == "credit" else 1)
         movement(db, auth, row, event=str(uuid4()), component="opening", kind="opening", amount=amount,
             occurred_on=payload.opening_date, note=payload.opening_source)
     return finish_funds(db, auth, claim, row)
+
+
+def _create_credit_facility(db: Session, auth: AuthContext, account: FinancialAccount, *, opening: int | None) -> None:
+    debt = Debt(tenant_id=auth.tenant_id, owner_account_id=auth.account_id, created_by_account_id=auth.account_id,
+        direction="i_owe", counterparty_type="external", counterparty_label=account.name, debt_kind="revolving",
+        principal_amount_cents=0, home_currency_code=require_runtime_home_currency_code(db),
+        original_currency_code=account.currency_code, original_amount_minor=0, source_type="credit_facility",
+        source_id=account.public_id, status="cleared" if opening == 0 else "open")
+    db.add(debt)
+    db.flush()
+    db.add(CreditFacility(account_id=account.id, debt_id=debt.id))
 
 
 def edit_account(db, *, auth, public_id, payload, key):

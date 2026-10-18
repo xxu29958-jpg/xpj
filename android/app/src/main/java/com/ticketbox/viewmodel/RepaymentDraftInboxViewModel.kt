@@ -277,12 +277,11 @@ class RepaymentDraftInboxViewModel(
         binding == adjustmentBinding && binding == writes.currentAccess()?.binding
 
     fun correctAsExpense(reason: String) {
-        val binding = adjustmentBinding ?: return
         val draft = _state.value.drafts.singleOrNull { it.publicId == _state.value.reviewId } ?: return
-        viewModelScope.launch {
+        reviewEditor.reviewAction { binding, _ ->
             val result = reviews.correctAsExpense(binding, draft, reason)
             if (result.isSuccess && draft.correctionVersions != null && ownsAdjustmentBinding(binding)) reviewEditor.closeReview()
-            if (ownsAdjustmentBinding(binding)) _state.update { it.copy(error = result.exceptionOrNull()?.toUiText(R.string.payment_capture_failed)) }
+            result.map { Unit }
         }
     }
 

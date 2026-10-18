@@ -156,13 +156,15 @@ internal fun NavGraphBuilder.addObligationRoutes(
     dependencies: MainProductRouteDependencies,
 ) {
     with(dependencies) {
-        composable(ProductSecondaryPage.Funds.route + "?account={account}",
-            arguments = listOf(navArgument("account") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
+        composable(ProductSecondaryPage.Funds.route + "?account={account}&capture={capture}",
+            arguments = listOf(navArgument("account") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("capture") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
             val model: com.ticketbox.viewmodel.FundsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
                 factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                     @Suppress("UNCHECKED_CAST")
                     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
-                        com.ticketbox.viewmodel.FundsViewModel(screenFactory.fundsRepository) as T
+                        com.ticketbox.viewmodel.FundsViewModel(screenFactory.fundsRepository,
+                            repaymentDraftId = entry.arguments?.getString("capture"), captures = screenFactory.repaymentDraftRepository) as T
                 })
             val binding = model.state.collectAsStateWithLifecycle().value.access?.binding
             val accountId = entry.arguments?.getString("account")
@@ -231,8 +233,9 @@ private fun NavGraphBuilder.addRepaymentDraftRoute(dependencies: MainProductRout
                     screenFactory = screenFactory,
                     focusedDraftPublicId = entry.arguments?.getString(REPAYMENT_DRAFT_FOCUS_ARG),
                     onBack = onBack,
-                    onOpenExpense = runtime.navController::openExpense,
-                    onOpenCredit = shellState::openCreditAccount,
+                    destinations = RepaymentDraftDestinations(runtime.navController::openExpense, shellState::openCreditAccount,
+                        { id -> shellState.openSecondaryPage(ProductSecondaryPage.Funds,
+                            ProductSecondaryPage.Funds.route + "?capture=" + android.net.Uri.encode(id)) }),
                 )
             }
         }

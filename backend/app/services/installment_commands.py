@@ -2,16 +2,21 @@
 from uuid import uuid4
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import AccountMovement, InstallmentAgreement, InstallmentDraw, InstallmentPeriod
+from app.models import AccountMovement, FinancialAccount, InstallmentAgreement, InstallmentDraw, InstallmentPeriod
+from app.schemas.funds import FinancialAccountView
+from app.schemas.installment import InstallmentCommand
 from app.services.funds_commands import claim_funds, finish_funds, replay_funds, require_account_version
 from app.services.funds_query import get_account
 from app.services.installment_query import active_agreements, draw_balances
 from app.services.ledger_calendar_service import current_ledger_date
+from app.tenants import AuthContext
 
 
-def save_installments(db, *, auth, public_id, payload, key):
+def save_installments(db: Session, *, auth: AuthContext, public_id: str,
+        payload: InstallmentCommand, key: str) -> FinancialAccountView:
     claim = claim_funds(db, auth, payload, key, "save_installment_agreement", public_id)
     if claim is None:
         return replay_funds(db, auth, key)
@@ -25,6 +30,21 @@ def save_installments(db, *, auth, public_id, payload, key):
     previous = next((row for row in active if row.public_id == payload.supersedes_public_id), None)
     if payload.supersedes_public_id and previous is None:
         raise AppError("state_conflict", "原合约已变化，请核对最新版本；原输入保留。", status_code=409)
+    balances = _review_principal(db, account, payload, active, previous)
+    agreement = InstallmentAgreement(account_id=account.id, series_id=previous.series_id if previous else str(uuid4()),
+        revision=previous.revision + 1 if previous else 1, supersedes_id=previous.id if previous else None,
+        name=payload.name, source=payload.source, agreed_on=payload.agreed_on, actor_account_id=auth.account_id)
+    db.add(agreement)
+    db.flush()
+    db.add_all([InstallmentDraw(agreement_id=agreement.id, movement_id=identifier, principal_minor=amount)
+        for identifier, amount in balances.items()])
+    db.add_all([InstallmentPeriod(agreement_id=agreement.id, position=index + 1, **period.model_dump()) for index, period in enumerate(payload.periods)])
+    account.row_version += 1
+    return finish_funds(db, auth, claim, account)
+
+
+def _review_principal(db: Session, account: FinancialAccount, payload: InstallmentCommand,
+        active: list[InstallmentAgreement], previous: InstallmentAgreement | None) -> dict[int, int]:
     selected = set(payload.draw_public_ids)
     draws = list(db.scalars(select(AccountMovement).where(AccountMovement.account_id == account.id,
         AccountMovement.public_id.in_(selected), AccountMovement.amount_minor < 0, AccountMovement.reversal_of_id.is_(None))))
@@ -36,17 +56,13 @@ def save_installments(db, *, auth, public_id, payload, key):
         raise AppError("installment_source_in_use", "所选本金已在其他生效合约中，不能再次安排。", status_code=409)
     remaining = draw_balances(db, account.id)
     balances = {row.id: remaining.get(row.id, 0) for row in draws}
+    _review_schedule(payload, balances)
+    return balances
+
+
+def _review_schedule(payload: InstallmentCommand, balances: dict[int, int]) -> None:
     if any(value <= 0 for value in balances.values()) or sum(balances.values()) != sum(row.principal_minor for row in payload.periods):
         raise AppError("installment_amount_mismatch", "逐期本金合计必须等于所选记录的当前未偿本金；不会新增欠款。", status_code=422)
     dates = [row.due_on for row in payload.periods]
     if dates != sorted(dates) or any(day < payload.agreed_on for day in dates):
         raise AppError("invalid_request", "请按合约填写不早于成立日期、依次排列的到期日。", status_code=422)
-    agreement = InstallmentAgreement(account_id=account.id, series_id=previous.series_id if previous else str(uuid4()),
-        revision=previous.revision + 1 if previous else 1, supersedes_id=previous.id if previous else None,
-        name=payload.name, source=payload.source, agreed_on=payload.agreed_on, actor_account_id=auth.account_id)
-    db.add(agreement)
-    db.flush()
-    db.add_all([InstallmentDraw(agreement_id=agreement.id, movement_id=row.id, principal_minor=balances[row.id]) for row in draws])
-    db.add_all([InstallmentPeriod(agreement_id=agreement.id, position=index + 1, **period.model_dump()) for index, period in enumerate(payload.periods)])
-    account.row_version += 1
-    return finish_funds(db, auth, claim, account)

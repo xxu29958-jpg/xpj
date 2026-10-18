@@ -2,14 +2,12 @@
 import json
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from pydantic import ValidationError
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.models import ApiIdempotencyKey
 from app.routes._web_draft_binding import (
     browser_draft_scope,
     draft_ack_response,
@@ -27,9 +25,9 @@ from app.routes.web_common import (
     templates,
 )
 from app.routes.web_funds import _scope
-from app.schemas.funds import ExpenseFundingCommand, ExpenseFundingView
+from app.schemas.funds import ExpenseFundingCommand
 from app.services.currency_common import minor_amount_label, minor_amount_value
-from app.services.expense_funding_command import expense_funding_view, save_expense_funding
+from app.services.expense_funding_command import expense_funding_view, replay_expense_funding, save_expense_funding
 from app.services.funds_commands import claim_funds, funds_request_is_unpublished
 
 router = APIRouter(prefix="/web/expenses", tags=["web"])
@@ -60,8 +58,10 @@ def read_funding(request: Request, expense_id: int, ledger_id: str = "", _local:
 
 
 @router.post("/{expense_id}/funding")
-async def write_funding(request: Request, expense_id: int, _local: None = LocalOnly, db: Session = Depends(get_db)):
+async def write_funding(request: Request, expense_id: int, expected_row_version: str = Form(""),
+        _local: None = LocalOnly, db: Session = Depends(get_db)):
     values = dict(await request.form())
+    values["expected_row_version"] = expected_row_version
     ledger = str(values.get("ledger_id", ""))
     href = f"/web/expenses/{expense_id}/edit?ledger_id={ledger}"
     try:
@@ -74,9 +74,7 @@ async def write_funding(request: Request, expense_id: int, _local: None = LocalO
         if values.get("review_latest"):
             claim = claim_funds(db, auth, payload, key, "save_expense_funding", str(expense_id))
             if claim is None:
-                original = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.tenant_id == ledger,
-                    ApiIdempotencyKey.idempotency_key == key))
-                receipt = ExpenseFundingView.model_validate(original.response_body)
+                receipt = replay_expense_funding(db, auth=auth, key=key)
             else:
                 db.rollback()
                 current = expense_funding_view(db, ledger_id=ledger, actor_account_id=auth.account_id, expense_id=expense_id)

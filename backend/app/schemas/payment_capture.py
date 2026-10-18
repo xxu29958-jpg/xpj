@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas._money import PositiveMoneyMinor
 
@@ -44,6 +44,8 @@ class RepaymentCorrectionVersions(BaseModel):
     debt_row_version: int = Field(ge=1)
     source_expense_row_version: int | None = Field(default=None, ge=1)
     source_offset_row_version: int | None = Field(default=None, ge=1)
+    funds_account_versions: dict[str, int] = Field(default_factory=dict)
+    fee_expense_versions: dict[int, int] = Field(default_factory=dict)
 
 
 class RepaymentAsExpense(BaseModel):
@@ -51,6 +53,14 @@ class RepaymentAsExpense(BaseModel):
     reason: str = Field(min_length=1, max_length=255)
     notification_key: str | None = Field(default=None, min_length=1, max_length=512)
     correction_versions: RepaymentCorrectionVersions | None = None
+    expense_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    expense_amount_minor: PositiveMoneyMinor | None = None
+
+    @model_validator(mode="after")
+    def reviewed_money_pair(self):
+        if (self.expense_currency is None) != (self.expense_amount_minor is None):
+            raise ValueError("实际消费金额与币种须一并核对")
+        return self
 
 
 class PaymentCaptureResponse(BaseModel):

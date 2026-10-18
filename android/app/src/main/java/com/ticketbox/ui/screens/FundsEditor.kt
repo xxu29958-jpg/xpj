@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,9 +40,9 @@ import com.ticketbox.viewmodel.choosePayer
 internal fun FundsEditor(state: FundsUiState, input: FundsInput, vm: FundsViewModel) {
     val enabled = !state.task.frozen && !state.busy && state.access?.canModify == true && state.access.binding == input.binding
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
-        if (input.binding != state.access?.binding) Text("这是原身份的输入。切回原身份后才能继续，内容仍保留。")
+        if (input.binding != state.access?.binding) Text(stringResource(R.string.funds_original_binding_note))
         FundsInputFields(state, input, enabled, vm)
-        if (input.mode !in setOf("edit", "funding")) FundsField("${if (input.mode == "create") "期初日期" else "实际日期"}（YYYY-MM-DD）", input.date, enabled) { value -> vm.edit { it.copy(date = value) } }
+        if (input.mode !in setOf("edit", "funding")) FundsField("${if (input.mode == "create") stringResource(R.string.funds_opening_date) else stringResource(R.string.funds_actual_date)}（YYYY-MM-DD）", input.date, enabled) { value -> vm.edit { it.copy(date = value) } }
         FundsSubmission(state, enabled, vm)
     }
 }
@@ -49,16 +51,17 @@ internal fun FundsEditor(state: FundsUiState, input: FundsInput, vm: FundsViewMo
 private fun FundsInputFields(state: FundsUiState, input: FundsInput, enabled: Boolean, vm: FundsViewModel) {
     when (input.mode) {
             "void_repayment" -> {
-                Text("恢复原本金欠款、付款账户和分期未付金额，保留更正记录。已发生的费用仍保留；费用也记错或已退款时，从原费用消费办理更正或退款。")
-                FundsField("撤销依据", input.note, enabled) { value -> vm.edit { it.copy(note = value) } }
+                Text(stringResource(R.string.funds_void_payment_note))
+                FundsField(stringResource(R.string.funds_void_reason), input.note, enabled) { value -> vm.edit { it.copy(note = value) } }
             }
             "funding" -> {
                 CurrencyCode.fromStorageKeyOrNull(input.currency)?.let { currency ->
                     ExpenseFundingFields(input.fundingJson, currency, enabled) { value -> vm.edit { it.copy(fundingJson = value) } }
                 }
-                FundsField("本次核对依据", input.note, enabled) { value -> vm.edit { it.copy(note = value) } }
+                FundsField(stringResource(R.string.funds_review_reason), input.note, enabled) { value -> vm.edit { it.copy(note = value) } }
             }
             "repay" -> {
+                FundsCaptureFields(input, enabled, vm)
                 FundsPaymentFields(input, state.accounts, enabled, vm)
                 InstallmentPaymentFields(input, state.installments, enabled, vm)
             }
@@ -82,63 +85,65 @@ private fun AccountEditorFields(state: FundsUiState, input: FundsInput, enabled:
 private fun ExistingDebtField(input: FundsInput, choices: List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto>, enabled: Boolean, vm: FundsViewModel) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     TextButton(onClick = { expanded = true }, enabled = enabled) {
-        Text(if (input.existingDebtId.isBlank()) "接入已记录的欠款（选填）" else "已选：${input.existingDebtLabel} · 重新核对")
+        Text(if (input.existingDebtId.isBlank()) stringResource(R.string.funds_adopt_debt) else stringResource(R.string.funds_adopt_selected, input.existingDebtLabel))
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        DropdownMenuItem(text = { Text("没有对应的旧欠款") }, onClick = {
+        DropdownMenuItem(text = { Text(stringResource(R.string.funds_no_old_debt)) }, onClick = {
             vm.edit { it.copy(existingDebtId = "", existingDebtVersion = 0, existingDebtLabel = "") }; expanded = false
         }, enabled = enabled)
-        choices.forEach { debt -> DropdownMenuItem(text = {
-            Text("${debt.name} · 原余款 ${money(debt.remainingHomeMinor, debt.homeCurrencyCode)}\n期初不早于 ${debt.earliestOpeningDate}")
+        choices.forEach { debt ->
+            val label = stringResource(R.string.funds_old_debt_label, debt.name, money(debt.remainingHomeMinor, debt.homeCurrencyCode))
+            DropdownMenuItem(text = {
+            Text(stringResource(R.string.funds_old_debt_choice, debt.name, money(debt.remainingHomeMinor, debt.homeCurrencyCode), debt.earliestOpeningDate))
         }, onClick = {
             vm.edit { it.copy(kind = "credit", existingDebtId = debt.publicId, existingDebtVersion = debt.rowVersion,
-                existingDebtLabel = "${debt.name} · 原余款 ${money(debt.remainingHomeMinor, debt.homeCurrencyCode)}") }; expanded = false
+                existingDebtLabel = label) }; expanded = false
         }, enabled = enabled) }
     }
-    if (input.existingDebtId.isNotBlank()) Text("保留原欠款和还款历史，由本账户承接，不新增另一笔负债。请按银行或平台记录核对实际币种和期初欠款。接入后的欠款遵循本账户可见范围，之前的购买不能再次计入期初。", style = MaterialTheme.typography.bodySmall)
+    if (input.existingDebtId.isNotBlank()) Text(stringResource(R.string.funds_adopt_note), style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable
 private fun FundsAccountFields(input: FundsInput, enabled: Boolean, vm: FundsViewModel) {
-    FundsField("账户名称", input.name, enabled) { value -> vm.edit { it.copy(name = value) } }
+    FundsField(stringResource(R.string.funds_account_name), input.name, enabled) { value -> vm.edit { it.copy(name = value) } }
     if (input.mode == "create") {
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            fundKinds.forEach { (kind, label) -> FilterChip(input.kind == kind, { vm.edit { it.copy(kind = kind) } }, { Text(label) }, enabled = enabled) }
+            fundKinds().forEach { (kind, label) -> FilterChip(input.kind == kind, { vm.edit { it.copy(kind = kind) } }, { Text(label) }, enabled = enabled) }
         }
-        CurrencyChoiceField(CurrencyCode.fromStorageKeyOrNull(input.currency), enabled, title = "选择账户实际币种") { value -> vm.edit { it.copy(currency = value.storageKey) } }
+        CurrencyChoiceField(CurrencyCode.fromStorageKeyOrNull(input.currency), enabled, title = stringResource(R.string.funds_choose_currency)) { value -> vm.edit { it.copy(currency = value.storageKey) } }
         Row { Switch(input.visibility == "ledger", { shared -> vm.edit { it.copy(visibility = if (shared) "ledger" else "private") } }, enabled = enabled)
-            Text("允许当前账本成员查看和使用") }
-        Text("默认仅自己可见。私人账户用于家庭消费时，不向其他成员公开余额。", style = MaterialTheme.typography.bodySmall)
-        FundsField(if (input.kind == "credit") "期初欠款（${input.currency}）" else "期初余额（${input.currency}）", input.opening, enabled, money = true) { value -> vm.edit { it.copy(opening = value) } }
-        Text("填 0 表示已核对为零；留空表示待核对。", style = MaterialTheme.typography.bodySmall)
-        FundsField("期初依据", input.source, enabled) { value -> vm.edit { it.copy(source = value) } }
+            Text(stringResource(R.string.funds_share_with_ledger)) }
+        Text(stringResource(R.string.funds_privacy_note), style = MaterialTheme.typography.bodySmall)
+        FundsField(if (input.kind == "credit") stringResource(R.string.funds_opening_debt, input.currency) else stringResource(R.string.funds_opening_balance, input.currency), input.opening, enabled, money = true) { value -> vm.edit { it.copy(opening = value) } }
+        Text(stringResource(R.string.funds_opening_unknown_note), style = MaterialTheme.typography.bodySmall)
+        FundsField(stringResource(R.string.funds_opening_source), input.source, enabled) { value -> vm.edit { it.copy(source = value) } }
     } else Row {
         Switch(input.archived, { value -> vm.edit { it.copy(archived = value) } }, enabled = enabled)
-        Text("归档账户，保留全部历史")
+        Text(stringResource(R.string.funds_archive_note))
     }
-    FundsField("银行或平台（选填）", input.institution, enabled) { value -> vm.edit { it.copy(institution = value) } }
-    FundsField("尾号（选填，最多 4 位）", input.tail, enabled) { value -> vm.edit { it.copy(tail = value) } }
+    FundsField(stringResource(R.string.funds_institution), input.institution, enabled) { value -> vm.edit { it.copy(institution = value) } }
+    FundsField(stringResource(R.string.funds_tail), input.tail, enabled) { value -> vm.edit { it.copy(tail = value) } }
 }
 
 @Composable
 private fun FundsPaymentFields(input: FundsInput, accounts: List<FinancialAccountDto>, enabled: Boolean, vm: FundsViewModel) {
     var choosing by rememberSaveable { mutableStateOf(false) }
-    Text("记录 ${input.name} 的实际还款。本金不重复计消费；仅支付新费用时，两项本金填 0。")
-    AppSecondaryButton(input.payerName.ifBlank { "选择实际扣款账户" }, enabled = enabled) { choosing = true }
-    if (choosing) AlertDialog(onDismissRequest = { choosing = false }, title = { Text("实际扣款账户") },
+    Text(stringResource(R.string.funds_payment_note, input.name))
+    AppSecondaryButton(input.payerName.ifBlank { stringResource(R.string.funds_choose_payer) }, enabled = enabled) { choosing = true }
+    if (choosing) AlertDialog(onDismissRequest = { choosing = false }, title = { Text(stringResource(R.string.funds_payer_account)) },
         text = { androidx.compose.foundation.lazy.LazyColumn {
             items(accounts.filter { it.kind != "credit" && !it.archived }, key = { it.publicId }) { account ->
                 TextButton(onClick = { vm.choosePayer(account); choosing = false }) { Text("${account.name} · ${account.currencyCode}") }
             }
-        } }, confirmButton = { TextButton(onClick = { choosing = false }) { Text("返回") } })
-    FundsField("清偿本金（${input.currency}）", input.principal, enabled, money = true) { value -> vm.edit {
+        } }, confirmButton = { TextButton(onClick = { choosing = false }) { Text(stringResource(R.string.funds_back)) } })
+    FundsField(stringResource(R.string.funds_principal, input.currency), input.principal, enabled, money = true) { value -> vm.edit {
         it.copy(principal = value, paid = if (it.currency == it.payerCurrency) value else it.paid)
     } }
-    FundsField("本金实际扣款（${input.payerCurrency.ifBlank { "先选账户" }}）", input.paid, enabled, money = true) { value -> vm.edit { it.copy(paid = value) } }
-    FundsField("同时支付的新费用（选填，${input.payerCurrency}）", input.newFee, enabled, money = true) { value -> vm.edit { it.copy(newFee = value) } }
-    FundsField("费用依据", input.feeNote, enabled) { value -> vm.edit { it.copy(feeNote = value) } }
-    Text("新费用另加到扣款并保存为消费；已记过的费用留空。循环信用超付保留为溢缴款，固定本金贷款不能超还。", style = MaterialTheme.typography.bodySmall)
-    FundsField("说明", input.note, enabled) { value -> vm.edit { it.copy(note = value) } }
+    FundsField(stringResource(R.string.funds_payer_principal, input.payerCurrency.ifBlank { stringResource(R.string.funds_payer_currency_first) }), input.paid, enabled, money = true) { value -> vm.edit { it.copy(paid = value) } }
+    FundsField(stringResource(R.string.funds_new_fee, input.payerCurrency.ifBlank { stringResource(R.string.funds_payer_currency_first) }), input.newFee, enabled, money = true) { value -> vm.edit { it.copy(newFee = value) } }
+    FundsField(stringResource(R.string.funds_fee_source), input.feeNote, enabled) { value -> vm.edit { it.copy(feeNote = value) } }
+    Text(stringResource(R.string.funds_fee_note), style = MaterialTheme.typography.bodySmall)
+    FundsField(stringResource(R.string.funds_note), input.note, enabled) { value -> vm.edit { it.copy(note = value) } }
 }
 
 @Composable
@@ -146,19 +151,19 @@ private fun FundsSubmission(state: FundsUiState, editable: Boolean, vm: FundsVie
     val original = state.task.original
     when {
         original?.status == PendingMutationStatus.Done -> {
-            Text("这次资金操作已保存。")
-            AppPrimaryButton("完成并查看账户", enabled = !state.busy, onClick = vm::finish)
+            Text(stringResource(R.string.funds_saved))
+            AppPrimaryButton(stringResource(R.string.funds_finish_view), enabled = !state.busy, onClick = vm::finish)
         }
         state.task.frozen -> {
-            Text(original?.lastError ?: "原提交已保留，正在核实结果。")
-            if (original == null) AppPrimaryButton("继续原提交", enabled = !state.busy, onClick = vm::submit)
-            if (original?.status == PendingMutationStatus.Failed) AppSecondaryButton("重试原提交", enabled = !state.busy, onClick = vm::retry)
-            if (original?.status == PendingMutationStatus.Conflict || original?.lastError?.startsWith("资金请求未接受：") == true)
-                AppSecondaryButton("核对最新账户后继续", enabled = !state.busy, onClick = vm::review)
+            Text(original?.lastError ?: stringResource(R.string.funds_receipt_pending))
+            if (original == null) AppPrimaryButton(stringResource(R.string.funds_continue_original), enabled = !state.busy, onClick = vm::submit)
+            if (original?.status == PendingMutationStatus.Failed) AppSecondaryButton(stringResource(R.string.funds_retry_original), enabled = !state.busy, onClick = vm::retry)
+            if (original?.status == PendingMutationStatus.Conflict || original?.lastError?.startsWith(com.ticketbox.data.repository.FUNDS_REFUSED) == true)
+                AppSecondaryButton(stringResource(R.string.funds_review_continue), enabled = !state.busy, onClick = vm::review)
         }
         else -> {
-            AppPrimaryButton("确认保存", enabled = editable, onClick = vm::submit)
-            AppSecondaryButton("放弃未提交的输入", enabled = !state.busy, onClick = vm::finish)
+            AppPrimaryButton(stringResource(R.string.funds_confirm_save), enabled = editable, onClick = vm::submit)
+            AppSecondaryButton(stringResource(R.string.funds_abandon_input), enabled = !state.busy, onClick = vm::finish)
         }
     }
 }

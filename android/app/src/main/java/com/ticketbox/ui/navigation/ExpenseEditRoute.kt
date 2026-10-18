@@ -119,8 +119,6 @@ internal fun ExpenseEditRoute(
     val canLeave = { original?.canLeaveOriginalSelection() != false }
     androidx.activity.compose.BackHandler { if (!editState.saving && canLeave()) editViewModel.closeOrRetain(exit) }
     ExpenseEditScreen(
-        onFundingChange = editViewModel::editFunding,
-        onFundingReview = { editViewModel.reviewPendingFunding(screenFactory.fundsRepository) },
         originalContent = { ExpenseEditOriginalTask(expenseId, screenFactory, editViewModel, editState) },
         screenState = ExpenseEditScreenState(
             expense = expense,
@@ -135,7 +133,10 @@ internal fun ExpenseEditRoute(
         actions = ExpenseEditScreenActions(
             primary = expenseEditPrimaryActions(editViewModel, exit, canLeave),
             media = expenseEditMediaActions(editViewModel),
-            related = expenseEditRelatedActions(editViewModel),
+            related = expenseEditRelatedActions(editViewModel).copy(
+                onFundingChange = editViewModel::editFunding,
+                onFundingReview = { editViewModel.reviewPendingFunding(screenFactory.fundsRepository) },
+            ),
             itemization = expenseEditItemizationActions(editViewModel),
             splitEditing = expenseEditSplitEditingActions(editViewModel),
         ),

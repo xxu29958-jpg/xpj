@@ -87,7 +87,7 @@ internal fun ExpenseFactViewModel.buildOffsetDraftOrMessage(): ExpenseOffsetDraf
         if (form.kind.isMoneyEvent) com.ticketbox.data.repository.readExpenseFunding(form.destinationsJson,
             requireNotNull(form.sourceExpense).originalCurrencyCode) else emptyList()
     } catch (error: IllegalArgumentException) {
-        _uiState.update { it.copy(offsetForm = it.offsetForm.copy(submitError = UiText.raw(error.message ?: "请核对退款去向。"))) }
+        _uiState.update { it.copy(offsetForm = it.offsetForm.copy(submitError = error.toUiText(R.string.funds_refund_review_required))) }
         return null
     }
     return ExpenseOffsetDraft(

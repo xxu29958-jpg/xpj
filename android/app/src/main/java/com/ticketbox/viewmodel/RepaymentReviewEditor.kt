@@ -26,6 +26,7 @@ internal data class RepaymentReviewEditorContext(
 internal class RepaymentReviewEditor(private val reviews: RepaymentReviewActions, private val scope: CoroutineScope,
     private val context: RepaymentReviewEditorContext, private val saved: SavedStateHandle) {
     private var reviewJob: kotlinx.coroutines.Job? = null
+    private var pendingEdit: kotlinx.coroutines.Job? = null
     private val bindingAdapter = Moshi.Builder().build().adapter(LogicalSessionBinding::class.java)
     private fun focusKey(binding: LogicalSessionBinding) = "repayment.review.focus:" + bindingAdapter.toJson(binding)
 
@@ -92,10 +93,12 @@ internal class RepaymentReviewEditor(private val reviews: RepaymentReviewActions
 
     fun reviewAgain() = reviewAction { binding, publicId -> reviews.reviewAgain(binding, publicId) }
 
-    private fun reviewAction(action: suspend (LogicalSessionBinding, String) -> Result<Unit>) {
+    internal fun reviewAction(action: suspend (LogicalSessionBinding, String) -> Result<Unit>) {
         val binding = context.binding() ?: return
         val publicId = context.state.value.reviewId ?: return
-        scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+        val previous = pendingEdit
+        pendingEdit = scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            previous?.join()
             val result = action(binding, publicId)
             if (!context.owns(binding)) return@launch
             context.state.update { it.copy(error = result.exceptionOrNull()?.toUiText(R.string.repayment_draft_confirm_failed)) }

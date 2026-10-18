@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -19,7 +21,7 @@ import com.ticketbox.viewmodel.FundsViewModel
 internal fun ExpenseFundsPanel(expenseId: Long, refreshExpense: () -> Unit) {
     val repository = LocalFundsRepository.current ?: return
     var open by rememberSaveable(expenseId) { mutableStateOf(false) }
-    AppSecondaryButton("付款来源与账户记录") { open = true }
+    AppSecondaryButton(stringResource(R.string.funds_funding_accounts_title)) { open = true }
     if (open) {
         val model: FundsViewModel = viewModel(key = "expense-funds:$expenseId", factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")

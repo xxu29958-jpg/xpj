@@ -70,7 +70,10 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
         assert result.status_code == 200, result.text
         return result.json()
     bank = account("工资卡 1234", "bank", 100000)
-    credit = account("花呗", "credit", 0)
+    templates = client.get("/api/funds/accounts/templates/list", headers=identity.app_headers)
+    assert templates.status_code == 200, templates.text
+    huabei = next(row for row in templates.json() if row["key"] == "huabei")
+    credit = account(huabei["name"], huabei["kind"], 0)
     unknown = account("待核对零钱", "wallet", None)
     assert unknown["balance_minor"] is None
     assert int(credit["balance_minor"]) == 0
@@ -88,18 +91,28 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
         purchase_ids.append(response.json()["id"])
         credit = client.get("/api/funds/accounts/" + credit["public_id"], headers=identity.app_headers).json()
     assert int(credit["balance_minor"]) == -6290
+    funding = client.get(f"/api/expenses/{purchase_ids[0]}/funding", headers=identity.app_headers)
+    assert funding.status_code == 200, funding.text
+    assert funding.json()["total_minor"] == 3790
+    assert funding.json()["parts"][0]["account_public_id"] == credit["public_id"]
     debts = client.get("/api/debts", headers=identity.app_headers)
     assert debts.status_code == 200, debts.text
     tracked = next(row for row in debts.json()["items"] if row["public_id"] == credit["debt_public_id"])
     assert int(tracked["remaining_amount_cents"]) == 6290
+    captured = client.post("/api/repayment-drafts", headers=identity.app_headers,
+        json={"source": "alipay", "original_currency": "CNY", "original_amount": "41.20",
+            "merchant_label": "花呗还款含费用", "notification_key": str(uuid4())})
+    assert captured.status_code == 201, captured.text
+    draft_id = captured.json()["public_id"]
     payment = {"expected_row_version": credit["row_version"], "payer_public_id": bank["public_id"],
         "payer_row_version": bank["row_version"], "principal_minor": 4000, "payer_amount_minor": 4000,
         "occurred_on": date.today().isoformat(), "note": "实付本金", "calendar_revision": credit["calendar_revision"],
-        "new_fee_minor": 120, "fee_note": "本次首次发生手续费"}
+        "new_fee_minor": 120, "fee_note": "本次首次发生手续费", "source_repayment_draft_id": draft_id}
     headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
     url = "/api/funds/accounts/" + credit["public_id"] + "/repay"
     refused = client.post(url, headers=headers, json=payment)
     assert refused.status_code == 422 and refused.json()["error"] == "installment_allocation_required"
+    assert client.get("/api/repayment-drafts/" + draft_id, headers=identity.app_headers).json()["status"] == "pending"
     draws = client.get("/api/funds/accounts/" + credit["public_id"] + "/installments", headers=identity.app_headers).json()["draws"]
     draw_ids = {int(row["original_minor"]): row["public_id"] for row in draws if int(row["original_minor"]) > 0}
     payment["draw_allocations"] = [{"draw_public_id": draw_ids[amount], "principal_minor": paid}
@@ -109,6 +122,10 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     assert result.status_code == 200, result.text
     assert client.post(url, headers=headers, json=payment).json() == result.json()
     assert int(result.json()["balance_minor"]) == -2290
+    resolved = client.get("/api/repayment-drafts/" + draft_id, headers=identity.app_headers).json()
+    assert resolved["status"] == "confirmed" and resolved["committed_debt_public_id"] == credit["debt_public_id"]
+    repeated = client.post(url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json=payment)
+    assert repeated.status_code == 409 and repeated.json()["error"] == "state_conflict"
     bank = client.get("/api/funds/accounts/" + bank["public_id"], headers=identity.app_headers).json()
     assert int(bank["balance_minor"]) == 95880
     with SessionLocal() as db:
@@ -171,6 +188,35 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     assert voided.status_code == 201, voided.text
     debt = client.get("/api/debts/" + credit["debt_public_id"], headers=identity.app_headers).json()
     assert debt["remaining_amount_cents"] == 1790
+
+    # Correcting the captured transaction restores both cash and principal; its
+    # separately recorded fee must not survive as a second false expense.
+    correction_url = "/api/repayment-drafts/" + draft_id + "/as-expense"
+    correction = {"reason": "核对原交易后确认这是消费", "correction_versions": resolved["correction_versions"],
+        "expense_currency": "CNY", "expense_amount_minor": 3790}
+    correction_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    stale = client.post(correction_url, headers=correction_headers, json=correction)
+    assert stale.status_code == 409 and stale.json()["error"] == "state_conflict"
+    fresh = client.get("/api/repayment-drafts/" + draft_id, headers=identity.app_headers).json()
+    correction["correction_versions"] = fresh["correction_versions"]
+    missing_money = {key: value for key, value in correction.items() if key not in {"expense_currency", "expense_amount_minor"}}
+    assert client.post(correction_url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json=missing_money).status_code == 422
+    correction_headers["Idempotency-Key"] = str(uuid4())
+    corrected = client.post(correction_url, headers=correction_headers, json=correction)
+    assert corrected.status_code == 200, corrected.text
+    assert client.post(correction_url, headers=correction_headers, json=correction).json() == corrected.json()
+    assert client.post(url, headers=headers, json=payment).json() == result.json()
+    bank_now = client.get("/api/funds/accounts/" + bank["public_id"], headers=identity.app_headers).json()
+    credit_now = client.get("/api/funds/accounts/" + credit["public_id"], headers=identity.app_headers).json()
+    assert bank_now["balance_minor"] == 100000 and credit_now["balance_minor"] == -5790
+    corrected_expense = client.get(f"/api/expenses/{corrected.json()['expense_id']}", headers=identity.app_headers).json()
+    assert corrected_expense["original_amount_minor"] == 3790 and corrected_expense["status"] == "pending"
+    with SessionLocal() as db:
+        from app.models import ExpenseOffsetFact, RepaymentVoid
+        fee_id = int(next(iter(fresh["correction_versions"]["fee_expense_versions"])))
+        assert db.scalar(select(ExpenseOffsetFact.kind).where(ExpenseOffsetFact.expense_id == fee_id,
+            ExpenseOffsetFact.status == "active")) == "reversal"
+        assert db.scalar(select(func.count()).select_from(RepaymentVoid)) == 1
 
 
 @pytest.fixture()

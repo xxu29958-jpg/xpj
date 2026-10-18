@@ -1,6 +1,7 @@
 """Retained form values are parsed in the captured account currency."""
 import json
 
+from app.errors import AppError
 from app.schemas.installment import (
     CreditDrawPaymentPart,
     InstallmentCommand,
@@ -42,3 +43,15 @@ def payment_allocations(values):
             draws.append(CreditDrawPaymentPart(draw_public_id=row["public_id"], principal_minor=principal))
     return {"period_allocations": periods, "draw_allocations": draws,
         "overpayment_minor": major_amount_to_minor(values["overpayment"], currency) if values.get("overpayment", "").strip() else 0}
+
+
+def selected_installment_values(installments, agreement_id: str, currency: str) -> dict[str, str]:
+    if not agreement_id or installments is None:
+        return {}
+    agreement = next((row for row in installments.agreements if row.public_id == agreement_id and row.active), None)
+    if agreement is None:
+        raise AppError("state_conflict", "合约已更新，请打开当前版本。", status_code=409)
+    values = installment_form_values(agreement, currency)
+    values["draw_ids_json"] = json.dumps([row.public_id for row in installments.draws
+        if row.public_id in agreement.draw_public_ids and row.remaining_minor > 0])
+    return values

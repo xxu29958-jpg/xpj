@@ -1,7 +1,9 @@
 """Translate retained major-unit funding inputs; the command owns all accounting."""
 import json
 
+from fastapi import Request
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.schemas.funds import FundingPart, RefundDestination
@@ -14,7 +16,8 @@ def funding_options(db, auth):
         actor_account_id=auth.account_id) if not row.archived]
 
 
-def parse_funding(db, *, ledger_id, actor_account_id, raw, currency_code):
+def parse_funding(db: Session, *, ledger_id: str, actor_account_id: int,
+        raw: str, currency_code: str) -> list[FundingPart]:
     try:
         rows = json.loads(raw or "[]")
         if not isinstance(rows, list) or len(rows) > 8:
@@ -52,3 +55,9 @@ def review_funding_values(db, auth, raw, currency_code):
         account = get_account(db, ledger_id=auth.ledger_id, actor_account_id=auth.account_id, public_id=row["account_public_id"])
         row["account_row_version"] = account.row_version
     return json.dumps(rows, ensure_ascii=False)
+
+
+def funding_form_context(db: Session, request: Request, ledger_id: str, values: dict | None) -> dict:
+    auth = getattr(request.state, "web_session_auth", None)
+    return {"funding_accounts": funding_options(db, auth) if auth and auth.ledger_id == ledger_id else [],
+        "funding_json": (values or {}).get("funding_json", "[]")}

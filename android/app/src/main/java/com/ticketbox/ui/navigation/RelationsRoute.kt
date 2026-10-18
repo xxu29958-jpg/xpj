@@ -434,7 +434,7 @@ internal fun ObligationsTaskNavigation(
     ledgerName: String?,
 ) {
     Column {
-        ObligationsTaskRow(title = "资金账户", supporting = "现金、银行卡与信用", onClick = actions.onOpenFunds)
+        ObligationsTaskRow(title = stringResource(R.string.funds_accounts_title), supporting = stringResource(R.string.funds_accounts_summary), onClick = actions.onOpenFunds)
         // D03: secondary tasks read as quiet links under the same section-title level as the groups.
         Text(
             text = stringResource(R.string.relations_task_section_title),

@@ -1,9 +1,10 @@
 """Append linked fund facts within the caller's transaction; never commit here."""
+from datetime import date
 from types import SimpleNamespace
 from uuid import uuid4
 
 from sqlalchemy import or_, select
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import Session, aliased
 
 from app.errors import AppError
 from app.models import AccountMovement, CreditFacility, CreditSettlementAllocation, Debt, FinancialAccount
@@ -45,13 +46,15 @@ def lock_reviewed_accounts(db, *, ledger_id, actor_account_id, source_account_id
     return accounts
 
 
-def reverse_movements(db, *, ledger_id, actor_account_id, rows, reason, occurred_on, offset_id=None):
+def reverse_movements(db: Session, *, ledger_id: str, actor_account_id: int, rows: list[AccountMovement],
+                      reason: str, occurred_on: date, offset_id: int | None = None) -> None:
     """Inverse facts also unwind already settled credit without deleting its history."""
     account_ids = {row.account_id for row in rows}
     public_ids = db.scalars(select(FinancialAccount.public_id).where(FinancialAccount.id.in_(account_ids))
         .order_by(FinancialAccount.public_id)).all()
     accounts = {row.id: row for row in [get_account(db, ledger_id=ledger_id, actor_account_id=actor_account_id,
         public_id=public_id, lock=True) for public_id in public_ids]}
+    roots, allocations = _reversed_allocations(db, rows, account_ids)
     event = str(uuid4())
     for row in rows:
         inverse = movement(db, SimpleNamespace(account_id=actor_account_id), accounts[row.account_id], event=event,
@@ -60,15 +63,31 @@ def reverse_movements(db, *, ledger_id, actor_account_id, rows, reason, occurred
             valuation_snapshot=row.valuation_snapshot or {"source": "original_fact", "status": "pending"},
             occurred_on=occurred_on, note=reason[:255], reversal_of_id=row.id, offset_id=offset_id)
         db.flush()
-        root = row
-        while root.reversal_of_id is not None:
-            root = db.get(AccountMovement, root.reversal_of_id)
-        for allocation in db.scalars(select(CreditSettlementAllocation).where(
-                CreditSettlementAllocation.invalidated_by_movement_id.is_(None),
-                or_(CreditSettlementAllocation.credit_movement_id == root.id,
-                    CreditSettlementAllocation.draw_movement_id == root.id))):
-            allocation.invalidated_by_movement_id = inverse.id
+        for allocation in allocations.get(roots[row.id], []):
+            if allocation.invalidated_by_movement_id is None:
+                allocation.invalidated_by_movement_id = inverse.id
     for account in accounts.values():
         account.row_version += 1
         refresh_credit(db, account)
     db.flush()
+
+
+def _reversed_allocations(db: Session, rows: list[AccountMovement], account_ids: set[int]
+                          ) -> tuple[dict[int, int], dict[int, list[CreditSettlementAllocation]]]:
+    lineage = dict(db.execute(select(AccountMovement.id, AccountMovement.reversal_of_id)
+        .where(AccountMovement.account_id.in_(account_ids))).all())
+    roots = {}
+    for row in rows:
+        root = row.id
+        while lineage[root] is not None:
+            root = lineage[root]
+        roots[row.id] = root
+    affected = set(roots.values())
+    allocations: dict[int, list[CreditSettlementAllocation]] = {}
+    for allocation in db.scalars(select(CreditSettlementAllocation).where(
+            CreditSettlementAllocation.invalidated_by_movement_id.is_(None),
+            or_(CreditSettlementAllocation.credit_movement_id.in_(affected),
+                CreditSettlementAllocation.draw_movement_id.in_(affected)))):
+        for identifier in {allocation.credit_movement_id, allocation.draw_movement_id} & affected:
+            allocations.setdefault(identifier, []).append(allocation)
+    return roots, allocations

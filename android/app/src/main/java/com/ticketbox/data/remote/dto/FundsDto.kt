@@ -116,6 +116,9 @@ data class CreditPaymentDto(
     @param:Json(name = "period_allocations") val periodAllocations: List<InstallmentPaymentPartDto> = emptyList(),
     @param:Json(name = "draw_allocations") val drawAllocations: List<CreditDrawPaymentPartDto> = emptyList(),
     @param:Json(name = "overpayment_minor") val overpaymentMinor: Long = 0,
+    @param:Json(name = "source_repayment_draft_id") val sourceRepaymentDraftId: String? = null,
+    @param:Json(name = "source_amount_basis") val sourceAmountBasis: String = "payer_total",
+    @param:Json(name = "source_review_reason") val sourceReviewReason: String? = null,
 )
 
 @JsonClass(generateAdapter = true)

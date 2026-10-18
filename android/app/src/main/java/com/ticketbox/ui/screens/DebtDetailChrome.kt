@@ -168,8 +168,8 @@ private fun LazyListScope.debtDetailBodyItems(
             if (loaded.sourceType == "credit_facility") {
                 item { DebtRemainingCard(loaded) }
                 item {
-                    Text("信用欠款由资金账户的实际购买、还款和退款计算。原欠款与还款历史继续保留。")
-                    loaded.sourceId?.let { accountId -> AppPrimaryButton(text = "打开信用账户") { callbacks.onOpenCredit(accountId) } }
+                    Text(stringResource(R.string.funds_credit_history_note))
+                    loaded.sourceId?.let { accountId -> AppPrimaryButton(text = stringResource(R.string.funds_open_credit_account)) { callbacks.onOpenCredit(accountId) } }
                 }
             } else if (loaded.isMember) {
                 debtDetailMemberItems(

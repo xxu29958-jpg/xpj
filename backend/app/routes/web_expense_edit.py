@@ -184,12 +184,7 @@ def web_save(
         if guarded is not None:
             return guarded
     elif form.draft_scope:
-        href = _with_ledger(f"/web/expenses/{expense_id}/edit", selected_id, new_expensereview="1",
-            msg="这次草稿保存已完成。请核对账单当前记录，再继续操作。", **edit_context_params(**form.return_context.as_kwargs()))
-        if form.funding_json and form.funding_json != "[]":
-            href = _with_ledger(f"/web/expenses/{expense_id}/edit", selected_id, confirmation_task="1",
-                msg="草稿已保存，付款来源仍在原核对任务中，确认消费时才会记账。",
-                **edit_context_params(**form.return_context.as_kwargs())) + f"#expensereview-edit-{form.draft_ref}"
+        href = _saved_pending_destination(expense_id, selected_id, form)
         response = draft_ack_response(request, draft_scope=form.draft_scope, idempotency_key=form.idempotency_key,
             receipt={"operation": "patch_expense", "expense_id": expense_id, "accepted": True}, next_href=href)
         if response is not None:
@@ -226,3 +221,13 @@ def web_refresh_expense_fx(
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> Response:
     return render_web_fx_action(db, request, expense_id, form, start=False)
+
+
+def _saved_pending_destination(expense_id: int, selected_id: str, form: WebExpenseEditForm) -> str:
+    href = _with_ledger(f"/web/expenses/{expense_id}/edit", selected_id, new_expensereview="1",
+        msg="这次草稿保存已完成。请核对账单当前记录，再继续操作。", **edit_context_params(**form.return_context.as_kwargs()))
+    if form.funding_json and form.funding_json != "[]":
+        href = _with_ledger(f"/web/expenses/{expense_id}/edit", selected_id, confirmation_task="1",
+            msg="草稿已保存，付款来源仍在原核对任务中，确认消费时才会记账。",
+            **edit_context_params(**form.return_context.as_kwargs())) + f"#expensereview-edit-{form.draft_ref}"
+    return href

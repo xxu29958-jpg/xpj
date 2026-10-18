@@ -34,7 +34,10 @@ data class FundsInput(val binding: LogicalSessionBinding, val mode: String, val 
     val drawIds: List<String> = emptyList(), val periodsJson: String = "[]", val allocationJson: String = "[]", val overpayment: String = "",
     val repaymentId: String = "", val creditLimit: String = "", val availableCredit: String = "",
     val creditObservedOn: String = "", val creditSource: String = "", val statementDay: String = "", val paymentDueDay: String = "",
-    val existingDebtId: String = "", val existingDebtVersion: Long = 0, val existingDebtLabel: String = "")
+    val existingDebtId: String = "", val existingDebtVersion: Long = 0, val existingDebtLabel: String = "",
+    val sourceRepaymentDraftId: String = "", val sourceAmountBasis: String = "payer_total",
+    val sourceReviewReason: String = "", val sourceCurrency: String = "", val sourceAmount: String = "",
+    val sourceLabel: String = "")
 
 @JsonClass(generateAdapter = true)
 data class FundsCommand(val revision: Int = 1, val binding: LogicalSessionBinding, val accountId: String,
@@ -92,7 +95,7 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
             DispatchResult.RetryableFailure("原资金任务的身份已变化，请切回原身份核对。")
         } catch (error: Exception) {
             logNetworkWarning("Funds response unverified", error)
-            DispatchResult.RetryableFailure("尚未确认资金回执，保留原提交核实。")
+            DispatchResult.Failure("尚未确认资金回执，保留原提交核实。")
         }
     }
 

@@ -36,9 +36,7 @@ def expense_funding_view(db, *, ledger_id, actor_account_id, expense_id):
 def save_expense_funding(db, *, auth, expense_id, payload, key):
     claim = claim_funds(db, auth, payload, key, "save_expense_funding", str(expense_id))
     if claim is None:
-        original = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.tenant_id == auth.tenant_id,
-            ApiIdempotencyKey.idempotency_key == key))
-        return ExpenseFundingView.model_validate(original.response_body)
+        return replay_expense_funding(db, auth=auth, key=key)
     from app.services.expense_correction_service import correct_expense
     correct_expense(db, tenant_id=auth.tenant_id, expense_id=expense_id,
         payload=ExpenseCorrectionRequest(expected_row_version=payload.expected_row_version,
@@ -48,3 +46,10 @@ def save_expense_funding(db, *, auth, expense_id, payload, key):
     mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_id), response_body=result.model_dump(mode="json"))
     db.commit()
     return result
+
+
+def replay_expense_funding(db, *, auth, key) -> ExpenseFundingView:
+    """Read the original receipt after the command has validated its claim."""
+    original = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.tenant_id == auth.tenant_id,
+        ApiIdempotencyKey.idempotency_key == key))
+    return ExpenseFundingView.model_validate(original.response_body)

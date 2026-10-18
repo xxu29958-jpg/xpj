@@ -80,7 +80,9 @@ private fun FundsInput.paymentCommand(): FundsCommand {
             return FundsCommand(binding = binding, accountId = accountId, payment = CreditPaymentDto(version, calendarRevision,
                 payerId, payerVersion, amount(principal, currency), amount(paid, payerCurrency), date, note,
                 newFee.takeIf { it.isNotBlank() }?.let { amount(it, payerCurrency) } ?: 0L, feeNote.ifBlank { null },
-                periods, draws, overpayment.takeIf(String::isNotBlank)?.let { amount(it, currency) } ?: 0L))
+                periods, draws, overpayment.takeIf(String::isNotBlank)?.let { amount(it, currency) } ?: 0L,
+                sourceRepaymentDraftId.takeIf(String::isNotBlank), sourceAmountBasis,
+                sourceReviewReason.takeIf(String::isNotBlank)))
 }
 
 private fun FundsInput.activityCommand(): FundsCommand {

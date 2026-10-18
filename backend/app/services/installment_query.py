@@ -1,9 +1,11 @@
 """Actual schedules and fulfilment, projected from retained source and payment facts."""
+from collections import defaultdict
+
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.models import (
     AccountMovement,
-    CreditSettlementAllocation,
     Expense,
     ExpenseFunding,
     ExpenseOffsetFact,
@@ -13,47 +15,59 @@ from app.models import (
     InstallmentPeriod,
     RepaymentVoid,
 )
+from app.money_contract import round_minor_ratio_half_up
 from app.schemas.installment import CreditDrawView, InstallmentPeriodView, InstallmentsView, InstallmentView
-from app.services.credit_allocation_service import active_allocation_condition, active_credit_movements
+from app.services.credit_allocation_service import active_credit_movements, allocation_totals
+from app.services.expense_offset_summary import expense_financial_summary
 
 
 def draw_balances(db, account_id):
     draws = [row for row in active_credit_movements(db, account_id) if row.amount_minor < 0]
-    used = dict(db.execute(select(CreditSettlementAllocation.draw_movement_id,
-        func.sum(CreditSettlementAllocation.amount_minor)).where(active_allocation_condition(),
-        CreditSettlementAllocation.draw_movement_id.in_([row.id for row in draws]))
-        .group_by(CreditSettlementAllocation.draw_movement_id)).all())
+    used, _, _ = allocation_totals(db, [row.id for row in draws])
     return {row.id: -row.amount_minor - int(used.get(row.id, 0)) for row in draws}
 
 
-def period_paid(db, period):
-    from app.money_contract import round_minor_ratio_half_up
-    from app.services.expense_offset_summary import expense_financial_summary
-    payments = list(db.scalars(select(InstallmentPayment).where(InstallmentPayment.period_id == period.id)))
+def paid_by_period(db: Session, period_ids: list[int]) -> dict[int, tuple[int, int]]:
+    payments = list(db.scalars(select(InstallmentPayment).where(InstallmentPayment.period_id.in_(period_ids))))
     voided = set(db.scalars(select(RepaymentVoid.repayment_id).where(
         RepaymentVoid.repayment_id.in_([row.repayment_id for row in payments]))))
-    principal = sum(row.principal_minor for row in payments if row.repayment_id not in voided)
-    fees = 0
+    retained_fees = _retained_fee_payments(db, payments)
+    totals = dict.fromkeys(period_ids, (0, 0))
     for payment in payments:
-        if not payment.fee_expense_id:
-            continue
-        expense = db.scalars(select(Expense).join(ExpenseFunding, ExpenseFunding.expense_id == Expense.id)
-            .join(AccountMovement, AccountMovement.funding_id == ExpenseFunding.id).where(
-                Expense.id == payment.fee_expense_id, Expense.tenant_id == ExpenseFunding.tenant_id,
-                AccountMovement.repayment_id == payment.repayment_id)).one()
-        offsets = list(db.scalars(select(ExpenseOffsetFact).where(ExpenseOffsetFact.expense_id == expense.id,
-            ExpenseOffsetFact.status == "active")))
-        summary = expense_financial_summary(expense, offsets)
-        if not summary.remaining_refundable_original_minor:
-            continue
-        # Allocate rounding once in recorded order, including payments in other periods.
-        before = int(db.scalar(select(func.coalesce(func.sum(InstallmentPayment.fee_minor), 0)).where(
-            InstallmentPayment.fee_expense_id == expense.id, InstallmentPayment.id < payment.id)))
-        def retained(value, summary=summary):
-            return round_minor_ratio_half_up(value * summary.remaining_refundable_original_minor,
-                summary.gross_original_minor, label="installment.retained_fee")
-        fees += retained(before + payment.fee_minor) - retained(before)
-    return principal, fees
+        principal, fees = totals[payment.period_id]
+        totals[payment.period_id] = (principal + (payment.principal_minor if payment.repayment_id not in voided else 0),
+            fees + retained_fees.get(payment.id, 0))
+    return totals
+
+
+def _retained_fee_payments(db: Session, payments: list[InstallmentPayment]) -> dict[int, int]:
+    funded = dict(db.execute(select(InstallmentPayment.id, Expense)
+        .join(Expense, Expense.id == InstallmentPayment.fee_expense_id)
+        .join(ExpenseFunding, ExpenseFunding.expense_id == Expense.id)
+        .join(AccountMovement, AccountMovement.funding_id == ExpenseFunding.id).where(
+            InstallmentPayment.id.in_([row.id for row in payments]), Expense.tenant_id == ExpenseFunding.tenant_id,
+            AccountMovement.repayment_id == InstallmentPayment.repayment_id)).all())
+    expense_ids = {expense.id for expense in funded.values()}
+    offsets: dict[int, list[ExpenseOffsetFact]] = defaultdict(list)
+    for offset in db.scalars(select(ExpenseOffsetFact).where(ExpenseOffsetFact.expense_id.in_(expense_ids),
+            ExpenseOffsetFact.status == "active")):
+        offsets[offset.expense_id].append(offset)
+    summaries = {expense.id: expense_financial_summary(expense, offsets[expense.id]) for expense in funded.values()}
+    # The prefix includes the same fee's allocations to other periods, so rounding is conserved.
+    before = dict(db.execute(select(InstallmentPayment.id, func.coalesce(func.sum(InstallmentPayment.fee_minor).over(
+        partition_by=InstallmentPayment.fee_expense_id, order_by=InstallmentPayment.id, rows=(None, -1)), 0))
+        .where(InstallmentPayment.fee_expense_id.in_(expense_ids))).all())
+    return {payment.id: _retained_fee_slice(payment, summaries[funded[payment.id].id], int(before[payment.id]))
+        for payment in payments if payment.fee_expense_id is not None}
+
+
+def _retained_fee_slice(payment: InstallmentPayment, summary, before: int) -> int:
+    if not summary.remaining_refundable_original_minor:
+        return 0
+    def retained(value: int) -> int:
+        return round_minor_ratio_half_up(value * summary.remaining_refundable_original_minor,
+            summary.gross_original_minor, label="installment.retained_fee")
+    return retained(before + payment.fee_minor) - retained(before)
 
 
 def active_agreements(db, account_id):
@@ -64,8 +78,10 @@ def active_agreements(db, account_id):
 
 def installment_view(db, agreement, *, active, balances=None):
     periods = []
-    for period in db.scalars(select(InstallmentPeriod).where(InstallmentPeriod.agreement_id == agreement.id).order_by(InstallmentPeriod.position)):
-        principal, fees = period_paid(db, period)
+    recorded = list(db.scalars(select(InstallmentPeriod).where(InstallmentPeriod.agreement_id == agreement.id).order_by(InstallmentPeriod.position)))
+    paid = paid_by_period(db, [period.id for period in recorded])
+    for period in recorded:
+        principal, fees = paid[period.id]
         periods.append(InstallmentPeriodView(public_id=period.public_id, position=period.position, due_on=period.due_on,
             principal_minor=period.principal_minor, planned_fee_minor=period.planned_fee_minor,
             paid_principal_minor=principal, paid_fee_minor=fees))
