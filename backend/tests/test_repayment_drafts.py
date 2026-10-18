@@ -138,6 +138,7 @@ def _create_confirmed_expense(
     merchant: str = "京东",
     category: str = "白条",
     amount_cents: int = 391363,
+    time_input: dict | None = None,
 ) -> dict:
     response = client.post(
         "/api/expenses/manual",
@@ -147,7 +148,7 @@ def _create_confirmed_expense(
             "home_currency_code": "CNY", "amount_cents": amount_cents,
             "merchant": merchant,
             "category": category,
-            "expense_time": "2026-06-28T13:13:00Z",
+            **({"time_input": time_input} if time_input else {"expense_time": "2026-06-28T13:13:00Z"}),
         },
     )
     assert response.status_code == 200, response.json()
@@ -202,7 +203,10 @@ def test_confirmed_expense_can_enter_repayment_draft_model(
         counterparty_label="京东白条",
         principal_amount_cents=500000,
     )
-    expense = _create_confirmed_expense(client, identity, merchant="京东", category="白条")
+    calendar = client.get("/api/ledgers/owner/calendar", headers=identity.app_headers).json()
+    original_time = {"precision": "date_only", "calendar_revision": calendar["revision"],
+        "user_local_date": "2026-04-30", "accounting_date": "2026-05-01"}
+    expense = _create_confirmed_expense(client, identity, merchant="京东", category="白条", time_input=original_time)
 
     response = client.post(
         f"/api/expenses/{expense['id']}/repayment-draft",
@@ -220,6 +224,12 @@ def test_confirmed_expense_can_enter_repayment_draft_model(
     assert listed["suggested_debt_public_id"] == debt["public_id"]
 
     assert draft["source_expense_public_id"] == expense["public_id"]
+    # Delayed review after a ledger-calendar change keeps the captured date, without
+    # reconstructing the transaction owner in a MagicMock-based second product.
+    changed_calendar = client.post("/api/ledgers/owner/calendar", headers=negotiated_headers(client,
+        {**identity.app_headers, "Idempotency-Key": str(uuid4())}),
+        json={"timezone_name": "Pacific/Honolulu", "expected_revision": calendar["revision"]})
+    assert changed_calendar.status_code == 200, changed_calendar.text
     from app.models import Expense, ExpenseOffsetFact, Repayment
     from app.services.expense_offset_summary import expense_financial_summary
 
@@ -244,7 +254,13 @@ def test_confirmed_expense_can_enter_repayment_draft_model(
         assert len(offsets) == 1 and offsets[0].kind == "reversal"
         assert offsets[0].accounting_date == original.accounting_date
         assert expense_financial_summary(original, offsets).lineage_home_net_cents == 0
-        assert len(db.scalars(select(Repayment).where(Repayment.debt_id == db.scalar(select(Debt.id).where(Debt.public_id == debt["public_id"])))).all()) == 1
+        payments = db.scalars(select(Repayment).where(Repayment.debt_id == db.scalar(select(Debt.id)
+            .where(Debt.public_id == debt["public_id"])))).all()
+        assert len(payments) == 1
+        assert payments[0].paid_at is None
+        assert payments[0].accounting_time_snapshot["user_local_date"] == "2026-04-30"
+        assert payments[0].accounting_time_snapshot["accounting_date"] == "2026-05-01"
+        assert payments[0].accounting_time_snapshot["calendar_revision"] == calendar["revision"]
 
 
 def test_expense_repayment_draft_dedupes_same_expense(

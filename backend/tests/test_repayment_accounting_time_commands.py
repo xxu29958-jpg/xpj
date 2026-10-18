@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Debt, Expense, LedgerCalendarRevision, MemberRepaymentProposal, Repayment
+from app.models import Debt, LedgerCalendarRevision, MemberRepaymentProposal, Repayment
 from app.schemas import MemberRepaymentProposalCreateRequest, RepaymentCreateRequest
 from app.services.debt_service import _money, _proposal, _repayment
 
@@ -113,40 +113,6 @@ def test_a_date_only_payment_cannot_silently_override_a_different_legacy_instant
             "precision": "date_only", "calendar_revision": 3, "user_local_date": "2026-04-30",
         }, paid_at=datetime(2026, 5, 1, tzinfo=UTC))
     assert error.value.error == "accounting_time_invalid"
-
-
-def test_expense_capture_keeps_its_date_through_delayed_human_confirmation(monkeypatch):
-    from app.services.debt_service import _repayment_draft_confirm as confirm
-    from app.services.expense_service import _repayment_bridge as bridge
-
-    expense = Expense(id=8, public_id="expense", tenant_id="original-ledger", row_version=4,
-        status="confirmed", amount_cents=7000, home_currency_code="CNY", original_currency_code="CNY",
-        original_amount_minor=7000, merchant="原还款", time_precision="date_only", calendar_revision=3,
-        user_local_date=date(2026, 4, 30), accounting_date=date(2026, 5, 1), accounting_date_basis="user_selected",
-        created_at=datetime(2026, 5, 4, tzinfo=UTC), confirmed_at=datetime(2026, 5, 5, tzinfo=UTC))
-    db = MagicMock(spec=Session)
-    db.scalar.return_value = None
-    db.get.side_effect = AssertionError("a saved capture must not acquire a later calendar")
-    monkeypatch.setattr(bridge, "resolve_write_capability", lambda _db: None)
-    monkeypatch.setattr(bridge, "get_expense", lambda *_a: expense)
-    draft = bridge.create_repayment_draft_from_expense(db, tenant_id="original-ledger", actor_account_id=2,
-        expense_id=8, expected_row_version=4, commit=False)
-    expense.user_local_date = date(2026, 5, 15)
-    draft.public_id = "original-capture"
-    db.scalar.return_value = "CNY"
-    debt = Debt(id=4, tenant_id="original-ledger", home_currency_code="CNY")
-    monkeypatch.setattr(confirm, "_lock_pending_draft", lambda *_a, **_k: draft)
-    monkeypatch.setattr(_repayment, "resolve_write_capability", lambda _db: None)
-    monkeypatch.setattr(_repayment, "guard_direct_fact_writable", lambda _debt: None)
-    monkeypatch.setattr(_repayment, "lock_and_fold", lambda _db, **kw: (debt, kw["mutate"](debt, 10000)))
-    confirm.confirm_repayment_draft(db, tenant_id="original-ledger", actor_account_id=2,
-        public_id=draft.public_id, target_debt_public_id="debt", expected_row_version=7, idempotency_key="confirm")
-    repayment = db.add.call_args.args[0]
-    assert repayment.paid_at is None and repayment.amount_cents == 7000
-    assert repayment.accounting_time_snapshot == draft.accounting_time_snapshot
-    assert repayment.accounting_time_snapshot["user_local_date"] == "2026-04-30"
-    assert repayment.accounting_time_snapshot["accounting_date"] == "2026-05-01"
-    assert draft.status == "confirmed" and draft.committed_debt_public_id == "debt"
 
 
 def test_notification_capture_keeps_its_offset_and_calendar_before_review(monkeypatch):
