@@ -24,7 +24,7 @@ data class PaymentNotificationSnapshot(
  * 支出 pending 草稿（既有路径，§通知闭环）；还款 → [Repayment] 落**还款** pending 草稿
  * （新路径，走 `/api/repayment-drafts`，§8 永不自动记账）；提醒 / 收款 / 退款 / 不可解析 → `null`
  * 被忽略。把「消费 vs 还款」拆成不同结果类型，是修「信用卡还款被误当新支出重复计」双计 bug 的关键：
- * 还款分类**优先于**消费，含「还款 / 偿还」的通知绝不再落支出草稿。
+ * 分类只使用交易内容；附带的账单提醒和营销文案不代表发生了还款或收入。
  */
 sealed interface PaymentNotificationResult {
     data class Expense(val draft: NotificationDraft) : PaymentNotificationResult
@@ -42,8 +42,10 @@ object PaymentNotificationParser {
     // 还款**已完成**信号:命中即判还款,**优先于**消费/提醒(修双计——「自动还款扣款¥X成功」含「扣款」过去被
     // 误判支出;现「自动还款」属还款已完成,先于 expenseWords 命中)。
     private val repaymentDoneWords = Regex("""(还款成功|已还款|还款完成|已还清|偿还成功|还款入账|自动还款|主动还款|代扣还款)""")
-    // 仅「提醒待还」信号(尚未发生还款):命中且无 [repaymentDoneWords] → 忽略(不把提醒落成还款草稿,§8)。
-    private val repaymentReminderWords = Regex("""(待还款|还款日|请.{0,6}还款|尽快还款|即将到期|到期提醒|逾期|账单已出|本期应还)""")
+    // 提醒和促销从命中处到分句末尾都不是交易内容，不能参与分类或金额提取。
+    private val nonTransactionTail = Regex(
+        """(?:待还款|还款日|请[^，。；;\n]{0,12}还款|尽快还款|即将到期|到期提醒|逾期|账单已出|本期应还|(?:点击|立即)?领(?:取)?红包)[^，。；;\n]*""",
+    )
     // 一般还款信号(无完成/提醒措辞时的兜底,如「花呗还款¥500」):在排除提醒后命中即判还款。
     private val repaymentWords = Regex("""(还款|偿还|还入|归还欠款)""")
     private val weChatPackages = setOf("com.tencent.mm")
@@ -68,10 +70,12 @@ object PaymentNotificationParser {
         if (!isCandidatePackage(snapshot.packageName)) return null
         val joined = snapshot.joinedText()
         if (joined.isBlank()) return null
-        // 金额按分类分别抠（还款用锚定式取还款额、消费取首金额），故不在这里统一解析。
-        return when (classifyKind(joined)) {
-            NotificationKind.REPAYMENT -> buildRepayment(snapshot, joined)
-            NotificationKind.EXPENSE -> buildExpense(snapshot, joined)
+        // 退款/退回是硬否决，即使同一条通知也引用了先前的「还款成功」。
+        if (refundWords.containsMatchIn(joined)) return null
+        val transaction = nonTransactionTail.replace(joined, "")
+        return when (classifyKind(transaction)) {
+            NotificationKind.REPAYMENT -> buildRepayment(snapshot, transaction)
+            NotificationKind.EXPENSE -> buildExpense(snapshot, transaction)
             null -> null
         }
     }
@@ -88,25 +92,11 @@ object PaymentNotificationParser {
             pkg in meituanPackages || isSmsPackage(pkg)
     }
 
-    /**
-     * 还款 vs 消费 vs 忽略的分类器（§还款分类器）。顺序即优先级，**修双计 bug 的关键**：
-     * 收款 / 退款先排除 → 还款**已完成**信号（含「自动还款 / 扣款还款」）优先于消费 → 纯提醒（待还款 /
-     * 还款日，尚未还）忽略 → 一般还款兜底 → 消费 → 其余忽略。这样含「还款」措辞的信用卡 / 花呗 / 白条
-     * 还款绝不再落成支出草稿（哪怕正文同时含「扣款 / 成功」）。
-     */
+    /** 退款、提醒和营销内容已在入口排除；实际还款优先于它包含的「扣款」消费词。 */
     private fun classifyKind(text: String): NotificationKind? = when {
-        // 1) 还款已完成(自动还款 / 还款成功)→ 还款,**优先于一切**:修双计 bug,且防被收入词「到账 / 红包」先吞掉。
         repaymentDoneWords.containsMatchIn(text) -> NotificationKind.REPAYMENT
-        // 2) 退款 / 退回(钱退回自己账户)→ 忽略(硬否决,哪怕含「还款」也是被退回而非新还款)。
-        refundWords.containsMatchIn(text) -> null
-        // 3) 纯提醒(待还款 / 本期应还 / 还款日)且**无实际交易词** → 忽略;同时含消费 / 还款词=交易已发生不算提醒
-        //    (修「消费…本期应还」相对 base 被新提醒步骤吞掉的回归)。
-        repaymentReminderWords.containsMatchIn(text) && !expenseWords.containsMatchIn(text) -> null
-        // 4) 一般还款(还款 / 偿还)→ 还款(提醒已在 3 排除、退款已在 2 拦掉,故「还款¥X已到账」落这里)。
         repaymentWords.containsMatchIn(text) -> NotificationKind.REPAYMENT
-        // 5) 进账(收款 / 到账 / 收入 / 转入 / 红包,无还款上下文)→ 忽略。
         incomeWords.containsMatchIn(text) -> null
-        // 6) 消费 → 支出。
         expenseWords.containsMatchIn(text) -> NotificationKind.EXPENSE
         else -> null
     }
@@ -133,7 +123,7 @@ object PaymentNotificationParser {
         joined: String,
     ): PaymentNotificationResult.Expense? {
         val source = resolveSource(snapshot.packageName, joined) ?: return null
-        val amountCents = PaymentNotificationFields.parseAmountCents(joined) ?: return null
+        val amountCents = PaymentNotificationFields.parseExpenseAmountCents(joined) ?: return null
         return PaymentNotificationResult.Expense(
             NotificationDraft(
                 source = source,
@@ -198,25 +188,38 @@ private object PaymentNotificationFields {
     private val cardTailPattern = Regex("""尾号\s*([0-9]{4})""")
     private val repaymentPlatformPattern = Regex("""(花呗|借呗|白条|美团月付|月付|信用卡)""")
     private val repaymentAmountAnchor = Regex("""(还款|偿还|归还)""")
+    private val expenseAmountAnchor = Regex("""(付款|支付(?!宝)|消费|支出|扣款|交易成功)""")
+    private val paidAmountAnchor = Regex("""(实付|实际支付|实际付款|支付金额|付款金额|消费金额)""")
+    private val unrelatedAmount = Regex("""(余额|额度|红包|优惠|账单|应还)""")
+    private val amountPattern = Regex(
+        """(?:￥|¥|人民币|RMB|CNY)\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)(?:\s*元)?|([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)\s*元""",
+        RegexOption.IGNORE_CASE,
+    )
 
-    fun parseAmountCents(text: String): Long? {
-        val amount = currencyBeforeAmount.find(text)?.groupValues?.getOrNull(1)
-            ?: yuanAfterAmount.find(text)?.groupValues?.getOrNull(1)
-            ?: return null
-        return parseExactMoneyMinor(amount.replace(",", ""), CurrencyCode.CNY)
-    }
+    fun parseExpenseAmountCents(text: String): Long? =
+        parseTransactionAmount(text, if (paidAmountAnchor.containsMatchIn(text)) paidAmountAnchor else expenseAmountAnchor)
 
     /**
-     * 还款额:优先取**还款词之后**的第一个金额(银行账单常「本期账单¥1288已还款¥500」,首金额是账单总额不是
-     * 还款额);锚点后取不到再回退首金额(如「¥500 已还款」金额在前)。
+     * 消费和还款都按交易词定位金额，且按正文顺序处理「元」和货币前缀。
+     * 金额在交易词前时仅接受唯一金额；不能从多个账单/余额/优惠数值中猜一个。
      */
-    fun parseRepaymentAmountCents(text: String): Long? {
-        val anchor = repaymentAmountAnchor.find(text)
-        if (anchor != null) {
-            parseAmountCents(text.substring(anchor.range.last + 1))?.let { return it }
+    fun parseRepaymentAmountCents(text: String): Long? = parseTransactionAmount(text, repaymentAmountAnchor)
+
+    private fun parseTransactionAmount(text: String, anchorPattern: Regex): Long? {
+        val amounts = amountPattern.findAll(text).toList()
+        for (anchor in anchorPattern.findAll(text)) {
+            val amount = amounts.firstOrNull { it.range.first > anchor.range.last } ?: continue
+            val between = text.substring(anchor.range.last + 1, amount.range.first)
+            if (!unrelatedAmount.containsMatchIn(between)) return amount.toMinor()
         }
-        return parseAmountCents(text)
+        return amounts.singleOrNull()?.takeIf {
+            anchorPattern.containsMatchIn(text) && !unrelatedAmount.containsMatchIn(text)
+        }?.toMinor()
     }
+
+    private fun MatchResult.toMinor(): Long? = parseExactMoneyMinor(
+        groupValues.drop(1).first { it.isNotEmpty() }.replace(",", ""), CurrencyCode.CNY,
+    )
 
     fun parseMerchant(snapshot: PaymentNotificationSnapshot, text: String): String? {
         for (pattern in merchantPatterns) {

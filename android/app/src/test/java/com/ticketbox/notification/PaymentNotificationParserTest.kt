@@ -62,6 +62,16 @@ class PaymentNotificationParserTest {
         assertEquals(NotificationDraftSource.Alipay, draft.source)
         assertEquals(1234L, draft.amountCents)
         assertEquals("便利蜂", draft.merchant)
+        for (text in listOf(
+            "花呗消费37.90元，领红包立减5元",
+            "花呗消费37.90元，还款日为下月10日，请按时还款",
+            "领红包5元，花呗付款成功37.90元，还款日为下月10日",
+            "账户余额￥500.00，花呗消费37.90元，余额￥462.10",
+            "付款成功，订单金额￥42.90，优惠￥5.00，实付37.90元",
+        )) {
+            val result = expenseOf(snapshot("com.eg.android.AlipayGphone", "支付宝", text))
+            assertEquals(3790L, result?.amountCents, text)
+        }
     }
 
     @Test
@@ -269,6 +279,10 @@ class PaymentNotificationParserTest {
         assertNotNull(draft)
         assertEquals(RepaymentDraftSource.BankSms, draft.source)
         assertEquals(50_000L, draft.amountCents)
+        val mixedUnits = repaymentOf(snapshot(
+            "com.android.mms", "招商银行", "本期账单￥1288，已还款500元，余额￥788",
+        ))
+        assertEquals(50_000L, mixedUnits?.amountCents)
     }
 
     @Test
@@ -283,6 +297,13 @@ class PaymentNotificationParserTest {
                 ),
             ),
         )
+        for (text in listOf(
+            "花呗还款成功￥37.90，款项已退款",
+            "花呗还款成功￥37.90，因账户异常退回",
+            "领取红包5元，还款日为10日",
+        )) {
+            assertNull(PaymentNotificationParser.parse(snapshot("com.eg.android.AlipayGphone", "支付宝", text)), text)
+        }
     }
 
     @Test
