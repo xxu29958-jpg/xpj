@@ -189,10 +189,15 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     debt = client.get("/api/debts/" + credit["debt_public_id"], headers=identity.app_headers).json()
     assert debt["remaining_amount_cents"] == 1790
 
+    _correct_captured_payment(client, identity, draft_id, resolved["correction_versions"], bank, credit)
+    assert client.post(url, headers=headers, json=payment).json() == result.json()
+
+
+def _correct_captured_payment(client, identity, draft_id, reviewed_versions, bank, credit):
     # Correcting the captured transaction restores both cash and principal; its
     # separately recorded fee must not survive as a second false expense.
     correction_url = "/api/repayment-drafts/" + draft_id + "/as-expense"
-    correction = {"reason": "核对原交易后确认这是消费", "correction_versions": resolved["correction_versions"],
+    correction = {"reason": "核对原交易后确认这是消费", "correction_versions": reviewed_versions,
         "expense_currency": "CNY", "expense_amount_minor": 3790}
     correction_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
     stale = client.post(correction_url, headers=correction_headers, json=correction)
@@ -205,7 +210,6 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     corrected = client.post(correction_url, headers=correction_headers, json=correction)
     assert corrected.status_code == 200, corrected.text
     assert client.post(correction_url, headers=correction_headers, json=correction).json() == corrected.json()
-    assert client.post(url, headers=headers, json=payment).json() == result.json()
     bank_now = client.get("/api/funds/accounts/" + bank["public_id"], headers=identity.app_headers).json()
     credit_now = client.get("/api/funds/accounts/" + credit["public_id"], headers=identity.app_headers).json()
     assert bank_now["balance_minor"] == 100000 and credit_now["balance_minor"] == -5790
