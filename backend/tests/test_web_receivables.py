@@ -210,6 +210,7 @@ def test_web_receivables_active_first_open_before_cleared_before_voided(
 def _row(**overrides) -> SimpleNamespace:
     base = {
         "public_id": "dbt_receivable",
+        "source_type": "manual",
         "counterparty_label": "阿明",
         "counterparty_type": "member",
         "viewer_is_debtor": False,  # the viewer is the creditor (by construction of the list)

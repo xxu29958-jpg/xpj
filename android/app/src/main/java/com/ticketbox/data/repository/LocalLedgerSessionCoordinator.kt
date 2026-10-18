@@ -126,7 +126,10 @@ class LocalLedgerSessionCoordinator(
     }
 
     internal suspend fun rejectSnapshotAccess(bound: BoundLedgerRequest, bindingKey: String, failure: RepositoryException) {
-        if (failure.httpStatusCode !in setOf(401, 403)) return
+        // A hidden funds account also invalidates aggregates that included its private balance.
+        // Reuse the durable snapshot boundary; original inputs and Outbox commands stay intact.
+        val fundsAccessChanged = failure.httpStatusCode == 404 && failure.errorCode == "fund_account_not_found"
+        if (failure.httpStatusCode !in setOf(401, 403) && !fundsAccessChanged) return
         mutex.withLock {
             if (!bound.isStillActive()) return@withLock
             invalidateSnapshotReads(failure)

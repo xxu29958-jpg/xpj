@@ -28,6 +28,48 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DebtQueryReadTest {
+    @Test fun hiddenFundsAccountRetiresDetailAndAggregateCachesUntilAnAuthorizedRead() = runTest {
+        var offline = false
+        var hidden = false
+        val account = com.ticketbox.data.remote.dto.FinancialAccountDto(
+            "funds-one", "共享银行卡", "owner", 1, "bank", "JPY", "ledger", null, null,
+            1, false, 1200, 1200, "2026-09-01", "已核对", null, false)
+        val summary = com.ticketbox.data.remote.dto.FundsOverviewDto("JPY", "2026-09-01", 1200, 0, 1200, 1, 0, 0)
+        fun online() { if (offline) throw ConnectException("offline") }
+        val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun fundsAccounts(): List<com.ticketbox.data.remote.dto.FinancialAccountDto> {
+                online(); return if (hidden) emptyList() else listOf(account)
+            }
+            override suspend fun fundsAccount(id: String): com.ticketbox.data.remote.dto.FinancialAccountDto {
+                online()
+                if (hidden) throw HttpException(Response.error<Any>(404, """{"error":"fund_account_not_found"}""".toResponseBody()))
+                return account
+            }
+            override suspend fun fundsOverview(): com.ticketbox.data.remote.dto.FundsOverviewDto {
+                online(); return if (hidden) summary.copy(assetsMinor = 0, netWorthMinor = 0, includedAccounts = 0) else summary
+            }
+        }
+        val fixture = GoalReadFixture { api }
+        fun reader(coordinator: LocalLedgerSessionCoordinator = fixture.coordinator) = FundsQueries(DebtQueryReader(fixture.provider, fixture.dao, coordinator))
+        reader().accounts(fixture.binding).getOrThrow()
+        reader().detail(fixture.binding, account.publicId).getOrThrow()
+        reader().overview(fixture.binding).getOrThrow()
+        hidden = true
+        assertEquals(404, (reader().detail(fixture.binding, account.publicId).exceptionOrNull() as RepositoryException).httpStatusCode)
+        offline = true
+        val restarted = LocalLedgerSessionCoordinator(fixture.coordinator.settingsStore, fixture.session.sessionStore, fixture.dao)
+        val reopened = reader(restarted)
+        assertTrue(reopened.detail(fixture.binding, account.publicId).isFailure)
+        assertTrue(reopened.accounts(fixture.binding).isFailure)
+        assertTrue(reopened.overview(fixture.binding).isFailure)
+        offline = false
+        assertEquals(emptyList(), reopened.accounts(fixture.binding).getOrThrow().value)
+        assertEquals(0, reopened.overview(fixture.binding).getOrThrow().value.includedAccounts)
+        offline = true
+        assertTrue(reopened.detail(fixture.binding, account.publicId).isFailure)
+        assertEquals(0L, reopened.overview(fixture.binding).getOrThrow().value.netWorthMinor)
+    }
+
     @Test fun onlyCanonicalListsCapturedAfterTheLastMissingResourceCanRestoreItWithoutRevivingOldDetail() = runTest {
         val api = DebtReadApi()
         val fixture = GoalReadFixture { api }

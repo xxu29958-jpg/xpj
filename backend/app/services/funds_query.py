@@ -19,6 +19,7 @@ from app.schemas.funds import BalanceObservationView, CreditTerms, FinancialAcco
 from app.services.credit_allocation_service import unallocated_credit_minor
 from app.services.credit_application_query import credit_applications_view
 from app.services.credit_fee_query import fee_views
+from app.services.credit_history_adoption import prior_repayments
 from app.services.funds_money import valuation
 from app.services.ledger_calendar_service import current_calendar, current_ledger_date
 
@@ -55,17 +56,7 @@ def account_view(db: Session, row: FinancialAccount, *, actor_account_id: int,
         .where(CreditFacility.account_id == row.id))
     observation = db.scalar(select(AccountBalanceObservation).where(AccountBalanceObservation.account_id == row.id)
         .order_by(AccountBalanceObservation.occurred_on.desc(), AccountBalanceObservation.id.desc()).limit(1))
-    movements = []
-    if with_movements:
-        records = db.execute(select(AccountMovement, ExpenseFunding.expense_id, Repayment.public_id, RepaymentVoid.id)
-            .outerjoin(ExpenseFunding, ExpenseFunding.id == AccountMovement.funding_id)
-            .outerjoin(Repayment, Repayment.id == AccountMovement.repayment_id)
-            .outerjoin(RepaymentVoid, RepaymentVoid.repayment_id == Repayment.id)
-            .where(AccountMovement.account_id == row.id).order_by(AccountMovement.occurred_on.desc(), AccountMovement.id.desc()))
-        movements = [MovementView(public_id=m.public_id, event_public_id=m.event_public_id, kind=m.kind,
-            amount_minor=m.amount_minor, occurred_on=m.occurred_on, note=m.note, expense_id=expense_id,
-            repayment_public_id=repayment, can_void_repayment=row.kind == "credit" and m.kind == "repayment"
-                and repayment is not None and void_id is None) for m, expense_id, repayment, void_id in records]
+    credit_detail = with_movements and row.kind == "credit"
     return FinancialAccountView(public_id=row.public_id, name=row.name, ledger_id=row.tenant_id,
         calendar_revision=current_calendar(db, ledger_id=row.tenant_id).revision, kind=row.kind, currency_code=row.currency_code,
         visibility=row.visibility, institution=row.institution, tail=row.tail, row_version=row.row_version,
@@ -77,12 +68,25 @@ def account_view(db: Session, row: FinancialAccount, *, actor_account_id: int,
             difference_minor=observation.observed_minor - account_balance(db, row, cutoff=observation.occurred_on),
             occurred_on=observation.occurred_on, source=observation.source,
             adjusted=observation.adjustment_movement_id is not None) if observation else None,
-        can_edit=row.owner_account_id == actor_account_id, movements=movements,
-        fee_obligations=fee_views(db, row.id) if with_movements and row.kind == "credit" else [],
-        credit_applications=credit_applications_view(db, row.id) if with_movements and row.kind == "credit" else None,
+        can_edit=row.owner_account_id == actor_account_id, movements=_movement_views(db, row) if with_movements else [],
+        prior_repayments=prior_repayments(db, row.id) if credit_detail else None,
+        fee_obligations=fee_views(db, row.id) if credit_detail else [],
+        credit_applications=credit_applications_view(db, row.id) if credit_detail else None,
         credit_terms=CreditTerms(credit_limit_minor=row.credit_limit_minor, available_credit_minor=row.available_credit_minor,
             observed_on=row.credit_observed_on, source=row.credit_source, statement_day=row.statement_day,
             payment_due_day=row.payment_due_day) if row.kind == "credit" else None)
+
+
+def _movement_views(db, account):
+    records = db.execute(select(AccountMovement, ExpenseFunding.expense_id, Repayment.public_id, RepaymentVoid.id)
+        .outerjoin(ExpenseFunding, ExpenseFunding.id == AccountMovement.funding_id)
+        .outerjoin(Repayment, Repayment.id == AccountMovement.repayment_id)
+        .outerjoin(RepaymentVoid, RepaymentVoid.repayment_id == Repayment.id)
+        .where(AccountMovement.account_id == account.id).order_by(AccountMovement.occurred_on.desc(), AccountMovement.id.desc()))
+    return [MovementView(public_id=m.public_id, event_public_id=m.event_public_id, kind=m.kind,
+        amount_minor=m.amount_minor, occurred_on=m.occurred_on, note=m.note, expense_id=expense_id,
+        repayment_public_id=repayment, can_void_repayment=account.kind == "credit" and m.kind == "repayment"
+            and repayment is not None and void_id is None) for m, expense_id, repayment, void_id in records]
 
 
 def list_accounts(db, *, ledger_id, actor_account_id):

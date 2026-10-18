@@ -59,8 +59,10 @@ private fun FundsInput.creditTerms(): com.ticketbox.data.remote.dto.CreditTermsD
 
 private fun FundsInput.voidPaymentCommand(): FundsCommand {
     require(repaymentId.isNotBlank() && note.isNotBlank()) { "请保留原还款并填写撤销依据。" }
-            return FundsCommand(binding = binding, accountId = accountId,
-                voidPayment = CreditPaymentVoidDto(version, repaymentId, date, note))
+    require(!legacyRepayment || reviewedDebtAmount.isNotBlank()) { "请核对接入旧还款后的当前欠款。" }
+    val reviewed = reviewedDebtAmount.takeIf(String::isNotBlank)?.let { -amount(it, currency, signed = true) }
+    return FundsCommand(revision = if (reviewed != null) 4 else 1, binding = binding, accountId = accountId,
+        voidPayment = CreditPaymentVoidDto(version, repaymentId, date, note, reviewed))
 }
 
 private fun FundsInput.installmentsCommand(): FundsCommand = FundsCommand(binding = binding, accountId = accountId, installments = installmentCommand())

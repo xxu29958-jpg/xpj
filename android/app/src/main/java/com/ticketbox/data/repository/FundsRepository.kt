@@ -21,6 +21,7 @@ class FundsRepository internal constructor(private val provider: ApiServiceProvi
     private val errors = NetworkErrorHandler({ provider.currentSession()?.serverUrl }, "Funds")
     fun access() = provider.observeActiveLedgerAccess()
     val reads = FundsQueries(queries)
+    val readAccessDenials = queries.readAccessDenials
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun input(binding: LogicalSessionBinding) = inputs.observe(binding.serverUrl, binding.ownerKey, binding.ledgerId).flatMapLatest { row ->

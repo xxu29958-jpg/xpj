@@ -45,6 +45,14 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
     private val writes = Mutex()
     init {
         viewModelScope.launch {
+            repository.readAccessDenials.collect { denial ->
+                if (mutable.value.access?.binding == denial.binding) mutable.value = mutable.value.copy(
+                    accounts = emptyList(), detail = null, overview = null, funding = null, installments = null,
+                    existingDebts = emptyList(), repaymentCapture = null, envelopes = null, envelopeHistory = null,
+                    loading = false, fromCache = false, error = denial.failure.toUiText())
+            }
+        }
+        viewModelScope.launch {
             repository.access().collectLatest { access ->
                 mutable.value = FundsUiState(access = access, fundingPage = expenseId != null, captureRequested = repaymentDraftId != null)
                 if (access != null) coroutineScope {
@@ -65,7 +73,11 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
 
     fun refresh() { state.value.access?.binding?.let { binding -> viewModelScope.launch {
         val month = state.value.envelopeMonth
-        if (month != null) refreshEnvelopes(binding, month) else refreshAccounts(binding)
+        if (month != null) refreshEnvelopes(binding, month) else {
+            val id = state.value.detail?.publicId
+            refreshAccounts(binding)
+            if (id != null && state.value.access?.binding == binding && state.value.detail?.publicId == id) open(id)
+        }
     } } }
     fun open(id: String, forCapture: Boolean = false) {
         val binding = state.value.access?.binding ?: return

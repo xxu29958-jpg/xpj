@@ -36,7 +36,7 @@ fun FundsViewModel.choosePayer(account: FinancialAccountDto) = edit { it.copy(pa
 fun FundsViewModel.voidPayment(id: String) {
     if (state.value.task.input != null) { resume(); return }
     start("void_repayment")
-    edit { it.copy(repaymentId = id) }
+    edit { it.copy(repaymentId = id, legacyRepayment = state.value.detail?.priorRepayments?.items?.any { row -> row.publicId == id } == true) }
 }
 
 fun FundsViewModel.voidCreditApplication(id: String) {

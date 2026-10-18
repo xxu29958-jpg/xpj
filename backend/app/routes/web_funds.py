@@ -24,6 +24,7 @@ from app.routes._web_funds_values import (
     form_defaults,
     payment_payload,
     posting_payload,
+    void_payment_payload,
 )
 from app.routes._web_installments import installment_payload, selected_installment_values
 from app.routes.web_common import (
@@ -35,7 +36,7 @@ from app.routes.web_common import (
     _web_redirect,
     templates,
 )
-from app.schemas.funds import CreditPaymentVoid, FinancialAccountView
+from app.schemas.funds import FinancialAccountView
 from app.services.credit_application_commands import apply_retained_credit, void_credit_application
 from app.services.credit_fee_commands import incur_credit_fee
 from app.services.credit_history_adoption import existing_debt_choices
@@ -128,9 +129,7 @@ def _execute(db: Session, auth: AuthContext, values: dict[str, str], *, review: 
     if mode == "incur_fee":
         return _run(db, auth, values, credit_fee_payload(db, auth, values), incur_credit_fee, "incur_credit_fee", review)
     if mode == "void_repayment":
-        payload = CreditPaymentVoid(expected_row_version=values["expected_row_version"],
-            repayment_public_id=values["repayment_public_id"], occurred_on=values["occurred_on"], reason=values["note"])
-        return _run(db, auth, values, payload, void_credit_payment, "void_credit_payment", review)
+        return _run(db, auth, values, void_payment_payload(db, auth, values), void_credit_payment, "void_credit_payment", review)
     if mode == "installments":
         account = get_account(db, ledger_id=auth.ledger_id, actor_account_id=auth.account_id, public_id=values["account_id"])
         if account.currency_code != values["currency_code"]:

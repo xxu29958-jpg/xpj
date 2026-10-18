@@ -24,6 +24,9 @@ def claim_funds(db, auth, payload, key, operation, target=None):
     require_write_expense(auth)
     resolve_write_capability(db)
     body = payload.model_dump(mode="json", exclude={"expected_row_version"})
+    if body.get("reviewed_balance_minor") is None:
+        # Older repayment corrections had no adoption balance review field.
+        body.pop("reviewed_balance_minor", None)
     if not body.get("fee_payments") and not body.get("payer_fee_amount_minor"):
         body.pop("fee_payments", None)
         body.pop("payer_fee_amount_minor", None)

@@ -5,7 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import CreditFacility, Debt, FinancialAccount
+from app.models import CreditFacility, Debt, FinancialAccount, Repayment, RepaymentVoid
+from app.schemas._debts import RepaymentFactListResponse
 from app.schemas.funds import AccountCreate, ExistingDebtChoice
 from app.services.ledger_calendar_service import current_calendar
 from app.services.time_service import ensure_utc, now_utc
@@ -29,6 +30,20 @@ def existing_debt_choices(db, *, ledger_id, actor_account_id):
         remaining_home_minor=compute_remaining(db, row), home_currency_code=row.home_currency_code,
         earliest_opening_date=earliest_opening_date(db, row))
         for row in db.scalars(eligible_debts(ledger_id, actor_account_id).order_by(Debt.id))]
+
+
+def prior_repayments(db, account_id):
+    from app.services.debt_service._repayment_activity import repayment_fact_response
+    adopted = db.execute(select(CreditFacility, Debt).join(Debt, Debt.id == CreditFacility.debt_id)
+        .where(CreditFacility.account_id == account_id, CreditFacility.adopted_at.is_not(None))).one_or_none()
+    if adopted is None:
+        return None
+    facility, debt = adopted
+    rows = db.execute(select(Repayment, RepaymentVoid).outerjoin(RepaymentVoid, RepaymentVoid.repayment_id == Repayment.id)
+        .where(Repayment.debt_id == debt.id, Repayment.created_at <= facility.adopted_at)
+        .order_by(Repayment.created_at.desc(), Repayment.id.desc())).all()
+    return RepaymentFactListResponse(debt_public_id=debt.public_id, home_currency_code=debt.home_currency_code,
+        items=[repayment_fact_response(payment, void) for payment, void in rows], page=1, page_size=max(1, len(rows)), total=len(rows))
 
 
 def adopt_existing_debt(db: Session, *, auth: AuthContext, account: FinancialAccount,

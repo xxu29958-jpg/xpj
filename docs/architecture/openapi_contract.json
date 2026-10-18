@@ -12629,6 +12629,20 @@
             "minLength": 1,
             "title": "Repayment Public Id",
             "type": "string"
+          },
+          "reviewed_balance_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": -9000000000000.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed Balance Minor"
           }
         },
         "required": [
@@ -18760,6 +18774,16 @@
           "opening_source": {
             "title": "Opening Source",
             "type": "string"
+          },
+          "prior_repayments": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RepaymentFactListResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "public_id": {
             "title": "Public Id",

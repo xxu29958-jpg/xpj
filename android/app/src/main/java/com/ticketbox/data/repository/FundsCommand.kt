@@ -42,7 +42,8 @@ data class FundsInput(val binding: LogicalSessionBinding, val mode: String, val 
     val envelopeAmounts: Map<String, String> = emptyMap(), val visibilityEdit: String? = null,
     val feePeriodId: String = "", val feePeriodLabel: String = "", val feePayments: Map<String, String> = emptyMap(),
     val payerFeeAmount: String = "", val creditSourceId: String = "", val creditDrawId: String = "",
-    val creditReviewId: String = "", val creditSourceLabel: String = "", val creditDrawLabel: String = "")
+    val creditReviewId: String = "", val creditSourceLabel: String = "", val creditDrawLabel: String = "",
+    val legacyRepayment: Boolean = false, val reviewedDebtAmount: String = "")
 
 @JsonClass(generateAdapter = true)
 data class FundsCommand(val revision: Int = 1, val binding: LogicalSessionBinding, val accountId: String,
@@ -124,7 +125,7 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
     private fun original(row: OutboxRow) = runCatching {
             require(row.type == type && !row.idempotencyKey.isNullOrBlank())
             val value = requireNotNull(FundsWire.command.fromJson(row.payloadJson))
-            require(value.revision in 1..3 && listOf(value.create, value.edit, value.payment, value.activity, value.funding, value.installments, value.voidPayment, value.envelopes, value.fee, value.applyCredit, value.voidCredit).count { it != null } == 1)
+            require(value.revision in 1..4 && listOf(value.create, value.edit, value.payment, value.activity, value.funding, value.installments, value.voidPayment, value.envelopes, value.fee, value.applyCredit, value.voidCredit).count { it != null } == 1)
             require(row.expectedRowVersion == value.version && row.targetId == value.target(requireNotNull(row.idempotencyKey)))
             value
         }.getOrNull()

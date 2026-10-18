@@ -225,4 +225,10 @@
     <string name="funds_credit_voided">已撤销：%1$s</string>
     <string name="funds_credit_changed">来源或欠款已变化，请核对原记录。</string>
     <string name="funds_credit_zero_net_debt">净欠款为零</string>
+    <string name="funds_prior_repayments">接入账户前的还款</string>
+    <string name="funds_prior_recorded_at">录入于 %1$s</string>
+    <string name="funds_void_prior_repayment">撤销错误的旧还款</string>
+    <string name="funds_void_prior_note">这是接入账户前的还款。撤销旧记录时，请核对当前实际欠款；系统不会推测原扣款账户，也不会生成银行退款。</string>
+    <string name="funds_reviewed_debt">核对后的欠款（%1$s）</string>
+    <string name="funds_reviewed_debt_note">已结清填 0；账户有结余时填负数。以本次银行或平台记录为准。</string>
 </resources>

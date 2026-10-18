@@ -191,7 +191,7 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
     }
 
     override fun saveSnapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String, statusCode: Int?) {
-        require(statusCode == null || statusCode in setOf(401, 403))
+        require(statusCode == null || statusCode in setOf(401, 403, 404))
         val update = prefs.edit()
         for (scope in listOf(bindingKey, monthlyBindingKey)) {
             val key = "snapshot_read_access_denial:$scope"

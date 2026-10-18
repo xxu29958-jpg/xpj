@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas._debts import RepaymentFactListResponse
 from app.schemas._money import NonNegativeMoneyMinor, PositiveMoneyMinor, SignedMoneyAggregate, SignedMoneyMinor
 from app.schemas.credit_application import CreditApplicationsView
 from app.schemas.credit_fee import CreditFeePaymentPart, CreditFeeView
@@ -170,6 +171,7 @@ class CreditPaymentVoid(BaseModel):
     repayment_public_id: str = Field(min_length=1, max_length=36)
     occurred_on: date
     reason: str = Field(min_length=1, max_length=255)
+    reviewed_balance_minor: SignedMoneyMinor | None = None
 
 
 class AccountPosting(BaseModel):
@@ -237,6 +239,7 @@ class FundsOverview(BaseModel):
 
 
 class FinancialAccountView(BaseModel):
+    prior_repayments: RepaymentFactListResponse | None = None
     public_id: str
     name: str
     ledger_id: str

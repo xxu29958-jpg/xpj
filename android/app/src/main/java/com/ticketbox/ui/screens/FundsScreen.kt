@@ -132,6 +132,7 @@ private fun AccountDetailHeader(state: FundsUiState, detail: FinancialAccountDto
         AccountActions(state, detail, viewModel)
         AccountMore(state, detail, viewModel)
         CreditApplicationsRead(detail, state.access?.canModify == true, viewModel)
+        FundsPriorRepayments(detail, state.access?.canModify == true, viewModel)
         if (!state.installments?.agreements.isNullOrEmpty())
             InstallmentHistory(state.installments, !detail.archived && state.access?.canModify == true, viewModel)
         Text(stringResource(R.string.funds_movements_title), style = MaterialTheme.typography.titleMedium)

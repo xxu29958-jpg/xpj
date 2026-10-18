@@ -60,6 +60,38 @@ def test_existing_debt_becomes_one_credit_account_without_rewriting_history(clie
             json={**payload, "expected_row_version": current["row_version"]})
         assert refused.status_code == 409 and refused.json()["error"] == "credit_account_required"
     assert client.get("/api/funds/accounts/existing-debts/list", headers=identity.app_headers).json() == []
+    _correct_adopted_payment(client, identity, saved.json(), debt, after_payment)
+
+
+def _correct_adopted_payment(client, identity, account, original_debt, historical_time):
+    from app.models import AccountBalanceObservation, RepaymentVoid
+    from app.services.debt_service._fold import compute_remaining_as_of
+    account_url = "/api/funds/accounts/" + account["public_id"]
+    prior = client.get(account_url, headers=identity.app_headers).json()["prior_repayments"]
+    assert prior["items"][0]["amount_cents"] == 3000
+    body = {"expected_row_version": account["row_version"], "repayment_public_id": prior["items"][0]["public_id"],
+        "occurred_on": str(date.today()), "reason": "旧30元还款未发生，平台核对当前欠款98元"}
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    refused = client.post(account_url + "/repayments/void", headers=headers, json=body)
+    assert refused.status_code == 422 and refused.json()["error"] == "balance_review_required"
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(RepaymentVoid)) == 0
+    body["reviewed_balance_minor"] = -9800
+    headers["Idempotency-Key"] = str(uuid4())
+    corrected = client.post(account_url + "/repayments/void", headers=headers, json=body)
+    assert corrected.status_code == 200, corrected.text
+    assert corrected.json()["balance_minor"] == -9800
+    assert corrected.json()["prior_repayments"]["items"][0]["status"] == "voided"
+    assert client.post(account_url + "/repayments/void", headers=headers, json=body).json() == corrected.json()
+    debt = client.get("/api/debts/" + original_debt["public_id"], headers=identity.app_headers).json()
+    assert (debt["remaining_amount_cents"], debt["paid_amount_cents"]) == (9800, 0)
+    with SessionLocal() as db:
+        original = db.scalar(select(Debt).where(Debt.public_id == original_debt["public_id"]))
+        assert compute_remaining_as_of(db, original, historical_time) == 7000
+        assert (db.scalar(select(func.count()).select_from(Repayment)),
+            db.scalar(select(func.count()).select_from(RepaymentVoid)),
+            db.scalar(select(func.count()).select_from(AccountBalanceObservation))) == (1, 1, 1)
+        assert list(db.scalars(select(AccountMovement.kind).order_by(AccountMovement.id))) == ["opening", "reconciliation"]
 
 
 @pytest.mark.real_db  # The portable outlet owns a separate read-only snapshot connection.
@@ -267,6 +299,17 @@ def _export_funds_history(client, identity, bank, credit):
 
 
 def _assert_owner_funds_export(owner, member, credit):
+    _assert_exported_credit_facts(owner, credit)
+    assert owner["payment_captures"][0]["kind"] == "expense"
+    assert all(owner[name] for name in ("installment_agreements", "installment_periods", "installment_draws"))
+    assert [(row["purpose"], row["allocated_minor"]) for row in owner["envelope_allocations"]] == [("savings", 1000)]
+    assert owner["envelope_revisions"] == member["envelope_revisions"]
+    assert {"envelope_book", "payment_capture"} <= {row["resource_type"] for row in owner["accepted_operations"]}
+    original = next(row for row in owner["accepted_operations"] if row["operation"] == "save_expense_funding")
+    assert original["response_body"]["parts"][0]["account_public_id"] == credit["public_id"]
+
+
+def _assert_exported_credit_facts(owner, credit):
     assert credit["public_id"] in {row["public_id"] for row in owner["financial_accounts"]}
     assert all(owner[name] for name in ("credit_facilities", "credit_settlement_allocations", "repayment_voids"))
     assert owner["repayments"][0]["settlement_kind"] == "credit"
@@ -276,13 +319,6 @@ def _assert_owner_funds_export(owner, member, credit):
     fee = owner["credit_fee_obligations"][0]
     assert next(row for row in owner["expenses"] if row["id"] == fee["expense_id"])["original_amount_minor"] == 200
     assert fee["account_id"] in {row["id"] for row in owner["financial_accounts"]}
-    assert owner["payment_captures"][0]["kind"] == "expense"
-    assert all(owner[name] for name in ("installment_agreements", "installment_periods", "installment_draws"))
-    assert [(row["purpose"], row["allocated_minor"]) for row in owner["envelope_allocations"]] == [("savings", 1000)]
-    assert owner["envelope_revisions"] == member["envelope_revisions"]
-    assert {"envelope_book", "payment_capture"} <= {row["resource_type"] for row in owner["accepted_operations"]}
-    original = next(row for row in owner["accepted_operations"] if row["operation"] == "save_expense_funding")
-    assert original["response_body"]["parts"][0]["account_public_id"] == credit["public_id"]
 
 
 def _prepare_exported_plans(client, identity, bank, credit):
@@ -498,6 +534,42 @@ def test_native_funds_entry_keeps_private_accounts_and_consumes_actual_funding(i
     _confirm_pending_with_funding(installed, headers, receipt)
     _native_envelope_arrangement(installed, headers)
     _native_recorded_fee(installed, headers, receipt["public_id"])
+    _native_prior_repayment(installed, headers, receipt["ledger_id"])
+
+
+def _native_prior_repayment(installed, headers, ledger_id):
+    from app.schemas import DebtCreateRequest, RepaymentCreateRequest
+    from app.services.debt_service import create_debt, record_repayment
+    from app.services.ledger_calendar_service import current_ledger_date
+    with SessionLocal() as db:
+        debt = create_debt(db, tenant_id=ledger_id, created_by_account_id=installed.installation_account_id,
+            owner_account_id=installed.installation_account_id, payload=DebtCreateRequest(home_currency_code="CNY",
+                direction="i_owe", counterparty_type="external", counterparty_label="接入前信用账本", principal_amount_cents=10000))
+        recorded = record_repayment(db, tenant_id=ledger_id, public_id=debt.public_id,
+            actor_account_id=installed.installation_account_id, idempotency_key=str(uuid4()),
+            payload=RepaymentCreateRequest(amount_cents=3000, expected_row_version=debt.row_version), commit=True)
+        debt_choice = f"{debt.public_id}|{debt.row_version}"
+        repayment_id = recorded.repayment_public_id
+        today = current_ledger_date(db, ledger_id=ledger_id).isoformat()
+    page = installed.browser.get("/web/funds?task=create", headers=headers)
+    fields = hidden_post_forms(page.text)["/web/funds/save"]
+    fields.update(name="接管历史信用账户", kind="credit", currency_code="CNY", opening_amount="68", visibility="private",
+        opening_source="已核对", occurred_on=today, existing_debt=debt_choice)
+    saved = installed.browser.post("/web/funds/save", data=fields, headers=headers)
+    assert saved.status_code == 200, saved.text
+    account_id = saved.json()["receipt"]["public_id"]
+    detail = installed.browser.get(saved.json()["next"], headers=headers)
+    assert "接入账户前的还款" in detail.text and repayment_id in detail.text
+    page = installed.browser.get(f"/web/funds?task=void_repayment&account_id={account_id}&repayment_id={repayment_id}", headers=headers)
+    assert page.status_code == 200 and 'name="reviewed_debt_amount"' in page.text, page.text
+    fields = hidden_post_forms(page.text)["/web/funds/save"]
+    fields.update(reviewed_debt_amount="98", note="核实原30元并未还款", occurred_on=today)
+    corrected = installed.browser.post("/web/funds/save", data=fields, headers=headers)
+    assert corrected.status_code == 200, corrected.text
+    result = corrected.json()["receipt"]
+    assert result["balance_minor"] == -9800 and result["prior_repayments"]["items"][0]["status"] == "voided"
+    assert installed.browser.post("/web/funds/save", data=fields, headers=headers).json() == corrected.json()
+    assert "核实原30元并未还款" in installed.browser.get(corrected.json()["next"], headers=headers).text
 
 
 def _native_envelope_arrangement(installed, headers):

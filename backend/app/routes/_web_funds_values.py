@@ -13,6 +13,7 @@ from app.schemas.funds import (
     AccountEdit,
     AccountPosting,
     CreditPayment,
+    CreditPaymentVoid,
     CreditTerms,
     DebtAdoption,
     FinancialAccountView,
@@ -27,7 +28,7 @@ def form_defaults(account: FinancialAccountView | None, task: str, home_currency
     values = dict.fromkeys(("account_id", "task_id", "name", "institution", "tail", "opening_amount",
         "expected_row_version", "calendar_revision", "payer_public_id", "payer_row_version", "payer_currency_code",
         "credit_source_id", "credit_draw_id", "credit_review_id", "credit_source_label", "credit_draw_label",
-        "fee_period_id", "payer_fee_amount", "principal_amount", "payer_amount", "note", "activity_amount", "other_amount", "loan_name",
+        "fee_period_id", "payer_fee_amount", "principal_amount", "payer_amount", "note", "activity_amount", "other_amount", "loan_name", "reviewed_debt_amount",
         "loan_principal_amount", "new_fee", "fee_note", "supersedes_public_id", "overpayment", "existing_debt",
         "credit_limit", "available_credit", "credit_observed_on", "credit_source", "statement_day", "payment_due_day"), "")
     values.update(mode=task, kind="bank", currency_code=home_currency, loan_currency_code=home_currency,
@@ -56,6 +57,14 @@ def _credit_application_defaults(account: FinancialAccountView) -> dict[str, str
         "credit_draw_id": target.public_id if target else "", "credit_draw_label": target.note if target else "",
         "activity_amount": minor_amount_value(min(source.remaining_minor, target.remaining_minor), account.currency_code)
             if source and target else ""}
+
+
+def void_payment_payload(db, auth, values):
+    account = _captured_account(db, auth, values["account_id"], values["currency_code"])
+    reviewed = values.get("reviewed_debt_amount", "").strip()
+    return CreditPaymentVoid(expected_row_version=values["expected_row_version"],
+        repayment_public_id=values["repayment_public_id"], occurred_on=values["occurred_on"], reason=values["note"],
+        reviewed_balance_minor=-major_amount_to_minor(reviewed, account.currency_code, allow_negative=True) if reviewed else None)
 
 
 def _credit_terms_values(account: FinancialAccountView) -> dict[str, str]:

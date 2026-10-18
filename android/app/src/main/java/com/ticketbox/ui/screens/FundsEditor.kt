@@ -66,8 +66,7 @@ private fun FundsInputFields(state: FundsUiState, input: FundsInput, enabled: Bo
             "incur_fee" -> CreditFeeFields(state, input, enabled, vm)
             "envelopes" -> EnvelopeFields(state, input, enabled, vm)
             "void_repayment" -> {
-                Text(stringResource(R.string.funds_void_payment_note))
-                FundsField(stringResource(R.string.funds_void_reason), input.note, enabled) { value -> vm.edit { it.copy(note = value) } }
+                FundsVoidPaymentFields(input, enabled, vm)
             }
             "funding" -> {
                 CurrencyCode.fromStorageKeyOrNull(input.currency)?.let { currency ->
