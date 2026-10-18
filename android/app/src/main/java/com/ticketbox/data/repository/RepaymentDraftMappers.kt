@@ -22,6 +22,8 @@ fun RepaymentDraftDto.toDomain(): RepaymentDraft = RepaymentDraft(
     originalCurrencyCode = originalCurrencyCode,
     originalAmountMinor = originalAmountMinor,
     accountingTime = accountingTime?.toDomain(),
+    sourceExpensePublicId = sourceExpensePublicId,
+    sourceExpenseRequiresReview = sourceExpenseRequiresReview,
 )
 
 /** The NLS-captured repayment as a create-request body (home-currency only; §杠杆③). */

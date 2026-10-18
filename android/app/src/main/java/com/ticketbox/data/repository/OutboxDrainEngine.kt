@@ -139,6 +139,7 @@ class OutboxDrainEngine(
             PendingMutationType.CreateExpense,
             PendingMutationType.AcceptBillSplitInvitation,
             PendingMutationType.CreateExpenseOffset,
+            PendingMutationType.ConfirmRepaymentDraft,
             PendingMutationType.PatchExpense,
             PendingMutationType.CorrectExpense,
             PendingMutationType.CreateIncomePlan,

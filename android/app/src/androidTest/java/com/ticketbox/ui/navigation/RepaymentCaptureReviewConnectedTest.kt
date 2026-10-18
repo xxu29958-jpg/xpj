@@ -179,7 +179,8 @@ class RepaymentCaptureReviewConnectedTest {
     private fun drain() = runBlocking {
         val adapters = OutboxAdapterGraph()
         OutboxDrainEngine(harness.fixture.outbox, listOf(ConfirmRepaymentDraftDispatcher(
-            LedgerRequestGuard(harness.fixture.apiProvider), adapters.repaymentReviewAdapter, adapters.repaymentDraftReceiptAdapter)),
+            LedgerRequestGuard(harness.fixture.apiProvider), adapters.repaymentReviewAdapter, adapters.repaymentDraftReceiptAdapter,
+            { _, _ -> error("notification capture has no expense source") })),
             now = harness.fixture.clock::millis).drainOnce()
     }
 

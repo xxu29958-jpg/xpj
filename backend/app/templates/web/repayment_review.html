@@ -32,6 +32,10 @@
   <span class="product-status">{{ row.status_label }}</span>
   {% if row.conversion_pending %}<p class="product-amount-meta">确认时按核对后的还款日期换算为 {{ row.home_currency_code }}；未更改日期时沿用原采集时间。</p>{% endif %}
   {% if row.provenance %}<p class="product-amount-meta">{{ row.provenance }}。请核对后选择。</p>{% endif %}
+  {% if row.is_pending and row.source_expense_public_id %}
+  <p class="product-amount-meta">{% if row.source_expense_requires_review %}这份旧草稿未保留原流水的复核版本。请回到原流水重新选择“作为还款处理”，或忽略这份草稿。{% else %}确认还款时会同时冲正来源流水的消费金额；原流水、原件和历史继续保留。忽略不会改变原流水。{% endif %}</p>
+  {% if row.source_expense_id %}<a href="/web/expenses/{{ row.source_expense_id }}/edit?ledger_id={{ selected_ledger_id }}">查看来源流水</a>{% endif %}
+  {% endif %}
   {% if row.resolved_label %}<p class="product-amount-meta">处理日期：{{ row.resolved_label }}</p>{% endif %}
   {% if row.committed_debt_public_id %}<a class="product-page-summary" href="/web/debts/{{ row.committed_debt_public_id }}?ledger_id={{ selected_ledger_id }}">{{ row.linked_line }} · 查看还款事实</a>{% endif %}
 </section>

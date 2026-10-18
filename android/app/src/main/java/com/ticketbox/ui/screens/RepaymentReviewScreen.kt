@@ -99,6 +99,10 @@ private fun RepaymentReviewSource(capture: RepaymentDraft) {
             }
             Text(stringResource(R.string.repayment_draft_captured_at, capture.capturedAt.take(10)),
                 style = MaterialTheme.typography.bodySmall, color = muted)
+            if (capture.isPending && capture.sourceExpensePublicId != null) {
+                Text(stringResource(if (capture.sourceExpenseRequiresReview) R.string.repayment_review_source_recheck
+                    else R.string.repayment_review_source_reversal), style = MaterialTheme.typography.bodySmall, color = muted)
+            }
         }
     }
 }
@@ -164,7 +168,8 @@ private fun RepaymentReviewActions(state: RepaymentDraftInboxUiState, model: Rep
     AppFloatingActionBar {
         if (unsubmitted) AppPrimaryButton(text = stringResource(R.string.repayment_review_confirm),
             onClick = model.reviewEditor::submitReview, modifier = Modifier.fillMaxWidth(),
-            enabled = state.canModify && !state.isLoading && !state.review.bindingChanged && state.pendingActionDraftId == null)
+            enabled = state.canModify && !state.isLoading && !state.review.bindingChanged && state.pendingActionDraftId == null
+                && state.drafts.none { it.publicId == input?.draftPublicId && it.sourceExpenseRequiresReview })
         else if (state.review.canRetry) AppPrimaryButton(text = stringResource(R.string.repayment_review_retry),
             onClick = { model.reviewEditor.recoverReview(false) }, enabled = state.canModify, modifier = Modifier.fillMaxWidth())
         if (unsubmitted || state.review.canRetry) TextButton(onClick = model.reviewEditor::closeReview, modifier = Modifier.fillMaxWidth()) {
@@ -254,6 +259,7 @@ private fun RepaymentReviewDelivery(state: RepaymentDraftInboxUiState, model: Re
 @Composable
 private fun repaymentReviewError(error: String): String = when (error) {
     "repayment_review_connection_interrupted" -> stringResource(R.string.repayment_review_interrupted)
+    "repayment_source_refresh_pending" -> stringResource(R.string.repayment_review_source_refresh)
     "repayment_review_binding_changed" -> stringResource(R.string.debt_write_original_binding_changed)
     "repayment_review_payload_unsupported", "repayment_review_response_unverified" -> stringResource(R.string.repayment_review_unverified)
     else -> if (error.startsWith("outbox_row_expired")) stringResource(R.string.debt_write_expired) else error

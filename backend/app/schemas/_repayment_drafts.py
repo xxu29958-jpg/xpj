@@ -101,6 +101,8 @@ class RepaymentDraftResponse(BaseModel):
     suggested_debt_public_id: str | None = None
     committed_debt_public_id: str | None = None
     committed_repayment_public_id: str | None = None
+    source_expense_public_id: str | None = None
+    source_expense_requires_review: bool = False
     created_at: datetime
     resolved_at: datetime | None = None
 

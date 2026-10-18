@@ -158,6 +158,9 @@ def repayment_draft_response(
         suggested_debt_public_id=suggested_debt_public_id,
         committed_debt_public_id=draft.committed_debt_public_id,
         committed_repayment_public_id=draft.committed_repayment_public_id,
+        source_expense_public_id=draft.source_expense_public_id,
+        source_expense_requires_review=(draft.source_expense_public_id is not None
+            and draft.source_expense_row_version is None and draft.status == "pending"),
         created_at=draft.created_at,
         resolved_at=draft.resolved_at,
     )
@@ -330,6 +333,8 @@ class RepaymentDraftAuditRow:
     original_amount_minor: int | None = None
     committed_debt_public_id: str | None = None
     resolved_at: datetime | None = None
+    source_expense_public_id: str | None = None
+    source_expense_requires_review: bool = False
 
 
 def _debt_counterparty_labels(db: Session, public_ids: set[str]) -> dict[str, str | None]:
@@ -415,6 +420,9 @@ def _repayment_audit_row(draft: RepaymentDraft, suggested_id: str | None, labels
         public_id=draft.public_id,
         committed_debt_public_id=committed_id,
         resolved_at=draft.resolved_at,
+        source_expense_public_id=draft.source_expense_public_id,
+        source_expense_requires_review=(draft.source_expense_public_id is not None
+            and draft.source_expense_row_version is None and draft.status == "pending"),
         suggested_debt_public_id=suggested_id,
         # Review can correct the captured amount. Suggestions remain amount-aware;
         # the shared confirmation command checks the reviewed amount against remaining.

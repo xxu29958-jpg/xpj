@@ -45,6 +45,8 @@ data class RepaymentDraftDto(
     @param:Json(name = "original_amount_minor")
     val originalAmountMinor: Long = requireNotNull(amountCents),
     @param:Json(name = "accounting_time") val accountingTime: ExpenseAccountingTimeDto? = null,
+    @param:Json(name = "source_expense_public_id") val sourceExpensePublicId: String? = null,
+    @param:Json(name = "source_expense_requires_review") val sourceExpenseRequiresReview: Boolean = false,
 )
 
 data class RepaymentDraftListResponseDto(

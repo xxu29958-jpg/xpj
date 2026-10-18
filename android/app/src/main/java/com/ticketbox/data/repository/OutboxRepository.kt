@@ -554,7 +554,7 @@ class OutboxRepository private constructor(
         PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
         PendingMutationType.SetRecurringOccurrencePayment, PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
         PendingMutationType.CreateExpense, PendingMutationType.AcceptBillSplitInvitation, PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
-        PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
+        PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset, PendingMutationType.ConfirmRepaymentDraft)
 
 
     internal suspend fun prepareReadProtection(row: OutboxRow) {

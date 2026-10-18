@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.error_reporting import retain_handled_error
 from app.errors import AppError
+from app.ledger_scope import ledger_scoped_select
+from app.models import Expense
 from app.routes._web_accounting_time import parse_web_accounting_time
 from app.routes._web_debt_money import parse_web_debt_major_minor
 from app.routes._web_debt_repayment import require_repayment_binding
@@ -47,7 +49,7 @@ _DRAFT_ERROR_MESSAGES = {
     "debt_overpay_rejected": "本次还款超过欠款剩余，请核对金额与目标。",
     "direct_fact_requires_external": "还款捕获只能记到外部欠款。",
     "direct_fact_requires_manual": "这笔往来需要走成员确认，不能直接记入还款。",
-    "state_conflict": "这条还款捕获或欠款刚被更新过，请刷新后重新确认。",
+    "state_conflict": "还款捕获、来源流水或欠款已变化，请重新核对；来源流水变化时请从原流水重新发起。",
     "idempotency_key_required": "页面凭据缺失，请刷新后重新提交。",
     "idempotency_key_reused": "这个提交编号已用于其他内容，请核对原提交；当前不能认定本次处理成功。",
     "idempotency_key_in_progress": "同一笔确认正在处理中，请稍候刷新查看。",
@@ -87,10 +89,14 @@ def render_review(request: Request, db: Session, *, options, selected_id: str, p
                   rejected: bool = False, ack: dict | None = None, status_code: int = 200) -> HTMLResponse:
     scope = repayment_scope(request, db)
     row, read_error, calendar = None, "", None
+    source_expense_id = None
     try:
         rows = list_repayment_draft_audit_for_account(
             db, account_id=account_id, tenant_id=selected_id, public_id=public_id)
         row = rows[0] if rows else None
+        if row and row.source_expense_public_id:
+            source_expense_id = db.scalar(ledger_scoped_select(Expense, selected_id)
+                .where(Expense.public_id == row.source_expense_public_id).with_only_columns(Expense.id))
         if row and row.status == "pending":
             calendar = repayment_calendar(db, ledger_id=selected_id)
         if row is None:
@@ -106,6 +112,8 @@ def render_review(request: Request, db: Session, *, options, selected_id: str, p
     can_recover = _debt_write_gate(options, selected_id)
     can_create = calendar is not None and can_recover and not ack
     view = _audit_row_view(row) if row else None
+    if view is not None:
+        view["source_expense_id"] = source_expense_id
     initial = _initial_review_values(scope, selected_id, public_id, row, can_create, calendar, values)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对还款采集")
     ctx.update(row=view, read_error=read_error, currencies=supported_currency_codes(), review={
@@ -214,6 +222,8 @@ def _audit_row_view(
         "status_tone": _STATUS_TONE.get(row.status, ""),
         "is_pending": row.status == "pending",
         "committed_debt_public_id": row.committed_debt_public_id,
+        "source_expense_public_id": row.source_expense_public_id,
+        "source_expense_requires_review": row.source_expense_requires_review,
         "resolved_label": _day_label(row.resolved_at),
     }
     if row.status == "confirmed":
