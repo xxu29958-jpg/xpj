@@ -32,12 +32,12 @@ internal fun FundsViewModel.quotePayerAmount(input: FundsInput) {
         if (!current.acceptsPayerQuote(input, latest)) return@launch
         val amount = result.getOrNull()?.convertedAmount
         if (amount == null) {
-            mutable.value = current.copy(error = result.exceptionOrNull()?.toUiText()
+            mutable.value = current.copy(error = current.error ?: result.exceptionOrNull()?.toUiText()
                 ?: UiText.res(R.string.advice_reference_missing_date, input.date))
         } else {
             val updated = latest.copy(paid = amount)
             suggestedPayerAmount = amount
-            mutable.value = current.copy(task = current.task.copy(input = updated), error = null)
+            mutable.value = current.copy(task = current.task.copy(input = updated))
             save(updated)
         }
     }

@@ -110,15 +110,18 @@
       paid.dispatchEvent(new Event("input", {bubbles: true}));
     } catch (_) {
       if (controller.signal.aborted || basis !== quoteBasis() || paid.readOnly || paid.value !== "") return;
-      const status = form.querySelector("[data-funds-draft-status]");
-      if (status) { status.hidden = false; status.textContent = "暂时无法读取或获取参考汇率。原操作已保留，可重试；持续失败时请在本机管理检查来源。"; }
+      paid.setCustomValidity("暂时无法读取或获取参考汇率。");
     }
   }
   for (const name of ["principal_amount", "occurred_on"]) field(name)?.addEventListener("input", () => {
     if (!value("payer_amount") || value("payer_amount") === suggestedPayerAmount) quotePayerAmount();
   });
   field("payer_amount")?.addEventListener("input", () => {
-    if (value("payer_amount") && value("payer_amount") !== suggestedPayerAmount) quoteController?.abort();
+    field("payer_amount").setCustomValidity("");
+    if (value("payer_amount") !== suggestedPayerAmount) {
+      quoteController?.abort();
+      suggestedPayerAmount = null;
+    }
   });
   window.addEventListener("pagehide", () => quoteController?.abort());
 
