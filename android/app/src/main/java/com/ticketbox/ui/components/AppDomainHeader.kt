@@ -46,7 +46,8 @@ fun AppDomainHeader(
 ) {
     val visuals = LocalThemeVisuals.current
     val canvas = LocalCanvasPhotoState.current
-    val photoWindow = canvas?.photoActive == true
+    // Reserved from the configured photo, not its decode, so the page does not shift when the photo appears.
+    val photoWindow = canvas?.photoWindow == true
     DisposableEffect(canvas) { onDispose { canvas?.headerBandPx = 0 } }
     SideEffect { if (!photoWindow) canvas?.headerBandPx = 0 }
     Surface(

@@ -1,7 +1,5 @@
 package com.ticketbox.ui.appearance.background
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -12,7 +10,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -50,12 +47,9 @@ fun ImmersiveBackgroundScaffold(
 ) {
     val photo = rememberBackgroundImage(customPhotoPath(backgroundSettings))
     val canvasState = remember { CanvasPhotoState() }
-    SideEffect {
-        canvasState.photoPath = photo?.path
-        canvasState.immersion = backgroundSettings.immersionMode
-    }
+    SideEffect { canvasState.publish(photo, backgroundSettings.immersionMode) }
     Box(modifier = Modifier.fillMaxSize()) {
-        BackgroundCanvas(backgroundSettings, currentSkin, surfaceRole, photo, CanvasLayout(canvasText, canvasState.headerBandPx))
+        BackgroundCanvas(backgroundSettings, currentSkin, surfaceRole, photo.photo, CanvasLayout(canvasText, canvasState.headerBandPx))
         CompositionLocalProvider(LocalCanvasPhotoState provides canvasState) { content() }
     }
 }
@@ -73,17 +67,28 @@ fun BackgroundPreviewStage(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit = {},
 ) {
-    val photo = rememberBackgroundImage(customPhotoPath(settings))
+    BackgroundPreviewStage(PreviewBackground(settings, rememberBackgroundImage(customPhotoPath(settings))), skin, role, modifier, content)
+}
+
+/** Draft settings with the photo a caller already decoded for them (the editor), so one file is decoded and analysed once. */
+internal class PreviewBackground(val settings: BackgroundSettings, val photo: BackgroundPhoto)
+
+@Composable
+internal fun BackgroundPreviewStage(
+    background: PreviewBackground,
+    skin: AppSkin,
+    role: SurfaceRole,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit = {},
+) {
+    val settings = background.settings
     // The stage publishes the same canvas state as the shell, so a domain header previewed inside
     // it opens the same photo window and is measured the same way.
     val canvasState = remember { CanvasPhotoState() }
-    SideEffect {
-        canvasState.photoPath = photo?.path
-        canvasState.immersion = settings.immersionMode
-    }
+    SideEffect { canvasState.publish(background.photo, settings.immersionMode) }
     Box(modifier = modifier) {
         Box(Modifier.matchParentSize()) {
-            BackgroundCanvas(settings, skin, role, photo, CanvasLayout(headerBandPx = canvasState.headerBandPx))
+            BackgroundCanvas(settings, skin, role, background.photo.photo, CanvasLayout(headerBandPx = canvasState.headerBandPx))
         }
         CompositionLocalProvider(LocalCanvasPhotoState provides canvasState) { content() }
     }
@@ -140,12 +145,8 @@ internal fun TicketboxBackgroundLayer(
     skin: AppSkin,
     surfaceRole: SurfaceRole,
     photo: DecodedBackground?,
+    depthScale: () -> Float,
 ) {
-    val depthScale by animateFloatAsState(
-        targetValue = if (settings.enableParallax && !settings.reduceMotion) parallaxDepthScale(surfaceRole) else 1f,
-        animationSpec = tween(durationMillis = if (settings.reduceMotion) 0 else 220),
-        label = "backgroundDepthScale",
-    )
     Box(modifier = Modifier.fillMaxSize()) {
         TicketboxAtmosphereBackground(skin = skin)
         when (settings.source) {
@@ -155,26 +156,16 @@ internal fun TicketboxBackgroundLayer(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            scaleX = depthScale
-                            scaleY = depthScale
+                            scaleX = depthScale()
+                            scaleY = depthScale()
                         }
                         .alpha(resolveBackgroundAlpha(settings.immersionMode, surfaceRole))
                         .background(Brush.verticalGradient(preset.gradientColors.map { color -> Color(color) })),
                 )
             }
-            BackgroundSource.CustomImage -> photo?.let { PhotoLayer(it, settings.transform) { depthScale } }
+            BackgroundSource.CustomImage -> photo?.let { PhotoLayer(it, settings.transform, depthScale) }
         }
     }
-}
-
-private fun parallaxDepthScale(role: SurfaceRole): Float = when (role) {
-    SurfaceRole.Today -> 1.04f
-    SurfaceRole.Pending -> 1.05f
-    SurfaceRole.Stats -> 1.045f
-    SurfaceRole.Ledger -> 1.015f
-    SurfaceRole.Edit -> 1.015f
-    SurfaceRole.Settings -> 1.01f
-    SurfaceRole.Auth -> 1.02f
 }
 
 fun resolveBackgroundAlpha(

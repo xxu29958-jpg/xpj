@@ -20,38 +20,57 @@ enum class CanvasTextDemand {
 }
 
 /**
- * A small sRGB sample grid of the decoded photo. Blending in the renderer happens on encoded sRGB
- * channels, so the grid keeps them as-is and luminance is only linearised for the contrast check.
+ * A small sRGB grid of the decoded photo. Each cell keeps the pixels that are hardest for text in
+ * that cell — its darkest and its lightest — taken from every pixel it covers, so a fine texture
+ * cannot slip between samples. Blending in the renderer happens on encoded sRGB channels, so the
+ * grid keeps them as-is and luminance is only linearised for the contrast check.
  */
 class BackgroundTonalProfile(
     val columns: Int,
     val rows: Int,
     private val rgb: FloatArray,
+    val samplesPerCell: Int = 1,
 ) {
     init {
-        require(columns > 0 && rows > 0 && rgb.size == columns * rows * 3) { "Profile grid does not match its size" }
+        require(columns > 0 && rows > 0 && samplesPerCell > 0 && rgb.size == columns * rows * samplesPerCell * 3) {
+            "Profile grid does not match its size"
+        }
     }
 
-    fun red(index: Int): Float = rgb[index * 3]
-    fun green(index: Int): Float = rgb[index * 3 + 1]
-    fun blue(index: Int): Float = rgb[index * 3 + 2]
+    fun red(sample: Int): Float = rgb[sample * 3]
+    fun green(sample: Int): Float = rgb[sample * 3 + 1]
+    fun blue(sample: Int): Float = rgb[sample * 3 + 2]
 
     companion object {
-        /** Builds a profile from packed ARGB pixels (for example a scaled-down bitmap). */
-        fun fromArgb(columns: Int, rows: Int, pixels: IntArray): BackgroundTonalProfile {
-            val rgb = FloatArray(columns * rows * 3)
+        /** One sample per cell from packed ARGB pixels. */
+        fun fromArgb(columns: Int, rows: Int, pixels: IntArray): BackgroundTonalProfile =
+            BackgroundTonalProfile(columns, rows, packedRgb(pixels))
+
+        /** The darkest and lightest pixel of every cell, both kept as samples of that cell. */
+        fun fromCellExtremes(columns: Int, rows: Int, darkest: IntArray, lightest: IntArray): BackgroundTonalProfile {
+            require(darkest.size == columns * rows && lightest.size == darkest.size) { "Extremes do not match the grid" }
+            val interleaved = IntArray(darkest.size * 2) { if (it % 2 == 0) darkest[it / 2] else lightest[it / 2] }
+            return BackgroundTonalProfile(columns, rows, packedRgb(interleaved), samplesPerCell = 2)
+        }
+
+        private fun packedRgb(pixels: IntArray): FloatArray {
+            val rgb = FloatArray(pixels.size * 3)
             pixels.forEachIndexed { index, pixel ->
                 rgb[index * 3] = ((pixel shr 16) and 0xFF) / 255f
                 rgb[index * 3 + 1] = ((pixel shr 8) and 0xFF) / 255f
                 rgb[index * 3 + 2] = (pixel and 0xFF) / 255f
             }
-            return BackgroundTonalProfile(columns, rows, rgb)
+            return rgb
         }
     }
 }
 
-/** Which part of the decoded photo a viewport shows under a transform. */
-data class PhotoFrame(val image: IntSize, val viewport: IntSize, val transform: BackgroundTransform)
+/**
+ * Which part of the decoded photo a viewport shows under a transform. [depthScale] is the parallax
+ * zoom the photo layer applies around the viewport centre on top of the transform; it enlarges the
+ * photo without widening the pan range, exactly as the layer draws it.
+ */
+data class PhotoFrame(val image: IntSize, val viewport: IntSize, val transform: BackgroundTransform, val depthScale: Float = 1f)
 
 /** Contrast target: every listed text colour the page leaves on the canvas must reach [ratio]. */
 data class CanvasTextTarget(val texts: List<Color>, val ratio: Float)
@@ -60,18 +79,20 @@ object BackgroundReadability {
     const val BAND_COUNT = 6
 
     /** Ignore the rarest specks (antialiasing, tiny highlights) instead of veiling the whole page for them. */
-    private const val COVERED_SHARE = 0.97f
+    private const val COVERED_PERCENT = 97
     private const val SEARCH_STEPS = 10
 
-    /** Per-sample minimum veil alpha for [target] text; computed once per photo, veil and target. */
+    /** Per-cell minimum veil alpha for [target] text, for the hardest sample in the cell; computed once per photo, veil and target. */
     fun sampleNeeds(profile: BackgroundTonalProfile, veil: Color, target: CanvasTextTarget): FloatArray {
         val textLuminances = target.texts.map(::relativeLuminance)
-        return FloatArray(profile.columns * profile.rows) { index -> veilFor(profile, index, veil, textLuminances, target.ratio) }
+        return FloatArray(profile.columns * profile.rows) { cell ->
+            (0 until profile.samplesPerCell).maxOf { veilFor(profile, cell * profile.samplesPerCell + it, veil, textLuminances, target.ratio) }
+        }
     }
 
     /**
-     * Minimum veil alpha per horizontal band of the viewport, covering [COVERED_SHARE] of the
-     * photo samples that the current transform actually shows in that band.
+     * Minimum veil alpha per horizontal band of the viewport, covering [COVERED_PERCENT] of the
+     * photo cells that the current transform actually shows in that band.
      */
     fun bandNeeds(needs: FloatArray, profile: BackgroundTonalProfile, frame: PhotoFrame): FloatArray =
         FloatArray(BAND_COUNT) { band ->
@@ -88,7 +109,7 @@ object BackgroundReadability {
         val (image, viewport, transform) = frame
         if (image.width <= 0 || image.height <= 0 || viewport.width <= 0 || viewport.height <= 0 || rows.isEmpty()) return 0f
         val band = IntSize(viewport.width, rows.last - rows.first + 1)
-        val total = BackgroundTransformGeometry.cropBaseScale(viewport, image) * transform.scale
+        val total = BackgroundTransformGeometry.cropBaseScale(viewport, image) * transform.scale * frame.depthScale
         val shift = BackgroundTransformGeometry.maxTranslation(viewport, image, transform)
         val centerX = viewport.width / 2f - transform.offsetX * shift.x
         val centerY = viewport.height / 2f - transform.offsetY * shift.y
@@ -104,8 +125,11 @@ object BackgroundReadability {
             for (c in left until right) visible[cursor++] = needs[r * profile.columns + c]
         }
         visible.sort()
-        return visible[((visible.size - 1) * COVERED_SHARE).toInt()]
+        return visible[coveredIndex(visible.size)]
     }
+
+    /** Index of the smallest value that at least [COVERED_PERCENT] of [count] sorted values do not exceed. */
+    internal fun coveredIndex(count: Int): Int = ((count * COVERED_PERCENT + 99) / 100 - 1).coerceIn(0, count - 1)
 
     /** Smallest veil alpha that lifts one photo sample to the contrast ratio against the text colour. */
     private fun veilFor(profile: BackgroundTonalProfile, index: Int, veil: Color, textLuminances: List<Float>, ratio: Float): Float {

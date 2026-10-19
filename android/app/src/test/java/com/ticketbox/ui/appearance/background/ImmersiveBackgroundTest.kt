@@ -93,6 +93,50 @@ class ImmersiveBackgroundTest {
         assertTrue(whole > 0.3f, "The whole viewport includes the dark half: $whole")
     }
 
+    @Test
+    fun coverageSelectsBySampleCountEvenForTinyBands() {
+        assertEquals(0, BackgroundReadability.coveredIndex(1))
+        // Two visible cells: covering 97% of them means covering both.
+        assertEquals(1, BackgroundReadability.coveredIndex(2))
+        assertEquals(96, BackgroundReadability.coveredIndex(100))
+        assertEquals(32, BackgroundReadability.coveredIndex(33))
+        // A band showing one pale and one black cell is veiled for the black one.
+        val profile = BackgroundTonalProfile.fromArgb(2, 1, intArrayOf(0xFFF6F2EA.toInt(), 0xFF000000.toInt()))
+        val needs = BackgroundReadability.sampleNeeds(profile, canvasVeilColor(AppSkin.Paper),
+            canvasTextTarget(AppSkin.Paper, CanvasTextDemand.Body))
+        val size = IntSize(200, 100)
+        assertEquals(needs.max(), BackgroundReadability.regionNeed(needs, profile, PhotoFrame(size, size, BackgroundTransform()), 0 until 100))
+    }
+
+    @Test
+    fun samplingFollowsTheParallaxZoomTheLayerDraws() {
+        // Dark top quarter over a pale photo; the parallax zoom pushes the dark rows above the viewport.
+        val columns = 2
+        val rows = 8
+        val pixels = IntArray(columns * rows) { index -> if (index / columns < 2) 0xFF000000.toInt() else 0xFFF6F2EA.toInt() }
+        val profile = BackgroundTonalProfile.fromArgb(columns, rows, pixels)
+        val needs = BackgroundReadability.sampleNeeds(profile, canvasVeilColor(AppSkin.Paper),
+            canvasTextTarget(AppSkin.Paper, CanvasTextDemand.Body))
+        val size = IntSize(400, 800)
+        val flat = BackgroundReadability.regionNeed(needs, profile, PhotoFrame(size, size, BackgroundTransform()), 0 until 130)
+        val zoomed = BackgroundReadability.regionNeed(needs, profile, PhotoFrame(size, size, BackgroundTransform(), depthScale = 2f), 0 until 130)
+        assertTrue(flat > 0.8f, "Without zoom the top band shows the dark rows: $flat")
+        assertEquals(0f, zoomed, "Zoomed, the top band shows only pale rows")
+    }
+
+    @Test
+    fun cellExtremesKeepDarkStripesThatOneSampleWouldMiss() {
+        val veil = canvasVeilColor(AppSkin.Paper)
+        val target = canvasTextTarget(AppSkin.Paper, CanvasTextDemand.Body)
+        val pale = 0xFFF6F2EA.toInt()
+        val lightOnly = BackgroundReadability.sampleNeeds(BackgroundTonalProfile.fromArgb(1, 1, intArrayOf(pale)), veil, target).single()
+        val striped = BackgroundReadability.sampleNeeds(
+            BackgroundTonalProfile.fromCellExtremes(1, 1, darkest = intArrayOf(0xFF000000.toInt()), lightest = intArrayOf(pale)), veil, target,
+        ).single()
+        assertEquals(0f, lightOnly)
+        assertTrue(striped > 0.8f, "A cell with dark stripes is protected for them: $striped")
+    }
+
     private fun solid(pixel: Int) = BackgroundTonalProfile.fromArgb(1, 1, intArrayOf(pixel))
 
     private fun contrastOver(pixel: Int, veil: Color, alpha: Float, text: Color): Float {

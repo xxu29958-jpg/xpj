@@ -30,19 +30,30 @@ internal class DecodedBackground(
 }
 
 /**
- * Keeps the previous photo on screen while a replacement decodes, so applying a new background
- * does not flash the theme canvas; clearing the path clears the photo at once.
+ * A configured photo as the shell sees it. [photo] is what can be drawn now (the previous photo
+ * stays while a replacement decodes, so applying one does not flash the theme canvas).
+ * [reservesWindow] is true from the moment a photo is configured until its decode fails, so page
+ * geometry that depends on the photo is laid out once instead of shifting when decoding ends.
  */
+internal class BackgroundPhoto(val photo: DecodedBackground?, val reservesWindow: Boolean)
+
 @Composable
-internal fun rememberBackgroundImage(path: String?): DecodedBackground? {
+internal fun rememberBackgroundImage(path: String?): BackgroundPhoto {
     val cleanPath = path?.takeIf { it.isNotBlank() }
     var decoded by remember { mutableStateOf<Pair<String, DecodedBackground?>?>(null) }
     LaunchedEffect(cleanPath) {
-        if (cleanPath == null || decoded?.first == cleanPath) return@LaunchedEffect
+        if (cleanPath == null) {
+            // Clearing the background releases the bitmap, not just hides it.
+            decoded = null
+            return@LaunchedEffect
+        }
+        if (decoded?.first == cleanPath) return@LaunchedEffect
         val result = withContext(Dispatchers.IO) { decodeBackgroundImage(cleanPath) }
         decoded = cleanPath to result
     }
-    return if (cleanPath == null) null else decoded?.second
+    val current = decoded
+    val failed = current != null && current.first == cleanPath && current.second == null
+    return BackgroundPhoto(photo = if (cleanPath == null) null else current?.second, reservesWindow = cleanPath != null && !failed)
 }
 
 private fun decodeBackgroundImage(path: String): DecodedBackground? {
@@ -74,19 +85,39 @@ private fun decodeBackgroundImage(path: String): DecodedBackground? {
 }
 
 /**
- * Nearest-neighbour samples keep the real distribution of light and dark pixels; an averaged
- * thumbnail would turn a busy texture into flat grey and under-protect the text above it.
+ * Every decoded pixel is read once and each grid cell keeps its darkest and lightest pixel. An
+ * averaged thumbnail would turn a busy texture into flat grey, and a single nearest-neighbour sample
+ * per cell can land only on the light stripes of a fine pattern; both would under-protect the text.
  */
 private fun tonalProfile(bitmap: Bitmap): BackgroundTonalProfile {
     val longest = maxOf(bitmap.width, bitmap.height)
     val columns = (bitmap.width * PROFILE_SIDE / longest).coerceAtLeast(1)
     val rows = (bitmap.height * PROFILE_SIDE / longest).coerceAtLeast(1)
-    val small = Bitmap.createScaledBitmap(bitmap, columns, rows, false)
-    val pixels = IntArray(columns * rows)
-    small.getPixels(pixels, 0, columns, 0, 0, columns, rows)
-    if (small !== bitmap) small.recycle()
-    return BackgroundTonalProfile.fromArgb(columns, rows, pixels)
+    val darkest = IntArray(columns * rows)
+    val lightest = IntArray(columns * rows)
+    val low = FloatArray(columns * rows) { Float.MAX_VALUE }
+    val high = FloatArray(columns * rows) { -1f }
+    val line = IntArray(bitmap.width)
+    for (y in 0 until bitmap.height) {
+        bitmap.getPixels(line, 0, bitmap.width, 0, y, bitmap.width, 1)
+        val rowStart = y * rows / bitmap.height * columns
+        for (x in 0 until bitmap.width) {
+            val pixel = line[x]
+            val cell = rowStart + x * columns / bitmap.width
+            val luminance = encodedLuminance(pixel)
+            if (luminance < low[cell]) { low[cell] = luminance; darkest[cell] = pixel }
+            if (luminance > high[cell]) { high[cell] = luminance; lightest[cell] = pixel }
+        }
+    }
+    return BackgroundTonalProfile.fromCellExtremes(columns, rows, darkest, lightest)
 }
+
+/** Relative luminance for ranking pixels within a cell; the contrast check itself stays exact. */
+private fun encodedLuminance(pixel: Int): Float =
+    0.2126f * LinearChannel[(pixel shr 16) and 0xFF] + 0.7152f * LinearChannel[(pixel shr 8) and 0xFF] +
+        0.0722f * LinearChannel[pixel and 0xFF]
+
+private val LinearChannel = FloatArray(256) { BackgroundReadability.relativeLuminance(it / 255f, 0f, 0f) / 0.2126f }
 
 /**
  * 手机相机照片普遍带 EXIF 方向标记；BitmapFactory 不应用它，直接渲染会横向 /

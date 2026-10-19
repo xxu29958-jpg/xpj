@@ -45,7 +45,7 @@ class BackgroundCompositionRenderTest {
             compose.setContent {
                 TicketboxTheme(skin = AppSkin.Paper) {
                     Box(Modifier.size(100.dp, 200.dp).testTag("background")) {
-                        TicketboxBackgroundLayer(settings, AppSkin.Paper, SurfaceRole.Pending, rememberBackgroundImage(file.absolutePath))
+                        TicketboxBackgroundLayer(settings, AppSkin.Paper, SurfaceRole.Pending, rememberBackgroundImage(file.absolutePath).photo) { 1f }
                     }
                 }
             }
