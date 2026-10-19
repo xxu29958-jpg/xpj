@@ -366,7 +366,7 @@ class RecurringReviewHandler(RecoveryHandler):
         return self.reply(json.dumps(result), "application/json")
 
 
-def _run_browser(tmp_path, handler, expression, query=""):
+def _run_browser(tmp_path, handler, expression, query="", *, result_timeout=10.0):
     HITS.clear()
     MISSING.clear()
     POSTS.clear()
@@ -376,7 +376,7 @@ def _run_browser(tmp_path, handler, expression, query=""):
     try:
         return _runtime._edge_cdp().evaluate_page(_runtime._discover_edge(), profile=tmp_path / "planning-edge",
             prepare_url=lambda _: f"http://127.0.0.1:{server.server_port}/{query}", width=1024, height=768,
-            expression=expression)
+            expression=expression, result_timeout=result_timeout)
     finally:
         server.shutdown()
         server.server_close()
@@ -396,7 +396,9 @@ def test_four_planning_entries_retain_original_inputs_and_command_identity_after
 
 @pytest.mark.parametrize("group", ["planning", "debt"])
 def test_planning_and_reference_entries_replay_original_body_after_unknown_reply_and_reload(tmp_path: Path, group: str):
-    result = _run_browser(tmp_path, RecoveryHandler, "window.__planningRecovery || undefined", "?group=" + group)
+    # Planning runs 17 complete save/reload/retry journeys, not one layout read.
+    result = _run_browser(tmp_path, RecoveryHandler, "window.__planningRecovery || undefined", "?group=" + group,
+        result_timeout=30.0 if group == "planning" else 10.0)
     (tmp_path / "planning-recovery-result.json").write_text(json.dumps({"browser": result, "posts": POSTS},
         ensure_ascii=False, indent=2), encoding="utf-8")
     if result.get("error"):
