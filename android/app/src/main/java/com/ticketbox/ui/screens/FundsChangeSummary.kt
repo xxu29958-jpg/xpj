@@ -63,8 +63,9 @@ private fun createSentence(input: FundsInput): String {
 @Composable
 private fun repaySentence(input: FundsInput): String? {
     val principal = input.principal.present()?.takeIf { input.payerId.isNotBlank() } ?: return null
+    val paid = input.paid.present() ?: if (input.payerCurrency == input.currency) principal else "—"
     val parts = listOfNotNull(
-        stringResource(R.string.funds_preview_part_principal, amount(input.paid.present() ?: principal, input.payerCurrency)),
+        stringResource(R.string.funds_preview_part_principal, amount(paid, input.payerCurrency)),
         input.newFee.present()?.let { stringResource(R.string.funds_preview_part_new_fee, amount(it, input.payerCurrency)) },
         input.payerFeeAmount.present()?.let { stringResource(R.string.funds_preview_part_recorded_fee, amount(it, input.payerCurrency)) },
     )
