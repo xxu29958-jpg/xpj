@@ -1,4 +1,5 @@
 """Publish reviewed funding in the same transaction as its one Expense."""
+from datetime import date
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -119,7 +120,10 @@ def _review_funding_accounts(db: Session, expense: Expense, parts: list[FundingP
     return accounts, debts
 
 
-def reverse_expense_funding(db, *, expense, actor_account_id, reason, occurred_on, offset_id=None):
+def reverse_expense_funding(
+    db: Session, *, expense: Expense, actor_account_id: int | None, reason: str,
+    occurred_on: date, offset_id: int | None = None,
+) -> None:
     facts = list(db.scalars(select(ExpenseFunding).where(ExpenseFunding.expense_id == expense.id,
         ExpenseFunding.voided_at.is_(None))))
     if not facts:

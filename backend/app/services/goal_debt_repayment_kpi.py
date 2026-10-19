@@ -283,7 +283,10 @@ def external_payoff_kpi(
     )
 
 
-def _credit_payoff_kpi(db, debts, readings, target_date, now):
+def _credit_payoff_kpi(
+    db: Session, debts: list[Debt], readings: dict[int, CreditGoalReading],
+    target_date: date | None, now: datetime,
+) -> ExternalPayoffKpi:
     dates, needs_velocity = [], False
     has_velocity = any(debt.id not in readings and debt.debt_kind not in _NO_PROJECTION_KINDS
         and compute_remaining(db, debt) > 0 for debt in debts)
