@@ -1,5 +1,18 @@
 (function (window, document) {
   "use strict";
+  // Rare: an old bill already inside the account's opening balance. Folded unless already chosen.
+  function openingOption(part, save) {
+    const included = document.createElement("input"); included.type = "checkbox"; included.checked = part.included_in_opening === true;
+    included.onchange = () => { part.included_in_opening = included.checked; save(); };
+    const older = document.createElement("details"); older.className = "product-disclosure";
+    older.open = included.checked;
+    const summary = document.createElement("summary"); summary.textContent = "这笔消费早于账户期初？";
+    const check = document.createElement("label"); check.className = "product-check";
+    check.append(included, document.createTextNode("已纳入该账户期初，不再扣款"));
+    older.append(summary, check);
+    return older;
+  }
+
   function mount(root) {
   root.querySelectorAll("[data-funding-editor]").forEach(editor => {
     if (editor.dataset.fundingMounted) return;
@@ -8,6 +21,9 @@
     const accounts = JSON.parse(editor.dataset.accounts), holder = editor.querySelector("[data-funding-rows]");
     const refund = editor.dataset.refund === "true";
     const currency = () => (form.elements.namedItem("currency_code") || form.elements.namedItem("original_currency_code") || form.elements.namedItem("original_currency")).value;
+    // The amount this editor splits: the refund being recorded, or the bill being paid.
+    const total = () => (refund ? form.elements.namedItem("original_amount")
+      : form.elements.namedItem("amount_major") || form.elements.namedItem("amount_yuan"))?.value.trim() || "";
     let parts = [];
     let renderedRaw = null;
     const save = () => { raw.value = JSON.stringify(parts); renderedRaw = raw.value; raw.dispatchEvent(new Event("input", {bubbles: true})); };
@@ -22,6 +38,8 @@
       const selected = accounts.find(a => a.public_id === choice.value);
       Object.assign(part, {account_public_id: choice.value, account_row_version: selected?.row_version || 0,
         account_currency: selected?.currency_code || "", account_name: selected?.name || "", expense_currency: currency()});
+      // One payer (or one refund destination) usually takes the whole amount: start from it, still editable.
+      if (parts.length === 1 && !part.expense_amount && total()) part.expense_amount = total();
       if (part.account_currency === part.expense_currency) part.account_amount = part.expense_amount;
       save(); render();
     });
@@ -50,11 +68,7 @@
             save();
           }); label(text, input);
         }
-        if (!refund) {
-          const included = document.createElement("input"); included.type = "checkbox"; included.checked = part.included_in_opening === true;
-          included.onchange = () => { part.included_in_opening = included.checked; save(); };
-          label("这笔旧消费已纳入该账户期初，不再扣款", included);
-        }
+        if (!refund) row.append(openingOption(part, save));
         const remove = document.createElement("button"); remove.type = "button"; remove.className = "product-button product-button--quiet";
         remove.textContent = refund ? "移除这个去向" : "移除这项付款"; remove.onclick = () => { parts = parts.filter(p => p !== part); save(); render(); };
         row.append(remove); holder.append(row);

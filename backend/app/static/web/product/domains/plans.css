@@ -113,3 +113,7 @@ body:has(.budget-editor[open]) .budget-layout { display: block; }
 .income-form:has([name="frequency"] option[value="monthly"]:checked) [data-income-one-time] {
     display: none;
 }
+
+/* 信封页的月份切换只是读取, 与保存动作分开, 不吸底。 */
+.envelope-month { align-items: flex-end; }
+.envelope-month > .product-field { flex: 0 1 16rem; }

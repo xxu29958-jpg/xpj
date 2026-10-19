@@ -104,6 +104,17 @@ main details:not([class]) > summary:not([class])::after { content: "›"; margin
 .product-disclosure[open] > summary::after,
 main details:not([class])[open] > summary:not([class])::after { rotate: 90deg; }
 .product-disclosure--danger > summary { color: var(--state-danger-fg); }
+/* 选填资料: 一行摘要写当前取值, 点开才露出字段。服务端渲染为展开, 无脚本时字段照常可填,
+   必填项始终可聚焦; 脚本按需收起, 校验失败时自动展开。 */
+.product-options { grid-column: 1 / -1; border-block-start: 1px solid var(--border-card); }
+.product-options > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); min-block-size: var(--target-min); padding-block: var(--space-4); cursor: pointer; font-size: var(--type-body-size); font-weight: var(--type-subtitle-weight); list-style: none; }
+.product-options > summary::-webkit-details-marker { display: none; }
+.product-options > summary::after { content: "›"; margin-inline-start: auto; color: var(--text-meta); }
+.product-options[open] > summary::after { rotate: 90deg; }
+.product-options > summary span { color: var(--text-muted); font-size: var(--type-caption-size); font-weight: var(--type-body-weight); line-height: 1.6; }
+.product-options > .product-form-grid { padding-block-end: var(--space-5); }
+/* 表单网格里的整段内容 (说明、分组、改动预览) 占满两栏, 不挤进半栏。 */
+.product-form-grid > :is(.product-section, .product-feedback, p) { grid-column: 1 / -1; }
 .product-disclosure[open] > summary { margin-block-end: var(--space-2); }
 
 /* W1: commandbar 去卡片相框 — 筛选条是内容区的一段节奏, 不是被框住的表单。 */
