@@ -45,10 +45,15 @@ def claim_funds(db: Session, auth: AuthContext, payload: BaseModel, key: str, op
         expected_row_version=getattr(payload, "expected_row_version", None))
 
 
-def replay_funds(db, auth, key):
+def replay_funds(db: Session, auth: AuthContext, key: str) -> FinancialAccountView:
     row = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.tenant_id == auth.tenant_id,
         ApiIdempotencyKey.idempotency_key == key))
-    return FinancialAccountView.model_validate(row.response_body)
+    # Acceptance survives access changes, but a retained receipt cannot bypass
+    # the current account visibility used by ordinary reads.
+    get_account(db, ledger_id=auth.ledger_id, actor_account_id=auth.account_id, public_id=row.resource_id)
+    result = FinancialAccountView.model_validate(row.response_body)
+    result.movements = [movement.model_copy(update={"correction_parts": []}) for movement in result.movements]
+    return result
 
 
 def funds_request_is_unpublished(db, auth, key):

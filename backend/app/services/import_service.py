@@ -20,8 +20,8 @@ Accepted columns (case-insensitive, BOM-aware):
   metadata. Ordinary imported expenses still use the backend FX resolver.
   Native event rows retain their frozen quote as imported evidence for review.
 
-Unknown columns are ignored. Each row is validated independently; rows
-with errors are reported in the preview but skipped on import.
+Unrelated extra columns are ignored. Explicit funds fields are retained and
+refused, never silently converted to consumption. Invalid rows stay in the preview.
 """
 
 from __future__ import annotations

@@ -87,7 +87,7 @@
 
   {% if goal.needs_review %}
   <div class="product-feedback product-feedback--warning" role="status">
-    <span><strong>关联欠款需要核对</strong><br>{{ goal.review_body }}</span>
+    <span><strong>{{ goal.review_title }}</strong><br>{{ goal.review_body }}</span>
   </div>
   {% if can_write %}
   <div class="product-form-actions">

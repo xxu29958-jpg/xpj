@@ -236,7 +236,6 @@ def _debt_goal_view(goal: GoalResponse) -> dict:
     """一个还债目标的渲染视图。total_count==0(全作废) 短路：只显 all_voided 文案 + 作废 link 行。"""
     evaluation = goal.debt_repayment
     counted = _counted_links(evaluation)
-    unavailable = any(link.status == "unavailable" for link in counted)
     composition = _goal_composition(counted)
     cleared = sum(1 for link in evaluation.linked_debts if link.status == "cleared")
     total = len(counted)
@@ -269,26 +268,36 @@ def _debt_goal_view(goal: GoalResponse) -> dict:
         },
     }
     view["can_set_target_date"] = composition == _COMPOSITION_EXTERNAL and not view["is_archived"]
-    view["can_acknowledge_review"] = (
-        evaluation.needs_review and bool(evaluation.voided_debt_public_ids) and not unavailable
-        and evaluation.evaluation_state == "achieved" and not view["is_archived"]
-    )
-    view["can_remove_voided"] = (
-        bool(evaluation.voided_debt_public_ids) and not unavailable and bool(view["non_voided_debt_ids"]) and not view["is_archived"]
-    )
-    if evaluation.needs_review:
-        if unavailable:
-            view["review_body"] = "部分信用账户不再共享，或余额/汇率待核对。请先处理账户或调整关联；不会按零余额计为完成。"
-        elif evaluation.evaluation_state == "achieved":
-            view["review_body"] = _GOAL_REVIEW_ACHIEVED
-        elif view["non_voided_debt_ids"]:
-            view["review_body"] = _GOAL_REVIEW_NOT_EVALUABLE
-        else:
-            view["review_body"] = _GOAL_REVIEW_ALL_VOIDED
+    view.update(_goal_review_view(evaluation, is_archived=view["is_archived"]))
     if total == 0:
         return view
     view["headline"] = _plan_headline(composition, cleared, total, remaining)
     view["fraction_percent"] = int(round(cleared * 100 / total))
+    view["amount_line"] = _goal_amount_line(counted, composition, remaining)
+    if composition == _COMPOSITION_EXTERNAL:
+        view["kpi"] = _external_kpi_view(evaluation)
+    return view
+
+
+def _goal_review_view(evaluation, *, is_archived: bool) -> dict:
+    unavailable = any(link.status == "unavailable" for link in evaluation.linked_debts)
+    remaining = bool(_counted_links(evaluation))
+    editable_voids = bool(evaluation.voided_debt_public_ids) and not unavailable and not is_archived
+    achieved = evaluation.evaluation_state == "achieved"
+    body = _GOAL_REVIEW_NOT_EVALUABLE if remaining else _GOAL_REVIEW_ALL_VOIDED
+    if achieved:
+        body = _GOAL_REVIEW_ACHIEVED
+    if unavailable:
+        body = "部分信用账户不再共享，或余额/汇率待核对。请先处理账户或调整关联；不会按零余额计为完成。"
+    return {
+        "can_acknowledge_review": editable_voids and evaluation.needs_review and achieved,
+        "can_remove_voided": editable_voids and remaining,
+        "review_title": "关联信用账户需要核对" if unavailable else _GOAL_NEEDS_REVIEW,
+        "review_body": body,
+    }
+
+
+def _goal_amount_line(counted: list, composition: str, remaining: int) -> str | None:
     currency = _shared_currency(counted)
     if currency is not None and all(link.principal_amount_cents is not None for link in counted):
         principal_sum = projection_values_sum_to_int(
@@ -299,13 +308,11 @@ def _debt_goal_view(goal: GoalResponse) -> dict:
             (link.remaining_amount_cents for link in counted),
             label="web_debt_goal.remaining_total",
         )
-        view["amount_line"] = _plan_amount_line(composition, principal_sum, remaining_sum, remaining, currency)
+        return _plan_amount_line(composition, principal_sum, remaining_sum, remaining, currency)
     elif currency is not None:
         remaining_sum = projection_values_sum_to_int((link.remaining_amount_cents for link in counted), label="web_debt_goal.remaining_total")
-        view["amount_line"] = f"已记录剩余 {_home_amount_label(remaining_sum, currency)}；清偿状态另按实际欠款和费用核对。"
-    if composition == _COMPOSITION_EXTERNAL:
-        view["kpi"] = _external_kpi_view(evaluation)
-    return view
+        return f"已记录剩余 {_home_amount_label(remaining_sum, currency)}；清偿状态另按实际欠款和费用核对。"
+    return None
 
 
 def _debt_choice_view(debt: object) -> dict:
@@ -380,7 +387,6 @@ def _render_debt_goals(
     ctx["empty_title"] = _GOAL_EMPTY_TITLE
     ctx["empty_body"] = _GOAL_EMPTY_BODY
     ctx["all_voided_text"] = _PLAN_ALL_VOIDED
-    ctx["needs_review_note"] = _GOAL_NEEDS_REVIEW
     return templates.TemplateResponse(
         request=request,
         name="debt_goals.html",

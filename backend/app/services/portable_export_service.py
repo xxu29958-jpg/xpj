@@ -11,6 +11,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.schemas import GoalResponse
+from app.services.goal_credit_projection import redact_credit_goal_receipt
 from app.services.portable_export_access import revalidate_portable_export_context
 from app.services.portable_export_archive import PortableArchive, PortableExportCancelledError, create_portable_archive
 from app.services.portable_export_queries import portable_original_history_query, portable_projections, portable_queries
@@ -23,10 +25,20 @@ def _raise_if_cancelled(cancel_requested: Callable[[], bool] | None) -> None:
 
 
 def _rows(snapshot: Session, query: Select,
-          cancel_requested: Callable[[], bool] | None = None) -> Iterator[Mapping[str, object]]:
+          cancel_requested: Callable[[], bool] | None = None, *,
+          collection: str | None = None) -> Iterator[Mapping[str, object]]:
     _raise_if_cancelled(cancel_requested)
     with snapshot.execute(query.execution_options(yield_per=250)) as result:
-        yield from result.mappings()
+        for row in result.mappings():
+            if (collection == "accepted_operations" and row["resource_type"] == "goal"
+                    and isinstance(row["response_body"], dict) and row["response_body"].get("debt_repayment")):
+                original = GoalResponse.model_validate(row["response_body"])
+                authorized = redact_credit_goal_receipt(snapshot, row["tenant_id"], original)
+                if authorized is not original:
+                    row = {**row, "response_body": {**row["response_body"],
+                        "debt_repayment": authorized.debt_repayment.model_dump(mode="json")},
+                        "response_body_redaction_reason": "private_credit_scope"}
+            yield row
 
 
 def _cancel_aware(rows: Iterable[Mapping[str, object]],
@@ -64,7 +76,7 @@ def create_portable_ledger_export(db: Session, *, auth: AuthContext,
                 current = revalidate_portable_export_context(snapshot, auth)
                 snapshot_at = snapshot.scalar(select(func.transaction_timestamp()))
                 queries = portable_queries(current)
-                sections = chain(((name, _rows(snapshot, query, cancel_requested)) for name, query in queries),
+                sections = chain(((name, _rows(snapshot, query, cancel_requested, collection=name)) for name, query in queries),
                                  ((name, _cancel_aware(rows, cancel_requested))
                                   for name, rows in portable_projections(snapshot, current)))
                 archive = create_portable_archive(

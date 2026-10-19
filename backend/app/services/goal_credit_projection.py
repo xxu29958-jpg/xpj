@@ -93,8 +93,12 @@ def _scheduled_payoff(db, account, balances, agreements, fees) -> date | None:
     period_ids = {period.public_id for item in agreements for period in item.periods}
     if any(row.remaining_minor > 0 and row.period_public_id not in period_ids for row in fees):
         return None
-    dates = [period.due_on for item in agreements for period in item.periods
-        if period.principal_minor > period.paid_principal_minor or period.planned_fee_minor > period.paid_fee_minor]
+    dates = _unpaid_due_dates(agreements)
     if not dates or min(dates) < current_ledger_date(db, ledger_id=account.tenant_id):
         return None
     return max(dates)
+
+
+def _unpaid_due_dates(agreements) -> list[date]:
+    return [period.due_on for item in agreements for period in item.periods
+        if period.principal_minor > period.paid_principal_minor or period.planned_fee_minor > period.paid_fee_minor]

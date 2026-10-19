@@ -673,6 +673,7 @@ def _confirm_pending_with_funding(installed, headers, account):
         assert db.scalar(select(func.sum(AccountMovement.amount_minor))) == -3229
 
 
+@pytest.mark.real_db  # Portable history reads an independently authorized committed snapshot.
 def test_actual_installments_refund_revision_and_cash_movements(client, identity):
     def post(path, body, *, key=None, expected=None):
         response = client.post(path, json=body, headers={**identity.app_headers, "Idempotency-Key": key or str(uuid4())})
@@ -785,12 +786,15 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
         assert db.scalar(select(func.count()).select_from(Debt)) == 2  # one revolving facility and one loan
     summary = get("/api/funds/accounts/summary/net-worth")
     assert summary["net_worth_minor"] == 91350  # loan and transfer do not manufacture net assets
+    _assert_consumption_consumers(client, identity)
     _correct_cash_events(post, get, bank_url, wallet_url)
     # A real native minor unit may round below one home unit; settling it still clears the debt.
     from decimal import Decimal
 
     from app.models import ExchangeRate
+    from app.services.currency_binding_service import resolve_write_capability
     with SessionLocal() as db:
+        resolve_write_capability(db)
         db.add(ExchangeRate(tenant_id=credit["ledger_id"], home_currency_code="CNY", currency_code="IDR",
             rate_date=date.today(), rate_to_cny=Decimal("0.00045"), source="manual"))
         db.commit()
@@ -807,6 +811,47 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
     with SessionLocal() as db:
         native_payment = db.scalar(select(Repayment).where(Repayment.original_currency_code == "IDR"))
         assert native_payment.original_amount_minor == 1 and native_payment.amount_cents == 0
+    _replay_funds_after_account_visibility_change(client, identity, get(bank_url))
+
+
+def _assert_consumption_consumers(client, identity):
+    # Purchase 100.00 - actual refunds 15.00 + incurred fees 1.50.
+    # Principal payments, internal transfers and the loan deposit add no consumption.
+    month = date.today().strftime("%Y-%m")
+    stats = client.get("/api/stats/monthly", params={"month": month}, headers=identity.app_headers)
+    budget = client.get("/api/budgets/monthly", params={"month": month}, headers=identity.app_headers)
+    goal = client.post("/api/goals", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"name": "同一消费口径", "month": month, "target_amount_cents": 10000, "home_currency_code": "CNY"})
+    assert (stats.status_code, budget.status_code, goal.status_code) == (200, 200, 201)
+    assert (stats.json()["total_amount_cents"], budget.json()["spent_amount_cents"], goal.json()["spent_amount_cents"]) == (8650, 8650, 8650)
+    assert goal.json()["remaining_amount_cents"] == 1350
+
+
+def _replay_funds_after_account_visibility_change(client, identity, account):
+    from tests.debt_proposal_helpers import _member_headers, _mint_member_actor
+
+    _, token = _mint_member_actor(ledger_id=account["ledger_id"])
+    member = {**_member_headers(token), "Idempotency-Key": str(uuid4())}
+    url = "/api/funds/accounts/" + account["public_id"]
+
+    def share(current, visibility):
+        response = client.patch(url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+            json={"expected_row_version": current["row_version"], "name": current["name"], "visibility": visibility})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    shared = share(account, "ledger")
+    body = {"expected_row_version": shared["row_version"], "calendar_revision": shared["calendar_revision"],
+        "kind": "income", "amount_minor": 100, "occurred_on": str(date.today()), "note": "家人已确认的共同收入"}
+    accepted = client.post(url + "/activities", headers=member, json=body)
+    assert accepted.status_code == 200, accepted.text
+    hidden = share(accepted.json(), "private")
+    assert client.get(url, headers=member).status_code == 404
+    replay = client.post(url + "/activities", headers=member, json=body)
+    assert (replay.status_code, replay.json().get("error")) == (404, "fund_account_not_found")
+    assert client.get(url, headers=identity.app_headers).json()["balance_minor"] == account["balance_minor"] + 100
+    share(hidden, "ledger")
+    assert client.post(url + "/activities", headers=member, json=body).json() == accepted.json()
 
 
 def _hide_credit_goal_account(client, identity, account_url, account, goal, goal_body, goal_key):
@@ -838,6 +883,13 @@ def _hide_credit_goal_account(client, identity, account_url, account, goal, goal
         assert hidden["principal_amount_cents"] is None and hidden["source_id"] is None
         assert retained["public_id"] == goal["public_id"] and retained["debt_repayment"]["needs_review"]
         assert retained["debt_repayment"]["projected_payoff_date"] is None
+    exported = _export_records(client, identity.app_headers)
+    receipts = [row for row in exported["accepted_operations"] if row["resource_id"] == goal["public_id"]]
+    assert len(receipts) == 2
+    for row in receipts:
+        hidden = row["response_body"]["debt_repayment"]["linked_debts"][0]
+        assert hidden["counterparty_label"] is None and hidden["remaining_amount_cents"] is None
+        assert hidden["source_id"] is None and row["response_body_redaction_reason"] == "private_credit_scope"
 
 
 def _activity_void_input(account, kind):

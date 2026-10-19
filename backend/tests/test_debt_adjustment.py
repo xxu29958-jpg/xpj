@@ -237,8 +237,12 @@ def test_debt_aggregate_openapi_bounds_use_the_exact_json_integer_envelope() -> 
     }.items():
         properties = components[schema_name]["properties"]
         for field in fields:
+            numeric = properties[field]
+            if schema_name == "DebtGoalLinkView":
+                assert {"type": "null"} in numeric["anyOf"]
+                numeric = next(item for item in numeric["anyOf"] if item.get("type") == "integer")
             assert {
-                key: properties[field][key] for key in expected
+                key: numeric[key] for key in expected
             } == expected
 
 
