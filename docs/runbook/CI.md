@@ -54,7 +54,7 @@ python scripts\release_audit.py        # 自动发现全部 _audit_*.py lane
 pip-audit --strict（OSV 库）
 ```
 
-`Backend contracts` 没有数据库，不跑业务 pytest / smoke；它保持每个 PR 都可达，并有 12 分钟硬上限，负责验证分类器接线、CI 聚合器、PostgreSQL job 拓扑、CI gap、API 与静态合同。既有分支保护名 `Backend` 汇总 scope、静态合同和按需 Windows packaging，并逐项核对实际 checkout SHA。Windows 域为 `true` 时必须成功且 SHA 一致；明确为 `false` 时才接受无 SHA 的 `skipped`。
+`Backend contracts` 没有数据库，不跑业务 pytest / smoke；它保持每个 PR 都可达，并有 15 分钟超时保护（2026-10-19 核验：完整审计与合同测试接近 12 分钟，原 12 分钟硬上限会在步骤全部通过后取消任务；提高保护上限不代表实际提速，仍须观察约 12 分钟的运行耗时），负责验证分类器接线、CI 聚合器、PostgreSQL job 拓扑、CI gap、API 与静态合同。既有分支保护名 `Backend` 汇总 scope、静态合同和按需 Windows packaging，并逐项核对实际 checkout SHA。Windows 域为 `true` 时必须成功且 SHA 一致；明确为 `false` 时才接受无 SHA 的 `skipped`。
 
 纯合同按 `backend/contract_tests/` 自动发现，与业务 `backend/tests/` 同级，不继承其 PG 自动夹具。GitHub 先执行编排合同，再执行 `analysis/` 中的报告分析合同；Gitea 和本机 `verify_project.ps1` 在准备 PG 前运行整个目录。新增合同不需要维护文件名单。该目录明确归属常驻合同；修改选择器、聚合器或 workflow 本身仍按原政策全量资格。Windows 执行保留 PowerShell AST 等宿主行为；Linux 的真实 scope、ordinary、real-db、smoke 消费者仍分别执行，不再在 PG ordinary 中重复这些纯合同。
 
