@@ -16,6 +16,8 @@ fun FundsViewModel.start(mode: String) {
     val current = state.value
     val access = current.access?.takeIf { it.canModify } ?: return
     if (current.task.input != null) { mutable.value = mutable.value.copy(editing = true); return }
+    payerQuoteJob?.cancel()
+    suggestedPayerAmount = null
     if (mode == "funding") {
         val source = current.funding?.takeIf { it.canEdit } ?: return
         val value = FundsInput(access.binding, mode, UUID.randomUUID().toString(),
@@ -30,14 +32,8 @@ fun FundsViewModel.start(mode: String) {
     save(value)
 }
 
-// A same-currency repayment pays exactly the principal; the form hides the separate payer amount then.
 fun FundsViewModel.choosePayer(account: FinancialAccountDto) = edit { it.copy(payerId = account.publicId, payerName = account.name,
-    payerCurrency = account.currencyCode, payerVersion = account.rowVersion,
-    paid = when {
-        it.mode == "repay" && account.currencyCode == it.currency -> it.principal
-        it.mode == "repay" && account.currencyCode != it.payerCurrency -> ""
-        else -> it.paid
-    }) }
+    payerCurrency = account.currencyCode, payerVersion = account.rowVersion) }
 
 fun FundsViewModel.voidPayment(id: String) {
     if (state.value.task.input != null) { resume(); return }

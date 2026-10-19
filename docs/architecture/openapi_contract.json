@@ -1019,6 +1019,33 @@
         "title": "AdminUploadLinkSecretResponse",
         "type": "object"
       },
+      "AmountConversionResponse": {
+        "properties": {
+          "converted_amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Converted Amount"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceRateResponse"
+            },
+            "title": "References",
+            "type": "array"
+          }
+        },
+        "required": [
+          "converted_amount"
+        ],
+        "title": "AmountConversionResponse",
+        "type": "object"
+      },
       "AuthCheckResponse": {
         "properties": {
           "account_name": {
@@ -37132,6 +37159,119 @@
         ]
       }
     },
+    "/api/exchange-rates/conversion": {
+      "get": {
+        "operationId": "get_amount_conversion_api_exchange_rates_conversion_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "currency_code",
+            "required": true,
+            "schema": {
+              "title": "Currency Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": true,
+            "schema": {
+              "title": "Home Currency Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rate_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Rate Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "amount",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "title": "Amount",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmountConversionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Amount Conversion",
+        "tags": [
+          "exchange-rates"
+        ]
+      }
+    },
     "/api/exchange-rates/reference": {
       "get": {
         "operationId": "get_reference_rates_api_exchange_rates_reference_get",
@@ -65591,6 +65731,87 @@
           }
         },
         "summary": "Web Funds",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/funds/conversion": {
+      "get": {
+        "operationId": "web_funds_conversion_web_funds_conversion_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "currency_code",
+            "required": true,
+            "schema": {
+              "title": "Currency Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "home_currency_code",
+            "required": true,
+            "schema": {
+              "title": "Home Currency Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rate_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Rate Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "amount",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "title": "Amount",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmountConversionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Funds Conversion",
         "tags": [
           "web"
         ]

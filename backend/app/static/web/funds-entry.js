@@ -72,8 +72,7 @@
     if (details) details.open = true;
   }, true);
 
-  // Same-currency repayments settle exactly the principal, so the deduction mirrors it instead of
-  // being typed twice; another currency needs the actual deduction.
+  // Same currency mirrors the principal; an existing dated rate suggests the foreign deduction.
   const payerAmount = form.querySelector("[data-funds-payer-amount]");
   function mirrorPayerAmount() {
     if (!payerAmount || !field("payer_amount")) return;
@@ -84,6 +83,50 @@
       field("payer_amount").dispatchEvent(new Event("input", {bubbles: true}));
     }
   }
+
+  let quoteController = null, suggestedPayerAmount = null, payerEditable = false;
+  const quoteBasis = () => JSON.stringify([value("ledger_id"), value("draft_scope"), value("payer_public_id"),
+    value("payer_currency_code"), value("principal_amount"), value("occurred_on")]);
+  function acceptsPayerQuote(basis, controller, paid) {
+    return !controller.signal.aborted && basis === quoteBasis() && !paid.readOnly && paid.value === "";
+  }
+  async function quotePayerAmount() {
+    quoteController?.abort();
+    suggestedPayerAmount = null;
+    const paid = field("payer_amount");
+    if (value("mode") !== "repay" || !paid || paid.readOnly) return;
+    if (value("payer_currency_code") === form.dataset.fundsAccountCurrency) { mirrorPayerAmount(); return; }
+    paid.value = "";
+    paid.dispatchEvent(new Event("input", {bubbles: true}));
+    if (!value("payer_currency_code") || !value("principal_amount") || !value("occurred_on")) return;
+    const basis = quoteBasis(), controller = new AbortController();
+    quoteController = controller;
+    const query = new URLSearchParams({ledger_id: value("ledger_id"), currency_code: form.dataset.fundsAccountCurrency,
+      home_currency_code: value("payer_currency_code"), amount: value("principal_amount"), rate_date: value("occurred_on")});
+    try {
+      const response = await fetch("/web/funds/conversion?" + query, {signal: controller.signal, cache: "no-store"});
+      const result = await response.json();
+      if (!acceptsPayerQuote(basis, controller, paid)) return;
+      if (!response.ok || result.converted_amount === null) throw Error("rate_unavailable");
+      suggestedPayerAmount = result.converted_amount;
+      paid.value = result.converted_amount;
+      paid.dispatchEvent(new Event("input", {bubbles: true}));
+    } catch (_) {
+      if (!acceptsPayerQuote(basis, controller, paid)) return;
+      paid.setCustomValidity("暂时无法读取或获取参考汇率。");
+    }
+  }
+  for (const name of ["principal_amount", "occurred_on"]) field(name)?.addEventListener("input", () => {
+    if (!value("payer_amount") || value("payer_amount") === suggestedPayerAmount) quotePayerAmount();
+  });
+  field("payer_amount")?.addEventListener("input", () => {
+    field("payer_amount").setCustomValidity("");
+    if (value("payer_amount") !== suggestedPayerAmount) {
+      quoteController?.abort();
+      suggestedPayerAmount = null;
+    }
+  });
+  window.addEventListener("pagehide", () => { quoteController?.abort(); payerEditable = false; });
 
   // What confirming will change, in the user's own numbers; the server still decides the result.
   const summary = form.querySelector("[data-funds-summary]");
@@ -139,7 +182,13 @@
     summary.hidden = !text;
   }
   field("kind")?.addEventListener("change", showCreditTerms);
-  form.addEventListener("ticketbox:funds-state", () => { showCreditTerms(); describe(); });
+  form.addEventListener("ticketbox:funds-state", () => {
+    showCreditTerms(); describe();
+    const editable = field("payer_amount") && !field("payer_amount").readOnly;
+    const resumed = editable && !payerEditable;
+    payerEditable = editable;
+    if (resumed && !value("payer_amount")) quotePayerAmount();
+  });
   form.addEventListener("input", describe);
   form.addEventListener("change", describe);
   const choice = form.querySelector("[data-funds-choice]");
@@ -171,9 +220,8 @@
     const currencyChanged = value("payer_currency_code") !== nextCurrency;
     field("payer_row_version").value = selected.dataset.version || "";
     field("payer_currency_code").value = nextCurrency;
-    if (value("mode") === "repay" && currencyChanged) {
-      field("payer_amount").value = "";
-      field("payer_amount").dispatchEvent(new Event("input", {bubbles: true}));
+    if (value("mode") === "repay" && (currencyChanged || !value("payer_amount"))) {
+      quotePayerAmount();
     }
     form.querySelectorAll("[data-funds-payer-currency]").forEach(label => { label.textContent = selected.dataset.currency || ""; });
     describe();

@@ -208,6 +208,10 @@ def test_saved_fx_source_supplies_desktop_and_api_without_creating_a_manual_over
     assert requested_urls[-1] == "https://rates.example/v1/2026-05-31?base=EUR&amount=1"
     assert fetched.json()["effective"]["rate_date"] == "2026-05-29"
     assert Decimal(fetched.json()["effective"]["rate_to_home"]) == Decimal("7")
+    quote = owner.get("/api/exchange-rates/conversion", params={"currency_code": "CNY",
+        "home_currency_code": "USD", "rate_date": "2026-05-31", "amount": "100"}, headers=identity.app_headers)
+    assert quote.status_code == 200 and quote.json()["converted_amount"] == "14.29"
+    assert quote.json()["references"][0]["rate_date"] == "2026-05-29"
     with SessionLocal() as db:
         assert list_exchange_rates(db, tenant_id="owner") == []
         assert project_recorded_amount(db, tenant_id="owner", amount_minor=1200, source_currency="USD",

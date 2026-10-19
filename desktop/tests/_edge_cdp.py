@@ -363,6 +363,7 @@ def _evaluate_page_once(
     height: int,
     expression: str,
     document_url_prefix: str | None = None,
+    result_timeout: float = 10.0,
 ) -> object:
     profile.mkdir(parents=True)
     process = subprocess.Popen(
@@ -395,7 +396,7 @@ def _evaluate_page_once(
         page.request("Page.setLifecycleEventsEnabled", {"enabled": True})
         navigation = page.request("Page.navigate", {"url": url})
         _wait_for_document(page, navigation, document_url_prefix or url)
-        deadline = time.monotonic() + 10.0
+        deadline = time.monotonic() + result_timeout
         remote: object = None
         while time.monotonic() < deadline:
             try:
@@ -427,6 +428,7 @@ def evaluate_page(
     height: int,
     expression: str,
     document_url_prefix: str | None = None,
+    result_timeout: float = 10.0,
 ) -> object:
     failures: list[BaseException] = []
     for attempt in range(1, _EVALUATE_PAGE_ATTEMPTS + 1):
@@ -440,6 +442,7 @@ def evaluate_page(
                 height=height,
                 expression=expression,
                 document_url_prefix=document_url_prefix,
+                result_timeout=result_timeout,
             )
         except (OSError, _DevToolsTransportError) as exc:
             failures.append(exc)

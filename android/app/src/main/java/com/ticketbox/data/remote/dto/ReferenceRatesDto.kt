@@ -30,3 +30,9 @@ data class ReferenceRatesDto(
     val effective: ReferenceRateDto? = null,
     val items: List<ReferenceRateDto>,
 )
+
+@JsonClass(generateAdapter = true)
+data class AmountConversionDto(
+    @param:Json(name = "converted_amount") val convertedAmount: String?,
+    val references: List<ReferenceRateDto> = emptyList(),
+)
