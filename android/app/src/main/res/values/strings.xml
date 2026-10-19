@@ -23,6 +23,8 @@
 
     <!-- 通用：跨屏复用的 UI 原子 -->
     <string name="common_cancel">取消</string>
+    <string name="common_back">返回</string>
+    <string name="common_back_to">返回%1$s</string>
     <string name="common_keep_draft_return">保留原稿并返回</string>
     <string name="common_confirm">确定</string>
     <string name="common_saving">保存中</string>
