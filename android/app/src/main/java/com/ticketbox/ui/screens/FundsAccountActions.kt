@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -24,14 +25,14 @@ import com.ticketbox.viewmodel.start
 internal fun AccountActions(state: FundsUiState, detail: FinancialAccountDto, viewModel: FundsViewModel) {
     if (detail.archived || state.access?.canModify != true) return
     if (detail.kind == "credit") {
-        AppPrimaryButton(stringResource(R.string.funds_record_actual_repayment)) { viewModel.start("repay") }
+        AppPrimaryButton(stringResource(R.string.funds_record_actual_repayment), modifier = Modifier.fillMaxWidth()) { viewModel.start("repay") }
         val choices = detail.creditApplications
         if (!choices?.credits.isNullOrEmpty() && !choices.obligations.isNullOrEmpty())
-            AppSecondaryButton(stringResource(R.string.funds_apply_credit)) { viewModel.start("apply_credit") }
+            AppSecondaryButton(stringResource(R.string.funds_apply_credit), modifier = Modifier.fillMaxWidth()) { viewModel.start("apply_credit") }
     } else {
-        listOf("income", "transfer").forEach { mode ->
-            AppSecondaryButton(requireNotNull(fundActions()[mode])) { viewModel.start(mode) }
-        }
+        // Recording income is the everyday action on a cash or bank account; moving money between accounts comes second.
+        AppPrimaryButton(stringResource(R.string.funds_record_income), modifier = Modifier.fillMaxWidth()) { viewModel.start("income") }
+        AppSecondaryButton(stringResource(R.string.funds_record_transfer), modifier = Modifier.fillMaxWidth()) { viewModel.start("transfer") }
     }
 }
 

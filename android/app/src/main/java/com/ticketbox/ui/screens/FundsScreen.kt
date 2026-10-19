@@ -6,25 +6,28 @@ import com.ticketbox.viewmodel.openEnvelopes
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import com.ticketbox.data.remote.dto.FinancialAccountDto
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.ui.components.AppListRow
+import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSecondaryPageChrome
+import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.FundsUiState
 import com.ticketbox.viewmodel.FundsViewModel
 import com.ticketbox.viewmodel.start
@@ -42,13 +45,6 @@ internal fun fundActions() = mapOf("create" to stringResource(R.string.funds_add
     "envelopes" to stringResource(R.string.envelopes_edit),
     "income" to stringResource(R.string.funds_record_income), "loan" to stringResource(R.string.funds_record_loan), "transfer" to stringResource(R.string.funds_record_transfer), "reconciliation" to stringResource(R.string.funds_reconcile), "funding" to stringResource(R.string.funds_funding_title), "installments" to stringResource(R.string.funds_record_installments))
 internal fun money(value: Long, currency: String) = formatDisplayAmount(value, CurrencyDisplay.forRecord(currency))
-@Composable
-private fun FinancialAccountDto.balanceLabel(): String = when {
-    balanceMinor == null -> stringResource(R.string.funds_unknown_balance)
-    kind == "credit" && balanceMinor <= 0 -> stringResource(R.string.funds_debt_balance, money(-balanceMinor, currencyCode))
-    kind == "credit" -> stringResource(R.string.funds_overpayment_balance, money(balanceMinor, currencyCode))
-    else -> money(balanceMinor, currencyCode)
-}
 
 @Composable
 fun FundsScreen(viewModel: FundsViewModel, onBack: () -> Unit, onExpense: (Long) -> Unit) {
@@ -60,6 +56,7 @@ fun FundsScreen(viewModel: FundsViewModel, onBack: () -> Unit, onExpense: (Long)
             stringResource(if (state.envelopeMonth != null) R.string.envelopes_subtitle else R.string.funds_accounts_subtitle),
             stringResource(R.string.funds_back), { if (!viewModel.back()) onBack() }),
         refresh = AppSecondaryRefreshState(state.loading, viewModel::refresh),
+        slots = AppSecondaryPageSlots(bottomBar = fundsBottomAction(state, viewModel)),
     ) {
         state.error?.let { message -> item { Text(message.asString(), color = MaterialTheme.colorScheme.error) } }
         if (state.fromCache) item { Text(stringResource(R.string.funds_cached_note), style = MaterialTheme.typography.bodySmall) }
@@ -69,7 +66,8 @@ fun FundsScreen(viewModel: FundsViewModel, onBack: () -> Unit, onExpense: (Long)
             state.fundingPage -> item { FundingReadPanel(state, viewModel) }
             state.captureRequested -> captureAccounts(state, viewModel)
             detail != null -> accountDetail(state, detail, viewModel, onExpense)
-            else -> accountsOverview(state, viewModel)
+            else -> fundsOverview(state, FundsOverviewActions(open = { viewModel.open(it) }, create = { viewModel.start("create") },
+                envelopes = { viewModel.openEnvelopes() }, resume = viewModel::resume))
         }
     }
 }
@@ -100,76 +98,73 @@ private fun FundingReadPanel(state: FundsUiState, viewModel: FundsViewModel) {
 
 }
 
+/** Adding an account stays reachable at the bottom of a filled overview; the empty state carries its own. */
+private fun fundsBottomAction(state: FundsUiState, viewModel: FundsViewModel): (@Composable () -> Unit)? {
+    val overview = !state.editing && state.envelopeMonth == null && !state.fundingPage && !state.captureRequested && state.detail == null
+    if (!overview || state.accounts.isEmpty() || state.access?.canModify != true) return null
+    return { AppFloatingActionBar { AppPrimaryButton(stringResource(R.string.funds_add_account), modifier = Modifier.fillMaxWidth()) { viewModel.start("create") } } }
+}
+
 private fun LazyListScope.accountDetail(state: FundsUiState, detail: FinancialAccountDto, viewModel: FundsViewModel, onExpense: (Long) -> Unit) {
-
+    val canModify = state.access?.canModify == true
     item { AccountDetailHeader(state, detail, viewModel) }
+    if (detail.feeObligations.isNotEmpty()) item {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+            Text(stringResource(R.string.funds_fee_obligations_title), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.funds_fee_obligations_note), style = MaterialTheme.typography.bodySmall)
+        }
+    }
     items(detail.feeObligations, key = { "fee:${it.expenseId}" }) { fee ->
-        AppListRow(onClick = { onExpense(fee.expenseId) }) {
-            Text(stringResource(R.string.funds_fee_owed, fee.note, fee.occurredOn, money(fee.remainingMinor, detail.currencyCode)))
+        FundsIconRow(FundsRowModel(R.drawable.ic_lucide_receipt_text, fee.note, fee.occurredOn,
+            stringResource(R.string.funds_fee_remaining, money(fee.remainingMinor, detail.currencyCode))), onClick = null,
+            iconBackground = LocalThemeVisuals.current.surfaceApricot) {
+            FundsRowLink(stringResource(R.string.funds_view_fee_expense)) { onExpense(fee.expenseId) }
         }
     }
-    items(detail.movements, key = { it.publicId }) { row ->
-        AppListRow(onClick = row.expenseId?.let { id -> { onExpense(id) } }) {
-            Column(Modifier.weight(1f)) {
-                Text(row.note); Text(row.occurredOn, style = MaterialTheme.typography.bodySmall)
-                if (row.voided) Text(stringResource(R.string.funds_activity_voided))
-                if (row.correctionParts.isNotEmpty() && state.access?.canModify == true)
-                    TextButton(onClick = { viewModel.voidActivity(row) }) { Text(stringResource(R.string.funds_void_activity)) }
-                if (row.canVoidRepayment && row.repaymentPublicId != null && state.access?.canModify == true)
-                    TextButton(onClick = { viewModel.voidPayment(row.repaymentPublicId) }) { Text(stringResource(R.string.funds_void_payment)) }
-            }
-            Text(money(row.amountMinor, detail.currencyCode))
-        }
-    }
-
+    item { AccountDetailRecords(state, detail, viewModel) }
+    val actions = FundsMovementActions(
+        openExpense = onExpense,
+        voidActivity = if (canModify) { row -> viewModel.voidActivity(row) } else null,
+        voidPayment = if (canModify) { id -> viewModel.voidPayment(id) } else null,
+        reconcile = if (canModify && detail.canEdit && !detail.archived) { { viewModel.start("reconciliation") } } else null,
+    )
+    items(detail.movements, key = { it.publicId }) { row -> FundsMovementRow(row, detail, actions) }
+    if (detail.movements.isEmpty()) item { Text(stringResource(R.string.funds_movements_empty), style = MaterialTheme.typography.bodySmall) }
 }
 
 @Composable
 private fun AccountDetailHeader(state: FundsUiState, detail: FinancialAccountDto, viewModel: FundsViewModel) {
-
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-        Text(detail.balanceLabel(), style = MaterialTheme.typography.headlineMedium)
-        Text("${fundKinds()[detail.kind]} · ${if (detail.visibility == "private") stringResource(R.string.funds_private_visibility) else stringResource(R.string.funds_ledger_visibility)}" +
-            (detail.tail?.let { stringResource(R.string.funds_tail_suffix, it) } ?: ""))
-        if (detail.unallocatedCreditMinor > 0) Text(stringResource(R.string.funds_unallocated_credit_note, money(detail.unallocatedCreditMinor, detail.currencyCode)))
-        if (detail.balanceMinor == null) Text(stringResource(R.string.funds_recorded_change_note, money(detail.recordedChangeMinor, detail.currencyCode)))
-        detail.observation?.let { check -> Text(stringResource(R.string.funds_observation_line, check.occurredOn, check.source, money(check.observedMinor, detail.currencyCode), money(check.differenceMinor, detail.currencyCode))) }
+        FundsHeroCard(label = stringResource(detail.balanceLabelRes()), amount = detail.balanceText()) {
+            Text(stringResource(R.string.funds_account_meta, fundKinds()[detail.kind].orEmpty(), detail.currencyCode,
+                stringResource(if (detail.visibility == "private") R.string.funds_private_visibility else R.string.funds_ledger_visibility)) +
+                (detail.tail?.let { stringResource(R.string.funds_tail_suffix, it) } ?: ""), style = MaterialTheme.typography.bodySmall)
+            if (detail.unallocatedCreditMinor > 0) Text(stringResource(R.string.funds_unallocated_credit_note, money(detail.unallocatedCreditMinor, detail.currencyCode)),
+                style = MaterialTheme.typography.bodySmall)
+            if (detail.balanceMinor == null) Text(stringResource(R.string.funds_recorded_change_note, money(detail.recordedChangeMinor, detail.currencyCode)),
+                style = MaterialTheme.typography.bodySmall)
+            detail.observation?.let { check -> Text(stringResource(R.string.funds_observation_line, check.occurredOn, check.source,
+                money(check.observedMinor, detail.currencyCode), money(check.differenceMinor, detail.currencyCode)), style = MaterialTheme.typography.bodySmall) }
+        }
         AccountActions(state, detail, viewModel)
         AccountMore(state, detail, viewModel)
+    }
+}
+
+@Composable
+private fun AccountDetailRecords(state: FundsUiState, detail: FinancialAccountDto, viewModel: FundsViewModel) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         CreditApplicationsRead(detail, state.access?.canModify == true, viewModel)
         FundsPriorRepayments(detail, state.access?.canModify == true, viewModel)
         if (!state.installments?.agreements.isNullOrEmpty())
             InstallmentHistory(state.installments, !detail.archived && state.access?.canModify == true, viewModel)
-        Text(stringResource(R.string.funds_movements_title), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.funds_movements_title), modifier = Modifier.padding(top = AppSpacing.compactGap),
+            style = MaterialTheme.typography.titleMedium)
     }
-
 }
 
-private fun LazyListScope.accountsOverview(state: FundsUiState, viewModel: FundsViewModel) {
-    val input = state.task.input
-
-    item {
-        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
-            if (input != null) AppSecondaryButton(stringResource(R.string.funds_resume_task), onClick = viewModel::resume)
-            state.overview?.let { summary ->
-                Text(stringResource(R.string.funds_net_worth, money(summary.netWorthMinor, summary.homeCurrencyCode)), style = MaterialTheme.typography.headlineSmall)
-                Text(stringResource(R.string.funds_assets_liabilities, money(summary.assetsMinor, summary.homeCurrencyCode), money(summary.liabilitiesMinor, summary.homeCurrencyCode)))
-                Text(stringResource(R.string.funds_valuation_scope, summary.valuationDate, summary.includedAccounts, summary.unknownAccounts, summary.missingRateAccounts), style = MaterialTheme.typography.bodySmall)
-            }
-            if (state.access?.canModify == true) AppPrimaryButton(stringResource(R.string.funds_add_account)) { viewModel.start("create") }
-            AppSecondaryButton(stringResource(R.string.envelopes_title)) { viewModel.openEnvelopes() }
-            if (state.accounts.isEmpty() && !state.loading) Text(stringResource(R.string.funds_empty_accounts))
-        }
-    }
-    items(state.accounts, key = { it.publicId }) { account ->
-        AppListRow(onClick = { viewModel.open(account.publicId) }) {
-            Column(Modifier.weight(1f)) {
-                Text(account.name + (account.tail?.let { " · $it" } ?: ""), style = MaterialTheme.typography.titleSmall)
-                Text("${fundKinds()[account.kind]} · ${if (account.visibility == "private") stringResource(R.string.funds_private_visibility) else stringResource(R.string.funds_ledger_visibility)}" +
-                    if (account.archived) stringResource(R.string.funds_archived_suffix) else "", style = MaterialTheme.typography.bodySmall)
-            }
-            Text(account.balanceLabel())
-        }
-    }
-
+private fun FinancialAccountDto.balanceLabelRes(): Int = when {
+    kind != "credit" -> R.string.funds_balance_current
+    balanceMinor != null && balanceMinor > 0 -> R.string.funds_balance_surplus
+    else -> R.string.funds_balance_debt
 }

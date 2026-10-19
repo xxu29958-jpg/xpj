@@ -53,8 +53,13 @@ internal fun FundsEditor(state: FundsUiState, input: FundsInput, vm: FundsViewMo
         if (input.binding != state.access?.binding) Text(stringResource(R.string.funds_original_binding_note))
         key(input.key) {
             FundsInputFields(state, input, enabled, vm)
-            if (input.mode !in setOf("edit", "funding", "envelopes", "apply_credit", "void_credit")) FundsField("${if (input.mode == "create") stringResource(R.string.funds_opening_date) else stringResource(R.string.funds_actual_date)}（YYYY-MM-DD）", input.date, enabled) { value -> vm.edit { it.copy(date = value) } }
+            // The native picker writes the same raw YYYY-MM-DD value the field accepts by typing.
+            if (input.mode !in setOf("edit", "funding", "envelopes", "apply_credit", "void_credit"))
+                DebtDateField(input.date, enabled, if (input.mode == "create") R.string.funds_opening_date else R.string.funds_actual_date) { value -> vm.edit { it.copy(date = value) } }
         }
+        if (!state.task.frozen && state.task.original?.status != PendingMutationStatus.Done)
+            FundsChangeSummary(input, input.envelopeAmounts.keys.associateWith { purpose ->
+                state.envelopes?.purposes?.firstOrNull { it.purpose == purpose }?.label ?: retainedPurpose(purpose) })
         FundsSubmission(state, enabled, vm)
     }
 }
@@ -92,7 +97,7 @@ private fun AccountEditorFields(state: FundsUiState, input: FundsInput, enabled:
 
                 if (input.mode == "create") FundsAccountChoices(state.accountChoices, enabled, vm)
                 FundsAccountFields(input, enabled, vm)
-                if (input.mode == "create") ExistingDebtField(input, state.existingDebts, enabled, vm)
+                if (input.mode == "create" && input.kind == "credit") ExistingDebtField(input, state.existingDebts, enabled, vm)
                 if (input.kind == "credit") FundsCreditTermsFields(input, enabled, vm)
 
 }
@@ -137,14 +142,17 @@ private fun FundsAccountFields(input: FundsInput, enabled: Boolean, vm: FundsVie
         Switch(input.archived, { value -> vm.edit { it.copy(archived = value) } }, enabled = enabled)
         Text(stringResource(R.string.funds_archive_note))
     }
-    FundsField(stringResource(R.string.funds_institution), input.institution, enabled) { value -> vm.edit { it.copy(institution = value) } }
     Row { Switch((input.visibilityEdit ?: input.visibility) == "ledger", { shared -> vm.edit {
         val value = if (shared) "ledger" else "private"
         if (it.mode == "edit") it.copy(visibilityEdit = value) else it.copy(visibility = value)
     } }, enabled = enabled)
         Text(stringResource(R.string.funds_share_with_ledger)) }
     Text(stringResource(R.string.funds_privacy_note), style = MaterialTheme.typography.bodySmall)
-    FundsField(stringResource(R.string.funds_tail), input.tail, enabled) { value -> vm.edit { it.copy(tail = value) } }
+    FundsOptions(stringResource(R.string.funds_bank_tail_options), filledSummary(input.institution, input.tail), stringResource(R.string.funds_options_optional)) {
+        FundsField(stringResource(R.string.funds_institution), input.institution, enabled) { value -> vm.edit { it.copy(institution = value) } }
+        FundsField(stringResource(R.string.funds_tail), input.tail, enabled) { value -> vm.edit { it.copy(tail = value) } }
+        Text(stringResource(R.string.funds_tail_hint), style = MaterialTheme.typography.bodySmall)
+    }
 }
 
 @Composable
@@ -161,11 +169,15 @@ private fun FundsPaymentFields(input: FundsInput, accounts: List<FinancialAccoun
     FundsField(stringResource(R.string.funds_principal, input.currency), input.principal, enabled, money = true) { value -> vm.edit {
         it.copy(principal = value, paid = if (it.currency == it.payerCurrency) value else it.paid)
     } }
-    FundsField(stringResource(R.string.funds_payer_principal, input.payerCurrency.ifBlank { stringResource(R.string.funds_payer_currency_first) }), input.paid, enabled, money = true) { value -> vm.edit { it.copy(paid = value) } }
-    FundsField(stringResource(R.string.funds_new_fee, input.payerCurrency.ifBlank { stringResource(R.string.funds_payer_currency_first) }), input.newFee, enabled, money = true) { value -> vm.edit { it.copy(newFee = value) } }
-    FundsField(stringResource(R.string.funds_fee_source), input.feeNote, enabled) { value -> vm.edit { it.copy(feeNote = value) } }
-    Text(stringResource(R.string.funds_fee_note), style = MaterialTheme.typography.bodySmall)
+    // Same currency: the payer pays exactly the principal, which the principal field already mirrors.
+    if (input.payerCurrency != input.currency)
+        FundsField(stringResource(R.string.funds_payer_principal, input.payerCurrency.ifBlank { stringResource(R.string.funds_payer_currency_first) }), input.paid, enabled, money = true) { value -> vm.edit { it.copy(paid = value) } }
     FundsField(stringResource(R.string.funds_note), input.note, enabled) { value -> vm.edit { it.copy(note = value) } }
+    FundsOptions(stringResource(R.string.funds_new_fee_options), filledSummary(input.newFee, input.feeNote), stringResource(R.string.funds_new_fee_options_empty)) {
+        FundsField(stringResource(R.string.funds_new_fee, input.payerCurrency.ifBlank { stringResource(R.string.funds_payer_currency_first) }), input.newFee, enabled, money = true) { value -> vm.edit { it.copy(newFee = value) } }
+        FundsField(stringResource(R.string.funds_fee_source), input.feeNote, enabled) { value -> vm.edit { it.copy(feeNote = value) } }
+        Text(stringResource(R.string.funds_fee_note), style = MaterialTheme.typography.bodySmall)
+    }
 }
 
 @Composable

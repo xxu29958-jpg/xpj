@@ -7,6 +7,11 @@
     <string name="envelopes_history_reason">%1$s · %2$s</string>
     <string name="envelopes_history_version">第 %1$d 次分配</string>
     <string name="envelopes_history_amount">%1$s %2$s</string>
+    <string name="envelopes_preview">保存后，%1$s 的用途分配为：%2$s（%3$s）。钱仍在原账户里。</string>
+    <string name="envelopes_preview_none">保存后，%1$s 不为任何用途留出现金。</string>
+    <string name="envelopes_sources_title">提供现金的账户</string>
+    <string name="envelopes_sources_chosen">%1$d 个账户</string>
+    <string name="envelopes_sources_none">尚未选择</string>
     <string name="envelopes_title">信封分配</string>
     <string name="envelopes_subtitle">给已有现金安排用途</string>
     <string name="envelopes_edit">调整现金用途</string>
