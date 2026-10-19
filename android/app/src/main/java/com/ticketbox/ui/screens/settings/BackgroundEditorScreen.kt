@@ -53,6 +53,8 @@ import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.ui.appearance.background.BackgroundPreviewStage
 import com.ticketbox.ui.appearance.background.BackgroundTransformGeometry
 import com.ticketbox.ui.appearance.background.SurfaceRole
+import com.ticketbox.ui.appearance.background.PreviewBackground
+import com.ticketbox.ui.appearance.background.customPhotoPath
 import com.ticketbox.ui.appearance.background.rememberBackgroundImage
 import com.ticketbox.ui.components.AppButtonIcons
 import com.ticketbox.ui.components.AppPrimaryButton
@@ -126,12 +128,14 @@ private fun BackgroundEditorContent(
         ) {
             if (!composing) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    // The preview is the real page top: a root header opens the same photo window as the shell.
+                    // The preview is the real page top: a root header opens the same photo window as the shell
+                    // and, like the shell's top bar, stays put while the sample below it scrolls.
+                    BackgroundEditorPagePreview(previewRole)
                     Column(
-                        modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                        modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())
+                            .padding(top = AppSpacing.sectionGap),
                         verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap),
                     ) {
-                        BackgroundEditorPagePreview(previewRole)
                         BackgroundReadabilitySample(Modifier.padding(horizontal = AppSpacing.screenHorizontal))
                     }
                     BackgroundEditorControlPanel(
@@ -183,9 +187,9 @@ private fun BackgroundEditorStage(
 ) {
     val gesturesEnabled = gestures.enabled
     val onTransformChange = gestures.onTransformChange
-    val customPath = draft.customImagePath
-        ?.takeIf { draft.source == BackgroundSource.CustomImage }
-    val imageSize = rememberBackgroundImage(customPath)?.size ?: IntSize.Zero
+    // One decode serves the gesture geometry and the preview it drives.
+    val photo = rememberBackgroundImage(customPhotoPath(draft))
+    val imageSize = photo.photo?.size ?: IntSize.Zero
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     val currentDraft by rememberUpdatedState(draft)
     val currentOnTransformChange by rememberUpdatedState(onTransformChange)
@@ -220,7 +224,7 @@ private fun BackgroundEditorStage(
             ),
     ) {
         BackgroundPreviewStage(
-            settings = draft,
+            background = PreviewBackground(draft, photo),
             skin = skin,
             role = role,
             modifier = Modifier.fillMaxSize(),
