@@ -1206,6 +1206,18 @@ def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, 
         assert debt.status == "cleared"
         assert count_open_external_debts(db, [credit["ledger_id"]]) == {}
     assert get(goal_url)["debt_repayment"]["evaluation_state"] == "in_progress"
+    credit = _correct_fees_across_plan_revision(post, get, credit_url, credit, current, revision, goal_url)
+    assert credit["balance_minor"] == -130 and get(bank_url)["balance_minor"] == 90980
+    historical = next(row for row in get(credit_url + "/installments")["agreements"] if row["public_id"] == current["public_id"])
+    assert all(row["unincurred_fee_minor"] == 0 and row["paid_fee_minor"] == 0 for row in historical["periods"])
+    assert [row["incurred_fee_minor"] for row in historical["periods"]] == [30, 100]
+    legacy = {**payment, "expected_row_version": credit["row_version"], "payer_row_version": get(bank_url)["row_version"],
+        "principal_minor": 130, "payer_amount_minor": 130, "period_allocations": []}
+    post(credit_url + "/repay", legacy, expected=422)  # old clients cannot reinterpret fees as principal
+    return _pay_and_correct_recorded_fees(post, get, credit_url, bank_url, credit, legacy)
+
+
+def _correct_fees_across_plan_revision(post, get, credit_url, credit, current, revision, goal_url):
     corrections = []
     for period in current["periods"]:
         key = str(uuid4())
@@ -1248,14 +1260,7 @@ def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, 
         assert post(expense_url + "/corrections", correction, key=key) == corrected
         credit = get(credit_url)
         assert not get(credit_url + "/installments")["agreements"][0]["needs_review"]
-    assert credit["balance_minor"] == -130 and get(bank_url)["balance_minor"] == 90980
-    historical = next(row for row in get(credit_url + "/installments")["agreements"] if row["public_id"] == current["public_id"])
-    assert all(row["unincurred_fee_minor"] == 0 and row["paid_fee_minor"] == 0 for row in historical["periods"])
-    assert [row["incurred_fee_minor"] for row in historical["periods"]] == [30, 100]
-    legacy = {**payment, "expected_row_version": credit["row_version"], "payer_row_version": get(bank_url)["row_version"],
-        "principal_minor": 130, "payer_amount_minor": 130, "period_allocations": []}
-    post(credit_url + "/repay", legacy, expected=422)  # old clients cannot reinterpret fees as principal
-    return _pay_and_correct_recorded_fees(post, get, credit_url, bank_url, credit, legacy)
+    return credit
 
 
 def _pay_and_correct_recorded_fees(post, get, credit_url, bank_url, credit, payment):
