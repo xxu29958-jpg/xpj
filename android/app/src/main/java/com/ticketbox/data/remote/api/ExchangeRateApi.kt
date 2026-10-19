@@ -14,6 +14,11 @@ import com.ticketbox.data.remote.dto.ReferenceRateRequestDto
 import com.ticketbox.data.remote.dto.ReferenceRatesDto
 
 interface ExchangeRateApi {
+    @GET("api/exchange-rates/conversion")
+    suspend fun convertAmount(@Query("currency_code") currencyCode: String,
+        @Query("home_currency_code") homeCurrencyCode: String, @Query("rate_date") rateDate: String,
+        @Query("amount") amount: String): com.ticketbox.data.remote.dto.AmountConversionDto
+
     @GET("api/exchange-rates/reference")
     suspend fun referenceRates(@Query("home_currency_code") homeCurrencyCode: String,
         @Query("currency_code") currencyCode: String? = null, @Query("rate_date") rateDate: String? = null): ReferenceRatesDto

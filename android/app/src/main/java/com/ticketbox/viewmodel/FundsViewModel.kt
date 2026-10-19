@@ -44,6 +44,8 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
 
     private val writes = Mutex()
     private var opening: kotlinx.coroutines.Job? = null
+    internal var payerQuoteJob: kotlinx.coroutines.Job? = null
+    internal var suggestedPayerAmount: String? = null
     init {
         viewModelScope.launch {
             repository.readAccessDenials.collect { denial ->
@@ -55,6 +57,8 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
         }
         viewModelScope.launch {
             repository.access().collectLatest { access ->
+                payerQuoteJob?.cancel()
+                suggestedPayerAmount = null
                 mutable.value = FundsUiState(access = access, fundingPage = expenseId != null, captureRequested = repaymentDraftId != null)
                 if (access != null) coroutineScope {
                     launch {
@@ -103,9 +107,13 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
         val current = state.value
         val old = current.task.input ?: return
         if (current.task.frozen || current.busy || old.binding != current.access?.binding || current.access.canModify.not()) return
-        val value = change(old)
+        val changed = change(old)
+        val quote = needsPayerQuote(old, changed)
+        val value = if (quote) changed.copy(paid = if (changed.currency == changed.payerCurrency) changed.principal else "") else changed
         mutable.value = mutable.value.copy(task = mutable.value.task.copy(input = value), error = null)
         save(value)
+        if (quote) quotePayerAmount(value)
+        else if (old.paid != value.paid) { payerQuoteJob?.cancel(); suggestedPayerAmount = null }
     }
 
     internal fun save(value: FundsInput) {

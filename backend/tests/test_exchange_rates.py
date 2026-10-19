@@ -63,6 +63,34 @@ def test_exchange_rate_crud_is_ledger_scoped_and_viewer_read_only(client: TestCl
     assert viewer_write.json()["error"] == "permission_denied"
 
 
+def test_payer_conversion_uses_existing_rates_dates_and_currency_precision(client: TestClient, *, identity) -> None:
+    for code, rate in (("USD", "7.2"), ("JPY", "0.05"), ("KWD", "23.4")):
+        saved = client.put(f"/api/exchange-rates/{code}/2026-05-04",
+            headers={**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())},
+            json={"expected_row_version": 0, "home_currency_code": "CNY", "currency_code": code,
+                "rate_date": "2026-05-04", "rate_to_cny": rate, "source": "manual"})
+        assert saved.status_code == 200, saved.text
+    original_rates = client.get("/api/exchange-rates", headers=identity.app_headers).json()
+    for source, target, amount, expected in (("CNY", "USD", "100", "13.89"),
+            ("USD", "CNY", "100", "720.00"), ("KWD", "USD", "12.345", "40.12"),
+            ("USD", "JPY", "1.01", "145"), ("CNY", "KWD", "100", "4.274"),
+            ("CNY", "CNY", "100", "100.00"), ("EUR", "USD", "0", "0.00")):
+        response = client.get("/api/exchange-rates/conversion", headers=identity.app_headers,
+            params={"currency_code": source, "home_currency_code": target, "amount": amount, "rate_date": "2026-05-04"})
+        assert response.status_code == 200, response.text
+        assert response.json()["converted_amount"] == expected
+        assert all(row["rate_date"] == "2026-05-04" for row in response.json()["references"])
+    params = {"currency_code": "CNY", "home_currency_code": "USD", "amount": "100", "rate_date": "2026-05-04"}
+    assert client.get("/api/exchange-rates/conversion", params=params).status_code == 401
+    assert client.get("/api/exchange-rates/conversion", params=params,
+        headers=identity.gray_app_headers).json()["converted_amount"] is None
+    assert client.get("/api/exchange-rates/conversion", params={**params, "rate_date": "2026-05-03"},
+        headers=identity.app_headers).json()["converted_amount"] is None
+    invalid = client.get("/api/exchange-rates/conversion", params={**params, "amount": "0.001"}, headers=identity.app_headers)
+    assert invalid.status_code == 422
+    assert client.get("/api/exchange-rates", headers=identity.app_headers).json() == original_rates
+
+
 def test_exchange_rate_put_rejects_path_body_mismatch(client: TestClient, *, identity) -> None:
     currency_mismatch = client.put(
         "/api/exchange-rates/USD/2026-05-04",

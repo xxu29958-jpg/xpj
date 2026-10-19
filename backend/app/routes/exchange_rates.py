@@ -9,12 +9,21 @@ from app.auth import get_current_app_context, get_current_protocol_writer_contex
 from app.database import get_db
 from app.errors import AppError
 from app.schemas import ExchangeRateListResponse, ExchangeRateRequest, ExchangeRateResponse
-from app.schemas._exchange import ReferenceRateRequest, ReferenceRatesResponse
+from app.schemas._exchange import AmountConversionResponse, ReferenceRateRequest, ReferenceRatesResponse
+from app.services.exchange_rate_conversion import convert_reference_amount
 from app.services.exchange_rate_reference_service import acquire_reference_rates, read_reference_rates
 from app.services.exchange_rate_service import list_exchange_rates, set_exchange_rate_idempotently
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/exchange-rates", tags=["exchange-rates"])
+
+
+@router.get("/conversion", response_model=AmountConversionResponse)
+def get_amount_conversion(currency_code: str, home_currency_code: str, rate_date: date,
+    amount: str = Query(max_length=32), auth: AuthContext = Depends(get_current_app_context),
+    db: Session = Depends(get_db)) -> AmountConversionResponse:
+    return convert_reference_amount(db, tenant_id=auth.tenant_id, currency_code=currency_code,
+        home_currency_code=home_currency_code, amount=amount, rate_date=rate_date)
 
 
 @router.get("/reference", response_model=ReferenceRatesResponse)

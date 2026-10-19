@@ -23,6 +23,12 @@ class FundsRepository internal constructor(private val provider: ApiServiceProvi
     val reads = FundsQueries(queries)
     val readAccessDenials = queries.readAccessDenials
 
+    suspend fun convertPayerAmount(value: FundsInput) = errors.safeCall {
+        guard.bindExact(value.binding).call {
+            it.convertAmount(value.currency, value.payerCurrency, value.date, value.principal)
+        }
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     fun input(binding: LogicalSessionBinding) = inputs.observe(binding.serverUrl, binding.ownerKey, binding.ledgerId).flatMapLatest { row ->
         val value = row?.let { FundsWire.input.fromJson(it.inputJson) }

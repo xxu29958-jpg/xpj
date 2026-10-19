@@ -1,7 +1,8 @@
 """Native funds forms use the same commands and retained browser intents as the API."""
+from datetime import date
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -38,11 +39,13 @@ from app.routes.web_common import (
     _web_redirect,
     templates,
 )
+from app.schemas._exchange import AmountConversionResponse
 from app.schemas.funds import FinancialAccountReceipt
 from app.services.credit_application_commands import apply_retained_credit, void_credit_application
 from app.services.credit_fee_commands import incur_credit_fee
 from app.services.credit_history_adoption import existing_debt_choices
 from app.services.currency_common import minor_amount_label, supported_currency_codes
+from app.services.exchange_rate_conversion import convert_reference_amount
 from app.services.funds_account_choices import ACCOUNT_CHOICES
 from app.services.funds_activity_correction import void_account_activity
 from app.services.funds_commands import (
@@ -71,6 +74,15 @@ def _scope(request, db, ledger_id):
     if auth is None or auth.ledger_id != selected:
         raise AppError("invalid_token", "请先登录此浏览器，资金账户按你的身份显示。", status_code=401)
     return options, selected, auth
+
+
+@router.get("/conversion", response_model=AmountConversionResponse)
+def web_funds_conversion(request: Request, currency_code: str, home_currency_code: str, rate_date: date,
+        amount: str = Query(max_length=32), ledger_id: str = "", _local: None = LocalOnly,
+        db: Session = Depends(get_db)):
+    _, selected, _ = _scope(request, db, ledger_id)
+    return convert_reference_amount(db, tenant_id=selected, currency_code=currency_code,
+        home_currency_code=home_currency_code, amount=amount, rate_date=rate_date)
 
 
 def _render(request: Request, db: Session, *, ledger_id: str, task: str = "", account_id: str = "", values: dict | None = None,

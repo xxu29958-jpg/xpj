@@ -88,6 +88,11 @@ class ReferenceRatesResponse(BaseModel):
     items: list[ReferenceRateResponse]
 
 
+class AmountConversionResponse(BaseModel):
+    converted_amount: str | None
+    references: list[ReferenceRateResponse] = Field(default_factory=list)
+
+
 class ProjectionReferenceDto(BaseModel):
     """The actual reference date used to value a plan in another currency."""
     model_config = ConfigDict(from_attributes=True)
