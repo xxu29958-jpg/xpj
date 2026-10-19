@@ -70,7 +70,7 @@ class NotificationOriginalTaskNavigationTest {
         // The month header is visible while its remote budget is still loading.
         compose.waitUntil(5_000) { compose.onAllNodesWithText(editorBack).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(editorBack).assertIsDisplayed().performClick()
-        compose.onNodeWithContentDescription(context.getString(R.string.budget_back_to_stats)).performClick()
+        compose.onNodeWithContentDescription(context.getString(R.string.common_back_to, context.getString(R.string.budget_back_to_stats))).performClick()
         waitForMonth("2026-07")
         compose.onNode(hasSetTextAction() and hasAnyAncestor(hasTestTag("budget_total_amount")))
             .performScrollTo().assertEditableTextEquals("321.09")

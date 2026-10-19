@@ -64,7 +64,7 @@
 {{ intent_form('verify', '确认所见原件', original.state == 'unverified') }}
 {{ intent_form('replenish', '核对并补回原件', needs_replenish, true) }}
 {% if original.cleanup %}<section><h2 class="product-panel-title">尚未结束的清理</h2><p class="meta">请求时间 {{ saved_time(original.cleanup.requested_at) }}。原图：{{ original.cleanup.image or '不涉及' }}；缩略图：{{ original.cleanup.thumbnail or '不涉及' }}。</p>
-{% if not original.cleanup.policy_enabled %}<p class="meta">当前清理策略已关闭；保留原请求，可取消剩余工作。</p>{% endif %}</section>{% endif %}
+{% if not original.cleanup.policy_enabled %}<p class="meta">原件清理设置已关闭，剩余清理已暂停，原请求保留。可以取消剩余清理；如需继续，请管理这台电脑上小票夹安装的人开启原件清理后重新检查。</p>{% endif %}</section>{% endif %}
 {{ intent_form('cleanup/retry', '继续原清理请求', original.cleanup and original.cleanup.policy_enabled) }}
 {{ intent_form('cleanup/cancel', '取消尚未执行的清理', original.cleanup) }}
 {% if original.cleanup_error %}<p class="product-feedback product-feedback--warning">清理请求无法解释，请保留原件并联系拥有者核查。</p>{% endif %}
