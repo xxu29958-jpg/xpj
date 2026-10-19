@@ -7,7 +7,7 @@ from app.models import CreditFeeObligation, FinancialAccount, InstallmentAgreeme
 from app.schemas import ExpenseManualCreateRequest
 from app.schemas._accounting_time import AccountingTimeInput
 from app.schemas.credit_fee import CreditFeeCreate
-from app.schemas.funds import FinancialAccountView, FundingPart
+from app.schemas.funds import FinancialAccountReceipt, FundingPart
 from app.services.credit_fee_query import fee_period_totals
 from app.services.debt_service._repayment_time import resolve_repayment_time
 from app.services.expense_service._create import create_manual_expense
@@ -20,7 +20,7 @@ from app.tenants import AuthContext
 
 
 def incur_credit_fee(db: Session, *, auth: AuthContext, public_id: str, payload: CreditFeeCreate,
-                     key: str) -> FinancialAccountView:
+                     key: str) -> FinancialAccountReceipt:
     claim = claim_funds(db, auth, payload, key, "incur_credit_fee", public_id)
     if claim is None:
         return replay_funds(db, auth, key)

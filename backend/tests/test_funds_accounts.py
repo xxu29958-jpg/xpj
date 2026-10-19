@@ -1,6 +1,8 @@
 """One real PostgreSQL journey owns the purchase/funds/credit invariant."""
 import json
+import re
 from datetime import date, timedelta
+from html import unescape
 from io import BytesIO
 from uuid import uuid4
 from zipfile import ZipFile
@@ -81,7 +83,7 @@ def _correct_adopted_payment(client, identity, account, original_debt, historica
     corrected = client.post(account_url + "/repayments/void", headers=headers, json=body)
     assert corrected.status_code == 200, corrected.text
     assert corrected.json()["balance_minor"] == -9800
-    assert corrected.json()["prior_repayments"]["items"][0]["status"] == "voided"
+    assert client.get(account_url, headers=identity.app_headers).json()["prior_repayments"]["items"][0]["status"] == "voided"
     assert client.post(account_url + "/repayments/void", headers=headers, json=body).json() == corrected.json()
     debt = client.get("/api/debts/" + original_debt["public_id"], headers=identity.app_headers).json()
     assert (debt["remaining_amount_cents"], debt["paid_amount_cents"]) == (9800, 0)
@@ -225,13 +227,13 @@ def _apply_and_correct_spare_credit(client, identity, credit):
     assert client.post(url + "/credit-applications", json=body, headers=headers).json() == applied.json()
     result = applied.json()
     assert (result["balance_minor"], result["unallocated_credit_minor"]) == (1000, 1000)
-    review = result["credit_applications"]["history"][0]
+    review = client.get(url, headers=identity.app_headers).json()["credit_applications"]["history"][0]
     assert review["applied_minor"] == 500
     undone = client.post(url + "/credit-applications/void", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": result["row_version"], "review_public_id": review["public_id"], "reason": "核对材料有误，恢复待分配"})
     assert undone.status_code == 200, undone.text
     assert (undone.json()["balance_minor"], undone.json()["unallocated_credit_minor"]) == (1000, 1500)
-    assert undone.json()["credit_applications"]["history"][0]["void_reason"] == "核对材料有误，恢复待分配"
+    assert client.get(url, headers=identity.app_headers).json()["credit_applications"]["history"][0]["void_reason"] == "核对材料有误，恢复待分配"
     again = client.post(url + "/credit-applications", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={**body, "expected_row_version": undone.json()["row_version"], "reason": "再次核实抵扣，后续退款撤回也须恢复欠款"})
     assert again.status_code == 200 and again.json()["unallocated_credit_minor"] == 1000, again.text
@@ -373,7 +375,8 @@ def test_cash_envelopes_reserve_unsettled_purchases_without_spending_principal_t
     funded = client.put(url, headers=headers, json=body)
     assert funded.status_code == 200, funded.text
     assert (funded.json()["cash_minor"], funded.json()["reserved_minor"], funded.json()["unassigned_minor"]) == (100000, 50000, 50000)
-    assert all(row["planned_minor"] is None for row in funded.json()["purposes"])
+    assert funded.json()["receipt_revision"] == 1 and funded.json()["purposes"] == []
+    assert all(row["planned_minor"] is None for row in client.get(url, headers=identity.app_headers).json()["purposes"])
     assert client.put(url, headers=headers, json=body).json() == funded.json()
     budget = client.put("/api/budgets/monthly/" + month,
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
@@ -567,7 +570,7 @@ def _native_prior_repayment(installed, headers, ledger_id):
     corrected = installed.browser.post("/web/funds/save", data=fields, headers=headers)
     assert corrected.status_code == 200, corrected.text
     result = corrected.json()["receipt"]
-    assert result["balance_minor"] == -9800 and result["prior_repayments"]["items"][0]["status"] == "voided"
+    assert result["balance_minor"] == -9800 and "prior_repayments" not in result
     assert installed.browser.post("/web/funds/save", data=fields, headers=headers).json() == corrected.json()
     assert "核实原30元并未还款" in installed.browser.get(corrected.json()["next"], headers=headers).text
 
@@ -609,9 +612,11 @@ def _native_activity_correction(installed, headers, account_id):
     fields.update(activity_amount="20", note="错误的额外收入", occurred_on=str(date.today()))
     saved = installed.browser.post("/web/funds/save", data=fields, headers=headers)
     assert saved.status_code == 200, saved.text
-    original = next(row for row in saved.json()["receipt"]["movements"] if row["kind"] == "income")
-    assert original["correction_parts"] == []  # Historical receipts do not retain another account's current authority.
-    page = installed.browser.get(f"/web/funds?task=void_activity&account_id={account_id}&event_id={original['event_public_id']}", headers=headers)
+    assert "movements" not in saved.json()["receipt"]
+    # Navigate the actual read page; action identities belong to its authorized history.
+    page = installed.browser.get(saved.json()["next"], headers=headers)
+    href = next(unescape(href) for href in re.findall(r'<a[^>]*href="([^"]+)"', page.text) if "task=void_activity" in href)
+    page = installed.browser.get(href, headers=headers)
     assert page.status_code == 200 and "错误的额外收入" in page.text, page.text
     values = hidden_post_forms(page.text)["/web/funds/save"]
     assert json.loads(values["activity_parts_json"])[0]["amount_minor"] == -2000
@@ -726,7 +731,7 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
     schedule = get(credit_url + "/installments")["agreements"][0]
     assert schedule["periods"][0]["paid_principal_minor"] == 1000
     assert schedule["periods"][0]["paid_fee_minor"] == 20 and not schedule["needs_review"]
-    repayment = next(row for row in credit["movements"] if row["can_void_repayment"])
+    repayment = next(row for row in get(credit_url)["movements"] if row["can_void_repayment"])
     undo = {"expected_row_version": credit["row_version"], "repayment_public_id": repayment["repayment_public_id"],
         "occurred_on": str(date.today()), "reason": "本金记录重复，实际费用保留"}
     undo_key = str(uuid4())
@@ -845,6 +850,8 @@ def _replay_funds_after_account_visibility_change(client, identity, account):
         "kind": "income", "amount_minor": 100, "occurred_on": str(date.today()), "note": "家人已确认的共同收入"}
     accepted = client.post(url + "/activities", headers=member, json=body)
     assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["receipt_revision"] == 1
+    assert not {"movements", "prior_repayments", "fee_obligations", "credit_applications"} & accepted.json().keys()
     hidden = share(accepted.json(), "private")
     assert client.get(url, headers=member).status_code == 404
     replay = client.post(url + "/activities", headers=member, json=body)
@@ -964,7 +971,7 @@ def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, 
             "occurred_on": str(date.today()), "note": "账单已产生费用，本次未支付"}
         credit = post(credit_url + "/fees", fee, key=key)
         assert post(credit_url + "/fees", fee, key=key) == credit
-        expense_id = next(row["expense_id"] for row in credit["fee_obligations"] if row["period_public_id"] == period["public_id"])
+        expense_id = next(row["expense_id"] for row in get(credit_url)["fee_obligations"] if row["period_public_id"] == period["public_id"])
         history = get(f"/api/expenses/{expense_id}/revisions")
         assert history["items"][0]["after"]["funding"][0]["expense_amount_minor"] == fee["amount_minor"]
     assert credit["balance_minor"] == -130 and get(bank_url)["balance_minor"] == 90980

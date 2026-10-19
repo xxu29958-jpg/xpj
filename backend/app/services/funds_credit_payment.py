@@ -19,7 +19,7 @@ from app.models import (
 )
 from app.money_contract import ensure_money_minor
 from app.schemas._accounting_time import AccountingTimeInput
-from app.schemas.funds import CreditPayment, FinancialAccountView
+from app.schemas.funds import CreditPayment, FinancialAccountReceipt
 from app.services.credit_allocation_service import allocate_credit
 from app.services.credit_fee_settlement import reviewed_fee_settlement
 from app.services.debt_service._repayment_time import resolve_repayment_time
@@ -34,7 +34,7 @@ from app.services.time_service import now_utc
 from app.tenants import AuthContext
 
 
-def pay_credit(db: Session, *, auth: AuthContext, public_id: str, payload: CreditPayment, key: str) -> FinancialAccountView:
+def pay_credit(db: Session, *, auth: AuthContext, public_id: str, payload: CreditPayment, key: str) -> FinancialAccountReceipt:
     claim = claim_funds(db, auth, payload, key, "pay_credit_from_account", public_id)
     if claim is None:
         return replay_funds(db, auth, key)

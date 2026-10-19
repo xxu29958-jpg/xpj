@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import AccountMovement, CreditFacility, Debt, FinancialAccount, Repayment, RepaymentVoid
-from app.schemas.funds import CreditPaymentVoid, FinancialAccountView
+from app.schemas.funds import CreditPaymentVoid, FinancialAccountReceipt
 from app.services.funds_commands import claim_funds, finish_funds, movement, replay_funds, require_account_version
 from app.services.funds_fact_service import reverse_movements, validate_movement_date
 from app.services.funds_query import get_account
@@ -15,7 +15,7 @@ from app.tenants import AuthContext
 
 
 def void_credit_payment(db: Session, *, auth: AuthContext, public_id: str,
-        payload: CreditPaymentVoid, key: str) -> FinancialAccountView:
+        payload: CreditPaymentVoid, key: str) -> FinancialAccountReceipt:
     claim = claim_funds(db, auth, payload, key, "void_credit_payment", public_id)
     if claim is None:
         return replay_funds(db, auth, key)
@@ -47,7 +47,7 @@ def void_credit_payment(db: Session, *, auth: AuthContext, public_id: str,
 
 
 def _void_adopted_payment(db: Session, auth: AuthContext, account: FinancialAccount, repayment: Repayment,
-        payload: CreditPaymentVoid, key: str, claim) -> FinancialAccountView:
+        payload: CreditPaymentVoid, key: str, claim) -> FinancialAccountReceipt:
     from app.models import AccountBalanceObservation
     from app.services.funds_fact_service import refresh_credit
     from app.services.funds_query import account_balance

@@ -8,6 +8,7 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.CreditPaymentDto
 import com.ticketbox.data.remote.dto.CreditPaymentVoidDto
 import com.ticketbox.data.remote.dto.FinancialAccountCreateDto
+import com.ticketbox.data.remote.dto.FinancialAccountReceiptDto
 import com.ticketbox.data.remote.dto.FinancialAccountDto
 import com.ticketbox.data.remote.dto.FinancialAccountEditDto
 import com.ticketbox.data.remote.dto.AccountPostingDto
@@ -70,6 +71,8 @@ internal object FundsWire {
     val input = moshi.adapter(FundsInput::class.java)
     val command = moshi.adapter(FundsCommand::class.java)
     val account = moshi.adapter(FinancialAccountDto::class.java)
+    val accountReceipt = moshi.adapter(FinancialAccountReceiptDto::class.java)
+    val envelopeReceipt = moshi.adapter(com.ticketbox.data.remote.dto.EnvelopeReceiptDto::class.java)
     val envelopeHistory = moshi.adapter<List<com.ticketbox.data.remote.dto.EnvelopeRevisionDto>>(
         Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.EnvelopeRevisionDto::class.java))
     val overview = moshi.adapter(FundsOverviewDto::class.java)
@@ -97,10 +100,10 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
             val key = requireNotNull(row.idempotencyKey)
             if (original.envelopes != null) {
                 val result = api.saveEnvelopes(original.envelopeMonth, original.envelopes, key)
-                require(result.ledgerId == original.binding.ledgerId && result.month == original.envelopeMonth &&
+                require(result.receiptRevision in 0..1 && result.ledgerId == original.binding.ledgerId && result.month == original.envelopeMonth &&
                     result.homeCurrencyCode == original.envelopes.homeCurrencyCode && result.rowVersion > original.version)
                 bound.requireStillActive()
-                return DispatchResult.Success(receiptJson = FundsWire.envelopes.toJson(result))
+                return DispatchResult.Success(receiptJson = FundsWire.envelopeReceipt.toJson(result))
             }
             if (original.funding != null) {
                 val result = api.saveExpenseFunding(requireNotNull(original.expenseId), original.funding, key)
@@ -110,7 +113,7 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
             }
             val result = accountResult(original, api, key)
             bound.requireStillActive()
-            DispatchResult.Success(receiptJson = FundsWire.account.toJson(result))
+            DispatchResult.Success(receiptJson = FundsWire.accountReceipt.toJson(result))
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: HttpException) {
@@ -133,7 +136,7 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
             value
         }.getOrNull()
 
-    private suspend fun accountResult(original: FundsCommand, api: ApiService, key: String): FinancialAccountDto {
+    private suspend fun accountResult(original: FundsCommand, api: ApiService, key: String): FinancialAccountReceiptDto {
         val result = when {
                 original.voidActivity != null -> api.voidFundsActivity(original.accountId, original.voidActivity, key)
                 original.applyCredit != null -> api.applyRetainedCredit(original.accountId, original.applyCredit, key)
@@ -146,7 +149,7 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
                 original.voidPayment != null -> api.voidCreditPayment(original.accountId, original.voidPayment, key)
                 else -> api.payCreditAccount(original.accountId, requireNotNull(original.payment), key)
             }
-            require(result.publicId.isNotBlank() && result.rowVersion > 0 &&
+            require(result.receiptRevision in 0..1 && result.publicId.isNotBlank() && result.rowVersion > 0 &&
                 (original.accountId.isBlank() || result.publicId == original.accountId))
         return result
     }

@@ -323,13 +323,20 @@ class NetworkErrorReportingTest {
 
     @Test
     fun fundsReplayFailureReportsSafelyWithoutRetryingOrConsumingTheCommand() = runTest {
+        var unavailable = true
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun editFundsAccount(id: String, request: com.ticketbox.data.remote.dto.FinancialAccountEditDto,
-                key: String): com.ticketbox.data.remote.dto.FinancialAccountDto {
+                key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto {
                 assertEquals("reviewed-account", id)
                 assertEquals(7L, request.expectedRowVersion)
                 assertEquals("original-funds-key", key)
-                throw IllegalStateException("password=synthetic-funds-secret", IOException("private financial text"))
+                if (unavailable) throw IllegalStateException("password=synthetic-funds-secret", IOException("private financial text"))
+                // A legacy server's growing read model must never be copied into Room.
+                return requireNotNull(FundsWire.accountReceipt.fromJson("""{
+                    "public_id":"reviewed-account","ledger_id":"owner","row_version":8,
+                    "currency_code":"CNY","balance_minor":12345,"recorded_change_minor":12345,
+                    "movements":[{"note":"old account history"}],"fee_obligations":[{"note":"old fee history"}]
+                }"""))
             }
         }
         val factory = object : com.ticketbox.data.remote.ApiServiceFactory {
@@ -357,6 +364,17 @@ class NetworkErrorReportingTest {
         val output = finalLog()
         assertTrue(output.contains("FundsCommand.kt:") && output.contains("IllegalStateException"))
         assertFalse(output.contains("synthetic-funds-secret") || output.contains("private financial text"))
+        unavailable = false
+        assertTrue(outbox.resolveFailed(id, FailedResolution.Retry(), guard.bindExact(command.binding)))
+        dao.runnableBatches += listOf(id)
+        assertEquals(1, OutboxDrainEngine(outbox, listOf(FundsCommandDispatcher(guard))).drainOnce().done)
+        val accepted = dao.rows.getValue(id)
+        assertEquals(payload, accepted.payload)
+        assertEquals("original-funds-key", accepted.idempotencyKey)
+        val receipt = requireNotNull(accepted.receiptJson)
+        assertEquals(8L, FundsWire.accountReceipt.fromJson(receipt)?.rowVersion)
+        assertEquals(12345L, FundsWire.accountReceipt.fromJson(receipt)?.balanceMinor)
+        assertFalse(receipt.contains("movements") || receipt.contains("old account history") || receipt.contains("fee_obligations"))
     }
 
     private fun assertLocated(output: String) {

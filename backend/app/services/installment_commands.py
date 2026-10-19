@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import AccountMovement, FinancialAccount, InstallmentAgreement, InstallmentDraw, InstallmentPeriod
-from app.schemas.funds import FinancialAccountView
+from app.schemas.funds import FinancialAccountReceipt
 from app.schemas.installment import InstallmentCommand
 from app.services.funds_commands import claim_funds, finish_funds, replay_funds, require_account_version
 from app.services.funds_query import get_account
@@ -16,7 +16,7 @@ from app.tenants import AuthContext
 
 
 def save_installments(db: Session, *, auth: AuthContext, public_id: str,
-        payload: InstallmentCommand, key: str) -> FinancialAccountView:
+        payload: InstallmentCommand, key: str) -> FinancialAccountReceipt:
     claim = claim_funds(db, auth, payload, key, "save_installment_agreement", public_id)
     if claim is None:
         return replay_funds(db, auth, key)

@@ -13,7 +13,7 @@ from app.models import (
     FinancialAccount,
     Ledger,
 )
-from app.schemas.envelopes import EnvelopeSave, EnvelopesView
+from app.schemas.envelopes import EnvelopeReceipt, EnvelopeSave, EnvelopeSummary, EnvelopesView
 from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
 from app.services.currency_common import minor_amount_label
 from app.services.envelope_query import envelopes_view
@@ -103,13 +103,14 @@ def _replace_assignments(db: Session, tenant_id: str, month: str, sources: list[
     db.flush()
 
 
-def save_envelopes(db: Session, *, auth: AuthContext, month: str, payload: EnvelopeSave, key: str) -> EnvelopesView:
+def save_envelopes(db: Session, *, auth: AuthContext, month: str, payload: EnvelopeSave, key: str) -> EnvelopeReceipt:
     month = clean_month(month)
     try:
         claim = _claim(db, auth, month, payload, key)
         if claim is None:
             return _receipt(db, auth, key)
-        result = _apply(db, auth, month, payload)
+        result = EnvelopeReceipt.model_validate(EnvelopeSummary.model_validate(
+            _apply(db, auth, month, payload).model_dump()).model_dump())
         mark_idempotency_succeeded(db, claim, resource_type="envelope_book", resource_id=auth.tenant_id,
                                   response_body=result.model_dump(mode="json"))
         db.commit()
@@ -129,13 +130,14 @@ def _claim(db: Session, auth: AuthContext, month: str, payload: EnvelopeSave, ke
         expected_row_version=payload.expected_row_version)
 
 
-def _receipt(db: Session, auth: AuthContext, key: str) -> EnvelopesView:
+def _receipt(db: Session, auth: AuthContext, key: str) -> EnvelopeReceipt:
     receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.tenant_id == auth.tenant_id,
                                                       ApiIdempotencyKey.idempotency_key == key))
-    return EnvelopesView.model_validate(receipt.response_body)
+    return EnvelopeReceipt.model_validate({**EnvelopeSummary.model_validate(receipt.response_body).model_dump(),
+        "receipt_revision": receipt.response_body.get("receipt_revision", 1)})
 
 
-def review_envelopes(db: Session, *, auth: AuthContext, month: str, payload: EnvelopeSave, key: str) -> EnvelopesView | None:
+def review_envelopes(db: Session, *, auth: AuthContext, month: str, payload: EnvelopeSave, key: str) -> EnvelopeReceipt | None:
     """Resolve the original key before preparing any fresh version or key."""
     try:
         if _claim(db, auth, clean_month(month), payload, key) is None:

@@ -38,7 +38,7 @@ from app.routes.web_common import (
     _web_redirect,
     templates,
 )
-from app.schemas.funds import FinancialAccountView
+from app.schemas.funds import FinancialAccountReceipt
 from app.services.credit_application_commands import apply_retained_credit, void_credit_application
 from app.services.credit_fee_commands import incur_credit_fee
 from app.services.credit_history_adoption import existing_debt_choices
@@ -116,7 +116,7 @@ def web_funds(request: Request, ledger_id: str = "", task: str = "", account_id:
     return _render(request, db, ledger_id=ledger_id, task=task, account_id=account_id, agreement_id=agreement_id, repayment_id=repayment_id)
 
 
-def _run(db, auth, values, payload, handler, operation, review) -> FinancialAccountView | None:
+def _run(db, auth, values, payload, handler, operation, review) -> FinancialAccountReceipt | None:
     target = values.get("account_id") or None
     if review:
         claimed = claim_funds(db, auth, payload, values["idempotency_key"], operation, target)
@@ -128,7 +128,7 @@ def _run(db, auth, values, payload, handler, operation, review) -> FinancialAcco
     return handler(db, auth=auth, payload=payload, key=values["idempotency_key"], **kwargs)
 
 
-def _execute(db: Session, auth: AuthContext, values: dict[str, str], *, review: bool = False) -> FinancialAccountView | None:
+def _execute(db: Session, auth: AuthContext, values: dict[str, str], *, review: bool = False) -> FinancialAccountReceipt | None:
     mode = values["mode"]
     if mode == "void_activity":
         return _run(db, auth, values, void_activity_payload(values), void_account_activity, "void_account_activity", review)

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import AccountMovement, ApiIdempotencyKey, CreditFacility, Debt, EnvelopeSource, FinancialAccount
-from app.schemas.funds import AccountCreate, FinancialAccountView
+from app.schemas.funds import AccountCreate, FinancialAccountReceipt
 from app.services.credit_history_adoption import adopt_existing_debt
 from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
 from app.services.funds_money import valuation
@@ -45,15 +45,14 @@ def claim_funds(db: Session, auth: AuthContext, payload: BaseModel, key: str, op
         expected_row_version=getattr(payload, "expected_row_version", None))
 
 
-def replay_funds(db: Session, auth: AuthContext, key: str) -> FinancialAccountView:
+def replay_funds(db: Session, auth: AuthContext, key: str) -> FinancialAccountReceipt:
     row = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.tenant_id == auth.tenant_id,
         ApiIdempotencyKey.idempotency_key == key))
     # Acceptance survives access changes, but a retained receipt cannot bypass
     # the current account visibility used by ordinary reads.
     get_account(db, ledger_id=auth.ledger_id, actor_account_id=auth.account_id, public_id=row.resource_id)
-    result = FinancialAccountView.model_validate(row.response_body)
-    result.movements = [movement.model_copy(update={"correction_parts": []}) for movement in result.movements]
-    return result
+    # Also accepts legacy full-view receipts, retaining their original scalars.
+    return FinancialAccountReceipt.model_validate(row.response_body)
 
 
 def funds_request_is_unpublished(db, auth, key):
@@ -67,10 +66,10 @@ def funds_request_is_unpublished(db, auth, key):
 
 def finish_funds(db, auth, claim, account):
     db.flush()
-    result = account_view(db, account, actor_account_id=auth.account_id, with_movements=True, ledger_id=auth.ledger_id)
-    # An accepted receipt is historical; other accounts' current action
-    # candidates belong only to an authorized detail read, not durable replay.
-    result.movements = [row.model_copy(update={"correction_parts": []}) for row in result.movements]
+    summary = account_view(db, account, actor_account_id=auth.account_id, ledger_id=auth.ledger_id)
+    # History belongs to GET, not every accepted command. The original scalar
+    # result remains replayable even after later edits, reversals or archiving.
+    result = FinancialAccountReceipt.model_validate(summary.model_dump())
     mark_idempotency_succeeded(db, claim, resource_type="financial_account", resource_id=account.public_id,
         response_body=result.model_dump(mode="json"))
     db.commit()
@@ -97,7 +96,7 @@ def movement(db, auth, account, *, event, component, kind, amount, occurred_on, 
     return row
 
 
-def create_account(db: Session, *, auth: AuthContext, payload: AccountCreate, key: str) -> FinancialAccountView:
+def create_account(db: Session, *, auth: AuthContext, payload: AccountCreate, key: str) -> FinancialAccountReceipt:
     claim = claim_funds(db, auth, payload, key, "create_financial_account")
     if claim is None:
         return replay_funds(db, auth, key)

@@ -1,5 +1,6 @@
 """One shared protocol for the existing Web and Android funds consumers."""
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -50,7 +51,7 @@ class EnvelopeMonthView(BaseModel):
     reserved_minor: SignedMoneyAggregate | None
 
 
-class EnvelopesView(BaseModel):
+class EnvelopeSummary(BaseModel):
     ledger_id: str
     month: str
     home_currency_code: str
@@ -60,6 +61,20 @@ class EnvelopesView(BaseModel):
     cash_minor: SignedMoneyAggregate | None
     reserved_minor: SignedMoneyAggregate | None
     unassigned_minor: SignedMoneyAggregate | None
+
+
+class EnvelopeReceipt(EnvelopeSummary):
+    """Bounded acceptance result; sources, purposes and month history are GET data."""
+    receipt_revision: Literal[1] = 1
+    # Old Android writers require these keys but only use the acceptance fields.
+    # Empty tuples prevent a future caller from persisting a read model here.
+    accounts: tuple[()] = ()
+    purposes: tuple[()] = ()
+    months: tuple[()] = ()
+    notices: tuple[()] = ()
+
+
+class EnvelopesView(EnvelopeSummary):
     accounts: list[EnvelopeAccountView]
     purposes: list[EnvelopePurposeView]
     months: list[EnvelopeMonthView]

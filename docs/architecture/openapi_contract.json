@@ -15274,6 +15274,126 @@
         "title": "EnvelopePurposeView",
         "type": "object"
       },
+      "EnvelopeReceipt": {
+        "description": "Bounded acceptance result; sources, purposes and month history are GET data.",
+        "properties": {
+          "accounts": {
+            "default": [],
+            "maxItems": 0,
+            "minItems": 0,
+            "title": "Accounts",
+            "type": "array"
+          },
+          "cash_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash Minor"
+          },
+          "home_currency_code": {
+            "title": "Home Currency Code",
+            "type": "string"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "month": {
+            "title": "Month",
+            "type": "string"
+          },
+          "months": {
+            "default": [],
+            "maxItems": 0,
+            "minItems": 0,
+            "title": "Months",
+            "type": "array"
+          },
+          "notices": {
+            "default": [],
+            "maxItems": 0,
+            "minItems": 0,
+            "title": "Notices",
+            "type": "array"
+          },
+          "purposes": {
+            "default": [],
+            "maxItems": 0,
+            "minItems": 0,
+            "title": "Purposes",
+            "type": "array"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "receipt_revision": {
+            "const": 1,
+            "default": 1,
+            "title": "Receipt Revision",
+            "type": "integer"
+          },
+          "reserved_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserved Minor"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "unassigned_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unassigned Minor"
+          },
+          "valuation_date": {
+            "format": "date",
+            "title": "Valuation Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "month",
+          "home_currency_code",
+          "row_version",
+          "read_at",
+          "valuation_date",
+          "cash_minor",
+          "reserved_minor",
+          "unassigned_minor"
+        ],
+        "title": "EnvelopeReceipt",
+        "type": "object"
+      },
       "EnvelopeRevisionView": {
         "properties": {
           "allocation_snapshot": {
@@ -18766,6 +18886,179 @@
           "expected_row_version"
         ],
         "title": "ExpenseUpdateRequest",
+        "type": "object"
+      },
+      "FinancialAccountReceipt": {
+        "description": "Accepted account state, independent of later history and ordinary detail reads.",
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "balance_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9007199254740991.0,
+                "minimum": -9007199254740991.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Minor"
+          },
+          "calendar_revision": {
+            "title": "Calendar Revision",
+            "type": "integer"
+          },
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "credit_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Kind"
+          },
+          "credit_terms": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreditTerms"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "currency_code": {
+            "title": "Currency Code",
+            "type": "string"
+          },
+          "debt_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debt Public Id"
+          },
+          "institution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Institution"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "observation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BalanceObservationView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "opening_date": {
+            "format": "date",
+            "title": "Opening Date",
+            "type": "string"
+          },
+          "opening_source": {
+            "title": "Opening Source",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "receipt_revision": {
+            "const": 1,
+            "default": 1,
+            "title": "Receipt Revision",
+            "type": "integer"
+          },
+          "recorded_change_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Recorded Change Minor",
+            "type": "integer"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "tail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tail"
+          },
+          "unallocated_credit_minor": {
+            "default": 0,
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "title": "Unallocated Credit Minor",
+            "type": "integer"
+          },
+          "visibility": {
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id",
+          "name",
+          "ledger_id",
+          "calendar_revision",
+          "kind",
+          "currency_code",
+          "visibility",
+          "institution",
+          "tail",
+          "row_version",
+          "archived",
+          "balance_minor",
+          "recorded_change_minor",
+          "opening_date",
+          "opening_source",
+          "can_edit"
+        ],
+        "title": "FinancialAccountReceipt",
         "type": "object"
       },
       "FinancialAccountView": {
@@ -33219,7 +33512,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnvelopesView"
+                  "$ref": "#/components/schemas/EnvelopeReceipt"
                 }
               }
             },
@@ -42695,7 +42988,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/FinancialAccountView"
+                  "$ref": "#/components/schemas/FinancialAccountReceipt"
                 }
               }
             },
@@ -43119,7 +43412,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/FinancialAccountView"
+                  "$ref": "#/components/schemas/FinancialAccountReceipt"
                 }
               }
             },
@@ -43228,7 +43521,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/FinancialAccountView"
+                  "$ref": "#/components/schemas/FinancialAccountReceipt"
                 }
               }
             },
@@ -43337,7 +43630,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/FinancialAccountView"
+                  "$ref": "#/components/schemas/FinancialAccountReceipt"
                 }
               }
             },
@@ -43446,7 +43739,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/FinancialAccountView"
+                  "$ref": "#/components/schemas/FinancialAccountReceipt"
                 }
               }
             },
@@ -43555,7 +43848,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/FinancialAccountView"
+                  "$ref": "#/components/schemas/FinancialAccountReceipt"
                 }
               }
             },
@@ -43664,7 +43957,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/FinancialAccountView"
+                  "$ref": "#/components/schemas/FinancialAccountReceipt"
                 }
               }
             },
@@ -43855,7 +44148,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/FinancialAccountView"
+                  "$ref": "#/components/schemas/FinancialAccountReceipt"
                 }
               }
             },
@@ -43964,7 +44257,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/FinancialAccountView"
+                  "$ref": "#/components/schemas/FinancialAccountReceipt"
                 }
               }
             },
@@ -44073,7 +44366,7 @@
             "content": {
               "application/json; charset=utf-8": {
                 "schema": {
-                  "$ref": "#/components/schemas/FinancialAccountView"
+                  "$ref": "#/components/schemas/FinancialAccountReceipt"
                 }
               }
             },

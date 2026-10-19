@@ -25,7 +25,7 @@ from app.routes.web_common import (
     _web_redirect,
     templates,
 )
-from app.schemas.envelopes import EnvelopeSave, EnvelopesView
+from app.schemas.envelopes import EnvelopeReceipt, EnvelopeSave, EnvelopesView
 from app.services.currency_common import major_amount_to_minor, minor_amount_label, minor_amount_value
 from app.services.envelope_commands import review_envelopes, save_envelopes
 from app.services.envelope_query import envelope_history, envelopes_view
@@ -102,7 +102,7 @@ def _native_values(values: dict) -> None:
     values["account_ids_json"] = json.dumps([key.removeprefix("source:") for key in values if key.startswith("source:")])
 
 
-def _ack(request: Request, values: dict, receipt: EnvelopesView):
+def _ack(request: Request, values: dict, receipt: EnvelopeReceipt):
     href = f"/web/envelopes?ledger_id={receipt.ledger_id}&month={receipt.month}"
     return draft_ack_response(request, draft_scope=values["draft_scope"], idempotency_key=values["idempotency_key"],
         receipt=receipt, next_href=href) or _web_redirect("/web/envelopes", receipt.ledger_id, month=receipt.month)

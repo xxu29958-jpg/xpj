@@ -149,7 +149,7 @@ def test_debt_goal_view_hides_amount_line_on_mixed_currency() -> None:
         ]
     )
     view = _debt_goal_view(_goal(evaluation))
-    assert "amount_line" not in view  # mixed currency → amount sub-line suppressed entirely
+    assert view.get("amount_line") is None  # Mixed currencies must not produce a misleading total.
 
 
 def test_payoff_line_projected_stale_insufficient() -> None:

@@ -241,8 +241,7 @@ class FundsOverview(BaseModel):
     missing_rate_accounts: int
 
 
-class FinancialAccountView(BaseModel):
-    prior_repayments: RepaymentFactListResponse | None = None
+class FinancialAccountSummary(BaseModel):
     public_id: str
     name: str
     ledger_id: str
@@ -263,7 +262,16 @@ class FinancialAccountView(BaseModel):
     can_edit: bool
     credit_kind: str | None = None
     observation: BalanceObservationView | None = None
+    credit_terms: CreditTerms | None = None
+
+
+class FinancialAccountReceipt(FinancialAccountSummary):
+    """Accepted account state, independent of later history and ordinary detail reads."""
+    receipt_revision: Literal[1] = 1
+
+
+class FinancialAccountView(FinancialAccountSummary):
+    prior_repayments: RepaymentFactListResponse | None = None
     movements: list[MovementView] = Field(default_factory=list)
     fee_obligations: list[CreditFeeView] = Field(default_factory=list)
     credit_applications: CreditApplicationsView | None = None
-    credit_terms: CreditTerms | None = None

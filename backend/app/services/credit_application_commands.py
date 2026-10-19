@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import CreditApplicationReview
 from app.schemas.credit_application import CreditApplicationCreate, CreditApplicationVoid
-from app.schemas.funds import FinancialAccountView
+from app.schemas.funds import FinancialAccountReceipt
 from app.services.credit_application_query import credit_application_choices
 from app.services.funds_commands import claim_funds, finish_funds, replay_funds, require_account_version
 from app.services.funds_fact_service import refresh_credit
@@ -15,7 +15,7 @@ from app.tenants import AuthContext
 
 
 def apply_retained_credit(db: Session, *, auth: AuthContext, public_id: str, payload: CreditApplicationCreate,
-                          key: str) -> FinancialAccountView:
+                          key: str) -> FinancialAccountReceipt:
     claim = claim_funds(db, auth, payload, key, "apply_retained_credit", public_id)
     if claim is None:
         return replay_funds(db, auth, key)
@@ -35,7 +35,7 @@ def apply_retained_credit(db: Session, *, auth: AuthContext, public_id: str, pay
 
 
 def void_credit_application(db: Session, *, auth: AuthContext, public_id: str, payload: CreditApplicationVoid,
-                            key: str) -> FinancialAccountView:
+                            key: str) -> FinancialAccountReceipt:
     claim = claim_funds(db, auth, payload, key, "void_credit_application", public_id)
     if claim is None:
         return replay_funds(db, auth, key)

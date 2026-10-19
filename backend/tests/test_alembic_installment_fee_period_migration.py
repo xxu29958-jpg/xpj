@@ -24,7 +24,7 @@ pytestmark = [pytest.mark.real_db, pytest.mark.currency_binding_unbound]
 
 
 def test_fee_only_period_survives_upgrade_and_refuses_lossy_downgrade():
-    parent, head = "20261019_0001", "20261019_0004"
+    parent, head = "20261019_0001", "20261019_0005"
     reset_schema()
     try:
         run_alembic(command.upgrade, head)

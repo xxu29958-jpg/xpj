@@ -16,6 +16,7 @@ from app.schemas.funds import (
     ExistingDebtChoice,
     ExpenseFundingCommand,
     ExpenseFundingView,
+    FinancialAccountReceipt,
     FinancialAccountView,
     FundsOverview,
 )
@@ -56,7 +57,7 @@ def get_installments(public_id: str, auth: AuthContext = Depends(get_current_app
     return installments_view(db, account)
 
 
-@router.post("/{public_id}/installments", response_model=FinancialAccountView)
+@router.post("/{public_id}/installments", response_model=FinancialAccountReceipt)
 def post_installments(public_id: str, payload: InstallmentCommand, key: str = Header(alias="Idempotency-Key"),
         auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return save_installments(db, auth=auth, public_id=public_id, payload=payload, key=key)
@@ -89,55 +90,55 @@ def get_funds_overview(auth: AuthContext = Depends(get_current_app_context), db:
     return funds_overview(db, ledger_id=auth.tenant_id, actor_account_id=auth.account_id)
 
 
-@router.post("", response_model=FinancialAccountView)
+@router.post("", response_model=FinancialAccountReceipt)
 def post_account(payload: AccountCreate, key: str = Header(alias="Idempotency-Key"),
         auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return create_account(db, auth=auth, payload=payload, key=key)
 
 
-@router.patch("/{public_id}", response_model=FinancialAccountView)
+@router.patch("/{public_id}", response_model=FinancialAccountReceipt)
 def patch_account(public_id: str, payload: AccountEdit, key: str = Header(alias="Idempotency-Key"),
         auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return edit_account(db, auth=auth, public_id=public_id, payload=payload, key=key)
 
 
-@router.post("/{public_id}/repay", response_model=FinancialAccountView)
+@router.post("/{public_id}/repay", response_model=FinancialAccountReceipt)
 def post_credit_payment(public_id: str, payload: CreditPayment, key: str = Header(alias="Idempotency-Key"),
         auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return pay_credit(db, auth=auth, public_id=public_id, payload=payload, key=key)
 
 
-@router.post("/{public_id}/activities", response_model=FinancialAccountView)
+@router.post("/{public_id}/activities", response_model=FinancialAccountReceipt)
 def post_funds_activity(public_id: str, payload: AccountPosting, key: str = Header(alias="Idempotency-Key"),
         auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return post_account_activity(db, auth=auth, public_id=public_id, payload=payload, key=key)
 
 
-@router.post("/{public_id}/repayments/void", response_model=FinancialAccountView)
+@router.post("/{public_id}/repayments/void", response_model=FinancialAccountReceipt)
 def post_credit_payment_void(public_id: str, payload: CreditPaymentVoid, key: str = Header(alias="Idempotency-Key"),
         auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return void_credit_payment(db, auth=auth, public_id=public_id, payload=payload, key=key)
 
 
-@router.post("/{public_id}/activities/void", response_model=FinancialAccountView)
+@router.post("/{public_id}/activities/void", response_model=FinancialAccountReceipt)
 def post_funds_activity_void(public_id: str, payload: AccountActivityVoid, key: str = Header(alias="Idempotency-Key"),
         auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return void_account_activity(db, auth=auth, public_id=public_id, payload=payload, key=key)
 
 
-@router.post("/{public_id}/fees", response_model=FinancialAccountView)
+@router.post("/{public_id}/fees", response_model=FinancialAccountReceipt)
 def post_credit_fee(public_id: str, payload: CreditFeeCreate, key: str = Header(alias="Idempotency-Key"),
         auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return incur_credit_fee(db, auth=auth, public_id=public_id, payload=payload, key=key)
 
 
-@router.post("/{public_id}/credit-applications", response_model=FinancialAccountView)
+@router.post("/{public_id}/credit-applications", response_model=FinancialAccountReceipt)
 def post_credit_application(public_id: str, payload: CreditApplicationCreate, key: str = Header(alias="Idempotency-Key"),
         auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return apply_retained_credit(db, auth=auth, public_id=public_id, payload=payload, key=key)
 
 
-@router.post("/{public_id}/credit-applications/void", response_model=FinancialAccountView)
+@router.post("/{public_id}/credit-applications/void", response_model=FinancialAccountReceipt)
 def post_credit_application_void(public_id: str, payload: CreditApplicationVoid, key: str = Header(alias="Idempotency-Key"),
         auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return void_credit_application(db, auth=auth, public_id=public_id, payload=payload, key=key)
