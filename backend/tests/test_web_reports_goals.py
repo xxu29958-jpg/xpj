@@ -211,16 +211,17 @@ def test_web_reports_renders_six_month_trend_chart_container(
     assert {"month", "amount_yuan", "budget_yuan"} <= six_month[0].keys()
 
 
-def test_web_reports_trend_hint_names_the_budget_only_when_a_month_has_one(web_client: TestClient) -> None:
-    """未设预算的月份在 data-series 里是 0, 图上不画预算; 说明文字也不能提一条不存在的虚线。"""
-    def hint() -> str:
+def test_web_reports_trend_legend_names_the_budget_only_when_a_month_has_one(web_client: TestClient) -> None:
+    """未设预算的月份不画预算; 图例也不能提一条不存在的虚线。"""
+    def legend() -> list[str]:
         response = web_client.get("/web/reports?ledger_id=owner&month=2026-05")
         assert response.status_code == 200
-        return re.search(r'id="chart-trend".*?<p class="hint">(.*?)</p>', response.text, re.DOTALL).group(1)
+        block = re.search(r'<ul class="report-legend"[^>]*>(.*?)</ul>', response.text, re.DOTALL).group(1)
+        return [re.sub(r"<[^>]+>", "", item).strip() for item in re.findall(r"<li>(.*?)</li>", block, re.DOTALL)]
 
-    assert hint() == "柱形表示净支出；精确数值可在明细数据中核对。"
+    assert legend() == ["净支出"]
     _save_budget(web_client)
-    assert hint() == "柱形表示净支出，虚线为当月预算；精确数值可在明细数据中核对。"
+    assert legend() == ["净支出", "当月预算"]
 
 
 def test_web_reports_static_echarts_vendor_is_self_hosted(client: TestClient) -> None:

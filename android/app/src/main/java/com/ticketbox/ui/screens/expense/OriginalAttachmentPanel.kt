@@ -199,18 +199,25 @@ private fun OriginalLocalSelection(state: OriginalAttachmentUiState, viewModel: 
         AppSecondaryButton(text = stringResource(R.string.original_selection_submit), modifier = Modifier.fillMaxWidth(),
             onClick = viewModel::submitSelectedSource, enabled = state.canConfirmSelection)
     } else {
-        Text(stringResource(when {
-            !state.selectionLoaded -> R.string.original_selection_load_failed
-            state.localIntentBound -> R.string.original_source_saved
-            else -> R.string.original_source_other_binding
-        }))
+        Text(stringResource(state.selectionStatus))
         TextButton(onClick = retry, enabled = state.canResumeSelection) { Text(stringResource(R.string.original_source_retry)) }
     }
     if (selection != null && state.selectionDraft == null) {
         TextButton(onClick = retry, enabled = !state.busy && state.localIntentBound) { Text(stringResource(R.string.original_selection_save_retry)) }
     }
-    TextButton(onClick = viewModel::discardOriginalSelection, enabled = !state.busy && state.selectionLoaded) { Text(stringResource(R.string.original_source_cancel)) }
+    TextButton(onClick = viewModel::discardOriginalSelection, enabled = !state.busy && state.selectionLoaded) {
+        Text(stringResource(if (state.selectionDraft != null) R.string.original_source_discard_retained else R.string.original_source_cancel))
+    }
 }
+
+private val OriginalAttachmentUiState.selectionStatus: Int
+    get() = when {
+        !selectionLoaded -> R.string.original_selection_load_failed
+        // Restored from Room: the exact bytes are kept on this device even before the preview reappears.
+        localIntentBound && selectionDraft != null -> R.string.original_source_retained
+        localIntentBound -> R.string.original_source_saved
+        else -> R.string.original_source_other_binding
+    }
 
 @Composable
 private fun OriginalCommandCard(command: PendingOriginalCommand, busy: Boolean, canModify: Boolean, recover: (Boolean) -> Unit) {
