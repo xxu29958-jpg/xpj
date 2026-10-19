@@ -17,9 +17,9 @@ const report = {
   category_comparison: [{category:'餐饮', amount_cents:null, previous_amount_cents:12345,
     year_over_year_amount_cents:null, delta_amount_cents:null, year_over_year_delta_amount_cents:null}],
 };
-const history = [{month:'2026-04', amount_cents:12345, budget_cents:20000, budget_status:'set'},
-  {month:'2026-05', amount_cents:null, budget_cents:null, budget_status:'unavailable'},
-  {month:'2026-06', amount_cents:0, budget_cents:null, budget_status:'not_set'}];
+const history = [{month:'2026-04', amount_cents:12345, budget_cents:20000, budget_status:'set', amount_state:'recorded'},
+  {month:'2026-05', amount_cents:null, budget_cents:null, budget_status:'unavailable', amount_state:'unavailable'},
+  {month:'2026-06', amount_cents:0, budget_cents:null, budget_status:'not_set', amount_state:'zero'}];
 const attrs = {'data-home-currency':CURRENCY,'data-home-currency-symbol':SYMBOL,'data-home-currency-minor-digits':DIGITS};
 const charts = {};
 const instances = {};
@@ -64,12 +64,13 @@ const category = charts['reports-category-chart'];
 const months = charts['chart-trend'];
 const merchant = charts['reports-merchant-chart'];
 process.stdout.write(JSON.stringify({
-  weekValues:trend.series[0].data,
+  weekValues:trend.series[0].data.map(point => point.missing ? 'missing' : point.value),
   weekUnknown:trend.tooltip.formatter([{dataIndex:0}]),
   weekKnown:trend.tooltip.formatter([{dataIndex:1}]),
   categoryUnknown:category.tooltip.formatter([{dataIndex:0}]),
   monthValues:months.series[1].data.map(item => item.value),
   budgetValues:months.series[0].data.map(item => item.value[1]),
+  monthMarks:months.series[2].data.map(item => [item.amount, item.budget]),
   budgetUnavailable:months.tooltip.formatter([{axisValue:'5月', data:months.series[0].data[1], seriesName:'预算', color:'#000'}]),
   budgetUnset:months.tooltip.formatter([{axisValue:'6月', data:months.series[0].data[2], seriesName:'预算', color:'#000'},
     {axisValue:'6月', data:months.series[1].data[2], seriesName:'净支出', color:'#000'}]),
@@ -98,11 +99,14 @@ def test_actual_report_charts_preserve_money_when_the_existing_views_change_them
     major = 12345 / 10 ** digits
     # The report keeps minor units for geometry; its tooltip converts them.
     # The monthly consumer projects geometry to major units before rendering.
-    assert actual["weekValues"] == [None, 12345]
+    # A bucket waiting for its rate is an empty placeholder, never a value; known buckets keep minor units.
+    assert actual["weekValues"] == ["missing", 12345]
     assert actual["monthValues"] == [major, None, 0] and actual["budgetValues"] == [20000 / 10 ** digits, None, None]
     # A set budget waiting for its rate is still named; a month without a budget has none to show.
     assert "预算" in actual["budgetUnavailable"] and "待补汇率" in actual["budgetUnavailable"]
     assert "预算" not in actual["budgetUnset"] and "净支出" in actual["budgetUnset"]
+    # Zero, a missing rate and a budget waiting for its rate each get their own mark.
+    assert actual["monthMarks"] == [[None, False], ["unavailable", True], ["zero", False]]
     assert "待补汇率" in actual["weekUnknown"] and "待补汇率" in actual["monthUnknown"]
     assert "待补汇率" in actual["categoryUnknown"] and "¥0" not in actual["categoryUnknown"]
     assert label in actual["weekKnown"] and label in actual["monthKnown"]

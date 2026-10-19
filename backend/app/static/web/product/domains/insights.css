@@ -321,6 +321,15 @@ body[data-domain="insights"] .content[data-page-level="tertiary"] { max-inline-s
 .layout-reset { margin-block-start: var(--space-5); }
 
 .report-history { margin-block: var(--space-6); }
+/* Legend keys mirror the chart marks: solid bar, dashed budget level, zero tick, dashed placeholder. */
+.report-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: var(--space-3) 0 0; padding: 0; list-style: none; color: var(--text-meta); font-size: var(--type-caption-size); }
+.report-legend > li { display: inline-flex; align-items: center; gap: var(--space-2); }
+.report-legend-key { display: inline-block; flex: 0 0 auto; inline-size: .875rem; block-size: .625rem; }
+.report-legend-key--bar { background: var(--chart-series-1); border-radius: 2px 2px 0 0; }
+.report-legend-key--budget { block-size: 0; border-block-start: 2px dashed var(--text-faint); }
+.report-legend-key--zero { block-size: 3px; align-self: flex-end; background: var(--chart-series-1); border-radius: 2px; }
+.report-legend-key--unavailable { border: 1.5px dashed var(--state-warn-fg); border-block-end: 0; border-radius: 2px 2px 0 0; }
+.report-legend-token { color: var(--state-warn-fg); font-weight: 600; }
 .report-primary-action { margin-block: var(--space-6); }
 .report-section { border-block-start: 1px solid var(--border-card); }
 .report-section[open] > summary { margin-block-end: var(--space-5); }

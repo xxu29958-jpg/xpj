@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,20 @@ class AppBackButtonTest {
         assertEquals(1, clicks)
     }
 
+    @Test
+    fun destinationOnlyLabelIsAnnouncedAsGoingBack() {
+        composeRule.setContent {
+            TicketboxTheme(skin = AppSkin.Default) {
+                AppBackButton(text = DESTINATION_LABEL, onClick = {})
+            }
+        }
+
+        // Visible text stays short; TalkBack hears the action, not a bare noun.
+        composeRule.onNodeWithText(DESTINATION_LABEL).assertExists()
+        composeRule.onNodeWithContentDescription("返回$DESTINATION_LABEL")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("返回$DESTINATION_LABEL")))
+    }
+
     private fun assertDpAtLeast(expected: Dp, actual: Dp) {
         assertTrue(
             "Expected back button touch height >= $expected, got $actual",
@@ -50,6 +65,7 @@ class AppBackButtonTest {
 
     private companion object {
         const val BACK_LABEL = "返回账本"
+        const val DESTINATION_LABEL = "计划"
         const val DP_EPSILON = 0.01f
     }
 }

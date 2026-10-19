@@ -88,6 +88,15 @@ def _year_over_year_change_label(view: dict, home: str) -> str:
     return ("+" if delta > 0 else "") + _home_amount_label(delta, home)
 
 
+def _chart_marks(points: list[tuple[int | None, int]]) -> dict:
+    """Which non-bar marks a chart draws: a missing rate, records that net to zero, a period without records."""
+    return {
+        "pending": any(amount is None and count > 0 for amount, count in points),
+        "zero": any(amount == 0 and count > 0 for amount, count in points),
+        "none": any(count == 0 for _amount, count in points),
+    }
+
+
 def _view_model(payload: dict) -> dict:
     home = payload["home_currency_code"]
     view = {**payload, "merchant_category": payload["merchant_category"] or "",
@@ -101,8 +110,12 @@ def _view_model(payload: dict) -> dict:
         merchant_ranking=_amount_rows_view(payload["merchant_ranking"], currency_code=home),
         category_comparison=_category_comparison_view(payload["category_comparison"], currency_code=home))
     view["year_over_year_change_label"] = _year_over_year_change_label(view, home)
-    # Year-ago bars only when there is something to compare: recorded spending, or an amount still waiting for its rate.
-    view["category_has_year_ago"] = any(row["year_over_year_amount_cents"] != 0 for row in payload["category_comparison"])
+    view["trend_marks"] = _chart_marks([(point["amount_cents"], point["count"]) for point in view["trend"]])
+    # The chart draws the first eight categories; its legend describes only those.
+    view["category_marks"] = _chart_marks([(row[f"{period}amount_cents"], row[f"{period}count"])
+        for row in view["category_comparison"][:8] for period in ("", "previous_", "year_over_year_")])
+    # Year-ago bars only when year-ago records exist; records that net to zero still count, a period without any does not.
+    view["category_has_year_ago"] = any(row["year_over_year_count"] > 0 for row in payload["category_comparison"])
     view["merchant_amount_unavailable"] = (
         any(row["category"] == view["merchant_category"] and row["amount_cents"] is None
             for row in payload["category_comparison"])
@@ -226,6 +239,7 @@ def _six_month_history_view(rows: list[dict], *, currency_code: str) -> dict:
     )
     return {
         "six_month_trend": [{**row, "missing_rates": projection_gaps_view(row["missing_rates"]),
+            "amount_state": _amount_state(row["amount_cents"], row["count"]),
             "amount_label": _home_amount_label(row["amount_cents"], currency_code) if row["amount_cents"] is not None else "待补信息",
             "budget_label": _BUDGET_STATUS_LABELS.get(row["budget_status"]) or _home_amount_label(row["budget_cents"], currency_code),
             "reference_rates": projection_gaps_view(row["reference_rates"])} for row in rows],
@@ -233,7 +247,26 @@ def _six_month_history_view(rows: list[dict], *, currency_code: str) -> dict:
         "six_month_total_label": total_label,
         "overspent_months": sum(row["budget_status"] == "set" and row["amount_cents"] > row["budget_cents"] for row in rows)
             if amounts_known else None,
+        "six_month_legend": _six_month_legend(rows),
     }
+
+
+def _six_month_legend(rows: list[dict]) -> dict:
+    """The legend names only the marks the chart actually draws for these months."""
+    budgets = {row["budget_status"] for row in rows}
+    amounts = {_amount_state(row["amount_cents"], row["count"]) for row in rows}
+    return {"budget_line": "set" in budgets, "budget_unavailable": "unavailable" in budgets,
+            "amount_zero": "zero" in amounts, "amount_unavailable": "unavailable" in amounts}
+
+
+def _amount_state(amount_cents: int | None, count: int) -> str:
+    """How a month's net amount is drawn: a bar, a zero mark for records that net to zero,
+    nothing for a month without records, or a placeholder until its rate is known."""
+    if amount_cents is None:
+        return "unavailable"
+    if count == 0:
+        return "none"
+    return "zero" if amount_cents == 0 else "recorded"
 
 
 def _report_projection_context(payload, history, top, monthly, explanations) -> dict:

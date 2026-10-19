@@ -11,6 +11,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
+import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.theme.TicketboxTheme
 import org.junit.Rule
@@ -39,6 +40,21 @@ class SpendingGoalMoneyConnectedTest {
         compose.onNodeWithText(context.getString(R.string.spending_goal_progress_unavailable)).assertExists()
         compose.onNodeWithContentDescription(context.getString(R.string.spending_goal_progress_a11y, goal.name, 0))
             .assertDoesNotExist()
+    }
+
+    @Test fun singleArchivedGoalStaysACompactRow() {
+        val archived = goal.copy(status = "archived", archivedAt = "2026-09-30T00:00:00Z")
+        var month = ""
+        compose.setContent {
+            month = displayMonthLabel(archived.month)
+            TicketboxTheme(skin = AppSkin.Paper) {
+                SpendingGoalListCard(listOf(archived), {}, allowHero = false)
+            }
+        }
+        val scope = context.getString(R.string.spending_goal_scope_all)
+        compose.onNodeWithText(context.getString(R.string.spending_goal_compact_context, month, scope,
+            context.getString(R.string.spending_goal_remaining_label))).assertExists()
+        compose.onNodeWithText(context.getString(R.string.spending_goal_row_context, month, scope)).assertDoesNotExist()
     }
 
     @Test fun detailKeepsOriginalUnitsWhenCurrencyWasNeverCaptured() {
