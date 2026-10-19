@@ -77,10 +77,16 @@ def test_payer_conversion_uses_existing_rates_dates_and_currency_precision(clien
             rate_to_home=Decimal("0.125"))
         upsert_fx_rate(db, currency_code="USD", home_currency_code="JPY", rate_date=date(2026, 5, 4),
             rate_to_home=Decimal("150"))
+        upsert_fx_rate(db, currency_code="EUR", home_currency_code="CNY", rate_date=date(2026, 5, 4),
+            rate_to_home=Decimal("8"))
+        upsert_fx_rate(db, currency_code="USD", home_currency_code="EUR", rate_date=date(2026, 5, 4),
+            rate_to_home=Decimal("1.1"))
         db.commit()
     for source, target, amount, expected in (("CNY", "USD", "100", "13.89"),
             ("USD", "CNY", "100", "720.00"), ("KWD", "USD", "12.345", "40.12"),
             ("USD", "JPY", "1.01", "145"), ("CNY", "KWD", "100", "4.274"),
+            ("USD", "EUR", "100", "90.00"), ("EUR", "USD", "100", "111.11"),
+            ("CNY", "JPY", "0.01", None),
             ("CNY", "CNY", "100", "100.00"), ("EUR", "USD", "0", "0.00")):
         response = client.get("/api/exchange-rates/conversion", headers=identity.app_headers,
             params={"currency_code": source, "home_currency_code": target, "amount": amount, "rate_date": "2026-05-04"})
@@ -91,6 +97,16 @@ def test_payer_conversion_uses_existing_rates_dates_and_currency_precision(clien
     assert client.get("/api/exchange-rates/conversion", params=params).status_code == 401
     assert client.get("/api/exchange-rates/conversion", params=params,
         headers=identity.gray_app_headers).json()["converted_amount"] == "12.50"
+    assert client.get("/api/exchange-rates/conversion", params={**params, "rate_date": "2026-05-05"},
+        headers=identity.gray_app_headers).json()["converted_amount"] is None
+    with SessionLocal() as db:
+        upsert_fx_rate(db, currency_code="CNY", home_currency_code="USD", rate_date=date(2026, 5, 4),
+            rate_to_home=Decimal("0.125"), verified_through=date(2026, 5, 5))
+        db.commit()
+    covered = client.get("/api/exchange-rates/conversion", params={**params, "rate_date": "2026-05-05"},
+        headers=identity.gray_app_headers).json()
+    assert covered["converted_amount"] == "12.50"
+    assert covered["references"][0]["rate_date"] == "2026-05-04"
     assert client.get("/api/exchange-rates/conversion", params={**params, "rate_date": "2026-05-03"},
         headers=identity.app_headers).json()["converted_amount"] is None
     invalid = client.get("/api/exchange-rates/conversion", params={**params, "amount": "0.001"}, headers=identity.app_headers)

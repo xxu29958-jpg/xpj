@@ -13,7 +13,7 @@ from app.services.currency_common import (
     minor_unit_digits,
     normalize_currency_code,
 )
-from app.services.exchange_rate_service import get_exchange_rate, resolve_valuation_rate
+from app.services.exchange_rate_service import get_exchange_rate, resolve_payload_rate
 
 
 def _pair(db, tenant_id, source, target, day, *, manual_only):
@@ -27,7 +27,7 @@ def _pair(db, tenant_id, source, target, day, *, manual_only):
                 continue
             rate, provider, published = Decimal(stored.rate_to_cny), stored.source, stored.rate_date
         else:
-            rate, provider, _, published = resolve_valuation_rate(db, tenant_id=tenant_id, currency_code=currency,
+            rate, provider, _, published = resolve_payload_rate(db, tenant_id=tenant_id, currency_code=currency,
                 home_currency_code=home, rate_date=day)
         if rate is not None:
             reference = ReferenceRateResponse(currency_code=currency, home_currency_code=home,
@@ -36,18 +36,31 @@ def _pair(db, tenant_id, source, target, day, *, manual_only):
     return None, []
 
 
+def _pivot_rate(db, tenant_id, source, target, pivot, day):
+    source_rate, source_refs = _pair(db, tenant_id, source, pivot, day, manual_only=True)
+    target_rate, target_refs = _pair(db, tenant_id, target, pivot, day, manual_only=True)
+    uses_ledger_rate = source_rate is not None or target_rate is not None
+    if source_rate is None:
+        source_rate, source_refs = _pair(db, tenant_id, source, pivot, day, manual_only=False)
+    if target_rate is None:
+        target_rate, target_refs = _pair(db, tenant_id, target, pivot, day, manual_only=False)
+    if source_rate is None or target_rate is None:
+        return None, [], False
+    return source_rate / target_rate, source_refs + target_refs, uses_ledger_rate
+
+
 def _conversion_rate(db, tenant_id, source, target, pivot, day):
-    # Complete ledger-owned paths take precedence over public references, including cross rates.
-    for manual_only in (True, False):
-        rate, references = _pair(db, tenant_id, source, target, day, manual_only=manual_only)
-        if rate is not None:
-            return rate, references
-        if pivot not in (source, target):
-            source_rate, source_refs = _pair(db, tenant_id, source, pivot, day, manual_only=manual_only)
-            target_rate, target_refs = _pair(db, tenant_id, target, pivot, day, manual_only=manual_only)
-            if source_rate is not None and target_rate is not None:
-                return source_rate / target_rate, source_refs + target_refs
-    return None, []
+    rate, references = _pair(db, tenant_id, source, target, day, manual_only=True)
+    if rate is not None:
+        return rate, references
+    cross_rate, cross_refs = None, []
+    if pivot not in (source, target):
+        cross_rate, cross_refs, uses_ledger_rate = _pivot_rate(db, tenant_id, source, target, pivot, day)
+        if uses_ledger_rate:
+            return cross_rate, cross_refs
+    # A complete path containing a ledger override wins over a wholly public direct quote.
+    rate, references = _pair(db, tenant_id, source, target, day, manual_only=False)
+    return (rate, references) if rate is not None else (cross_rate, cross_refs)
 
 
 def convert_reference_amount(db: Session, *, tenant_id: str, currency_code: str, home_currency_code: str,
@@ -65,4 +78,6 @@ def convert_reference_amount(db: Session, *, tenant_id: str, currency_code: str,
     except InvalidOperation as exc:
         raise AppError("amount_invalid", status_code=422) from exc
     minor = major_amount_to_minor(converted, target)
+    if minor == 0:
+        return AmountConversionResponse(converted_amount=None, references=references)
     return AmountConversionResponse(converted_amount=minor_amount_value(minor, target), references=references)
