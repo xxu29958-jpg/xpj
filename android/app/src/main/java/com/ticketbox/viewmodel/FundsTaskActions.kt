@@ -30,8 +30,10 @@ fun FundsViewModel.start(mode: String) {
     save(value)
 }
 
+// A same-currency repayment pays exactly the principal; the form hides the separate payer amount then.
 fun FundsViewModel.choosePayer(account: FinancialAccountDto) = edit { it.copy(payerId = account.publicId, payerName = account.name,
-    payerCurrency = account.currencyCode, payerVersion = account.rowVersion) }
+    payerCurrency = account.currencyCode, payerVersion = account.rowVersion,
+    paid = if (it.mode == "repay" && account.currencyCode == it.currency) it.principal else it.paid) }
 
 fun FundsViewModel.voidPayment(id: String) {
     if (state.value.task.input != null) { resume(); return }

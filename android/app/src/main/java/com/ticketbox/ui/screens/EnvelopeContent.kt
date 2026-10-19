@@ -3,6 +3,7 @@ package com.ticketbox.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -14,15 +15,12 @@ import androidx.compose.ui.text.style.TextAlign
 import com.ticketbox.R
 import com.ticketbox.data.remote.dto.EnvelopePurposeDto
 import com.ticketbox.data.repository.FundsInput
-import com.ticketbox.ui.components.AppAmountText
-import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppHistoryRecord
 import com.ticketbox.ui.components.displayDateTime
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSwitch
 import com.ticketbox.ui.components.displayMonthLabel
-import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.FundsUiState
 import com.ticketbox.viewmodel.FundsViewModel
@@ -48,14 +46,14 @@ internal fun EnvelopeOverview(state: FundsUiState, vm: FundsViewModel) {
             TextButton(onClick = { vm.openEnvelopes(current.plusMonths(1).toString()) }) { Text(stringResource(R.string.envelopes_next_month)) }
         }
         view?.let {
-            AppContentCard {
-                Text(stringResource(if ((it.unassignedMinor ?: 0) < 0) R.string.envelopes_shortfall else R.string.envelopes_unassigned))
-                AppAmountText(envelopeMoney(it.unassignedMinor?.let { value -> kotlin.math.abs(value) }, it.homeCurrencyCode), role = AppAmountRole.Hero)
+            FundsHeroCard(label = stringResource(if ((it.unassignedMinor ?: 0) < 0) R.string.envelopes_shortfall else R.string.envelopes_unassigned),
+                amount = envelopeMoney(it.unassignedMinor?.let { value -> kotlin.math.abs(value) }, it.homeCurrencyCode)) {
                 Text(stringResource(R.string.envelopes_cash_scope, envelopeMoney(it.cashMinor, it.homeCurrencyCode),
                     envelopeMoney(it.reservedMinor, it.homeCurrencyCode), it.valuationDate), style = MaterialTheme.typography.bodySmall)
                 Text(stringResource(R.string.envelopes_explanation), style = MaterialTheme.typography.bodySmall)
-                if (state.access?.canModify == true) AppPrimaryButton(stringResource(R.string.envelopes_edit), onClick = vm::startEnvelope)
             }
+            if (state.access?.canModify == true)
+                AppPrimaryButton(stringResource(R.string.envelopes_edit), modifier = Modifier.fillMaxWidth(), onClick = vm::startEnvelope)
             it.notices.forEach { message -> Text(message, color = MaterialTheme.colorScheme.error) }
             it.purposes.forEach { row -> AppListRow { EnvelopePurpose(row, it.homeCurrencyCode) } }
         }
@@ -84,21 +82,27 @@ private fun EnvelopePurpose(row: EnvelopePurposeDto, currency: String) {
 internal fun EnvelopeFields(state: FundsUiState, input: FundsInput, enabled: Boolean, vm: FundsViewModel) {
     val view = state.envelopes?.takeIf { it.month == input.envelopeMonth }
     Text(stringResource(R.string.envelopes_period_currency, displayMonthLabel(input.envelopeMonth), input.currency))
-    Text(stringResource(R.string.envelopes_sources_note), style = MaterialTheme.typography.bodySmall)
-    view?.accounts?.forEach { account ->
-        AppListRow {
-            Column(Modifier.weight(1f)) {
-                Text(account.name)
-                Text(envelopeMoney(account.balanceMinor, account.currencyCode), style = MaterialTheme.typography.bodySmall)
+    val chosen = input.envelopeAccounts.size
+    // Which accounts supply the cash rarely changes month to month, so it stays folded once chosen.
+    FundsOptions(stringResource(R.string.envelopes_sources_title),
+        filled = if (chosen > 0) stringResource(R.string.envelopes_sources_chosen, chosen) else null,
+        empty = stringResource(R.string.envelopes_sources_none)) {
+        Text(stringResource(R.string.envelopes_sources_note), style = MaterialTheme.typography.bodySmall)
+        view?.accounts?.forEach { account ->
+            AppListRow {
+                Column(Modifier.weight(1f)) {
+                    Text(account.name)
+                    Text(envelopeMoney(account.balanceMinor, account.currencyCode), style = MaterialTheme.typography.bodySmall)
+                }
+                AppSwitch(checked = account.publicId in input.envelopeAccounts, enabled = enabled && account.canSelect,
+                    contentDescription = account.name, onCheckedChange = { checked -> vm.edit {
+                        it.copy(envelopeAccounts = if (checked) (it.envelopeAccounts + account.publicId).distinct()
+                            else it.envelopeAccounts - account.publicId)
+                    } })
             }
-            AppSwitch(checked = account.publicId in input.envelopeAccounts, enabled = enabled && account.canSelect,
-                contentDescription = account.name, onCheckedChange = { checked -> vm.edit {
-                    it.copy(envelopeAccounts = if (checked) (it.envelopeAccounts + account.publicId).distinct()
-                        else it.envelopeAccounts - account.publicId)
-                } })
         }
+        if (view?.accounts?.isEmpty() == true) Text(stringResource(R.string.envelopes_no_accounts))
     }
-    if (view?.accounts?.isEmpty() == true) Text(stringResource(R.string.envelopes_no_accounts))
     val labels = view?.purposes.orEmpty().associate { it.purpose to it.label }
     if (view?.purposes?.any { it.plannedMinor != null } == true)
         TextButton(onClick = vm::useEnvelopePlan, enabled = enabled) { Text(stringResource(R.string.envelopes_fill_plan)) }
@@ -111,7 +115,7 @@ internal fun EnvelopeFields(state: FundsUiState, input: FundsInput, enabled: Boo
 }
 
 @Composable
-private fun retainedPurpose(purpose: String) = when (purpose) {
+internal fun retainedPurpose(purpose: String) = when (purpose) {
     "spending" -> stringResource(R.string.envelopes_other_spending)
     "savings" -> stringResource(R.string.envelopes_savings)
     "buffer" -> stringResource(R.string.envelopes_buffer)
