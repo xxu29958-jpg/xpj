@@ -271,6 +271,16 @@
     return count === 0 ? '没有记录' : homeMoneyCents(amount);
   }
 
+  // A change is only stated when both periods have records.
+  function categoryTooltip(row, hasYearAgo) {
+    var signed = function (cents) { return (cents > 0 ? '+' : '') + homeMoneyCents(cents); };
+    return row.category + '<br>本月 ' + periodText(row.amount_cents, row.count)
+      + '<br>上月 ' + periodText(row.previous_amount_cents, row.previous_count)
+      + (row.count !== 0 && row.previous_count !== 0 ? '<br>环比 ' + signed(row.delta_amount_cents) : '')
+      + (hasYearAgo ? '<br>去年同月 ' + periodText(row.year_over_year_amount_cents, row.year_over_year_count)
+        + (row.count !== 0 && row.year_over_year_count !== 0 ? '<br>同比 ' + signed(row.year_over_year_delta_amount_cents) : '') : '');
+  }
+
   function renderCategory(report, colors) {
     var container = document.getElementById('reports-category-chart');
     var rows = report && report.category_comparison ? report.category_comparison.slice(0, 8) : [];
@@ -297,18 +307,7 @@
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
         formatter: function (items) {
-          if (!items || !items.length) return '';
-          var row = rows[items[0].dataIndex];
-          var delta = row.delta_amount_cents;
-          var yoyDelta = row.year_over_year_delta_amount_cents;
-          var prefix = delta > 0 ? '+' : '';
-          var yoyPrefix = yoyDelta > 0 ? '+' : '';
-          // A change is only stated when both periods have records.
-          return row.category + '<br>本月 ' + periodText(row.amount_cents, row.count)
-            + '<br>上月 ' + periodText(row.previous_amount_cents, row.previous_count)
-            + (row.count !== 0 && row.previous_count !== 0 ? '<br>环比 ' + prefix + homeMoneyCents(delta) : '')
-            + (hasYearAgo ? '<br>去年同月 ' + periodText(row.year_over_year_amount_cents, row.year_over_year_count)
-              + (row.count !== 0 && row.year_over_year_count !== 0 ? '<br>同比 ' + yoyPrefix + homeMoneyCents(yoyDelta) : '') : '');
+          return items && items.length ? categoryTooltip(rows[items[0].dataIndex], hasYearAgo) : '';
         },
       }),
       grid: { left: 58, right: 22, top: 36, bottom: 44 },

@@ -247,14 +247,16 @@ def _six_month_history_view(rows: list[dict], *, currency_code: str) -> dict:
         "six_month_total_label": total_label,
         "overspent_months": sum(row["budget_status"] == "set" and row["amount_cents"] > row["budget_cents"] for row in rows)
             if amounts_known else None,
-        # The legend names only marks the chart actually draws for these months.
-        "six_month_legend": {
-            "budget_line": any(row["budget_status"] == "set" for row in rows),
-            "budget_unavailable": any(row["budget_status"] == "unavailable" for row in rows),
-            "amount_zero": any(_amount_state(row["amount_cents"], row["count"]) == "zero" for row in rows),
-            "amount_unavailable": any(row["amount_cents"] is None for row in rows),
-        },
+        "six_month_legend": _six_month_legend(rows),
     }
+
+
+def _six_month_legend(rows: list[dict]) -> dict:
+    """The legend names only the marks the chart actually draws for these months."""
+    budgets = {row["budget_status"] for row in rows}
+    amounts = {_amount_state(row["amount_cents"], row["count"]) for row in rows}
+    return {"budget_line": "set" in budgets, "budget_unavailable": "unavailable" in budgets,
+            "amount_zero": "zero" in amounts, "amount_unavailable": "unavailable" in amounts}
 
 
 def _amount_state(amount_cents: int | None, count: int) -> str:
