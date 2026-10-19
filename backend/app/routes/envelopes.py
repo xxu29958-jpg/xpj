@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/budget/envelopes", tags=["envelopes"])
 @router.get("/history/list", response_model=list[EnvelopeRevisionView])
 def get_envelope_history(before_version: int | None = Query(default=None, ge=1),
         auth: AuthContext = Depends(get_current_app_context), db: Session = Depends(get_db)) -> list[EnvelopeRevisionView]:
-    return envelope_history(db, tenant_id=auth.tenant_id, before_version=before_version)
+    return envelope_history(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id, before_version=before_version)
 
 
 @router.get("/{month}", response_model=EnvelopesView)

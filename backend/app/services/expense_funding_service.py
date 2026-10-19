@@ -126,14 +126,21 @@ def reverse_expense_funding(db, *, expense, actor_account_id, reason, occurred_o
         return
     if actor_account_id is None:
         raise AppError("permission_denied", "请使用付款账户的身份核对本次更正。", status_code=403)
-    if any(row.included_in_opening for row in facts):
-        raise AppError("funding_opening_review_required", "这笔消费已计入期初；请先核对期初覆盖范围，避免再次变动余额。", status_code=409)
+    accounts = lock_reviewed_accounts(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id,
+        source_account_ids=[row.account_id for row in facts], parts=[])
+    if offset_id is not None:
+        for account in accounts.values():
+            validate_movement_date(db, account, occurred_on)
     rows = list(db.scalars(unreversed_movements(select(AccountMovement).where(
         AccountMovement.funding_id.in_([row.id for row in facts])))))
     reverse_movements(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id, rows=rows,
         reason=reason, occurred_on=occurred_on, offset_id=offset_id)
     for row in facts:
-        row.voided_at, row.void_reason = now_utc(), reason
+        # Opening coverage is a source link, not a debit. A purchase reversal
+        # retains that link for undo and never rewrites the observed opening.
+        # Replacing the reviewed funding supersedes it like any other link.
+        if offset_id is None or not row.included_in_opening:
+            row.voided_at, row.void_reason = now_utc(), reason
     db.flush()
 
 

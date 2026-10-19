@@ -242,7 +242,7 @@ def external_payoff_kpi(
     if not is_pure_external:
         return _EMPTY_PAYOFF_KPI
     if credit_readings:
-        return _credit_payoff_kpi(db, non_voided_debts, credit_readings, target_date)
+        return _credit_payoff_kpi(db, non_voided_debts, credit_readings, target_date, now)
     # §B 完整 installment: an all-installment plan (EVERY non-voided Debt is ``installment`` WITH a
     # schedule → a non-None payoff date) shows the DETERMINISTIC contract payoff — the LATEST of the
     # linked debts' payoff dates (the plan clears when the last installment finishes) — instead of the
@@ -283,8 +283,10 @@ def external_payoff_kpi(
     )
 
 
-def _credit_payoff_kpi(db, debts, readings, target_date):
-    dates = []
+def _credit_payoff_kpi(db, debts, readings, target_date, now):
+    dates, needs_velocity = [], False
+    has_velocity = any(debt.id not in readings and debt.debt_kind not in _NO_PROJECTION_KINDS
+        and compute_remaining(db, debt) > 0 for debt in debts)
     for debt in debts:
         credit = readings.get(debt.id)
         if credit is not None and credit.status == "cleared":
@@ -293,7 +295,16 @@ def _credit_payoff_kpi(db, debts, readings, target_date):
             continue
         payoff = credit.payoff_date if credit else installment_payoff_date(debt)
         if payoff is None:
-            return ExternalPayoffKpi(None, None, target_date, None, None)
-        dates.append(payoff)
+            if credit is not None or not has_velocity:
+                return ExternalPayoffKpi(None, None, target_date, None, None)
+            needs_velocity = True
+        else:
+            dates.append(payoff)
+    if needs_velocity:
+        tracking, projected, stale = compute_external_kpi(db, debts, now=now)
+        # An estimated paydown cannot finish an outstanding contractual schedule
+        # (including its future fees) before that schedule's last due date.
+        projected = max([projected, *dates]) if projected else None
+        return ExternalPayoffKpi(tracking, projected, target_date, payoff_three_state(projected, target_date), stale)
     projected = max(dates) if dates else None
     return ExternalPayoffKpi(None, projected, target_date, payoff_three_state(projected, target_date), None)

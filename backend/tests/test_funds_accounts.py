@@ -66,12 +66,59 @@ def test_existing_debt_becomes_one_credit_account_without_rewriting_history(clie
         assert refused.status_code == 409 and refused.json()["error"] == "credit_account_required"
     assert client.get("/api/funds/accounts/existing-debts/list", headers=identity.app_headers).json() == []
     _correct_adopted_payment(client, identity, saved.json(), debt, after_payment)
-    prepaid = _create_funds_account(client, identity, "信用卡多存余额", "credit", -500)
+    prepaid = _create_funds_account(client, identity, "信用卡多存余额", "credit", -500,
+        opening_date=date.today() - timedelta(days=1))
     assert prepaid["balance_minor"] == 500
     with SessionLocal() as db:
         prepaid_debt = db.scalar(select(Debt).where(Debt.public_id == prepaid["debt_public_id"]))
         assert prepaid_debt.status == "cleared"
         assert count_open_external_debts(db, ["owner"]) == {"owner": 1}
+    _correct_opening_purchase(client, identity, prepaid)
+
+
+def _correct_opening_purchase(client, identity, account):
+    account_url = "/api/funds/accounts/" + account["public_id"]
+    part = {"component_id": str(uuid4()), "account_public_id": account["public_id"],
+        "account_row_version": account["row_version"], "expense_amount_minor": 5000,
+        "account_amount_minor": 5000, "included_in_opening": True}
+    purchase = client.post("/api/expenses/manual", headers=identity.app_headers, json={
+        "client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 5000,
+        "category": "购物", "funding": [part], "time_input": {"precision": "date_only",
+            "calendar_revision": account["calendar_revision"], "user_local_date": account["opening_date"]}})
+    assert purchase.status_code == 200, purchase.text
+    path = f"/api/expenses/{purchase.json()['id']}"
+    account = client.get(account_url, headers=identity.app_headers).json()
+    body = {"expected_row_version": purchase.json()["row_version"], "reason": "核对纳入期初的消费日期与来源",
+        "time_input": {"precision": "date_only", "calendar_revision": account["calendar_revision"],
+            "user_local_date": str(date.fromisoformat(account["opening_date"]) - timedelta(days=1))},
+        "funding": [{**part, "account_row_version": account["row_version"]}]}
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    corrected = client.post(path + "/corrections", headers=headers, json=body)
+    assert corrected.status_code == 201, corrected.text
+    assert client.post(path + "/corrections", headers=headers, json=body).json() == corrected.json()
+    assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == 500
+    from tests.debt_proposal_helpers import _member_headers, _mint_member_actor
+    _, token = _mint_member_actor(role="member")
+    denied = client.post(path + "/offsets", headers={**_member_headers(token), "Idempotency-Key": str(uuid4())},
+        json={"kind": "reversal", "accounting_date": str(date.today()), "reason": "无权更正他人私人付款来源",
+            "expected_row_version": client.get(path, headers=identity.app_headers).json()["row_version"]})
+    assert denied.status_code == 404
+    _reverse_and_restore_funding(client, identity, purchase.json()["id"], account, balance=500, reversed_balance=500)
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(AccountMovement).where(
+            AccountMovement.funding_id.in_(select(ExpenseFunding.id).where(ExpenseFunding.expense_id == purchase.json()["id"])))) == 0
+    # Yesterday's missed purchase remains a normal write today, at its real date.
+    account = client.get(account_url, headers=identity.app_headers).json()
+    delayed = client.post("/api/expenses/manual", headers=identity.app_headers, json={
+        "client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 100, "category": "购物",
+        "time_input": {"precision": "date_only", "calendar_revision": account["calendar_revision"],
+            "user_local_date": account["opening_date"]},
+        "funding": [{**part, "component_id": str(uuid4()), "account_row_version": account["row_version"],
+            "expense_amount_minor": 100, "account_amount_minor": 100, "included_in_opening": False}]})
+    assert delayed.status_code == 200, delayed.text
+    assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == 400
+    with SessionLocal() as db:
+        assert db.get(Expense, delayed.json()["id"]).accounting_date == date.fromisoformat(account["opening_date"])
 
 
 def _correct_adopted_payment(client, identity, account, original_debt, historical_time):
@@ -307,6 +354,28 @@ def _export_funds_history(client, identity, bank, credit):
     assert all(row["resource_type"] != "payment_capture" for row in member["accepted_operations"])
     owner = _export_records(client, identity.app_headers)
     _assert_owner_funds_export(owner, member, credit)
+    _withdraw_envelope_source(client, identity, bank, _member_headers(token))
+
+
+def _withdraw_envelope_source(client, identity, bank, member_headers):
+    url = "/api/budget/envelopes/" + date.today().strftime("%Y-%m")
+    current = client.get(url, headers=identity.app_headers).json()
+    removed = client.put(url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json={
+        "expected_row_version": current["row_version"], "home_currency_code": "CNY",
+        "account_public_ids": [], "account_row_versions": {}, "allocations": {"savings": 0}, "reason": "移出共同资金池"})
+    assert removed.status_code == 200, removed.text
+    account_url = "/api/funds/accounts/" + bank["public_id"]
+    bank = client.get(account_url, headers=identity.app_headers).json()
+    private = client.patch(account_url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": bank["row_version"], "name": bank["name"], "visibility": "private"})
+    assert private.status_code == 200, private.text
+    history_url = "/api/budget/envelopes/history/list?before_version=" + str(removed.json()["row_version"])
+    for headers, expected in ((member_headers, []), (identity.app_headers, [bank["public_id"]])):
+        history = client.get(history_url, headers=headers).json()
+        exported = _export_records(client, headers)["envelope_revisions"]
+        snapshot = next(row["allocation_snapshot"] for row in exported if row["row_version"] == current["row_version"])
+        assert history[0]["allocation_snapshot"]["account_public_ids"] == snapshot["account_public_ids"] == expected
+        assert snapshot["allocations"] == {"savings": 1000}
 
 
 def _assert_owner_funds_export(owner, member, credit):
@@ -517,7 +586,7 @@ def _correct_funded_purchase_date(client, identity, expense_id, bank):
     _reverse_and_restore_funding(client, identity, expense_id, bank)
 
 
-def _reverse_and_restore_funding(client, identity, expense_id, bank):
+def _reverse_and_restore_funding(client, identity, expense_id, bank, *, balance=85000, reversed_balance=90000):
     from app.services.ledger_calendar_service import current_ledger_date
 
     with SessionLocal() as db:
@@ -529,7 +598,7 @@ def _reverse_and_restore_funding(client, identity, expense_id, bank):
             json={"kind": "reversal", "accounting_date": str(invalid_day), "reason": "核对资金日期范围",
                 "expected_row_version": source["row_version"]})
         assert refused.status_code == 422 and refused.json()["error"] == "funds_date_outside_coverage", refused.text
-        assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == 85000
+        assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == balance
         assert client.get(path, headers=identity.app_headers).json()["row_version"] == source["row_version"]
     for _ in range(2):
         source = client.get(path, headers=identity.app_headers).json()
@@ -537,7 +606,7 @@ def _reverse_and_restore_funding(client, identity, expense_id, bank):
             json={"kind": "reversal", "accounting_date": str(date.today()), "reason": "核对消费冲正",
                 "expected_row_version": source["row_version"]})
         assert reversed_result.status_code == 201, reversed_result.text
-        assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == 90000
+        assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == reversed_balance
         offset = next(row for row in reversed_result.json()["active_offsets"] if row["kind"] == "reversal")
         offset_url = path + "/offsets/" + offset["public_id"]
         correction = {"expected_row_version": offset["row_version"], "original_amount_minor": None,
@@ -547,18 +616,18 @@ def _reverse_and_restore_funding(client, identity, expense_id, bank):
             refused = client.post(offset_url + "/corrections", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
                 json={**correction, "accounting_date": str(future_day)})
             assert refused.status_code == 422 and refused.json()["error"] == "funds_date_outside_coverage"
-            assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == 90000
+            assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == reversed_balance
         corrected = client.post(offset_url + "/corrections", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
             json=correction)
         assert corrected.status_code == 201, corrected.text
-        assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == 90000
+        assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == reversed_balance
         current = next(row for row in corrected.json()["active_offsets"] if row["public_id"] == offset["public_id"])
         headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
         body = {"expected_row_version": current["row_version"], "void_reason": "冲正判断有误，保留真实消费"}
         undone = client.post(offset_url + "/voids", headers=headers, json=body)
         assert undone.status_code == 201, undone.text
         assert client.post(offset_url + "/voids", headers=headers, json=body).json() == undone.json()
-        assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == 85000
+        assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == balance
         assert client.get(path + "/funding", headers=identity.app_headers).json()["total_minor"] == 5000
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(ExpenseFunding).where(
@@ -1109,6 +1178,13 @@ def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, 
     assert post(credit_url + "/installments", revision, key=key) == credit
     current = get(credit_url + "/installments")["agreements"][0]
     assert not current["needs_review"] and get(bank_url)["balance_minor"] == 90980
+    with SessionLocal() as db:
+        # Future fees keep the goal unfinished, but are not today's incurred debt.
+        from app.services.debt_service import count_open_external_debts
+        debt = db.scalar(select(Debt).where(Debt.public_id == credit["debt_public_id"]))
+        assert debt.status == "cleared"
+        assert count_open_external_debts(db, [credit["ledger_id"]]) == {}
+    assert get(goal_url)["debt_repayment"]["evaluation_state"] == "in_progress"
     for period in current["periods"]:
         key = str(uuid4())
         fee = {"expected_row_version": credit["row_version"], "calendar_revision": credit["calendar_revision"],

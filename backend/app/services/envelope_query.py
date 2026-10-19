@@ -25,6 +25,7 @@ from app.schemas.envelopes import (
 )
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.envelope_spending import EnvelopeSpending, spending_by_purpose
+from app.services.funds_visibility import account_scope
 from app.services.ledger_calendar_service import current_ledger_date
 from app.services.money_projection_service import project_recorded_amount, sum_projected_amounts
 from app.services.spending_contract_service import clean_month
@@ -141,10 +142,20 @@ def _notices(cash: int | None, reserved: int | None, purchases: list) -> list[st
     return messages
 
 
-def envelope_history(db: Session, *, tenant_id: str, before_version: int | None = None) -> list[EnvelopeRevisionView]:
+def redact_envelope_snapshot(snapshot: dict, visible_account_ids: set[str]) -> dict:
+    sources = snapshot["account_public_ids"]
+    visible = [identifier for identifier in sources if identifier in visible_account_ids]
+    if len(visible) == len(sources):
+        return snapshot
+    return {**snapshot, "account_public_ids": visible, "hidden_account_count": len(sources) - len(visible)}
+
+
+def envelope_history(db: Session, *, tenant_id: str, actor_account_id: int,
+        before_version: int | None = None) -> list[EnvelopeRevisionView]:
     query = select(EnvelopeRevision).where(EnvelopeRevision.tenant_id == tenant_id)
     if before_version is not None:
         query = query.where(EnvelopeRevision.row_version < before_version)
+    visible = set(db.scalars(select(FinancialAccount.public_id).where(account_scope(tenant_id, actor_account_id))))
     return [EnvelopeRevisionView(row_version=row.row_version, month=row.month, reason=row.reason,
-        allocation_snapshot=row.allocation_snapshot, recorded_at=row.recorded_at)
+        allocation_snapshot=redact_envelope_snapshot(row.allocation_snapshot, visible), recorded_at=row.recorded_at)
         for row in db.scalars(query.order_by(EnvelopeRevision.row_version.desc()).limit(20))]

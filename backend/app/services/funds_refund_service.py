@@ -11,6 +11,7 @@ from app.schemas.funds import RefundDestination
 from app.services.expense_funding_service import reverse_expense_funding
 from app.services.funds_commands import movement, require_account_version
 from app.services.funds_fact_service import (
+    lock_reviewed_accounts,
     refresh_credit,
     reverse_movements,
     unreversed_movements,
@@ -70,6 +71,11 @@ def refund_credit_targets(db, account, expense_id, amount):
 
 def reverse_offset_funds(db, *, expense, offset, actor_account_id, reason):
     rows = list(db.scalars(unreversed_movements(select(AccountMovement).where(AccountMovement.offset_id == offset.id))))
+    if offset.kind == "reversal":
+        opening_ids = db.scalars(select(ExpenseFunding.account_id).where(ExpenseFunding.expense_id == expense.id,
+            ExpenseFunding.included_in_opening.is_(True), ExpenseFunding.voided_at.is_(None))).all()
+        lock_reviewed_accounts(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id,
+            source_account_ids=[*opening_ids, *(row.account_id for row in rows)], parts=[])
     roots = reverse_movements(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id, rows=rows,
         reason=reason, occurred_on=offset.accounting_date)
     if offset.kind == "reversal":

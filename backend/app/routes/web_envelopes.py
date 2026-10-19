@@ -61,7 +61,8 @@ def _render(request: Request, db: Session, *, ledger_id: str, month: str, values
         allocations=_retained_json(values.get("allocations_json", ""), dict),
         selected_sources=_retained_json(values.get("account_ids_json", ""), list),
         money=minor_amount_label, money_value=minor_amount_value, envelope_can_write=auth.role in {"owner", "member"},
-        history=envelope_history(db, tenant_id=selected, before_version=before_version), before_version=before_version)
+        history=envelope_history(db, tenant_id=selected, actor_account_id=auth.account_id,
+            before_version=before_version), before_version=before_version)
     return templates.TemplateResponse(request=request, name="envelopes.html", context=ctx,
                                       status_code=status, headers={"Cache-Control": "no-store"})
 

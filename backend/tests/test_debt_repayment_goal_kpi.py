@@ -152,6 +152,35 @@ def test_external_projection_from_repayment_pace(client: TestClient, *, identity
     assert tracking_days == 60
     # remaining 6000, reduced 4000 over 60d → ceil(6000 / (4000/60)) = 90 days out.
     assert projected == _shanghai_payoff(now, 90)
+    # Adding a scheduled credit account must not remove the ordinary debt's
+    # observed pace. Its newly recorded 10 yuan is added debt, not past paydown.
+    from uuid import uuid4
+
+    def post(path, body):
+        result = client.post(path, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json=body)
+        assert result.status_code in (200, 201), result.text
+        return result.json()
+
+    credit = post("/api/funds/accounts", {"name": "分期信用卡", "kind": "credit", "currency_code": "CNY",
+        "opening_amount_minor": 1000, "opening_date": str(date.today()), "opening_source": "已核对", "visibility": "ledger"})
+    path = "/api/funds/accounts/" + credit["public_id"] + "/installments"
+    draw = client.get(path, headers=identity.app_headers).json()["draws"][0]
+    agreement = {"expected_row_version": credit["row_version"], "name": "剩余一期", "source": "已成立合约",
+        "agreed_on": str(date.today()), "draw_public_ids": [draw["public_id"]], "periods": [
+            {"due_on": str(date.today() + timedelta(days=20)), "principal_minor": 1000, "planned_fee_minor": 0}]}
+    credit = post(path, agreement)
+    goal = _create_debt_goal(client, identity.app_headers, name="信用卡与普通欠款一起还",
+        debt_public_ids=[debt["public_id"], credit["debt_public_id"]])
+    assert goal.status_code == 201, goal.text
+    evaluation = goal.json()["debt_repayment"]
+    assert evaluation["tracking_days"] == 60
+    assert evaluation["projected_payoff_date"] == str(_shanghai_payoff(now, 140))
+    schedule = client.get(path, headers=identity.app_headers).json()["agreements"][0]
+    post(path, {**agreement, "expected_row_version": credit["row_version"], "supersedes_public_id": schedule["public_id"],
+        "periods": [{"due_on": str(_shanghai_payoff(now, 200)), "principal_minor": 1000, "planned_fee_minor": 100}]})
+    evaluation = client.get("/api/goals/" + goal.json()["public_id"], headers=identity.app_headers).json()["debt_repayment"]
+    assert evaluation["tracking_days"] == 60
+    assert evaluation["projected_payoff_date"] == str(_shanghai_payoff(now, 200))
 
 
 def test_external_projection_counts_writeoff_adjustment_not_just_repayments(

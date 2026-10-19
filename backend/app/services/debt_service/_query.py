@@ -492,6 +492,8 @@ def count_open_external_debts(db: Session, tenant_ids: list[str]) -> dict[str, i
     write (``lock_and_fold`` re-derives + persists it from the §2 fold), so an
     at-rest snapshot count matches the derived status without a per-debt fold:
     ``open`` excludes both ``cleared`` (remaining 0) and ``voided`` (DebtVoid latch).
+    Credit accounts count current incurred net debt here. Future installment fees
+    remain plans; goal completion separately includes those outstanding schedules.
 
     External-only by design (ADR-0049 §7.0 / slice 5): a member Debt is a
     relationship surface, never an owner-ops counter — the overview shows aggregate
