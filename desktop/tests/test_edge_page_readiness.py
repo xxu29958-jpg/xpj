@@ -15,7 +15,16 @@ def _browser(monkeypatch: pytest.MonkeyPatch, *, document_ready_at: float, probe
         clock.elapsed += seconds
 
     class Page:
+        waits = 0
+        navigated = False
+
         def wait_for_document(self, _frame_id, _url_prefix, *, timeout):
+            self.waits += 1
+            if self.waits > 1:
+                assert _frame_id == "main" and _url_prefix == "file:///qualification.html"
+                assert 0 < timeout <= 10
+                clock.elapsed += 1.0
+                return True
             clock.elapsed = min(document_ready_at, timeout)
             return document_ready_at <= timeout
 
@@ -26,6 +35,10 @@ def _browser(monkeypatch: pytest.MonkeyPatch, *, document_ready_at: float, probe
                 return {}
             clock.elapsed += 2.0
             if parameters["expression"] == "window.probe":
+                if not self.navigated:
+                    self.navigated = True
+                    raise _edge_cdp._DocumentChangedError("Inspected target navigated or closed")
+                assert self.waits == 2
                 if probe_exists and clock.elapsed >= document_ready_at:
                     return {"result": {"type": "string", "value": "ready"}}
                 return {"result": {"type": "undefined"}}
