@@ -56,7 +56,8 @@ def split_page(monkeypatch):
     monkeypatch.setattr(route, "_resolve_selected_ledger_id", lambda *_a, **_k: "family")
     monkeypatch.setattr(route, "_require_selected_ledger_write", lambda *_a: None)
     monkeypatch.setattr(route, "resolve_web_actor_account_id", lambda *_a: 3)
-    monkeypatch.setattr(route, "require_runtime_home_currency_code", lambda *_a: "CNY")
+    monkeypatch.setattr(route.bsplit, "lock_split_parent_expense",
+        lambda *_a, **_k: SimpleNamespace(home_currency_code="CNY"))
     monkeypatch.setattr(route.bsplit, "create_invitation", command)
     monkeypatch.setattr(route.bsplit, "cancel_invitation", command)
     root = Path(__file__).resolve().parents[1] / "app/templates/web"

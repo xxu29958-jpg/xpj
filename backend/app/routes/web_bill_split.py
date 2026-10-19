@@ -43,7 +43,6 @@ from app.routes.web_common import (
     templates,
 )
 from app.services import bill_split_service as bsplit
-from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
     currency_symbol,
     major_amount_to_minor,
@@ -228,10 +227,10 @@ def web_split_invite(
     # flash back onto the page instead of escaping to the global AppError
     # handler, which renders a bare-JSON page in the browser.
     try:
-        amount_cents = _yuan_to_cents(
-            amount_yuan,
-            require_runtime_home_currency_code(db),
-        )
+        # Bind the parent to the authorized ledger under the row lock the
+        # invitation insert keeps, then parse with the currency it freezes.
+        parent = bsplit.lock_split_parent_expense(db, sender_ledger_id=selected_id, expense_id=expense_id)
+        amount_cents = _yuan_to_cents(amount_yuan, parent.home_currency_code)
         if amount_cents is None or amount_cents <= 0:
             raise AppError("split_amount_invalid", "拆账金额不正确。", status_code=422)
         bsplit.create_invitation(
