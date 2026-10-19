@@ -892,13 +892,26 @@ def _replay_funds_after_account_visibility_change(client, identity, account):
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["receipt_revision"] == 1
     assert not {"movements", "prior_repayments", "fee_obligations", "credit_applications"} & accepted.json().keys()
-    hidden = share(accepted.json(), "private")
+    purchase = client.post("/api/expenses/manual", headers=member, json={"client_ref": str(uuid4()),
+        "home_currency_code": "CNY", "amount_cents": 100, "merchant": "家人实际消费", "category": "购物"}).json()
+    funding_url = f"/api/expenses/{purchase['id']}/funding"
+    funding_headers = {**member, "Idempotency-Key": str(uuid4())}
+    funding_body = {"expected_row_version": purchase["row_version"], "reason": "核实实际共同付款",
+        "parts": [{"component_id": str(uuid4()), "account_public_id": account["public_id"],
+            "account_row_version": accepted.json()["row_version"], "expense_amount_minor": 100, "account_amount_minor": 100}]}
+    funded = client.post(funding_url, headers=funding_headers, json=funding_body)
+    assert funded.status_code == 200, funded.text
+    hidden = share(client.get(url, headers=identity.app_headers).json(), "private")
     assert client.get(url, headers=member).status_code == 404
     replay = client.post(url + "/activities", headers=member, json=body)
     assert (replay.status_code, replay.json().get("error")) == (404, "fund_account_not_found")
-    assert client.get(url, headers=identity.app_headers).json()["balance_minor"] == account["balance_minor"] + 100
+    funding_replay = client.post(funding_url, headers=funding_headers, json=funding_body)
+    assert (funding_replay.status_code, funding_replay.json().get("error")) == (404, "fund_account_not_found")
+    assert client.get(url, headers=identity.app_headers).json()["balance_minor"] == account["balance_minor"]
     share(hidden, "ledger")
     assert client.post(url + "/activities", headers=member, json=body).json() == accepted.json()
+    assert client.post(funding_url, headers=funding_headers, json=funding_body).json() == funded.json()
+    assert client.get(url, headers=identity.app_headers).json()["balance_minor"] == account["balance_minor"]
 
 
 def _hide_credit_goal_account(client, identity, account_url, account, goal, goal_body, goal_key):

@@ -6,7 +6,7 @@ from app.models import ApiIdempotencyKey, Expense, ExpenseFunding, ExpenseOffset
 from app.schemas import ExpenseCorrectionRequest
 from app.schemas.funds import ExpenseFundingView, FundingViewPart
 from app.services.funds_commands import claim_funds
-from app.services.funds_query import account_scope
+from app.services.funds_query import account_scope, get_account
 from app.services.idempotency import mark_idempotency_succeeded
 
 
@@ -49,7 +49,11 @@ def save_expense_funding(db, *, auth, expense_id, payload, key):
 
 
 def replay_expense_funding(db, *, auth, key) -> ExpenseFundingView:
-    """Read the original receipt after the command has validated its claim."""
+    """Preserve acceptance without letting the old account details bypass current access."""
     original = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.tenant_id == auth.tenant_id,
         ApiIdempotencyKey.idempotency_key == key))
-    return ExpenseFundingView.model_validate(original.response_body)
+    result = ExpenseFundingView.model_validate(original.response_body)
+    for part in result.parts:
+        if part.account_public_id is not None:
+            get_account(db, ledger_id=auth.ledger_id, actor_account_id=auth.account_id, public_id=part.account_public_id)
+    return result
