@@ -75,6 +75,8 @@ def test_payer_conversion_uses_existing_rates_dates_and_currency_precision(clien
     with SessionLocal() as db:
         upsert_fx_rate(db, currency_code="CNY", home_currency_code="USD", rate_date=date(2026, 5, 4),
             rate_to_home=Decimal("0.125"))
+        upsert_fx_rate(db, currency_code="USD", home_currency_code="JPY", rate_date=date(2026, 5, 4),
+            rate_to_home=Decimal("150"))
         db.commit()
     for source, target, amount, expected in (("CNY", "USD", "100", "13.89"),
             ("USD", "CNY", "100", "720.00"), ("KWD", "USD", "12.345", "40.12"),

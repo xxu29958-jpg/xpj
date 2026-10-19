@@ -137,6 +137,7 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
         mutable.value = mutable.value.copy(editing = true)
         val input = state.value.task.input ?: return
         if (input.mode == "envelopes") { openEnvelopes(input.envelopeMonth); return }
+        if (input.mode == "repay" && input.paid.isBlank()) quotePayerAmount(input)
         if (input.accountId.isBlank()) return
         viewModelScope.launch { reloadAccount(input.binding, input.accountId) { state.value.task.input?.accountId == input.accountId } }
     }

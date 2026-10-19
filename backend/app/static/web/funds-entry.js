@@ -84,7 +84,7 @@
     }
   }
 
-  let quoteController = null, suggestedPayerAmount = null;
+  let quoteController = null, suggestedPayerAmount = null, payerEditable = false;
   const quoteBasis = () => JSON.stringify([value("ledger_id"), value("draft_scope"), value("payer_public_id"),
     value("payer_currency_code"), value("principal_amount"), value("occurred_on")]);
   async function quotePayerAmount() {
@@ -123,7 +123,7 @@
       suggestedPayerAmount = null;
     }
   });
-  window.addEventListener("pagehide", () => quoteController?.abort());
+  window.addEventListener("pagehide", () => { quoteController?.abort(); payerEditable = false; });
 
   // What confirming will change, in the user's own numbers; the server still decides the result.
   const summary = form.querySelector("[data-funds-summary]");
@@ -179,7 +179,13 @@
     summary.hidden = !text;
   }
   field("kind")?.addEventListener("change", showCreditTerms);
-  form.addEventListener("ticketbox:funds-state", () => { showCreditTerms(); describe(); });
+  form.addEventListener("ticketbox:funds-state", () => {
+    showCreditTerms(); describe();
+    const editable = field("payer_amount") && !field("payer_amount").readOnly;
+    const resumed = editable && !payerEditable;
+    payerEditable = editable;
+    if (resumed && !value("payer_amount")) quotePayerAmount();
+  });
   form.addEventListener("input", describe);
   form.addEventListener("change", describe);
   const choice = form.querySelector("[data-funds-choice]");

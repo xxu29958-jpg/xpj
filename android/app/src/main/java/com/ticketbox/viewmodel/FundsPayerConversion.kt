@@ -1,10 +1,12 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
+import androidx.compose.runtime.snapshotFlow
 import com.ticketbox.R
 import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 internal fun FundsViewModel.needsPayerQuote(old: FundsInput, changed: FundsInput): Boolean =
     changed.mode == "repay" && (changed.payerCurrency != old.payerCurrency ||
@@ -27,6 +29,8 @@ internal fun FundsViewModel.quotePayerAmount(input: FundsInput) {
         runCatching { java.time.LocalDate.parse(input.date) }.isFailure) return
     payerQuoteJob = viewModelScope.launch {
         val result = repository.convertPayerAmount(input)
+        // Submission can reject the still-empty deduction. Keep its matching quote until editing resumes.
+        snapshotFlow { state.value.busy }.first { !it }
         val current = state.value
         val latest = current.task.input ?: return@launch
         if (!current.acceptsPayerQuote(input, latest)) return@launch

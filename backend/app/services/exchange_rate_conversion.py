@@ -16,25 +16,37 @@ from app.services.currency_common import (
 from app.services.exchange_rate_service import get_exchange_rate, resolve_valuation_rate
 
 
-def _pair(db, tenant_id, source, target, day):
+def _pair(db, tenant_id, source, target, day, *, manual_only):
     if source == target:
         return Decimal(1), []
-    # A ledger's explicit rate wins in either orientation before consulting public quotes.
+    for currency, home, inverse in ((source, target, False), (target, source, True)):
+        if manual_only:
+            stored = get_exchange_rate(db, tenant_id=tenant_id, currency_code=currency,
+                home_currency_code=home, rate_date=day)
+            if stored is None:
+                continue
+            rate, provider, published = Decimal(stored.rate_to_cny), stored.source, stored.rate_date
+        else:
+            rate, provider, _, published = resolve_valuation_rate(db, tenant_id=tenant_id, currency_code=currency,
+                home_currency_code=home, rate_date=day)
+        if rate is not None:
+            reference = ReferenceRateResponse(currency_code=currency, home_currency_code=home,
+                rate_date=published, rate_to_home=rate, source=provider)
+            return (Decimal(1) / rate if inverse else rate), [reference]
+    return None, []
+
+
+def _conversion_rate(db, tenant_id, source, target, pivot, day):
+    # Complete ledger-owned paths take precedence over public references, including cross rates.
     for manual_only in (True, False):
-        for currency, home, inverse in ((source, target, False), (target, source, True)):
-            if manual_only:
-                stored = get_exchange_rate(db, tenant_id=tenant_id, currency_code=currency,
-                    home_currency_code=home, rate_date=day)
-                if stored is None:
-                    continue
-                rate, provider, published = Decimal(stored.rate_to_cny), stored.source, stored.rate_date
-            else:
-                rate, provider, _, published = resolve_valuation_rate(db, tenant_id=tenant_id, currency_code=currency,
-                    home_currency_code=home, rate_date=day)
-            if rate is not None:
-                reference = ReferenceRateResponse(currency_code=currency, home_currency_code=home,
-                    rate_date=published, rate_to_home=rate, source=provider)
-                return (Decimal(1) / rate if inverse else rate), [reference]
+        rate, references = _pair(db, tenant_id, source, target, day, manual_only=manual_only)
+        if rate is not None:
+            return rate, references
+        if pivot not in (source, target):
+            source_rate, source_refs = _pair(db, tenant_id, source, pivot, day, manual_only=manual_only)
+            target_rate, target_refs = _pair(db, tenant_id, target, pivot, day, manual_only=manual_only)
+            if source_rate is not None and target_rate is not None:
+                return source_rate / target_rate, source_refs + target_refs
     return None, []
 
 
@@ -45,12 +57,7 @@ def convert_reference_amount(db: Session, *, tenant_id: str, currency_code: str,
     original = major_amount_to_minor(amount, source)
     if source == target or original == 0:
         return AmountConversionResponse(converted_amount=minor_amount_value(original, target))
-    rate, references = _pair(db, tenant_id, source, target, rate_date)
-    if rate is None and pivot not in (source, target):
-        source_rate, source_refs = _pair(db, tenant_id, source, pivot, rate_date)
-        target_rate, target_refs = _pair(db, tenant_id, target, pivot, rate_date)
-        if source_rate is not None and target_rate is not None:
-            rate, references = source_rate / target_rate, source_refs + target_refs
+    rate, references = _conversion_rate(db, tenant_id, source, target, pivot, rate_date)
     if rate is None:
         return AmountConversionResponse(converted_amount=None)
     try:
