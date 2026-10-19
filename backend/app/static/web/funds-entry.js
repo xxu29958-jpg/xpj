@@ -42,14 +42,105 @@
     return;
   }
   const field = name => form.elements.namedItem(name);
-  const creditPanel = form.querySelector("[data-credit-terms]");
+  const value = name => (field(name)?.value || "").trim();
   function showCreditTerms() {
     const originalDebt = field("existing_debt")?.selectedOptions?.[0];
     if (originalDebt?.value && originalDebt.text === originalDebt.value) originalDebt.text = "保留原欠款选择，请重新核对";
-    if (creditPanel) creditPanel.hidden = field("kind")?.value !== "credit";
+    // Credit-only parts follow the chosen type; on an existing account the type is fixed by the page.
+    const credit = (field("kind")?.value || form.dataset.fundsAccountKind) === "credit";
+    form.querySelectorAll("[data-credit-terms], [data-credit-only]").forEach(part => { part.hidden = !credit; });
+  }
+
+  // Optional sections: their summary line shows what is filled in; they start folded unless the
+  // server asked for them open, and open by themselves when one of their fields is invalid.
+  const options = [...form.querySelectorAll("[data-funds-options]")];
+  function summarizeOptions() {
+    options.forEach(details => {
+      const target = details.querySelector("[data-options-summary]");
+      if (!target) return;
+      const filled = target.dataset.optionsFields.split(" ").map(name => {
+        const input = field(name);
+        if (!input || !input.value) return "";
+        return input.tagName === "SELECT" ? input.selectedOptions[0]?.textContent.trim() || "" : input.value.trim();
+      }).filter(Boolean);
+      target.textContent = filled.length ? filled.join(" · ") : target.dataset.optionsEmpty;
+    });
+  }
+  options.forEach(details => { details.open = details.dataset.startExpanded === "true"; });
+  form.addEventListener("invalid", event => {
+    const details = event.target.closest("[data-funds-options]");
+    if (details) details.open = true;
+  }, true);
+
+  // Same-currency repayments settle exactly the principal, so the deduction mirrors it instead of
+  // being typed twice; another currency needs the actual deduction.
+  const payerAmount = form.querySelector("[data-funds-payer-amount]");
+  function mirrorPayerAmount() {
+    if (!payerAmount || !field("payer_amount")) return;
+    const same = value("payer_currency_code") && value("payer_currency_code") === form.dataset.fundsAccountCurrency;
+    payerAmount.hidden = Boolean(same);
+    if (same && !field("payer_amount").readOnly && field("payer_amount").value !== field("principal_amount").value) {
+      field("payer_amount").value = field("principal_amount").value;
+      field("payer_amount").dispatchEvent(new Event("input", {bubbles: true}));
+    }
+  }
+
+  // What confirming will change, in the user's own numbers; the server still decides the result.
+  const summary = form.querySelector("[data-funds-summary]");
+  const kinds = {cash: "现金账户", bank: "银行卡", wallet: "余额账户", credit: "信用账户"};
+  const optionText = name => field(name)?.selectedOptions?.[0]?.textContent.trim() || "";
+  const amount = (number, currency) => number + " " + currency;
+  const sentences = {
+    create: () => {
+      if (!value("name")) return "";
+      const credit = value("kind") === "credit";
+      const opening = value("opening_amount") === "" ? "期初待核对，不按零计算"
+        : (credit ? "期初欠款 " : "期初余额 ") + amount(value("opening_amount"), value("currency_code")) + "（" + value("occurred_on") + "）";
+      return "将添加" + kinds[value("kind")] + "「" + value("name") + "」，" + value("currency_code") + "，" + opening + "，" + optionText("visibility") + "可见。";
+    },
+    income: () => value("activity_amount") && "「" + form.dataset.fundsAccountName + "」将增加 " + amount(value("activity_amount"), form.dataset.fundsAccountCurrency) + "。实际收入不算消费，也不改变收入计划。",
+    loan: () => value("activity_amount") && value("loan_principal_amount") && "「" + form.dataset.fundsAccountName + "」将收到 " + amount(value("activity_amount"), form.dataset.fundsAccountCurrency) +
+      "，同时新增负债「" + (value("loan_name") || "贷款") + "」本金 " + amount(value("loan_principal_amount"), value("loan_currency_code")) + "。贷款本金不算收入。",
+    transfer: () => value("activity_amount") && value("payer_public_id") && "从「" + form.dataset.fundsAccountName + "」转出 " + amount(value("activity_amount"), form.dataset.fundsAccountCurrency) +
+      "，「" + optionText("payer_public_id").split(" · ")[0] + "」到账 " + amount(value("other_amount") || "—", value("payer_currency_code")) + "。不算收入或消费。",
+    reconciliation: () => value("activity_amount") && (value("apply_adjustment") === "true"
+      ? "按外部余额 " + amount(value("activity_amount"), form.dataset.fundsAccountCurrency) + " 记一笔差额更正，作为新的余额基准；原记录保留。"
+      : "只保存外部余额快照 " + amount(value("activity_amount"), form.dataset.fundsAccountCurrency) + "，账户余额不变，差异留待解释。"),
+    installments: () => {
+      const draws = JSON.parse(value("draw_ids_json") || "[]").length;
+      const periods = JSON.parse(value("periods_json") || "[]").length;
+      return value("name") && periods ? "将记录合约「" + value("name") + "」：纳入 " + draws + " 笔未偿本金，按 " + periods +
+        " 期安排。只重排已有欠款，不新增消费或贷款；未来费用实际发生时才记。" : "";
+    },
+    repay: () => {
+      if (!value("payer_public_id") || !value("principal_amount")) return "";
+      const payer = optionText("payer_public_id").split(" · ")[0], currency = value("payer_currency_code");
+      const parts = ["本金 " + amount(value("payer_amount") || value("principal_amount"), currency)];
+      if (value("new_fee")) parts.push("新费用 " + amount(value("new_fee"), currency));
+      if (value("payer_fee_amount")) parts.push("已记费用 " + amount(value("payer_fee_amount"), currency));
+      return "从「" + payer + "」扣款：" + parts.join("，") + "。「" + form.dataset.fundsAccountName + "」欠款减少 " +
+        amount(value("principal_amount"), form.dataset.fundsAccountCurrency) + (value("overpayment") ? "，其中溢缴款 " + amount(value("overpayment"), form.dataset.fundsAccountCurrency) : "") +
+        "。本金不再计一次消费" + (value("new_fee") ? "；新费用记为一笔消费" : "") + "。";
+    },
+  };
+  // A single open purchase settles without choosing; an overpayment makes the allocation explicit.
+  const allocation = form.querySelector("[data-allocation-block]");
+  function showAllocation() {
+    if (allocation) allocation.hidden = allocation.dataset.allocationRequired !== "true" && !value("overpayment");
+  }
+  function describe() {
+    summarizeOptions();
+    mirrorPayerAmount();
+    showAllocation();
+    if (!summary) return;
+    const text = (sentences[value("mode")] || (() => ""))() || "";
+    summary.textContent = text;
+    summary.hidden = !text;
   }
   field("kind")?.addEventListener("change", showCreditTerms);
-  form.addEventListener("ticketbox:funds-state", showCreditTerms);
+  form.addEventListener("ticketbox:funds-state", () => { showCreditTerms(); describe(); });
+  form.addEventListener("input", describe);
+  form.addEventListener("change", describe);
   const choice = form.querySelector("[data-funds-choice]");
   choice?.addEventListener("change", () => {
     const selected = choice.selectedOptions[0];
@@ -78,6 +169,9 @@
     field("payer_row_version").value = selected.dataset.version || "";
     field("payer_currency_code").value = selected.dataset.currency || "";
     form.querySelectorAll("[data-funds-payer-currency]").forEach(label => { label.textContent = selected.dataset.currency || ""; });
+    describe();
   });
+  showCreditTerms();
   window.TicketboxPlanEntry.mount(form, definition);
+  describe();
 })(window, document);

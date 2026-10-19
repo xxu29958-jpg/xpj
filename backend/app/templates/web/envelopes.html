@@ -25,11 +25,11 @@
 <p class="hint">依据已核对账户和已记流水，不是银行实时余额。未到账收入、信用额度不计入；超支仍可记账，随后调整用途或补记实际到账。</p>
 {% for notice in envelopes.notices %}<p class="product-feedback" role="status">{{ notice }}</p>{% endfor %}
 </section>
-<form method="get" action="/web/envelopes" class="product-task-actions">
+{# Switching month is a plain read: no sticky bar competes with the save action below. #}
+<form method="get" action="/web/envelopes" class="product-form-actions envelope-month">
 <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
 <label class="product-field">查看月份<input class="product-input" type="month" name="month" value="{{ envelopes.month }}" required></label>
 <button class="product-button product-button--quiet" type="submit">查看</button></form>
-<p class="hint">以前月份尚未用完的分配继续保留；调整为 0 可释放该用途的余额。本金还款不会再扣一次消费用途，退款回到原购买的信封。</p>
 <div data-envelope-draft-shelf data-draft-scope="{{ envelope_scope|tojson|forceescape }}" hidden><p class="meta">此浏览器保留的信封安排</p><ul data-envelope-draft-list></ul></div>
 <form method="post" action="/web/envelopes/save" class="product-form" data-envelope-form
  data-envelope-draft-scope="{{ envelope_scope|tojson|forceescape }}" data-envelope-plan-id="{{ values.month }}"
@@ -38,21 +38,22 @@
 {{ csrf_field|safe }}<input type="hidden" name="draft_scope" value="{{ envelope_scope|tojson|forceescape }}">
 <input type="hidden" name="native_controls" value="1">
 {% for name,value in values.items() if name not in ['note','csrf_token','draft_scope','review_latest','native_controls'] and not name.startswith('source:') and not name.startswith('allocation:') %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
-<fieldset class="product-surface product-surface--plain" {{ 'disabled' if not envelope_can_write }}><legend>哪些账户提供现金</legend>
-<p class="hint">只纳入本账本可见的现金账户。私人账户余额不会公开；加入或移出账户由其所有者确认。</p>
+<details class="product-options" open data-envelope-options data-start-expanded="{{ 'false' if selected_sources else 'true' }}">
+<summary>提供现金的账户 <span data-envelope-sources-summary>{{ selected_sources|length }} 个账户</span></summary>
+<fieldset class="product-field" {{ 'disabled' if not envelope_can_write }}><legend class="sr-only">哪些账户提供现金</legend>
+<p class="hint">只纳入本账本成员共享的现金、银行卡或余额账户；仅自己可见的账户要先在账户里改为共享。私人账户余额不会公开；加入或移出由账户所有者确认。</p>
 {% for account in envelopes.accounts %}<label class="product-choice">
 <input type="checkbox" name="source:{{ account.public_id }}" value="1" data-envelope-source="{{ account.public_id }}"
  {{ 'checked' if account.public_id in selected_sources }} {{ 'disabled' if not account.can_select }}>
 {{ account.name }} · {{ money(account.balance_minor, account.currency_code) }}
 {% if account.public_id in selected_sources and not account.can_select %}<input type="hidden" name="source:{{ account.public_id }}" value="1">{% endif %}</label>
-{% else %}<p>还没有本账本可见的现金账户。</p>{% endfor %}
-<a class="text-link" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&amp;task=create">添加资金账户</a>
-<a class="text-link" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}">管理已有账户的共享范围</a>
+{% else %}<p>还没有共享到本账本的现金账户。</p>{% endfor %}
+<div class="product-form-actions"><a class="text-link" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}">管理账户的共享范围</a>
+<a class="text-link" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&amp;task=create">添加资金账户</a></div>
 </fieldset>
-<section class="product-surface product-surface--plain"><h2>{{ envelopes.month }} · 给用途留出现金</h2>
-<p class="hint">计划金额来自现有预算、储蓄和备用金安排。这里填写实际分配总额；已消费部分与未还信用款会分别显示。</p>
-<div class="product-task-actions"><a class="text-link" href="/web/budgets?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ envelopes.month }}">分类预算</a>
-<a class="text-link" href="/web/budget-advise?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ envelopes.month }}">本月安排</a></div>
+</details>
+<section class="product-section"><h2 class="product-panel-title">{{ envelopes.month }} · 给用途留出现金</h2>
+<p class="hint">计划金额来自<a class="text-link" href="/web/budgets?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ envelopes.month }}">分类预算</a>和<a class="text-link" href="/web/budget-advise?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ envelopes.month }}">本月安排</a>。这里填写实际分配总额；以前月份没用完的分配继续保留，改为 0 可释放。本金还款不会再扣一次消费用途，退款回到原购买的信封。</p>
 <div class="product-form-grid" data-envelope-allocations>
 {% for row in envelopes.purposes %}<div class="product-field">
 <label for="envelope-{{ loop.index }}">{{ row.label }} · {{ envelopes.home_currency_code }}</label>
@@ -67,6 +68,7 @@
 </div>{% endfor %}
 </div><button class="product-button product-button--quiet" type="button" data-envelope-use-plan hidden>填入现有计划金额</button>
 <p class="hint">填入计划后仍需核对现金并保存，不会自动分配。</p></section>
+<p class="product-feedback" data-envelope-summary aria-live="polite" hidden></p>
 <div class="product-field"><label for="envelope-note">这次调整的说明</label><input class="product-input" id="envelope-note" name="note" value="{{ values.note }}" maxlength="255" required></div>
 <p class="hint" data-envelope-draft-status role="status"></p>
 <p class="hint" data-envelope-review-note hidden>原输入会保留。核对最新余额只准备继续编辑，确认后才保存分配。</p>
