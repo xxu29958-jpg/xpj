@@ -36,14 +36,16 @@ import com.ticketbox.ui.design.StateTone
 
 /**
  * One active goal keeps its hero (D17A); several goals read as a list so every remaining amount
- * is not a competing hero card. Each row opens the same detail.
+ * is not a competing hero card. Archived goals are history and stay compact at any count.
+ * Each row opens the same detail.
  */
 @Composable
 internal fun SpendingGoalListCard(
     goals: List<Goal>,
     onOpenGoal: (String) -> Unit,
+    allowHero: Boolean = true,
 ) {
-    goals.singleOrNull()?.let { goal ->
+    goals.singleOrNull()?.takeIf { allowHero }?.let { goal ->
         SpendingGoalRow(goal = goal, onClick = { onOpenGoal(goal.publicId) })
         return
     }
