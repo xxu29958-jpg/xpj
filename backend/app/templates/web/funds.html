@@ -154,7 +154,7 @@
 </form>
 {% elif account %}
 <section class="product-surface product-surface--plain funds-summary" aria-label="当前余额">
-<span class="product-amount-label">{{ '当前欠款' if account.kind == 'credit' and account.balance_minor is not none and account.balance_minor <= 0 else '当前结余' if account.kind == 'credit' else '当前余额' }} · 按已记录的变动</span>
+<span class="product-amount-label">{{ '当前结余' if account.kind == 'credit' and account.balance_minor is not none and account.balance_minor > 0 else '当前欠款' if account.kind == 'credit' else '当前余额' }} · 按已记录的变动</span>
 <strong class="product-amount">{{ balance_text(account) }}</strong>
 {% if account.unallocated_credit_minor %}<p class="hint">退款或预付款还剩 {{ money(account.unallocated_credit_minor, account.currency_code) }}，已计入上方余额。核对用途后可抵扣欠款。</p>{% endif %}
 {% if account.balance_minor is none %}<p class="hint">期初未核对；已记录净变动 {{ money(account.recorded_change_minor, account.currency_code) }}，这不是可用余额。</p>{% endif %}
