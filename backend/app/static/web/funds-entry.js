@@ -166,8 +166,14 @@
   const payer = field("payer_public_id");
   if (payer?.tagName === "SELECT") payer.addEventListener("change", () => {
     const selected = payer.selectedOptions[0];
+    const nextCurrency = selected.dataset.currency || "";
+    const currencyChanged = value("payer_currency_code") !== nextCurrency;
     field("payer_row_version").value = selected.dataset.version || "";
-    field("payer_currency_code").value = selected.dataset.currency || "";
+    field("payer_currency_code").value = nextCurrency;
+    if (value("mode") === "repay" && currencyChanged) {
+      field("payer_amount").value = "";
+      field("payer_amount").dispatchEvent(new Event("input", {bubbles: true}));
+    }
     form.querySelectorAll("[data-funds-payer-currency]").forEach(label => { label.textContent = selected.dataset.currency || ""; });
     describe();
   });
