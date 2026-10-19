@@ -100,8 +100,11 @@ private fun AccountEditorFields(state: FundsUiState, input: FundsInput, enabled:
 @Composable
 private fun ExistingDebtField(input: FundsInput, choices: List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto>, enabled: Boolean, vm: FundsViewModel) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    val reviewed = choices.firstOrNull { it.publicId == input.existingDebtId && it.rowVersion == input.existingDebtVersion }
+    val label = reviewed?.let { stringResource(R.string.funds_old_debt_label, it.name, money(it.remainingHomeMinor, it.homeCurrencyCode)) }
+        ?: input.existingDebtLabel
     TextButton(onClick = { expanded = true }, enabled = enabled) {
-        Text(if (input.existingDebtId.isBlank()) stringResource(R.string.funds_adopt_debt) else stringResource(R.string.funds_adopt_selected, input.existingDebtLabel))
+        Text(if (input.existingDebtId.isBlank()) stringResource(R.string.funds_adopt_debt) else stringResource(R.string.funds_adopt_selected, label))
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
         DropdownMenuItem(text = { Text(stringResource(R.string.funds_no_old_debt)) }, onClick = {

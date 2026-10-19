@@ -17,8 +17,9 @@ _EVENT_COLUMNS = (
     "stream_date", "stream_amount_cents", "lineage_status", "lineage_home_net_cents",
 )
 _LINEAGE_STATUSES = {"confirmed", "partially_refunded", "fully_refunded", "reversed"}
+_FUNDS_KINDS = {"opening", "credit_draw", "repayment", "income", "loan", "transfer", "refund", "reconciliation", "reversal"}
 _FUNDS_INPUT_COLUMNS = (
-    "kind", "transaction_type", "account_id", "account_public_id", "account_amount_minor",
+    "transaction_type", "account_id", "account_public_id", "account_amount_minor",
     "event_public_id", "repayment_id", "repayment_public_id", "debt_id", "debt_public_id",
     "payer_public_id", "payer_amount_minor", "other_account_public_id", "other_amount_minor",
     "funding_id", "funding", "settlement_targets",
@@ -27,19 +28,20 @@ NATIVE_CSV_INPUT_COLUMNS = (
     "id", "public_id", "amount_cents", "amount_yuan", "amount_home_major", "home_currency_code",
     "original_currency_code", "original_amount_minor", "exchange_rate_to_cny", "exchange_rate_date",
     "exchange_rate_source", "merchant", "category", "note", "source", "expense_time", "confirmed_at",
-    "tags", "value_score", "regret_score", "accounting_time", *_EVENT_COLUMNS, *_FUNDS_INPUT_COLUMNS,
+    "tags", "value_score", "regret_score", "accounting_time", "kind", *_EVENT_COLUMNS, *_FUNDS_INPUT_COLUMNS,
 )
 
 
 def _unsupported_funds_csv_input(cells: dict[str, str]) -> bool:
     """An explicit funds shape must not lose its meaning in the expense-only CSV path."""
     return (cells.get("entry_kind", "").strip() not in {"", "expense", "offset"}
+        or cells.get("kind", "").strip().casefold() in _FUNDS_KINDS
         or any(cells.get(name, "").strip() for name in _FUNDS_INPUT_COLUMNS))
 
 
 def has_financial_event(cells: dict[str, str]) -> bool:
     """Blank event cells in a mixed error download remain ordinary CSV rows."""
-    return any(cells.get(name, "").strip() for name in (*_EVENT_COLUMNS, *_FUNDS_INPUT_COLUMNS))
+    return _unsupported_funds_csv_input(cells) or any(cells.get(name, "").strip() for name in _EVENT_COLUMNS)
 
 
 def _retained_csv_input(cells: dict[str, str]) -> dict[str, str]:

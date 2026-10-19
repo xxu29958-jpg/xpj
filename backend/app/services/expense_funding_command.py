@@ -6,7 +6,7 @@ from app.models import ApiIdempotencyKey, Expense, ExpenseFunding, ExpenseOffset
 from app.schemas import ExpenseCorrectionRequest
 from app.schemas.funds import ExpenseFundingView, FundingViewPart
 from app.services.funds_commands import claim_funds
-from app.services.funds_query import account_scope, get_account
+from app.services.funds_query import account_scope
 from app.services.idempotency import mark_idempotency_succeeded
 
 
@@ -53,7 +53,12 @@ def replay_expense_funding(db, *, auth, key) -> ExpenseFundingView:
     original = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.tenant_id == auth.tenant_id,
         ApiIdempotencyKey.idempotency_key == key))
     result = ExpenseFundingView.model_validate(original.response_body)
+    visible = set(db.scalars(select(FinancialAccount.public_id).where(account_scope(auth.ledger_id, auth.account_id))))
+    parts = []
     for part in result.parts:
-        if part.account_public_id is not None:
-            get_account(db, ledger_id=auth.ledger_id, actor_account_id=auth.account_id, public_id=part.account_public_id)
-    return result
+        if part.account_public_id is not None and part.account_public_id not in visible:
+            part = part.model_copy(update={"account_public_id": None, "account_row_version": None,
+                "account_name": "其他成员的私人付款账户", "currency_code": None, "account_amount_minor": None})
+        parts.append(part)
+    return result.model_copy(update={"parts": parts,
+        "can_edit": result.can_edit and all(part.account_public_id is not None for part in parts)})

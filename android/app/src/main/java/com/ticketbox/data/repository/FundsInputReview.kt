@@ -4,10 +4,21 @@ import com.ticketbox.data.remote.dto.FinancialAccountDto
 
 /** Refresh reviewed versions only; the raw money and original publication stay with their owners. */
 internal suspend fun FundsQueries.reviewFundsInput(old: FundsInput, accounts: List<FinancialAccountDto>): FundsInput = when (old.mode) {
+    "create" -> reviewCreation(old)
     "envelopes" -> reviewEnvelopes(old)
     "funding" -> reviewFunding(old, accounts)
     "void_activity" -> reviewActivity(old)
     else -> reviewAccount(old, accounts)
+}
+
+private suspend fun FundsQueries.reviewCreation(old: FundsInput): FundsInput {
+    if (old.existingDebtId.isBlank()) return old
+    val read = existingDebts(old.binding).getOrThrow()
+    require(!read.fromCache) { "请联网核对原欠款，账户和金额输入已保留。" }
+    val debt = requireNotNull(read.value.firstOrNull { it.publicId == old.existingDebtId }) {
+        "原欠款已接管或当前不可用，请重新选择；原输入已保留。"
+    }
+    return old.copy(existingDebtVersion = debt.rowVersion)
 }
 
 private suspend fun FundsQueries.reviewActivity(old: FundsInput): FundsInput {

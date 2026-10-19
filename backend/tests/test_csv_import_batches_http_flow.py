@@ -118,7 +118,7 @@ def _assert_coffee_import_filter_and_export(client: TestClient, *, identity) -> 
 
 
 def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClient, *, identity) -> None:
-    csv = ("amount_yuan,merchant,category,kind,account_public_id\nabc,Bad,餐饮,,\n4.50,Good,交通,,\n"
+    csv = ("amount_yuan,merchant,category,kind,account_public_id\nabc,Bad,餐饮,,\n4.50,Good,交通,food,\n"
         "37.90,还款不能当消费,其他,repayment,\n20.00,转账不能当消费,其他,transfer,\n15.00,账户字段不能丢弃,其他,,recorded-account\n")
     created = client.post(
         "/api/imports/csv",

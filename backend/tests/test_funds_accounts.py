@@ -47,6 +47,8 @@ def test_existing_debt_becomes_one_credit_account_without_rewriting_history(clie
     assert saved.json()["debt_public_id"] == debt["public_id"] and saved.json()["balance_minor"] == -6800
     assert client.post("/api/funds/accounts", headers=headers, json=body).json() == saved.json()
     with SessionLocal() as db:
+        from app.services.debt_service import count_open_external_debts
+        assert count_open_external_debts(db, ["owner"]) == {"owner": 1}
         original = db.scalar(select(Debt).where(Debt.public_id == debt["public_id"]))
         assert db.scalar(select(func.count()).select_from(Debt)) == 1
         assert original.principal_amount_cents == 10000
@@ -354,10 +356,10 @@ def _prepare_exported_plans(client, identity, bank, credit):
     assert fee.status_code == 200, fee.text
 
 
-def _create_funds_account(client, identity, name, kind, opening, *, visibility="private"):
+def _create_funds_account(client, identity, name, kind, opening, *, visibility="private", opening_date=None):
     result = client.post("/api/funds/accounts", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
         json={"name": name, "kind": kind, "currency_code": "CNY", "opening_amount_minor": opening,
-            "opening_date": date.today().isoformat(), "opening_source": "已核对对账单", "visibility": visibility,
+            "opening_date": (opening_date or date.today()).isoformat(), "opening_source": "已核对对账单", "visibility": visibility,
             "credit_terms": {"credit_limit_minor": 2000000, "available_credit_minor": 1500000,
                 "observed_on": str(date.today()), "source": "平台页面", "statement_day": 2, "payment_due_day": 15} if kind == "credit" else None})
     assert result.status_code == 200, result.text
@@ -404,7 +406,8 @@ def test_same_owner_keeps_personal_and_family_funds_in_the_selected_ledger(clien
 
 
 def test_cash_envelopes_reserve_unsettled_purchases_without_spending_principal_twice(client, identity):
-    bank = _create_funds_account(client, identity, "共同生活费", "bank", 100000, visibility="ledger")
+    bank = _create_funds_account(client, identity, "共同生活费", "bank", 100000, visibility="ledger",
+        opening_date=date.today().replace(day=1) - timedelta(days=1))
     credit = _create_funds_account(client, identity, "花呗", "credit", 0)
     month = date.today().strftime("%Y-%m")
     url = "/api/budget/envelopes/" + month
@@ -478,6 +481,64 @@ def _envelope_unlinked_purchase(client, identity, url, bank):
     assert linked.status_code == 200, linked.text
     settled = client.get(url, headers=identity.app_headers).json()
     assert (settled["cash_minor"], settled["reserved_minor"], settled["unassigned_minor"]) == (85000, 35000, 50000)
+    _correct_funded_purchase_date(client, identity, unknown.json()["id"], bank)
+
+
+def _correct_funded_purchase_date(client, identity, expense_id, bank):
+    from app.models import FinancialAccount
+    from app.services.funds_query import account_balance
+
+    prior_day = date.today().replace(day=1) - timedelta(days=1)
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    current = client.get(f"/api/expenses/{expense_id}", headers=headers).json()
+    bank = client.get("/api/funds/accounts/" + bank["public_id"], headers=headers).json()
+    body = {"expected_row_version": current["row_version"], "reason": "实际发生于上月，核对原付款",
+        "time_input": {"precision": "date_only", "calendar_revision": bank["calendar_revision"],
+            "user_local_date": str(prior_day)},
+        "funding": [{"component_id": str(uuid4()), "account_public_id": bank["public_id"],
+            "account_row_version": bank["row_version"], "expense_amount_minor": 5000, "account_amount_minor": 5000}]}
+    path = f"/api/expenses/{expense_id}/corrections"
+    corrected = client.post(path, headers=headers, json=body)
+    assert corrected.status_code == 201, corrected.text
+    assert client.post(path, headers=headers, json=body).json() == corrected.json()
+    with SessionLocal() as db:
+        account = db.scalar(select(FinancialAccount).where(FinancialAccount.public_id == bank["public_id"]))
+        assert account_balance(db, account, cutoff=prior_day) == 95000
+        assert account_balance(db, account) == 85000
+        inverse = db.scalar(select(AccountMovement).where(AccountMovement.account_id == account.id,
+            AccountMovement.reversal_of_id.is_not(None)))
+        assert inverse.occurred_on == db.get(AccountMovement, inverse.reversal_of_id).occurred_on
+    _reverse_and_restore_funding(client, identity, expense_id, bank)
+
+
+def _reverse_and_restore_funding(client, identity, expense_id, bank):
+    path, account_url = f"/api/expenses/{expense_id}", "/api/funds/accounts/" + bank["public_id"]
+    for _ in range(2):
+        source = client.get(path, headers=identity.app_headers).json()
+        reversed_result = client.post(path + "/offsets", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+            json={"kind": "reversal", "accounting_date": str(date.today()), "reason": "核对消费冲正",
+                "expected_row_version": source["row_version"]})
+        assert reversed_result.status_code == 201, reversed_result.text
+        assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == 90000
+        offset = next(row for row in reversed_result.json()["active_offsets"] if row["kind"] == "reversal")
+        offset_url = path + "/offsets/" + offset["public_id"]
+        corrected = client.post(offset_url + "/corrections", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+            json={"expected_row_version": offset["row_version"], "original_amount_minor": None,
+                "accounting_date": str(date.today()), "category": "购物", "offset_reason": "更正冲正说明",
+                "correction_reason": "再次核对凭证"})
+        assert corrected.status_code == 201, corrected.text
+        assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == 90000
+        current = next(row for row in corrected.json()["active_offsets"] if row["public_id"] == offset["public_id"])
+        headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+        body = {"expected_row_version": current["row_version"], "void_reason": "冲正判断有误，保留真实消费"}
+        undone = client.post(offset_url + "/voids", headers=headers, json=body)
+        assert undone.status_code == 201, undone.text
+        assert client.post(offset_url + "/voids", headers=headers, json=body).json() == undone.json()
+        assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == 85000
+        assert client.get(path + "/funding", headers=identity.app_headers).json()["total_minor"] == 5000
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(ExpenseFunding).where(
+            ExpenseFunding.expense_id == expense_id, ExpenseFunding.voided_at.is_(None))) == 1
 
 
 def _correct_captured_payment(client, identity, draft_id, reviewed_versions, bank, credit):
@@ -906,7 +967,14 @@ def _replay_funds_after_account_visibility_change(client, identity, account):
     replay = client.post(url + "/activities", headers=member, json=body)
     assert (replay.status_code, replay.json().get("error")) == (404, "fund_account_not_found")
     funding_replay = client.post(funding_url, headers=funding_headers, json=funding_body)
-    assert (funding_replay.status_code, funding_replay.json().get("error")) == (404, "fund_account_not_found")
+    assert funding_replay.status_code == 200, funding_replay.text
+    redacted = funding_replay.json()
+    assert (redacted["expense_id"], redacted["expense_row_version"], redacted["total_minor"]) == (
+        funded.json()["expense_id"], funded.json()["expense_row_version"], funded.json()["total_minor"])
+    assert redacted["can_edit"] is False
+    assert all(redacted["parts"][0][name] is None for name in (
+        "account_public_id", "account_row_version", "currency_code", "account_amount_minor"))
+    assert redacted["parts"][0]["account_name"] == "其他成员的私人付款账户"
     assert client.get(url, headers=identity.app_headers).json()["balance_minor"] == account["balance_minor"]
     share(hidden, "ledger")
     assert client.post(url + "/activities", headers=member, json=body).json() == accepted.json()

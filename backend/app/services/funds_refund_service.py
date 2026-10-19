@@ -70,9 +70,11 @@ def refund_credit_targets(db, account, expense_id, amount):
 
 def reverse_offset_funds(db, *, expense, offset, actor_account_id, reason):
     rows = list(db.scalars(unreversed_movements(select(AccountMovement).where(AccountMovement.offset_id == offset.id))))
-    reverse_movements(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id, rows=rows,
+    roots = reverse_movements(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id, rows=rows,
         reason=reason, occurred_on=offset.accounting_date)
     if offset.kind == "reversal":
         for funding in db.scalars(select(ExpenseFunding).join(AccountMovement, AccountMovement.funding_id == ExpenseFunding.id)
-                .where(AccountMovement.id.in_([row.reversal_of_id for row in rows]))):
+                .where(AccountMovement.id.in_(roots.values()))):
             funding.voided_at = None
+    # The offset owner expires its snapshot before applying the reviewed correction.
+    db.flush()

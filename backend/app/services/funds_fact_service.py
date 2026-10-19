@@ -3,7 +3,7 @@ from datetime import date
 from types import SimpleNamespace
 from uuid import uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import literal, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.errors import AppError
@@ -32,8 +32,16 @@ def refresh_credit(db, account):
 
 
 def unreversed_movements(query):
+    """Return active leaves, including facts restored by an inverse of an inverse."""
+    lineage = query.with_only_columns(AccountMovement.id.label("movement_id"), literal(0).label("depth")).cte(
+        "funds_reversal_lineage", recursive=True)
+    child = aliased(AccountMovement)
+    lineage = lineage.union_all(select(child.id, lineage.c.depth + 1)
+        .join(lineage, child.reversal_of_id == lineage.c.movement_id))
     inverse = aliased(AccountMovement)
-    return query.where(~select(inverse.id).where(inverse.reversal_of_id == AccountMovement.id).exists())
+    active = select(lineage.c.movement_id).where(lineage.c.depth % 2 == 0,
+        ~select(inverse.id).where(inverse.reversal_of_id == lineage.c.movement_id).exists())
+    return select(AccountMovement).where(AccountMovement.id.in_(active))
 
 
 def lock_reviewed_accounts(db, *, ledger_id, actor_account_id, source_account_ids, parts):
@@ -47,7 +55,7 @@ def lock_reviewed_accounts(db, *, ledger_id, actor_account_id, source_account_id
 
 
 def reverse_movements(db: Session, *, ledger_id: str, actor_account_id: int, rows: list[AccountMovement],
-                      reason: str, occurred_on: date, offset_id: int | None = None) -> None:
+                      reason: str, occurred_on: date, offset_id: int | None = None) -> dict[int, int]:
     """Inverse facts also unwind already settled credit without deleting its history."""
     account_ids = {row.account_id for row in rows}
     public_ids = db.scalars(select(FinancialAccount.public_id).where(FinancialAccount.id.in_(account_ids))
@@ -70,6 +78,7 @@ def reverse_movements(db: Session, *, ledger_id: str, actor_account_id: int, row
         account.row_version += 1
         refresh_credit(db, account)
     db.flush()
+    return roots
 
 
 def _reversed_allocations(db: Session, rows: list[AccountMovement], account_ids: set[int]

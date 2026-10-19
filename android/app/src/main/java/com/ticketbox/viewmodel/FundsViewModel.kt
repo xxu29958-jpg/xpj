@@ -143,6 +143,7 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
             return@runAction Result.success(Unit)
         }
         repository.review(binding, fresh.value).onSuccess {
+            refreshAccounts(binding)
             state.value.task.input?.accountId?.takeIf(String::isNotBlank)?.let { id ->
                 reloadAccount(binding, id) { state.value.task.input?.accountId == id }
             }

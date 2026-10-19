@@ -137,13 +137,13 @@ def reverse_expense_funding(db, *, expense, actor_account_id, reason, occurred_o
     db.flush()
 
 
-def replace_expense_funding(db, *, expense, actor_account_id, parts, reason):
+def replace_expense_funding(db, *, expense, actor_account_id, parts, reason, original_accounting_date):
     source_ids = list(db.scalars(select(ExpenseFunding.account_id).where(ExpenseFunding.expense_id == expense.id,
         ExpenseFunding.voided_at.is_(None))))
     accounts = lock_reviewed_accounts(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id,
         source_account_ids=source_ids, parts=parts)
     reverse_expense_funding(db, expense=expense, actor_account_id=actor_account_id,
-        reason=reason, occurred_on=expense.accounting_date)
+        reason=reason, occurred_on=original_accounting_date)
     # Only our own, already reviewed inverse facts have changed these versions under the locks.
     current = [part.model_copy(update={"account_row_version": accounts[part.account_public_id].row_version}) for part in parts]
     publish_expense_funding(db, expense=expense, parts=current, actor_account_id=actor_account_id)
@@ -156,7 +156,7 @@ def apply_funding_correction(db, *, expense, before_money, payload, actor_accoun
         raise AppError("funding_review_required", "消费已关联资金，请同时核对付款组成；原输入已保留。", status_code=409)
     if payload.funding is not None:
         replace_expense_funding(db, expense=expense, actor_account_id=actor_account_id,
-            parts=payload.funding, reason=getattr(payload, "reason", "更正消费付款组成"))
+            parts=payload.funding, reason=getattr(payload, "reason", "更正消费付款组成"), original_accounting_date=before_money[3])
 
 
 def funding_money_identity(expense):

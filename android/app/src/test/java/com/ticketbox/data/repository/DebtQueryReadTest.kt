@@ -28,6 +28,32 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DebtQueryReadTest {
+    @Test fun oldDebtReviewUsesFreshAuthorizedVersionAndKeepsOriginalMoney() = runTest {
+        var offline = false
+        var choices = listOf(com.ticketbox.data.remote.dto.ExistingDebtChoiceDto("old-debt", 5, "旧花呗", 9000, "CNY", "2026-09-01"))
+        val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun existingFundDebts(): List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto> {
+                if (offline) throw ConnectException("offline")
+                return choices
+            }
+        }
+        val fixture = GoalReadFixture { api }
+        val reads = FundsQueries(DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator))
+        val original = FundsInput(fixture.binding, "create", "original-key", name = "花呗", kind = "credit",
+            currency = "CNY", opening = "68.00", date = "2026-09-01", existingDebtId = "old-debt",
+            existingDebtVersion = 4, existingDebtLabel = "旧花呗")
+        val reviewed = reads.reviewFundsInput(original, emptyList())
+        assertEquals(original.copy(existingDebtVersion = 5), reviewed)
+        assertEquals(5L, reviewed.command().create?.existingDebt?.expectedRowVersion)
+        assertEquals(6800L, reviewed.command().create?.openingAmountMinor)
+        offline = true
+        kotlin.test.assertFailsWith<IllegalArgumentException> { reads.reviewFundsInput(original, emptyList()) }
+        offline = false
+        choices = emptyList()
+        kotlin.test.assertFailsWith<IllegalArgumentException> { reads.reviewFundsInput(original, emptyList()) }
+        assertEquals(4L, original.existingDebtVersion)
+    }
+
     @Test fun hiddenFundsAccountRetiresDetailAndAggregateCachesUntilAnAuthorizedRead() = runTest {
         var offline = false
         var hidden = false

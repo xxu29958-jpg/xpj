@@ -503,7 +503,6 @@ def count_open_external_debts(db: Session, tenant_ids: list[str]) -> dict[str, i
     rows = db.execute(
         select(Debt.tenant_id, func.count())
         .where(Debt.tenant_id.in_(tenant_ids))
-        .where(credit_visible(None, None))
         .where(Debt.counterparty_type == "external")
         .where(Debt.status == "open")
         .group_by(Debt.tenant_id)
