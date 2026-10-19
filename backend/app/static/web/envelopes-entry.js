@@ -70,7 +70,41 @@
         input.checked = selected.includes(input.dataset.envelopeSource);
         input.disabled = !state.editable || !editableSources.has(input);
       });
+      form.dispatchEvent(new Event("ticketbox:envelope-state"));
     },
   };
   window.TicketboxPlanEntry.mount(form, definition);
 })(window, document);
+
+// Sources fold once chosen; the preview restates exactly what saving will record for this month.
+(function (document) {
+  "use strict";
+  const form = document.querySelector("[data-envelope-form]");
+  if (!form) return;
+  const field = name => form.elements.namedItem(name);
+  const sources = [...form.querySelectorAll("[data-envelope-source]")];
+  const holder = form.querySelector("[data-envelope-allocations]");
+  const options = form.querySelector("[data-envelope-options]");
+  if (options) options.open = options.dataset.startExpanded === "true";
+  form.addEventListener("invalid", event => { if (options?.contains(event.target)) options.open = true; }, true);
+  const sourcesSummary = form.querySelector("[data-envelope-sources-summary]");
+  const summary = form.querySelector("[data-envelope-summary]");
+  function describe() {
+    const chosen = sources.filter(input => input.checked);
+    if (sourcesSummary) sourcesSummary.textContent = chosen.length ? "已选 " + chosen.length + " 个账户" : "尚未选择";
+    if (!summary) return;
+    const parts = [...holder.querySelectorAll("[data-envelope-purpose]")]
+      .filter(input => input.value.trim() && Number(input.value) !== 0)
+      .map(input => (input.closest(".product-field")?.querySelector("label")?.textContent.split(" · ")[0] || input.dataset.envelopePurpose.replace("category:", "")) + " " + input.value.trim());
+    const month = field("month")?.value || "";
+    const currency = field("home_currency_code")?.value || "";
+    summary.textContent = parts.length
+      ? "保存后，" + month + " 的用途分配为：" + parts.join("、") + "（" + currency + "）。钱仍在原账户里。"
+      : "保存后，" + month + " 不为任何用途留出现金。";
+    summary.hidden = false;
+  }
+  form.addEventListener("input", describe);
+  form.addEventListener("change", describe);
+  form.addEventListener("ticketbox:envelope-state", describe);
+  describe();
+})(document);

@@ -1,5 +1,5 @@
-<div data-credit-terms {% if values.kind != 'credit' %}hidden{% endif %}>
-  <h3 class="product-panel-title">额度与账单参考</h3>
+<details class="product-options" open data-funds-options data-credit-terms {% if values.kind != 'credit' %}hidden{% endif %}>
+  <summary>额度与账单日 <span data-options-summary data-options-fields="credit_limit statement_day payment_due_day" data-options-empty="选填，只作参考"></span></summary>
   <p class="hint">额度不是余额，不计入资产和信封可分配资金。按银行或平台页面填写；可用额度可能受临时额度、冻结和专用额度影响，不用总额度减欠款推算。</p>
   <div class="product-form-grid">
     {% for name,label in [('credit_limit','授信额度（选填）'),('available_credit','页面显示的可用额度（选填）')] %}
@@ -12,4 +12,4 @@
     {% endfor %}
   </div>
   <p class="hint">具体应还金额、日期和分期费用以你的当期账单或合约为准；这里不会生成消费、还款或未来费用。</p>
-</div>
+</details>
