@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -146,10 +147,12 @@ fun AppBackButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // The visible label may name only the destination (「计划」); TalkBack still hears the action (「返回计划」).
+    val spoken = if (text.startsWith(stringResource(R.string.common_back))) text else stringResource(R.string.common_back_to, text)
     TextButton(
         modifier = modifier
             .heightIn(min = AppSpacing.controlMinHeight)
-            .semantics { contentDescription = text },
+            .semantics { contentDescription = spoken },
         onClick = onClick,
     ) {
         Icon(ImageVector.vectorResource(R.drawable.ic_lucide_arrow_left), contentDescription = null)

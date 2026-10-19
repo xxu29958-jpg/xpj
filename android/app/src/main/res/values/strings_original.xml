@@ -45,6 +45,8 @@
     <string name="original_source_saved">这次原件操作还没保存到这台设备。已保留你的选择，可以继续保存。</string>
     <string name="original_source_retry">继续保存原操作</string>
     <string name="original_source_cancel">取消还没保存的操作</string>
+    <string name="original_source_retained">所选原件已保留在这台设备，还没有提交。可以继续核对并保存。</string>
+    <string name="original_source_discard_retained">放弃已保留的原件选择</string>
     <string name="original_selected_image">本次选择的原件图片</string>
     <string name="original_selection_review">这是这笔账单对应的原件</string>
     <string name="original_selection_submit">确认并保存原件</string>
@@ -67,7 +69,7 @@
     <string name="original_cleanup_part_pending">尚未清理</string>
     <string name="original_cleanup_part_deleted">已清理</string>
     <string name="original_cleanup_part_cancelled">已取消清理</string>
-    <string name="original_cleanup_paused">保留策略已关闭，剩余清理暂停。可取消剩余清理，或请账本管理员调整策略后重新检查。</string>
+    <string name="original_cleanup_paused">原件清理设置已关闭，剩余清理已暂停。可以取消剩余清理；如需继续，请管理这台电脑上小票夹安装的人开启原件清理后重新检查。</string>
     <string name="original_cleanup_unlink_failed">文件删除未完成，可在策略启用时重试；也可取消剩余清理。</string>
     <string name="original_source_other_binding">这次还没保存的操作属于另一个账本或账户，请回到原账本继续。你的选择仍保留。</string>
     <string name="original_source_unavailable">无法读取所选原件，输入已保留。可恢复文件访问后重试，或取消此次选择后重选。</string>

@@ -155,7 +155,7 @@ private fun SpendingGoalsBody(
                 Text(stringResource(R.string.spending_goals_archived_title), style = MaterialTheme.typography.titleMedium)
                 val archived = state.goals.filter { it.isArchived }
                 if (archived.isEmpty()) Text(stringResource(R.string.spending_goals_archived_empty))
-                else SpendingGoalListCard(archived, onOpenGoal)
+                else SpendingGoalListCard(archived, onOpenGoal, allowHero = false)
             }
         }
     }
