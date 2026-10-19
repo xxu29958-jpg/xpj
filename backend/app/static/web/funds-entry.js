@@ -115,7 +115,8 @@
     repay: () => {
       if (!value("payer_public_id") || !value("principal_amount")) return "";
       const payer = optionText("payer_public_id").split(" · ")[0], currency = value("payer_currency_code");
-      const parts = ["本金 " + amount(value("payer_amount") || value("principal_amount"), currency)];
+      const paid = value("payer_amount") || (currency === form.dataset.fundsAccountCurrency ? value("principal_amount") : "—");
+      const parts = ["本金 " + amount(paid, currency)];
       if (value("new_fee")) parts.push("新费用 " + amount(value("new_fee"), currency));
       if (value("payer_fee_amount")) parts.push("已记费用 " + amount(value("payer_fee_amount"), currency));
       return "从「" + payer + "」扣款：" + parts.join("，") + "。「" + form.dataset.fundsAccountName + "」欠款减少 " +
