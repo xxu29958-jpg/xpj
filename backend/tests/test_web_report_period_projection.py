@@ -190,7 +190,7 @@ def test_history_total_does_not_block_representable_months_and_average():
     from app.money_contract_types import MONEY_AGGREGATE_MAX
     from app.routes.web_reports import _six_month_history_view
 
-    rows = [{'amount_cents': MONEY_AGGREGATE_MAX, 'budget_cents': None, 'budget_status': 'not_set',
+    rows = [{'amount_cents': MONEY_AGGREGATE_MAX, 'count': 1, 'budget_cents': None, 'budget_status': 'not_set',
              'missing_rates': [], 'reference_rates': []}] * 2
     view = _six_month_history_view(rows, currency_code='JPY')
     assert view['six_month_total_label'] == '合计超出显示范围'
@@ -201,7 +201,7 @@ def test_history_total_does_not_block_representable_months_and_average():
 def test_history_overspent_months_count_set_budgets_including_zero_and_name_unset_ones():
     from app.routes.web_reports import _six_month_history_view
 
-    row = {'amount_cents': 500, 'missing_rates': [], 'reference_rates': []}
+    row = {'amount_cents': 500, 'count': 1, 'missing_rates': [], 'reference_rates': []}
     rows = [{**row, 'budget_cents': 0, 'budget_status': 'set'}, {**row, 'budget_cents': None, 'budget_status': 'not_set'},
             {**row, 'budget_cents': 900, 'budget_status': 'set'}]
     view = _six_month_history_view(rows, currency_code='JPY')
@@ -242,9 +242,44 @@ def test_category_comparison_names_year_ago_only_when_there_is_one(period_page):
     def subtitle():
         return re.search(r"分类对比</div>\s*<div class=\"product-panel-subtitle\">(.*?)</div>", _report_response(period_page).text).group(1)
 
-    assert subtitle() == "本月与上月、去年同月"  # a year-ago amount still waiting for its rate is something to compare
-    period_page.payload["category_comparison"][0]["year_over_year_amount_cents"] = 0
-    assert subtitle() == "本月与上月"
+    category = period_page.payload["category_comparison"][0]
+    assert subtitle() == "本月与上月、去年同月"  # year-ago records whose amount still waits for its rate
+    category["year_over_year_amount_cents"] = 0
+    assert subtitle() == "本月与上月、去年同月"  # year-ago records that net to zero are still a comparison
+    category.update(year_over_year_amount_cents=None, year_over_year_count=0)
+    assert subtitle() == "本月与上月"  # no year-ago records, even if the current month's amount is unknown
+
+
+def test_six_month_states_and_legend_name_only_what_the_chart_draws():
+    from app.routes.web_reports import _six_month_history_view
+
+    row = {'missing_rates': [], 'reference_rates': []}
+    rows = [{**row, 'amount_cents': 500, 'count': 2, 'budget_cents': 900, 'budget_status': 'set'},
+            {**row, 'amount_cents': 0, 'count': 2, 'budget_cents': None, 'budget_status': 'not_set'},
+            {**row, 'amount_cents': None, 'count': 1, 'budget_cents': None, 'budget_status': 'unavailable'},
+            {**row, 'amount_cents': 0, 'count': 0, 'budget_cents': None, 'budget_status': 'not_set'}]
+    view = _six_month_history_view(rows, currency_code='JPY')
+    # Records that net to zero are a zero; a month without any record is not.
+    assert [item['amount_state'] for item in view['six_month_trend']] == ['recorded', 'zero', 'unavailable', 'none']
+    assert view['six_month_legend'] == {'budget_line': True, 'budget_unavailable': True, 'amount_zero': True, 'amount_unavailable': True}
+    # A budget waiting for its rate is never advertised as a dashed line.
+    only_pending = _six_month_history_view(rows[2:3], currency_code='JPY')['six_month_legend']
+    assert only_pending == {'budget_line': False, 'budget_unavailable': True, 'amount_zero': False, 'amount_unavailable': True}
+
+
+def test_chart_legends_explain_only_the_marks_each_chart_draws(period_page):
+    def legend_after(chart_id):
+        text = _report_response(period_page).text
+        block = re.search(rf'id="{chart_id}"[^>]*></div>\s*(<ul class="report-legend".*?</ul>)?', text, re.DOTALL).group(1) or ""
+        return [re.sub(r"<[^>]+>", "", item).strip() for item in re.findall(r"<li>(.*?)</li>", block, re.DOTALL)]
+
+    # Week one waits for its rate; week two has no records, which needs no mark in the detail chart.
+    assert legend_after("reports-trend-chart") == ["「?」汇率待补，暂不画金额"]
+    assert legend_after("reports-category-chart") == ["「?」汇率待补，暂不画金额"]
+    period_page.payload["trend"] = [{"bucket": "w1", "label": "第一周", "amount_cents": 0, "count": 2}]
+    period_page.payload["category_comparison"][0].update(amount_cents=0, year_over_year_count=0)
+    assert legend_after("reports-trend-chart") == ["「0」有记录，净额为 0"]
+    assert legend_after("reports-category-chart") == ["「0」有记录，净额为 0", "空位：该时段没有记录"]
 
 
 def test_navigation_export_and_rate_recovery_keep_original_report_task(period_page):

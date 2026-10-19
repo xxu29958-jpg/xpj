@@ -50,6 +50,7 @@
       tooltipFg: cssVar('--chart-tooltip-fg', '#fbf8f1'),
       surface: cssVar('--surface-card', '#ffffff'),
       overspend: cssVar('--chart-overspend', '#a4361c'),
+      warn: cssVar('--state-warn-fg', '#8a5a18'),
     };
   }
 
@@ -139,6 +140,7 @@
     });
     if (!hasChartSpace(container) || !hasData) return null;
 
+    var reference = Math.max.apply(null, [1].concat(points.map(function (point) { return Math.abs(Number(point.amount_cents) || 0); })));
     var chart = chartFor(container);
     // Each day, week or month is its own total: bars, never a smoothed line implying a flow between them.
     chart.setOption({
@@ -174,7 +176,7 @@
       series: [{
         name: '净支出',
         type: 'bar',
-        data: points.map(function (point) { return point.amount_cents; }),
+        data: points.map(function (point) { return periodPoint(point.amount_cents, point.count, reference, colors); }),
         barMaxWidth: 28,
         itemStyle: { color: colors.series[0], borderRadius: [4, 4, 0, 0] },
       }],
@@ -252,6 +254,23 @@
     return markRendered(container, chart);
   }
 
+  // One period of one category: no records draws nothing, a missing rate draws an empty dashed
+  // outline (never a value), and recorded spending that nets to zero is labelled 0 on the baseline.
+  function periodPoint(amount, count, reference, colors) {
+    if (count === 0) return { value: null };
+    if (amount === null || amount === undefined) {
+      return { value: reference * 0.3, missing: true,
+        itemStyle: { color: 'transparent', borderColor: colors.warn, borderType: 'dashed', borderWidth: 1.5 },
+        label: { show: true, position: 'top', formatter: '?', color: colors.warn } };
+    }
+    if (amount === 0) return { value: 0, label: { show: true, position: 'top', formatter: '0', color: colors.axisLabel } };
+    return { value: amount };
+  }
+
+  function periodText(amount, count) {
+    return count === 0 ? '没有记录' : homeMoneyCents(amount);
+  }
+
   function renderCategory(report, colors) {
     var container = document.getElementById('reports-category-chart');
     var rows = report && report.category_comparison ? report.category_comparison.slice(0, 8) : [];
@@ -261,6 +280,10 @@
     // increase is not an overspend, so no bar borrows the overspend colour. Year-ago bars appear only
     // when the ledger has year-ago spending to compare with.
     var hasYearAgo = Boolean(report.category_has_year_ago);
+    var reference = Math.max.apply(null, [1].concat(rows.flatMap(function (row) {
+      return [row.amount_cents, row.previous_amount_cents, row.year_over_year_amount_cents]
+        .filter(function (value) { return typeof value === 'number'; }).map(Math.abs);
+    })));
     var chart = chartFor(container);
     chart.setOption({
       textStyle: { fontFamily: cssVar('--font-numeric', 'sans-serif') },
@@ -280,11 +303,12 @@
           var yoyDelta = row.year_over_year_delta_amount_cents;
           var prefix = delta > 0 ? '+' : '';
           var yoyPrefix = yoyDelta > 0 ? '+' : '';
-          return row.category + '<br>本月 ' + homeMoneyCents(row.amount_cents)
-            + '<br>上月 ' + homeMoneyCents(row.previous_amount_cents)
-            + '<br>环比 ' + prefix + homeMoneyCents(delta)
-            + (hasYearAgo ? '<br>去年同月 ' + homeMoneyCents(row.year_over_year_amount_cents)
-              + '<br>同比 ' + yoyPrefix + homeMoneyCents(yoyDelta) : '');
+          // A change is only stated when both periods have records.
+          return row.category + '<br>本月 ' + periodText(row.amount_cents, row.count)
+            + '<br>上月 ' + periodText(row.previous_amount_cents, row.previous_count)
+            + (row.count !== 0 && row.previous_count !== 0 ? '<br>环比 ' + prefix + homeMoneyCents(delta) : '')
+            + (hasYearAgo ? '<br>去年同月 ' + periodText(row.year_over_year_amount_cents, row.year_over_year_count)
+              + (row.count !== 0 && row.year_over_year_count !== 0 ? '<br>同比 ' + yoyPrefix + homeMoneyCents(yoyDelta) : '') : '');
         },
       }),
       grid: { left: 58, right: 22, top: 36, bottom: 44 },
@@ -309,19 +333,19 @@
       series: [{
         name: '本月',
         type: 'bar',
-        data: rows.map(function (row) { return row.amount_cents; }),
+        data: rows.map(function (row) { return periodPoint(row.amount_cents, row.count, reference, colors); }),
         itemStyle: { borderRadius: [5, 5, 0, 0] },
         barMaxWidth: 14,
       }, {
         name: '上月',
         type: 'bar',
-        data: rows.map(function (row) { return row.previous_amount_cents; }),
+        data: rows.map(function (row) { return periodPoint(row.previous_amount_cents, row.previous_count, reference, colors); }),
         itemStyle: { borderRadius: [5, 5, 0, 0] },
         barMaxWidth: 14,
       }].concat(hasYearAgo ? [{
         name: '去年同月',
         type: 'bar',
-        data: rows.map(function (row) { return row.year_over_year_amount_cents; }),
+        data: rows.map(function (row) { return periodPoint(row.year_over_year_amount_cents, row.year_over_year_count, reference, colors); }),
         itemStyle: { borderRadius: [5, 5, 0, 0] },
         barMaxWidth: 14,
       }] : []),

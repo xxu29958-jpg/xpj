@@ -5,6 +5,12 @@
 {% set _earliest_month = six_month_trend[0].month if six_month_trend else r.month %}
 {% set _mc = '&merchant_category=' ~ (r.merchant_category | urlencode) if r.merchant_category else '' %}
 {% block title %}报表 · 小票夹{% endblock %}
+{% macro chart_marks_legend(marks, none_label) %}{% if marks.pending or marks.zero or (none_label and marks.none) %}
+    <ul class="report-legend" aria-label="图例">
+      {% if marks.pending %}<li><span class="report-legend-key report-legend-key--unavailable" aria-hidden="true"></span>「?」汇率待补，暂不画金额</li>{% endif %}
+      {% if marks.zero %}<li><span class="report-legend-key report-legend-key--zero" aria-hidden="true"></span>「0」有记录，净额为 0</li>{% endif %}
+      {% if none_label and marks.none %}<li>{{ none_label }}</li>{% endif %}
+    </ul>{% endif %}{% endmacro %}
 {% macro report_money(value) %}{% if value is none %}待补汇率{% else %}{{ value|money(home_currency_symbol) }}{% endif %}{% endmacro %}
 {% macro report_projection_gaps(gaps, month) %}
   {% for gap in gaps %}
@@ -46,8 +52,14 @@
 </section>
 <section class="report-history" aria-label="半年趋势">
   <div id="chart-trend" class="report-chart report-chart--tall" data-series='{{ six_month_trend | tojson }}'></div>
-  {% set _budgeted_months = six_month_trend | rejectattr("budget_status", "equalto", "not_set") | list %}
-  <p class="hint">柱形表示净支出{% if _budgeted_months %}，虚线为当月预算{% endif %}；精确数值可在明细数据中核对。</p>
+  <ul class="report-legend" aria-label="图例">
+    <li><span class="report-legend-key report-legend-key--bar" aria-hidden="true"></span>净支出</li>
+    {% if six_month_legend.budget_line %}<li><span class="report-legend-key report-legend-key--budget" aria-hidden="true"></span>当月预算</li>{% endif %}
+    {% if six_month_legend.amount_zero %}<li><span class="report-legend-key report-legend-key--zero" aria-hidden="true"></span>净支出为 0</li>{% endif %}
+    {% if six_month_legend.amount_unavailable %}<li><span class="report-legend-key report-legend-key--unavailable" aria-hidden="true"></span>汇率待补，金额暂不可比</li>{% endif %}
+    {% if six_month_legend.budget_unavailable %}<li><span class="report-legend-token">预算?</span>预算的汇率未齐，暂不画预算线</li>{% endif %}
+  </ul>
+  <p class="hint">精确数值可在明细数据中核对。</p>
 </section>
 <div class="product-form-actions report-primary-action"><a class="product-button product-button--primary" href="/web/reports?{{ report_query }}&amp;view=data">查看明细数据 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></a></div>
 <script type="application/json" id="reports-overview-data">{{ report | tojson }}</script>
@@ -64,6 +76,7 @@
     </div>
     <p class="chart-fallback">图表需要启用 JavaScript 才能渲染；原始数据见下方表格。</p>
     <div id="reports-trend-chart" class="report-chart report-chart--tall"></div>
+    {{ chart_marks_legend(r.trend_marks, '') }}
     <details class="report-data-disclosure">
       <summary class="product-panel-subtitle">查看数据表</summary>
       <div class="product-table-wrap">
@@ -108,6 +121,7 @@
     </div>
     <p class="chart-fallback">图表需要启用 JavaScript 才能渲染；原始数据见下方表格。</p>
     <div id="reports-category-chart" class="report-chart report-chart--tall"></div>
+    {{ chart_marks_legend(r.category_marks, '空位：该时段没有记录') }}
     <details class="report-data-disclosure">
       <summary class="product-panel-subtitle">查看数据表</summary>
       <div class="product-table-wrap">
@@ -124,9 +138,9 @@
           {% for row in r.category_comparison %}
             <tr>
               <td>{{ row.category }}</td>
-              <td class="amount">{{ report_money(row.amount_yuan) }}</td>
-              <td class="amount">{{ report_money(row.previous_amount_yuan) }}</td>
-              <td class="amount">{{ report_money(row.year_over_year_amount_yuan) }}</td>
+              <td class="amount">{% if row.count == 0 %}没有记录{% else %}{{ report_money(row.amount_yuan) }}{% endif %}</td>
+              <td class="amount">{% if row.previous_count == 0 %}没有记录{% else %}{{ report_money(row.previous_amount_yuan) }}{% endif %}</td>
+              <td class="amount">{% if row.year_over_year_count == 0 %}没有记录{% else %}{{ report_money(row.year_over_year_amount_yuan) }}{% endif %}</td>
             </tr>
           {% endfor %}
           </tbody>
