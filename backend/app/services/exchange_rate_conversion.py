@@ -13,19 +13,28 @@ from app.services.currency_common import (
     minor_unit_digits,
     normalize_currency_code,
 )
-from app.services.exchange_rate_service import resolve_valuation_rate
+from app.services.exchange_rate_service import get_exchange_rate, resolve_valuation_rate
 
 
 def _pair(db, tenant_id, source, target, day):
     if source == target:
         return Decimal(1), []
-    for currency, home, inverse in ((source, target, False), (target, source, True)):
-        rate, provider, _, published = resolve_valuation_rate(db, tenant_id=tenant_id, currency_code=currency,
-            home_currency_code=home, rate_date=day)
-        if rate is not None:
-            reference = ReferenceRateResponse(currency_code=currency, home_currency_code=home,
-                rate_date=published, rate_to_home=rate, source=provider)
-            return (Decimal(1) / rate if inverse else rate), [reference]
+    # A ledger's explicit rate wins in either orientation before consulting public quotes.
+    for manual_only in (True, False):
+        for currency, home, inverse in ((source, target, False), (target, source, True)):
+            if manual_only:
+                stored = get_exchange_rate(db, tenant_id=tenant_id, currency_code=currency,
+                    home_currency_code=home, rate_date=day)
+                if stored is None:
+                    continue
+                rate, provider, published = Decimal(stored.rate_to_cny), stored.source, stored.rate_date
+            else:
+                rate, provider, _, published = resolve_valuation_rate(db, tenant_id=tenant_id, currency_code=currency,
+                    home_currency_code=home, rate_date=day)
+            if rate is not None:
+                reference = ReferenceRateResponse(currency_code=currency, home_currency_code=home,
+                    rate_date=published, rate_to_home=rate, source=provider)
+                return (Decimal(1) / rate if inverse else rate), [reference]
     return None, []
 
 

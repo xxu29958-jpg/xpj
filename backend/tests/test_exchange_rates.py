@@ -71,6 +71,11 @@ def test_payer_conversion_uses_existing_rates_dates_and_currency_precision(clien
                 "rate_date": "2026-05-04", "rate_to_cny": rate, "source": "manual"})
         assert saved.status_code == 200, saved.text
     original_rates = client.get("/api/exchange-rates", headers=identity.app_headers).json()
+    # A cached quote in the reverse orientation must not outrank this ledger's manual rate.
+    with SessionLocal() as db:
+        upsert_fx_rate(db, currency_code="CNY", home_currency_code="USD", rate_date=date(2026, 5, 4),
+            rate_to_home=Decimal("0.125"))
+        db.commit()
     for source, target, amount, expected in (("CNY", "USD", "100", "13.89"),
             ("USD", "CNY", "100", "720.00"), ("KWD", "USD", "12.345", "40.12"),
             ("USD", "JPY", "1.01", "145"), ("CNY", "KWD", "100", "4.274"),
@@ -83,7 +88,7 @@ def test_payer_conversion_uses_existing_rates_dates_and_currency_precision(clien
     params = {"currency_code": "CNY", "home_currency_code": "USD", "amount": "100", "rate_date": "2026-05-04"}
     assert client.get("/api/exchange-rates/conversion", params=params).status_code == 401
     assert client.get("/api/exchange-rates/conversion", params=params,
-        headers=identity.gray_app_headers).json()["converted_amount"] is None
+        headers=identity.gray_app_headers).json()["converted_amount"] == "12.50"
     assert client.get("/api/exchange-rates/conversion", params={**params, "rate_date": "2026-05-03"},
         headers=identity.app_headers).json()["converted_amount"] is None
     invalid = client.get("/api/exchange-rates/conversion", params={**params, "amount": "0.001"}, headers=identity.app_headers)
