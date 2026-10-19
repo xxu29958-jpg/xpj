@@ -124,7 +124,7 @@ def _create_credit_facility(db: Session, auth: AuthContext, account: FinancialAc
         direction="i_owe", counterparty_type="external", counterparty_label=account.name, debt_kind="revolving",
         principal_amount_cents=0, home_currency_code=require_runtime_home_currency_code(db),
         original_currency_code=account.currency_code, original_amount_minor=0, source_type="credit_facility",
-        source_id=account.public_id, status="cleared" if opening == 0 else "open")
+        source_id=account.public_id, status="cleared" if opening is not None and opening <= 0 else "open")
     db.add(debt)
     db.flush()
     db.add(CreditFacility(account_id=account.id, debt_id=debt.id))

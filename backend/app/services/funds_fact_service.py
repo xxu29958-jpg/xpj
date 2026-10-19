@@ -62,6 +62,9 @@ def reverse_movements(db: Session, *, ledger_id: str, actor_account_id: int, row
         .order_by(FinancialAccount.public_id)).all()
     accounts = {row.id: row for row in [get_account(db, ledger_id=ledger_id, actor_account_id=actor_account_id,
         public_id=public_id, lock=True) for public_id in public_ids]}
+    if offset_id is not None:  # A new expense reversal chooses a date; undo preserves the original fact's date.
+        for account in accounts.values():
+            validate_movement_date(db, account, occurred_on)
     roots, allocations = _reversed_allocations(db, rows, account_ids)
     event = str(uuid4())
     for row in rows:
