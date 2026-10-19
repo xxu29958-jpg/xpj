@@ -1,6 +1,7 @@
 """One real PostgreSQL journey owns the purchase/funds/credit invariant."""
 import json
 import re
+from dataclasses import replace
 from datetime import date, timedelta
 from html import unescape
 from io import BytesIO
@@ -361,6 +362,45 @@ def _create_funds_account(client, identity, name, kind, opening, *, visibility="
                 "observed_on": str(date.today()), "source": "平台页面", "statement_day": 2, "payment_due_day": 15} if kind == "credit" else None})
     assert result.status_code == 200, result.text
     return result.json()
+
+
+def test_same_owner_keeps_personal_and_family_funds_in_the_selected_ledger(client, identity):
+    personal = _create_funds_account(client, identity, "个人工资卡", "bank", 10000)
+    family = _create_funds_account(client, replace(identity, app_token=identity.tenant_app_token),
+        "家庭生活费", "bank", 20000, visibility="ledger")
+    for headers, local, foreign in ((identity.app_headers, personal, family),
+            (identity.gray_app_headers, family, personal)):
+        listing = client.get("/api/funds/accounts", headers=headers).json()
+        assert [row["public_id"] for row in listing] == [local["public_id"]]
+        overview = client.get("/api/funds/accounts/summary/net-worth", headers=headers).json()
+        assert overview["assets_minor"] == local["balance_minor"]
+        foreign_url = "/api/funds/accounts/" + foreign["public_id"]
+        assert client.get(foreign_url, headers=headers).status_code == 404
+        body = {"expected_row_version": foreign["row_version"], "kind": "income", "amount_minor": 1000,
+            "occurred_on": date.today().isoformat(), "note": "不能写入其他账本", "calendar_revision": foreign["calendar_revision"]}
+        refused = client.post(foreign_url + "/activities", headers={**headers, "Idempotency-Key": str(uuid4())}, json=body)
+        assert refused.status_code == 404, refused.text
+        local_url = "/api/funds/accounts/" + local["public_id"]
+        transfer = {**body, "expected_row_version": local["row_version"], "kind": "transfer",
+            "other_account_public_id": foreign["public_id"], "other_account_row_version": foreign["row_version"],
+            "other_amount_minor": 1000}
+        assert client.post(local_url + "/activities", headers={**headers, "Idempotency-Key": str(uuid4())},
+            json=transfer).status_code == 404
+        purchase = {"client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 1000,
+            "merchant": "不能扣其他账本的资金", "category": "购物", "funding": [{"component_id": str(uuid4()),
+            "account_public_id": foreign["public_id"], "account_row_version": foreign["row_version"],
+            "expense_amount_minor": 1000, "account_amount_minor": 1000}]}
+        assert client.post("/api/expenses/manual", headers=headers, json=purchase).status_code == 404
+        assert client.get(local_url, headers=headers).json()["balance_minor"] == local["balance_minor"]
+        accepted_headers = {**headers, "Idempotency-Key": str(uuid4())}
+        accepted_body = {**body, "expected_row_version": local["row_version"], "note": "本账本实际收入"}
+        saved = client.post(local_url + "/activities", headers=accepted_headers, json=accepted_body)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["balance_minor"] == local["balance_minor"] + 1000
+        assert client.post(local_url + "/activities", headers=accepted_headers, json=accepted_body).json() == saved.json()
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(Expense)) == 0
+        assert list(db.scalars(select(AccountMovement.kind).order_by(AccountMovement.id))) == ["opening", "opening", "income", "income"]
 
 
 def test_cash_envelopes_reserve_unsettled_purchases_without_spending_principal_twice(client, identity):

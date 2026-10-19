@@ -31,6 +31,7 @@ class DebtQueryReadTest {
     @Test fun hiddenFundsAccountRetiresDetailAndAggregateCachesUntilAnAuthorizedRead() = runTest {
         var offline = false
         var hidden = false
+        var foreignLedger = false
         val account = com.ticketbox.data.remote.dto.FinancialAccountDto(
             "funds-one", "共享银行卡", "owner", 1, "bank", "JPY", "ledger", null, null,
             1, false, 1200, 1200, "2026-09-01", "已核对", null, false)
@@ -38,12 +39,12 @@ class DebtQueryReadTest {
         fun online() { if (offline) throw ConnectException("offline") }
         val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun fundsAccounts(): List<com.ticketbox.data.remote.dto.FinancialAccountDto> {
-                online(); return if (hidden) emptyList() else listOf(account)
+                online(); return if (hidden) emptyList() else listOf(if (foreignLedger) account.copy(ledgerId = "family") else account)
             }
             override suspend fun fundsAccount(id: String): com.ticketbox.data.remote.dto.FinancialAccountDto {
                 online()
                 if (hidden) throw HttpException(Response.error<Any>(404, """{"error":"fund_account_not_found"}""".toResponseBody()))
-                return account
+                return if (foreignLedger) account.copy(ledgerId = "family") else account
             }
             override suspend fun fundsOverview(): com.ticketbox.data.remote.dto.FundsOverviewDto {
                 online(); return if (hidden) summary.copy(assetsMinor = 0, netWorthMinor = 0, includedAccounts = 0) else summary
@@ -51,6 +52,18 @@ class DebtQueryReadTest {
         }
         val fixture = GoalReadFixture { api }
         fun reader(coordinator: LocalLedgerSessionCoordinator = fixture.coordinator) = FundsQueries(DebtQueryReader(fixture.provider, fixture.dao, coordinator))
+        // A pre-isolation aggregate is not safe to revive offline after upgrading.
+        DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator).read(fixture.binding,
+            DebtQueryScope(debtScope(fixture.binding, "funds_overview", "all")),
+            DebtReadSpec(FundsWire.overview, { fundsOverview() }, validate = {},
+                isNewer = { _, _ -> false }, project = { value, _ -> value })).getOrThrow()
+        offline = true
+        assertTrue(reader().overview(fixture.binding).isFailure)
+        offline = false
+        foreignLedger = true
+        assertTrue(reader().accounts(fixture.binding).isFailure)
+        assertTrue(reader().detail(fixture.binding, account.publicId).isFailure)
+        foreignLedger = false
         reader().accounts(fixture.binding).getOrThrow()
         reader().detail(fixture.binding, account.publicId).getOrThrow()
         reader().overview(fixture.binding).getOrThrow()

@@ -169,6 +169,10 @@ internal fun NavGraphBuilder.addObligationRoutes(
             val binding = model.state.value.access?.binding
             val accountId = entry.arguments?.getString("account")
             LaunchedEffect(binding, accountId) { if (binding != null && accountId != null) model.open(accountId) }
+            androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { model.refresh() }
+            LaunchedEffect(shellState.financialDataRevision) {
+                if (entry.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) model.refresh()
+            }
             com.ticketbox.ui.screens.FundsScreen(model, onBack, runtime.navController::openExpense)
         }
         composable(ProductSecondaryPage.BillSplits.route) { entry ->

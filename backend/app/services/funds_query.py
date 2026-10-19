@@ -1,5 +1,5 @@
 """Account visibility and balances shared by real funds consumers."""
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -22,12 +22,8 @@ from app.services.credit_application_query import credit_applications_view
 from app.services.credit_fee_query import fee_views
 from app.services.credit_history_adoption import prior_repayments
 from app.services.funds_money import valuation
+from app.services.funds_visibility import account_scope
 from app.services.ledger_calendar_service import current_calendar, current_ledger_date
-
-
-def account_scope(ledger_id, actor_account_id):
-    return or_(FinancialAccount.owner_account_id == actor_account_id,
-        and_(FinancialAccount.tenant_id == ledger_id, FinancialAccount.visibility == "ledger"))
 
 
 def account_query(ledger_id, actor_account_id):

@@ -43,6 +43,7 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
     val state: State<FundsUiState> = mutable
 
     private val writes = Mutex()
+    private var opening: kotlinx.coroutines.Job? = null
     init {
         viewModelScope.launch {
             repository.readAccessDenials.collect { denial ->
@@ -76,12 +77,13 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
         if (month != null) refreshEnvelopes(binding, month) else {
             val id = state.value.detail?.publicId
             refreshAccounts(binding)
-            if (id != null && state.value.access?.binding == binding && state.value.detail?.publicId == id) open(id)
+            if (id != null) reloadAccount(binding, id) { state.value.detail?.publicId == id }
         }
     } } }
     fun open(id: String, forCapture: Boolean = false) {
         val binding = state.value.access?.binding ?: return
-        viewModelScope.launch {
+        opening?.cancel()
+        opening = viewModelScope.launch {
             val result = repository.reads.detail(binding, id)
             if (state.value.access?.binding == binding) result.fold(
                 onSuccess = { read ->
@@ -114,6 +116,7 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
 
 
     fun back(): Boolean {
+        opening?.cancel()
         if (state.value.editing) { mutable.value = mutable.value.copy(editing = false); return true }
         if (state.value.envelopeMonth != null) {
             mutable.value = mutable.value.copy(envelopeMonth = null, envelopes = null); refresh(); return true
@@ -127,7 +130,7 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
         val input = state.value.task.input ?: return
         if (input.mode == "envelopes") { openEnvelopes(input.envelopeMonth); return }
         if (input.accountId.isBlank()) return
-        viewModelScope.launch { reloadTaskAccount(input.binding, input.accountId) }
+        viewModelScope.launch { reloadAccount(input.binding, input.accountId) { state.value.task.input?.accountId == input.accountId } }
     }
 
 
@@ -140,7 +143,9 @@ class FundsViewModel(internal val repository: FundsRepository, internal val expe
             return@runAction Result.success(Unit)
         }
         repository.review(binding, fresh.value).onSuccess {
-            state.value.task.input?.accountId?.takeIf(String::isNotBlank)?.let { reloadTaskAccount(binding, it) }
+            state.value.task.input?.accountId?.takeIf(String::isNotBlank)?.let { id ->
+                reloadAccount(binding, id) { state.value.task.input?.accountId == id }
+            }
         }
     }
     fun finish() = runAction { binding ->

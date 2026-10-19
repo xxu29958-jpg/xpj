@@ -36,15 +36,15 @@ internal suspend fun FundsViewModel.refreshAccounts(binding: LogicalSessionBindi
         onFailure = { error -> mutable.value = mutable.value.copy(overview = null, error = error.toUiText()) })
 }
 
-internal suspend fun FundsViewModel.reloadTaskAccount(binding: LogicalSessionBinding, accountId: String) {
+internal suspend fun FundsViewModel.reloadAccount(binding: LogicalSessionBinding, accountId: String, stillCurrent: () -> Boolean) {
     val target = repository.reads.detail(binding, accountId).onFailure { error ->
-        if (state.value.access?.binding == binding) mutable.value = mutable.value.copy(error = error.toUiText())
+        if (state.value.access?.binding == binding && stillCurrent()) mutable.value = mutable.value.copy(error = error.toUiText())
     }.getOrNull() ?: return
-    if (state.value.access?.binding != binding || state.value.task.input?.accountId != accountId) return
+    if (state.value.access?.binding != binding || !stillCurrent()) return
     mutable.value = mutable.value.copy(detail = target.value, fromCache = mutable.value.fromCache || target.fromCache)
     if (target.value.kind != "credit") return
     repository.reads.installments(binding, accountId).fold(
-        onSuccess = { read -> if (state.value.access?.binding == binding && state.value.task.input?.accountId == accountId)
+        onSuccess = { read -> if (state.value.access?.binding == binding && stillCurrent())
             mutable.value = mutable.value.copy(installments = read.value, fromCache = mutable.value.fromCache || read.fromCache) },
-        onFailure = { error -> if (state.value.access?.binding == binding) mutable.value = mutable.value.copy(error = error.toUiText()) })
+        onFailure = { error -> if (state.value.access?.binding == binding && stillCurrent()) mutable.value = mutable.value.copy(error = error.toUiText()) })
 }

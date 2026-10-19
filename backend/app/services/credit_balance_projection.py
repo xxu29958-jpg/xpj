@@ -1,7 +1,7 @@
 """The existing Debt reads its revolving obligation from the native funds facts."""
 from datetime import datetime
 
-from sqlalchemy import and_, func, literal, or_, select
+from sqlalchemy import func, literal, or_, select
 from sqlalchemy.orm import Session, aliased, object_session
 
 from app.errors import AppError
@@ -20,6 +20,7 @@ from app.services.credit_allocation_service import (
     active_credit_movements,
     allocation_totals,
 )
+from app.services.funds_visibility import account_scope
 from app.services.time_service import ensure_utc
 
 
@@ -32,9 +33,7 @@ def uses_credit_at(db, debt, cutoff):
 
 def credit_visible(ledger_id, actor_account_id):
     allowed = select(CreditFacility.id).join(FinancialAccount, FinancialAccount.id == CreditFacility.account_id).where(
-        CreditFacility.debt_id == Debt.id,
-        or_(FinancialAccount.owner_account_id == actor_account_id,
-            and_(FinancialAccount.tenant_id == ledger_id, FinancialAccount.visibility == "ledger")))
+        CreditFacility.debt_id == Debt.id, account_scope(ledger_id, actor_account_id))
     return or_(Debt.source_type != "credit_facility", allowed.exists())
 
 

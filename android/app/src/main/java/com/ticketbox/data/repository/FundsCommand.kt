@@ -149,9 +149,13 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
                 original.voidPayment != null -> api.voidCreditPayment(original.accountId, original.voidPayment, key)
                 else -> api.payCreditAccount(original.accountId, requireNotNull(original.payment), key)
             }
-            require(result.receiptRevision in 0..1 && result.publicId.isNotBlank() && result.rowVersion > 0 &&
-                (original.accountId.isBlank() || result.publicId == original.accountId))
+        validateAccountReceipt(result, original)
         return result
+    }
+
+    private fun validateAccountReceipt(result: FinancialAccountReceiptDto, original: FundsCommand) {
+        require(result.receiptRevision in 0..1 && result.publicId.isNotBlank() && result.rowVersion > 0 &&
+            (original.accountId.isBlank() || result.publicId == original.accountId))
     }
 
     private fun httpFailure(error: HttpException): DispatchResult {

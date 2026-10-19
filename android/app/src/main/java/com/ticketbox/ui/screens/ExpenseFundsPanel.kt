@@ -28,6 +28,7 @@ internal fun ExpenseFundsPanel(expenseId: Long, refreshExpense: () -> Unit) {
             override fun <T : ViewModel> create(modelClass: Class<T>): T = FundsViewModel(repository, expenseId) as T
         })
         val close = { open = false; refreshExpense() }
+        androidx.compose.runtime.LaunchedEffect(model) { model.refresh() }
         Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Surface { FundsScreen(model, onBack = close, onExpense = { close() }) }
         }

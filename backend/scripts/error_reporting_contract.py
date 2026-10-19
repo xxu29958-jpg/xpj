@@ -48,10 +48,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "This UI boundary reports unexpected action failures through the existing sanitized sink; toUiText renders known local/domain failures or a generic message. The captured binding limits updates to the original session, finally releases busy state, and cancellation propagates. Funds input and its original Outbox command remain owned by FundsRepository. The referenced test qualifies the shared sink; retained-input and binding behavior additionally use the funds consumer journey.",
     },
     (ANDROID + "data/repository/FundsCommand.kt", "dispatch"): {
-        "sha256": "ab212ea3fcde413cfc5f6c1554a402868e182cf1ebdee3dc9015002f1e628571",
+        "sha256": "d5f31740ddf189f1bba45fafb7868fc9d42c18de8c29152bd389d8f9b4db0c49",
         "owner": "existing NetworkErrorHandler and sanitized TicketboxNetwork Logcat",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::fundsReplayFailureReportsSafelyWithoutRetryingOrConsumingTheCommand",
-        "reason": "HTTP failures use NetworkErrorHandler. Unknown response failures report through logNetworkWarning and block the unchanged original command for review, without retrying or claiming acceptance. Cancellation propagates; transport interruption retains the existing retry owner. No financial inputs or raw exception messages are emitted.",
+        "reason": "HTTP failures use NetworkErrorHandler. Unknown response failures report through logNetworkWarning and block the unchanged original command for review, without retrying or claiming acceptance. Cancellation propagates; transport interruption retains the existing retry owner. The existing failure-to-retry test verifies compact receipts and preserves the original payload/key across an unverified response. No financial inputs or raw exception messages are emitted.",
     },
     (ANDROID + "data/repository/NotificationCaptureDispatcher.kt", "dispatch"): {
         "sha256": "b1787d5f05ade2c64cc1ab2db812cd0162bf53ce148a24c28fcdb4dbbae8c099",
