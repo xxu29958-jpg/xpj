@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,7 +48,12 @@ class CanvasPhotoState internal constructor() {
     /** The photo the canvas is drawing right now; it lags a new choice until that photo has decoded. */
     var photoPath by mutableStateOf<String?>(null)
         internal set
-    val photoActive: Boolean get() = photoPath != null
+    /**
+     * A photo is configured and has not failed to decode. Geometry that opens onto the photo (the
+     * root header's window) follows this, so it is laid out once instead of shifting when decoding ends.
+     */
+    var photoWindow by mutableStateOf(false)
+        internal set
     var immersion by mutableStateOf(ImmersionMode.Balanced)
         internal set
 
@@ -71,14 +79,16 @@ internal fun BackgroundCanvas(
     photo: DecodedBackground?,
     layout: CanvasLayout = CanvasLayout(),
 ) {
+    // One parallax depth drives both the photo layer and the veil's sampling frame.
+    val depthScale by rememberParallaxDepth(settings, role)
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val viewport = IntSize(constraints.maxWidth, constraints.maxHeight)
-        TicketboxBackgroundLayer(settings = settings, skin = skin, surfaceRole = role, photo = photo)
+        TicketboxBackgroundLayer(settings = settings, skin = skin, surfaceRole = role, photo = photo, depthScale = { depthScale })
         if (photo == null) {
             Box(Modifier.fillMaxSize().background(resolveGlobalScrim(settings, skin, role)))
             BottomReadabilityScrim(settings = settings, skin = skin, role = role)
         } else {
-            PhotoVeil(settings, skin, role, PhotoVeilInputs(photo, viewport, layout.canvasText, layout.headerBandPx))
+            PhotoVeil(settings, skin, role, PhotoVeilInputs(photo, viewport, layout.canvasText, layout.headerBandPx, depthScale))
         }
     }
 }
@@ -88,6 +98,7 @@ private class PhotoVeilInputs(
     val viewport: IntSize,
     val canvasText: CanvasTextDemand,
     headerBandPx: Int,
+    val depthScale: Float,
 ) {
     val header = headerBandPx.coerceIn(0, viewport.height)
 }
@@ -99,9 +110,9 @@ private fun BoxScope.PhotoVeil(settings: BackgroundSettings, skin: AppSkin, role
     val transform = settings.transform
     val navigationPx = with(LocalDensity.current) { PhotoNavigationScrimHeight.roundToPx() }
     val headerRampPx = with(LocalDensity.current) { HeaderRampMax.toPx() }
-    val needs = remember(photo, skin, inputs.canvasText, viewport, transform, inputs.header, navigationPx) {
+    val needs = remember(photo, skin, inputs.canvasText, viewport, transform, inputs.header, navigationPx, inputs.depthScale) {
         val header = inputs.header
-        val frame = PhotoFrame(photo.size, viewport, transform)
+        val frame = PhotoFrame(photo.size, viewport, transform, inputs.depthScale)
         fun need(demand: CanvasTextDemand, rows: IntRange) =
             BackgroundReadability.regionNeed(photo.needs(skin, demand), photo.profile, frame, rows)
         val edges = (0..BackgroundReadability.BAND_COUNT).map { header + (viewport.height - header) * it / BackgroundReadability.BAND_COUNT }
@@ -242,4 +253,28 @@ internal fun PhotoLayer(photo: DecodedBackground, transform: BackgroundTransform
                 },
         )
     }
+}
+
+internal fun CanvasPhotoState.publish(photo: BackgroundPhoto, mode: ImmersionMode) {
+    photoPath = photo.photo?.path
+    photoWindow = photo.reservesWindow
+    immersion = mode
+}
+
+/** The parallax zoom for a page role; reduce motion and a disabled parallax keep the photo at its own scale. */
+@Composable
+internal fun rememberParallaxDepth(settings: BackgroundSettings, role: SurfaceRole): State<Float> = animateFloatAsState(
+    targetValue = if (settings.enableParallax && !settings.reduceMotion) parallaxDepthScale(role) else 1f,
+    animationSpec = tween(durationMillis = if (settings.reduceMotion) 0 else 220),
+    label = "backgroundDepthScale",
+)
+
+private fun parallaxDepthScale(role: SurfaceRole): Float = when (role) {
+    SurfaceRole.Today -> 1.04f
+    SurfaceRole.Pending -> 1.05f
+    SurfaceRole.Stats -> 1.045f
+    SurfaceRole.Ledger -> 1.015f
+    SurfaceRole.Edit -> 1.015f
+    SurfaceRole.Settings -> 1.01f
+    SurfaceRole.Auth -> 1.02f
 }
