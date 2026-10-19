@@ -88,6 +88,9 @@ def _valid_results(*, frozen_scope: str, windows_scope: str) -> dict[str, str]:
 def test_cheap_contract_failures_precede_expensive_analysis_without_blocking_heavy_lanes() -> None:
     jobs = _jobs()
     contracts = jobs["backend_contracts"]
+    # Keep bounded watchdog headroom: 12m cancelled otherwise-passing Windows
+    # contracts on two exact-head PR runs (2026-10-19).
+    assert contracts["timeout-minutes"] == 15
     steps = _steps(contracts)
     order = list(steps)
     for cheap in ("Compile", "Lint", "API contract", "CI orchestration contracts"):
