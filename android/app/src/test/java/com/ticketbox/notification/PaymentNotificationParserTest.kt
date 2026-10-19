@@ -76,18 +76,23 @@ class PaymentNotificationParserTest {
 
     @Test
     fun parsesBankSmsExpenseNotification() {
-        val draft = expenseOf(
-            snapshot(
-                packageName = "com.android.mms",
+        // The same transaction must reach the draft through both built-in and other SMS apps.
+        for (pkg in listOf(
+            "com.android.mms", "com.android.messaging", "com.google.android.apps.messaging",
+            "com.samsung.android.messaging", "org.example.sms.client", "org.example.mms.client",
+            "org.example.messagingclient", "org.example.SMS.client",
+        )) {
+            assertTrue(PaymentNotificationParser.isCandidatePackage(pkg), pkg)
+            val draft = expenseOf(snapshot(
+                packageName = pkg,
                 title = "招商银行",
                 text = "您尾号1234储蓄账户支出人民币88.00元，交易商户：美团",
-            ),
-        )
-
-        assertNotNull(draft)
-        assertEquals(NotificationDraftSource.BankSms, draft.source)
-        assertEquals(8800L, draft.amountCents)
-        assertEquals("美团", draft.merchant)
+            ))
+            assertNotNull(draft, pkg)
+            assertEquals(NotificationDraftSource.BankSms, draft.source, pkg)
+            assertEquals(8800L, draft.amountCents, pkg)
+            assertEquals("美团", draft.merchant, pkg)
+        }
     }
 
     @Test
@@ -122,6 +127,13 @@ class PaymentNotificationParserTest {
                 snapshot(packageName = "com.example.news", title = "新闻", text = "今日消费趋势报告 ¥99.00"),
             ),
         )
+        // A candidate SMS app alone is not evidence of a bank transaction.
+        for (notification in listOf(
+            snapshot("org.example.sms.client", "朋友", "付款成功 ￥12.34 商家：便利蜂"),
+            snapshot("org.example.mms.client", "招商银行", "本期账单人民币88.00元，还款日为10日"),
+        )) {
+            assertNull(PaymentNotificationParser.parse(notification), notification.packageName)
+        }
     }
 
     @Test
