@@ -155,6 +155,7 @@ internal class FundsCommandDispatcher(private val guard: LedgerRequestGuard) : O
 
     private fun validateAccountReceipt(result: FinancialAccountReceiptDto, original: FundsCommand) {
         require(result.receiptRevision in 0..1 && result.publicId.isNotBlank() && result.rowVersion > 0 &&
+            result.ledgerId == original.binding.ledgerId &&
             (original.accountId.isBlank() || result.publicId == original.accountId))
     }
 

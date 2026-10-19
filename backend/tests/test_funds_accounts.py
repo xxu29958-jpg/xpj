@@ -84,7 +84,8 @@ def _correct_opening_purchase(client, identity, account):
     purchase = client.post("/api/expenses/manual", headers=identity.app_headers, json={
         "client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 5000,
         "category": "购物", "funding": [part], "time_input": {"precision": "date_only",
-            "calendar_revision": account["calendar_revision"], "user_local_date": account["opening_date"]}})
+            "calendar_revision": account["calendar_revision"],
+            "user_local_date": str(date.fromisoformat(account["opening_date"]) - timedelta(days=3))}})
     assert purchase.status_code == 200, purchase.text
     path = f"/api/expenses/{purchase.json()['id']}"
     account = client.get(account_url, headers=identity.app_headers).json()
@@ -538,6 +539,26 @@ def test_cash_envelopes_reserve_unsettled_purchases_without_spending_principal_t
     spending = next(row for row in paid["purposes"] if row["purpose"] == "spending")
     assert (spending["available_minor"], spending["unpaid_credit_minor"], paid["cash_minor"], paid["reserved_minor"], paid["unassigned_minor"]) == (20000, 0, 90000, 40000, 50000)
     _envelope_unlinked_purchase(client, identity, url, bank)
+    _review_envelope_source_change(client, identity, url)
+
+
+def _review_envelope_source_change(client, identity, url):
+    unknown = _create_funds_account(client, identity, "待核对余额", "bank", None, visibility="ledger")
+    before = client.get(url, headers=identity.app_headers).json()
+    body = {"expected_row_version": before["row_version"], "home_currency_code": "CNY",
+        "account_public_ids": [unknown["public_id"]], "account_row_versions": {unknown["public_id"]: unknown["row_version"]},
+        "allocations": {row["purpose"]: row["allocated_minor"] for row in before["purposes"]}, "reason": "更换共同资金来源"}
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    refused = client.put(url, headers=headers, json=body)
+    assert (refused.status_code, refused.json().get("error")) == (409, "envelope_cash_unknown"), refused.text
+    unchanged = client.get(url, headers=identity.app_headers).json()
+    assert unchanged["row_version"] == before["row_version"]
+    assert unchanged["accounts"] == before["accounts"]
+    # Releasing all promises can move to an unverified pool; no allocation claims that cash.
+    body["allocations"] = dict.fromkeys(body["allocations"], 0)
+    released = client.put(url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json=body)
+    assert released.status_code == 200, released.text
+    assert released.json()["reserved_minor"] == 0 and released.json()["unassigned_minor"] is None
 
 
 def _envelope_unlinked_purchase(client, identity, url, bank):
@@ -1185,6 +1206,7 @@ def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, 
         assert debt.status == "cleared"
         assert count_open_external_debts(db, [credit["ledger_id"]]) == {}
     assert get(goal_url)["debt_repayment"]["evaluation_state"] == "in_progress"
+    corrections = []
     for period in current["periods"]:
         key = str(uuid4())
         fee = {"expected_row_version": credit["row_version"], "calendar_revision": credit["calendar_revision"],
@@ -1195,9 +1217,41 @@ def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, 
         expense_id = next(row["expense_id"] for row in get(credit_url)["fee_obligations"] if row["period_public_id"] == period["public_id"])
         history = get(f"/api/expenses/{expense_id}/revisions")
         assert history["items"][0]["after"]["funding"][0]["expense_amount_minor"] == fee["amount_minor"]
+        expense_url = f"/api/expenses/{expense_id}"
+        correction = {"expected_row_version": get(expense_url)["row_version"], "reason": "按平台账单核对原费用",
+            "original_amount_minor": fee["amount_minor"] + 1,
+            "funding": [{"component_id": str(uuid4()), "account_public_id": credit["public_id"],
+                "account_row_version": credit["row_version"], "expense_amount_minor": fee["amount_minor"] + 1,
+                "account_amount_minor": fee["amount_minor"] + 1}]}
+        key = str(uuid4())
+        raised = post(expense_url + "/corrections", correction, key=key)
+        assert post(expense_url + "/corrections", correction, key=key) == raised
+        assert get(credit_url)["balance_minor"] == credit["balance_minor"] - 1
+        changed = get(credit_url + "/installments")["agreements"][0]
+        assert changed["needs_review"]
+        actual_period = next(row for row in changed["periods"] if row["public_id"] == period["public_id"])
+        assert actual_period["incurred_fee_minor"] == period["planned_fee_minor"] + 1
+        correction["expected_row_version"] = raised["expense"]["row_version"]
+        correction["original_amount_minor"] = fee["amount_minor"]
+        corrections.append((expense_url, correction, fee["amount_minor"]))
+        credit = get(credit_url)
+    assert credit["balance_minor"] == -132
+    credit = post(credit_url + "/installments", {**revision, "expected_row_version": credit["row_version"],
+        "supersedes_public_id": current["public_id"], "periods": [], "source": "费用均已实际发生，核对后无后续费用安排"})
+    assert credit["balance_minor"] == -132 and get(goal_url)["debt_repayment"]["evaluation_state"] == "in_progress"
+    # Revising the plan does not freeze earlier fees or manufacture a second charge.
+    for expense_url, correction, amount in corrections:
+        correction["funding"][0].update(expense_amount_minor=amount, account_amount_minor=amount,
+            account_row_version=credit["row_version"])
+        key = str(uuid4())
+        corrected = post(expense_url + "/corrections", correction, key=key)
+        assert post(expense_url + "/corrections", correction, key=key) == corrected
+        credit = get(credit_url)
+        assert not get(credit_url + "/installments")["agreements"][0]["needs_review"]
     assert credit["balance_minor"] == -130 and get(bank_url)["balance_minor"] == 90980
-    current = get(credit_url + "/installments")["agreements"][0]
-    assert all(row["unincurred_fee_minor"] == 0 and row["paid_fee_minor"] == 0 for row in current["periods"])
+    historical = next(row for row in get(credit_url + "/installments")["agreements"] if row["public_id"] == current["public_id"])
+    assert all(row["unincurred_fee_minor"] == 0 and row["paid_fee_minor"] == 0 for row in historical["periods"])
+    assert [row["incurred_fee_minor"] for row in historical["periods"]] == [30, 100]
     legacy = {**payment, "expected_row_version": credit["row_version"], "payer_row_version": get(bank_url)["row_version"],
         "principal_minor": 130, "payer_amount_minor": 130, "period_allocations": []}
     post(credit_url + "/repay", legacy, expected=422)  # old clients cannot reinterpret fees as principal
@@ -1206,6 +1260,10 @@ def _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, schedule, 
 
 def _pay_and_correct_recorded_fees(post, get, credit_url, bank_url, credit, payment):
     facts = get(credit_url)["fee_obligations"]
+    fee_period_ids = {row["period_public_id"] for row in facts}
+    def recorded_periods():
+        return [period for agreement in get(credit_url + "/installments")["agreements"]
+            for period in agreement["periods"] if period["public_id"] in fee_period_ids]
     with SessionLocal() as db:
         before = db.scalar(select(func.count()).select_from(Expense))
     body = {**payment, "principal_minor": 0, "payer_amount_minor": 0, "payer_fee_amount_minor": 130,
@@ -1216,13 +1274,13 @@ def _pay_and_correct_recorded_fees(post, get, credit_url, bank_url, credit, paym
     detail = get(credit_url)
     assert detail["balance_minor"] == 0 and get(bank_url)["balance_minor"] == 90850
     assert all(fee["remaining_minor"] == 0 for fee in detail["fee_obligations"])
-    paid = get(credit_url + "/installments")["agreements"][0]["periods"]
+    paid = recorded_periods()
     assert [p["paid_fee_minor"] for p in paid] == [30, 100]
     original = next(row for row in detail["movements"] if row["can_void_repayment"])
     credit = post(credit_url + "/repayments/void", {"expected_row_version": credit["row_version"],
         "repayment_public_id": original["repayment_public_id"], "occurred_on": str(date.today()), "reason": "扣款尚未成功，撤销付款保留已记费用"})
     assert credit["balance_minor"] == -130 and get(bank_url)["balance_minor"] == 90980
-    assert sum(row["paid_fee_minor"] for row in get(credit_url + "/installments")["agreements"][0]["periods"]) == 0
+    assert sum(row["paid_fee_minor"] for row in recorded_periods()) == 0
     credit = post(credit_url + "/repay", {**body, "expected_row_version": credit["row_version"], "payer_row_version": get(bank_url)["row_version"]})
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(Expense)) == before

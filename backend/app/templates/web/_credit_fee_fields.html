@@ -3,7 +3,7 @@
 <label class="product-field" for="fee-source">费用依据<input class="product-input" id="fee-source" name="note" value="{{ values.note }}" maxlength="255" required placeholder="如：10 月账单已产生的利息"></label>
 <label class="product-field" for="fee-period">对应分期期次（选填）<select class="product-input" id="fee-period" name="fee_period_id">
 <option value="">不属于已记录的分期期次</option>
-{% for agreement in installments.agreements if agreement.active %}{% for period in agreement.periods if period.unincurred_fee_minor > 0 %}
+{% for agreement in installments.agreements if agreement.active %}{% for period in agreement.periods %}
 <option value="{{ period.public_id }}" {{ 'selected' if values.fee_period_id == period.public_id }}>{{ agreement.name }} · 第 {{ period.position }} 期 · 尚未记录 {{ money(period.unincurred_fee_minor, account.currency_code) }}</option>
 {% endfor %}{% endfor %}
 {% if values.fee_period_id %}<option value="{{ values.fee_period_id }}" selected>保留原期次选择，请核对最新合约</option>{% endif %}

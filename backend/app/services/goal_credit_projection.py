@@ -76,7 +76,7 @@ def _completion_note(balances, agreements, fees) -> str:
     if any(row.remaining_minor > 0 for row in fees):
         return "仍有已发生费用未清偿，请到资金账户处理。"
     if any(item.needs_review for item in agreements):
-        return "退款或提前还款后，剩余分期安排需要核对。"
+        return "实际本金或费用与原计划不符，请按实际合约核对剩余分期安排。"
     if any(period.planned_fee_minor > period.paid_fee_minor for item in agreements for period in item.periods):
         return "还有分期费用安排，尚未全部完成；减免或终止请按实际合约更新。"
     if any(amount > 0 for amount in balances.values()):

@@ -43,6 +43,7 @@ data class InstallmentPeriodViewDto(
     @param:Json(name = "paid_principal_minor") val paidPrincipalMinor: Long,
     @param:Json(name = "paid_fee_minor") val paidFeeMinor: Long,
     @param:Json(name = "unincurred_fee_minor") val unincurredFeeMinor: Long = plannedFeeMinor - paidFeeMinor,
+    @param:Json(name = "incurred_fee_minor") val incurredFeeMinor: Long? = null,
 )
 
 @JsonClass(generateAdapter = true)

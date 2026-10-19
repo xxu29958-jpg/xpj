@@ -324,6 +324,7 @@ class NetworkErrorReportingTest {
     @Test
     fun fundsReplayFailureReportsSafelyWithoutRetryingOrConsumingTheCommand() = runTest {
         var unavailable = true
+        var receiptLedger = "family"
         val api = object : ApiService by FakeApiService(events = mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun editFundsAccount(id: String, request: com.ticketbox.data.remote.dto.FinancialAccountEditDto,
                 key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto {
@@ -333,7 +334,7 @@ class NetworkErrorReportingTest {
                 if (unavailable) throw IllegalStateException("password=synthetic-funds-secret", IOException("private financial text"))
                 // A legacy server's growing read model must never be copied into Room.
                 return requireNotNull(FundsWire.accountReceipt.fromJson("""{
-                    "public_id":"reviewed-account","ledger_id":"owner","row_version":8,
+                    "public_id":"reviewed-account","ledger_id":"$receiptLedger","row_version":8,
                     "currency_code":"CNY","balance_minor":12345,"recorded_change_minor":12345,
                     "movements":[{"note":"old account history"}],"fee_obligations":[{"note":"old fee history"}]
                 }"""))
@@ -365,6 +366,15 @@ class NetworkErrorReportingTest {
         assertTrue(output.contains("FundsCommand.kt:") && output.contains("IllegalStateException"))
         assertFalse(output.contains("synthetic-funds-secret") || output.contains("private financial text"))
         unavailable = false
+        assertTrue(outbox.resolveFailed(id, FailedResolution.Retry(), guard.bindExact(command.binding)))
+        dao.runnableBatches += listOf(id)
+        assertEquals(0, OutboxDrainEngine(outbox, listOf(FundsCommandDispatcher(guard))).drainOnce().done)
+        val foreign = dao.rows.getValue(id)
+        assertEquals(PendingMutationStatus.Failed.wireValue, foreign.status)
+        assertEquals(payload, foreign.payload)
+        assertEquals("original-funds-key", foreign.idempotencyKey)
+        assertNull(foreign.receiptJson)
+        receiptLedger = command.binding.ledgerId
         assertTrue(outbox.resolveFailed(id, FailedResolution.Retry(), guard.bindExact(command.binding)))
         dao.runnableBatches += listOf(id)
         assertEquals(1, OutboxDrainEngine(outbox, listOf(FundsCommandDispatcher(guard))).drainOnce().done)

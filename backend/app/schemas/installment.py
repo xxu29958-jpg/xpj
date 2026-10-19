@@ -51,6 +51,7 @@ class InstallmentPeriodView(BaseModel):
     planned_fee_minor: NonNegativeMoneyMinor
     paid_principal_minor: NonNegativeMoneyAggregate
     paid_fee_minor: NonNegativeMoneyAggregate
+    incurred_fee_minor: NonNegativeMoneyAggregate
     unincurred_fee_minor: NonNegativeMoneyMinor = 0
 
 

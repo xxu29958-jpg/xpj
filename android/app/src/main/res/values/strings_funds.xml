@@ -179,7 +179,7 @@
     <string name="funds_allocation_title">本金付到哪里 · %1$s</string>
     <string name="funds_allocation_note">有分期时明确本次支付的期次；提前还、部分还都填实际金额。这里的费用包含在上方的新费用中，已记过的费用不能再记一次。</string>
     <string name="funds_agreement_version">%1$s · 版本 %2$s</string>
-    <string name="funds_replan_required">退款或更正已改变来源本金，请先更新剩余排期。</string>
+    <string name="funds_replan_required">实际本金或费用与原计划不符，请核对剩余排期；已发生费用仍可支付。</string>
     <string name="funds_outstanding_period">第 %1$s 期 · %2$s · 未付本金 %3$s</string>
     <string name="funds_principal_payment">本次本金</string>
     <string name="funds_new_period_fee">其中本次新发生费用</string>
@@ -193,7 +193,8 @@
     <string name="funds_active_agreement">当前合约</string>
     <string name="funds_history_agreement">历史合约</string>
     <string name="funds_agreement_summary">%1$s · 版本 %2$s · %3$s</string>
-    <string name="funds_revised_principal_note">本金已被退款或更正改变，请按实际合约更新剩余排期；已付费用保留。</string>
+    <string name="funds_revised_principal_note">实际本金或费用与原计划不符，请按实际合约更新剩余排期；原费用和付款历史保留。</string>
+    <string name="funds_period_incurred_fee">已发生费用 %1$s</string>
     <string name="funds_period_history">第 %1$s 期 · %2$s\n本金 %3$s · 已付 %4$s\n计划费用 %5$s · 已付 %6$s</string>
     <string name="funds_replan">更新剩余排期</string>
     <string name="funds_sync_note">原账户、金额和提交已保留。进入资金任务核实原结果或重新核对，不会重复记账。</string>

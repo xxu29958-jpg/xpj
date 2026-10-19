@@ -57,11 +57,11 @@ def _review_allocations(before: EnvelopesView, payload: EnvelopeSave) -> bool:
 
 
 def _review_capacity(before: EnvelopesView, after: EnvelopesView, *, only_releases: bool) -> None:
-    if only_releases and after.reserved_minor == 0:
+    if after.reserved_minor == 0:
         return
     if after.unassigned_minor is None:
         if not only_releases:
-            raise AppError("envelope_cash_unknown", "余额、账务日期或汇率尚未核对，暂不能增加分配；原输入已保留。", status_code=409)
+            raise AppError("envelope_cash_unknown", "余额、账务日期或汇率尚未核对，暂不能增加分配或更换资金来源；原输入已保留。", status_code=409)
         return
     previous_shortfall = max(0, -(before.unassigned_minor or 0))
     if after.unassigned_minor < -previous_shortfall and not (only_releases and before.unassigned_minor is None):
@@ -79,7 +79,8 @@ def _apply(db: Session, auth: AuthContext, month: str, payload: EnvelopeSave) ->
         raise AppError("state_conflict", "另一端已调整信封或币种，请保留原输入并重新核对。", status_code=409)
     sources = _lock_sources(db, auth, payload)
     before = envelopes_view(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id, month=month)
-    only_releases = _review_allocations(before, payload)
+    only_releases = _review_allocations(before, payload) and set(payload.account_public_ids) == {
+        row.public_id for row in before.accounts if row.selected}
     if book is None:
         book = EnvelopeBook(tenant_id=auth.tenant_id, home_currency_code=home)
         db.add(book)

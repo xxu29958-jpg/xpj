@@ -8,13 +8,12 @@ from app.schemas import ExpenseManualCreateRequest
 from app.schemas._accounting_time import AccountingTimeInput
 from app.schemas.credit_fee import CreditFeeCreate
 from app.schemas.funds import FinancialAccountReceipt, FundingPart
-from app.services.credit_fee_query import fee_period_totals
 from app.services.debt_service._repayment_time import resolve_repayment_time
 from app.services.expense_service._create import create_manual_expense
 from app.services.funds_commands import claim_funds, finish_funds, replay_funds, require_account_version
 from app.services.funds_fact_service import validate_movement_date
 from app.services.funds_query import get_account
-from app.services.installment_query import active_agreements, paid_by_period
+from app.services.installment_query import active_agreements
 from app.services.ledger_calendar_service import current_calendar
 from app.tenants import AuthContext
 
@@ -56,8 +55,6 @@ def _review_fee_period(db: Session, account: FinancialAccount, payload: CreditFe
         InstallmentPeriod.public_id == payload.period_public_id))
     if period is None:
         raise AppError("state_conflict", "这期期次已经变更，请保留费用依据并核对最新合约。", status_code=409)
-    incurred, settled = fee_period_totals(db, [period.id])[period.id]
-    paid = paid_by_period(db, [period.id])[period.id][1]
-    if payload.amount_minor > period.planned_fee_minor - paid - incurred + settled:
-        raise AppError("installment_amount_mismatch", "本期费用已记录或超出剩余计划；请查看原费用或按实际材料更新合约。", status_code=422)
+    # The actual fee is a fact, not a draw against a budget. The read model
+    # exposes any excess over this plan for explicit agreement review.
     return period.id

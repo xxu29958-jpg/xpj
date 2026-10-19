@@ -21067,6 +21067,13 @@
             "title": "Due On",
             "type": "string"
           },
+          "incurred_fee_minor": {
+            "format": "int64",
+            "maximum": 9007199254740991.0,
+            "minimum": 0.0,
+            "title": "Incurred Fee Minor",
+            "type": "integer"
+          },
           "paid_fee_minor": {
             "format": "int64",
             "maximum": 9007199254740991.0,
@@ -21119,7 +21126,8 @@
           "principal_minor",
           "planned_fee_minor",
           "paid_principal_minor",
-          "paid_fee_minor"
+          "paid_fee_minor",
+          "incurred_fee_minor"
         ],
         "title": "InstallmentPeriodView",
         "type": "object"

@@ -79,17 +79,19 @@ def active_agreements(db, account_id):
         InstallmentAgreement.id.not_in(replaced))))
 
 
-def installment_view(db, agreement, *, active, balances=None):
+def installment_view(db: Session, agreement: InstallmentAgreement, *, active: bool,
+                     balances: dict[int, int] | None = None) -> InstallmentView:
     periods = []
     recorded = list(db.scalars(select(InstallmentPeriod).where(InstallmentPeriod.agreement_id == agreement.id).order_by(InstallmentPeriod.position)))
     paid = paid_by_period(db, [period.id for period in recorded])
     incurred = fee_period_totals(db, [period.id for period in recorded])
     for period in recorded:
         principal, fees = paid[period.id]
+        actual_fees = fees + incurred[period.id][0] - incurred[period.id][1]
         periods.append(InstallmentPeriodView(public_id=period.public_id, position=period.position, due_on=period.due_on,
             principal_minor=period.principal_minor, planned_fee_minor=period.planned_fee_minor,
-            paid_principal_minor=principal, paid_fee_minor=fees,
-            unincurred_fee_minor=max(0, period.planned_fee_minor - fees - incurred[period.id][0] + incurred[period.id][1])))
+            paid_principal_minor=principal, paid_fee_minor=fees, incurred_fee_minor=actual_fees,
+            unincurred_fee_minor=max(0, period.planned_fee_minor - actual_fees)))
     draws = list(db.scalars(select(AccountMovement).join(InstallmentDraw, InstallmentDraw.movement_id == AccountMovement.id)
         .where(InstallmentDraw.agreement_id == agreement.id)))
     balances = draw_balances(db, agreement.account_id) if balances is None else balances
@@ -97,7 +99,8 @@ def installment_view(db, agreement, *, active, balances=None):
     scheduled = sum(period.principal_minor - period.paid_principal_minor for period in periods)
     return InstallmentView(public_id=agreement.public_id, series_id=agreement.series_id, revision=agreement.revision,
         name=agreement.name, source=agreement.source, agreed_on=agreement.agreed_on, active=active,
-        needs_review=active and remaining != scheduled, remaining_principal_minor=remaining, periods=periods,
+        needs_review=active and (remaining != scheduled or any(row.incurred_fee_minor > row.planned_fee_minor for row in periods)),
+        remaining_principal_minor=remaining, periods=periods,
         draw_public_ids=[draw.public_id for draw in draws])
 
 

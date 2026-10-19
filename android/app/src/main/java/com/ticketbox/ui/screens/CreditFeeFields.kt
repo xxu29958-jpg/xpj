@@ -22,7 +22,7 @@ internal fun CreditFeeFields(state: FundsUiState, input: FundsInput, enabled: Bo
         Text(stringResource(R.string.funds_fee_no_period))
     }
     state.installments?.agreements.orEmpty().filter { it.active }.forEach { agreement ->
-        agreement.periods.filter { it.unincurredFeeMinor > 0 }.forEach { period ->
+        agreement.periods.forEach { period ->
             val label = stringResource(R.string.funds_fee_period_choice, agreement.name, period.position,
                 money(period.unincurredFeeMinor, input.currency))
             TextButton(enabled = enabled, onClick = { vm.edit { it.copy(feePeriodId = period.publicId, feePeriodLabel = label) } }) { Text(label) }

@@ -99,6 +99,7 @@ internal fun InstallmentHistory(data: InstallmentsDto?, canModify: Boolean, vm: 
         if (agreement.periods.isEmpty()) Text(stringResource(R.string.funds_no_remaining_periods))
         agreement.periods.forEach { period ->
             Text(stringResource(R.string.funds_period_history, period.position, period.dueOn, amount(period.principalMinor, data!!.currencyCode), amount(period.paidPrincipalMinor, data.currencyCode), amount(period.plannedFeeMinor, data.currencyCode), amount(period.paidFeeMinor, data.currencyCode)))
+            period.incurredFeeMinor?.let { Text(stringResource(R.string.funds_period_incurred_fee, amount(it, data.currencyCode))) }
         }
         if (agreement.active && canModify) AppSecondaryButton(stringResource(R.string.funds_replan)) { vm.reviseAgreement(agreement) }
     }
