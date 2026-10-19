@@ -66,14 +66,28 @@ class RepaymentReviewRepository internal constructor(
         val bound = guard.bindExact(binding)
         if (draft.correctionVersions != null && draft.correctedExpenseId == null) {
             val versions = draft.correctionVersions
+            val moneyInput = if (draft.correctionNeedsMoney) requireInput(binding, draft.publicId) else null
+            val correctedAmount = moneyInput?.let { input ->
+                require(input.submittedAction == null)
+                requireNotNull(com.ticketbox.domain.model.parseExactMoneyMinor(input.amountText,
+                    requireNotNull(CurrencyCode.fromStorageKeyOrNull(input.currency))))
+                    .also { require(it > 0) }
+            }
             val payload = PaymentCaptureResolution(binding = binding, publicId = draft.publicId,
                 correction = com.ticketbox.data.remote.dto.RepaymentAsExpenseDto(reason.trim(), null,
                     com.ticketbox.data.remote.dto.RepaymentCorrectionVersionsDto(versions.debtRowVersion,
-                        versions.sourceExpenseRowVersion, versions.sourceOffsetRowVersion)))
+                        versions.sourceExpenseRowVersion, versions.sourceOffsetRowVersion, versions.fundsAccountVersions, versions.feeExpenseVersions),
+                    moneyInput?.currency, correctedAmount))
+            val key = UUID.randomUUID().toString()
             return@safeCall outbox.enqueue(bound, PendingMutationIntent(PendingMutationType.ResolvePaymentCapture,
                 "repayment-draft:${draft.publicId}", PaymentCaptureWire.resolution.toJson(payload),
-                versions.debtRowVersion, UUID.randomUUID().toString()), validateTargetRows = { rows ->
+                versions.debtRowVersion, key), validateTargetRows = { rows ->
                 require(rows.none { it.status != PendingMutationStatus.Done }) { "请先核对原提交结果。" }
+            }, afterPersisted = {
+                if (moneyInput != null) {
+                    require(requireInput(binding, draft.publicId) == moneyInput)
+                    inputs.put(moneyInput.copy(originalKey = key, submittedAction = PendingMutationType.ResolvePaymentCapture.wireValue))
+                }
             })
         }
         require(draft.isPending)
@@ -117,7 +131,7 @@ class RepaymentReviewRepository internal constructor(
         outbox.withActiveBinding(guard.bindExact(binding)) {
             database.withTransaction {
                 if (inputs.get(binding.ownerKey, binding.ledgerId, draft.publicId) != null) return@withTransaction
-                if (!draft.isPending) return@withTransaction
+                if (!draft.isPending && !draft.correctionNeedsMoney) return@withTransaction
                 val currency = requireNotNull(CurrencyCode.fromStorageKeyOrNull(draft.originalCurrencyCode))
                 val input = RepaymentReviewInputEntity(binding.ownerKey, binding.ledgerId, draft.publicId,
                     binding.serverUrl, binding.sessionGeneration, binding.bindingRevision, UUID.randomUUID().toString(),

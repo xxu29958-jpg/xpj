@@ -91,7 +91,8 @@ class AppDatabaseMigrationTest {
             parentRenameKey = rename.key, phase = "accepted", mergeReceipt = firstReceipt)
         val originals = setOf(input, rename, otherRename, merge)
         var room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
-            .addMigrations(AppDatabase.Migration25To26, AppDatabase.Migration26To27, AppDatabase.Migration27To28).build()
+            .addMigrations(AppDatabase.Migration25To26, AppDatabase.Migration26To27, AppDatabase.Migration27To28,
+                AppDatabase.Migration28To29).build()
         try {
             kotlinx.coroutines.runBlocking {
                 room.merchantCreationInputDao().put(MerchantCreationInputEntity(binding.serverUrl, binding.ownerKey, binding.ledgerId,
@@ -175,7 +176,8 @@ class AppDatabaseMigrationTest {
         }
         val room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
             .addMigrations(AppDatabase.Migration21To22, AppDatabase.Migration22To23, AppDatabase.Migration23To24, AppDatabase.Migration24To25,
-                AppDatabase.Migration25To26, AppDatabase.Migration26To27, AppDatabase.Migration27To28).build()
+                AppDatabase.Migration25To26, AppDatabase.Migration26To27, AppDatabase.Migration27To28,
+                AppDatabase.Migration28To29).build()
         try {
                 room.openHelper.readableDatabase.query("SELECT amountCents, homeCurrencyCode, rowVersion FROM expenses WHERE id = 1").use {
                     assertTrue(it.moveToFirst()); assertEquals(100, it.getInt(0)); assertEquals("JPY", it.getString(1)); assertEquals(7, it.getInt(2))

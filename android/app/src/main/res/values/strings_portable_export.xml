@@ -3,7 +3,7 @@
     <string name="portable_export_title">下载完整数据</string>
     <string name="portable_export_entry_hint">从服务器获取授权内容</string>
     <string name="portable_export_entry_action">下载</string>
-    <string name="portable_export_scope">保存服务器已有的记录、历史与可用原件。未提交的离线草稿不在包内；这不是安装恢复包。</string>
+    <string name="portable_export_scope">保存有权读取的账单、资金账户、分期、信封、历史与可用原件。未提交的离线草稿不在包内；这不是安装恢复包。</string>
     <string name="portable_export_archived">已归档 · 当前拥有者可下载</string>
     <string name="portable_export_empty">当前账户没有可下载的账本。</string>
     <string name="portable_export_loading">正在核对可下载的账本…</string>

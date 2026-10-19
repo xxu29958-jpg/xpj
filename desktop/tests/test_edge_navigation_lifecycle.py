@@ -109,3 +109,9 @@ def test_cdp_command_response_preserves_interleaved_document_events():
     page._receive_json = lambda: next(incoming)
     assert page.request("Page.navigate", {"url": "file:///bootstrap.html"}) == {"frameId": "main"}
     assert list(page._events) == [event]
+    incoming = iter([_loaded("main", "accepted"), {"id": 2, "error": {
+        "code": -32000, "message": "Inspected target navigated or closed",
+    }}])
+    with pytest.raises(_edge_cdp._DocumentChangedError):
+        page.request("Runtime.evaluate", {"expression": "window.probe"})
+    assert page.wait_for_document("main", "http://localhost/web", timeout=1)

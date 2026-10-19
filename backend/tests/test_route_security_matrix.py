@@ -19,6 +19,18 @@ from fastapi.testclient import TestClient
 @pytest.mark.parametrize(
     ("method", "path", "kwargs"),
     [
+        ("PUT", "/api/budget/envelopes/2026-10", {"json": {}}),
+        ("POST", "/api/funds/accounts", {"json": {}}),
+        ("PATCH", "/api/funds/accounts/account_missing", {"json": {}}),
+        ("POST", "/api/funds/accounts/account_missing/installments", {"json": {}}),
+        ("POST", "/api/funds/accounts/account_missing/repay", {"json": {}}),
+        ("POST", "/api/funds/accounts/account_missing/fees", {"json": {}}),
+        ("POST", "/api/funds/accounts/account_missing/credit-applications", {"json": {}}),
+        ("POST", "/api/funds/accounts/account_missing/credit-applications/void", {"json": {}}),
+        ("POST", "/api/funds/accounts/account_missing/activities", {"json": {}}),
+        ("POST", "/api/funds/accounts/account_missing/activities/void", {"json": {}}),
+        ("POST", "/api/funds/accounts/account_missing/repayments/void", {"json": {}}),
+        ("POST", "/api/expenses/1/funding", {"json": {}}),
         ("POST", "/api/expenses/1/fx", {"json": {"expected_row_version": 1}}),
         ("PUT", "/api/recurring/items/recurring_missing/occurrences/2026-09", {
             "json": {"action": "clear", "expected_row_version": 0, "expected_series_row_version": 1},

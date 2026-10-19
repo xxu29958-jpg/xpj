@@ -50,6 +50,7 @@ import retrofit2.http.QueryMap
 import retrofit2.http.Streaming
 
 interface ApiService :
+    com.ticketbox.data.remote.api.FundsApi,
     com.ticketbox.data.remote.api.PortableExportApi,
     AuthApi,
     ExpenseListApi,

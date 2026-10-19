@@ -44,7 +44,7 @@ def add_void_detail_context(
     values: dict[str, str] | None = None, error: str = "", result: str = "",
     ack: dict[str, Any] | None = None, target: str = "", rejected: bool = False,
 ) -> None:
-    writable = ctx["can_write"] and not ctx["debt"]["is_member"]
+    writable = ctx["can_write"] and not ctx["debt"]["is_member"] and debt.source_type != "credit_facility"
     base = {"selected_id": selected_id, "public_id": public_id, "can_recover": writable}
     feedback = {"values": values, "error": error, "result": result, "ack": ack, "rejected": rejected}
     debt_feedback = feedback if kind == "void" else {}

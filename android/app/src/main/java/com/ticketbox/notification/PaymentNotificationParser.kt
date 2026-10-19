@@ -33,11 +33,11 @@ object PaymentNotificationParser {
     private val bankContext = Regex("""(银行|信用卡|储蓄账户|尾号|动账|交易|支出人民币|消费人民币)""")
     private val sources = mapOf("com.tencent.mm" to "wechat", "com.eg.android.alipaygphone" to "alipay",
         "com.jingdong.app.mall" to "jd", "com.jd.jrapp" to "jd", "com.sankuai.meituan" to "meituan")
-    private val smsPackages = setOf("com.android.mms", "com.android.messaging",
-        "com.google.android.apps.messaging", "com.samsung.android.messaging")
-
-    internal fun isCandidatePackage(packageName: String): Boolean =
-        packageName.lowercase() in sources || packageName.lowercase() in smsPackages
+    internal fun isCandidatePackage(packageName: String): Boolean {
+        val pkg = packageName.lowercase()
+        // Keep SMS-family admission shared by the listener and parser; bank/transaction evidence is checked below.
+        return pkg in sources || pkg.contains(".sms") || pkg.contains(".mms") || pkg.contains("messaging")
+    }
 
     fun parse(snapshot: PaymentNotificationSnapshot): PaymentNotificationResult? {
         if (!isCandidatePackage(snapshot.packageName)) return null

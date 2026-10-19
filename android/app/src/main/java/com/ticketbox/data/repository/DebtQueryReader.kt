@@ -35,11 +35,13 @@ import retrofit2.HttpException
 data class DebtReadResourceDenial(val binding: LogicalSessionBinding, val debtPublicId: String,
     val failure: RepositoryException, val generation: Long)
 
-internal val DEBT_QUERY_MUTATION_TYPES = setOf(PendingMutationType.CreateDebt, PendingMutationType.RecordDebtRepayment,
+internal val DEBT_QUERY_MUTATION_TYPES = setOf(PendingMutationType.FinancialAccountCommand, PendingMutationType.CreateDebt, PendingMutationType.RecordDebtRepayment,
     PendingMutationType.RecordDebtAdjustment, PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment,
     PendingMutationType.SplitAgreement, PendingMutationType.SetDebtKind, PendingMutationType.AcceptBillSplitInvitation,
     PendingMutationType.ConfirmRepaymentDraft, PendingMutationType.DismissRepaymentDraft,
-    PendingMutationType.CapturePaymentNotification, PendingMutationType.ResolvePaymentCapture)
+    PendingMutationType.CapturePaymentNotification, PendingMutationType.ResolvePaymentCapture,
+    PendingMutationType.CreateExpense, PendingMutationType.ConfirmExpense, PendingMutationType.CorrectExpense,
+    PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset)
 
 private data class AcceptedDebtQuery(val query: StatsProjectionCacheEntity, val stored: DebtQueryCachePayload, val accessGeneration: Long)
 private val activeDebtDirectTokens = ConcurrentHashMap.newKeySet<String>()
@@ -119,7 +121,11 @@ internal class DebtQueryReader(
     }
 
     suspend fun list(binding: LogicalSessionBinding, lens: DebtListLens): Result<ReadSnapshot<DebtListPage>> =
-        listQuery(binding, lens.name) { debts(if (lens == DebtListLens.Payables) "payables" else null) }
+        listQuery(binding, lens.name) { debts(when (lens) {
+            DebtListLens.Ledger -> null
+            DebtListLens.Payables -> "payables"
+            DebtListLens.GoalCandidates -> "goal_candidates"
+        }) }
             .map { ReadSnapshot(DebtListPage(it.value.items.map(DebtDto::toDomain), it.value.homeCurrencyCode), it.fetchedAt, it.fromCache) }
 
     suspend fun receivables(binding: LogicalSessionBinding): Result<ReadSnapshot<List<Debt>>> =
@@ -366,7 +372,7 @@ private fun DebtQueryReader.hasActiveDirect(bindingKey: String) = activeDirect.a
         read(binding, DebtQueryScope(debtScope(binding, "debt_list", lens)), DebtReadSpec(listAdapter, fetch,
             validate = { page ->
                 require(page.items.map { it.publicId }.distinct().size == page.items.size)
-                page.items.forEach { validateDebt(it, binding, null, allowShell = lens != DebtListLens.Ledger.name) }
+                page.items.forEach { validateDebt(it, binding, null, allowShell = lens == DebtListLens.Payables.name || lens == "receivables") }
             },
             isNewer = { old, incoming -> old.items.associateBy { it.publicId }.let { previous ->
                 incoming.items.any { previous[it.publicId]?.rowVersion?.let { version -> version < it.rowVersion } == true }

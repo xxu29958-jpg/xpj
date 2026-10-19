@@ -37,6 +37,7 @@ internal class MainScreenFactory(
     val debtActivityRepository: DebtActivityQueries get() = repositories.debtRepository.activity
     val repaymentDraftRepository: RepaymentDraftRepository get() = repositories.repaymentDraftRepository
     val repaymentReviewRepository get() = repositories.repaymentReviewRepository
+    val fundsRepository get() = repositories.fundsRepository
     val outboxRepository: OutboxRepository get() = repositories.outboxRepository
     val tagRepository: TagRepository get() = repositories.tagRepository
     val categoryPreferenceRepository: CategoryPreferenceRepository
@@ -77,6 +78,7 @@ internal class MainScreenFactory(
 }
 
 internal data class MainFeatureRepositories(
+    val fundsRepository: com.ticketbox.data.repository.FundsRepository,
     val portableExports: com.ticketbox.data.repository.PortableExportActions,
     val accountProfile: com.ticketbox.data.repository.AccountProfileActions,
     val repository: ExpenseRepository,

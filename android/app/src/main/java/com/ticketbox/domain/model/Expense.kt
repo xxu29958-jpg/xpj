@@ -150,6 +150,7 @@ data class ExpenseDraft(
     /** Existing CreateExpense owner reuses this captured key; it does not mint a second command. */
     val clientRef: String? = null,
     val timeInput: ExpenseTimeInput? = null,
+    val funding: List<ExpenseFunding> = emptyList(),
 )
 
 data class ExpenseItem(

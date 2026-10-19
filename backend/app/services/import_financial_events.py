@@ -17,17 +17,35 @@ _EVENT_COLUMNS = (
     "stream_date", "stream_amount_cents", "lineage_status", "lineage_home_net_cents",
 )
 _LINEAGE_STATUSES = {"confirmed", "partially_refunded", "fully_refunded", "reversed"}
+_FUNDS_KINDS = {"opening", "credit_draw", "repayment", "income", "loan", "transfer", "refund", "reconciliation", "reversal"}
+_FUNDS_INPUT_COLUMNS = (
+    "transaction_type", "account_id", "account_public_id", "account_amount_minor",
+    "event_public_id", "repayment_id", "repayment_public_id", "debt_id", "debt_public_id",
+    "payer_public_id", "payer_amount_minor", "other_account_public_id", "other_amount_minor",
+    "funding_id", "funding", "settlement_targets",
+)
 NATIVE_CSV_INPUT_COLUMNS = (
     "id", "public_id", "amount_cents", "amount_yuan", "amount_home_major", "home_currency_code",
     "original_currency_code", "original_amount_minor", "exchange_rate_to_cny", "exchange_rate_date",
     "exchange_rate_source", "merchant", "category", "note", "source", "expense_time", "confirmed_at",
-    "tags", "value_score", "regret_score", "accounting_time", *_EVENT_COLUMNS,
+    "tags", "value_score", "regret_score", "accounting_time", "kind", *_EVENT_COLUMNS, *_FUNDS_INPUT_COLUMNS,
 )
+
+
+def _unsupported_funds_csv_input(cells: dict[str, str]) -> bool:
+    """An explicit funds shape must not lose its meaning in the expense-only CSV path."""
+    return (cells.get("entry_kind", "").strip() not in {"", "expense", "offset"}
+        or cells.get("kind", "").strip().casefold() in _FUNDS_KINDS
+        or any(cells.get(name, "").strip() for name in _FUNDS_INPUT_COLUMNS))
 
 
 def has_financial_event(cells: dict[str, str]) -> bool:
     """Blank event cells in a mixed error download remain ordinary CSV rows."""
-    return any(cells.get(name, "").strip() for name in _EVENT_COLUMNS)
+    return _unsupported_funds_csv_input(cells) or any(cells.get(name, "").strip() for name in _EVENT_COLUMNS)
+
+
+def _retained_csv_input(cells: dict[str, str]) -> dict[str, str]:
+    return {name: cells[name] for name in NATIVE_CSV_INPUT_COLUMNS if name in cells}
 
 
 def _provenance_id(cells: dict[str, str], name: str, alias: str, errors: list[str]) -> str | None:
@@ -106,6 +124,9 @@ def _event_shape_error(fields: dict[str, object], amount_cents: int | None) -> s
 
 def parse_financial_event(cells: dict[str, str], *, amount_cents: int | None) -> tuple[dict[str, object], str | None]:
     """Keep source IDs and signed contribution distinct from the gross amount."""
+    if _unsupported_funds_csv_input(cells):
+        return {"entry_kind": "invalid", "event_input": _retained_csv_input(cells)}, (
+            "本行包含资金账户或非消费事件，当前 CSV 无法正确接收。请在资金账户核对收入、转账或还款；不要删除类型和账户列后重导。")
     errors: list[str] = []
     fields = {
         "entry_kind": cells.get("entry_kind", "").strip(),
@@ -131,7 +152,7 @@ def parse_financial_event(cells: dict[str, str], *, amount_cents: int | None) ->
         fields["offset_kind"] = None
     if fields["lineage_status"] not in _LINEAGE_STATUSES:
         fields["lineage_status"] = None
-    fields["event_input"] = {name: cells[name] for name in NATIVE_CSV_INPUT_COLUMNS if name in cells}
+    fields["event_input"] = _retained_csv_input(cells)
     return fields, errors[0] if errors else None
 
 

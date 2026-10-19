@@ -162,6 +162,7 @@ class MainActivity : FragmentActivity() {
     )
 
     private fun AppContainer.mainFeatureRepositories(): MainFeatureRepositories = MainFeatureRepositories(
+        fundsRepository = fundsRepository,
         portableExports = portableExportRepository,
         accountProfile = accountProfileRepository,
         ledgerCalendarRepository = ledgerCalendarRepository,

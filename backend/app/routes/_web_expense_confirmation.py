@@ -11,6 +11,7 @@ from app.routes._web_expense_edit_command import expense_edit_form_values
 from app.routes._web_expense_edit_form import WebExpenseEditForm
 from app.routes._web_expense_helpers import web_edit_context
 from app.routes._web_expense_return_context import ExpenseReturnContext, flow_href, return_href
+from app.routes._web_funding import review_funding_values
 from app.routes._web_money_views import _minor_amount_label
 from app.routes.web_common import _base_ctx, templates
 from app.services.expense_review_command_service import read_expense_confirmation_receipt
@@ -40,6 +41,9 @@ def render_confirmation_task(request: Request, db: Session, *, options, ledger_i
         fields.update(expected_row_version=str(current.row_version), idempotency_key=str(uuid4()),
             keep_idempotency_key=str(uuid4()), reject_idempotency_key=str(uuid4()),
             command_action="confirm" if form.command_action in {"keep", "reject"} else form.command_action)
+        if form.funding_json is not None:
+            fields["funding_json"] = review_funding_values(db, request.state.web_session_auth, form.funding_json,
+                form.original_currency or current.original_currency_code or current.home_currency_code)
     ctx = web_edit_context(db, request, options, ledger_id, expense_id,
         form_values=fields, return_context=form.return_context)
     ctx.update(error=error, expense_review_task=True,

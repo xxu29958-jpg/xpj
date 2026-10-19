@@ -66,9 +66,12 @@ data class DebtGoalLink(
     val direction: String,
     val counterpartyType: String,
     val counterpartyLabel: String?,
-    val principalAmountCents: Long,
-    val remainingAmountCents: Long,
+    val principalAmountCents: Long?,
+    val remainingAmountCents: Long?,
     val homeCurrencyCode: String,
+    val sourceType: String = "manual",
+    val sourceId: String? = null,
+    val completionNote: String? = null,
 ) {
     val isVoided: Boolean get() = status == DebtLinkStatuses.VOIDED
     val isCleared: Boolean get() = status == DebtLinkStatuses.CLEARED
@@ -81,7 +84,7 @@ data class DebtGoalLink(
     val clearedFraction: Float
         get() = when {
             isCleared -> 1f
-            principalAmountCents <= 0L -> 0f
+            principalAmountCents == null || remainingAmountCents == null || principalAmountCents <= 0L -> 0f
             else -> ((principalAmountCents - remainingAmountCents).toFloat() / principalAmountCents.toFloat())
                 .coerceIn(0f, 1f)
         }
@@ -118,6 +121,7 @@ data class DebtRepaymentEvaluation(
     val isAchieved: Boolean get() = evaluationState == DebtGoalEvaluationStates.ACHIEVED
     val isInProgress: Boolean get() = evaluationState == DebtGoalEvaluationStates.IN_PROGRESS
     val isNotEvaluable: Boolean get() = evaluationState == DebtGoalEvaluationStates.NOT_EVALUABLE
+    val hasUnavailableLinks: Boolean get() = linkedDebts.any { it.status == "unavailable" }
 
     /** Linked Debts whose fold is still open (not yet cleared, not voided). */
     val openDebts: List<DebtGoalLink> get() = linkedDebts.filter { it.isOpen }
@@ -178,8 +182,10 @@ data class DebtRepaymentEvaluation(
         get() = countedLinks.map { it.homeCurrencyCode }.distinct().singleOrNull()
 
     /** 未作废关联欠款的本金合计（仅 [sharedHomeCurrencyCode] 非空时有意义）。 */
-    val principalSumCents: Long get() = countedLinks.sumOf { it.principalAmountCents }
+    val principalSumCents: Long? get() = countedLinks.takeIf { rows -> rows.all { it.principalAmountCents != null } }
+        ?.sumOf { requireNotNull(it.principalAmountCents) }
 
     /** 未作废关联欠款的剩余合计（仅 [sharedHomeCurrencyCode] 非空时有意义；**永不带「欠」字**呈现，§6.2）。 */
-    val remainingSumCents: Long get() = countedLinks.sumOf { it.remainingAmountCents }
+    val remainingSumCents: Long? get() = countedLinks.takeIf { rows -> rows.all { it.remainingAmountCents != null } }
+        ?.sumOf { requireNotNull(it.remainingAmountCents) }
 }

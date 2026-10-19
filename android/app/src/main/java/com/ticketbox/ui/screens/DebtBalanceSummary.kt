@@ -82,7 +82,7 @@ internal fun DebtSummaryCard(debt: Debt) {
 }
 
 @Composable
-private fun DebtRemainingCard(debt: Debt) {
+internal fun DebtRemainingCard(debt: Debt) {
     AppPaperCard {
         Column(Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
@@ -92,7 +92,7 @@ private fun DebtRemainingCard(debt: Debt) {
                 modifier = Modifier.fillMaxWidth(), role = AppAmountRole.Hero)
             DebtStatusBadge(
                 text = stringResource(if (debt.isMember) memberDebtStatusLabelRes(debt.status)
-                    else debtLinkStatusLabelRes(debt.status)),
+                    else debtLinkStatusLabelRes(debt.status, debt.sourceType)),
                 tone = if (debt.isMember) memberDebtStatusTone(debt.status) else debtLinkStatusTone(debt.status),
             )
             if (debt.isMember) Text(

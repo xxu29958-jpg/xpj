@@ -63,6 +63,8 @@ private const val DebtDetailFlashDismissMillis = 4000L
  * 成员/拆账欠款显示走对方确认流程的提示而非按钮。统一动作面板（[DebtActionSheet]）按 [DebtAction] 渲染
  * 相应字段；还款与调整先保留原提交，确认同步后再读取服务端欠款。
  */
+data class DebtDetailNavigation(val onBack: () -> Unit, val onOpenCredit: (String) -> Unit = {})
+
 // ADR-0049 §3.2 (slice 8d): the detail screen's side-effects, extracted so the screen composable
 // loads the participant task, adopts acknowledged folds, and dismisses temporary feedback.
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,7 +73,7 @@ fun DebtDetailScreen(
     viewModel: DebtDetailViewModel,
     proposalViewModel: MemberRepaymentProposalViewModel,
     historyViewModel: DebtActivityViewModel,
-    onBack: () -> Unit,
+    navigation: DebtDetailNavigation,
     splitAgreement: SplitAgreementPanel? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -92,7 +94,7 @@ fun DebtDetailScreen(
     )
 
     val callbacks = DebtDetailScreenCallbacks(
-        onBack = onBack,
+        onBack = navigation.onBack,
         onRefresh = {
             viewModel.refresh()
             if (debt?.isMember == true) proposalViewModel.refresh()
@@ -102,6 +104,7 @@ fun DebtDetailScreen(
         onSelectKind = viewModel::selectKind,
         onOpenAction = viewModel::openAction,
         onRecoverDebtWrite = viewModel::recoverDebtWrite,
+        onOpenCredit = navigation.onOpenCredit,
     )
     DebtDetailContent(
         state = state,

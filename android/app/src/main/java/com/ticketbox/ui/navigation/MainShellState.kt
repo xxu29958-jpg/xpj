@@ -73,6 +73,7 @@ internal enum class ProductSecondaryPage(val route: String) {
     DebtGoals("product/obligations/repayment-plans"),
     // 往来域：全账本往来（个人透镜之上的账本完整视图，W2-C）。
     AllDebts("product/obligations/debts"),
+    Funds("product/obligations/funds"),
     ObligationSync("product/obligations/sync-status"),
     // 往来域：还款复核。
     RepaymentDrafts(REPAYMENT_DRAFT_BASE_ROUTE),
@@ -173,6 +174,9 @@ internal class MainShellState(val launchAction: LaunchActionState = LaunchAction
     fun openSecondaryPage(page: ProductSecondaryPage, route: String = page.route, singleTop: Boolean = true) {
         navigationRequest = MainNavigationRequest.OpenSecondary(page, route, singleTop)
     }
+
+    fun openCreditAccount(publicId: String) = openSecondaryPage(ProductSecondaryPage.Funds,
+        "${ProductSecondaryPage.Funds.route}?account=${android.net.Uri.encode(publicId)}")
 
     fun openBudget(month: String) {
         navigationRequest = MainNavigationRequest.OpenSecondary(
@@ -276,6 +280,7 @@ internal val ProductSecondaryPage.surfaceRole: SurfaceRole
         ProductSecondaryPage.TransactionsLibrary,
         ProductSecondaryPage.DebtGoals,
         ProductSecondaryPage.AllDebts,
+        ProductSecondaryPage.Funds,
         ProductSecondaryPage.RepaymentDrafts,
         -> SurfaceRole.Ledger
 

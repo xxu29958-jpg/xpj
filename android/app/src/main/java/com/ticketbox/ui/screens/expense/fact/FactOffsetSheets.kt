@@ -164,6 +164,12 @@ private fun OffsetFormContent(
                 onSelect = viewModel::updateOffsetKind,
             )
             OffsetAmountField(state = state, viewModel = viewModel)
+            form.sourceExpense?.let { expense ->
+                com.ticketbox.ui.screens.ExpenseFundingFields(form.destinationsJson, expense.originalCurrencyCode,
+                    viewModel.canEditFactInput(form.inputKey()), refund = true) {
+                    viewModel.updateOffsetFormField(OffsetFormField.Destinations, it)
+                }
+            }
         }
         OffsetTextFields(form = form, viewModel = viewModel)
         if (reversal) {

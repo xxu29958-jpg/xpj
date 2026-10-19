@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import Account, Device, Expense, ExpenseItem, ExpenseRevision, ExpenseSplit
+from app.models import Account, Device, Expense, ExpenseFunding, ExpenseItem, ExpenseRevision, ExpenseSplit
 from app.schemas import ExpenseRevisionListResponse, ExpenseRevisionResponse
 from app.services.accounting_time_service import accounting_time_snapshot
 from app.services.time_service import to_iso
@@ -37,7 +37,7 @@ _SCALAR_FIELDS = (
     "confirmed_at",
     "items_sum_status",
 )
-_SNAPSHOT_FIELDS = (*_SCALAR_FIELDS, "accounting_time", "items", "splits")
+_SNAPSHOT_FIELDS = (*_SCALAR_FIELDS, "accounting_time", "items", "splits", "funding")
 
 
 @dataclass(frozen=True)
@@ -60,6 +60,12 @@ def expense_fact_snapshot(db: Session, expense: Expense) -> dict[str, object]:
     """Return the rebuildable v1 snapshot of user-visible financial fields."""
 
     snapshot: dict[str, object] = {field: _json_value(getattr(expense, field)) for field in _SCALAR_FIELDS}
+    # Shared expense history exposes its own portions, never another member's private account or balance.
+    funding = list(db.scalars(select(ExpenseFunding).where(ExpenseFunding.expense_id == expense.id,
+        ExpenseFunding.voided_at.is_(None)).order_by(ExpenseFunding.id)))
+    if funding:
+        snapshot["funding"] = [{"part_id": row.id, "expense_amount_minor": row.expense_amount_minor,
+            "included_in_opening": row.included_in_opening} for row in funding]
     time_value = accounting_time_snapshot(expense)
     if time_value is not None:
         snapshot["accounting_time"] = time_value.model_dump(mode="json")

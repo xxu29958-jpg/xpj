@@ -92,7 +92,7 @@ interface PendingMutationDao {
     /** An uncertain local acceptance must resolve to one immutable original, including retained DONE rows. */
     @Transaction
     suspend fun insertOriginalCreation(row: PendingMutationEntity): Long {
-        require(row.type in setOf(PendingMutationType.CreateIncomePlan.wireValue, PendingMutationType.CreateGoal.wireValue,
+        require(row.type in setOf(PendingMutationType.FinancialAccountCommand.wireValue, PendingMutationType.CreateIncomePlan.wireValue, PendingMutationType.CreateGoal.wireValue,
             PendingMutationType.CapturePaymentNotification.wireValue, PendingMutationType.CreateDebt.wireValue,
             PendingMutationType.AcceptBillSplitInvitation.wireValue) &&
             !row.idempotencyKey.isNullOrBlank())
@@ -444,7 +444,7 @@ interface PendingMutationDao {
         UPDATE pending_mutations SET status = 'abandoned', completedAt = :stoppedAt
         WHERE id = :id AND ownerKey = :ownerKey AND ledgerId = :ledgerId
           AND type IN ('record_debt_adjustment', 'record_debt_repayment', 'void_debt', 'void_debt_repayment',
-                       'set_debt_kind', 'create_goal', 'confirm_repayment_draft', 'dismiss_repayment_draft')
+                       'set_debt_kind', 'create_goal', 'confirm_repayment_draft', 'dismiss_repayment_draft', 'financial_account_command', 'confirm_expense')
           AND status = :expectedStatus
           AND status IN ('failed', 'conflict', 'pending')
         """,

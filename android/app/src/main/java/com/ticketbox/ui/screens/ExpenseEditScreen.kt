@@ -36,6 +36,7 @@ import com.ticketbox.ui.components.AppSecondaryScrollableColumn
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.asString
+import androidx.compose.material3.Text
 import com.ticketbox.ui.components.formatExpenseExchangeMeta
 import com.ticketbox.ui.components.parseMinorAmount
 import com.ticketbox.ui.components.sanitizeMinorAmountInput
@@ -123,6 +124,8 @@ data class ExpenseEditMediaActions(
 
 data class ExpenseEditRelatedActions(
     val onKeepDuplicate: () -> Unit = {},
+    val onFundingChange: (String) -> Unit = {},
+    val onFundingReview: () -> Unit = {},
 )
 
 data class ExpenseEditItemizationActions(
@@ -352,7 +355,7 @@ fun ExpenseEditScreen(
         return score
     }
 
-    fun draftOrMessage(): ExpenseDraft? {
+    fun draftOrMessage(confirming: Boolean = false): ExpenseDraft? {
         // R13-4：original 原码未知且金额被改动过（未改=元数据/原值回写，放行）→ 禁写+明示。
         if (originalUnsupported && currency == currentExpense.originalCurrencyCode && amountText != initialAmountText) {
             message = currencyUnsupportedMessage
@@ -374,6 +377,8 @@ fun ExpenseEditScreen(
         val valueScore = if (valueScoreText.isBlank()) null else (parseScore(valueScoreText, valueScoreLabel) ?: return null)
         val regretScore = if (regretScoreText.isBlank()) null else (parseScore(regretScoreText, regretScoreLabel) ?: return null)
         if (timeErrorMessage != null) { message = timeErrorMessage; return null }
+        val funding = if (confirming) runCatching { com.ticketbox.data.repository.readExpenseFunding(state.fundingJson, currency) }
+            .getOrElse { message = it.message; return null } else emptyList()
         return ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = currency,
@@ -396,6 +401,7 @@ fun ExpenseEditScreen(
             tags = tags,
             valueScore = valueScore,
             regretScore = regretScore,
+            funding = funding,
         )
     }
 
@@ -408,7 +414,7 @@ fun ExpenseEditScreen(
     }
 
     fun submitConfirm() {
-        val draft = draftOrMessage() ?: return
+        val draft = draftOrMessage(confirming = true) ?: return
         if (draft.originalAmountMinor == null) {
             message = amountRequiredMessage
             return
@@ -544,6 +550,7 @@ fun ExpenseEditScreen(
                 onEditSplits = if (allowsFactMutation(state.readOnly, commandOpen)) splitEditingActions.onEditSplits else null,
             ),
         )
+        if (isPendingExpense) ExpenseFundingReview(state, currency, canMutateFact, commandOpen, relatedActions)
         ExpenseEditMoreSection(
             state = ExpenseEditMoreSectionState(
                 tags = tags,

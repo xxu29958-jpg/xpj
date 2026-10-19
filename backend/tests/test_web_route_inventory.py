@@ -82,6 +82,12 @@ Classification = Literal[
 
 # (method, path) -> classification. Keep sorted by path for diff readability.
 _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
+    ("GET", "/web/envelopes"): "principal-read",
+    ("POST", "/web/envelopes/save"): "writer-only",
+    ("GET", "/web/funds"): "principal-read",
+    ("POST", "/web/funds/save"): "writer-only",
+    ("GET", "/web/expenses/{expense_id}/funding"): "principal-read",
+    ("POST", "/web/expenses/{expense_id}/funding"): "writer-only",
     # Cookie session flow — public-host safe by design (login runs before
     # any session exists; logout / whoami carry the cookie themselves).
     ("GET", "/web/auth/join"): "auth",

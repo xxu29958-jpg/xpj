@@ -113,6 +113,7 @@ def test_post_error_fact_projection_keeps_form_origin_on_both_timeline_links(mon
     monkeypatch.setattr(route, "get_expense", lambda *_a: SimpleNamespace(fact_revision=120, confirmed_at=None))
     monkeypatch.setattr(route, "build_split_invite_context", lambda *_a, **_k: {})
     monkeypatch.setattr(route, "expense_offset_fact_view", lambda *_a: {})
+    monkeypatch.setattr(route, "expense_funding_view", lambda *_a, **_k: None)
     monkeypatch.setattr(route.invitation_members, "list_members", lambda *_a, **_k: [])
     monkeypatch.setattr(route, "build_fact_timeline", lambda *_a, **_k: {
         "entries": [], "page": 2, "page_size": 50, "total": 120, "snapshot_revision": 120,

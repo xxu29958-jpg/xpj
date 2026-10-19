@@ -269,7 +269,12 @@ def test_offset_correction_freezes_changed_date_before_money_but_preserves_uncha
         return offset
     monkeypatch.setattr(offset_lifecycle, "_persist_offset_update", persist)
     monkeypatch.setattr(offset_lifecycle, "_complete_lifecycle_command", lambda *_a, **kw: kw["before"])
-    assert offset_lifecycle.correct_expense_offset(Mock(), tenant_id="target", expense_id=1,
+    monkeypatch.setattr("app.services.funds_refund_service.reverse_offset_funds", lambda *_a, **_k: None)
+    monkeypatch.setattr("app.services.funds_refund_service.apply_offset_funds", lambda *_a, **_k: None)
+    monkeypatch.setattr("app.services.funds_fact_service.lock_reviewed_accounts", lambda *_a, **_k: {})
+    db = Mock(spec=Session)
+    db.scalars.return_value = []
+    assert offset_lifecycle.correct_expense_offset(db, tenant_id="target", expense_id=1,
         offset_public_id="offset", payload=payload, actor_account_id=1, actor_device_public_id=None,
         actor_device_name=None, idempotency_key="correction") == {"old": "evidence"}
 

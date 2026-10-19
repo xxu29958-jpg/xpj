@@ -64,6 +64,7 @@ OWNERS: frozenset[str] = frozenset(
         "recurring",
         "goals",
         "debts",
+        "funds",
         "budget",
         "bill_split",
         "learning",
@@ -177,6 +178,10 @@ ALLOWLIST: dict[str, Exempt] = {
     # safe replay rests on the [[0042]] Idempotency-Key the route requires, not
     # an expected_row_version token.
     "POST /api/debts": Exempt("create_row", "debts", _DEBTS),
+    # New account identity has no predecessor token. Existing Debt adoption
+    # additionally carries and locks its reviewed Debt version in AccountCreate.
+    "POST /api/funds/accounts": Exempt("create_row", "funds",
+        ("financial_accounts", "account_movements", "credit_facilities", "debts", "api_idempotency_keys"), "high"),
     # ADR-0049 §D: debt-bill OCR transient parse — reads the uploaded screenshot,
     # runs the vision provider, returns suggested repayment terms to prefill the
     # create-debt form. Pure read-modify-emit: writes NO db row (the image is not

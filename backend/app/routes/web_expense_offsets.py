@@ -19,6 +19,7 @@ from app.routes._web_expense_return_context import (
     edit_context_params,
     expense_return_form_context,
 )
+from app.routes._web_funding import parse_refund_destinations, review_funding_values
 from app.routes._web_offset_draft import OffsetDraft, bind_offset_draft, offset_draft_form, prepare_offset_draft
 from app.routes._web_rate_recovery import _RATE_FIELDS, rate_recovery_context, rate_recovery_form, submit_recovery_rate
 from app.routes._web_session_common import resolve_web_actor
@@ -207,6 +208,7 @@ def web_create_expense_offset(
     original_amount: str = Form(default=""),
     accounting_date: str = Form(default=""),
     reason: str = Form(default=""),
+    funding_json: str = Form(default="[]"),
     expected_row_version: str = Form(default=""),
     idempotency_key: str = Form(default=""),
     metadata: OffsetDraft = Depends(offset_draft_form),
@@ -217,6 +219,7 @@ def web_create_expense_offset(
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     draft = {
+        "funding_json": funding_json,
         "kind": kind,
         "original_amount": original_amount,
         "accounting_date": accounting_date,
@@ -236,13 +239,7 @@ def web_create_expense_offset(
         draft["draft_scope"] = bind_offset_draft(db, request, selected_id, metadata)
         root = get_expense(db, expense_id, selected_id)
         currency = metadata.original_currency_code or root.original_currency_code
-        try:
-            payload = _create_payload(kind=kind, original_amount=original_amount, accounting_date=accounting_date,
-                reason=reason, expected_row_version=expected_row_version, original_currency_code=currency)
-        except AppError:
-            if not metadata.review_latest:
-                raise
-            payload = None
+        payload = _retained_offset_payload(db, request, draft, currency, metadata.review_latest)
         account_id, device_public_id, device_name = _actor_snapshot(
             db,
             request,
@@ -252,6 +249,8 @@ def web_create_expense_offset(
             prepared = prepare_offset_draft(db, selected_id=selected_id, expense_id=expense_id, draft=draft,
                 metadata=metadata, payload=payload, actor_account_id=account_id)
             if not isinstance(prepared, ExpenseFactBundleResponse):
+                if funding_json not in {"", "[]"}:
+                    prepared["funding_json"] = review_funding_values(db, request.state.web_session_auth, funding_json, currency)
                 return _render_error(db, request, options, selected_id, expense_id, return_context, None, create_draft=prepared)
             return _fact_redirect(expense_id, selected_id, return_context, message="原提交已保存。", request=request, draft=draft)
         if payload.expected_row_version == root.row_version and currency != root.original_currency_code:
@@ -312,7 +311,7 @@ def web_offset_rate(
     result = submit_recovery_rate(db, request, selected, values,
         review_latest=original.get("fx_review_latest") == "true", fetch_reference=original.get("fx_fetch_reference") == "true")
     draft = {key: original.get(key, "") for key in ("kind", "original_amount", "accounting_date", "reason",
-        "expected_row_version", "idempotency_key", "draft_client_ref", "draft_scope", "original_currency_code")}
+        "expected_row_version", "idempotency_key", "draft_client_ref", "draft_scope", "original_currency_code", "funding_json")}
     return _render_error(db, request, options, selected, expense_id, return_context, None,
         create_draft=draft, rate_recovery={**values, **result})
 
@@ -410,3 +409,18 @@ def web_void_expense_offset(
         draft=draft,
         target_public_id=offset_public_id,
     )
+
+
+def _retained_offset_payload(db: Session, request: Request, draft: dict[str, str], currency: str,
+        review_latest: bool) -> ExpenseOffsetCreateRequest | None:
+    try:
+        payload = _create_payload(kind=draft["kind"], original_amount=draft["original_amount"],
+            accounting_date=draft["accounting_date"], reason=draft["reason"],
+            expected_row_version=draft["expected_row_version"], original_currency_code=currency)
+        if draft["kind"] != "reversal" and draft["funding_json"] not in {"", "[]"}:
+            payload.destinations = parse_refund_destinations(db, request.state.web_session_auth, draft["funding_json"], currency)
+        return payload
+    except AppError:
+        if not review_latest:
+            raise
+        return None

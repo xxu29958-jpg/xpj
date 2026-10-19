@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.material3.Text
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListScope
@@ -44,6 +46,7 @@ internal data class DebtDetailScreenCallbacks(
     val onSelectKind: (String) -> Unit,
     val onOpenAction: (DebtAction) -> Unit,
     val onRecoverDebtWrite: (com.ticketbox.data.repository.PendingDebtWrite, Boolean) -> Unit,
+    val onOpenCredit: (String) -> Unit = {},
 )
 
 /** 历史中的还款作废仍走详情命令；翻页、定位关联还款、重试由只读 activity VM 承接。 */
@@ -134,6 +137,7 @@ private fun debtDetailPrimaryAction(state: DebtDetailUiState, panels: DebtDetail
         }
     }
     val debt = state.debt ?: return null
+    if (debt.sourceType == "credit_facility") return null
     val action: (@Composable () -> Unit)? = if (debt.isMember) {
         memberProposalPrimaryAction(debt, panels.proposalState, panels.proposalViewModel)
     } else if (debt.isOpen && state.canWriteActions && CurrencyCode.fromStorageKeyOrNull(debt.homeCurrencyCode) != null) {
@@ -161,7 +165,13 @@ private fun LazyListScope.debtDetailBodyItems(
         DebtDetailBodyState.Content -> state.debt?.let { loaded ->
             panels.splitAgreement?.let { section -> item { section() } }
             item { DebtReadSource(state.fetchedAt, state.fromCache, state.isLoading) }
-            if (loaded.isMember) {
+            if (loaded.sourceType == "credit_facility") {
+                item { DebtRemainingCard(loaded) }
+                item {
+                    Text(stringResource(R.string.funds_credit_history_note))
+                    loaded.sourceId?.let { accountId -> AppPrimaryButton(text = stringResource(R.string.funds_open_credit_account)) { callbacks.onOpenCredit(accountId) } }
+                }
+            } else if (loaded.isMember) {
                 debtDetailMemberItems(
                     debt = loaded,
                     proposalState = panels.proposalState,

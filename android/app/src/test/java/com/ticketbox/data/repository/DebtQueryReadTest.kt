@@ -28,6 +28,87 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DebtQueryReadTest {
+    @Test fun oldDebtReviewUsesFreshAuthorizedVersionAndKeepsOriginalMoney() = runTest {
+        var offline = false
+        var choices = listOf(com.ticketbox.data.remote.dto.ExistingDebtChoiceDto("old-debt", 5, "旧花呗", 9000, "CNY", "2026-09-01"))
+        val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun existingFundDebts(): List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto> {
+                if (offline) throw ConnectException("offline")
+                return choices
+            }
+        }
+        val fixture = GoalReadFixture { api }
+        val reads = FundsQueries(DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator))
+        val original = FundsInput(fixture.binding, "create", "original-key", name = "花呗", kind = "credit",
+            currency = "CNY", opening = "68.00", date = "2026-09-01", existingDebtId = "old-debt",
+            existingDebtVersion = 4, existingDebtLabel = "旧花呗")
+        val reviewed = reads.reviewFundsInput(original, emptyList())
+        assertEquals(original.copy(existingDebtVersion = 5), reviewed)
+        assertEquals(5L, reviewed.command().create?.existingDebt?.expectedRowVersion)
+        assertEquals(6800L, reviewed.command().create?.openingAmountMinor)
+        offline = true
+        kotlin.test.assertFailsWith<IllegalArgumentException> { reads.reviewFundsInput(original, emptyList()) }
+        offline = false
+        choices = emptyList()
+        kotlin.test.assertFailsWith<IllegalArgumentException> { reads.reviewFundsInput(original, emptyList()) }
+        assertEquals(4L, original.existingDebtVersion)
+    }
+
+    @Test fun hiddenFundsAccountRetiresDetailAndAggregateCachesUntilAnAuthorizedRead() = runTest {
+        var offline = false
+        var hidden = false
+        var foreignLedger = false
+        val account = com.ticketbox.data.remote.dto.FinancialAccountDto(
+            "funds-one", "共享银行卡", "owner", 1, "bank", "JPY", "ledger", null, null,
+            1, false, 1200, 1200, "2026-09-01", "已核对", null, false)
+        val summary = com.ticketbox.data.remote.dto.FundsOverviewDto("JPY", "2026-09-01", 1200, 0, 1200, 1, 0, 0)
+        fun online() { if (offline) throw ConnectException("offline") }
+        val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
+            override suspend fun fundsAccounts(): List<com.ticketbox.data.remote.dto.FinancialAccountDto> {
+                online(); return if (hidden) emptyList() else listOf(if (foreignLedger) account.copy(ledgerId = "family") else account)
+            }
+            override suspend fun fundsAccount(id: String): com.ticketbox.data.remote.dto.FinancialAccountDto {
+                online()
+                if (hidden) throw HttpException(Response.error<Any>(404, """{"error":"fund_account_not_found"}""".toResponseBody()))
+                return if (foreignLedger) account.copy(ledgerId = "family") else account
+            }
+            override suspend fun fundsOverview(): com.ticketbox.data.remote.dto.FundsOverviewDto {
+                online(); return if (hidden) summary.copy(assetsMinor = 0, netWorthMinor = 0, includedAccounts = 0) else summary
+            }
+        }
+        val fixture = GoalReadFixture { api }
+        fun reader(coordinator: LocalLedgerSessionCoordinator = fixture.coordinator) = FundsQueries(DebtQueryReader(fixture.provider, fixture.dao, coordinator))
+        // A pre-isolation aggregate is not safe to revive offline after upgrading.
+        DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator).read(fixture.binding,
+            DebtQueryScope(debtScope(fixture.binding, "funds_overview", "all")),
+            DebtReadSpec(FundsWire.overview, { fundsOverview() }, validate = {},
+                isNewer = { _, _ -> false }, project = { value, _ -> value })).getOrThrow()
+        offline = true
+        assertTrue(reader().overview(fixture.binding).isFailure)
+        offline = false
+        foreignLedger = true
+        assertTrue(reader().accounts(fixture.binding).isFailure)
+        assertTrue(reader().detail(fixture.binding, account.publicId).isFailure)
+        foreignLedger = false
+        reader().accounts(fixture.binding).getOrThrow()
+        reader().detail(fixture.binding, account.publicId).getOrThrow()
+        reader().overview(fixture.binding).getOrThrow()
+        hidden = true
+        assertEquals(404, (reader().detail(fixture.binding, account.publicId).exceptionOrNull() as RepositoryException).httpStatusCode)
+        offline = true
+        val restarted = LocalLedgerSessionCoordinator(fixture.coordinator.settingsStore, fixture.session.sessionStore, fixture.dao)
+        val reopened = reader(restarted)
+        assertTrue(reopened.detail(fixture.binding, account.publicId).isFailure)
+        assertTrue(reopened.accounts(fixture.binding).isFailure)
+        assertTrue(reopened.overview(fixture.binding).isFailure)
+        offline = false
+        assertEquals(emptyList(), reopened.accounts(fixture.binding).getOrThrow().value)
+        assertEquals(0, reopened.overview(fixture.binding).getOrThrow().value.includedAccounts)
+        offline = true
+        assertTrue(reopened.detail(fixture.binding, account.publicId).isFailure)
+        assertEquals(0L, reopened.overview(fixture.binding).getOrThrow().value.netWorthMinor)
+    }
+
     @Test fun onlyCanonicalListsCapturedAfterTheLastMissingResourceCanRestoreItWithoutRevivingOldDetail() = runTest {
         val api = DebtReadApi()
         val fixture = GoalReadFixture { api }
@@ -419,8 +500,14 @@ class DebtQueryReadTest {
         val reader = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
         val first = reader.detail(fixture.binding, "jpy-debt").getOrThrow()
         assertFalse(first.fromCache)
+        val ledger = reader.list(fixture.binding, com.ticketbox.domain.model.DebtListLens.Ledger).getOrThrow()
+        api.list = { DebtListResponseDto(emptyList(), "JPY") }
+        reader.list(fixture.binding, com.ticketbox.domain.model.DebtListLens.GoalCandidates).getOrThrow()
+        assertEquals("goal_candidates", api.requestedLens)
         api.offline = true
         val reopened = DebtQueryReader(fixture.provider, fixture.dao, fixture.coordinator)
+        assertEquals(ledger.value, reopened.list(fixture.binding, com.ticketbox.domain.model.DebtListLens.Ledger).getOrThrow().value)
+        assertTrue(reopened.list(fixture.binding, com.ticketbox.domain.model.DebtListLens.GoalCandidates).getOrThrow().value.debts.isEmpty())
         val saved = reopened.detail(fixture.binding, "jpy-debt").getOrThrow()
         assertTrue(saved.fromCache)
         assertEquals(first.value, saved.value)
@@ -624,6 +711,7 @@ private class DebtReadApi(memberDebt: Boolean = false) : ApiService by FakeApiSe
         DebtListResponseDto(listOf(originalDebt, originalDebt.copy(publicId = "other-debt")), "JPY")
     }
     var commands = 0
+    var requestedLens: String? = null
     var commandFailure: Throwable? = null
     var acceptBeforeFailure = false
     var commandReplyGate: (suspend () -> Unit)? = null
@@ -660,6 +748,7 @@ private class DebtReadApi(memberDebt: Boolean = false) : ApiService by FakeApiSe
     override suspend fun debt(publicId: String): DebtDto { checkTransport(); return detail().copy(publicId = publicId) }
     override suspend fun debts(lens: String?): DebtListResponseDto {
         checkTransport()
+        requestedLens = lens
         return list()
     }
     override suspend fun repaymentProposals(publicId: String): MemberRepaymentProposalListResponseDto {

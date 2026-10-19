@@ -7,6 +7,7 @@
 <script src="/static/web/expense-subtask-entry.js?v={{ asset_version }}" defer></script>
 <script src="/static/web/expense-recognition-entry.js?v={{ asset_version }}" defer></script>
 <script src="/static/web/financial-entry.js?v={{ asset_version }}" defer></script>
+<script src="/static/web/expense-funding.js?v={{ asset_version }}" defer></script>
 {% endblock %}
 {% block content %}
 {% if error %}
@@ -35,6 +36,7 @@
       <div><dt>当前净额</dt><dd>{{ offset_summary.lineage_net_label }}</dd></div>
     </dl>
     <div class="fact-entries">
+    <a class="product-entry" href="/web/expenses/{{ expense.id }}/funding{{ q }}"><span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#wallet"/></svg></span><span class="product-entry-copy"><strong>付款来源</strong><span>{% if expense_funding and expense_funding.parts %}查看资金组成与来源记录{% else %}付款方式未记录，可补充实际来源{% endif %}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
     <a class="product-entry" href="/web/expenses/{{ expense.id }}/original{{ q }}">
       <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
       <span class="product-entry-copy"><strong>原件</strong><span>{% if expense.has_image %}查看图片与文件状态{% elif not can_write %}查看原件与文件状态{% elif expense.image_state == 'cleaned' %}图片已清理，查看或继续补回{% elif expense.image_state == 'none' %}可添加小票或截图，也可以不添加{% else %}检查原件或继续补回任务{% endif %}</span></span>

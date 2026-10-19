@@ -54,6 +54,10 @@ class _DevToolsTransportError(RuntimeError):
     """Raised when a bounded Edge DevTools session cannot carry commands."""
 
 
+class _DocumentChangedError(AssertionError):
+    """The renderer left the document while a read-only probe was being polled."""
+
+
 class _WebSocket:
     def __init__(self, url: str, *, timeout: float = 10.0) -> None:
         parsed = urlsplit(url)
@@ -174,6 +178,10 @@ class _WebSocket:
                     self._events.append(response)
                 continue
             if "error" in response:
+                if method == "Runtime.evaluate" and response["error"] == {
+                    "code": -32000, "message": "Inspected target navigated or closed",
+                }:
+                    raise _DocumentChangedError("Inspected target navigated or closed")
                 raise AssertionError(f"DevTools {method} failed: {response['error']}")
             result = response.get("result", {})
             assert isinstance(result, dict)
@@ -390,7 +398,15 @@ def _evaluate_page_once(
         deadline = time.monotonic() + 10.0
         remote: object = None
         while time.monotonic() < deadline:
-            remote = _evaluate_script(page, expression)
+            try:
+                remote = _evaluate_script(page, expression)
+            except _DocumentChangedError:
+                # Recovery journeys deliberately navigate. Wait for that same
+                # frame within the existing budget; never restart the journey.
+                if not page.wait_for_document(str(navigation["frameId"]), document_url_prefix or url,
+                    timeout=max(0.0, deadline - time.monotonic())):
+                    raise
+                continue
             if isinstance(remote, dict) and remote.get("type") != "undefined":
                 return remote.get("value")
             time.sleep(0.05)

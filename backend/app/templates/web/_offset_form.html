@@ -30,6 +30,11 @@
       <input id="offset-amount" class="product-input" type="text" name="original_amount" value="{{ draft.original_amount }}" inputmode="{{ offset_currency_input.inputmode }}" placeholder="{{ offset_currency_input.amount_placeholder }}" required{% if not offset_can_write %} readonly{% endif %}>
       <p class="hint">{{ offset_currency_input.amount_input_hint }}；当前可退 {{ offset_summary.remaining_original_label }}。</p>
     </div>
+    <div data-funding-editor data-refund="true" data-accounts="{{ funding_accounts|tojson|forceescape }}">
+      <h3 class="product-panel-title">实际退款去向</h3><input type="hidden" name="funding_json" value="{{ draft.funding_json or '[]' }}">
+      <div data-funding-rows></div><button class="product-button product-button--quiet" type="button" data-funding-add>选择退入 / 抵扣账户</button>
+      <p class="hint">信用账户用于抵欠款或保留溢缴款；现金、银行卡、余额用于实际到账。尚未到账时保留原稿。</p>
+    </div>
     {% endif %}
     <div class="product-field"><label for="offset-date-{{ offset_task }}">生效日期</label>
       <input id="offset-date-{{ offset_task }}" class="product-input" type="{{ 'text' if draft.open else 'date' }}" name="accounting_date" value="{{ draft.accounting_date }}" placeholder="YYYY-MM-DD" required{% if not offset_can_write %} readonly{% endif %}>

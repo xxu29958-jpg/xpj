@@ -84,6 +84,12 @@ def _is_member_view(debt) -> bool:
     return debt.counterparty_type == "member" and not is_foreign
 
 
+def _external_status_label(debt) -> str:
+    if debt.source_type == "credit_facility" and debt.status == "cleared":
+        return "净欠款为零"
+    return _STATUS_LABELS.get(debt.status, "未结清")
+
+
 def _debt_name(debt) -> str:
     return (debt.counterparty_label or "").strip() or _COUNTERPARTY_FALLBACK.get(
         debt.counterparty_type, _COUNTERPARTY_FALLBACK["external"]
@@ -141,7 +147,7 @@ def _debt_view(debt) -> dict:
         view.update(
             {
                 "direction_label": _DIRECTION_LABELS.get(debt_view_direction(debt), "成员往来"),
-                "status_label": _STATUS_LABELS.get(debt.status, "未结清"),
+                "status_label": _external_status_label(debt),
                 "status_tone": _STATUS_TONE.get(debt.status, ""),
                 # remaining_label: full string for the row's aria-label (the visible hero is the
                 # editorial cur/int/dec split below). principal stays a plain muted footnote.
@@ -197,6 +203,7 @@ def _detail_view(debt) -> dict:
     forgiven = getattr(debt, "forgiven_amount_cents", None)
     view = {
         "public_id": debt.public_id,
+        "credit_account_id": debt.source_id if debt.source_type == "credit_facility" else None,
         "name": name,
         "is_member": use_member,
         "note": debt.note,
@@ -243,7 +250,7 @@ def _detail_view(debt) -> dict:
             {
                 "direction_subtitle": _DIRECTION_LABELS.get(debt_view_direction(debt), "成员往来"),
                 "kind_label": _DEBT_KIND_DETAIL_LABELS.get(debt.debt_kind, "暂不指定"),
-                "status_label": _STATUS_LABELS.get(status, "未结清"),
+                "status_label": _external_status_label(debt),
                 "status_tone": _STATUS_TONE.get(status, ""),
                 "remaining_segments": _amount_segments(debt.remaining_amount_cents, home),
                 "paid_ratio_percent": int(
@@ -352,7 +359,7 @@ def _load_debt_detail_state(
     )
     detail = _detail_view(debt)
     can_write = _debt_write_gate(options, selected_id)
-    action_keys = _debt_action_keys() if can_write and debt.status == "open" else {}
+    action_keys = _debt_action_keys() if can_write and debt.status == "open" and debt.source_type != "credit_facility" else {}
     proposals = None
     proposal_items = []
     if detail["is_member"] and account_id is not None:
@@ -458,7 +465,7 @@ def _render_debt_detail(
     from app.routes._web_debt_repayment import repayment_context
 
     repayment_outcome = {"values": action_draft, "error": action_error, "result": repayment_result, "ack": repayment_ack}
-    external_write = ctx["can_write"] and not ctx["debt"]["is_member"]
+    external_write = ctx["can_write"] and not ctx["debt"]["is_member"] and debt.source_type != "credit_facility"
     member_write = ctx["can_write"] and ctx["debt"]["is_member"] and ctx["viewer_is_debtor"] is True
     ctx["repayment_form"] = repayment_context(
         request, db, selected_id=selected_id, public_id=public_id,

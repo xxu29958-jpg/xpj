@@ -70,11 +70,14 @@ data class DebtGoalLinkViewDto(
     @param:Json(name = "counterparty_label")
     val counterpartyLabel: String? = null,
     @param:Json(name = "principal_amount_cents")
-    val principalAmountCents: Long,
+    val principalAmountCents: Long?,
     @param:Json(name = "remaining_amount_cents")
-    val remainingAmountCents: Long,
+    val remainingAmountCents: Long?,
     @param:Json(name = "home_currency_code")
     val homeCurrencyCode: String,
+    @param:Json(name = "source_type") val sourceType: String = "manual",
+    @param:Json(name = "source_id") val sourceId: String? = null,
+    @param:Json(name = "completion_note") val completionNote: String? = null,
 )
 
 /**

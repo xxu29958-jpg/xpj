@@ -37,6 +37,9 @@ internal suspend fun PendingMutationDao.refusesExpenseRecovery(
             PendingMutationType.ReplaceSplits.wireValue, PendingMutationType.AcknowledgeItemsMismatch.wireValue),
         listOf(status.wireValue),
     ).first().firstOrNull { it.id == id } ?: return false
+    // Funding has independent account versions and currency intent; a generic Expense token rebase loses that review.
+    if (freshToken != null && original.type == PendingMutationType.ConfirmExpense.wireValue &&
+        runCatching { original.toDomain().confirmationFunding().isNotEmpty() }.getOrDefault(true)) return true
     return (original.type == PendingMutationType.SplitAgreement.wireValue &&
         (freshToken != null || original.lastError in SPLIT_SHARE_REFUSALS)) ||
         original.lastError in EXPENSE_ORIGINAL_REVIEW_ERRORS ||

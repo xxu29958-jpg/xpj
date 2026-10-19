@@ -159,6 +159,7 @@ internal data class RecurringPaymentEntryContext(
             amountText = stored?.amountText,
             expenseTime = stored?.expenseTime?.takeIf { it.isNotBlank() },
             timeFormJson = stored?.timeFormJson,
+            fundingJson = stored?.fundingJson ?: "[]",
         ),
     )
 }
@@ -307,6 +308,7 @@ private fun RecurringPaymentEntry(ctx: RecurringPaymentEntryContext, draftState:
                             category = previous?.category ?: DEFAULT_EXPENSE_CATEGORIES.first(),
                             note = previous?.note.orEmpty(), expenseTime = previous?.expenseTime.orEmpty(),
                             timeFormJson = previous?.timeFormJson,
+                            fundingJson = previous?.fundingJson ?: "[]",
                         ),
                     )
                 },
@@ -362,7 +364,7 @@ private fun RecurringPaymentKnownCurrencySheet(
             ctx.drafts.write(
                 RecurringPaymentDraft(
                     ctx.task.clientRef, form.amountText, form.currency.storageKey,
-                    form.merchant, form.category, form.note, form.expenseTime, form.timeFormJson,
+                    form.merchant, form.category, form.note, form.expenseTime, form.timeFormJson, form.fundingJson,
                 ),
             )
         },

@@ -13,6 +13,7 @@ from app.errors import AppError
 from app.models import Debt
 from app.schemas import DebtKindSetRequest
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.debt_service._guards import guard_ordinary_debt
 from app.services.debt_service._query import get_debt
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
@@ -37,6 +38,7 @@ def set_debt_kind(
     """
     resolve_write_capability(db)
     debt = get_debt(db, tenant_id=tenant_id, public_id=public_id)
+    guard_ordinary_debt(debt)
     rowcount = claim_row_with_token(
         db,
         Debt,

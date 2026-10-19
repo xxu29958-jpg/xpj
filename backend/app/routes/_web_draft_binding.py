@@ -35,10 +35,16 @@ def draft_refusal_result(exc: AppError) -> str:
     # These command-owner failures precede a financial commit. Access refusal
     # or an unknown/in-progress key says nothing about an earlier request.
     return "rejected" if exc.error in {"state_conflict", "budget_currency_conflict", "invalid_request",
-        "amount_invalid", "recurring_merchant_required", "exchange_rate_pending",
+        "envelope_cash_unknown", "envelope_cash_insufficient",
+        "amount_invalid", "currency_not_supported", "recurring_merchant_required", "exchange_rate_pending",
         "expense_refund_exceeds_remaining", "expense_refund_exists", "expense_reversal_active",
         "expense_offset_not_active", "calendar_revision_conflict", "accounting_time_invalid",
-        "debt_amount_invalid", "debt_direction_invalid", "debt_counterparty_invalid", "debt_installment_invalid"} else "blocked"
+        "debt_amount_invalid", "debt_direction_invalid", "debt_counterparty_invalid", "debt_installment_invalid",
+        "funding_amount_mismatch", "fund_account_archived", "fund_account_in_envelopes", "credit_opening_unknown", "funding_review_required",
+        "refund_destination_required", "funds_date_outside_coverage", "funding_opening_mismatch",
+        "installment_source_in_use", "installment_amount_mismatch", "installment_allocation_required",
+        "installment_review_required", "funding_opening_review_required", "credit_adoption_unavailable",
+        "credit_adoption_date_conflict", "credit_account_required"} else "blocked"
 
 
 def draft_error_response(request: Request, exc: AppError, *, refusal_result: str | None = None) -> JSONResponse | None:

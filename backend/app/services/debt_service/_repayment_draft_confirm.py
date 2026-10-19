@@ -15,52 +15,22 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import Debt, Expense, RepaymentDraft
-from app.schemas import ExpenseOffsetCreateRequest, RepaymentCreateRequest
+from app.models import Debt, RepaymentDraft
+from app.schemas import RepaymentCreateRequest
 from app.schemas._accounting_time import AccountingTimeInput, AccountingTimeSnapshot
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import minor_amount_value
 from app.services.debt_service._repayment import record_repayment
+from app.services.repayment_draft_resolution import (
+    lock_repayment_draft as _lock_pending_draft,
+)
+from app.services.repayment_draft_resolution import (
+    resolve_repayment_draft,
+)
+from app.services.repayment_draft_resolution import (
+    reverse_source_expense as _reverse_source_expense,
+)
 from app.services.time_service import now_utc
-
-
-def _lock_pending_draft(db: Session, *, tenant_id: str, actor_account_id: int, public_id: str) -> RepaymentDraft:
-    """``SELECT ... FOR UPDATE`` an account-scoped draft (the serialization point so two
-    confirm/dismiss resolutions can't both fire). Account-scoped (§8 / privacy): only the
-    capturing member may resolve their own draft; another member gets an existence-hidden 404."""
-    draft = db.scalar(
-        ledger_scoped_select(RepaymentDraft, tenant_id)
-        .where(RepaymentDraft.created_by_account_id == actor_account_id)
-        .where(RepaymentDraft.public_id == public_id)
-        .with_for_update()
-        .limit(1)
-    )
-    if draft is None:
-        raise AppError("repayment_draft_not_found", status_code=404)
-    return draft
-
-
-def _reverse_source_expense(db: Session, draft: RepaymentDraft, actor_account_id: int) -> None:
-    """Keep the original fact and cancel its spending effect, atomically with repayment."""
-    if draft.source_expense_public_id is None:
-        return
-    # Expense offsets also project bill-split debt changes; import at command time
-    # rather than creating an eager package initialization cycle.
-    from app.services.expense_offset_service import create_expense_offset
-
-    source = db.scalar(ledger_scoped_select(Expense, draft.tenant_id)
-        .where(Expense.public_id == draft.source_expense_public_id).with_for_update())
-    if (source is None or draft.source_expense_row_version is None
-        or source.row_version != draft.source_expense_row_version):
-        raise AppError("state_conflict", "原流水已变化，请回到原流水重新核对后作为还款处理。", status_code=409)
-    if source.accounting_date is None:
-        raise AppError("accounting_time_invalid", "请先补齐原流水的账务日期，再作为还款处理。", status_code=409)
-    create_expense_offset(db, tenant_id=draft.tenant_id, expense_id=source.id,
-        payload=ExpenseOffsetCreateRequest(kind="reversal", accounting_date=source.accounting_date,
-            reason="误记为消费，已确认为还款", expected_row_version=draft.source_expense_row_version),
-        effective_expected_row_version=draft.source_expense_row_version, actor_account_id=actor_account_id,
-        actor_device_public_id=None, actor_device_name=None,
-        idempotency_key=f"repayment-source:{draft.public_id}", commit=False)
 
 
 def confirm_repayment_draft(
@@ -132,21 +102,8 @@ def confirm_repayment_draft(
             if time_input is None and draft.accounting_time_snapshot is not None else None),
     )
 
-    draft.status = "confirmed"
-    draft.committed_debt_public_id = target_debt_public_id
-    draft.committed_repayment_public_id = result.repayment_public_id
-    draft.resolved_at = now_utc()
-    draft.resolved_by_account_id = actor_account_id
-    if draft.source_expense_public_id:
-        from app.models import PaymentCapture
-        from app.services.payment_capture_identity import append_decision, capture_query
-
-        capture = db.scalar(capture_query(tenant_id, actor_account_id)
-            .where(PaymentCapture.expense_public_id == draft.source_expense_public_id).with_for_update())
-        if capture is not None:
-            capture.repayment_public_id = draft.public_id
-            append_decision(capture, kind="repayment", reason="误记为消费，人工确认还款并冲正原消费", actor_account_id=actor_account_id)
-    db.flush()
+    resolve_repayment_draft(db, draft, actor_account_id=actor_account_id,
+        debt_public_id=target_debt_public_id, repayment_public_id=result.repayment_public_id)
     if commit:
         db.commit()
         db.refresh(draft)

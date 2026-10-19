@@ -9,6 +9,7 @@
 {% include '_attachment_scripts.html' %}
 <script defer src="/static/web/manual-original.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/manual-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/expense-funding.js?v={{ asset_version }}"></script>
 {% endblock %}
 
 {% block content %}
@@ -84,6 +85,15 @@
         <label for="manual-expense-note">备注（可选）</label>
         <textarea id="manual-expense-note" class="product-input" name="note" rows="3" placeholder="补充这笔支出的用途">{{ values.note or '' }}</textarea>
       </div>
+      </details>
+      <details class="manual-expense-options product-field--wide" open>
+        <summary>付款来源 <span>可选，支持分开付款</span></summary>
+        <div data-funding-editor data-accounts="{{ funding_accounts|tojson|forceescape }}">
+          <input type="hidden" name="funding_json" value="{{ values.funding_json or '[]' }}">
+          <div data-funding-rows></div><button class="product-button product-button--quiet" type="button" data-funding-add>选择付款账户</button>
+          <p class="hint">现金、余额或银行卡会扣款；信用账户会增加欠款。未选择时只记消费，付款来源待补。</p>
+          <a href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&task=create" target="_blank" rel="noopener">添加资金账户</a>
+        </div>
       </details>
       <details class="manual-expense-options product-field--wide" data-manual-original hidden>
         <summary>添加原件 <span data-manual-original-label>没有小票也可以记账</span></summary>

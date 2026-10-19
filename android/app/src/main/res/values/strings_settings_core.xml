@@ -326,6 +326,7 @@
     <string name="sync_status_mutation_create_expense_offset">登记退回或冲销</string>
     <string name="sync_status_mutation_void_expense_offset">撤销退回或冲销</string>
     <string name="sync_status_mutation_unknown">改动</string>
+    <string name="sync_status_mutation_funds_command">资金账户与付款</string>
 
     <!-- 离线同步内部错误映射为用户文案。 -->
     <string name="sync_status_error_max_attempts">已连续多次同步失败,请检查网络或稍后再试。</string>

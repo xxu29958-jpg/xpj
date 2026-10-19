@@ -167,9 +167,12 @@ class DebtGoalLinkView(BaseModel):
     direction: str
     counterparty_type: str
     counterparty_label: str | None = None
-    principal_amount_cents: PositiveMoneyMinor
-    remaining_amount_cents: NonNegativeMoneyAggregate
+    principal_amount_cents: PositiveMoneyMinor | None
+    remaining_amount_cents: NonNegativeMoneyAggregate | None
     home_currency_code: str
+    source_type: str = "manual"
+    source_id: str | None = None
+    completion_note: str | None = None
 
 
 class DebtRepaymentEvaluation(BaseModel):

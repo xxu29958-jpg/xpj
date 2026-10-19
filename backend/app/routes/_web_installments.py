@@ -1,0 +1,61 @@
+"""Retained form values are parsed in the captured account currency."""
+import json
+
+from app.errors import AppError
+from app.schemas.credit_fee import CreditFeePaymentPart
+from app.schemas.installment import (
+    CreditDrawPaymentPart,
+    InstallmentCommand,
+    InstallmentPaymentPart,
+    InstallmentPeriodInput,
+)
+from app.services.currency_common import major_amount_to_minor, minor_amount_value
+
+
+def installment_form_values(agreement, currency):
+    periods = [{"due_on": str(row.due_on), "principal": minor_amount_value(row.principal_minor - row.paid_principal_minor, currency),
+        "fee": minor_amount_value(row.unincurred_fee_minor, currency)}
+        for row in agreement.periods if row.principal_minor > row.paid_principal_minor or row.unincurred_fee_minor > 0]
+    return {"name": agreement.name, "supersedes_public_id": agreement.public_id,
+        "draw_ids_json": json.dumps(agreement.draw_public_ids), "periods_json": json.dumps(periods), "opening_source": ""}
+
+
+def installment_payload(values):
+    currency = values["currency_code"]
+    return InstallmentCommand(expected_row_version=values["expected_row_version"], name=values["name"],
+        source=values["opening_source"], agreed_on=values["occurred_on"],
+        supersedes_public_id=values.get("supersedes_public_id") or None, draw_public_ids=json.loads(values["draw_ids_json"]),
+        periods=[InstallmentPeriodInput(due_on=row["due_on"], principal_minor=major_amount_to_minor(row["principal"], currency),
+            planned_fee_minor=major_amount_to_minor(row["fee"], currency) if row.get("fee", "").strip() else 0)
+            for row in json.loads(values["periods_json"])])
+
+
+def payment_allocations(values):
+    currency = values["currency_code"]
+    periods, draws, fees = [], [], []
+    for row in json.loads(values.get("allocation_json", "[]")):
+        if not row.get("principal", "").strip() and not row.get("fee", "").strip():
+            continue
+        principal = major_amount_to_minor(row["principal"], currency) if row.get("principal", "").strip() else 0
+        if row["kind"] == "period":
+            periods.append(InstallmentPaymentPart(period_public_id=row["public_id"], principal_minor=principal,
+                fee_minor=major_amount_to_minor(row["fee"], currency) if row.get("fee", "").strip() else 0))
+        elif row["kind"] == "fee":
+            if principal:
+                fees.append(CreditFeePaymentPart(expense_id=int(row["public_id"]), amount_minor=principal))
+        else:
+            draws.append(CreditDrawPaymentPart(draw_public_id=row["public_id"], principal_minor=principal))
+    return {"period_allocations": periods, "draw_allocations": draws, "fee_payments": fees,
+        "overpayment_minor": major_amount_to_minor(values["overpayment"], currency) if values.get("overpayment", "").strip() else 0}
+
+
+def selected_installment_values(installments, agreement_id: str, currency: str) -> dict[str, str]:
+    if not agreement_id or installments is None:
+        return {}
+    agreement = next((row for row in installments.agreements if row.public_id == agreement_id and row.active), None)
+    if agreement is None:
+        raise AppError("state_conflict", "合约已更新，请打开当前版本。", status_code=409)
+    values = installment_form_values(agreement, currency)
+    values["draw_ids_json"] = json.dumps([row.public_id for row in installments.draws
+        if row.public_id in agreement.draw_public_ids and row.remaining_minor > 0])
+    return values

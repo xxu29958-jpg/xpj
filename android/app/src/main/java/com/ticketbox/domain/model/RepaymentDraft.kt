@@ -86,6 +86,7 @@ data class RepaymentDraft(
     val correctionVersions: RepaymentCorrectionVersions? = null,
 ) {
     val isPending: Boolean get() = status == RepaymentDraftStatuses.PENDING
+    val correctionNeedsMoney: Boolean get() = correctionVersions?.fundsAccountVersions?.isNotEmpty() == true && sourceExpensePublicId == null
 }
 
 
@@ -93,4 +94,6 @@ data class RepaymentCorrectionVersions(
     val debtRowVersion: Long,
     val sourceExpenseRowVersion: Long? = null,
     val sourceOffsetRowVersion: Long? = null,
+    val fundsAccountVersions: Map<String, Long> = emptyMap(),
+    val feeExpenseVersions: Map<String, Long> = emptyMap(),
 )

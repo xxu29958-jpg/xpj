@@ -237,7 +237,7 @@ internal fun DebtPickerRow(
                     text = stringResource(debtDirectionLabelRes(debt.direction)),
                     tone = LocalStateTokens.current.neutral,
                 )
-                if (!debt.isOpen) Text(stringResource(debtLinkStatusLabelRes(debt.status)),
+                if (!debt.isOpen) Text(stringResource(debtLinkStatusLabelRes(debt.status, debt.sourceType)),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }

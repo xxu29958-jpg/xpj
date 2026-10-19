@@ -43,6 +43,10 @@ internal class ExpenseOffsetRepository(
             accountingDate = accountingDate,
             reason = reason,
             expectedRowVersion = expense.rowVersion,
+            destinations = draft.destinations.takeIf { it.isNotEmpty() }?.map {
+                com.ticketbox.data.remote.dto.RefundDestinationDto(it.accountPublicId, it.accountRowVersion,
+                    it.expenseAmountMinor, it.accountAmountMinor)
+            },
         )
         val key = originalInput?.originalKey ?: UUID.randomUUID().toString()
         enqueue(bound, PendingMutationIntent(type = PendingMutationType.CreateExpenseOffset,

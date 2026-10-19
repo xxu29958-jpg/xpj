@@ -41,6 +41,18 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # Exact-symbol evidence, never a module/directory exemption or a handler registry.
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
+    (ANDROID + "viewmodel/FundsViewModel.kt", "runAction"): {
+        "sha256": "f17605aa43a5316b882490fc49c3f35cd89b01ad14c80e2bfb582ade4ad10636",
+        "owner": "existing UiText error projection and sanitized TicketboxNetwork Logcat",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt",
+        "reason": "This UI boundary reports unexpected action failures through the existing sanitized sink; toUiText renders known local/domain failures or a generic message. The captured binding limits updates to the original session, finally releases busy state, and cancellation propagates. Funds input and its original Outbox command remain owned by FundsRepository. The referenced test qualifies the shared sink; retained-input and binding behavior additionally use the funds consumer journey.",
+    },
+    (ANDROID + "data/repository/FundsCommand.kt", "dispatch"): {
+        "sha256": "d5f31740ddf189f1bba45fafb7868fc9d42c18de8c29152bd389d8f9b4db0c49",
+        "owner": "existing NetworkErrorHandler and sanitized TicketboxNetwork Logcat",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::fundsReplayFailureReportsSafelyWithoutRetryingOrConsumingTheCommand",
+        "reason": "HTTP failures use NetworkErrorHandler. Unknown response failures report through logNetworkWarning and block the unchanged original command for review, without retrying or claiming acceptance. Cancellation propagates; transport interruption retains the existing retry owner. The existing failure-to-retry test verifies compact receipts and preserves the original payload/key across an unverified response. No financial inputs or raw exception messages are emitted.",
+    },
     (ANDROID + "data/repository/NotificationCaptureDispatcher.kt", "dispatch"): {
         "sha256": "b1787d5f05ade2c64cc1ab2db812cd0162bf53ce148a24c28fcdb4dbbae8c099",
         "owner": "existing HTTP mapping, Outbox result and sanitized TicketboxNetwork output",
@@ -122,10 +134,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "Transport and unexpected replay failures report through logNetworkWarning without raw exception text in the UI or Logcat. The existing Outbox retains the original selection or date command, key and OCC; unexpected failures do not acknowledge or retry the command, and cancellation propagates.",
     },
     (ANDROID + "data/repository/ConfirmExpenseDispatcher.kt", "dispatch"): {
-        "sha256": "d73acd32bcf702f04442fcd1103e419bd9bebcfb7d024eba4e4be0119a0d5a64",
+        "sha256": "f557594cc93cb70035bf86c417d4487fb734678399d0d2952fe5886d813c1395",
         "owner": "existing HTTP mapping and sanitized TicketboxNetwork Logcat",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::confirmReplayFailureReportsSafelyAndKeepsItsOriginalCommand",
-        "reason": "Unexpected replay errors are reported before a blocking Failure retains the original command, key and OCC. No raw exception text reaches the user; cancellation propagates and the existing transport retry owner is preserved.",
+        "reason": "Funding rejection maps to a retained conflict; unexpected errors still report through logNetworkWarning and preserve the original command, key and OCC. Cancellation propagates. The existing shared HTTP mapper owns request IDs and transport retries.",
     },
     (ANDROID + "data/repository/ConfirmRecurringCandidateDispatcher.kt", "dispatch"): {
         "sha256": "16eda617eeb4e0d0e924aace3aeec3c90c6da3dab54bca6f7e60f8157e2be7bb",

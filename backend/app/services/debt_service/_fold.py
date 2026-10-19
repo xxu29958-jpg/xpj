@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Debt, DebtAdjustment, DebtForgiveness, Repayment, RepaymentVoid
 from app.money_contract import fold_sum_to_int, projection_sum_to_int
+from app.services.credit_balance_projection import credit_home_balance, uses_credit_at
 from app.services.time_service import ensure_utc
 
 
@@ -131,6 +132,8 @@ def compute_paid(db: Session, debt: Debt) -> int:
     Forgiveness is NOT repayment: it does not count as ``paid`` (no money changed
     hands); it only reduces ``remaining`` (§3.7).
     """
+    if debt.source_type == "credit_facility":
+        return credit_home_balance(db, debt)[1]
     return _non_voided_repayment_total(db, debt.id)
 
 
@@ -149,6 +152,9 @@ def compute_balance(
     for_write: bool = False,
 ) -> DebtBalance:
     """Keep each cause of the canonical balance from its own fact stream."""
+    if debt.source_type == "credit_facility":
+        remaining, paid = credit_home_balance(db, debt)
+        return DebtBalance(remaining=remaining, paid=paid, adjustment=0, forgiven=0)
     materialize = fold_sum_to_int if for_write else projection_sum_to_int
     principal = materialize(
         debt.principal_amount_cents,
@@ -235,6 +241,8 @@ def compute_remaining_as_of(db: Session, debt: Debt, cutoff: datetime) -> int:
     """
     if ensure_utc(debt.created_at) > ensure_utc(cutoff):
         return 0
+    if uses_credit_at(db, debt, cutoff):
+        return credit_home_balance(db, debt, cutoff=cutoff)[0]
     principal = projection_sum_to_int(
         debt.principal_amount_cents,
         label="debt.principal_as_of",

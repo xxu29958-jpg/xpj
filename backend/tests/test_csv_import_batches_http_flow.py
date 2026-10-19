@@ -118,7 +118,8 @@ def _assert_coffee_import_filter_and_export(client: TestClient, *, identity) -> 
 
 
 def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClient, *, identity) -> None:
-    csv = "amount_yuan,merchant,category\nabc,Bad,餐饮\n4.50,Good,交通\n"
+    csv = ("amount_yuan,merchant,category,kind,account_public_id\nabc,Bad,餐饮,,\n4.50,Good,交通,food,\n"
+        "37.90,还款不能当消费,其他,repayment,\n20.00,转账不能当消费,其他,transfer,\n15.00,账户字段不能丢弃,其他,,recorded-account\n")
     created = client.post(
         "/api/imports/csv",
         headers=identity.app_headers,
@@ -127,9 +128,9 @@ def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClie
     assert created.status_code == 201, created.json()
     batch = created.json()
     assert batch["file_name"] == "rows.csv"
-    assert batch["total_rows"] == 2
+    assert batch["total_rows"] == 5
     assert batch["valid_rows"] == 1
-    assert batch["error_rows"] == 1
+    assert batch["error_rows"] == 4
     assert batch["status"] == "parsed_with_errors"
 
     public_id = batch["public_id"]
@@ -138,7 +139,7 @@ def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClie
         headers=identity.app_headers,
     )
     assert rows.status_code == 200, rows.json()
-    assert rows.json()["total"] == 2
+    assert rows.json()["total"] == 5
     assert rows.json()["items"][0]["status"] == "error"
 
     error_rows = client.get(
@@ -146,14 +147,20 @@ def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClie
         headers=identity.app_headers,
     )
     assert error_rows.status_code == 200, error_rows.json()
-    assert error_rows.json()["total"] == 1
+    assert error_rows.json()["total"] == 4
     assert "amount_yuan" in error_rows.json()["items"][0]["error_message"]
+    assert all("资金账户" in row["error_message"] for row in error_rows.json()["items"][1:])
 
     errors_csv = client.get(f"/api/imports/csv/{public_id}/errors.csv", headers=identity.app_headers)
     assert errors_csv.status_code == 200
     assert errors_csv.content.startswith(b"\xef\xbb\xbf")
     assert "Bad" in errors_csv.text
     assert "amount_yuan" in errors_csv.text
+    assert "repayment" in errors_csv.text and "recorded-account" in errors_csv.text
+    retried = client.post("/api/imports/csv", headers=identity.app_headers,
+        files={"csv_file": ("errors.csv", errors_csv.content, "text/csv")})
+    assert retried.status_code == 201, retried.text
+    assert retried.json()["valid_rows"] == 0 and retried.json()["error_rows"] == 4
 
     gray_read = client.get(f"/api/imports/csv/{public_id}", headers=identity.gray_app_headers)
     assert gray_read.status_code == 404
@@ -168,6 +175,8 @@ def test_csv_import_batch_http_flow_errors_csv_and_tenant_scope(client: TestClie
     assert applied.json()["inserted_count"] == 1
     assert applied.json()["remaining_valid_rows"] == 0
     assert applied.json()["batch"]["status"] == "applied_with_errors"
+    pending = client.get("/api/expenses/pending", headers=identity.app_headers).json()
+    assert [row["merchant"] for row in pending] == ["Good"]
 
 
 def test_csv_import_batch_apply_confirmed_hits_stats_export_and_filters(

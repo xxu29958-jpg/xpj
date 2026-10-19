@@ -26,6 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from app.schemas._accounting_time import AccountingTimeInput, AccountingTimeSnapshot
 from app.schemas._money import (
     NonNegativeMoneyAggregate,
+    NonNegativeMoneyMinor,
     NonZeroSignedMoneyMinor,
     PositiveCanonicalDecimalInput,
     PositiveMoneyMinor,
@@ -120,7 +121,7 @@ class DebtResponse(BaseModel):
     counterparty_account_id: int | None = None
     counterparty_label: str | None = None
     note: str | None = None
-    principal_amount_cents: PositiveMoneyMinor
+    principal_amount_cents: NonNegativeMoneyMinor
     # A fold can sum multiple individually bounded facts, so read projections
     # use the exact-JSON aggregate envelope rather than the command envelope.
     remaining_amount_cents: NonNegativeMoneyAggregate
@@ -149,7 +150,7 @@ class DebtResponse(BaseModel):
     installment_paid_count: int | None = None
     home_currency_code: str
     original_currency_code: str | None = None
-    original_amount_minor: PositiveMoneyMinor | None = None
+    original_amount_minor: NonNegativeMoneyMinor | None = None
     exchange_rate_to_cny: Decimal | None = None
     exchange_rate_date: datetime | None = None
     exchange_rate_source: str | None = None
@@ -424,9 +425,9 @@ class RepaymentFactResponse(BaseModel):
     """
 
     public_id: str
-    amount_cents: PositiveMoneyMinor
+    amount_cents: NonNegativeMoneyMinor
     original_currency_code: str | None = None
-    original_amount_minor: PositiveMoneyMinor | None = None
+    original_amount_minor: NonNegativeMoneyMinor | None = None
     exchange_rate_to_cny: Decimal | None = None
     exchange_rate_date: datetime | None = None
     exchange_rate_source: str | None = None

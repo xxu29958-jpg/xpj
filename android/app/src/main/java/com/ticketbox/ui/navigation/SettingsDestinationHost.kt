@@ -103,6 +103,7 @@ internal data class SettingsDestinationNavigation(
     val onCloseRoot: () -> Unit = {},
     val onOpenArrangement: (String) -> Unit = {},
     val initialDestination: SettingsDestination = SettingsDestination.Root,
+    val onOpenFunds: () -> Unit = {},
 )
 
 internal data class SettingsRouteActions(
@@ -443,6 +444,7 @@ internal fun SettingsDestinationHost(
                 navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation(
                     navigation.onOpenExpense, navigation.onOpenInbox, navigation.onOpenBudget, navigation.onOpenRecurring, navigation.onOpenGoalCreation, navigation.onOpenGoalEdit, navigation.onOpenRuleSubmission, navigation.onOpenIncomeSubmission, navigation.onOpenRateSubmission, navigation.onRepairCorrectionRate,
                     onOpenArrangement = navigation.onOpenArrangement,
+                    onOpenFunds = navigation.onOpenFunds,
                 ),
                 viewModel = vm,
                 onBack = { route = SettingsDestination.Root },

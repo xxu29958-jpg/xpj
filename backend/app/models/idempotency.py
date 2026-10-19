@@ -17,7 +17,9 @@ is what closes the committed-but-unseen false-409 gap.
 the SAME transaction as the business mutation. ``resource_type`` /
 ``resource_id`` locate an ordinary mutated resource so a replay can re-serialise
 its canonical current shape. Aggregate commands with no single canonical
-resource may store only their successful typed result in ``response_body``.
+resource may store their successful typed result in ``response_body``. Such
+results must not include growing query histories; funds receipts retain the
+accepted scalar outcome and ordinary authorized reads supply the details.
 """
 
 from __future__ import annotations
@@ -58,7 +60,7 @@ class ApiIdempotencyKey(Base):
             "idempotency_key",
             unique=True,
         ),
-        # Drives the expiry GC sweep (deferred to a later slice; ADR-0042 §4.10).
+        # Retention metadata; no expiry sweep may invalidate unresolved clients.
         Index("ix_api_idempotency_keys_expires_at", "expires_at"),
     )
 

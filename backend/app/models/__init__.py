@@ -53,6 +53,8 @@ from app.models.classification import (
     RuleApplicationBatch,
     RuleApplicationChange,
 )
+from app.models.credit_application import CreditApplicationReview
+from app.models.credit_fee import CreditFeeObligation
 from app.models.currency_binding import (
     InstallationCurrencyAuditLog,
     InstallationCurrencyBinding,
@@ -69,11 +71,20 @@ from app.models.debt import (
     RepaymentDraft,
     RepaymentVoid,
 )
+from app.models.envelopes import EnvelopeAllocation, EnvelopeBook, EnvelopeRevision, EnvelopeSource
 from app.models.exchange import ExchangeRate, FxRate
 from app.models.expense import Expense, ExpenseItem, ExpenseSplit
 from app.models.expense_offset import ExpenseOffsetFact, ExpenseOffsetRevision
 from app.models.expense_revision import ExpenseRevision
 from app.models.financial_planning import MonthlyIncomePlan
+from app.models.funds import (
+    AccountBalanceObservation,
+    AccountMovement,
+    CreditFacility,
+    CreditSettlementAllocation,
+    ExpenseFunding,
+    FinancialAccount,
+)
 from app.models.goal_revision import GoalRevision
 from app.models.idempotency import ApiIdempotencyKey
 from app.models.identity import (
@@ -86,6 +97,7 @@ from app.models.identity import (
 )
 from app.models.import_csv import CsvImportBatch, CsvImportEvent, CsvImportRow
 from app.models.income_plan_revision import IncomePlanRevision
+from app.models.installment import InstallmentAgreement, InstallmentDraw, InstallmentPayment, InstallmentPeriod
 from app.models.learning import AlgorithmDecision, LedgerLearningEvent
 from app.models.ledger_calendar import LedgerCalendarRevision
 from app.models.monthly_arrangement import MonthlyArrangement, MonthlyArrangementRevision
@@ -103,6 +115,10 @@ from app.models.system import (
 )
 
 __all__ = [
+    "CreditApplicationReview", "CreditFeeObligation",
+    "EnvelopeBook", "EnvelopeSource", "EnvelopeAllocation", "EnvelopeRevision",
+    "FinancialAccount", "CreditFacility", "ExpenseFunding", "AccountMovement", "CreditSettlementAllocation",
+    "InstallmentAgreement", "InstallmentDraw", "InstallmentPeriod", "InstallmentPayment", "AccountBalanceObservation",
     "BudgetRevision",
     "Account",
     "AiMemberAnonMap",

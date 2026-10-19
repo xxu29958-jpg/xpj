@@ -34,7 +34,6 @@ internal class CapabilityDebtActions(
     }
 }
 
-@Suppress("UNCHECKED_CAST")
 private fun unsupportedDebtActions(): DebtActions = Proxy.newProxyInstance(
     DebtActions::class.java.classLoader,
     arrayOf(DebtActions::class.java),
@@ -111,7 +110,6 @@ internal fun spendingGoal(
     homeCurrencyCode = "CNY",
 )
 
-@Suppress("UNCHECKED_CAST")
 private fun unsupportedSpendingGoalActions(): ReportsActions = Proxy.newProxyInstance(
     ReportsActions::class.java.classLoader,
     arrayOf(ReportsActions::class.java),

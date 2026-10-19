@@ -42,6 +42,8 @@ import com.ticketbox.viewmodel.originalCommandAccepted
 import com.ticketbox.viewmodel.canLeaveOriginalSelection
 import com.ticketbox.viewmodel.reviewOriginalBaseline
 import com.ticketbox.viewmodel.refreshFx
+import com.ticketbox.viewmodel.editFunding
+import com.ticketbox.viewmodel.reviewPendingFunding
 import com.ticketbox.viewmodel.retryFx
 import com.ticketbox.viewmodel.loadFxReview
 import com.ticketbox.viewmodel.ExpenseEditUiState
@@ -131,7 +133,10 @@ internal fun ExpenseEditRoute(
         actions = ExpenseEditScreenActions(
             primary = expenseEditPrimaryActions(editViewModel, exit, canLeave),
             media = expenseEditMediaActions(editViewModel),
-            related = expenseEditRelatedActions(editViewModel),
+            related = expenseEditRelatedActions(editViewModel).copy(
+                onFundingChange = editViewModel::editFunding,
+                onFundingReview = { editViewModel.reviewPendingFunding(screenFactory.fundsRepository) },
+            ),
             itemization = expenseEditItemizationActions(editViewModel),
             splitEditing = expenseEditSplitEditingActions(editViewModel),
         ),

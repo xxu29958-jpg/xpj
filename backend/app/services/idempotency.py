@@ -74,11 +74,10 @@ IDEMPOTENCY_STATUS_SUCCEEDED = "succeeded"
 # into a new operation and double-applies. The Android outbox caps
 # RetryableFailure at max_attempts=10 (with back-off) and GCs DONE rows at 7
 # days, but a PENDING row on a long-offline device is bounded by neither — it
-# replays whenever connectivity returns. 30 days comfortably covers realistic
-# offline windows and exceeds the 7-day DONE GC. Beyond it, an extreme-tail
-# replay degrades to the original false-409 (acceptable). A future slice that
-# caps outbox unresolved-row age can tighten this to a derived bound; the GC
-# sweep that deletes expired keys is deferred until keys are actually written.
+# replays whenever connectivity returns. This timestamp is a retention floor,
+# not permission to delete accepted keys: even a create can otherwise execute
+# twice. No expiry sweep is enabled. Compact command receipts keep one small
+# durable outcome per intent without repeatedly retaining growing read models.
 DEFAULT_IDEMPOTENCY_RETENTION = timedelta(days=30)
 
 # §4.4: an ``in_progress`` placeholder whose owner crashed before recording

@@ -21,7 +21,7 @@ const actions = {}, list = {replaceChildren(){}, appendChild(){}}, count = {};
 const shelf = {querySelector:selector => selector.includes('list') ? list : count};
 const form = {
   dataset:{manualDraftScope:JSON.stringify(scope), manualDraftResult:''},
-  elements:{namedItem:name => elements[name]}, addEventListener(){},
+  elements:{namedItem:name => elements[name]}, addEventListener(){}, dispatchEvent(){},
   querySelectorAll:selector => selector === '.manual-expense-options' ? [options] : [],
   querySelector:selector => selector.includes('manual-original') ? null : selector.includes('edit-fields') ? fields :
     selector.includes('submit') ? submit : selector.includes('status') ? status : selector.includes('result') ? result : options,
@@ -47,7 +47,7 @@ const window = {
 vm.runInNewContext(fs.readFileSync(process.argv[2], 'utf8'), {window});
 const drafts = window.TicketboxManualDrafts;
 drafts.save(scope, original, 'submitted', {...Object.fromEntries(names.map((name, i) => [name, defaults[i]])), amount_major:'28.50', currency_code:'CNY', home_currency_code:'CNY'});
-vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document, URL});
+vm.runInNewContext(fs.readFileSync(process.argv[3], 'utf8'), {window, document, URL, CustomEvent:class {}});
 (async function () {
   await Promise.resolve(); await Promise.resolve();
   assert.equal(form.dataset.manualDraftState, 'locked');

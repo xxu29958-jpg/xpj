@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from '_history_time.html' import saved_time %}
+{% set page_title = '信封分配' %}
+{% set product_body_domain = 'plans' %}
+{% set page_surface = 'secondary' %}
+{% set task_return_href = '/web/funds?ledger_id=' ~ selected_ledger_id|urlencode %}
+{% set task_return_label = '资金账户' %}
+{% block title %}信封分配 · 小票夹{% endblock %}
+{% block page_scripts %}
+<script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/envelopes-entry.js?v={{ asset_version }}"></script>
+{% endblock %}
+{% block content %}
+<header class="product-page-header"><div class="product-page-heading"><h1 class="page-title">信封分配</h1>
+<p class="product-page-summary">钱仍在原账户里，信封只安排用途。</p></div></header>
+{% if error %}<div class="product-feedback product-feedback--danger" role="alert">{{ error }}</div>{% endif %}
+<div class="product-flow">
+<section class="product-surface" aria-label="可分配现金">
+<div class="meta">{{ envelopes.valuation_date }} · {{ envelopes.home_currency_code }} · 已记录范围</div>
+<h2>{{ '还需补足现金' if envelopes.unassigned_minor is not none and envelopes.unassigned_minor < 0 else '还可分配' }}</h2>
+<strong class="product-amount">{{ money(envelopes.unassigned_minor|abs if envelopes.unassigned_minor is not none else none, envelopes.home_currency_code) }}</strong>
+<div class="product-form-grid"><div><span class="meta">资金池现金</span><p>{{ money(envelopes.cash_minor, envelopes.home_currency_code) }}</p></div>
+<div><span class="meta">所有月份已留出</span><p>{{ money(envelopes.reserved_minor, envelopes.home_currency_code) }}</p></div></div>
+<p class="hint">依据已核对账户和已记流水，不是银行实时余额。未到账收入、信用额度不计入；超支仍可记账，随后调整用途或补记实际到账。</p>
+{% for notice in envelopes.notices %}<p class="product-feedback" role="status">{{ notice }}</p>{% endfor %}
+</section>
+<form method="get" action="/web/envelopes" class="product-task-actions">
+<input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+<label class="product-field">查看月份<input class="product-input" type="month" name="month" value="{{ envelopes.month }}" required></label>
+<button class="product-button product-button--quiet" type="submit">查看</button></form>
+<p class="hint">以前月份尚未用完的分配继续保留；调整为 0 可释放该用途的余额。本金还款不会再扣一次消费用途，退款回到原购买的信封。</p>
+<div data-envelope-draft-shelf data-draft-scope="{{ envelope_scope|tojson|forceescape }}" hidden><p class="meta">此浏览器保留的信封安排</p><ul data-envelope-draft-list></ul></div>
+<form method="post" action="/web/envelopes/save" class="product-form" data-envelope-form
+ data-envelope-draft-scope="{{ envelope_scope|tojson|forceescape }}" data-envelope-plan-id="{{ values.month }}"
+ data-envelope-native-result="{{ envelope_result }}" data-envelope-prepared-from="{{ envelope_prepared_from }}"
+ data-envelope-can-write="{{ 'true' if envelope_can_write else 'false' }}">
+{{ csrf_field|safe }}<input type="hidden" name="draft_scope" value="{{ envelope_scope|tojson|forceescape }}">
+<input type="hidden" name="native_controls" value="1">
+{% for name,value in values.items() if name not in ['note','csrf_token','draft_scope','review_latest','native_controls'] and not name.startswith('source:') and not name.startswith('allocation:') %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+<fieldset class="product-surface product-surface--plain" {{ 'disabled' if not envelope_can_write }}><legend>哪些账户提供现金</legend>
+<p class="hint">只纳入本账本可见的现金账户。私人账户余额不会公开；加入或移出账户由其所有者确认。</p>
+{% for account in envelopes.accounts %}<label class="product-choice">
+<input type="checkbox" name="source:{{ account.public_id }}" value="1" data-envelope-source="{{ account.public_id }}"
+ {{ 'checked' if account.public_id in selected_sources }} {{ 'disabled' if not account.can_select }}>
+{{ account.name }} · {{ money(account.balance_minor, account.currency_code) }}
+{% if account.public_id in selected_sources and not account.can_select %}<input type="hidden" name="source:{{ account.public_id }}" value="1">{% endif %}</label>
+{% else %}<p>还没有本账本可见的现金账户。</p>{% endfor %}
+<a class="text-link" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&amp;task=create">添加资金账户</a>
+<a class="text-link" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}">管理已有账户的共享范围</a>
+</fieldset>
+<section class="product-surface product-surface--plain"><h2>{{ envelopes.month }} · 给用途留出现金</h2>
+<p class="hint">计划金额来自现有预算、储蓄和备用金安排。这里填写实际分配总额；已消费部分与未还信用款会分别显示。</p>
+<div class="product-task-actions"><a class="text-link" href="/web/budgets?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ envelopes.month }}">分类预算</a>
+<a class="text-link" href="/web/budget-advise?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ envelopes.month }}">本月安排</a></div>
+<div class="product-form-grid" data-envelope-allocations>
+{% for row in envelopes.purposes %}<div class="product-field">
+<label for="envelope-{{ loop.index }}">{{ row.label }} · {{ envelopes.home_currency_code }}</label>
+<input class="product-input" id="envelope-{{ loop.index }}" name="allocation:{{ row.purpose }}" inputmode="decimal"
+ value="{{ allocations.get(row.purpose, '0') }}" data-envelope-purpose="{{ row.purpose }}"
+ data-envelope-planned="{{ money_value(row.planned_minor, envelopes.home_currency_code) if row.planned_minor is not none else '' }}"
+ required {{ 'readonly' if not envelope_can_write }}>
+<p class="hint">{{ '计划 ' ~ money(row.planned_minor, envelopes.home_currency_code) if row.planned_minor is not none else '尚无可用计划金额' }} · {{ '已分配' if row.funded else '尚未分配' }}</p>
+{% if row.funded %}<p class="meta">用途剩余 {{ money(row.available_minor, envelopes.home_currency_code) }} · 现金留出 {{ money(row.reserved_minor, envelopes.home_currency_code) }}</p>{% endif %}
+{% if row.unpaid_credit_minor %}<p class="hint">对应消费尚欠 {{ money(row.unpaid_credit_minor, envelopes.home_currency_code) }}，本金还清后释放对应现金占用。</p>{% endif %}
+{% if row.unlinked_minor %}<p class="hint">{{ money(row.unlinked_minor, envelopes.home_currency_code) }} 尚未核对付款来源，继续保留现金占用。</p>{% endif %}
+</div>{% endfor %}
+</div><button class="product-button product-button--quiet" type="button" data-envelope-use-plan hidden>填入现有计划金额</button>
+<p class="hint">填入计划后仍需核对现金并保存，不会自动分配。</p></section>
+<div class="product-field"><label for="envelope-note">这次调整的说明</label><input class="product-input" id="envelope-note" name="note" value="{{ values.note }}" maxlength="255" required></div>
+<p class="hint" data-envelope-draft-status role="status"></p>
+<p class="hint" data-envelope-review-note hidden>原输入会保留。核对最新余额只准备继续编辑，确认后才保存分配。</p>
+<div class="product-task-actions"><button class="product-button product-button--primary" type="submit" data-envelope-submit {{ 'disabled' if not envelope_can_write }}>保存分配</button>
+<button class="product-button product-button--quiet" type="submit" name="review_latest" value="1" data-envelope-review formnovalidate hidden>核对最新余额后继续</button>
+<button class="product-button product-button--quiet" type="button" data-envelope-discard hidden>放弃这份原稿</button></div>
+<a data-envelope-original-result class="text-link" hidden>查看原保存结果</a>
+</form>
+{% if history %}<section class="product-surface product-surface--plain"><h2>最近的分配记录</h2><ol class="product-history">
+{% for row in history %}<li><strong>{{ row.month }} · {{ row.reason }}</strong><p class="meta">第 {{ row.row_version }} 次 · {{ saved_time(row.recorded_at) }}</p>
+{% for purpose,amount in row.allocation_snapshot.allocations.items() %}<span>{{ {'spending':'其他消费','savings':'储蓄','buffer':'备用金'}.get(purpose,purpose.replace('category:','')) }} {{ money(amount,row.allocation_snapshot.home_currency_code) }}　</span>{% endfor %}</li>{% endfor %}
+</ol>{% if history|length == 20 %}<a class="text-link" href="/web/envelopes?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ envelopes.month }}&amp;before_version={{ history[-1].row_version }}">查看更早记录</a>{% endif %}</section>{% endif %}
+{% if before_version %}<a class="text-link" href="/web/envelopes?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ envelopes.month }}">返回最近记录</a>{% endif %}
+</div>
+{% endblock %}

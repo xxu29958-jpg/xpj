@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import com.ticketbox.data.repository.manualCreateReviewExpenseId
+import com.ticketbox.data.repository.canReviewFunding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,6 +74,7 @@ fun SyncStatusScreen(
             onOpenRateSubmission = navigation.onOpenRateSubmission,
             onRepairCorrectionRate = navigation.onRepairCorrectionRate,
             onOpenArrangement = navigation.onOpenArrangement,
+            onOpenFunds = navigation.onOpenFunds,
         )
     }
     SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = navigation.onOpenInbox,
@@ -91,6 +93,7 @@ data class SyncStatusNavigation(
     val onOpenRateSubmission: (Long) -> Unit,
     val onRepairCorrectionRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction,
     val onOpenArrangement: (String) -> Unit = {},
+    val onOpenFunds: () -> Unit = {},
 )
 
 /** Row callbacks grouped to keep the content API small and testable. */
@@ -111,6 +114,7 @@ internal data class SyncStatusActions(
     val onOpenRateSubmission: (Long) -> Unit,
     val onRepairCorrectionRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction,
     val onOpenArrangement: (String) -> Unit = {},
+    val onOpenFunds: () -> Unit = {},
 )
 
 internal data class SyncStatusActionButton(
@@ -203,6 +207,12 @@ private fun SyncStatusPageBody(
     SyncStatusBillSplitSection(state, actions)
     SyncStatusExpenseReviewSection(state, actions)
     SyncStatusUploadSection(state, onOpenInbox)
+    if ((status.conflicts + status.failed).any { it.type == PendingMutationType.FinancialAccountCommand }) {
+        SettingsSection(title = stringResource(R.string.sync_status_mutation_funds_command)) {
+            Text(stringResource(R.string.funds_sync_note))
+            TextButton(onClick = actions.onOpenFunds) { Text(stringResource(R.string.funds_continue_task)) }
+        }
+    }
 
     SyncStatusDebtSections(state, actions)
 
@@ -249,7 +259,7 @@ private fun SyncStatusPageBody(
 }
 
 private val SEPARATE_RECOVERY_TYPES = setOf(PendingMutationType.CreateExpense, PendingMutationType.CreateBillSplitInvitation, PendingMutationType.AcceptBillSplitInvitation,
-    PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)
+    PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment, PendingMutationType.FinancialAccountCommand)
 
 @Composable
 private fun SyncStatusUploadSection(state: OutboxStatusUiState, onOpenInbox: () -> Unit) {
@@ -303,7 +313,7 @@ internal fun ConflictCard(
 ) {
     // Only expense mutations can refresh state and retry as "keep mine".
     val originalOffset = row.type == PendingMutationType.CreateExpenseOffset
-    val reviewOriginal = row.type == PendingMutationType.UndoExpense || row.lastError in EXPENSE_ORIGINAL_REVIEW_ERRORS
+    val reviewOriginal = row.type == PendingMutationType.UndoExpense || row.lastError in EXPENSE_ORIGINAL_REVIEW_ERRORS || row.canReviewFunding()
     val canKeep = !reviewOriginal && row.type !in com.ticketbox.viewmodel.incomePlanSubmissionTypes && !originalOffset && row.type !in com.ticketbox.viewmodel.categoryRuleSubmissionTypes &&
         row.type !in setOf(PendingMutationType.CreateExpense, PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation) && row.targetId.startsWith("expense:")
     SettingsOpenPanel(
@@ -500,6 +510,7 @@ private val failedCardDangerLabels = mapOf(
 )
 
 internal val syncStatusMutationLabelResources = mapOf(
+    PendingMutationType.FinancialAccountCommand to R.string.sync_status_mutation_funds_command,
     PendingMutationType.UploadScreenshot to R.string.sync_status_mutation_upload_screenshot,
     PendingMutationType.OriginalAttachment to R.string.original_title,
     PendingMutationType.PatchExpense to R.string.sync_status_mutation_patch_expense,

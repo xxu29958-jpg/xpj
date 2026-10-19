@@ -23,6 +23,7 @@
 {% endblock %}
 
 {% block content %}
+<div class="product-task-actions"><a class="product-button product-button--quiet" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}">资金账户 · 现金、银行卡与信用</a></div>
 {% include '_debt_creation_drafts.html' %}
 {% if flash_message %}
 <div class="product-feedback{% if flash_type == 'error' %} product-feedback--error{% endif %}" role="{% if flash_type == 'error' %}alert{% else %}status{% endif %}">{{ flash_message }}</div>

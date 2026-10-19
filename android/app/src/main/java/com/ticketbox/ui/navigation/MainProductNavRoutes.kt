@@ -7,6 +7,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.R
 import com.ticketbox.domain.model.DebtListLens
@@ -74,6 +76,7 @@ internal fun NavGraphBuilder.addWorkspaceRoute(
             NotificationTaskBoundary(entry, screenFactory, onBack) {
             SettingsRoute(
                 navigation = SettingsDestinationNavigation(
+                    onOpenFunds = { shellState.openSecondaryPage(ProductSecondaryPage.Funds) },
                     initialDestination = if (LocalNotificationTask.current?.destination == com.ticketbox.notification.NotificationDestination.Backup)
                         com.ticketbox.ui.screens.settings.SettingsRoute.Server else com.ticketbox.ui.screens.settings.SettingsRoute.Root,
                     onOpenExpense = runtime.navController::openExpense,
@@ -153,6 +156,25 @@ internal fun NavGraphBuilder.addObligationRoutes(
     dependencies: MainProductRouteDependencies,
 ) {
     with(dependencies) {
+        composable(ProductSecondaryPage.Funds.route + "?account={account}&capture={capture}",
+            arguments = listOf(navArgument("account") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("capture") { type = NavType.StringType; nullable = true; defaultValue = null })) { entry ->
+            val model: com.ticketbox.viewmodel.FundsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+                factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                    @Suppress("UNCHECKED_CAST")
+                    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
+                        com.ticketbox.viewmodel.FundsViewModel(screenFactory.fundsRepository,
+                            repaymentDraftId = entry.arguments?.getString("capture"), captures = screenFactory.repaymentDraftRepository) as T
+                })
+            val binding = model.state.value.access?.binding
+            val accountId = entry.arguments?.getString("account")
+            LaunchedEffect(binding, accountId) { if (binding != null && accountId != null) model.open(accountId) }
+            androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { model.refresh() }
+            LaunchedEffect(shellState.financialDataRevision) {
+                if (entry.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) model.refresh()
+            }
+            com.ticketbox.ui.screens.FundsScreen(model, onBack, runtime.navController::openExpense)
+        }
         composable(ProductSecondaryPage.BillSplits.route) { entry ->
             val draftOwner = remember(runtime.navController, entry) { runtime.navController.getBackStackEntry(MAIN_ROUTE) }
             BillSplitRoute(screenFactory = screenFactory, draftOwner = draftOwner, onBack = onBack,
@@ -171,6 +193,7 @@ internal fun NavGraphBuilder.addObligationRoutes(
                     originalLinksId = entry.arguments?.getString("links"), originalDateId = entry.arguments?.getString("date"),
                     financialDataRevision = shellState.financialDataRevision),
                 onOpenRecycleBin = { navController.navigate(TRANSACTIONS_LIBRARY_RECYCLE_BIN_ROUTE) },
+                onOpenCredit = shellState::openCreditAccount,
             )
         }
         // 全账本往来二级页（W2-C）：ledger lens 的完整账本视图，标题带当前账本名。
@@ -180,6 +203,7 @@ internal fun NavGraphBuilder.addObligationRoutes(
                 context = DebtRouteContext(
                     onBack = onBack,
                     onOpenSyncStatus = { shellState.openSecondaryPage(ProductSecondaryPage.ObligationSync) },
+                    onOpenCredit = shellState::openCreditAccount,
                     creationOwner = remember(runtime.navController, entry) { runtime.navController.getBackStackEntry(MAIN_ROUTE) },
                 ),
                 lens = DebtListLens.Ledger,
@@ -213,7 +237,9 @@ private fun NavGraphBuilder.addRepaymentDraftRoute(dependencies: MainProductRout
                     screenFactory = screenFactory,
                     focusedDraftPublicId = entry.arguments?.getString(REPAYMENT_DRAFT_FOCUS_ARG),
                     onBack = onBack,
-                    onOpenExpense = runtime.navController::openExpense,
+                    destinations = RepaymentDraftDestinations(runtime.navController::openExpense, shellState::openCreditAccount,
+                        { id -> shellState.openSecondaryPage(ProductSecondaryPage.Funds,
+                            ProductSecondaryPage.Funds.route + "?capture=" + android.net.Uri.encode(id)) }),
                 )
             }
         }
@@ -233,6 +259,7 @@ private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRout
             )
             SyncStatusScreen(viewModel = vm, onBack = onBack,
                 navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation(
+                    onOpenFunds = { shellState.openSecondaryPage(ProductSecondaryPage.Funds) },
                     onOpenExpense = runtime.navController::openExpense,
                     onOpenInbox = { shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox) },
                     onOpenBudget = { month -> navController.navigate(budgetRoute(month)) },

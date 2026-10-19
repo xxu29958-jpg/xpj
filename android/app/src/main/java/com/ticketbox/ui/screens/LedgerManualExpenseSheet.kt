@@ -1,4 +1,5 @@
 package com.ticketbox.ui.screens
+import com.ticketbox.data.repository.readExpenseFunding
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -66,6 +67,7 @@ data class ManualExpenseSheetInitials(
     val amountText: String? = null,
     val expenseTime: String? = null,
     val timeFormJson: String? = null,
+    val fundingJson: String = "[]",
 )
 
 data class ManualExpenseSheetDraft(
@@ -76,6 +78,7 @@ data class ManualExpenseSheetDraft(
     val note: String,
     val expenseTime: String,
     val timeFormJson: String? = null,
+    val fundingJson: String = "[]",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -96,6 +99,7 @@ fun ManualExpenseSheet(
         mutableStateOf(initials.category.ifBlank { DEFAULT_EXPENSE_CATEGORIES.first() })
     }
     var note by rememberSaveable { mutableStateOf(initials.note) }
+    var fundingJson by rememberSaveable { mutableStateOf(initials.fundingJson) }
     val (timeForm, setTimeForm) = com.ticketbox.ui.screens.expense.rememberExpenseTimeForm(
         "manual", initials.expenseTime ?: nowUtcIso(), saved = initials.timeFormJson,
     )
@@ -104,7 +108,7 @@ fun ManualExpenseSheet(
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     val invalidAmountMessage = stringResource(R.string.ledger_manual_amount_invalid)
     val timeErrorMessage = time.error?.let { stringResource(it) }
-    LaunchedEffect(amountText, currency, merchant, category, note, timeForm) {
+    LaunchedEffect(amountText, currency, merchant, category, note, timeForm, fundingJson) {
         onDraftChange?.invoke(
             ManualExpenseSheetDraft(
                 amountText = amountText,
@@ -114,6 +118,7 @@ fun ManualExpenseSheet(
                 note = note,
                 expenseTime = expenseTime,
                 timeFormJson = timeForm.toSavedJson(),
+                fundingJson = fundingJson,
             ),
         )
     }
@@ -125,7 +130,11 @@ fun ManualExpenseSheet(
             return null
         }
         if (timeErrorMessage != null) { message = timeErrorMessage; return null }
+        val funding = try { readExpenseFunding(fundingJson, currency) } catch (error: IllegalArgumentException) {
+            message = error.message; return null
+        }
         return ExpenseDraft(
+            funding = funding,
             amountCents = null,
             originalCurrencyCode = currency,
             originalAmountMinor = originalMinor,
@@ -199,6 +208,7 @@ fun ManualExpenseSheet(
                     category = picked.category
                 },
             )
+            ExpenseFundingFields(fundingJson, currency, fieldsEnabled) { fundingJson = it }
             ExpenseEditTextField(
                 state = ExpenseEditTextFieldState(
                     label = stringResource(R.string.ledger_manual_category_label),

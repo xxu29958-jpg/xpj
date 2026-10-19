@@ -133,7 +133,7 @@ class DebtGoalEditViewModel(
         _state.update { it.copy(isLoading = true, error = null) }
         loadJob = viewModelScope.launch {
             val goal = reports.goal(id, expectedBinding = bound)
-            val choices = if (kind == DebtGoalEditKind.Links) debts.listDebts() else null
+            val choices = if (kind == DebtGoalEditKind.Links) debts.listDebts(com.ticketbox.domain.model.DebtListLens.GoalCandidates) else null
             if (!matches(bound, id) || generation != ticket) return@launch
             goal.fold(onSuccess = { read ->
                 if (!read.value.isDebtRepayment || read.value.ledgerId != bound.ledgerId) {

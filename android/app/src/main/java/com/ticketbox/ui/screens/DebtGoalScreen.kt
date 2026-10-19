@@ -338,7 +338,10 @@ private fun LazyListScope.debtGoalDetailSection(
             onSetTargetDate = callbacks.onSetTargetDate,
         )
     }
-    if (evaluation.needsReview) {
+    if (evaluation.hasUnavailableLinks) {
+        item { Text(stringResource(R.string.debt_goal_balance_pending)) }
+    }
+    if (evaluation.needsReview && !evaluation.hasUnavailableLinks) {
         item {
             DebtGoalIntegrityReviewCard(
                 achieved = evaluation.isAchieved,

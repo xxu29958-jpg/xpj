@@ -83,7 +83,7 @@ def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, ra
     environment.filters["money"] = _money_amount
     body = environment.get_template("expense_new.html").render(manual_draft_scope=scope, manual_draft_result="",
         form_ledger_id="ledger", form_device_public_id="device", form_home_currency_code="CNY", client_ref="b" * 32,
-        values={"currency_code": "CNY"}, currency_options=["CNY"], category_options=[], edit_return_fields={},
+            values={"currency_code": "CNY"}, currency_options=["CNY"], category_options=[], edit_return_fields={}, funding_accounts=[],
         time_form={**time_values, "wall_time": "2026-11-01T01:30:15", "wall_input_type": "datetime-local", "offset_options": []},
         csrf_token="synthetic", currency_input={}, asset_version="time-contract")
     body += '<script>const timer=setInterval(()=>{const form=document.querySelector("[data-manual-draft-scope]");' + \

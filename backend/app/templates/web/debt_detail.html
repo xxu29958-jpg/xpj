@@ -6,6 +6,7 @@
 {% set page_readonly_notice = true %}
 {% set repayment_entry = proposal_form if debt.is_member else repayment_form %}
 {% block page_actions %}
+{% if debt.credit_account_id %}<a class="product-button product-button--primary" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&amp;account_id={{ debt.credit_account_id|urlencode }}">打开信用账户</a>{% endif %}
 <div class="product-task-actions"{% if not repayment_entry.can_create %} hidden{% endif %}>
   <a class="product-button product-button--primary" href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}&amp;task={{ repayment_entry.kind }}"
      data-repayment-task-kind="{{ repayment_entry.kind }}" data-repayment-task-target="{{ debt.public_id }}"
@@ -85,6 +86,7 @@
   {% if debt.is_member %}<p class="product-amount-meta">{{ debt.headline }}</p>{% endif %}
 </section>
 <div class="product-entry-list product-section">
+  {% if debt.credit_account_id %}<p class="product-feedback">信用欠款由资金账户的实际购买、还款和退款计算。下方原本金与还款属于保留的往来历史；当前余额与分期请打开信用账户核对。</p>{% endif %}
   <a class="product-entry" href="#debt-activity">
     <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
     <span class="product-entry-copy"><span class="product-entry-heading"><strong>本笔原本金</strong><strong class="product-entry-amount">{{ debt.principal_label }}</strong></span><span>{{ debt.principal_date_label }}</span></span>

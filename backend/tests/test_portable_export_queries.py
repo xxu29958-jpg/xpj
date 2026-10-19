@@ -46,6 +46,8 @@ def records():
 
 def _seed(records, model, **values):
     connection, tables = records
+    if model is m.Debt:
+        values.setdefault("source_type", "manual")
     connection.execute(tables[model.__tablename__].insert().values(**values))
 
 

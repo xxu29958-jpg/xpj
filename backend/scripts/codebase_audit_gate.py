@@ -139,12 +139,12 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 144,  # Capture decision and browser review carry the reviewed fact versions.
-    "mutate_token_exempted": 153,  # Capture creation and source-locked repayment reclassification.
+    "mutate_token_carriers": 158,  # Includes actual income/transfer/loan correction with all affected account OCC versions.
+    "mutate_token_exempted": 154,  # Adds new account creation; adoption still checks the original Debt OCC.
     "mutate_token_reason_admin_single_writer": 16,
     "mutate_token_reason_append_only_fact": 3,
     "mutate_token_reason_batch_db_write": 17,
-    "mutate_token_reason_create_row": 43,  # Includes original notification identity creation; no confirmed fact on capture.
+    "mutate_token_reason_create_row": 44,  # Funds account creation has no predecessor account version.
     "mutate_token_reason_enqueue_task": 2,
     "mutate_token_reason_external_side_effect": 7,  # Owner FX save-and-fetch now also upserts fx_rates.
     "mutate_token_reason_governance_action": 8,
@@ -179,6 +179,13 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # ADR-0038 create_row, TICKETBOX_CREDIT_PAYMENT_CONTINUITY_CONTRACT §4:
+    # POST /api/funds/accounts creates a new identity, protected by the existing
+    # actor lock and idempotent receipt. An adopted Debt still requires its OCC
+    # token; all subsequent account/credit writes remain carriers. The existing
+    # test_funds_accounts journeys prove replay, adoption conflict and privacy.
+    # Admit only this exact main/count edge, not future exemption growth.
+    ("dd2305c044859f67009975c485f982b9cd98d0d7", 153, 154),
     # ADR-0038 create_row / terminal_flag_flip, notification continuity contract:
     # new capture has no predecessor token; original event identity is unique.
     # Reclassification serializes that source; committed correction additionally

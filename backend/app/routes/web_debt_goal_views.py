@@ -28,7 +28,7 @@ from app.routes.web_debts import (
     _web_viewer_account_id,
 )
 from app.schemas._goals import GoalResponse
-from app.services.debt_service import list_debts
+from app.services.goal_credit_projection import list_goal_debts
 from app.services.goal_debt_repayment_service import (
     list_debt_repayment_goals,
 )
@@ -93,6 +93,8 @@ def _goal_composition(counted: list) -> str:
 
 def _shared_currency(counted: list) -> str | None:
     """仅当所有计入欠款同一本位币才返回该币种，否则 None (金额副文案整条隐藏，镜像 sharedHomeCurrencyCode)。"""
+    if any(link.remaining_amount_cents is None for link in counted):
+        return None
     codes = {link.home_currency_code for link in counted}
     return next(iter(codes)) if len(codes) == 1 else None
 
@@ -171,6 +173,8 @@ def _link_fraction(link: object) -> float:
     """per-link 填充比例 = (本金-剩余)/本金，钳到 [0,1]，cleared 强制 1 (镜像 clearedFraction)。"""
     if link.status == "cleared":
         return 1.0
+    if link.principal_amount_cents is None or link.remaining_amount_cents is None:
+        return 0.0
     return _communal_ratio(link.principal_amount_cents - link.remaining_amount_cents, link.principal_amount_cents)
 
 
@@ -188,7 +192,11 @@ def _member_link_note(link: object) -> str:
 def _external_link_meta(link: object) -> str:
     """外部 per-link meta：应付/应收 · 剩余 X · 本金 Y (逐字镜像 debt_goal_link_meta)。"""
     direction = _DIRECTION_LABELS.get(link.direction, "方向待确认")
+    if link.remaining_amount_cents is None:
+        return getattr(link, "completion_note", None) or "余额当前不可读取，请核对关联。"
     remaining = _home_amount_label(link.remaining_amount_cents, link.home_currency_code)
+    if getattr(link, "source_type", "") == "credit_facility":
+        return f"已记录净欠款 {remaining} · {getattr(link, 'completion_note', None) or '实际清偿请查看资金账户。'}"
     principal = _home_amount_label(link.principal_amount_cents, link.home_currency_code)
     return f"{direction} · 剩余 {remaining} · 本金 {principal}"
 
@@ -200,12 +208,14 @@ def _goal_link_row(link: object) -> dict:
     is_voided = link.status == "voided"
     row: dict = {
         "public_id": link.debt_public_id,
-        "name": _debt_name(link),
+        "name": "当前不可读取的信用账户" if link.status == "unavailable" else _debt_name(link),
         "is_member": is_member,
         "recede": is_voided,
-        "show_bar": link.status in {"open", "cleared"},
+        "show_bar": link.status in {"open", "cleared"} and link.principal_amount_cents is not None,
         "fraction_percent": int(round(_link_fraction(link) * 100)),
         "is_cleared": link.status == "cleared",
+        "source_id": getattr(link, "source_id", None) if getattr(link, "source_type", "") == "credit_facility" else None,
+        "can_open": link.status != "unavailable" or bool(getattr(link, "source_id", None)),
     }
     if is_member:
         status_label, status_tone = _MEMBER_STATUS.get(
@@ -216,7 +226,7 @@ def _goal_link_row(link: object) -> dict:
         row["status_tone"] = status_tone  # 成员永不 danger (open/voided→neutral, cleared→ok)
         row["note"] = _member_link_note(link)
     else:
-        row["status_label"] = _STATUS_LABELS.get(link.status, "状态待确认")
+        row["status_label"] = _STATUS_LABELS.get(link.status, "待核对" if link.status == "unavailable" else "状态待确认")
         row["status_tone"] = _STATUS_TONE.get(link.status, "")
         row["meta"] = _external_link_meta(link)
     return row
@@ -258,25 +268,38 @@ def _debt_goal_view(goal: GoalResponse) -> dict:
         },
     }
     view["can_set_target_date"] = composition == _COMPOSITION_EXTERNAL and not view["is_archived"]
-    view["can_acknowledge_review"] = (
-        evaluation.needs_review and evaluation.evaluation_state == "achieved" and not view["is_archived"]
-    )
-    view["can_remove_voided"] = (
-        evaluation.needs_review and bool(view["non_voided_debt_ids"]) and not view["is_archived"]
-    )
-    if evaluation.needs_review:
-        if evaluation.evaluation_state == "achieved":
-            view["review_body"] = _GOAL_REVIEW_ACHIEVED
-        elif view["non_voided_debt_ids"]:
-            view["review_body"] = _GOAL_REVIEW_NOT_EVALUABLE
-        else:
-            view["review_body"] = _GOAL_REVIEW_ALL_VOIDED
+    view.update(_goal_review_view(evaluation, is_archived=view["is_archived"]))
     if total == 0:
         return view
     view["headline"] = _plan_headline(composition, cleared, total, remaining)
     view["fraction_percent"] = int(round(cleared * 100 / total))
+    view["amount_line"] = _goal_amount_line(counted, composition, remaining)
+    if composition == _COMPOSITION_EXTERNAL:
+        view["kpi"] = _external_kpi_view(evaluation)
+    return view
+
+
+def _goal_review_view(evaluation, *, is_archived: bool) -> dict:
+    unavailable = any(link.status == "unavailable" for link in evaluation.linked_debts)
+    remaining = bool(_counted_links(evaluation))
+    editable_voids = bool(evaluation.voided_debt_public_ids) and not unavailable and not is_archived
+    achieved = evaluation.evaluation_state == "achieved"
+    body = _GOAL_REVIEW_NOT_EVALUABLE if remaining else _GOAL_REVIEW_ALL_VOIDED
+    if achieved:
+        body = _GOAL_REVIEW_ACHIEVED
+    if unavailable:
+        body = "部分信用账户不再共享，或余额/汇率待核对。请先处理账户或调整关联；不会按零余额计为完成。"
+    return {
+        "can_acknowledge_review": editable_voids and evaluation.needs_review and achieved,
+        "can_remove_voided": editable_voids and remaining,
+        "review_title": "关联信用账户需要核对" if unavailable else _GOAL_NEEDS_REVIEW,
+        "review_body": body,
+    }
+
+
+def _goal_amount_line(counted: list, composition: str, remaining: int) -> str | None:
     currency = _shared_currency(counted)
-    if currency is not None:
+    if currency is not None and all(link.principal_amount_cents is not None for link in counted):
         principal_sum = projection_values_sum_to_int(
             (link.principal_amount_cents for link in counted),
             label="web_debt_goal.principal_total",
@@ -285,10 +308,11 @@ def _debt_goal_view(goal: GoalResponse) -> dict:
             (link.remaining_amount_cents for link in counted),
             label="web_debt_goal.remaining_total",
         )
-        view["amount_line"] = _plan_amount_line(composition, principal_sum, remaining_sum, remaining, currency)
-    if composition == _COMPOSITION_EXTERNAL:
-        view["kpi"] = _external_kpi_view(evaluation)
-    return view
+        return _plan_amount_line(composition, principal_sum, remaining_sum, remaining, currency)
+    elif currency is not None:
+        remaining_sum = projection_values_sum_to_int((link.remaining_amount_cents for link in counted), label="web_debt_goal.remaining_total")
+        return f"已记录剩余 {_home_amount_label(remaining_sum, currency)}；清偿状态另按实际欠款和费用核对。"
+    return None
 
 
 def _debt_choice_view(debt: object) -> dict:
@@ -334,7 +358,7 @@ def _render_debt_goals(
     status_code: int = 200,
 ) -> HTMLResponse:
     account_id = _web_viewer_account_id(request, db, selected_id)
-    debt_items = list_debts(
+    debt_items = list_goal_debts(
         db,
         tenant_id=selected_id,
         viewer_account_id=account_id,
@@ -363,7 +387,6 @@ def _render_debt_goals(
     ctx["empty_title"] = _GOAL_EMPTY_TITLE
     ctx["empty_body"] = _GOAL_EMPTY_BODY
     ctx["all_voided_text"] = _PLAN_ALL_VOIDED
-    ctx["needs_review_note"] = _GOAL_NEEDS_REVIEW
     return templates.TemplateResponse(
         request=request,
         name="debt_goals.html",

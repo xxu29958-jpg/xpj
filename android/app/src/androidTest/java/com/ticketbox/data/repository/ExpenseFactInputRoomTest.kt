@@ -129,4 +129,56 @@ class ExpenseFactInputRoomTest {
         assertEquals(1, fixture.schedules)
         assertTrue(fixture.network.calls.isEmpty())
     }
+
+    @Test fun pendingFundingSurvivesReopenAndOnlyConfirmationCarriesItsActualMoney() = runBlocking {
+        fixture.network.current = fixture.network.current.copy(status = "pending", confirmedAt = null)
+        val repository = fixture.reopen().expenseRepository
+        val expense = fixture.network.current.toDomain()
+        val funding = fundingInputAdapter.toJson(listOf(ExpenseFundingInput("split-1", "credit-account", 3,
+            "原付款账户", "KWD", "CNY", "43.21", "12.345")))
+        val original = input(repository).copy(formKey = "pending_funding", json = ExpenseFactInputCodec.encode(
+            ExpenseFactInputDraft(expense, fundingJson = funding)))
+        repository.saveFactInput(null, original).getOrThrow()
+        val cold = fixture.reopen().expenseRepository
+        assertEquals(original, cold.loadFactInputs(original.binding, expense.id).getOrThrow().single())
+        val parts = readExpenseFunding(ExpenseFactInputCodec.decode(original.json, expense.id).fundingJson, CurrencyCode.CNY)
+        val draft = ExpenseDraft(amountCents = null, merchant = null, category = null, note = null, expenseTime = null,
+            tags = null, valueScore = null, regretScore = null, originalCurrencyCode = CurrencyCode.CNY,
+            originalAmountMinor = 4321, funding = parts)
+        cold.saveAndConfirmExpense(original.binding, expense, draft, original).getOrThrow()
+        val rows = fixture.stored()
+        assertEquals(listOf("patch_expense", "confirm_expense"), rows.map { it["type"] })
+        assertFalse(requireNotNull(rows.first()["payload"]).contains("funding"))
+        val request = com.squareup.moshi.Moshi.Builder().build()
+            .adapter(com.ticketbox.data.remote.dto.ExpenseStateTokenRequest::class.java)
+            .fromJson(requireNotNull(rows.last()["payload"]))
+        assertEquals(12345L, requireNotNull(request?.funding).single().accountAmountMinor)
+        assertEquals(3L, request?.funding?.single()?.accountRowVersion)
+        assertTrue(cold.loadFactInputs(original.binding, expense.id).getOrThrow().isEmpty())
+        assertTrue(fixture.network.calls.isEmpty())
+
+        val confirmationId = requireNotNull(rows.last()["id"]).toLong()
+        fixture.outbox.markConflict(confirmationId, "账户已在另一端变化")
+        val refused = fixture.outbox.observeOriginalCommand(com.ticketbox.data.local.PendingMutationType.ConfirmExpense,
+            originalId = confirmationId).first().single()
+        assertFalse(fixture.outbox.resolveConflict(confirmationId, ConflictResolution.KeepMine(9)))
+        val account = com.ticketbox.data.remote.dto.FinancialAccountDto("credit-account", "原付款账户", original.binding.ledgerId,
+            1, "credit", "KWD", "private", null, null, 4, false, -12345, -12345, "2026-09-01", "账单", null, true)
+        val reviewed = original.copy(originalKey = "reviewed-funding", json = ExpenseFactInputCodec.encode(
+            ExpenseFactInputDraft(expense, fundingJson = reviewedFundingInputs(refused, listOf(account)))))
+        // The rejected command and recovered input commit together; an existing editor wins over a stale recovery.
+        cold.saveFactInput(null, reviewed.copy(originalKey = "other-editor")).getOrThrow()
+        assertTrue(fixture.graph.fundsRepository.reopenExpenseConfirmation(original.binding, refused, reviewed, cold).isFailure)
+        assertEquals("conflict", fixture.stored().last()["status"])
+        cold.discardFactInput(original.binding, reviewed.copy(originalKey = "other-editor")).getOrThrow()
+        fixture.graph.fundsRepository.reopenExpenseConfirmation(original.binding, refused, reviewed, cold).getOrThrow()
+        val recovered = fixture.reopen().expenseRepository.loadFactInputs(original.binding, expense.id).getOrThrow().single()
+        val values = requireNotNull(fundingInputAdapter.fromJson(ExpenseFactInputCodec.decode(recovered.json, expense.id).fundingJson)).single()
+        assertEquals("12.345", values.accountAmount)
+        assertEquals("43.21", values.expenseAmount)
+        assertEquals(4L, values.accountVersion)
+        assertEquals("abandoned", fixture.stored().last()["status"])
+        assertEquals(rows.last()["payload"], fixture.stored().last()["payload"])
+        assertEquals(rows.last()["idempotencyKey"], fixture.stored().last()["idempotencyKey"])
+    }
 }

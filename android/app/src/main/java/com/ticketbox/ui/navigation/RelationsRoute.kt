@@ -74,6 +74,7 @@ internal enum class ObligationsView {
 }
 
 internal data class ObligationsNavigationActions(
+    val onOpenFunds: () -> Unit = {},
     val onOpenAllDebts: () -> Unit,
     val onOpenBillSplits: () -> Unit,
     val onOpenRepaymentReview: () -> Unit,
@@ -96,6 +97,7 @@ internal fun RelationsRoute(
     var selectedView by rememberSaveable { mutableStateOf(ObligationsView.I_OWE) }
     val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
     val navigationActions = ObligationsNavigationActions(
+        onOpenFunds = { shellState.openSecondaryPage(ProductSecondaryPage.Funds) },
         onOpenAllDebts = { shellState.openSecondaryPage(ProductSecondaryPage.AllDebts) },
         onOpenBillSplits = { shellState.openSecondaryPage(ProductSecondaryPage.BillSplits) },
         onOpenRepaymentReview = { shellState.openRepaymentDrafts() },
@@ -131,7 +133,7 @@ internal fun RelationsRoute(
                 screenFactory = screenFactory,
                 chrome = chrome,
                 listRefreshRevision = listRefreshRevision,
-                onOpenSyncStatus = composer.actions.onOpenSyncStatus,
+                context = DebtRouteContext(onBack = {}, onOpenSyncStatus = composer.actions.onOpenSyncStatus, onOpenCredit = shellState::openCreditAccount),
             )
         },
     )
@@ -346,12 +348,12 @@ private fun RelationsPrimaryPane(
     screenFactory: MainScreenFactory,
     chrome: RelationsListChrome,
     listRefreshRevision: Int,
-    onOpenSyncStatus: () -> Unit,
+    context: DebtRouteContext,
 ) {
     when (selectedView) {
         ObligationsView.I_OWE -> DebtRoute(
             screenFactory = screenFactory,
-            context = DebtRouteContext(onBack = {}, onOpenSyncStatus = onOpenSyncStatus),
+            context = context,
             chromeOverride = chrome,
             lens = DebtListLens.Payables,
             listRefreshRevision = listRefreshRevision,
@@ -360,6 +362,7 @@ private fun RelationsPrimaryPane(
         ObligationsView.OWED_TO_ME -> ReceivablesRoute(
             screenFactory = screenFactory,
             onBack = {},
+            onOpenCredit = context.onOpenCredit,
             chromeOverride = chrome,
             listRefreshRevision = listRefreshRevision,
         )
@@ -431,6 +434,7 @@ internal fun ObligationsTaskNavigation(
     ledgerName: String?,
 ) {
     Column {
+        ObligationsTaskRow(title = stringResource(R.string.funds_accounts_title), supporting = stringResource(R.string.funds_accounts_summary), onClick = actions.onOpenFunds)
         // D03: secondary tasks read as quiet links under the same section-title level as the groups.
         Text(
             text = stringResource(R.string.relations_task_section_title),

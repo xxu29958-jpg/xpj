@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="envelopes_fill_plan">填入现有计划金额</string>
+    <string name="envelopes_history">查看分配记录</string>
+    <string name="envelopes_older_history">查看更早记录</string>
+    <string name="envelopes_history_empty">还没有保存过分配。</string>
+    <string name="envelopes_history_reason">%1$s · %2$s</string>
+    <string name="envelopes_history_version">第 %1$d 次分配</string>
+    <string name="envelopes_history_amount">%1$s %2$s</string>
+    <string name="envelopes_title">信封分配</string>
+    <string name="envelopes_subtitle">给已有现金安排用途</string>
+    <string name="envelopes_edit">调整现金用途</string>
+    <string name="envelopes_invalid_month">请核对要安排的月份。</string>
+    <string name="envelopes_unknown">待核对</string>
+    <string name="envelopes_previous_month">上月</string>
+    <string name="envelopes_next_month">下月</string>
+    <string name="envelopes_explanation">钱仍在原账户里，信封只安排用途。信用额度和未到账收入不计入可分配现金。</string>
+    <string name="envelopes_shortfall">还需补足现金</string>
+    <string name="envelopes_unassigned">还可分配</string>
+    <string name="envelopes_cash_scope">资金池现金 %1$s · 所有月份已留出 %2$s\n%3$s 的已记录范围，不是银行实时余额。</string>
+    <string name="envelopes_plan">现有计划 %1$s</string>
+    <string name="envelopes_plan_unavailable">尚无可用计划金额</string>
+    <string name="envelopes_purpose_balance">用途剩余 %1$s · 现金留出 %2$s</string>
+    <string name="envelopes_not_funded">尚未分配现金</string>
+    <string name="envelopes_unpaid">对应消费尚欠 %1$s；归还本金不会再扣一次消费用途。</string>
+    <string name="envelopes_unlinked">%1$s 尚未核对付款来源，继续保留现金占用。</string>
+    <string name="envelopes_rollover_note">以前月份尚未用完的分配继续保留；调整为 0 可释放余额。退款回到原购买的信封。超支仍可记账，随后调整用途或补记实际到账。</string>
+    <string name="envelopes_sources_note">由现金、储蓄卡或余额账户提供资金。只有账户所有者能加入或移出，所选账户须对本账本可见；私人余额不会公开。</string>
+    <string name="envelopes_no_accounts">还没有本账本可见的现金账户，请从资金账户添加。</string>
+    <string name="envelopes_period_currency">%1$s · %2$s</string>
+    <string name="envelopes_assignment_label">%1$s · 分配总额（%2$s）</string>
+    <string name="envelopes_input_note">用途沿用现有分类预算、储蓄和备用金安排。填写分配总额，不重复加上已经消费的金额；零表示释放该用途的余额。</string>
+    <string name="envelopes_reason">这次调整的说明</string>
+    <string name="envelopes_other_spending">其他消费</string>
+    <string name="envelopes_savings">储蓄</string>
+    <string name="envelopes_buffer">备用金</string>
+</resources>

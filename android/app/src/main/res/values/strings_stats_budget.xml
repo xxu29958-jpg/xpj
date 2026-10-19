@@ -332,7 +332,8 @@
     <string name="debt_list_empty_payables_body">用上方「记一笔欠款」记下后，这里会显示金额和清偿进度。</string>
     <string name="debt_list_empty_payables_body_readonly">账本内记下的往来，可以在下方「全部往来」查看。</string>
     <string name="debt_list_card_principal">本金 %1$s</string>
-    <string name="debt_list_card_balance">未结 · %1$s / 本金 %2$s</string>
+    <string name="debt_list_card_balance">%1$s · 原始本金 %2$s</string>
+    <string name="debt_list_credit_balance">信用账户 · %1$s</string>
     <string name="debt_list_card_original">原币 %1$s %2$s</string>
     <string name="debt_list_total_payable">我还需要还 · %1$s</string>
     <string name="debt_list_total_receivable">我还可以收回 · %1$s</string>

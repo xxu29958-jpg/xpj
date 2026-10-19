@@ -61,7 +61,7 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
         originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
         ExpenseCommandAcceptance(projectOptimisticExpense(expense, draft), admit(expectedBinding,
-            listOf(patchIntent(expense, draft), stateIntent(PendingMutationType.ConfirmExpense, expense)), originalInput))
+            listOf(patchIntent(expense, draft), stateIntent(PendingMutationType.ConfirmExpense, expense, draft.funding)), originalInput))
     }
 
     override suspend fun confirmExpenses(
@@ -123,7 +123,7 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
         originalInput: ExpenseFactOriginalInput? = null): List<Long> {
         val commands = if (originalInput == null) intents else {
             require(originalInput.binding == binding && intents.all { it.targetId == "expense:${originalInput.expenseId}" })
-            require(originalInput.formKey in setOf("pending_category", "pending_merchant", "pending_amount", "pending_duplicate"))
+            require(originalInput.formKey in setOf("pending_category", "pending_merchant", "pending_amount", "pending_duplicate", "pending_funding"))
             intents.map { it.copy(idempotencyKey = UUID.nameUUIDFromBytes(
                 "${originalInput.originalKey}:${it.type.wireValue}".toByteArray()).toString()) }
         }
@@ -145,10 +145,14 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
             expense.rowVersion, UUID.randomUUID().toString())
     }
 
-    private fun stateIntent(type: PendingMutationType, expense: Expense): PendingMutationIntent {
+    private fun stateIntent(type: PendingMutationType, expense: Expense,
+        funding: List<com.ticketbox.domain.model.ExpenseFunding> = emptyList()): PendingMutationIntent {
         requireBaseline(expense)
         return PendingMutationIntent(type, expenseOutboxTargetId(expense),
-            core.offlineMutations.expenseStateTokenAdapter.toJson(ExpenseStateTokenRequest(0L)),
+            core.offlineMutations.expenseStateTokenAdapter.toJson(ExpenseStateTokenRequest(0L,
+                funding.takeIf { it.isNotEmpty() }?.map { com.ticketbox.data.remote.dto.ExpenseFundingPartDto(
+                    it.componentId, it.accountPublicId, it.accountRowVersion, it.expenseAmountMinor, it.accountAmountMinor,
+                    it.includedInOpening, it.expenseCurrencyCode, it.accountCurrencyCode) })),
             expense.rowVersion, UUID.randomUUID().toString())
     }
 

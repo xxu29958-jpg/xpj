@@ -169,7 +169,7 @@ class CreateDebtGoalViewModel(
         val generation = ++loadGeneration
         _state.update { it.copy(isLoadingDebts = true, loadError = null) }
         viewModelScope.launch {
-            val result = debts.listDebts()
+            val result = debts.listDebts(com.ticketbox.domain.model.DebtListLens.GoalCandidates)
             if (generation != loadGeneration || observation.binding != writes.currentAccess()?.binding ||
                 observation.binding != binding) return@launch
             val currentObservation = writeObservation ?: return@launch

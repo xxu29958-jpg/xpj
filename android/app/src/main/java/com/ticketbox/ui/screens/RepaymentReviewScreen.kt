@@ -50,7 +50,7 @@ import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 
 @Composable
 internal fun RepaymentReviewScreen(state: RepaymentDraftInboxUiState, model: RepaymentDraftInboxViewModel,
-    onOpenDebt: (String) -> Unit, onOpenExpense: (Long) -> Unit) {
+    onOpenDebt: (String) -> Unit, onOpenExpense: (Long) -> Unit, onFundCapture: (String) -> Unit) {
     BackHandler { model.reviewEditor.closeReview() }
     var choosingDebt by rememberSaveable { mutableStateOf(false) }
     AppSecondaryScrollableContent(chrome = AppSecondaryPageChrome(role = AppPageRole.Stats,
@@ -64,11 +64,12 @@ internal fun RepaymentReviewScreen(state: RepaymentDraftInboxUiState, model: Rep
             state.drafts.find { it.publicId == state.reviewId }?.let { capture -> RepaymentReviewSource(capture) }
         }
         state.error?.let { item { AppStatusBanner(it, tone = MessageTone.Danger) } }
+        item { RepaymentCaptureFundingEntry(state, onFundCapture) }
         item { RepaymentReviewInputs(state, model) { choosingDebt = true } }
         item { RepaymentReviewDelivery(state, model) }
         state.drafts.find { it.publicId == state.reviewId && !it.isPending }?.let { capture ->
             item {
-                if (state.review.input != null && state.review.input.submittedAction == null) {
+                if (!capture.correctionNeedsMoney && state.review.input != null && state.review.input.submittedAction == null) {
                     Text(stringResource(R.string.repayment_review_unsubmitted_history), style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -119,13 +120,18 @@ private fun RepaymentReviewSource(capture: RepaymentDraft) {
 @Composable
 private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: RepaymentDraftInboxViewModel, chooseDebt: () -> Unit) {
     val input = state.review.input ?: return
-    val pending = state.drafts.any { it.publicId == input.draftPublicId && it.isPending }
+    val capture = state.drafts.find { it.publicId == input.draftPublicId }
+    if (capture?.correctionNeedsMoney == true) {
+        RepaymentReviewMoneySection(state, model, editable = false)
+        return
+    }
+    val pending = capture?.isPending == true
     val unsubmitted = pending && input.submittedAction == null
     val editable = unsubmitted && !state.review.bindingChanged && state.canModify && state.pendingActionDraftId == null
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         if (unsubmitted) RepaymentAsExpenseAction(editable, model::correctAsExpense)
-        RepaymentReviewMoney(input.currency, input.amountText, editable, model.reviewEditor::updateReviewMoney)
+        RepaymentReviewMoneySection(state, model, editable)
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
             if (editable) {
                 DebtDateField(input.paymentDate.orEmpty(), true, onChange = model.reviewEditor::updateReviewDate)
@@ -148,6 +154,16 @@ private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: Repa
             }
         }
     }
+}
+
+@Composable
+private fun RepaymentReviewMoneySection(state: RepaymentDraftInboxUiState, model: RepaymentDraftInboxViewModel, editable: Boolean) {
+    val input = state.review.input ?: return
+    val correctionMoney = state.drafts.any { it.publicId == input.draftPublicId && it.correctionNeedsMoney }
+    if (correctionMoney) Text(stringResource(R.string.funds_correction_money))
+    RepaymentReviewMoney(input.currency, input.amountText,
+        editable || correctionMoney && input.submittedAction == null && !state.review.bindingChanged && state.canModify,
+        model.reviewEditor::updateReviewMoney)
 }
 
 @Composable
@@ -198,7 +214,7 @@ private fun RepaymentReviewActions(state: RepaymentDraftInboxUiState, model: Rep
         if (unsubmitted) AppPrimaryButton(text = stringResource(R.string.repayment_review_confirm),
             onClick = model.reviewEditor::submitReview, modifier = Modifier.fillMaxWidth(),
             enabled = state.canModify && !state.isLoading && !state.review.bindingChanged && state.pendingActionDraftId == null
-                && state.drafts.none { it.publicId == input?.draftPublicId && it.sourceExpenseRequiresReview })
+                && state.drafts.none { it.publicId == input.draftPublicId && it.sourceExpenseRequiresReview })
         else if (state.review.canRetry) AppPrimaryButton(text = stringResource(R.string.repayment_review_retry),
             onClick = { model.reviewEditor.recoverReview(false) }, enabled = state.canModify, modifier = Modifier.fillMaxWidth())
         if (unsubmitted || state.review.canRetry) TextButton(onClick = model.reviewEditor::closeReview, modifier = Modifier.fillMaxWidth()) {
@@ -224,15 +240,10 @@ private fun RepaymentReviewMoney(currency: String, amount: String, editable: Boo
             AppAmountText("$currency $amount", role = AppAmountRole.Hero)
         }
     }
-    if (choosingCurrency) RepaymentReviewCurrencyDialog(onClose = { choosingCurrency = false }) { selected ->
+    if (choosingCurrency) com.ticketbox.ui.components.CurrencyPickerDialog(onDismiss = { choosingCurrency = false }, onChoose = { selected ->
         onChange(selected.storageKey, amount)
         choosingCurrency = false
-    }
-}
-
-@Composable
-private fun RepaymentReviewCurrencyDialog(onClose: () -> Unit, onPick: (CurrencyCode) -> Unit) {
-    com.ticketbox.ui.components.CurrencyPickerDialog(onChoose = onPick, onDismiss = onClose)
+    })
 }
 
 @Composable

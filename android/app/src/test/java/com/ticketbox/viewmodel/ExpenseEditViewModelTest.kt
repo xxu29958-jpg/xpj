@@ -656,6 +656,7 @@ internal class ExpenseEditViewModelTest {
 }
 
 internal class FakeExpenseEditActions : ExpenseEditActions {
+    override val originalInputs = FakeExpenseFactActions()
     var canModifyLedgerFlag: Boolean = true
 
     val baseExpense: Expense = Expense(

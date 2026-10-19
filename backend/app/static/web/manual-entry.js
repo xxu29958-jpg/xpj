@@ -67,9 +67,12 @@
     });
     if (saved.note) options.open = true;
     showSummaries();
+    form.dispatchEvent(new CustomEvent("ticketbox:manual-restored"));
   }
 
   function readOnly(value) {
+    form.querySelectorAll("[data-funding-editor] button, [data-funding-editor] select, [data-funding-editor] input:not([name])")
+      .forEach(input => { input.disabled = value; });
     controls.forEach(control => {
       if (control.tagName === "SELECT") control.disabled = value || omitted.has(control.name);
       else control.readOnly = value;

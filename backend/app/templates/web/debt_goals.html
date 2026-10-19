@@ -69,7 +69,7 @@
     <p class="hint">{{ goal.links_title }}</p>
     <div class="product-entry-list">
     {% for link in goal.links %}
-    <a class="product-entry{% if link.recede %} is-receded{% endif %}" href="/web/debts/{{ link.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">
+    <a class="product-entry{% if link.recede %} is-receded{% endif %}" {% if link.can_open %}href="{% if link.source_id %}/web/funds?account_id={{ link.source_id|urlencode }}&amp;ledger_id={{ selected_ledger_id|urlencode }}{% else %}/web/debts/{{ link.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}{% endif %}"{% else %}aria-disabled="true"{% endif %}>
       <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
       <span class="product-entry-copy">
         <span class="product-entry-heading"><strong>{{ link.name }}</strong>{{ status_pill(link.status_tone, link.status_label) }}</span>
@@ -87,7 +87,7 @@
 
   {% if goal.needs_review %}
   <div class="product-feedback product-feedback--warning" role="status">
-    <span><strong>{{ needs_review_note }}</strong><br>{{ goal.review_body }}</span>
+    <span><strong>{{ goal.review_title }}</strong><br>{{ goal.review_body }}</span>
   </div>
   {% if can_write %}
   <div class="product-form-actions">

@@ -379,7 +379,9 @@ def _apply_correction_sections(
     actor_account_id: int,
     now,
 ) -> None:
+    from app.services.expense_funding_service import apply_funding_correction, funding_money_identity
     amount_before = expense.amount_cents
+    before_money = funding_money_identity(expense)
     scalar_payload = _scalar_payload(payload)
     if scalar_payload is not None:
         apply_expense_fields_to_claimed_row(
@@ -411,6 +413,7 @@ def _apply_correction_sections(
         )
     if expense.amount_cents != amount_before or payload.splits is not None:
         validate_current_expense_split_allocation(db, expense=expense)
+    apply_funding_correction(db, expense=expense, before_money=before_money, payload=payload, actor_account_id=actor_account_id)
     expense.updated_at = now
 
 

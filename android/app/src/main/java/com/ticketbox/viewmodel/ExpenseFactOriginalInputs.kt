@@ -64,7 +64,7 @@ internal fun ExpenseFactViewModel.keepOffsetInput(review: Boolean = false) {
     val form = _uiState.value.offsetForm
     val baseline = form.sourceExpense ?: return
     factInputSession?.keep(form.inputKey(), ExpenseFactInputDraft(baseline, offsetKind = form.kind,
-        amountText = form.amountText, accountingDate = form.accountingDate, reason = form.reason), review)
+        amountText = form.amountText, accountingDate = form.accountingDate, reason = form.reason, destinationsJson = form.destinationsJson), review)
 }
 
 internal fun ExpenseFactViewModel.keepVoidInput(review: Boolean = false) {

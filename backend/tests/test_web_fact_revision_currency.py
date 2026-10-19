@@ -75,6 +75,7 @@ def fact_context(monkeypatch):
     monkeypatch.setattr(helpers, "list_ledger_category_options", lambda *_a, **_k: [])
     monkeypatch.setattr(fact, "build_split_invite_context", lambda *_a, **_k: {})
     monkeypatch.setattr(fact, "expense_offset_fact_view", lambda *_a: {})
+    monkeypatch.setattr(fact, "expense_funding_view", lambda *_a, **_k: None)
     monkeypatch.setattr(fact.invitation_members, "list_members", lambda *_a, **_k: [
         SimpleNamespace(member_id=7, account_name="我")])
 

@@ -169,6 +169,8 @@ internal class RepositoryGraph(
     )
 
     // Personal repayment review uses the existing debt query owner; capture is dispatched by Outbox.
+    val fundsRepository = com.ticketbox.data.repository.FundsRepository(apiServiceProvider, database, outbox, debtQueries)
+
     val repaymentDraftRepository = RepaymentDraftRepository(
         apiProvider = apiServiceProvider,
         queryReader = debtQueries,

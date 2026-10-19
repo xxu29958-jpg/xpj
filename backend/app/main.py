@@ -45,11 +45,13 @@ from app.routes import (
     desktop,
     devices,
     duplicates,
+    envelopes,
     exchange_rates,
     expense_corrections,
     expense_originals,
     expenses,
     exports,
+    funds,
     goals,
     imports,
     income_plans,
@@ -90,13 +92,16 @@ from app.routes import (
     web_debt_proposal_actions,
     web_debts,
     web_duplicates,
+    web_envelopes,
     web_expense_correction,
     web_expense_create,
     web_expense_edit,
+    web_expense_funding,
     web_expense_items,
     web_expense_lifecycle,
     web_expense_recognition,
     web_expense_splits,
+    web_funds,
     web_goal_edit,
     web_goals,
     web_import_events,
@@ -379,6 +384,9 @@ app.include_router(debt_bills.router)
 app.include_router(debt_split_changes.router)
 app.include_router(repayment_drafts.router)
 app.include_router(payment_captures.router)
+app.include_router(funds.router)
+app.include_router(envelopes.router)
+app.include_router(funds.expense_router)
 app.include_router(dashboard.router)
 app.include_router(rules.router)
 app.include_router(saved_views.router)
@@ -406,6 +414,9 @@ app.include_router(web_confirmed_batch.router)
 app.include_router(web_bill_split.router)
 app.include_router(web_dashboard.router)
 app.include_router(web_expense_create.router)
+app.include_router(web_funds.router)
+app.include_router(web_envelopes.router)
+app.include_router(web_expense_funding.router)
 app.include_router(web_expense_edit.router)
 app.include_router(web_expense_recognition.router)
 app.include_router(web_expense_correction.router)

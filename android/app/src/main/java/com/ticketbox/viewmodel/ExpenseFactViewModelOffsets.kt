@@ -47,6 +47,7 @@ data class OffsetFormState(
     val dateError: UiText? = null,
     val submitError: UiText? = null,
     val saving: Boolean = false,
+    val destinationsJson: String = "[]",
 ) {
     fun matchesRoot(expense: Expense?): Boolean = sourceExpense != null && expense != null &&
         sourceExpense.id == expense.id && sourceExpense.rowVersion == expense.rowVersion &&
@@ -223,7 +224,7 @@ fun ExpenseFactViewModel.updateOffsetKind(kind: StreamOffsetKind) {
 }
 
 /** 表单字段单一更新入口（CorrectionScalarField 先例）。 */
-enum class OffsetFormField { Amount, AccountingDate, Reason }
+enum class OffsetFormField { Amount, AccountingDate, Reason, Destinations }
 
 fun ExpenseFactViewModel.updateOffsetFormField(field: OffsetFormField, value: String) =
     updateOffsetForm {
@@ -231,6 +232,7 @@ fun ExpenseFactViewModel.updateOffsetFormField(field: OffsetFormField, value: St
             OffsetFormField.Amount -> it.copy(amountText = value, amountError = null)
             OffsetFormField.AccountingDate -> it.copy(accountingDate = value, dateError = null)
             OffsetFormField.Reason -> it.copy(reason = value)
+            OffsetFormField.Destinations -> it.copy(destinationsJson = value)
         }
     }
 
