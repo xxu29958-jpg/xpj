@@ -99,7 +99,10 @@ class FamilyInvitationNavigationTest {
         compose.onNodeWithText("生成家庭邀请").performClick()
         compose.waitUntil(5_000) { model.uiState.value.createdInvite != null }
         assertEquals(List(2) { InvitationCreateRequestDto("viewer", "家人", 14) }, requests.toList())
-        compose.onNodeWithText("复制").assertIsDisplayed()
+        val copy = compose.onNodeWithText("复制")
+        // The created-invite content resizes the sheet after the model publishes its result.
+        compose.waitUntil(5_000) { copy.isDisplayed() }
+        copy.assertIsDisplayed()
         captureReferenceLibraryStep(compose, context, "family-invitation-created")
         compose.onNodeWithText("查看已发出的邀请与撤销").performScrollTo().performClick()
         compose.waitUntil(5_000) { model.uiState.value.invitationsError != null }

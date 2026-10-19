@@ -168,6 +168,7 @@ def _db_isolation(request: pytest.FixtureRequest):
 @pytest.fixture(autouse=True)
 def _background_tasks_respect_db_isolation(
     request: pytest.FixtureRequest,
+    _db_isolation,
 ):
     """Keep executor and FX scheduler threads off the single-connection rollback lane.
 
@@ -183,7 +184,22 @@ def _background_tasks_respect_db_isolation(
     Explicit scheduler tests and real-db/native app lifespans remain active.
     """
     if "real_db" in request.keywords:
-        yield
+        from app import main
+
+        # In-process app lifespans may return from their bounded scheduler stop
+        # while a provider request still owns a database transaction. Keep the
+        # real scheduler active, but join it before the database fixture's DDL.
+        start_scheduler = main.start_fx_rate_scheduler
+        monkeypatch = request.getfixturevalue("monkeypatch")
+        with ExitStack() as schedulers:
+            def start_owned_scheduler():
+                scheduler = start_scheduler()
+                schedulers.callback(scheduler.thread.join)
+                schedulers.callback(scheduler.stop)
+                return scheduler
+
+            monkeypatch.setattr(main, "start_fx_rate_scheduler", start_owned_scheduler)
+            yield
         return
 
     from app.services import background_task_executor
