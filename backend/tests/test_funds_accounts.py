@@ -518,9 +518,13 @@ def _correct_funded_purchase_date(client, identity, expense_id, bank):
 
 
 def _reverse_and_restore_funding(client, identity, expense_id, bank):
+    from app.services.ledger_calendar_service import current_ledger_date
+
+    with SessionLocal() as db:
+        future_day = current_ledger_date(db, ledger_id=bank["ledger_id"]) + timedelta(days=1)
     path, account_url = f"/api/expenses/{expense_id}", "/api/funds/accounts/" + bank["public_id"]
     source = client.get(path, headers=identity.app_headers).json()
-    for invalid_day in (date.today() + timedelta(days=1), date.fromisoformat(bank["opening_date"]) - timedelta(days=1)):
+    for invalid_day in (future_day, date.fromisoformat(bank["opening_date"]) - timedelta(days=1)):
         refused = client.post(path + "/offsets", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
             json={"kind": "reversal", "accounting_date": str(invalid_day), "reason": "核对资金日期范围",
                 "expected_row_version": source["row_version"]})
@@ -541,7 +545,7 @@ def _reverse_and_restore_funding(client, identity, expense_id, bank):
             "correction_reason": "再次核对凭证"}
         if _ == 0:
             refused = client.post(offset_url + "/corrections", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-                json={**correction, "accounting_date": str(date.today() + timedelta(days=1))})
+                json={**correction, "accounting_date": str(future_day)})
             assert refused.status_code == 422 and refused.json()["error"] == "funds_date_outside_coverage"
             assert client.get(account_url, headers=identity.app_headers).json()["balance_minor"] == 90000
         corrected = client.post(offset_url + "/corrections", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
