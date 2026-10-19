@@ -123,7 +123,7 @@ class CategoryReferenceNavigationTest {
 
         val previousReads = reads
         blocked = false // The referenced configuration is resolved while this directory is away.
-        compose.onNodeWithContentDescription("分类").performScrollTo().performTouchInput { click() }
+        compose.onNodeWithContentDescription("返回分类").performScrollTo().performTouchInput { click() }
         compose.waitUntil(5_000) { reads > previousReads }
         waitForText("烘焙")
         removeCategory()
@@ -183,7 +183,7 @@ class CategoryReferenceNavigationTest {
         compose.onNodeWithText(context.getString(R.string.budget_header_subtitle, monthLabel(referenceId))).assertIsDisplayed()
         val previousReads = reads
         blocked = false
-        compose.onNodeWithContentDescription("分类")
+        compose.onNodeWithContentDescription("返回分类")
             .performScrollTo().performTouchInput { click() }
         assertDirectoryRefreshed(previousReads)
     }
@@ -202,7 +202,7 @@ class CategoryReferenceNavigationTest {
         compose.onNodeWithText("烘焙限额").assertIsDisplayed()
         val previousReads = reads
         blocked = false
-        compose.onNodeWithContentDescription("分类")
+        compose.onNodeWithContentDescription("返回分类")
             .performScrollTo().performTouchInput { click() }
         assertDirectoryRefreshed(previousReads)
     }
@@ -212,7 +212,7 @@ class CategoryReferenceNavigationTest {
         openReference()
         waitForText(context.getString(R.string.category_rule_editor_submit_update))
         failDirectoryRead = true
-        compose.onNodeWithContentDescription("分类").performScrollTo().performTouchInput { click() }
+        compose.onNodeWithContentDescription("返回分类").performScrollTo().performTouchInput { click() }
         waitForText("暂时无法更新分类。")
         compose.onNodeWithText("烘焙").assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.category_directory_stale)).assertIsDisplayed()
