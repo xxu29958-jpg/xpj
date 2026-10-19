@@ -87,6 +87,9 @@
   let quoteController = null, suggestedPayerAmount = null, payerEditable = false;
   const quoteBasis = () => JSON.stringify([value("ledger_id"), value("draft_scope"), value("payer_public_id"),
     value("payer_currency_code"), value("principal_amount"), value("occurred_on")]);
+  function acceptsPayerQuote(basis, controller, paid) {
+    return !controller.signal.aborted && basis === quoteBasis() && !paid.readOnly && paid.value === "";
+  }
   async function quotePayerAmount() {
     quoteController?.abort();
     suggestedPayerAmount = null;
@@ -103,13 +106,13 @@
     try {
       const response = await fetch("/web/funds/conversion?" + query, {signal: controller.signal, cache: "no-store"});
       const result = await response.json();
-      if (controller.signal.aborted || basis !== quoteBasis() || paid.readOnly || paid.value !== "") return;
+      if (!acceptsPayerQuote(basis, controller, paid)) return;
       if (!response.ok || result.converted_amount === null) throw Error("rate_unavailable");
       suggestedPayerAmount = result.converted_amount;
       paid.value = result.converted_amount;
       paid.dispatchEvent(new Event("input", {bubbles: true}));
     } catch (_) {
-      if (controller.signal.aborted || basis !== quoteBasis() || paid.readOnly || paid.value !== "") return;
+      if (!acceptsPayerQuote(basis, controller, paid)) return;
       paid.setCustomValidity("暂时无法读取或获取参考汇率。");
     }
   }
