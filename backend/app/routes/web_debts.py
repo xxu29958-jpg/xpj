@@ -117,6 +117,9 @@ def _debt_view(debt) -> dict:
         "direction_sentence": debt_direction_sentence(debt, _debt_name(debt)),
         "currency_code": debt.home_currency_code,
         "principal_label": _home_amount_label(debt.principal_amount_cents, debt.home_currency_code),
+        # A credit account's debt moves with its purchases, repayments and refunds; its stored
+        # principal is only the opening balance, so the row names the account instead.
+        "is_credit_account": debt.source_type == "credit_facility",
         "recede": debt.status != "open",
         "member_headline": None,
         "show_progress": False,
