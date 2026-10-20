@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.LedgerCalendarReader
+import com.ticketbox.data.repository.newTaskDate
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.RecurringPendingIntent
 import com.ticketbox.data.repository.RecurringPendingState
@@ -22,6 +24,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
+import java.time.Clock
+import java.time.LocalDate
 
 data class RecurringUiState(
     val loading: Boolean = false,
@@ -40,6 +44,7 @@ data class RecurringUiState(
     val editorEpoch: Long = 0,
     val editorRuntimeId: String = "",
     val history: RecurringHistoryState = RecurringHistoryState(),
+    val ledgerToday: LocalDate? = null,
 ) {
     val manualSaveInFlight: Boolean
         get() = manualSaveFeedback?.settlement == RecurringManualSaveSettlement.InFlight
@@ -61,6 +66,8 @@ class RecurringViewModel(
     private val repository: RecurringActions,
     private val onDataChanged: () -> Unit = {},
     private val originalBinding: LogicalSessionBinding? = null,
+    private val calendars: LedgerCalendarReader? = null,
+    private val clock: Clock = Clock.systemUTC(),
 ) : ViewModel() {
     private val editorRuntimeId = UUID.randomUUID().toString()
     private val _uiState = MutableStateFlow(
@@ -79,7 +86,7 @@ class RecurringViewModel(
         historyTask.dismiss()
         refreshGeneration += 1
         _uiState.update { it.copy(items = emptyList(), itemsFetchedAt = null, itemsFromCache = false,
-            candidates = emptyList(), loading = false,
+            candidates = emptyList(), loading = false, ledgerToday = null,
             itemsLoadState = RecurringListLoadState.Failed, candidatesLoadState = RecurringListLoadState.Failed,
             message = error.toUiText(R.string.recurring_history_failed), messageTone = MessageTone.Danger) }
     }
@@ -152,7 +159,7 @@ class RecurringViewModel(
         if (retireCurrent) {
             refreshGeneration += 1
             _uiState.update { it.copy(items = emptyList(), itemsFetchedAt = null, itemsFromCache = false,
-                candidates = emptyList()) }
+                candidates = emptyList(), ledgerToday = null) }
             historyTask.invalidate()
         }
         refreshInternal(preserveMutationFeedback = retireCurrent)
@@ -184,6 +191,8 @@ class RecurringViewModel(
             val denied = listOf(itemsResult.exceptionOrNull(), candidatesResult.exceptionOrNull())
                 .firstOrNull { it?.isReadAccessDenied() == true }
             if (denied != null) { retireDeniedReads(denied); return@launch }
+            val ledgerToday = calendars.newTaskDate(binding, clock)
+            if (requestGeneration != generation || refreshGeneration != refresh) return@launch
             val message = listOf(itemsResult, candidatesResult)
                 .firstOrNull { it.isFailure }
                 ?.exceptionOrNull()
@@ -207,6 +216,7 @@ class RecurringViewModel(
                     itemsLoadState = itemsResult.toRecurringListLoadState(),
                     candidatesLoadState = candidatesResult.toRecurringListLoadState(),
                     canModify = activeCanModify,
+                    ledgerToday = ledgerToday,
                 )
             }
         }

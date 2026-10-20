@@ -3,6 +3,12 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.MonthCalendarFixture
+import com.ticketbox.data.repository.calendar
+import com.ticketbox.ui.screens.recurring.RecurringTab
+import com.ticketbox.ui.screens.recurring.recurringDueIsPast
+import com.ticketbox.ui.screens.recurring.recurringItemMeta
+import com.ticketbox.ui.screens.recurring.recurringScreenDerived
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.RecurringConflictDetails
 import com.ticketbox.data.repository.RecurringDateEdit
@@ -37,6 +43,11 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import kotlinx.coroutines.test.runCurrent
 
 @OptIn(ExperimentalCoroutinesApi::class)
 private fun recurringTest(block: suspend TestScope.() -> Unit) = runTest {
@@ -51,6 +62,56 @@ private fun recurringTest(block: suspend TestScope.() -> Unit) = runTest {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecurringViewModelTest {
+    @Test
+    fun pastDueUsesBoundLedgerDayAcrossDeviceMidnightAndKeepsUnknownRulesUnknown() = recurringTest {
+        val access = planAccess()
+        val due = item().copy(nextDueDate = "2026-10-19")
+        for ((zone, expectedDay) in listOf("America/Los_Angeles" to "2026-10-19", "Asia/Shanghai" to "2026-10-20")) {
+            for (deviceZone in listOf("Pacific/Honolulu", "Asia/Tokyo")) {
+                val clock = Clock.fixed(Instant.parse("2026-10-20T00:30:00Z"), ZoneId.of(deviceZone))
+                val calendars = MonthCalendarFixture(access.binding, calendar(access.binding, zone))
+                val vm = RecurringViewModel(FakeRecurringActions(itemsResult = Result.success(listOf(due))),
+                    calendars = calendars, clock = clock)
+                advanceUntilIdle()
+                val state = vm.uiState.value
+                assertEquals(LocalDate.parse(expectedDay), state.ledgerToday)
+                val hero = recurringScreenDerived(state, RecurringTab.Active).hero
+                val meta = recurringItemMeta(state.items.single(), state.ledgerToday)
+                assertEquals(zone == "Asia/Shanghai", recurringDueIsPast(requireNotNull(hero.nearestNextDate), hero.ledgerToday))
+                assertEquals(zone == "Asia/Shanghai", recurringDueIsPast(requireNotNull(meta.nextExpectedDate), meta.ledgerToday))
+                calendars.rule = null
+                calendars.response = Result.failure(java.io.IOException("offline"))
+                vm.refresh()
+                advanceUntilIdle()
+                assertEquals(null, vm.uiState.value.ledgerToday)
+                assertEquals(listOf(due), vm.uiState.value.items)
+            }
+        }
+    }
+
+    @Test
+    fun lateCalendarFromPreviousBindingCannotChangeCurrentLedgerDay() = recurringTest {
+        val access = MutableStateFlow<LedgerAccessContext?>(planAccess())
+        val old = requireNotNull(access.value).binding
+        val gate = CompletableDeferred<Unit>()
+        val calendars = MonthCalendarFixture(old).apply {
+            this.gate = { gate.await() }
+            response = Result.success(calendar(old, "Asia/Shanghai"))
+        }
+        val vm = RecurringViewModel(FakeRecurringActions(activeAccessFlow = access), calendars = calendars,
+            clock = Clock.fixed(Instant.parse("2026-10-20T00:30:00Z"), ZoneId.of("Asia/Tokyo")))
+        runCurrent()
+        val replacement = planAccess(ledgerId = "other")
+        calendars.binding = replacement.binding
+        calendars.rule = calendar(replacement.binding, "America/Los_Angeles")
+        access.value = replacement
+        runCurrent()
+        assertEquals(LocalDate.parse("2026-10-19"), vm.uiState.value.ledgerToday)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(LocalDate.parse("2026-10-19"), vm.uiState.value.ledgerToday)
+    }
+
     @Test
     fun initialFailureMarksBothListsFailedWithoutFabricatingEmpty() = recurringTest {
         val fake = FakeRecurringActions(

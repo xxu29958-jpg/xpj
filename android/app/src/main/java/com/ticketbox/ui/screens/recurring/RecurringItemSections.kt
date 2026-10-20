@@ -58,6 +58,7 @@ import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.screens.ReadableListBodyState
 import com.ticketbox.ui.screens.RecurringItemActions
 import com.ticketbox.ui.screens.RecurringListSectionModel
+import java.time.LocalDate
 
 /** 正式计划摘要：保留原币合计，只计 active 已发布 baseline，待同步不计入。 */
 @Composable
@@ -86,7 +87,7 @@ internal fun RecurringHeroSection(
             Text(
                 text = model.nearestNextDate?.let {
                     stringResource(
-                        if (recurringDueIsPast(it)) R.string.recurring_hero_meta_past else R.string.recurring_hero_meta_next,
+                        if (recurringDueIsPast(it, model.ledgerToday)) R.string.recurring_hero_meta_past else R.string.recurring_hero_meta_next,
                         model.activeCount,
                         recurringDisplayDate(it),
                     )
@@ -127,6 +128,7 @@ internal data class RecurringItemsCardState(
     val section: RecurringListSectionModel<RecurringItem>,
     val canModify: Boolean,
     val editEnabled: Boolean,
+    val ledgerToday: LocalDate? = null,
 )
 
 private data class RecurringItemInteraction(
@@ -182,6 +184,7 @@ internal fun RecurringItemsCard(
                             canModify = state.canModify,
                             interaction = interaction,
                             actions = actions,
+                            meta = recurringItemMeta(item, state.ledgerToday),
                         )
                     }
                 }
@@ -200,8 +203,8 @@ private fun RecurringItemRow(
     canModify: Boolean,
     interaction: RecurringItemInteraction,
     actions: RecurringItemActions,
+    meta: RecurringItemMeta,
 ) {
-    val meta = recurringItemMeta(item)
     val archived = item.status == "archived"
     val capabilities = recurringRowCapabilities(item.status)
     val editable = canModify && capabilities.editable && interaction.editEnabled
@@ -270,7 +273,7 @@ private fun RecurringItemMetaColumn(item: RecurringItem, meta: RecurringItemMeta
 @Composable
 private fun recurringNextDateText(meta: RecurringItemMeta): String =
     meta.nextExpectedDate?.let {
-        stringResource(if (recurringDueIsPast(it)) R.string.recurring_meta_next_past else R.string.recurring_meta_next, recurringDisplayDate(it))
+        stringResource(if (recurringDueIsPast(it, meta.ledgerToday)) R.string.recurring_meta_next_past else R.string.recurring_meta_next, recurringDisplayDate(it))
     } ?: stringResource(
         if (meta.observedCount != null) {
             R.string.recurring_meta_next_unknown

@@ -29,6 +29,7 @@ internal fun RecurringRoute(
         factory = recurringViewModelFactory(
             originalBinding = LocalNotificationTask.current?.binding,
             repository = screenFactory.recurringRepository,
+            calendars = screenFactory.repositories.ledgerCalendarRepository,
             onDataChanged = onDataChanged,
         ),
     )

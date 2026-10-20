@@ -149,5 +149,6 @@ class RecurringScreenModelsTest {
         assertFalse(recurringDueIsPast("2026-10-20", today))
         assertFalse(recurringDueIsPast("2026-11-01", today))
         assertFalse(recurringDueIsPast("未知", today))
+        assertFalse(recurringDueIsPast("2026-10-15", null))
     }
 }
