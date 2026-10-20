@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_history_time.html' import saved_time %}
 {% from 'partials/import_counts.html' import summary %}
 {% set page_title = '导入导出' %}
 {% set product_body_domain = 'transactions' %}
@@ -132,7 +133,7 @@
   <div data-import-batch="{{ batch.public_id }}">
     <a class="product-entry" href="/web/import/{{ batch.public_id }}{{ q }}">
       <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#file-spreadsheet"/></svg></span>
-      <span class="product-entry-copy"><strong>{{ batch.file_name }}</strong><span>{{ batch_created_labels[batch.id] }} · {{ status_label }}</span><span>{{ summary(progress.row_counts) }}</span></span>
+      <span class="product-entry-copy"><strong>{{ batch.file_name }}</strong><span>{{ saved_time(batch.created_at, ledger_timezone_name|default(none)) }} · {{ status_label }}</span><span>{{ summary(progress.row_counts) }}</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </a>
     {% if progress.row_counts.error_rows > 0 %}<a class="product-button product-button--quiet" href="/web/import/{{ batch.public_id }}/errors.csv{{ q }}">下载错误行</a>{% endif %}

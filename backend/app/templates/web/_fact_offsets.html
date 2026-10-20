@@ -56,10 +56,11 @@
   <p class="meta">这是来源变化提醒；参考金额不是再次减免或新的待结算金额，也不表示双方尚未处理。请以当前约定和实际付返款为准，不会自动改账。</p>
   {% endif %}
 
+  {% from '_history_time.html' import saved_time %}
   {% if offset_recent_history %}
   <div class="offset-history">
     {% for entry in offset_recent_history %}
-    <p class="meta">{{ entry.kind_label }} · {{ entry.when }}{% if entry.reason %} · {{ entry.reason }}{% endif %}{% if entry.actor %} · {{ entry.actor }}{% endif %}</p>
+    <p class="meta">{{ entry.kind_label }} · {{ saved_time(entry.created_at, ledger_timezone_name|default(none)) }}{% if entry.reason %} · {{ entry.reason }}{% endif %}{% if entry.actor %} · {{ entry.actor }}{% endif %}</p>
     {% endfor %}
   </div>
   {% endif %}
