@@ -103,25 +103,22 @@ class CreateSpendingGoalViewModel(
     }
 
     fun updateName(value: String) {
-        if (state.value.editable) updateGoalDraft { it.copy(name = value, failure = null) }
+        if (state.value.editable) updateGoalDraft { it.copy(name = value, failure = it.amountFailure()) }
     }
 
     fun updateTargetAmount(value: String) {
-        if (!state.value.editable) return
-        val currency = state.value.ledgerCurrency
-        val invalid = currency != null && value.isNotBlank() && parseAmountCents(value, currency) == null
-        updateGoalDraft { it.copy(amount = value,
-            failure = if (invalid) SpendingGoalCreationFailure(SpendingGoalFailureKind.Amount) else null) }
+        if (state.value.editable) updateGoalDraft { it.copy(amount = value).run { copy(failure = amountFailure()) } }
     }
 
     fun updateCategory(value: String) {
-        if (state.value.editable) updateGoalDraft { it.copy(category = value, failure = null) }
+        if (state.value.editable) updateGoalDraft { it.copy(category = value, failure = it.amountFailure()) }
     }
 
     fun shiftMonth(delta: Long) {
         if (!state.value.editable) return
         val next = runCatching { YearMonth.parse(state.value.month).plusMonths(delta).toString() }.getOrNull() ?: return
-        updateGoalDraft { it.copy(month = next, monthReady = true, monthSelected = true, userSelectedMonth = true, failure = null) }
+        updateGoalDraft { it.copy(month = next, monthReady = true, monthSelected = true, userSelectedMonth = true,
+            failure = it.amountFailure()) }
     }
 
     fun submit() {

@@ -44,7 +44,7 @@
 <p class="meta">{{ '选择实际扣款账户，核对本金和费用后一次确认。' if source_capture.status == 'pending' else '原采集已处理，来源与处理历史继续保留。' }}</p>
 <a class="text-link" href="/web/repayment-drafts/{{ source_capture.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}">查看原采集与处理结果</a>
 </section>{% endif %}
-<div data-funds-draft-shelf data-draft-scope="{{ funds_scope|tojson|forceescape }}" hidden><p class="meta">此浏览器保留的资金任务</p><ul data-funds-draft-list></ul></div>
+<div data-funds-draft-shelf data-draft-scope="{{ funds_scope|tojson|forceescape }}" data-task-labels="{{ actions|tojson|forceescape }}" hidden><p class="meta">此浏览器保留的资金任务</p><ul data-funds-draft-list></ul></div>
 {% if task %}
 <form method="post" action="/web/funds/save" class="product-form" data-funds-form
  data-funds-account-name="{{ account.name if account else '' }}" data-funds-account-currency="{{ account.currency_code if account else '' }}" data-funds-account-kind="{{ account.kind if account else '' }}"
@@ -146,12 +146,12 @@
 {% if task not in ['create', 'edit', 'repay', 'apply_credit', 'void_credit'] %}<div class="product-field"><label for="fund-date">实际日期</label><input class="product-input" type="date" id="fund-date" name="occurred_on" value="{{ values.occurred_on }}" required></div>{% endif %}
 </div>
 <p class="product-feedback funds-change-summary" data-funds-summary aria-live="polite" hidden></p>
-<p class="hint" data-funds-draft-status role="status"></p>
 <p class="hint" data-funds-review-note hidden>核对只准备继续编辑，保留原输入；确认前不会改变账户或记账。</p>
 <div class="product-task-actions"><button class="product-button product-button--primary" type="submit" data-funds-submit>{{ actions[task] }}</button>
 <button class="product-button product-button--quiet" type="submit" name="review_latest" value="1" data-funds-review formnovalidate hidden>核对最新账户后继续</button>
 <button class="product-button product-button--quiet" type="button" data-funds-discard hidden>放弃此浏览器的原稿</button>
-<a class="product-button product-button--quiet" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}">返回账户</a></div>
+<a class="product-button product-button--quiet" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}">返回账户</a>
+<p class="hint" data-funds-draft-status role="status" hidden></p></div>
 </form>
 {% elif account %}
 <section class="product-surface product-surface--plain funds-summary" aria-label="当前余额">

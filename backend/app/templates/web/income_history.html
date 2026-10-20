@@ -27,7 +27,7 @@
 {% set old = prior.snapshot if prior else none %}
 <li class="product-history-item" aria-label="{{ labels[entry.change_kind] }} · 版本 {{ entry.row_version }}">
   <div class="product-entry-heading"><h2 class="product-panel-title">{{ labels[entry.change_kind] }}</h2><span class="product-status">版本 {{ entry.row_version }}</span></div>
-  <span>记录保存时间 {{ saved_time(entry.recorded_at) }}</span>
+  <span>记录保存时间 {{ saved_time(entry.recorded_at, ledger_timezone_name|default(none)) }}</span>
   {% if entry.change_kind == 'baseline' %}<p class="product-feedback" role="status">这是开始保留记录时已知的计划；更早的修改及发生时间未知。</p>{% endif %}
   <strong>{{ snapshot.label }}</strong>
   {{ comparison('预计金额', money(old) if old else none, money(snapshot)) }}
