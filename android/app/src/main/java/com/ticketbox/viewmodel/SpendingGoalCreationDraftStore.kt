@@ -65,6 +65,10 @@ internal data class SpendingGoalCreationDraft(
         formError = (if (viewingOriginalId == null) failure else viewFailure)?.text(),
         creationKey = creationKey, hasDraft = hasDraft, isViewingOriginal = viewingOriginalId != null,
         originalSubmissionId = viewingOriginalId ?: acceptedId)
+
+    /** A malformed amount keeps its message until the amount itself is corrected. */
+    fun amountFailure(): SpendingGoalCreationFailure? = SpendingGoalCreationFailure(SpendingGoalFailureKind.Amount)
+        .takeIf { spendingGoalAmountError(amount, CurrencyCode.fromStorageKeyOrNull(currencyCode)) != null }
 }
 
 /** Each complete logical binding retains its raw task; accepted commands remain owned by Room. */

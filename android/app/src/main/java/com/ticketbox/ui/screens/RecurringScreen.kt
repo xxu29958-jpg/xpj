@@ -291,6 +291,7 @@ private fun LazyListScope.recurringRegistrySection(
                 section = derived.itemSection,
                 canModify = derived.canModify,
                 editEnabled = editEnabled,
+                ledgerToday = derived.hero.ledgerToday,
             ),
             onRetry = actions.onRefresh,
             onEdit = callbacks.onEdit,

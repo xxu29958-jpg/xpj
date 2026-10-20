@@ -85,6 +85,20 @@ class CreateSpendingGoalViewModelTest {
         assertTrue(vm.state.value.canSubmit)
     }
 
+    @Test fun amountErrorStaysUntilTheAmountItselfIsCorrected() = runTest(dispatcher) {
+        val edits = RecordingGoalEdits().apply { currencyResult = Result.success(CurrencyCode.JPY) }
+        val vm = model(edits)
+        vm.reset("2026-09"); advanceUntilIdle()
+        vm.updateName("餐饮"); vm.updateTargetAmount("1200.50")
+        val amountError = assertNotNull(vm.state.value.formError)
+        vm.updateCategory("外食"); vm.updateName("外食"); vm.shiftMonth(1)
+        assertEquals(amountError, vm.state.value.formError)
+        assertFalse(vm.state.value.canSubmit)
+        vm.updateTargetAmount("1200")
+        assertNull(vm.state.value.formError)
+        assertTrue(vm.state.value.canSubmit)
+    }
+
     @Test fun oldCreateCompletionCannotNavigateTheReplacementBinding() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         val edits = RecordingGoalEdits().apply { createGate = { withContext(NonCancellable) { gate.await() } } }
