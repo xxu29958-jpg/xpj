@@ -143,12 +143,12 @@ class RecurringScreenModelsTest {
     }
 
     @Test
-    fun aDueDateBeforeTodayIsPastWhileTodayFutureAndUnreadableAreNot() {
+    fun dueDatesDistinguishPastTodayFutureAndUnknownCalendar() {
         val today = LocalDate.parse("2026-10-20")
-        assertTrue(recurringDueIsPast("2026-10-15", today))
-        assertFalse(recurringDueIsPast("2026-10-20", today))
-        assertFalse(recurringDueIsPast("2026-11-01", today))
-        assertFalse(recurringDueIsPast("未知", today))
-        assertFalse(recurringDueIsPast("2026-10-15", null))
+        assertEquals(true, recurringDueIsPast("2026-10-15", today))
+        assertEquals(false, recurringDueIsPast("2026-10-20", today))
+        assertEquals(false, recurringDueIsPast("2026-11-01", today))
+        assertEquals(null, recurringDueIsPast("未知", today))
+        assertEquals(null, recurringDueIsPast("2026-10-15", null))
     }
 }

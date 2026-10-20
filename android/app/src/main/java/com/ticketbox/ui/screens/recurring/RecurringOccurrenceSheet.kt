@@ -73,9 +73,11 @@ data class OccurrenceSheetActions(
 
 @Composable
 private fun OccurrenceReminderDate(nextDueDate: String?, ledgerToday: java.time.LocalDate?) {
-    val label = if (nextDueDate?.let { recurringDueIsPast(it, ledgerToday) } == true) {
-        R.string.occurrence_past_due
-    } else R.string.occurrence_next_due
+    val label = when (nextDueDate?.let { recurringDueIsPast(it, ledgerToday) }) {
+        true -> R.string.occurrence_past_due
+        false -> R.string.occurrence_next_due
+        null -> R.string.occurrence_reminder_date
+    }
     Text(stringResource(label,
         nextDueDate?.let(::displayCalendarDay) ?: stringResource(R.string.occurrence_no_reminder)),
         style = MaterialTheme.typography.bodyMedium)

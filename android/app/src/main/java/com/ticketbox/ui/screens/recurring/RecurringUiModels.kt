@@ -149,10 +149,10 @@ internal fun recurringScreenDerived(state: RecurringUiState, tab: RecurringTab):
 
 /**
  * 下次日期跳过了已有对应付款的期次，所以早于今天的日期表示本期还没有记录付款，
- * 不能再写成「下次」。只使用账本日历；日历未知或日期无法解析时不猜测已过期。
+ * 不能再写成「下次」。只使用账本日历；日历未知或日期无法解析时返回 null，保留中性日期。
  */
-internal fun recurringDueIsPast(date: String, today: LocalDate?): Boolean =
-    today != null && runCatching { LocalDate.parse(date).isBefore(today) }.getOrDefault(false)
+internal fun recurringDueIsPast(date: String, today: LocalDate?): Boolean? =
+    today?.let { runCatching { LocalDate.parse(date).isBefore(it) }.getOrNull() }
 
 /** 新建表单默认建议的下次日期：下月同日（LocalDate 自动处理月末回退）。 */
 internal fun recurringDefaultNextDate(today: LocalDate = LocalDate.now()): String =

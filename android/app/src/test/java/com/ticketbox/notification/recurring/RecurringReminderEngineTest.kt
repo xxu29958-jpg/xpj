@@ -21,6 +21,23 @@ class RecurringReminderEngineTest {
     private val today = LocalDate.parse("2026-06-10")
     private val binding = LogicalSessionBinding("https://example.test", "L", "owner", "session", "revision")
 
+    @Test fun emptyScanSucceedsWithoutReadingAnUnavailableCalendar() = runTest {
+        val source = FakeRecurringReminderSource.of()
+        val store = InMemoryRecurringReminderStore()
+        val dispatcher = FakeRecurringReminderDispatcher()
+        var calendarReads = 0
+        val engine = RecurringReminderEngine(source, RecurringReminderPolicy(), store, dispatcher,
+            RecurringReminderRuntime({ true }, { binding }, {
+                calendarReads += 1
+                Result.failure(IOException("calendar unavailable"))
+            }))
+        assertEquals(RecurringReminderRunOutcome.EMPTY_SUCCESS, engine.checkAndNotify())
+        assertEquals(1, source.calls)
+        assertEquals(0, calendarReads)
+        assertTrue(store.keys.isEmpty())
+        assertTrue(dispatcher.dispatchedKeys.isEmpty())
+    }
+
     @Test
     fun persistedLedgerDayOwnsReminderKindAcrossDeviceBoundaryAndUnknownRuleCannotMarkSent() = runTest {
         for ((zone, kind) in listOf("Asia/Shanghai" to RecurringReminderKind.OVERDUE,

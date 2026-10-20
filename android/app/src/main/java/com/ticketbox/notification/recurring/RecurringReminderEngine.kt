@@ -93,6 +93,7 @@ class RecurringReminderEngine(
         }
 
         if (runtime.activeBinding() != binding) return RecurringReminderRunOutcome.EMPTY_SUCCESS
+        if (items.isEmpty()) return RecurringReminderRunOutcome.EMPTY_SUCCESS
         val day = runtime.today(binding)
         if (runtime.activeBinding() != binding) return RecurringReminderRunOutcome.EMPTY_SUCCESS
         if (day.isFailure) return RecurringReminderRunOutcome.TransientFailure("ledger calendar unavailable")

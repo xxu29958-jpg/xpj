@@ -42,6 +42,9 @@ class RecurringOccurrenceBusySheetTest {
         compose.onNodeWithText("待处理提醒：", substring = true).performScrollTo().assertIsDisplayed()
         compose.runOnIdle { host.ledgerToday.value = java.time.LocalDate.parse("2026-09-05") }
         compose.onNodeWithText("下次提醒：", substring = true).performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { host.ledgerToday.value = null }
+        compose.onNodeWithText("提醒日期：", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("下次提醒：", substring = true).assertDoesNotExist()
         assertEquals(null, host.model.value?.uiState?.value?.choice)
         assertTrue(fixture.stored().isEmpty())
         assertTrue(fixture.network.calls.isEmpty())

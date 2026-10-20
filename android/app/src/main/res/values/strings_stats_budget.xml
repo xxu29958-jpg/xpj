@@ -840,6 +840,7 @@
 
     <!-- 固定支出 meta 行（下次 / 次数 / 异常段）——非 Composable helper 逐段拼接，保持字符不变 -->
     <string name="recurring_meta_next">下次 %1$s</string>
+    <string name="recurring_meta_expected">预计 %1$s</string>
     <string name="recurring_meta_next_past">预计 %1$s 已过，本期还没有对应付款</string>
     <string name="recurring_meta_next_unknown">下次未估算</string>
     <string name="recurring_meta_count">%1$d 次</string>
@@ -859,6 +860,7 @@
     <string name="recurring_hero_label">每月固定支出</string>
     <string name="recurring_hero_meta">%1$d 项活跃</string>
     <string name="recurring_hero_meta_next">%1$d 项活跃 · 最近 %2$s</string>
+    <string name="recurring_hero_meta_expected">%1$d 项活跃 · 预计 %2$s</string>
     <string name="recurring_hero_meta_past">%1$d 项活跃 · 已过预计日 %2$s</string>
     <string name="recurring_hero_unavailable">待刷新</string>
     <string name="recurring_pending_title">待同步</string>
