@@ -36,7 +36,7 @@ def draft_refusal_result(exc: AppError) -> str:
     # or an unknown/in-progress key says nothing about an earlier request.
     return "rejected" if exc.error in {"state_conflict", "budget_currency_conflict", "invalid_request",
         "envelope_cash_unknown", "envelope_cash_insufficient",
-        "amount_invalid", "currency_not_supported", "recurring_merchant_required", "exchange_rate_pending",
+        "amount_invalid", "amount_required", "currency_not_supported", "recurring_merchant_required", "exchange_rate_pending",
         "expense_refund_exceeds_remaining", "expense_refund_exists", "expense_reversal_active",
         "expense_offset_not_active", "calendar_revision_conflict", "accounting_time_invalid",
         "debt_amount_invalid", "debt_direction_invalid", "debt_counterparty_invalid", "debt_installment_invalid",
