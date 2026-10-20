@@ -10,6 +10,8 @@ sent list, remaining capacity, received expense) must agree with it.
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -23,6 +25,7 @@ from app.models import Account, Expense, InstallationCurrencyBinding, Ledger, Le
 from app.routes.web_common import _require_local as _web_require_local
 from app.services import bill_split_service as bsplit
 from app.services import currency_default_service as defaults
+from app.services.bill_split_service import _create as split_create
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import currency_input_metadata, minor_amount_label
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
@@ -108,6 +111,52 @@ def _form_value(form: str, name: str) -> str:
 def _sent_for(expense_id: int) -> list:
     with SessionLocal() as db:
         return bsplit.list_sent_for_expense(db, sender_account_id=_owner_account_id(), expense_id=expense_id)
+
+
+@pytest.mark.real_db
+def test_web_and_command_same_key_share_claim_before_parent_lock(web_client: TestClient, monkeypatch) -> None:
+    receiver_id = _add_receiver()
+    expense_id = _record_parent("CNY", 5000)
+    sender_id = _owner_account_id()
+    key = str(uuid4())
+    claimed, web_claiming = Event(), Event()
+    original_claim = split_create._claim_invitation
+
+    def coordinated_claim(db, **kwargs):
+        if db.info.get("peer"):
+            result = original_claim(db, **kwargs)
+            claimed.set()
+            assert web_claiming.wait(10), "Web request never reached the original claim"
+            return result
+        web_claiming.set()
+        return original_claim(db, **kwargs)
+
+    def peer():
+        try:
+            with SessionLocal() as db:
+                db.info["peer"] = True
+                return bsplit.create_invitation(db, sender_account_id=sender_id, sender_ledger_id="owner",
+                    expense_id=expense_id, receiver_account_id=receiver_id, amount_cents=1000,
+                    idempotency_key=key, expected_row_version=1).public_id
+        except Exception as exc:
+            return exc
+
+    monkeypatch.setattr(split_create, "_claim_invitation", coordinated_claim)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(peer)
+        assert claimed.wait(10), "Command did not claim its original key"
+        try:
+            response = web_client.post(f"/web/expenses/{expense_id}/split-invite",
+                data={"ledger_id": "owner", "receiver_account_id": str(receiver_id), "amount_yuan": "10.00",
+                    "expected_row_version": "1", "idempotency_key": key}, follow_redirects=False)
+        except Exception as exc:
+            response = exc
+        original = pending.result(timeout=15)
+    assert not isinstance(original, Exception), repr(original)
+    assert not isinstance(response, Exception), repr(response)
+    assert response.status_code == 303, response.text
+    [invitation] = _sent_for(expense_id)
+    assert (invitation.public_id, invitation.amount_cents, invitation.home_currency_code) == (original, 1000, "CNY")
 
 
 @pytest.mark.parametrize(

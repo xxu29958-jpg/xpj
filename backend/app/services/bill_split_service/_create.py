@@ -55,6 +55,7 @@ def create_invitation(
     amount_cents: int,
     idempotency_key: str,
     expected_row_version: int,
+    expected_home_currency_code: str | None = None,
 ) -> BillSplitInvitation:
     """Sender creates an invitation against an expense they own.
 
@@ -79,8 +80,9 @@ def create_invitation(
         if invitation is None:
             raise AppError("invitation_not_found", status_code=404)
         return invitation
-    expense = lock_split_parent_expense(db, sender_ledger_id=sender_ledger_id, expense_id=expense_id)
-    if expense.row_version != expected_row_version:
+    expense = _load_split_parent_expense(db, sender_ledger_id=sender_ledger_id, expense_id=expense_id)
+    if (expense.row_version != expected_row_version or
+            (expected_home_currency_code is not None and expense.home_currency_code != expected_home_currency_code)):
         raise AppError("state_conflict", status_code=409)
     _ensure_parent_can_be_split(expense, amount_cents=amount_cents)
     sender, receiver = _load_invitation_parties(
@@ -150,11 +152,18 @@ def _validate_invitation_request(*, sender_account_id: int, receiver_account_id:
         raise AppError("split_receiver_invalid", status_code=422)
 
 
-def lock_split_parent_expense(db: Session, *, sender_ledger_id: str, expense_id: int) -> Expense:
+def split_parent_home_currency(db: Session, *, sender_ledger_id: str, expense_id: int) -> str:
+    """A parsing snapshot only; create_invitation rechecks it after claiming the key."""
+    currency = db.scalar(select(Expense.home_currency_code).where(
+        Expense.id == expense_id, Expense.tenant_id == sender_ledger_id))
+    if currency is None:
+        raise AppError("expense_not_found", status_code=404)
+    return currency
+
+
+def _load_split_parent_expense(db: Session, *, sender_ledger_id: str, expense_id: int) -> Expense:
     # Row-lock the parent so active-split total + cap check + insert serialize
     # against concurrent invites on the same parent (PG locks, SQLite ignores).
-    # The Web form takes this lock before parsing, so the frozen currency it
-    # parses with is the one the invitation inherits in the same transaction.
     expense = db.scalar(
         select(Expense).where(Expense.id == expense_id).where(Expense.tenant_id == sender_ledger_id)
         .with_for_update().execution_options(populate_existing=True)
@@ -208,7 +217,7 @@ def ensure_changed_share_capacity(
     db: Session, *, invitation: BillSplitInvitation, previous_share: int, new_share: int,
 ) -> None:
     # The same source lock serializes changes with newly reserved invitations.
-    expense = lock_split_parent_expense(db, sender_ledger_id=invitation.sender_ledger_id,
+    expense = _load_split_parent_expense(db, sender_ledger_id=invitation.sender_ledger_id,
         expense_id=invitation.sender_expense_id)
     if new_share <= previous_share:
         return  # A decrease must still help resolve an already-corrected source.

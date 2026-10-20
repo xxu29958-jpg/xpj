@@ -227,10 +227,10 @@ def web_split_invite(
     # flash back onto the page instead of escaping to the global AppError
     # handler, which renders a bare-JSON page in the browser.
     try:
-        # Bind the parent to the authorized ledger under the row lock the
-        # invitation insert keeps, then parse with the currency it freezes.
-        parent = bsplit.lock_split_parent_expense(db, sender_ledger_id=selected_id, expense_id=expense_id)
-        amount_cents = _yuan_to_cents(amount_yuan, parent.home_currency_code)
+        # Read without reversing the command owner's key -> parent lock order.
+        # The owner rechecks this currency together with OCC under its lock.
+        currency = bsplit.split_parent_home_currency(db, sender_ledger_id=selected_id, expense_id=expense_id)
+        amount_cents = _yuan_to_cents(amount_yuan, currency)
         if amount_cents is None or amount_cents <= 0:
             raise AppError("split_amount_invalid", "拆账金额不正确。", status_code=422)
         bsplit.create_invitation(
@@ -242,6 +242,7 @@ def web_split_invite(
             amount_cents=amount_cents,
             idempotency_key=idempotency_key,
             expected_row_version=expected_row_version,
+            expected_home_currency_code=currency,
         )
         msg = "已发起拆账邀请。"
         flash_type = "success"
