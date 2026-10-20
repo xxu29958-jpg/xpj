@@ -166,7 +166,7 @@
     </summary>
     {% if occurrence.recorded_definition %}
     {% set definition = occurrence.recorded_definition %}{% set snapshot = definition.snapshot %}
-    <p>版本 {{ definition.series_row_version }} · 记录保存时间 {{ saved_time(definition.recorded_at) }}</p>
+    <p>版本 {{ definition.series_row_version }} · 记录保存时间 {{ saved_time(definition.recorded_at, ledger_timezone_name|default(none)) }}</p>
     <p><strong>{{ snapshot.merchant }}</strong> · {{ snapshot.home_currency_code or '' }} {{ recorded_definition_amount|grouped }} · {{ '月度' if snapshot.frequency == 'monthly' else snapshot.frequency }}</p>
     <p>计划日期 {{ snapshot.next_expected_date or '未设置' }} · {{ {'active':'活跃', 'paused':'暂停', 'archived':'已归档'}[snapshot.status] }}</p>
     <p class="hint">这是首次记录本期付款关联时所据的定义，不代表该账务月生效的计划。解除或重新关联付款后，这份依据仍保留。</p>

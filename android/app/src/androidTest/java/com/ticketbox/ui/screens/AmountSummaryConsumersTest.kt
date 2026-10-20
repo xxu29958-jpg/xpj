@@ -49,9 +49,9 @@ class AmountSummaryConsumersTest {
     private val maximum = formatDisplayAmount(MONEY_MINOR_MAX, currency)
 
     @Test fun recurringSingleCurrencyTotalKeepsItsCurrencyAndAllDigits() = verify(
-        "recurring-total", listOf("CNY $maximum"),
+        "recurring-total", listOf("CNY $maximum", "1 项活跃 · 预计 2026年10月9日"),
     ) {
-        RecurringHeroSection(RecurringHeroModel(true, mapOf("CNY" to MONEY_MINOR_MAX), 1, null))
+        RecurringHeroSection(RecurringHeroModel(true, mapOf("CNY" to MONEY_MINOR_MAX), 1, "2026-10-09"))
     }
 
     @Test fun recurringMixedCurrenciesKeepBothExactTotals() = verify(

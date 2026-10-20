@@ -59,6 +59,8 @@ MAX_PROVIDER_RESPONSE_BYTES = 512 * 1024
 MAX_ADVICE_SUMMARY_CHARS = 800
 MAX_ADVICE_RATIONALE_CHARS = 600
 MAX_ADVICE_SUGGESTIONS = 20
+# Every provider's suggested amount must fall in 0..this (inside MONEY_MINOR_MAX).
+MAX_SUGGESTED_AMOUNT_MINOR = 100_000_000
 
 
 class _NoProviderRedirect(request.HTTPRedirectHandler):
@@ -111,15 +113,18 @@ class MockBudgetAdvisor:
         if not inputs.category_breakdown:
             return BudgetAdvice(summary="本月暂无消费数据可供建议。", confidence=0.0)
         top = max(inputs.category_breakdown, key=lambda row: row.amount_cents)
+        # A category total is an aggregate that can exceed one money amount; like
+        # the live parser, drop an out-of-range line rather than clamp it.
+        suggestions = [
+            BudgetSuggestion(
+                category=top.category,
+                suggested_amount_cents=top.amount_cents,
+                rationale="mock 建议＝当前实际值（dev / test 用，无 AI 调用）",
+            ),
+        ] if 0 <= top.amount_cents <= MAX_SUGGESTED_AMOUNT_MINOR else []
         return BudgetAdvice(
             summary=f"模拟建议：{top.category} 是本月占比最高的分类。",
-            suggestions=[
-                BudgetSuggestion(
-                    category=top.category,
-                    suggested_amount_cents=top.amount_cents,
-                    rationale="mock 建议＝当前实际值（dev / test 用，无 AI 调用）",
-                ),
-            ],
+            suggestions=suggestions,
             confidence=0.5,
         )
 
@@ -311,7 +316,7 @@ def _budget_suggestion_from_json(
             return None
     except AppError:
         return None
-    if amount > 100_000_000:
+    if amount > MAX_SUGGESTED_AMOUNT_MINOR:
         return None
     return BudgetSuggestion(
         category=category_str,
