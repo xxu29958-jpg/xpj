@@ -81,6 +81,20 @@
     }
     location.reload();
   }
+  function continueSavedOriginal(form, primary) {
+    const field = name => form.elements.namedItem(name);
+    assert(saving, "confirmation unexpectedly returned an editor");
+    assert(!localStorage.getItem(prefix + state.ref), "acknowledged save left its original unresolved");
+    assert(field("idempotency_key").value !== state.key && field("expected_row_version").value === "5", "save did not prepare a fresh confirm");
+    state.fresh_key = field("idempotency_key").value;
+    if (state.operation === "missing-amount-save") {
+      window.__expenseReviewResult = {...state, original_removed: !localStorage.getItem(prefix + state.ref),
+        blank_draft_saved: field("amount_yuan").value === "" && form.dataset.expensereviewDraftPhase === "editing"};
+      return;
+    }
+    state.stage = "confirm"; save();
+    form.requestSubmit(primary);
+  }
   try {
     if (document.querySelector("[data-expense-confirmation]")) {
       assert(state.stage === "confirm" || state.stage === "replay", "unexpected financial receipt");
@@ -101,17 +115,7 @@
       state.stage = "replay"; save();
       form.requestSubmit(primary);
     } else if (state.stage === "replay") {
-      assert(saving, "confirmation unexpectedly returned an editor");
-      assert(!localStorage.getItem(prefix + state.ref), "acknowledged save left its original unresolved");
-      assert(field("idempotency_key").value !== state.key && field("expected_row_version").value === "5", "save did not prepare a fresh confirm");
-      state.fresh_key = field("idempotency_key").value;
-      if (state.operation === "missing-amount-save") {
-        window.__expenseReviewResult = {...state, original_removed: !localStorage.getItem(prefix + state.ref),
-          blank_draft_saved: field("amount_yuan").value === "" && form.dataset.expensereviewDraftPhase === "editing"};
-        return;
-      }
-      state.stage = "confirm"; save();
-      form.requestSubmit(primary);
+      continueSavedOriginal(form, primary);
     }
   } catch (error) {
     window.__expenseReviewResult = {...state, error: String(error)};
