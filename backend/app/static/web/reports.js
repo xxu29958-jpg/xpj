@@ -64,14 +64,17 @@
     }
   }
 
+  // Chart text is read from the exact minor-unit amount, never rounded from chart geometry: below
+  // 10,000 it is the exact value (a whole amount drops its zero fraction); larger values use the
+  // explicitly approximate 万 unit.
   function compactYuan(cents) {
     if (cents === null || cents === undefined) return '待补汇率';
-    var yuanValue = app.homeMinorToMajor(cents);
-    if (yuanValue === null) return '金额不可用';
-    var abs = Math.abs(yuanValue);
-    if (abs >= 10000) return (yuanValue / 10000).toFixed(1) + '万';
-    if (abs >= 1000) return Math.round(yuanValue).toLocaleString('zh-CN');
-    return yuanValue.toFixed(0);
+    var text = app.homeMinorToMajorText(cents);
+    if (text === null) return '金额不可用';
+    var parts = text.split('.');
+    if (Math.abs(Number(parts[0])) >= 10000) return (Number(text) / 10000).toFixed(1) + '万';
+    var whole = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return /^0*$/.test(parts[1] || '') ? whole : whole + '.' + parts[1];
   }
 
   function homeMoneyCents(cents) {
@@ -194,6 +197,7 @@
     var metric = report.ranking_metric === 'count' ? 'count' : 'amount';
     if (metric === 'amount' && rows.some(function (row) { return row.amount_cents == null; })) return null;
     var reversedRows = rows.slice().reverse();
+    var labelSize = parseFloat(cssVar('--type-caption-size', '13'));
     var chart = chartFor(container);
     chart.setOption({
       textStyle: { fontFamily: cssVar('--font-numeric', 'sans-serif') },
@@ -208,7 +212,10 @@
           return row.merchant + '<br><strong>' + value + '</strong>';
         },
       }),
-      grid: { left: 106, right: 44, top: 8, bottom: 30 },
+      // Room beside the longest bar for the longest value label, so exact amounts are not clipped.
+      grid: { left: 106, right: Math.max(44, 8 + 0.62 * labelSize * Math.max.apply(null, [0].concat(reversedRows.map(function (row) {
+        return (metric === 'count' ? row.count + ' 笔' : homeCompactCents(row.amount_cents)).length;
+      })))), top: 8, bottom: 30 },
       xAxis: {
         type: 'value',
         axisLine: { lineStyle: { color: colors.axis } },
@@ -216,6 +223,7 @@
         axisLabel: {
           color: colors.axisLabel,
           fontSize: parseFloat(cssVar('--type-caption-size', '13')),
+          hideOverlap: true,
           formatter: function (value) {
             return metric === 'count' ? value : homeCompactCents(value);
           },

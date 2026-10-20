@@ -11539,6 +11539,7 @@
             "title": "Amount Min Cents"
           },
           "category": {
+            "maxLength": 64,
             "title": "Category",
             "type": "string"
           },
@@ -11561,6 +11562,7 @@
             "title": "Home Currency Code"
           },
           "keyword": {
+            "maxLength": 255,
             "title": "Keyword",
             "type": "string"
           },
@@ -11572,6 +11574,7 @@
           "source_contains": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -11583,6 +11586,7 @@
           "tag_contains": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -11771,6 +11775,7 @@
           "category": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -11810,6 +11815,7 @@
           "keyword": {
             "anyOf": [
               {
+                "maxLength": 255,
                 "type": "string"
               },
               {
@@ -11832,6 +11838,7 @@
           "source_contains": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
@@ -11843,6 +11850,7 @@
           "tag_contains": {
             "anyOf": [
               {
+                "maxLength": 64,
                 "type": "string"
               },
               {
