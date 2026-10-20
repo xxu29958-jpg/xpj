@@ -9,12 +9,15 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 from html import unescape
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Expense
+from app.models import ApiIdempotencyKey, Expense, ExpenseSplit, LedgerAuditLog, RecurringItem, RecurringItemRevision
+from app.services.idempotency import claim_idempotency_key
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
 from tests._web_native_form_support import hidden_post_forms
@@ -31,6 +34,12 @@ def _refusal(resp) -> tuple[str, str]:
     return resp.json()["error"], resp.json()["draft_result"]
 
 
+def _stored_facts_and_originals():
+    with SessionLocal() as db:
+        return {model.__tablename__: [dict(row) for row in db.execute(select(model.__table__).order_by(model.id)).mappings()]
+            for model in (Expense, ExpenseSplit, LedgerAuditLog, RecurringItem, RecurringItemRevision, ApiIdempotencyKey)}
+
+
 def test_confirming_without_an_amount_is_a_final_refusal(web_client: TestClient, *, identity) -> None:
     upload = web_client.post(f"/u/{identity.upload_key}", headers={"Content-Type": "image/png"}, content=PNG_BYTES)
     assert upload.status_code == 200, upload.text
@@ -39,6 +48,7 @@ def test_confirming_without_an_amount_is_a_final_refusal(web_client: TestClient,
     scope = re.search(r'name="draft_scope" value="([^"]*)"', page.text)
     key = re.search(r'name="idempotency_key" value="([^"]+)"', page.text)
     assert scope and key
+    before = _stored_facts_and_originals()
     resp = web_client.post(
         f"/web/expenses/{expense_id}/confirm",
         data={
@@ -52,10 +62,31 @@ def test_confirming_without_an_amount_is_a_final_refusal(web_client: TestClient,
         headers={"Accept": "application/json"},
     )
     assert _refusal(resp) == ("amount_required", "rejected")
+    assert _stored_facts_and_originals() == before
+    corrected = {"ledger_id": "owner", "expected_row_version": _row_version(web_client, identity, expense_id),
+        "idempotency_key": str(uuid4()), "draft_scope": unescape(scope.group(1)),
+        "save_before_confirm": "1", "amount_yuan": "1.00"}
+    accepted = web_client.post(f"/web/expenses/{expense_id}/confirm", data=corrected,
+        headers={"Accept": "application/json"}, follow_redirects=False)
+    assert accepted.status_code == 303, accepted.text
+    committed = _stored_facts_and_originals()
+    # The first reply may be lost; exact original replay must return its receipt.
+    replay = web_client.post(f"/web/expenses/{expense_id}/confirm", data=corrected,
+        headers={"Accept": "application/json"}, follow_redirects=False)
+    assert replay.status_code == 303 and replay.headers["location"] == accepted.headers["location"]
+    receipt = web_client.get(replay.headers["location"])
+    assert receipt.status_code == 200 and "这张，记好了" in receipt.text
+    changed = web_client.post(f"/web/expenses/{expense_id}/confirm", data={**corrected, "amount_yuan": "2.00"},
+        headers={"Accept": "application/json"})
+    assert _refusal(changed) == ("idempotency_key_reused", "blocked")
+    assert _stored_facts_and_originals() == committed
+    with SessionLocal() as db:
+        assert (db.get(Expense, expense_id).amount_cents, db.get(Expense, expense_id).status) == (100, "confirmed")
 
 
 def test_family_shares_above_the_bill_are_a_final_refusal(web_client: TestClient, *, identity) -> None:
     expense_id = _seed_pending_expense(amount_cents=5000)
+    before = _stored_facts_and_originals()
     resp = web_client.post(
         f"/web/expenses/{expense_id}/splits/save",
         data={
@@ -68,10 +99,15 @@ def test_family_shares_above_the_bill_are_a_final_refusal(web_client: TestClient
         headers={"Accept": "application/json"},
     )
     assert _refusal(resp) == ("expense_split_total_exceeds_parent", "rejected")
+    assert _stored_facts_and_originals() == before
 
 
 @pytest.mark.parametrize("rate", ["0", "0.047826123456"])
-def test_an_unusable_manual_rate_is_a_final_refusal(web_client: TestClient, *, identity, rate: str) -> None:
+@pytest.mark.parametrize("original_pending", [False, True])
+def test_an_unusable_manual_rate_preserves_any_unresolved_original(
+    web_client: TestClient, *, identity, rate: str, original_pending: bool,
+) -> None:
+    key = str(uuid4())
     with SessionLocal() as db:
         now = now_utc()
         expense = Expense(
@@ -94,6 +130,11 @@ def test_an_unusable_manual_rate_is_a_final_refusal(web_client: TestClient, *, i
         db.add(expense)
         db.commit()
         expense_id = expense.id
+        if original_pending:
+            claim_idempotency_key(db, tenant_id="owner", idempotency_key=key, operation="patch_expense",
+                target_type="expense", target_id=str(expense_id), request_fingerprint="unresolved-original-intent")
+            db.commit()
+    before = _stored_facts_and_originals()
     resp = web_client.post(
         f"/web/expenses/{expense_id}/save",
         data={
@@ -102,12 +143,14 @@ def test_an_unusable_manual_rate_is_a_final_refusal(web_client: TestClient, *, i
             "amount_yuan": "1200",
             "original_currency": "JPY",
             "manual_exchange_rate": rate,
+            "idempotency_key": key,
             "merchant": "东京便利店",
             "category": "餐饮",
         },
         headers={"Accept": "application/json"},
     )
-    assert _refusal(resp) == ("exchange_rate_invalid", "rejected")
+    assert _refusal(resp) == (("idempotency_key_reused", "blocked") if original_pending else ("exchange_rate_invalid", "rejected"))
+    assert _stored_facts_and_originals() == before
 
 
 def test_saving_an_unchanged_fixed_expense_is_a_final_refusal(web_client: TestClient) -> None:
@@ -118,5 +161,7 @@ def test_saving_an_unchanged_fixed_expense_is_a_final_refusal(web_client: TestCl
     fields.update(
         merchant="宽带", baseline_amount_yuan="20.00", next_expected_date="2026-09-08", home_currency_code="CNY"
     )
+    before = _stored_facts_and_originals()
     resp = web_client.post(action, data=fields, headers={"Accept": "application/json"})
     assert _refusal(resp) == ("recurring_item_no_changes", "rejected")
+    assert _stored_facts_and_originals() == before
