@@ -14,6 +14,7 @@ import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, select_autoescape
 
 from app.routes.web_common import _grouped_amount, _money_amount
+from app.services.spending_contract_service import accounting_datetime_label
 from app.services.time_service import to_iso
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,6 +32,7 @@ ENV = Environment(loader=ChoiceLoader([
 ENV.filters["grouped"] = _grouped_amount
 ENV.filters["money"] = _money_amount
 ENV.filters["to_iso"] = to_iso
+ENV.filters["accounting_time"] = accounting_datetime_label
 HITS = {}
 MISSING = []
 POSTS = []

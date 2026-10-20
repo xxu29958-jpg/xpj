@@ -9,6 +9,7 @@ from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 
 from app.routes.web_common import _grouped_amount, _money_amount
 from app.services.currency_common import currency_input_metadata
+from app.services.spending_contract_service import accounting_datetime_label
 from app.services.time_service import to_iso
 
 
@@ -18,6 +19,7 @@ def _budget_page(**changes):
         FileSystemLoader(Path(__file__).parents[1] / "app/templates/web"),
     ]))
     env.filters["to_iso"] = to_iso
+    env.filters["accounting_time"] = accounting_datetime_label
     env.filters["grouped"] = _grouped_amount
     env.filters["money"] = _money_amount
     context = {"month": "2026-09", "selected_ledger_id": "owner", "can_write": True,
