@@ -123,9 +123,11 @@ fun recurringViewModelFactory(
     repository: RecurringRepository,
     onDataChanged: () -> Unit = {},
     originalBinding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
+    calendars: com.ticketbox.data.repository.LedgerCalendarReader? = null,
 ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return RecurringViewModel(repository, originalBinding = originalBinding, onDataChanged = onDataChanged) as T
+        return RecurringViewModel(repository, originalBinding = originalBinding, onDataChanged = onDataChanged,
+            calendars = calendars) as T
     }
 }
 

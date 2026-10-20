@@ -72,11 +72,24 @@ data class OccurrenceSheetActions(
 )
 
 @Composable
+private fun OccurrenceReminderDate(nextDueDate: String?, ledgerToday: java.time.LocalDate?) {
+    val label = when (nextDueDate?.let { recurringDueIsPast(it, ledgerToday) }) {
+        true -> R.string.occurrence_past_due
+        false -> R.string.occurrence_next_due
+        null -> R.string.occurrence_reminder_date
+    }
+    Text(stringResource(label,
+        nextDueDate?.let(::displayCalendarDay) ?: stringResource(R.string.occurrence_no_reminder)),
+        style = MaterialTheme.typography.bodyMedium)
+}
+
+@Composable
 fun RecurringOccurrenceSheet(
     state: RecurringOccurrenceUiState,
     actions: OccurrenceSheetActions,
     preferredExpenseId: Long? = null,
     origin: OccurrencePaymentGuard = OccurrencePaymentGuard(),
+    ledgerToday: java.time.LocalDate? = null,
 ) {
     val item = state.item ?: return
     val paymentFilters = rememberSaveableStateHolder()
@@ -97,9 +110,7 @@ fun RecurringOccurrenceSheet(
                 }
                 if (state.access?.canModify == false) Text(stringResource(R.string.occurrence_readonly),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(stringResource(R.string.occurrence_next_due,
-                    occurrence.nextDueDate?.let(::displayCalendarDay) ?: stringResource(R.string.occurrence_no_reminder)),
-                    style = MaterialTheme.typography.bodyMedium)
+                OccurrenceReminderDate(occurrence.nextDueDate, ledgerToday)
             }
             state.occurrence?.let { occurrence ->
                 if (state.canWrite) paymentFilters.SaveableStateProvider("${item.publicId}:${occurrence.period}") {

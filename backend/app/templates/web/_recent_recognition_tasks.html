@@ -10,7 +10,7 @@
     {% for task in recent_recognition_tasks %}
     {% set state = task.recognition_state|default('failed') %}
     <li data-recognition-task-id="{{ task.public_id }}">
-      <p><strong>{{ '结果无法核对' if task.status == 'completed' and state == 'failed' else statuses.get(task.status, '状态未知') }}</strong> · {{ saved_time(task.created_at) }}</p>
+      <p><strong>{{ '结果无法核对' if task.status == 'completed' and state == 'failed' else statuses.get(task.status, '状态未知') }}</strong> · {{ saved_time(task.created_at, ledger_timezone_name|default(none)) }}</p>
       {% if task.status == 'completed' and state == 'failed' %}
       <p>当次结果缺失或无法解释，不能判断识别是否成功；请查看原单当前内容。</p>
       {% elif task.status == 'completed' %}

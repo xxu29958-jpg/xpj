@@ -25,6 +25,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -187,6 +188,19 @@ class SpendingGoalDetailViewModelTest {
         assertFalse(vm.state.value.hasRetainedEdit)
         vm.beginEdit()
         assertEquals("新会话目标", vm.state.value.name)
+    }
+
+    @Test fun amountErrorStaysWhileOtherFieldsChange() = runTest(dispatcher) {
+        val vm = model(RecordingSpendingGoalActions(), RecordingGoalEdits())
+        advanceUntilIdle(); vm.beginEdit()
+        vm.updateField(SpendingGoalEditField.Amount, "12.345")
+        val amountError = assertNotNull(vm.state.value.formError)
+        vm.updateField(SpendingGoalEditField.Name, "外卖"); vm.updateField(SpendingGoalEditField.Category, "餐饮"); vm.shiftMonth(1)
+        assertEquals(amountError, vm.state.value.formError)
+        assertFalse(vm.state.value.canSave)
+        vm.updateField(SpendingGoalEditField.Amount, "12.34")
+        assertNull(vm.state.value.formError)
+        assertTrue(vm.state.value.canSave)
     }
 
     @Test fun invalidFormAndArchivedGoalNeverPublish() = runTest(dispatcher) {

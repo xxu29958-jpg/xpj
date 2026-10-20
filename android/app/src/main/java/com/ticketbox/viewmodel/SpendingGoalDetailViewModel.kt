@@ -239,10 +239,12 @@ class SpendingGoalDetailViewModel(
             }
             val current = it.copy(formDirty = it.formDirty || value != previous)
             when (field) {
-                SpendingGoalEditField.Name -> current.copy(name = value, formError = null)
+                SpendingGoalEditField.Name -> current.copy(name = value,
+                    formError = spendingGoalAmountError(it.targetAmountInput, it.goalCurrency))
                 SpendingGoalEditField.Amount -> current.copy(targetAmountInput = value,
                     formError = spendingGoalAmountError(value, it.goalCurrency))
-                SpendingGoalEditField.Category -> current.copy(category = value, formError = null)
+                SpendingGoalEditField.Category -> current.copy(category = value,
+                    formError = spendingGoalAmountError(it.targetAmountInput, it.goalCurrency))
             }
         }
         currentDraft?.let(draftStore::write)
@@ -352,7 +354,8 @@ class SpendingGoalDetailViewModel(
         _state.update {
             val nextMonth = (runCatching { YearMonth.parse(it.month).plusMonths(delta) }.getOrNull()
                 ?: return@update it).toString()
-            it.copy(month = nextMonth, formDirty = true, formError = null)
+            it.copy(month = nextMonth, formDirty = true,
+                formError = spendingGoalAmountError(it.targetAmountInput, it.goalCurrency))
         }
         currentDraft?.let(draftStore::write)
     }
