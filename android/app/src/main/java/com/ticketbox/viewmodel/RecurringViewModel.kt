@@ -8,7 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.LedgerCalendarReader
-import com.ticketbox.data.repository.refreshedLedgerDate
+import com.ticketbox.data.repository.refreshedLedgerCalendar
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.RecurringPendingIntent
 import com.ticketbox.data.repository.RecurringPendingState
@@ -83,6 +83,9 @@ class RecurringViewModel(
     private var requestGeneration = 0
     private var refreshGeneration = 0
     private var activeBinding: LogicalSessionBinding? = null
+    internal val ledgerDay = RecurringLedgerDay(calendars, clock) { today ->
+        _uiState.update { it.copy(ledgerToday = today) }
+    }
     private var activeCanModify = false
     private var observedCompletedKeys: Set<String> = emptySet()
     private var manualSaveSequence = 0L
@@ -90,6 +93,7 @@ class RecurringViewModel(
     private var editorEpoch = 0L
     private val retireDeniedReads: (Throwable) -> Unit = { error ->
         historyTask.dismiss()
+        ledgerDay.clear()
         refreshGeneration += 1
         _uiState.update { it.copy(items = emptyList(), itemsFetchedAt = null, itemsFromCache = false,
             candidates = emptyList(), loading = false, ledgerToday = null,
@@ -117,6 +121,7 @@ class RecurringViewModel(
                         return@collect
                     }
                     activeBinding = nextBinding
+                    ledgerDay.clear()
                     historyTask.dismiss()
                     requestGeneration += 1
                     refreshGeneration += 1
@@ -164,6 +169,7 @@ class RecurringViewModel(
     fun refresh(retireCurrent: Boolean = false, preserveFeedback: Boolean = false) {
         if (retireCurrent) {
             refreshGeneration += 1
+            ledgerDay.clear()
             _uiState.update { it.copy(items = emptyList(), itemsFetchedAt = null, itemsFromCache = false,
                 candidates = emptyList(), ledgerToday = null) }
             historyTask.invalidate()
@@ -200,8 +206,9 @@ class RecurringViewModel(
             val denied = listOf(itemsResult.exceptionOrNull(), candidatesResult.exceptionOrNull())
                 .firstOrNull { it?.isReadAccessDenied() == true }
             if (denied != null) { retireDeniedReads(denied); return@launch }
-            val ledgerToday = calendars.refreshedLedgerDate(binding, clock).getOrNull()
+            val calendar = calendars.refreshedLedgerCalendar(binding).getOrNull()
             if (requestGeneration != generation || refreshGeneration != refresh) return@launch
+            val ledgerToday = ledgerDay.update(binding, calendar)
             val message = listOf(itemsResult, candidatesResult)
                 .firstOrNull { it.isFailure }
                 ?.exceptionOrNull()

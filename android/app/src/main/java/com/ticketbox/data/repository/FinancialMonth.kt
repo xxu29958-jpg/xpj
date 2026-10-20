@@ -40,10 +40,17 @@ suspend fun LedgerCalendarReader?.newTaskDate(
 suspend fun LedgerCalendarReader?.refreshedLedgerDate(
     binding: LogicalSessionBinding? = this?.currentBinding(),
     clock: Clock = Clock.systemUTC(),
-): Result<LocalDate?> {
+): Result<LocalDate?> = refreshedLedgerCalendar(binding).mapCatching { rule ->
+    rule?.let { clock.instant().atZone(ZoneId.of(it.timezoneName)).toLocalDate() }
+}
+
+/** Return the same verified rule for both the displayed day and its next midnight. */
+suspend fun LedgerCalendarReader?.refreshedLedgerCalendar(
+    binding: LogicalSessionBinding? = this?.currentBinding(),
+): Result<LedgerCalendarDto?> {
     if (this == null || binding == null || currentBinding() != binding) return Result.success(null)
     return refresh(binding).recoverCatching { error -> cached(binding) ?: throw error }.mapCatching { rule ->
         rule?.takeIf { it.ledgerId == binding.ledgerId && currentBinding() == binding }
-            ?.let { clock.instant().atZone(ZoneId.of(it.timezoneName)).toLocalDate() }
+            ?.also { ZoneId.of(it.timezoneName) }
     }
 }

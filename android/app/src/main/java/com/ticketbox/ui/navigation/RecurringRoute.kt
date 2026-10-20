@@ -8,7 +8,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.screens.RecurringCandidateActions
 import com.ticketbox.ui.screens.RecurringItemActions
@@ -36,7 +38,7 @@ internal fun RecurringRoute(
         ),
     )
     val state by recurringViewModel.uiState.collectAsStateWithLifecycle()
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { recurringViewModel.refresh(preserveFeedback = true) }
+    ObserveRecurringCalendar(recurringViewModel)
     val occurrenceModel = recurringOccurrenceModel(screenFactory) {
         recurringViewModel.refresh()
         onDataChanged()
@@ -83,6 +85,15 @@ internal fun RecurringRoute(
         state.history, recurringViewModel.historyTask::retry, recurringViewModel.historyTask::more,
         recurringViewModel.historyTask::dismiss,
     )
+}
+
+@Composable
+private fun ObserveRecurringCalendar(model: RecurringViewModel) {
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { model.refresh(preserveFeedback = true) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle, model) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { model.ledgerDay.observe() }
+    }
 }
 
 /** Uses the original period even if the reminder is opened in a later month. */
