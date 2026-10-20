@@ -1,4 +1,5 @@
+{# A saved instant reads in the ledger's accounting time, like every other record time; the exact UTC instant stays on the element. #}
 {% macro saved_time(value) -%}
 {% set iso = value|to_iso %}
-<time datetime="{{ iso }}" title="{{ iso }}">{{ iso[:10] }} {{ iso[11:19] }} UTC</time>
+<time datetime="{{ iso }}" title="{{ iso }}">{{ value|accounting_time }}</time>
 {%- endmacro %}

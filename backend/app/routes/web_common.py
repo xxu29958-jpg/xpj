@@ -70,7 +70,11 @@ from app.services.goal_service import list_goals
 from app.services.insights_service import unclaimed_recurring_candidate_count
 from app.services.ledger_calendar_service import current_ledger_month
 from app.services.money_projection_service import ordered_projection_gaps
-from app.services.spending_contract_service import count_undated_expenses, default_accounting_timezone_name
+from app.services.spending_contract_service import (
+    accounting_datetime_label,
+    count_undated_expenses,
+    default_accounting_timezone_name,
+)
 from app.services.stats_service import monthly_stats
 from app.services.time_service import normalize_month_label, now_utc
 from app.services.time_service import to_iso as _datetime_to_iso
@@ -117,6 +121,7 @@ templates = Jinja2Templates(
     context_processors=[csrf_context],
 )
 templates.env.filters["to_iso"] = _datetime_to_iso
+templates.env.filters["accounting_time"] = accounting_datetime_label
 templates.env.globals["currency_names"] = {code: values[0] for code, values in CURRENCY_CATALOG.items()}
 
 
