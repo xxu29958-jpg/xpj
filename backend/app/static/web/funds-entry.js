@@ -99,8 +99,12 @@
     const paid = field("payer_amount");
     if (value("mode") !== "repay" || !paid || paid.readOnly) return;
     if (value("payer_currency_code") === form.dataset.fundsAccountCurrency) { mirrorPayerAmount(); return; }
-    paid.value = "";
-    paid.dispatchEvent(new Event("input", {bubbles: true}));
+    paid.setCustomValidity("");
+    // Clearing an already empty deduction is not an edit; announcing it would save a draft nobody wrote.
+    if (paid.value !== "") {
+      paid.value = "";
+      paid.dispatchEvent(new Event("input", {bubbles: true}));
+    }
     if (!value("payer_currency_code") || !value("principal_amount") || !value("occurred_on")) return;
     const basis = quoteBasis(), controller = new AbortController();
     quoteController = controller;
