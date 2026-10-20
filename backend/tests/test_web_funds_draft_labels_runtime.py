@@ -24,18 +24,38 @@ from tests._web_native_form_support import hidden_post_forms
 
 STATIC = (Path(__file__).resolve().parents[1] / "app/static").resolve()
 PROBE = """<script>
-window.addEventListener("load", () => setTimeout(() => {
+// Exercise slow lease startup: programmatic writes must not bypass a read-only form.
+if (new URLSearchParams(location.search).get("task") === "repay") {
+  const request = navigator.locks.request.bind(navigator.locks);
+  navigator.locks.request = (...args) => new Promise(resolve =>
+    setTimeout(() => resolve(request(...args)), 1800));
+}
+window.addEventListener("load", async () => {
   const task = new URLSearchParams(location.search).get("task");
-  const type = (selector, value) => {
-    const field = document.querySelector(selector);
+  const editable = async selector => {
+    let field;
+    while (!(field = document.querySelector(selector)) || field.readOnly || field.disabled) {
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    return field;
+  };
+  const type = async (selector, value) => {
+    const field = await editable(selector);
     field.value = value;
     field.dispatchEvent(new Event("input", {bubbles: true}));
   };
-  if (task === "repay") { type("#fund-principal", "10.00"); setTimeout(() => location.assign("/web/funds?task=incur_fee"), 600); }
-  else if (task === "incur_fee") { type("[name=activity_amount]", "2.00"); setTimeout(() => location.assign("/web/funds?task=edit"), 600); }
-  else window.__fundsDraftLabels = [...document.querySelectorAll("[data-funds-draft-list] a")]
-    .map(link => [link.textContent, new URL(link.href).searchParams.get("task")]).sort();
-}, 600));
+  if (task === "repay") {
+    await type("#fund-principal", "10.00");
+    location.assign("/web/funds?task=incur_fee");
+  } else if (task === "incur_fee") {
+    await type("[name=activity_amount]", "2.00");
+    location.assign("/web/funds?task=edit");
+  } else {
+    await editable("#fund-name");
+    window.__fundsDraftLabels = [...document.querySelectorAll("[data-funds-draft-list] a")]
+      .map(link => [link.textContent, new URL(link.href).searchParams.get("task")]).sort();
+  }
+});
 </script></body>"""
 
 
