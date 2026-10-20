@@ -48,7 +48,7 @@ def test_typed_response_keeps_accounting_day_and_original_zone_in_the_web_view()
 def test_unknown_date_search_result_does_not_present_created_at_as_a_purchase_day():
     expense = Expense(category="餐饮", source="手动记账", status="confirmed",
         expense_time=None, accounting_date=None, created_at=datetime(2026, 6, 1, tzinfo=UTC))
-    label = _expense_subtitle(expense)
+    label = _expense_subtitle(expense, "Asia/Shanghai")
     assert "账务日期待核对" in label
     assert "2026-06-01" not in label
 
