@@ -68,7 +68,7 @@ from app.services.currency_default_service import is_installation_currency_owner
 from app.services.dashboard_service import list_dashboard_cards
 from app.services.goal_service import list_goals
 from app.services.insights_service import unclaimed_recurring_candidate_count
-from app.services.ledger_calendar_service import current_ledger_month
+from app.services.ledger_calendar_service import current_calendar, current_ledger_month
 from app.services.money_projection_service import ordered_projection_gaps
 from app.services.spending_contract_service import (
     accounting_datetime_label,
@@ -200,6 +200,7 @@ def _base_ctx(
     sidebar_counts: tuple[int, int] | None = None,
 ) -> dict:
     selected = _selected_option(options, selected_ledger_id)
+    calendar = current_calendar(db, ledger_id=selected_ledger_id)
     pending_count, suspected_count = sidebar_counts or (0, 0)
     home = require_runtime_home_currency_code(db)
     auth = getattr(request.state, "web_session_auth", None)
@@ -215,6 +216,7 @@ def _base_ctx(
         "ledger_switch_next_url": _ledger_switch_next_url(request),
         "ledger_options": options,
         "selected_ledger_id": selected_ledger_id,
+        "ledger_timezone_name": calendar.timezone_name if calendar is not None else None,
         "ledger_undated_expense_count": count_undated_expenses(db, tenant_id=selected_ledger_id),
         "selected_ledger_name": selected.name,
         "selected_ledger_role": selected.role,
