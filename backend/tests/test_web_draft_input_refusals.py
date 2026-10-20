@@ -6,8 +6,10 @@ only replaying the same original or discarding what was already typed.
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime
+from decimal import Decimal
 from html import unescape
 from uuid import uuid4
 
@@ -17,12 +19,17 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import ApiIdempotencyKey, Expense, ExpenseSplit, LedgerAuditLog, RecurringItem, RecurringItemRevision
+from app.services.currency_binding_service import resolve_write_capability
 from app.services.idempotency import claim_idempotency_key
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
+from tests._web_expense_review_test_support import _run_review_page
+from tests._web_expense_review_test_support import review_browser as review_browser
 from tests._web_native_form_support import hidden_post_forms
 from tests._web_recurring_test_support import open_recurring_form, seed_observed_item
 from tests.test_web_expense_detail_v1_slice import _owner_member_id, _seed_pending_expense
+from tests.web_expense_fact_test_support import confirmation_store as confirmation_store
+from tests.web_expense_fact_test_support import confirmation_web as confirmation_web
 
 
 def _row_version(client: TestClient, identity, expense_id: int) -> str:
@@ -38,6 +45,34 @@ def _stored_facts_and_originals():
     with SessionLocal() as db:
         return {model.__tablename__: [dict(row) for row in db.execute(select(model.__table__).order_by(model.id)).mappings()]
             for model in (Expense, ExpenseSplit, LedgerAuditLog, RecurringItem, RecurringItemRevision, ApiIdempotencyKey)}
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize("operation", ["missing-amount", "missing-amount-save"])
+def test_missing_confirmation_amount_stays_editable_then_preserves_lost_reply_recovery(
+    review_browser, confirmation_store, tmp_path, operation,
+):
+    client, _ = review_browser
+    with confirmation_store() as db:
+        resolve_write_capability(db)
+        expense = db.get(Expense, 42)
+        expense.amount_cents = expense.original_amount_minor = None
+        expense.original_currency_code = "CNY"
+        expense.exchange_rate_to_cny = Decimal("1")
+        expense.exchange_rate_source = "base"
+        db.commit()
+    result = _run_review_page(client, tmp_path, f"/web/expenses/42/edit?ledger_id=owner&probe={operation}")
+    assert not result.get("error"), json.dumps(result, ensure_ascii=False)
+    assert result["missing_amount_editable"] and result["original_removed"]
+    saving = operation == "missing-amount-save"
+    assert result["blank_draft_saved" if saving else "receipt_visible"]
+    first, replay = result["requests"]
+    assert first == replay
+    assert dict(first["fields"])["amount_yuan"] == ("" if saving else "0.00")
+    with confirmation_store() as db:
+        expense = db.get(Expense, 42)
+        assert (expense.amount_cents, expense.status, expense.row_version) == (
+            None if saving else 0, "pending" if saving else "confirmed", 5 if saving else 6)
 
 
 def test_confirming_without_an_amount_is_a_final_refusal(web_client: TestClient, *, identity) -> None:

@@ -14,6 +14,7 @@
   const state = JSON.parse(sessionStorage.getItem(stateKey) || "null") || {
     operation: new URL(location.href).searchParams.get("probe"), stage: "edit", requests: [],
   };
+  const saving = ["save", "missing-amount-save"].includes(state.operation);
   const save = () => sessionStorage.setItem(stateKey, JSON.stringify(state));
   const assert = (condition, message) => { if (!condition) throw Error(message); };
   const wait = async predicate => {
@@ -34,6 +35,7 @@
     save();
     const response = await originalFetch(url, options);
     if (state.stage === "lost") {
+      if (!response.ok) { state.refusal = await response.clone().text(); save(); }
       assert(response.ok, "first save/confirm was not accepted");
       state.stage = "unknown"; save();
       throw Error("accepted response lost");
@@ -42,6 +44,21 @@
   };
   async function submitFirstOriginal(form, primary) {
     const field = name => form.elements.namedItem(name);
+    if (["missing-amount", "missing-amount-save"].includes(state.operation)) {
+      field("amount_yuan").value = "";
+      field("amount_yuan").dispatchEvent(new Event("input", {bubbles: true}));
+      form.requestSubmit(primary);
+      assert(state.requests.length === 0, "blank confirmation reached the financial endpoint");
+      assert(form.dataset.expensereviewDraftPhase === "editing" && document.activeElement === field("amount_yuan"),
+        "blank confirmation did not return directly to the amount field");
+      const draft = JSON.parse(localStorage.getItem(prefix + field("draft_ref").value));
+      assert(draft.phase === "editing" && draft.values.amount_yuan === "", "blank input was not retained");
+      state.missing_amount_editable = true;
+      if (!saving) {
+        field("amount_yuan").value = "0.00";
+        field("amount_yuan").dispatchEvent(new Event("input", {bubbles: true}));
+      }
+    }
     if (state.operation === "legacy-confirm") {
       form.querySelectorAll('[name="value_score"], [name="regret_score"]').forEach(input => input.remove());
     }
@@ -52,7 +69,7 @@
     assert(form.querySelector('.review-date-fields > summary').textContent.includes("2026-09-30"), "date summary hid the selected accounting date");
     state.key = field("idempotency_key").value; state.ref = field("draft_ref").value;
     state.stage = "lost"; save();
-    const submit = state.operation === "save" ? [...form.querySelectorAll("button")].find(button => button.textContent === "保存草稿") : primary;
+    const submit = saving ? [...form.querySelectorAll("button")].find(button => button.textContent === "保存草稿") : primary;
     form.requestSubmit(submit);
     await wait(() => state.stage === "unknown" && form.querySelector("[data-expensereview-draft-status]").textContent.includes("暂未收到"));
     if (state.operation === "legacy-confirm") {
@@ -84,10 +101,15 @@
       state.stage = "replay"; save();
       form.requestSubmit(primary);
     } else if (state.stage === "replay") {
-      assert(state.operation === "save", "confirmation unexpectedly returned an editor");
+      assert(saving, "confirmation unexpectedly returned an editor");
       assert(!localStorage.getItem(prefix + state.ref), "acknowledged save left its original unresolved");
       assert(field("idempotency_key").value !== state.key && field("expected_row_version").value === "5", "save did not prepare a fresh confirm");
       state.fresh_key = field("idempotency_key").value;
+      if (state.operation === "missing-amount-save") {
+        window.__expenseReviewResult = {...state, original_removed: !localStorage.getItem(prefix + state.ref),
+          blank_draft_saved: field("amount_yuan").value === "" && form.dataset.expensereviewDraftPhase === "editing"};
+        return;
+      }
       state.stage = "confirm"; save();
       form.requestSubmit(primary);
     }
