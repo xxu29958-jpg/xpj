@@ -41,6 +41,12 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # Exact-symbol evidence, never a module/directory exemption or a handler registry.
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
+    (ANDROID + "data/repository/LedgerCalendarRepository.kt", "refresh"): {
+        "sha256": "aa52f8cc588a8206e8f008a0aba9d1f62e306fc61e861d5da5b0df235181ad74",
+        "owner": "existing sanitized TicketboxNetwork output and unchanged read Result",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/LedgerCalendarRepositoryTest.kt::ruleSurvivesReopenAndOfflineWithoutCrossingLogicalBindings",
+        "reason": "Refresh reports failures through logNetworkWarning and returns the original exception; cancellation propagates. The test verifies one sanitized diagnostic without private response text, preserves the same failure, and proves bound cache/revision retention through offline reopen and unsupported capability. This read boundary neither retries financial work nor changes draft intents or user-facing error policy.",
+    },
     (ANDROID + "viewmodel/FundsViewModel.kt", "runAction"): {
         "sha256": "f17605aa43a5316b882490fc49c3f35cd89b01ad14c80e2bfb582ade4ad10636",
         "owner": "existing UiText error projection and sanitized TicketboxNetwork Logcat",

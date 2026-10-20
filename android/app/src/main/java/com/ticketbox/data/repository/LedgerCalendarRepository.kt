@@ -44,6 +44,7 @@ class LedgerCalendarRepository internal constructor(
     } catch (error: CancellationException) {
         throw error
     } catch (error: Exception) {
+        logNetworkWarning("Ledger calendar refresh failed", error)
         Result.failure(error)
     }
 

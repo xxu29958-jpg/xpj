@@ -13,8 +13,11 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
@@ -26,9 +29,10 @@ class LedgerCalendarRepositoryTest {
         var offline = false
         var supported = true
         var currentRevision = 2L
+        val unavailable = IOException("synthetic private calendar response")
         val api = object : ApiService by fallback {
             override suspend fun runtimeCompatibility() = fallback.runtimeCompatibility().let {
-                if (offline) throw IOException("offline")
+                if (offline) throw unavailable
                 it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = if (supported) 1 else null))
             }
             override suspend fun ledgerCalendar(ledgerId: String, revision: Long?) =
@@ -47,7 +51,12 @@ class LedgerCalendarRepositoryTest {
         assertTrue(repository.refresh(binding).isSuccess)
         val reopened = LedgerCalendarRepository(guard, prefs)
         offline = true
-        assertTrue(reopened.refresh(binding).isFailure)
+        ShadowLog.clear()
+        assertSame(unavailable, reopened.refresh(binding).exceptionOrNull())
+        val diagnostic = ShadowLog.getLogsForTag("TicketboxNetwork").single().msg
+        assertTrue(diagnostic.contains("Ledger calendar refresh failed"))
+        assertTrue(diagnostic.contains("IOException"))
+        assertFalse(diagnostic.contains("synthetic private calendar response"))
         assertEquals(3L, reopened.cached(binding)?.revision)
         assertEquals(2L, reopened.cached(binding, 2)?.revision)
         for (other in listOf(binding.copy(ledgerId = "other"), binding.copy(ownerKey = "other"),
