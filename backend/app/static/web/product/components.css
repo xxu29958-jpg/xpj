@@ -1163,7 +1163,10 @@ input.product-amount:read-only { border-block-end-color: transparent; box-shadow
 .product-workspace:has(> .product-task-actions) { display: flex; flex-direction: column; min-block-size: 100dvh; }
 .product-workspace:has(> .product-task-actions) > main.content { flex: 1 0 auto; }
 .product-workspace > .product-task-actions { width: min(100%, var(--layout-page-narrow-max)); margin: 0 auto; padding-inline: var(--space-7); }
-html:has(.product-workspace > .product-task-actions) { scroll-padding-block-end: calc(var(--target-min) + var(--space-10)); }
+/* 焦点和锚点滚动停在吸底动作条之上: core.js 量出动作条的实际高度 (按钮换行、状态行、大字号都会变高)。 */
+html:has(:is(.product-workspace > .product-task-actions, main.content .product-task-actions:not(.product-task-actions--page))) {
+    scroll-padding-block-end: calc(var(--task-actions-block-size, calc(var(--target-min) + var(--space-10))) + var(--space-3));
+}
 @media (max-width: 64rem) {
     /* 窄屏: 正文里的动作条出血到屏幕两侧, 内容仍与正文边距对齐。 */
     .product-task-actions { margin-inline: calc(var(--space-7) * -1); padding-inline: var(--space-7); }

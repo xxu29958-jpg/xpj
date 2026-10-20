@@ -21,6 +21,7 @@
     }
 
     call("initFormDisclosures");
+    call("initTaskActionsInset");
     call("initThemeControl");
     call("initBackgroundControl");
     call("initLedgerSwitcher");
