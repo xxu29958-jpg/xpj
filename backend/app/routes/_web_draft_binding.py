@@ -37,6 +37,7 @@ def draft_refusal_result(exc: AppError) -> str:
     return "rejected" if exc.error in {"state_conflict", "budget_currency_conflict", "invalid_request",
         "envelope_cash_unknown", "envelope_cash_insufficient",
         "amount_invalid", "amount_required", "currency_not_supported", "recurring_merchant_required", "exchange_rate_pending",
+        "exchange_rate_invalid", "expense_split_total_exceeds_parent",
         "expense_refund_exceeds_remaining", "expense_refund_exists", "expense_reversal_active",
         "expense_offset_not_active", "calendar_revision_conflict", "accounting_time_invalid",
         "debt_amount_invalid", "debt_direction_invalid", "debt_counterparty_invalid", "debt_installment_invalid",
