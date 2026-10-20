@@ -8,7 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.LedgerCalendarReader
-import com.ticketbox.data.repository.newTaskDate
+import com.ticketbox.data.repository.refreshedLedgerDate
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.RecurringPendingIntent
 import com.ticketbox.data.repository.RecurringPendingState
@@ -168,7 +168,10 @@ class RecurringViewModel(
                 candidates = emptyList(), ledgerToday = null) }
             historyTask.invalidate()
         }
-        refreshInternal(preserveMutationFeedback = retireCurrent || preserveFeedback)
+        val state = _uiState.value
+        val mutationMessage = state.manualSaveFeedback?.message
+        refreshInternal(preserveMutationFeedback =
+            retireCurrent || (preserveFeedback && mutationMessage != null && state.message == mutationMessage))
     }
 
     private fun refreshInternal(preserveMutationFeedback: Boolean) {
@@ -197,7 +200,7 @@ class RecurringViewModel(
             val denied = listOf(itemsResult.exceptionOrNull(), candidatesResult.exceptionOrNull())
                 .firstOrNull { it?.isReadAccessDenied() == true }
             if (denied != null) { retireDeniedReads(denied); return@launch }
-            val ledgerToday = calendars.newTaskDate(binding, clock, refreshRule = true)
+            val ledgerToday = calendars.refreshedLedgerDate(binding, clock).getOrNull()
             if (requestGeneration != generation || refreshGeneration != refresh) return@launch
             val message = listOf(itemsResult, candidatesResult)
                 .firstOrNull { it.isFailure }

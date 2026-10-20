@@ -44,7 +44,7 @@ sealed interface RecurringReminderRunOutcome {
 class RecurringReminderRuntime(
     val recurringRemindersEnabled: () -> Boolean,
     val activeBinding: () -> LogicalSessionBinding?,
-    val today: suspend (LogicalSessionBinding) -> LocalDate?,
+    val today: suspend (LogicalSessionBinding) -> Result<LocalDate?>,
     val logWarning: (String, Throwable?) -> Unit = { _, _ -> },
 )
 
@@ -93,10 +93,11 @@ class RecurringReminderEngine(
         }
 
         if (runtime.activeBinding() != binding) return RecurringReminderRunOutcome.EMPTY_SUCCESS
-        val today = runtime.today(binding)
+        val day = runtime.today(binding)
         if (runtime.activeBinding() != binding) return RecurringReminderRunOutcome.EMPTY_SUCCESS
-        return if (today == null) RecurringReminderRunOutcome.TransientFailure("ledger calendar unavailable")
-        else scanItems(items, today, binding)
+        if (day.isFailure) return RecurringReminderRunOutcome.TransientFailure("ledger calendar unavailable")
+        val today = day.getOrNull() ?: return RecurringReminderRunOutcome.EMPTY_SUCCESS
+        return scanItems(items, today, binding)
     }
 
     /** 遍历 items 累计计数。单条 item 异常被隔离（跳过 + 轻量日志），不让整轮失败（Contract 8）。 */

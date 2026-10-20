@@ -3,7 +3,7 @@ package com.ticketbox.notification.recurring
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.MonthCalendarFixture
 import com.ticketbox.data.repository.calendar
-import com.ticketbox.data.repository.newTaskDate
+import com.ticketbox.data.repository.refreshedLedgerDate
 import com.ticketbox.notification.boundReminderKey
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
@@ -37,7 +37,7 @@ class RecurringReminderEngineTest {
                     nextExpectedDate = "2026-10-19")),
                 RecurringReminderPolicy(), store, dispatcher,
                 RecurringReminderRuntime({ true }, { binding },
-                    { requested -> calendars.newTaskDate(requested, clock, refreshRule = true) }),
+                    { requested -> calendars.refreshedLedgerDate(requested, clock) }),
             )
             assertEquals(1, (engine.checkAndNotify() as RecurringReminderRunOutcome.Success).sent)
             val expected = boundReminderKey(binding,
@@ -45,6 +45,10 @@ class RecurringReminderEngineTest {
             assertEquals(setOf(expected), store.keys)
             calendars.response = Result.failure(IOException("offline"))
             assertTrue(engine.checkAndNotify() is RecurringReminderRunOutcome.TransientFailure)
+            assertEquals(setOf(expected), store.keys)
+            assertEquals(1, dispatcher.dispatchedKeys.size)
+            calendars.response = Result.success(null)
+            assertEquals(RecurringReminderRunOutcome.EMPTY_SUCCESS, engine.checkAndNotify())
             assertEquals(setOf(expected), store.keys)
             assertEquals(1, dispatcher.dispatchedKeys.size)
         }
@@ -64,7 +68,7 @@ class RecurringReminderEngineTest {
         runtime = RecurringReminderRuntime(
             recurringRemindersEnabled = { enabled },
             activeBinding = { binding.takeIf { sessionReady } },
-            today = { today },
+            today = { Result.success(today) },
         ),
     )
 

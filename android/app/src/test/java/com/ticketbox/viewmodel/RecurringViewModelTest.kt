@@ -194,6 +194,13 @@ class RecurringViewModelTest {
         assertEquals(listOf(existingCandidate), vm.uiState.value.candidates)
         assertEquals(RecurringListLoadState.Failed, vm.uiState.value.itemsLoadState)
         assertEquals(RecurringListLoadState.Failed, vm.uiState.value.candidatesLoadState)
+        fake.itemsResult = Result.success(listOf(existingItem))
+        fake.candidatesResult = Result.success(listOf(existingCandidate))
+        vm.refresh(preserveFeedback = true)
+        advanceUntilIdle()
+        assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.itemsLoadState)
+        assertEquals(null, vm.uiState.value.message)
+        assertEquals(MessageTone.Neutral, vm.uiState.value.messageTone)
     }
 
     @Test

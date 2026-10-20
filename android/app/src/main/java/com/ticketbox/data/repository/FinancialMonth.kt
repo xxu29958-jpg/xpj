@@ -26,14 +26,24 @@ suspend fun LedgerCalendarReader?.newTaskMonth(
 suspend fun LedgerCalendarReader?.newTaskDate(
     binding: LogicalSessionBinding? = this?.currentBinding(),
     clock: Clock = Clock.systemDefaultZone(),
-    refreshRule: Boolean = false,
 ): LocalDate? {
     val instant = clock.instant()
     val rule = if (this != null && binding != null && currentBinding() == binding) {
-        if (refreshRule) refresh(binding).getOrElse { cached(binding) }
-        else cached(binding) ?: refresh(binding).getOrNull()
+        cached(binding) ?: refresh(binding).getOrNull()
     } else null
     val zone = rule?.takeIf { it.ledgerId == binding?.ledgerId && this?.currentBinding() == binding }
         ?.let { ZoneId.of(it.timezoneName) }
     return zone?.let { instant.atZone(it).toLocalDate() }
+}
+
+/** Live presentation reads distinguish an unsupported calendar from a retryable read failure. */
+suspend fun LedgerCalendarReader?.refreshedLedgerDate(
+    binding: LogicalSessionBinding? = this?.currentBinding(),
+    clock: Clock = Clock.systemUTC(),
+): Result<LocalDate?> {
+    if (this == null || binding == null || currentBinding() != binding) return Result.success(null)
+    return refresh(binding).recoverCatching { error -> cached(binding) ?: throw error }.mapCatching { rule ->
+        rule?.takeIf { it.ledgerId == binding.ledgerId && currentBinding() == binding }
+            ?.let { clock.instant().atZone(ZoneId.of(it.timezoneName)).toLocalDate() }
+    }
 }

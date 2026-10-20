@@ -16,11 +16,11 @@ class FinancialMonthTest {
         val calendars = MonthCalendarFixture(binding, calendar(binding, "Asia/Shanghai")).apply {
             response = Result.success(calendar(binding, "America/Los_Angeles"))
         }
-        assertEquals("2026-05-31", calendars.newTaskDate(binding, clock, refreshRule = true).toString())
+        assertEquals("2026-05-31", calendars.refreshedLedgerDate(binding, clock).getOrThrow().toString())
         calendars.response = Result.failure(java.io.IOException("offline"))
-        assertEquals("2026-06-01", calendars.newTaskDate(binding, clock, refreshRule = true).toString())
+        assertEquals("2026-06-01", calendars.refreshedLedgerDate(binding, clock).getOrThrow().toString())
         calendars.response = Result.success(null)
-        assertEquals(null, calendars.newTaskDate(binding, clock, refreshRule = true))
+        assertEquals(null, calendars.refreshedLedgerDate(binding, clock).getOrThrow())
     }
 
     @Test fun capturedLedgerRuleOwnsMonthAcrossDeviceBoundaryAndWorksOffline() = runTest {
