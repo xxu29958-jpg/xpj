@@ -44,7 +44,7 @@ def has_financial_event(cells: dict[str, str]) -> bool:
     return _unsupported_funds_csv_input(cells) or any(cells.get(name, "").strip() for name in _EVENT_COLUMNS)
 
 
-def _retained_csv_input(cells: dict[str, str]) -> dict[str, str]:
+def retained_csv_input(cells: dict[str, str]) -> dict[str, str]:
     return {name: cells[name] for name in NATIVE_CSV_INPUT_COLUMNS if name in cells}
 
 
@@ -125,7 +125,7 @@ def _event_shape_error(fields: dict[str, object], amount_cents: int | None) -> s
 def parse_financial_event(cells: dict[str, str], *, amount_cents: int | None) -> tuple[dict[str, object], str | None]:
     """Keep source IDs and signed contribution distinct from the gross amount."""
     if _unsupported_funds_csv_input(cells):
-        return {"entry_kind": "invalid", "event_input": _retained_csv_input(cells)}, (
+        return {"entry_kind": "invalid", "event_input": retained_csv_input(cells)}, (
             "本行包含资金账户或非消费事件，当前 CSV 无法正确接收。请在资金账户核对收入、转账或还款；不要删除类型和账户列后重导。")
     errors: list[str] = []
     fields = {
@@ -152,7 +152,7 @@ def parse_financial_event(cells: dict[str, str], *, amount_cents: int | None) ->
         fields["offset_kind"] = None
     if fields["lineage_status"] not in _LINEAGE_STATUSES:
         fields["lineage_status"] = None
-    fields["event_input"] = _retained_csv_input(cells)
+    fields["event_input"] = retained_csv_input(cells)
     return fields, errors[0] if errors else None
 
 
