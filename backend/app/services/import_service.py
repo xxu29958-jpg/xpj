@@ -33,6 +33,7 @@ from decimal import Decimal
 
 from app.config import get_settings
 from app.errors import AppError
+from app.models import Expense
 from app.schemas._accounting_time import AccountingTimeInput
 from app.services.category_service import normalize_category
 from app.services.currency_common import supported_currency_codes
@@ -61,6 +62,7 @@ from app.services.import_money import (
 from app.services.spending_contract_service import fx_rate_date_for_expense_time
 from app.services.tag_service import normalize_tags
 from app.services.time_service import resolve_local_datetime, strict_zone
+from app.tag_text import validate_tags_fit_storage
 
 DEFAULT_SOURCE = "CSV导入"
 
@@ -353,8 +355,38 @@ def _parse_csv_fx_columns(
     )
 
 
+def _csv_text_fields(cells: dict[str, str]) -> tuple[str, str, str, str, str | None]:
+    """Merchant, category, tags and source as stored, plus an error for any that cannot fit.
+
+    The limits are the expense columns the row is applied to (the staged row
+    uses the same widths); tags use the shared tag-mirror rule. A value too
+    long for its column is left out of the staged row, which is an error row
+    and never applied, so the row itself can still be stored and reported.
+    """
+    columns = Expense.__table__.c
+    merchant = cells.get("merchant", "").strip()
+    category = normalize_category(cells.get("category", ""))
+    tags = normalize_tags(cells.get("tags", "")) or ""
+    source = cells.get("source", "").strip() or DEFAULT_SOURCE
+    errors = []
+    if len(merchant) > columns.merchant.type.length:
+        merchant = ""
+        errors.append(f"商户最多 {columns.merchant.type.length} 个字符")
+    if len(category) > columns.category.type.length:
+        category = ""
+        errors.append(f"分类最多 {columns.category.type.length} 个字符")
+    if len(source) > columns.source.type.length:
+        source = DEFAULT_SOURCE
+        errors.append(f"来源最多 {columns.source.type.length} 个字符")
+    try:
+        validate_tags_fit_storage(tags)
+    except ValueError as exc:
+        errors.append(str(exc))
+    return merchant, category, tags, source, "；".join(errors) or None
+
+
 def _csv_row_error(fx: _CsvFxColumns, event_error: str | None,
-                   etime_error: str | None) -> tuple[str | None, str | None]:
+                   etime_error: str | None, text_error: str | None) -> tuple[str | None, str | None]:
     """Choose one invalid input and its matching code in the established order."""
     errors = (
         ("financial_event_invalid", event_error),
@@ -364,6 +396,7 @@ def _csv_row_error(fx: _CsvFxColumns, event_error: str | None,
         ("exchange_rate_date_invalid", fx.exchange_rate_date_error),
         (fx.amount_error_code, fx.amount_error),
         ("expense_time_invalid", etime_error),
+        ("text_too_long", text_error),
     )
     return next(((code, message) for code, message in errors if message), (None, None))
 
@@ -412,7 +445,8 @@ def parse_csv_row(
     rate_source = cells.get("exchange_rate_source", "").strip() or (None if native else authoritative_rate_source)
     if native and rate_source is not None and len(rate_source) > 32:
         rate_source = None
-    error_code, error = _csv_row_error(fx, event_error or native_money_error, etime_error)
+    merchant, category, tags, source, text_error = _csv_text_fields(cells)
+    error_code, error = _csv_row_error(fx, event_error or native_money_error, etime_error, text_error)
     return ParsedRow(
         line_number=line_number,
         home_currency_code=home_currency,
@@ -423,14 +457,14 @@ def parse_csv_row(
         exchange_rate_to_cny=fx.exchange_rate_to_cny if native else authoritative_rate,
         exchange_rate_date=fx.exchange_rate_date,
         exchange_rate_source=rate_source,
-        merchant=cells.get("merchant", "").strip(),
-        category=normalize_category(cells.get("category", "")),
+        merchant=merchant,
+        category=category,
         note=cells.get("note", "").strip(),
         expense_time=expense_time,
         expense_time_display=etime_display,
         time_input=time_input,
-        tags=normalize_tags(cells.get("tags", "")) or "",
-        source=cells.get("source", "").strip() or DEFAULT_SOURCE,
+        tags=tags,
+        source=source,
         error_code=error_code,
         error=error,
         **event_fields,
