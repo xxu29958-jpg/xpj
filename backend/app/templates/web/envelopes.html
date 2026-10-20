@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from '_history_time.html' import saved_time %}
+{% from '_amount_fit.html' import fit_amount %}
 {% set page_title = '信封分配' %}
 {% set product_body_domain = 'plans' %}
 {% set page_surface = 'secondary' %}
@@ -19,7 +20,7 @@
 <section class="product-surface" aria-label="可分配现金">
 <div class="meta">{{ envelopes.valuation_date }} · {{ envelopes.home_currency_code }} · 已记录范围</div>
 <h2>{{ '还需补足现金' if envelopes.unassigned_minor is not none and envelopes.unassigned_minor < 0 else '还可分配' }}</h2>
-<strong class="product-amount">{{ money(envelopes.unassigned_minor|abs if envelopes.unassigned_minor is not none else none, envelopes.home_currency_code) }}</strong>
+{{ fit_amount(money(envelopes.unassigned_minor|abs if envelopes.unassigned_minor is not none else none, envelopes.home_currency_code)) }}
 <div class="product-form-grid"><div><span class="meta">资金池现金</span><p>{{ money(envelopes.cash_minor, envelopes.home_currency_code) }}</p></div>
 <div><span class="meta">所有月份已留出</span><p>{{ money(envelopes.reserved_minor, envelopes.home_currency_code) }}</p></div></div>
 <p class="hint">依据已核对账户和已记流水，不是银行实时余额。未到账收入、信用额度不计入；超支仍可记账，随后调整用途或补记实际到账。</p>

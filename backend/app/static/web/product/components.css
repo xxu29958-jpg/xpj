@@ -1130,6 +1130,12 @@ input.product-amount:read-only { border-block-end-color: transparent; box-shadow
     line-height: var(--type-display-line);
     overflow-wrap: anywhere;
 }
+/* 长金额整体缩小到放得下, 不在数字中间断行: 模板给出宽度估计 --amount-chars (中文与货币符号按双宽计)。 */
+.product-amount--fit {
+    font-size: min(clamp(var(--type-headline-size), 13cqi, var(--type-display-size)), calc(100cqi / (var(--amount-chars) * .62)));
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
 
 /* 吸底动作条: 主提交留在表单内, 吸在所在滚动容器的底部; 其余动作是文字动作,
    常青色只留给这一个主提交。危险动作只换文字颜色, 不抢层级。 */
