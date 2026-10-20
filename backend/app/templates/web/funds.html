@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_amount_fit.html' import fit_amount %}
 {% set page_title = '资金账户' %}
 {% set product_body_domain = 'obligations' %}
 {% set page_surface = 'secondary' %}
@@ -155,7 +156,7 @@
 {% elif account %}
 <section class="product-surface product-surface--plain funds-summary" aria-label="当前余额">
 <span class="product-amount-label">{{ '当前结余' if account.kind == 'credit' and account.balance_minor is not none and account.balance_minor > 0 else '当前欠款' if account.kind == 'credit' else '当前余额' }} · 按已记录的变动</span>
-<strong class="product-amount">{{ balance_text(account) }}</strong>
+{{ fit_amount(balance_text(account)) }}
 {% if account.unallocated_credit_minor %}<p class="hint">退款或预付款还剩 {{ money(account.unallocated_credit_minor, account.currency_code) }}，已计入上方余额。核对用途后可抵扣欠款。</p>{% endif %}
 {% if account.balance_minor is none %}<p class="hint">期初未核对；已记录净变动 {{ money(account.recorded_change_minor, account.currency_code) }}，这不是可用余额。</p>{% endif %}
 {% if account.observation %}<p class="meta">上次核对 {{ account.observation.occurred_on }} · {{ account.observation.source }}：{{ money(account.observation.observed_minor, account.currency_code) }}；待核对差额 {{ money(account.observation.difference_minor, account.currency_code) }}。{% if account.observation.adjusted %}已保留核对更正记录。{% endif %}</p>{% endif %}
@@ -219,7 +220,7 @@
 {% if accounts %}
 <section class="product-surface product-surface--plain funds-summary" aria-label="账户净资产">
   <span class="product-amount-label">已纳入账户的净资产 · {{ funds_overview.valuation_date }}</span>
-  <strong class="product-amount">{{ money(funds_overview.net_worth_minor, funds_overview.home_currency_code) }}</strong>
+  {{ fit_amount(money(funds_overview.net_worth_minor, funds_overview.home_currency_code)) }}
   <span class="product-amount-meta">资产 {{ money(funds_overview.assets_minor, funds_overview.home_currency_code) }} · 负债 {{ money(funds_overview.liabilities_minor, funds_overview.home_currency_code) }}</span>
   {% if funds_overview.unknown_accounts or funds_overview.missing_rate_accounts %}<p class="hint">{% if funds_overview.unknown_accounts %}{{ funds_overview.unknown_accounts }} 个账户余额待核对{% endif %}{% if funds_overview.unknown_accounts and funds_overview.missing_rate_accounts %}，{% endif %}{% if funds_overview.missing_rate_accounts %}{{ funds_overview.missing_rate_accounts }} 个账户待补汇率{% endif %}，暂未计入。</p>{% endif %}
   <p class="meta">只含你可查看的账户；信用账户关联的往来不重复计算。</p>
