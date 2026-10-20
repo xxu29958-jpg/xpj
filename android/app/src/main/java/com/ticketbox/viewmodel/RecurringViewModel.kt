@@ -62,6 +62,12 @@ enum class RecurringListLoadState {
     Failed,
 }
 
+private fun RecurringUiState.refreshedMessageTone(keepFeedback: Boolean, message: UiText?): MessageTone = when {
+    keepFeedback -> messageTone
+    message == null -> MessageTone.Neutral
+    else -> MessageTone.Danger
+}
+
 class RecurringViewModel(
     private val repository: RecurringActions,
     private val onDataChanged: () -> Unit = {},
@@ -155,14 +161,14 @@ class RecurringViewModel(
     }
 
     /** Shell financial changes retire old projections; an ordinary retry keeps its last readable page. */
-    fun refresh(retireCurrent: Boolean = false) {
+    fun refresh(retireCurrent: Boolean = false, preserveFeedback: Boolean = false) {
         if (retireCurrent) {
             refreshGeneration += 1
             _uiState.update { it.copy(items = emptyList(), itemsFetchedAt = null, itemsFromCache = false,
                 candidates = emptyList(), ledgerToday = null) }
             historyTask.invalidate()
         }
-        refreshInternal(preserveMutationFeedback = retireCurrent)
+        refreshInternal(preserveMutationFeedback = retireCurrent || preserveFeedback)
     }
 
     private fun refreshInternal(preserveMutationFeedback: Boolean) {
@@ -191,7 +197,7 @@ class RecurringViewModel(
             val denied = listOf(itemsResult.exceptionOrNull(), candidatesResult.exceptionOrNull())
                 .firstOrNull { it?.isReadAccessDenied() == true }
             if (denied != null) { retireDeniedReads(denied); return@launch }
-            val ledgerToday = calendars.newTaskDate(binding, clock)
+            val ledgerToday = calendars.newTaskDate(binding, clock, refreshRule = true)
             if (requestGeneration != generation || refreshGeneration != refresh) return@launch
             val message = listOf(itemsResult, candidatesResult)
                 .firstOrNull { it.isFailure }
@@ -202,13 +208,7 @@ class RecurringViewModel(
                 state.copy(
                     loading = false,
                     message = if (keepFeedback) state.message else message,
-                    messageTone = if (keepFeedback) {
-                        state.messageTone
-                    } else if (message == null) {
-                        MessageTone.Neutral
-                    } else {
-                        MessageTone.Danger
-                    },
+                    messageTone = state.refreshedMessageTone(keepFeedback, message),
                     items = itemsResult.getOrNull()?.value ?: state.items,
                     itemsFetchedAt = itemsResult.getOrNull()?.fetchedAt ?: state.itemsFetchedAt,
                     itemsFromCache = itemsResult.getOrNull()?.fromCache ?: state.itemsFromCache,

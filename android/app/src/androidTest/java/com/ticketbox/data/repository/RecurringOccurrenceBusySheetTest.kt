@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
@@ -32,6 +33,19 @@ class RecurringOccurrenceBusySheetTest {
     private val release = CompletableDeferred<Unit>()
 
     @After fun close() = host.close()
+
+    @Test fun occurrenceReminderUsesTheSameBoundLedgerDayAsTheListWithoutChangingPayment() {
+        host.installModel()
+        compose.runOnIdle { host.ledgerToday.value = java.time.LocalDate.parse("2026-09-06") }
+        host.showOccurrenceHost()
+        compose.waitUntil(10_000) { host.model.value?.uiState?.value?.canWrite == true }
+        compose.onNodeWithText("待处理提醒：", substring = true).performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { host.ledgerToday.value = java.time.LocalDate.parse("2026-09-05") }
+        compose.onNodeWithText("下次提醒：", substring = true).performScrollTo().assertIsDisplayed()
+        assertEquals(null, host.model.value?.uiState?.value?.choice)
+        assertTrue(fixture.stored().isEmpty())
+        assertTrue(fixture.network.calls.isEmpty())
+    }
 
     @Test fun swipeDuringAdmissionKeepsTheOriginalPaymentTaskVisibleAndAdmitsItOnce() {
         val graph = fixture.reopen()

@@ -26,10 +26,12 @@ suspend fun LedgerCalendarReader?.newTaskMonth(
 suspend fun LedgerCalendarReader?.newTaskDate(
     binding: LogicalSessionBinding? = this?.currentBinding(),
     clock: Clock = Clock.systemDefaultZone(),
+    refreshRule: Boolean = false,
 ): LocalDate? {
     val instant = clock.instant()
     val rule = if (this != null && binding != null && currentBinding() == binding) {
-        cached(binding) ?: refresh(binding).getOrNull()
+        if (refreshRule) refresh(binding).getOrElse { cached(binding) }
+        else cached(binding) ?: refresh(binding).getOrNull()
     } else null
     val zone = rule?.takeIf { it.ledgerId == binding?.ledgerId && this?.currentBinding() == binding }
         ?.let { ZoneId.of(it.timezoneName) }

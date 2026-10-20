@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.screens.RecurringCandidateActions
 import com.ticketbox.ui.screens.RecurringItemActions
@@ -34,6 +36,7 @@ internal fun RecurringRoute(
         ),
     )
     val state by recurringViewModel.uiState.collectAsStateWithLifecycle()
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { recurringViewModel.refresh(preserveFeedback = true) }
     val occurrenceModel = recurringOccurrenceModel(screenFactory) {
         recurringViewModel.refresh()
         onDataChanged()
@@ -73,10 +76,8 @@ internal fun RecurringRoute(
         model = occurrenceModel,
         creation = screenFactory.repository.manualCreation,
         expenses = expenseNavigation,
-        restore = RecurringPaymentRestore(
-            items = state.items,
-            drafts = rememberRecurringPaymentDraftStore(),
-        ),
+        restore = RecurringPaymentRestore(items = state.items, drafts = rememberRecurringPaymentDraftStore()),
+        ledgerToday = state.ledgerToday,
     )
     if (state.history.publicId != null) com.ticketbox.ui.screens.recurring.RecurringHistorySheet(
         state.history, recurringViewModel.historyTask::retry, recurringViewModel.historyTask::more,

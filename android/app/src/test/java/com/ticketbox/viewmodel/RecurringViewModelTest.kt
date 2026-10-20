@@ -69,7 +69,9 @@ class RecurringViewModelTest {
         for ((zone, expectedDay) in listOf("America/Los_Angeles" to "2026-10-19", "Asia/Shanghai" to "2026-10-20")) {
             for (deviceZone in listOf("Pacific/Honolulu", "Asia/Tokyo")) {
                 val clock = Clock.fixed(Instant.parse("2026-10-20T00:30:00Z"), ZoneId.of(deviceZone))
-                val calendars = MonthCalendarFixture(access.binding, calendar(access.binding, zone))
+                val calendars = MonthCalendarFixture(access.binding, calendar(access.binding, zone)).apply {
+                    response = Result.success(rule)
+                }
                 val vm = RecurringViewModel(FakeRecurringActions(itemsResult = Result.success(listOf(due))),
                     calendars = calendars, clock = clock)
                 advanceUntilIdle()
@@ -104,10 +106,39 @@ class RecurringViewModelTest {
         val replacement = planAccess(ledgerId = "other")
         calendars.binding = replacement.binding
         calendars.rule = calendar(replacement.binding, "America/Los_Angeles")
+        calendars.response = Result.success(calendars.rule)
+        calendars.gate = null
         access.value = replacement
         runCurrent()
         assertEquals(LocalDate.parse("2026-10-19"), vm.uiState.value.ledgerToday)
         gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(LocalDate.parse("2026-10-19"), vm.uiState.value.ledgerToday)
+    }
+
+    @Test
+    fun resumeRefreshesLedgerDayAfterMidnightWithoutChangingVisibleFactsOrEditor() = recurringTest {
+        val binding = planAccess().binding
+        var instant = Instant.parse("2026-10-19T15:59:00Z")
+        val clock = object : Clock() {
+            override fun getZone() = ZoneId.of("Pacific/Honolulu")
+            override fun withZone(zone: ZoneId): Clock = this
+            override fun instant() = instant
+        }
+        val calendars = MonthCalendarFixture(binding, calendar(binding, "Asia/Shanghai")).apply {
+            response = Result.success(rule)
+        }
+        val vm = RecurringViewModel(FakeRecurringActions(itemsResult = Result.success(listOf(item()))),
+            calendars = calendars, clock = clock)
+        advanceUntilIdle()
+        val before = vm.uiState.value
+        assertEquals(LocalDate.parse("2026-10-19"), before.ledgerToday)
+        instant = Instant.parse("2026-10-19T16:01:00Z")
+        vm.refresh(preserveFeedback = true)
+        advanceUntilIdle()
+        assertEquals(before.copy(ledgerToday = LocalDate.parse("2026-10-20")), vm.uiState.value)
+        calendars.response = Result.success(calendar(binding, "America/Los_Angeles"))
+        vm.refresh()
         advanceUntilIdle()
         assertEquals(LocalDate.parse("2026-10-19"), vm.uiState.value.ledgerToday)
     }

@@ -29,6 +29,7 @@ import com.ticketbox.notification.recurring.WorkManagerRecurringReminderSchedule
 import java.time.LocalDate
 import com.ticketbox.data.repository.LedgerCalendarRepository
 import com.ticketbox.data.repository.newTaskMonth
+import com.ticketbox.data.repository.newTaskDate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -64,7 +65,9 @@ internal class NotificationRuntimeGraph(
                 dependencies.settingsStore.notificationPreferences().recurringReminders
             },
             activeBinding = dependencies.ledgerCalendarRepository::currentBinding,
-            today = { LocalDate.now() },
+            today = { binding ->
+                dependencies.ledgerCalendarRepository.newTaskDate(binding, refreshRule = true)
+            },
         ),
     )
 

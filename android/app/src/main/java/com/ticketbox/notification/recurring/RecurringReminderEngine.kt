@@ -36,7 +36,7 @@ sealed interface RecurringReminderRunOutcome {
  *
  * @property recurringRemindersEnabled 「固定支出提醒」开关现读（关 → engine 不拉 source、不发、不 markSent）。
  * @property activeBinding 原请求身份；需要 active ledger，读取及投递期间不得变更。
- * @property today 可注入当天（设备本地日期），便于测试钉边界。
+ * @property today 原请求账本的当天；未知日历不能生成提醒或去重回执。
  * @property logWarning 轻量日志注入：单条 item 异常 / source 失败时记 error class，**不记** token /
  *   header / 完整商户明细 / 通知原文（Contract 8）。注入而非直接 android.util.Log 是为了纯 JVM 测试
  *   不触发未 mock 的 Log 桩（与 outbox worker 同思路）。
@@ -44,7 +44,7 @@ sealed interface RecurringReminderRunOutcome {
 class RecurringReminderRuntime(
     val recurringRemindersEnabled: () -> Boolean,
     val activeBinding: () -> LogicalSessionBinding?,
-    val today: () -> LocalDate,
+    val today: suspend (LogicalSessionBinding) -> LocalDate?,
     val logWarning: (String, Throwable?) -> Unit = { _, _ -> },
 )
 
@@ -93,7 +93,10 @@ class RecurringReminderEngine(
         }
 
         if (runtime.activeBinding() != binding) return RecurringReminderRunOutcome.EMPTY_SUCCESS
-        return scanItems(items, runtime.today(), binding)
+        val today = runtime.today(binding)
+        if (runtime.activeBinding() != binding) return RecurringReminderRunOutcome.EMPTY_SUCCESS
+        return if (today == null) RecurringReminderRunOutcome.TransientFailure("ledger calendar unavailable")
+        else scanItems(items, today, binding)
     }
 
     /** 遍历 items 累计计数。单条 item 异常被隔离（跳过 + 轻量日志），不让整轮失败（Contract 8）。 */

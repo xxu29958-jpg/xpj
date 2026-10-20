@@ -79,6 +79,7 @@ internal fun RecurringOccurrenceHost(
     creation: ExpenseManualCreation,
     expenses: RecurringExpenseNavigation,
     restore: RecurringPaymentRestore = RecurringPaymentRestore(),
+    ledgerToday: java.time.LocalDate? = null,
 ) {
     val state by model.uiState.collectAsStateWithLifecycle()
     var taskJson by rememberSaveable { mutableStateOf(restore.initialTaskJson) }
@@ -129,6 +130,7 @@ internal fun RecurringOccurrenceHost(
         }),
         preferredExpenseId = preferredPaymentExpenseId(focused, admitted?.acceptedExpenseId ?: originExpenseId, visible.identity) ?: originExpenseId,
         origin = guard,
+        ledgerToday = ledgerToday,
     )
 }
 

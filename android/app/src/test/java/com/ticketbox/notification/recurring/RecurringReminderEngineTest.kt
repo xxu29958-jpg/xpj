@@ -1,6 +1,9 @@
 package com.ticketbox.notification.recurring
 
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.MonthCalendarFixture
+import com.ticketbox.data.repository.calendar
+import com.ticketbox.data.repository.newTaskDate
 import com.ticketbox.notification.boundReminderKey
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
@@ -17,6 +20,35 @@ class RecurringReminderEngineTest {
 
     private val today = LocalDate.parse("2026-06-10")
     private val binding = LogicalSessionBinding("https://example.test", "L", "owner", "session", "revision")
+
+    @Test
+    fun persistedLedgerDayOwnsReminderKindAcrossDeviceBoundaryAndUnknownRuleCannotMarkSent() = runTest {
+        for ((zone, kind) in listOf("Asia/Shanghai" to RecurringReminderKind.OVERDUE,
+            "America/Los_Angeles" to RecurringReminderKind.DUE_SOON)) {
+            val calendars = MonthCalendarFixture(binding).apply {
+                response = Result.success(calendar(binding, zone))
+            }
+            val clock = java.time.Clock.fixed(java.time.Instant.parse("2026-10-20T00:30:00Z"),
+                java.time.ZoneId.of("Pacific/Honolulu"))
+            val store = InMemoryRecurringReminderStore()
+            val dispatcher = FakeRecurringReminderDispatcher()
+            val engine = RecurringReminderEngine(
+                FakeRecurringReminderSource.of(recurringItemFixture(publicId = "date", ledgerId = "L",
+                    nextExpectedDate = "2026-10-19")),
+                RecurringReminderPolicy(), store, dispatcher,
+                RecurringReminderRuntime({ true }, { binding },
+                    { requested -> calendars.newTaskDate(requested, clock, refreshRule = true) }),
+            )
+            assertEquals(1, (engine.checkAndNotify() as RecurringReminderRunOutcome.Success).sent)
+            val expected = boundReminderKey(binding,
+                recurringReminderSentKey("L", "date", LocalDate.parse("2026-10-19"), kind))
+            assertEquals(setOf(expected), store.keys)
+            calendars.response = Result.failure(IOException("offline"))
+            assertTrue(engine.checkAndNotify() is RecurringReminderRunOutcome.TransientFailure)
+            assertEquals(setOf(expected), store.keys)
+            assertEquals(1, dispatcher.dispatchedKeys.size)
+        }
+    }
 
     private fun engine(
         source: RecurringReminderSource,
