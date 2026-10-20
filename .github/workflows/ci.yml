@@ -81,7 +81,10 @@ jobs:
     name: Backend contracts
     needs: scope
     runs-on: windows-latest
-    timeout-minutes: 12
+    # 2026-10-19: real Windows contract/audit runs reached ~12m with every
+    # check passing; the watchdog cancelled the job during cleanup.
+    # Keep the full gate and its ~12m performance target; allow runner variance.
+    timeout-minutes: 15
     outputs:
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
