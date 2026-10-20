@@ -1,8 +1,8 @@
 """Focusing a field on a phone-width task page never leaves it under the sticky action bar.
 
-On a 360px screen the funds task bar wraps to about three rows (~160px) while
-the page reserved a fixed 88px for focus scrolling, so keyboard "next" or Tab
-into the repayment principal left the field hidden behind the bar. The page is
+On a 360px screen the funds task bar grows after real input offers draft
+recovery; the page reserved a fixed 88px for focus scrolling, so keyboard
+"next" or Tab into the repayment principal left the field hidden behind the bar. The page is
 the actual ``/web/funds`` response for a PostgreSQL-backed credit account and
 the browser runs the shipped styles and scripts.
 """
@@ -26,14 +26,26 @@ STATIC = (Path(__file__).resolve().parents[1] / "app/static").resolve()
 PROBE = """<script>
 window.addEventListener("load", () => setTimeout(() => {
   const bar = document.querySelector("form .product-task-actions");
-  const covered = [];
-  for (const field of document.querySelectorAll("form .product-field :is(input, select, textarea)")) {
-    if (field.type === "hidden" || field.disabled || field.closest("[hidden], details:not([open])")) continue;
-    window.scrollTo(0, 0);
-    field.focus();
-    if (field.getBoundingClientRect().bottom > bar.getBoundingClientRect().top + 1) covered.push(field.name);
-  }
-  window.__taskBarFocusProbe = {covered, barHeight: Math.round(bar.getBoundingClientRect().height)};
+  const measure = () => {
+    const covered = [];
+    for (const field of document.querySelectorAll("form .product-field :is(input, select, textarea)")) {
+      if (field.type === "hidden" || field.disabled || field.closest("[hidden], details:not([open])")) continue;
+      window.scrollTo(0, 0);
+      field.focus();
+      if (field.getBoundingClientRect().bottom > bar.getBoundingClientRect().top + 1) covered.push(field.name);
+    }
+    return {covered, barHeight: Math.round(bar.getBoundingClientRect().height)};
+  };
+  const empty = measure();
+  const principal = document.querySelector("#fund-principal");
+  principal.value = "12.30";
+  principal.dispatchEvent(new Event("input", {bubbles: true}));
+  setTimeout(() => {
+    window.__taskBarFocusProbe = {
+      empty, editing: measure(),
+      drafts: Object.keys(localStorage).filter(key => key.startsWith("ticketbox:funds-")).length
+    };
+  }, 800);
 }, 600));
 </script></body>"""
 
@@ -99,6 +111,9 @@ def test_phone_width_focus_keeps_every_repayment_field_above_the_task_bar(instal
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
-    # The bar really wraps at this width; otherwise the check would prove nothing.
-    assert result["barHeight"] > 120, result
-    assert result["covered"] == [], result
+    assert result["empty"]["covered"] == [], result
+    # A real edit offers draft recovery and grows the bar; an empty page must not fabricate that state.
+    assert result["drafts"] == 1, result
+    assert result["editing"]["barHeight"] > 120, result
+    assert result["editing"]["barHeight"] > result["empty"]["barHeight"], result
+    assert result["editing"]["covered"] == [], result
