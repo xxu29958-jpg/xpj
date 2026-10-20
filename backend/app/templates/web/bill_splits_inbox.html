@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_history_time.html' import saved_time %}
 {% set page_title = '拆账收件箱' %}
 {% set product_body_domain = 'obligations' %}
 {% set all_history = split_inbox_status == 'all' %}
@@ -66,7 +67,7 @@
     <span class="product-amount-meta">{{ row.source_date_label }}</span>
   </div>
   {% if live %}
-    <p class="hint">请在 {{ row.expires_at }} 前处理</p>
+    <p class="hint">请在 {{ saved_time(row.expires_at, ledger_timezone_name|default(none)) }} 前处理</p>
     {% if accept_task and row.accept_choices %}
     {% include '_split_acceptance_form.html' %}
     {% elif accept_task %}<p class="hint">你没有可写入的其他账本，暂时不能接受这份邀请；仍可以拒绝。</p>{% endif %}
@@ -78,8 +79,8 @@
   {% else %}
     <p><span class="product-status{% if row.status == 'accepted' %} product-status--success{% endif %}">{{ '已过期' if row.is_expired else status_labels.get(row.status, row.status) }}</span></p>
     {% if row.received_href %}<a class="product-entry" href="{{ row.received_href }}"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span><span class="product-entry-copy"><strong>查看这笔记录</strong><span>已记入 {{ row.received_ledger_name }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>{% endif %}
-    <ol class="product-history" aria-label="邀请处理时间">{% for event in row.events %}<li class="product-history-item"><strong>{{ event.label }}</strong><span>{{ event.time }}</span></li>{% endfor %}</ol>
-    {% if row.is_expired or row.status == 'expired' %}<p class="hint">已于 {{ row.expires_at }} 过期</p>{% else %}<p class="hint">原定截止 {{ row.expires_at }}</p>{% endif %}
+    <ol class="product-history" aria-label="邀请处理时间">{% for event in row.events %}<li class="product-history-item"><strong>{{ event.label }}</strong><span>{{ saved_time(event.time, ledger_timezone_name|default(none)) }}</span></li>{% endfor %}</ol>
+    {% if row.is_expired or row.status == 'expired' %}<p class="hint">已于 {{ saved_time(row.expires_at, ledger_timezone_name|default(none)) }} 过期</p>{% else %}<p class="hint">原定截止 {{ saved_time(row.expires_at, ledger_timezone_name|default(none)) }}</p>{% endif %}
   {% endif %}
   {% if accept_task and (not live or not row.accept_choices) %}{% include '_split_acceptance_form.html' %}{% endif %}
 </section>

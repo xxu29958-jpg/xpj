@@ -25,7 +25,7 @@ def _activity_href(public_id: str, selected_id: str, **query) -> str:
     return f"/web/debts/{public_id}?{urlencode({'ledger_id': selected_id, **query})}"
 
 
-def _repayment_view(fact, home: str) -> dict:
+def _repayment_view(fact, home: str, timezone_name: str) -> dict:
     void = fact.void_fact
     return {
         "public_id": fact.public_id,
@@ -40,16 +40,16 @@ def _repayment_view(fact, home: str) -> dict:
         "exchange_rate_source": _exchange_rate_source_label(fact.exchange_rate_source) if fact.exchange_rate_source else "",
         "is_voided": fact.status == "voided",
         "void_reason": void.reason if void else "",
-        "void_date_text": _day_label(void.created_at) if void else "",
+        "void_date_text": _day_label(void.created_at, timezone_name) if void else "",
         "void_key": str(uuid4()),
     }
 
 
-def _proposal_view(event: DebtActivityResponse) -> dict:
+def _proposal_view(event: DebtActivityResponse, timezone_name: str) -> dict:
     proposal = event.proposal
     if proposal is None:
         return {}
-    view = _resolved_proposal_row(proposal)
+    view = _resolved_proposal_row(proposal, timezone_name)
     view.update({
         "paid_at": _payment_day_label(proposal),
         "confirmed_amount_label": (
@@ -94,7 +94,7 @@ def _split_view(event: DebtActivityResponse, home: str) -> dict:
     }
 
 
-def _activity_row(event: DebtActivityResponse, listing: DebtActivityListResponse, selected_id: str) -> dict:
+def _activity_row(event: DebtActivityResponse, listing: DebtActivityListResponse, selected_id: str, timezone_name: str) -> dict:
     repayment = event.repayment
     proposal = event.proposal
     linked_repayment = proposal.committed_repayment_public_id if proposal and event.kind == "proposal_resolved" else None
@@ -105,12 +105,12 @@ def _activity_row(event: DebtActivityResponse, listing: DebtActivityListResponse
         "public_id": event.public_id,
         "anchor": f"{event.kind}-{event.public_id}",
         "title": _TITLES[event.kind],
-        "recorded_at": ensure_utc(event.recorded_at).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M"),
+        "recorded_at": ensure_utc(event.recorded_at).astimezone(accounting_zone(timezone_name)).strftime("%Y-%m-%d %H:%M"),
         "actor_label": "你" if event.actor_is_you else (event.actor_display_name or "未记录操作者"),
         "amount_label": _home_amount_label(event.amount_cents, listing.home_currency_code) if event.amount_cents is not None else "",
         "reason": event.reason or "",
-        "repayment": _repayment_view(repayment, listing.home_currency_code) if repayment else None,
-        "proposal": _proposal_view(event),
+        "repayment": _repayment_view(repayment, listing.home_currency_code, timezone_name) if repayment else None,
+        "proposal": _proposal_view(event, timezone_name),
         "split_change": _split_view(event, listing.home_currency_code),
         "repayment_href": (
             _activity_href(listing.debt_public_id, selected_id, focus_repayment=linked_repayment)
@@ -119,9 +119,9 @@ def _activity_row(event: DebtActivityResponse, listing: DebtActivityListResponse
     }
 
 
-def activity_view(listing: DebtActivityListResponse, *, selected_id: str) -> dict:
+def activity_view(listing: DebtActivityListResponse, *, selected_id: str, timezone_name: str) -> dict:
     return {
-        "rows": [_activity_row(event, listing, selected_id) for event in listing.items],
+        "rows": [_activity_row(event, listing, selected_id, timezone_name) for event in listing.items],
         "page": listing.page,
         "total": listing.total,
         "previous_href": (
@@ -136,7 +136,7 @@ def activity_view(listing: DebtActivityListResponse, *, selected_id: str) -> dic
 
 
 def debt_activity_context(
-    request, db, *, selected_id: str, account_id: int | None, public_id: str,
+    request, db, *, selected_id: str, account_id: int | None, public_id: str, timezone_name: str,
     focus_repayment: str | None = None,
 ) -> dict:
     from app.services.debt_service import list_debt_activity
@@ -161,4 +161,4 @@ def debt_activity_context(
         # A rejected command may name a missing/foreign repayment. Keep the
         # debt page available for its feedback; direct GET focus stays strict.
         listing = list_debt_activity(db, **query)
-    return activity_view(listing, selected_id=selected_id)
+    return activity_view(listing, selected_id=selected_id, timezone_name=timezone_name)

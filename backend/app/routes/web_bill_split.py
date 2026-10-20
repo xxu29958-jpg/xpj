@@ -169,7 +169,7 @@ def web_bill_split_sent(
                 "receiver_display_name": inv.receiver_display_name_snapshot or "",
                 "merchant": inv.merchant_snapshot or "",
                 "expense_time": _fmt_local(inv.expense_time_snapshot),
-                "expires_at": _fmt_local(inv.expires_at),
+                "expires_at": inv.expires_at,
                 "is_expired": is_expired,
                 "is_cancellable": inv.status == "invited" and not is_expired,
                 "debt_href": debt_links.get(inv.public_id, ""),

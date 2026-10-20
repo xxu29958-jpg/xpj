@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from '_amount_fit.html' import fit_amount %}
+{% from '_history_time.html' import saved_time %}
 {% set page_title = '资金账户' %}
 {% set product_body_domain = 'obligations' %}
 {% set page_surface = 'secondary' %}
@@ -179,7 +180,7 @@
 {% include '_credit_applications_read.html' %}
 {% if account.prior_repayments and account.prior_repayments.items %}
 <section class="product-section"><h2 class="product-panel-title">接入账户前的还款</h2>
-{% for payment in account.prior_repayments.items %}<p>{{ money(payment.original_amount_minor if payment.original_amount_minor is not none else payment.amount_cents, payment.original_currency_code or account.prior_repayments.home_currency_code) }} · 录入于 {{ payment.created_at }}
+{% for payment in account.prior_repayments.items %}<p>{{ money(payment.original_amount_minor if payment.original_amount_minor is not none else payment.amount_cents, payment.original_currency_code or account.prior_repayments.home_currency_code) }} · 录入于 {{ saved_time(payment.created_at, ledger_timezone_name|default(none)) }}
 {% if payment.void_fact %} · 已撤销：{{ payment.void_fact.reason }}{% elif account.can_edit and funds_can_write %}<a href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&account_id={{ account.public_id }}&task=void_repayment&repayment_id={{ payment.public_id }}">撤销错误的旧还款</a>{% endif %}</p>{% endfor %}</section>
 {% endif %}
 {% if installments and installments.agreements %}{% include '_installments_read.html' %}{% endif %}

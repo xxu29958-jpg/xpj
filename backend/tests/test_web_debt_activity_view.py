@@ -39,7 +39,7 @@ def test_partial_proposal_shows_actual_confirmation_and_reachable_fact():
         recorded_at=proposal.resolved_at, actor_is_you=False, actor_display_name="家人",
         proposal=proposal,
     )
-    view = activity_view(_page([event]), selected_id="my-ledger")
+    view = activity_view(_page([event]), selected_id="my-ledger", timezone_name="Asia/Shanghai")
     row = view["rows"][0]
     assert row["proposal"]["amount_label"] == "¥100.00"
     assert row["proposal"]["confirmed_amount_label"] == "¥40.00"
@@ -64,7 +64,7 @@ def test_repayment_retains_frozen_fx_paid_date_and_void_intent_on_older_page():
         kind="repayment", public_id="repay-one", recorded_at=_repayment().created_at,
         actor_is_you=True, repayment=_repayment(),
     )
-    view = activity_view(_page([event]), selected_id="my-ledger")
+    view = activity_view(_page([event]), selected_id="my-ledger", timezone_name="Asia/Shanghai")
     html = templates.get_template("_debt_activity.html").render(
         activity=_void_activity(view, values={"reason":"填错了", "idempotency_key":"original-key"}), debt={"is_member": False, "public_id": "debt-one"}, can_write=True,
         action_form={"kind": "repayment_void", "target_public_id": "repay-one",
@@ -89,7 +89,7 @@ def test_mixed_facts_keep_signed_adjustment_and_do_not_invent_void_amount():
         kind=kind, public_id=kind, recorded_at=datetime(2026, 9, 12, tzinfo=UTC),
         actor_is_you=False, actor_display_name="家人", amount_cents=amount, reason="保留原因",
     ) for kind, amount in [("created", 10000), ("adjustment", -3000), ("forgiveness", 2000), ("debt_void", None)]]
-    rows = activity_view(_page(items), selected_id="my-ledger")["rows"]
+    rows = activity_view(_page(items), selected_id="my-ledger", timezone_name="Asia/Shanghai")["rows"]
     assert [row["title"] for row in rows] == ["建立往来", "调整金额", "免除余额", "作废整笔往来"]
     assert rows[1]["amount_label"] == "-¥30.00"
     assert rows[3]["amount_label"] == ""
@@ -120,7 +120,7 @@ def test_already_voided_fact_keeps_failed_attempt_visible_without_another_submit
     event = DebtActivityResponse(kind="repayment", public_id=fact.public_id,
                                  recorded_at=fact.created_at, actor_is_you=True, repayment=fact)
     html = templates.get_template("_debt_activity.html").render(
-        activity=_void_activity(activity_view(_page([event]), selected_id="my-ledger"),
+        activity=_void_activity(activity_view(_page([event]), selected_id="my-ledger", timezone_name="Asia/Shanghai"),
             values={"reason":"我填写的原因", "idempotency_key":"original-key"}, error="另一端已经撤销"),
         debt={"is_member": False, "public_id": "debt-one"}, can_write=True,
         action_form={"kind": "repayment_void", "target_public_id": "repay-one", "fallback": False,
@@ -144,7 +144,7 @@ def test_repayment_void_action_respects_whole_debt_terminal_state(debt_status, c
     debt = stub_debt(public_id="debt-one", status=debt_status,
                      remaining_amount_cents=4000 if debt_status == "open" else 0)
     html = templates.get_template("_debt_activity.html").render(
-        activity=_void_activity(activity_view(_page([event]), selected_id="my-ledger"), status=debt_status),
+        activity=_void_activity(activity_view(_page([event]), selected_id="my-ledger", timezone_name="Asia/Shanghai"), status=debt_status),
         debt=_detail_view(debt), debt_open=debt_status == "open", can_write=True,
         action_form={"kind": ""}, selected_ledger_id="my-ledger",
         csrf_token="csrf", expected_row_version=7,
