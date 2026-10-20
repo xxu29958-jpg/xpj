@@ -264,7 +264,11 @@ private fun StatsControlsBlock(
                 }
                 if (overview) DashboardLayoutEditAction(paneState.overview.layout, actions.overview.layout)
             }
-            if (overview) DashboardLayoutFeedback(paneState.overview.layout, actions.overview.layout)
+            // Without readable stats the page's own retry also reloads the layout; one failure, one retry.
+            if (overview) DashboardLayoutFeedback(
+                paneState.overview.layout.let { if (state.stats == null) it.copy(loadError = null) else it },
+                actions.overview.layout,
+            )
         }
         if (controlsMode == StatsControlsMode.FiltersAndTabs) {
             StatsStatusMessages(
