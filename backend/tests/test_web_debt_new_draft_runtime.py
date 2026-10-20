@@ -22,15 +22,17 @@ from tests._local_web_identity_support import _connect_local_session, installed_
 
 STATIC = (Path(__file__).resolve().parents[1] / "app/static").resolve()
 PROBE = """<script>
-window.addEventListener("load", () => {
+const request = navigator.locks.request.bind(navigator.locks);
+navigator.locks.request = (...args) => new Promise(resolve =>
+  setTimeout(() => resolve(request(...args)), 1800));
+window.addEventListener("load", async () => {
   const drafts = () => Object.keys(localStorage).filter(key => key.startsWith("ticketbox:debtcreation-")).length;
-  setTimeout(() => {
-    const afterLoad = drafts();
-    const who = document.querySelector("[name=counterparty_label]");
-    who.value = "朋友丙";
-    who.dispatchEvent(new Event("input", {bubbles: true}));
-    setTimeout(() => { window.__debtNewDraftProbe = {afterLoad, afterTyping: drafts()}; }, 800);
-  }, 800);
+  const who = document.querySelector("[name=counterparty_label]");
+  while (who.readOnly || who.disabled) await new Promise(resolve => setTimeout(resolve, 25));
+  const afterLoad = drafts();
+  who.value = "朋友丙";
+  who.dispatchEvent(new Event("input", {bubbles: true}));
+  window.__debtNewDraftProbe = {afterLoad, afterTyping: drafts()};
 });
 </script></body>"""
 
