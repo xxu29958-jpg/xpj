@@ -132,14 +132,11 @@ def test_web_and_command_same_key_share_claim_before_parent_lock(web_client: Tes
         return original_claim(db, **kwargs)
 
     def peer():
-        try:
-            with SessionLocal() as db:
-                db.info["peer"] = True
-                return bsplit.create_invitation(db, sender_account_id=sender_id, sender_ledger_id="owner",
-                    expense_id=expense_id, receiver_account_id=receiver_id, amount_cents=1000,
-                    idempotency_key=key, expected_row_version=1).public_id
-        except Exception as exc:
-            return exc
+        with SessionLocal() as db:
+            db.info["peer"] = True
+            return bsplit.create_invitation(db, sender_account_id=sender_id, sender_ledger_id="owner",
+                expense_id=expense_id, receiver_account_id=receiver_id, amount_cents=1000,
+                idempotency_key=key, expected_row_version=1).public_id
 
     monkeypatch.setattr(split_create, "_claim_invitation", coordinated_claim)
     with ThreadPoolExecutor(max_workers=1) as pool:
@@ -149,11 +146,9 @@ def test_web_and_command_same_key_share_claim_before_parent_lock(web_client: Tes
             response = web_client.post(f"/web/expenses/{expense_id}/split-invite",
                 data={"ledger_id": "owner", "receiver_account_id": str(receiver_id), "amount_yuan": "10.00",
                     "expected_row_version": "1", "idempotency_key": key}, follow_redirects=False)
-        except Exception as exc:
-            response = exc
-        original = pending.result(timeout=15)
-    assert not isinstance(original, Exception), repr(original)
-    assert not isinstance(response, Exception), repr(response)
+        finally:
+            # Join the command either way; result() re-raises its own failure.
+            original = pending.result(timeout=15)
     assert response.status_code == 303, response.text
     [invitation] = _sent_for(expense_id)
     assert (invitation.public_id, invitation.amount_cents, invitation.home_currency_code) == (original, 1000, "CNY")
