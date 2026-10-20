@@ -24,11 +24,12 @@ class LedgerCalendarRepositoryTest {
         val session = TestSessionFixture().apply { saveToken("synthetic-session") }
         val fallback = FakeApiService(mutableListOf(), 0)
         var offline = false
+        var supported = true
         var currentRevision = 2L
         val api = object : ApiService by fallback {
             override suspend fun runtimeCompatibility() = fallback.runtimeCompatibility().let {
                 if (offline) throw IOException("offline")
-                it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = 1))
+                it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = if (supported) 1 else null))
             }
             override suspend fun ledgerCalendar(ledgerId: String, revision: Long?) =
                 LedgerCalendarDto(ledgerId, revision ?: currentRevision, "Asia/Shanghai", "explicit", "2026-09-20T00:00:00Z")
@@ -54,5 +55,14 @@ class LedgerCalendarRepositoryTest {
             assertNull(reopened.cached(other))
             assertTrue(reopened.refresh(other).isFailure)
         }
+        offline = false
+        supported = false
+        assertNull(reopened.refresh(binding).getOrThrow())
+        assertNull(reopened.cached(binding))
+        assertEquals(2L, reopened.cached(binding, 2)?.revision)
+        offline = true
+        val unsupportedReopened = LedgerCalendarRepository(guard, prefs)
+        assertTrue(unsupportedReopened.refreshedLedgerDate(binding).isFailure)
+        assertNull(unsupportedReopened.cached(binding))
     }
 }

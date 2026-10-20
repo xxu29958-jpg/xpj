@@ -28,6 +28,10 @@ class LedgerCalendarRepository internal constructor(
             if (!api.runtimeCompatibility().toWriteCompatibility().supportsAccountingTimeInput) null
             else api.ledgerCalendar(binding.ledgerId, revision)
         }
+        if (rule == null) {
+            bound.requireStillActive()
+            check(preferences.edit().remove(key(binding, null)).commit()) { "账本日期规则未能更新，请重试。" }
+        }
         rule?.let {
             require(it.ledgerId == binding.ledgerId && it.revision > 0 && (revision == null || revision == it.revision))
             java.time.ZoneId.of(it.timezoneName)
