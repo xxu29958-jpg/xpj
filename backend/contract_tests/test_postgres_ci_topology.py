@@ -394,7 +394,11 @@ def test_github_postgres_jobs_bind_scope_resources_commands_auth_and_sha() -> No
     assert jobs["backend_contracts"]["needs"] == "scope"
     audit_environment = _steps(jobs["backend_contracts"])["Audit (release lanes)"]["env"]
     assert audit_environment["XPJ_AUDIT_BASE_REF"] == ("${{ needs.scope.outputs.audit_base_sha }}")
-    _assert_bounded_timeout(jobs["backend_contracts"])
+    # The resident Windows audit has a 15-minute process watchdog. Its
+    # 12-minute elapsed-time target is measured from run/step timings, not
+    # inferred from this YAML value. All checks must still fail closed.
+    _assert_bounded_timeout(jobs["backend_contracts"], ceiling=15)
+    _assert_no_continue_on_error(jobs["backend_contracts"])
     _assert_bounded_timeout(jobs["backend_frozen"])
     _assert_windows_release_lanes(jobs, windows_jobs)
 

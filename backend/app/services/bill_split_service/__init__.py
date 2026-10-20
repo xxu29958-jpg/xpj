@@ -38,7 +38,7 @@ from app.services.bill_split_service._common import (
     SPLIT_RECEIVED_SOURCE,
     WRITER_ROLES,
 )
-from app.services.bill_split_service._create import create_invitation
+from app.services.bill_split_service._create import create_invitation, split_parent_home_currency
 from app.services.bill_split_service._guards import (
     IMMUTABLE_ON_SPLIT_RECEIVED,
     assert_no_immutable_field_changes,
@@ -86,6 +86,7 @@ __all__ = [
     "list_inbox",
     "list_sent",
     "list_sent_for_expense",
+    "split_parent_home_currency",
     "reconcile_bill_split_debts_if_enabled",
     "reject_invitation",
     "receiver_sender_presentation",

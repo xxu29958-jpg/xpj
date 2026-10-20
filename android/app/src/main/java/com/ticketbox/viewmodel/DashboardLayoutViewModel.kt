@@ -51,9 +51,8 @@ class DashboardLayoutViewModel(private val repository: DashboardCardsActions) : 
                 onSuccess = { cards ->
                     _uiState.update { it.copy(cards = cards.items.sortedBy { card -> card.position }, loading = false) }
                 },
-                onFailure = { error ->
-                    _uiState.update { it.copy(loading = false, loadError = error.toUiText(R.string.dashboard_load_failed)) }
-                },
+                // Say which read failed: the overview keeps showing its readable default modules meanwhile.
+                onFailure = { _uiState.update { it.copy(loading = false, loadError = UiText.res(R.string.dashboard_load_failed)) } },
             )
         }
     }
