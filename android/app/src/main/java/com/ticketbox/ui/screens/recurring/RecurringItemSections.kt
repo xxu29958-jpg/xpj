@@ -86,7 +86,7 @@ internal fun RecurringHeroSection(
             Text(
                 text = model.nearestNextDate?.let {
                     stringResource(
-                        R.string.recurring_hero_meta_next,
+                        if (recurringDueIsPast(it)) R.string.recurring_hero_meta_past else R.string.recurring_hero_meta_next,
                         model.activeCount,
                         recurringDisplayDate(it),
                     )
@@ -270,7 +270,7 @@ private fun RecurringItemMetaColumn(item: RecurringItem, meta: RecurringItemMeta
 @Composable
 private fun recurringNextDateText(meta: RecurringItemMeta): String =
     meta.nextExpectedDate?.let {
-        stringResource(R.string.recurring_meta_next, recurringDisplayDate(it))
+        stringResource(if (recurringDueIsPast(it)) R.string.recurring_meta_next_past else R.string.recurring_meta_next, recurringDisplayDate(it))
     } ?: stringResource(
         if (meta.observedCount != null) {
             R.string.recurring_meta_next_unknown

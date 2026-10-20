@@ -4,13 +4,17 @@ import com.ticketbox.data.repository.RecurringPendingIntent
 import com.ticketbox.data.repository.RecurringPendingKind
 import com.ticketbox.ui.screens.recurring.RecurringTab
 import com.ticketbox.ui.screens.recurring.recurringDefaultTab
+import com.ticketbox.ui.screens.recurring.recurringDueIsPast
 import com.ticketbox.ui.screens.recurring.recurringHasReadableData
 import com.ticketbox.ui.screens.recurring.recurringHeroModel
 import com.ticketbox.ui.screens.recurring.recurringScreenDerived
 import com.ticketbox.viewmodel.RecurringListLoadState
 import com.ticketbox.viewmodel.RecurringUiState
 import kotlin.test.Test
+import java.time.LocalDate
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 /** 屏级派生：列表 bodyState、hero 总额、默认/筛选 tab、可读性判定。 */
@@ -136,5 +140,14 @@ class RecurringScreenModelsTest {
         assertEquals(1, upcoming.counts.archived)
         val active = recurringScreenDerived(state, RecurringTab.Active)
         assertEquals(3, active.itemSection.rows.size)
+    }
+
+    @Test
+    fun aDueDateBeforeTodayIsPastWhileTodayFutureAndUnreadableAreNot() {
+        val today = LocalDate.parse("2026-10-20")
+        assertTrue(recurringDueIsPast("2026-10-15", today))
+        assertFalse(recurringDueIsPast("2026-10-20", today))
+        assertFalse(recurringDueIsPast("2026-11-01", today))
+        assertFalse(recurringDueIsPast("未知", today))
     }
 }
