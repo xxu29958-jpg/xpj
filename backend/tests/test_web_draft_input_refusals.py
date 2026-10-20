@@ -1,7 +1,7 @@
-"""Review input the server refuses before any commit is a final refusal.
+"""Draft input the server refuses before any commit is a final refusal.
 
-The review draft then offers to check the current record and keep editing, instead of
-only replaying the same original or discarding what the reviewer already typed.
+The browser draft then offers to check the current record and keep editing, instead of
+only replaying the same original or discarding what was already typed.
 """
 
 from __future__ import annotations
@@ -17,6 +17,8 @@ from app.database import SessionLocal
 from app.models import Expense
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
+from tests._web_native_form_support import hidden_post_forms
+from tests._web_recurring_test_support import open_recurring_form, seed_observed_item
 from tests.test_web_expense_detail_v1_slice import _owner_member_id, _seed_pending_expense
 
 
@@ -106,3 +108,15 @@ def test_an_unusable_manual_rate_is_a_final_refusal(web_client: TestClient, *, i
         headers={"Accept": "application/json"},
     )
     assert _refusal(resp) == ("exchange_rate_invalid", "rejected")
+
+
+def test_saving_an_unchanged_fixed_expense_is_a_final_refusal(web_client: TestClient) -> None:
+    public_id = seed_observed_item(merchant="宽带", source="manual", occurrence_count=0)
+    listing = web_client.get("/web/recurring?ledger_id=owner&month=2026-05")
+    action = f"/web/recurring/{public_id}/edit"
+    fields = hidden_post_forms(open_recurring_form(web_client, listing, public_id=public_id).text)[action]
+    fields.update(
+        merchant="宽带", baseline_amount_yuan="20.00", next_expected_date="2026-09-08", home_currency_code="CNY"
+    )
+    resp = web_client.post(action, data=fields, headers={"Accept": "application/json"})
+    assert _refusal(resp) == ("recurring_item_no_changes", "rejected")
