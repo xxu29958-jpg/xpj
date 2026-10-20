@@ -45,11 +45,13 @@ internal data class RecurringHeroModel(
     val amountsByCurrency: Map<String, Long?>,
     val activeCount: Int,
     val nearestNextDate: String?,
+    val ledgerToday: LocalDate? = null,
 )
 
 internal fun recurringHeroModel(
     items: List<RecurringItem>,
     loadState: RecurringListLoadState,
+    ledgerToday: LocalDate? = null,
 ): RecurringHeroModel {
     val active = items.filter { it.status == "active" }
     return RecurringHeroModel(
@@ -60,6 +62,7 @@ internal fun recurringHeroModel(
         },
         activeCount = active.size,
         nearestNextDate = active.mapNotNull { it.nextDueDate }.minOrNull(),
+        ledgerToday = ledgerToday,
     )
 }
 
@@ -74,12 +77,14 @@ internal data class RecurringItemMeta(
     /** 最近一次观测日期（yyyy-MM-dd），仅观察项有。 */
     val lastObservedDate: String?,
     val anomalyDeltaPercent: Int?,
+    val ledgerToday: LocalDate? = null,
 )
 
-internal fun recurringItemMeta(item: RecurringItem): RecurringItemMeta {
+internal fun recurringItemMeta(item: RecurringItem, ledgerToday: LocalDate? = null): RecurringItemMeta {
     val observed = item.occurrenceCount > 0
     return RecurringItemMeta(
         nextExpectedDate = item.nextDueDate,
+        ledgerToday = ledgerToday,
         observedCount = if (observed) item.occurrenceCount else null,
         lastObservedDate = if (observed) item.lastSeenAt?.take(10) else null,
         anomalyDeltaPercent = item.amountDeltaPercent
@@ -121,7 +126,7 @@ internal fun recurringScreenDerived(state: RecurringUiState, tab: RecurringTab):
         RecurringTab.Archived -> archived.sortedBy { it.merchant }
     }
     return RecurringDerivedModel(
-        hero = recurringHeroModel(state.items, state.itemsLoadState),
+        hero = recurringHeroModel(state.items, state.itemsLoadState, state.ledgerToday),
         selectedTab = tab,
         counts = RecurringTabCounts(
             upcoming = upcoming.size,
@@ -141,6 +146,13 @@ internal fun recurringScreenDerived(state: RecurringUiState, tab: RecurringTab):
         canModify = state.canModify,
     )
 }
+
+/**
+ * 下次日期跳过了已有对应付款的期次，所以早于今天的日期表示本期还没有记录付款，
+ * 不能再写成「下次」。只使用账本日历；日历未知或日期无法解析时返回 null，保留中性日期。
+ */
+internal fun recurringDueIsPast(date: String, today: LocalDate?): Boolean? =
+    today?.let { runCatching { LocalDate.parse(date).isBefore(it) }.getOrNull() }
 
 /** 新建表单默认建议的下次日期：下月同日（LocalDate 自动处理月末回退）。 */
 internal fun recurringDefaultNextDate(today: LocalDate = LocalDate.now()): String =

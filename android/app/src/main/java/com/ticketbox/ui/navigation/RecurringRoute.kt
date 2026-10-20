@@ -7,6 +7,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ticketbox.ui.screens.RecurringCandidateActions
 import com.ticketbox.ui.screens.RecurringItemActions
@@ -29,10 +33,12 @@ internal fun RecurringRoute(
         factory = recurringViewModelFactory(
             originalBinding = LocalNotificationTask.current?.binding,
             repository = screenFactory.recurringRepository,
+            calendars = screenFactory.repositories.ledgerCalendarRepository,
             onDataChanged = onDataChanged,
         ),
     )
     val state by recurringViewModel.uiState.collectAsStateWithLifecycle()
+    ObserveRecurringCalendar(recurringViewModel)
     val occurrenceModel = recurringOccurrenceModel(screenFactory) {
         recurringViewModel.refresh()
         onDataChanged()
@@ -72,15 +78,22 @@ internal fun RecurringRoute(
         model = occurrenceModel,
         creation = screenFactory.repository.manualCreation,
         expenses = expenseNavigation,
-        restore = RecurringPaymentRestore(
-            items = state.items,
-            drafts = rememberRecurringPaymentDraftStore(),
-        ),
+        restore = RecurringPaymentRestore(items = state.items, drafts = rememberRecurringPaymentDraftStore()),
+        ledgerToday = state.ledgerToday,
     )
     if (state.history.publicId != null) com.ticketbox.ui.screens.recurring.RecurringHistorySheet(
         state.history, recurringViewModel.historyTask::retry, recurringViewModel.historyTask::more,
         recurringViewModel.historyTask::dismiss,
     )
+}
+
+@Composable
+private fun ObserveRecurringCalendar(model: RecurringViewModel) {
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { model.refresh(preserveFeedback = true) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(lifecycle, model) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { model.ledgerDay.observe() }
+    }
 }
 
 /** Uses the original period even if the reminder is opened in a later month. */
