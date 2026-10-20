@@ -56,7 +56,7 @@ from app.routes.web_recurring_occurrences import router as occurrences_router
 from app.schemas import RecurringCandidateConfirmRequest
 from app.services.currency_common import normalize_currency_code, supported_currency_codes
 from app.services.insights_service import recurring_candidates
-from app.services.ledger_calendar_service import current_ledger_month
+from app.services.ledger_calendar_service import current_ledger_date, current_ledger_month
 from app.services.recurring_candidate_confirmation_service import confirm_recurring_candidate
 from app.services.recurring_history_service import recurring_item_history
 from app.services.recurring_item_command_service import (
@@ -211,6 +211,8 @@ def _render_recurring(
         submitted=candidate_draft,
     )
     ctx["hero"] = _recurring_hero(db, selected_id=selected_id, items=all_items, currency_code=currency_code, due_dates=due_dates)
+    # A due date before today means this period still has no linked payment (paid periods are skipped).
+    ctx["recurring_today"] = current_ledger_date(db, ledger_id=selected_id).isoformat()
     ctx["status_filter"] = status or ""
     ctx["flash_message"] = flash_message
     ctx["error_message"] = error_message
