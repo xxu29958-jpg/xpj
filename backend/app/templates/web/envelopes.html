@@ -70,11 +70,11 @@
 <p class="hint">填入计划后仍需核对现金并保存，不会自动分配。</p></section>
 <p class="product-feedback" data-envelope-summary aria-live="polite" hidden></p>
 <div class="product-field"><label for="envelope-note">这次调整的说明</label><input class="product-input" id="envelope-note" name="note" value="{{ values.note }}" maxlength="255" required></div>
-<p class="hint" data-envelope-draft-status role="status"></p>
 <p class="hint" data-envelope-review-note hidden>原输入会保留。核对最新余额只准备继续编辑，确认后才保存分配。</p>
 <div class="product-task-actions"><button class="product-button product-button--primary" type="submit" data-envelope-submit {{ 'disabled' if not envelope_can_write }}>保存分配</button>
 <button class="product-button product-button--quiet" type="submit" name="review_latest" value="1" data-envelope-review formnovalidate hidden>核对最新余额后继续</button>
-<button class="product-button product-button--quiet" type="button" data-envelope-discard hidden>放弃这份原稿</button></div>
+<button class="product-button product-button--quiet" type="button" data-envelope-discard hidden>放弃这份原稿</button><p class="hint" data-envelope-draft-status role="status" hidden></p>
+</div>
 <a data-envelope-original-result class="text-link" hidden>查看原保存结果</a>
 </form>
 {% if history %}<section class="product-surface product-surface--plain"><h2>最近的分配记录</h2><ol class="product-history">
