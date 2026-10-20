@@ -9,7 +9,8 @@ failure, and must not stop the valid rows of the same batch.
 
 from __future__ import annotations
 
-from io import BytesIO
+import csv
+from io import BytesIO, StringIO
 
 import pytest
 from fastapi.testclient import TestClient
@@ -60,3 +61,33 @@ def test_over_long_text_is_a_row_error_and_valid_rows_still_apply(client: TestCl
         merchants = [value for (value,) in db.query(Expense.merchant).filter(Expense.merchant.in_(["好店", "店"]))]
         assert merchants == ["好店"]
         assert db.query(Tag).filter(Tag.name.in_([LONG_TAG, CASEFOLD_TAG])).count() == 0
+
+    download = client.get(f"/api/imports/csv/{batch['public_id']}/errors.csv", headers=identity.app_headers)
+    assert download.status_code == 200, download.text
+    original = dict(zip(["amount_yuan", "merchant", "category", "tags", "source"], next(csv.reader([row])), strict=True))
+    retained = list(csv.DictReader(StringIO(download.content.decode("utf-8-sig"))))
+    assert len(retained) == 1
+    assert {name: retained[0][name] for name in original} == original
+    assert retained[0]["entry_kind"] == ""
+    retry = client.post("/api/imports/csv", headers=identity.app_headers,
+        files={"csv_file": ("errors.csv", download.content, "text/csv")})
+    assert retry.status_code == 201, retry.text
+    assert (retry.json()["valid_rows"], retry.json()["error_rows"]) == (0, 1)
+
+    retained[0].update(merchant="修正店", category="餐饮", tags="早餐", source="手工修正")
+    repaired = StringIO()
+    writer = csv.DictWriter(repaired, fieldnames=list(retained[0]))
+    writer.writeheader()
+    writer.writerows(retained)
+    corrected = client.post("/api/imports/csv", headers=identity.app_headers,
+        files={"csv_file": ("corrected.csv", repaired.getvalue().encode("utf-8"), "text/csv")})
+    assert corrected.status_code == 201, corrected.text
+    assert (corrected.json()["valid_rows"], corrected.json()["error_rows"]) == (1, 0)
+    apply_url = f"/api/imports/csv/{corrected.json()['public_id']}/apply"
+    for expected in (1, 0):
+        applied = client.post(apply_url, headers=identity.app_headers, json={"batch_size": 10})
+        assert applied.status_code == 200, applied.text
+        assert applied.json()["inserted_count"] == expected
+    with SessionLocal() as db:
+        expenses = db.query(Expense).filter(Expense.tenant_id == "owner").all()
+        assert sorted((item.merchant, item.amount_cents) for item in expenses) == [("修正店", 100), ("好店", 200)]

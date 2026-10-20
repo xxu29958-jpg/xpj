@@ -42,6 +42,7 @@ from app.services.exchange_rate_service import (
     normalize_currency_code,
 )
 from app.services.import_financial_events import (
+    NATIVE_CSV_INPUT_COLUMNS,
     has_financial_event,
     native_accounting_time,
     native_money_fields_error,
@@ -447,6 +448,13 @@ def parse_csv_row(
         rate_source = None
     merchant, category, tags, source, text_error = _csv_text_fields(cells)
     error_code, error = _csv_row_error(fx, event_error or native_money_error, etime_error, text_error)
+    if error is not None and not native:
+        # Error rows cannot be claimed or reviewed. Keep repairable input in the
+        # existing JSON evidence field, with no native-event marker on re-upload.
+        event_fields["event_input"] = {
+            name: cells[name] for name in NATIVE_CSV_INPUT_COLUMNS if name in cells
+        }
+        event_fields["event_input"]["entry_kind"] = ""
     return ParsedRow(
         line_number=line_number,
         home_currency_code=home_currency,
