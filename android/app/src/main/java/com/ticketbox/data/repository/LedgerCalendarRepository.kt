@@ -5,6 +5,8 @@ import com.squareup.moshi.Moshi
 import com.ticketbox.data.remote.dto.LedgerCalendarDto
 import com.ticketbox.data.remote.dto.toWriteCompatibility
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Rebuildable rule cache. Full logical binding prevents another principal's rule becoming draft input. */
 class LedgerCalendarRepository internal constructor(
@@ -14,6 +16,7 @@ class LedgerCalendarRepository internal constructor(
     private val moshi = Moshi.Builder().build()
     private val bindingAdapter = moshi.adapter(LogicalSessionBinding::class.java)
     private val ruleAdapter = moshi.adapter(LedgerCalendarDto::class.java)
+    private val refreshMutex = Mutex()
 
     override fun currentBinding(): LogicalSessionBinding? = guard.captureLogicalBinding()
 
@@ -22,25 +25,32 @@ class LedgerCalendarRepository internal constructor(
         return runCatching { ruleAdapter.fromJson(raw) }.getOrNull()
     }
 
-    override suspend fun refresh(binding: LogicalSessionBinding, revision: Long?): Result<LedgerCalendarDto?> = try {
-        val bound = guard.bindExact(binding)
-        val rule = bound.call { api ->
-            if (!api.runtimeCompatibility().toWriteCompatibility().supportsAccountingTimeInput) null
-            else api.ledgerCalendar(binding.ledgerId, revision)
+    override suspend fun refresh(binding: LogicalSessionBinding, revision: Long?): Result<LedgerCalendarDto?> = refreshMutex.withLock {
+        try {
+            val bound = guard.bindExact(binding)
+            val rule = bound.call { api ->
+                if (!api.runtimeCompatibility().toWriteCompatibility().supportsAccountingTimeInput) null
+                else api.ledgerCalendar(binding.ledgerId, revision)
+            }
+            if (rule == null) {
+                bound.requireStillActive()
+                check(preferences.edit().remove(key(binding, null)).commit()) { "账本日期规则未能更新，请重试。" }
+            }
+            rule?.let {
+                require(it.ledgerId == binding.ledgerId && it.revision > 0 && (revision == null || revision == it.revision))
+                java.time.ZoneId.of(it.timezoneName)
+                bound.requireStillActive()
+                val editor = preferences.edit().putString(key(binding, it.revision), ruleAdapter.toJson(it))
+                if (revision == null) editor.putString(key(binding, null), ruleAdapter.toJson(it))
+                check(editor.commit()) { "账本日期规则未能保存，请重试。" }
+            }
+            Result.success(rule)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            logNetworkWarning("Ledger calendar refresh failed", error)
+            Result.failure(error)
         }
-        rule?.let {
-            require(it.ledgerId == binding.ledgerId && it.revision > 0 && (revision == null || revision == it.revision))
-            java.time.ZoneId.of(it.timezoneName)
-            bound.requireStillActive()
-            val editor = preferences.edit().putString(key(binding, it.revision), ruleAdapter.toJson(it))
-            if (revision == null) editor.putString(key(binding, null), ruleAdapter.toJson(it))
-            check(editor.commit()) { "账本日期规则未能保存，请重试。" }
-        }
-        Result.success(rule)
-    } catch (error: CancellationException) {
-        throw error
-    } catch (error: Exception) {
-        Result.failure(error)
     }
 
     private fun key(binding: LogicalSessionBinding, revision: Long?): String =

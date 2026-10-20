@@ -93,6 +93,15 @@
         Number.isInteger(receipt.amount_cents) && receipt.amount_cents >= 0 &&
         typeof receipt.home_currency === "string" && typeof receipt.confirmed_at === "string";
   }
+  function focusMissingAmount(form) {
+    const amount = form.elements.namedItem("amount_yuan");
+    if (!amount || amount.value !== "") return false;
+    const status = form.querySelector("[data-expensereview-draft-status]");
+    status.hidden = false; status.textContent = "请先填写金额。";
+    amount.closest("details")?.setAttribute("open", "");
+    amount.focus();
+    return true;
+  }
   function mount(form, options = {}) {
     if (!form.dataset.expensereviewDraftScope) return;
     form.addEventListener("submit", event => {
@@ -102,6 +111,9 @@
         if (requiresReview(form)) {
           event.preventDefault(); event.stopImmediatePropagation();
           form.querySelector("[data-expensereview-review]").focus(); return;
+        }
+        if (action.pathname.endsWith("/confirm") && focusMissingAmount(form)) {
+          event.preventDefault(); event.stopImmediatePropagation(); return;
         }
         form.elements.command_action.value = action.pathname.split("/").pop();
       }
