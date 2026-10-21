@@ -2,6 +2,7 @@
 
 from scripts.planning_journey_android import wait_for
 
+
 def open_recognition_task(j, amount, note):
     draft = j.page.locator('form[data-expensereview-draft-scope]')
     for name, value in (("amount_yuan", amount), ("note", note)):

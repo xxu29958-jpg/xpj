@@ -106,8 +106,10 @@ class BackstageJourney:
             nodes = list(self.native.tree().iter("node"))
             texts = {node.attrib.get("text") for node in nodes}
             descriptions = {node.attrib.get("content-desc") for node in nodes}
-            if "后台任务" in texts and "刷新" in (texts | descriptions):
+            if "后台任务" in texts and ("任务进度" in texts or "刷新" in (texts | descriptions)):
+                self.native.reveal_any("刷新", exact=True)
                 self.native.click("刷新")
+                self.native.reveal_any("任务进度", toward_start=True, exact=True)
                 break
             if "打开账户与设置" in descriptions:
                 self.native.click("打开账户与设置", stable=True)

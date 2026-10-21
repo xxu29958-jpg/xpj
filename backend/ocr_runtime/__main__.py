@@ -9,6 +9,14 @@ from pathlib import Path
 from ocr_runtime.protocol import MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, OcrRuntimeError, read_message, write_message
 
 
+def _native_memory_failure(error: Exception) -> bool:
+    # The pinned RapidOCR wrapper chains ONNX Runtime's C++ allocation failure;
+    # it is not a Python MemoryError. Keep unrelated inference failures distinct.
+    cause = error.__cause__ or error
+    return (type(cause).__module__ == "onnxruntime.capi.onnxruntime_pybind11_state"
+            and type(cause).__name__ == "RuntimeException" and "bad allocation" in str(cause))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--recipe", type=Path, required=True)
@@ -38,12 +46,15 @@ def main() -> int:
             response.update(outcome="error", error_code="ocr_resource_limit")
             write_message(sink, response, MAX_RESPONSE_BYTES)
             return 1
-        except Exception:
+        except Exception as exc:
             # The parent discards private stderr, reaps this process and exposes
             # only the safe protocol error. An unexpected native/wrapper failure
             # must not leave a potentially poisoned engine alive for reuse.
-            response.update(outcome="error", error_code="ocr_inference_failed")
+            resource_failure = _native_memory_failure(exc)
+            response.update(outcome="error", error_code="ocr_resource_limit" if resource_failure else "ocr_inference_failed")
             write_message(sink, response, MAX_RESPONSE_BYTES)
+            if resource_failure:
+                return 1
             raise
         try:
             write_message(sink, response, MAX_RESPONSE_BYTES)
