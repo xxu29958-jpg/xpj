@@ -5,6 +5,7 @@
    items/splits 变化附完整 Before/After 集合（原生 details 展开，no-JS），
    只呈现 snapshot 已有字段，不做行级 diff 推断。分页文案与 URL 语义属 #319
    保持服务端页码、快照与完整前后集合。 #}
+{% from '_history_time.html' import saved_time %}
 <section class="fact-task fact-timeline" id="fact-timeline" aria-label="变更记录" tabindex="-1">
   <a class="product-button product-button--quiet" href="#fact-overview">← 账单详情</a>
   <div class="product-panel-header">
@@ -20,7 +21,7 @@
     <li class="fact-timeline-entry">
       <div class="fact-timeline-head">
         <strong>{{ entry.kind_label }}</strong>
-        <span class="fact-timeline-when">{{ entry.when }}</span>
+        <span class="fact-timeline-when">{{ saved_time(entry.created_at, ledger_timezone_name|default(none)) }}</span>
         {% if entry.actor %}<span class="meta">{{ entry.actor }}</span>{% endif %}
       </div>
       {% if entry.summary %}<p class="meta">{{ entry.summary }}</p>{% endif %}

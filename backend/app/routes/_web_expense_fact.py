@@ -328,7 +328,7 @@ def build_fact_timeline(
                 "kind": item.change_kind,
                 "kind_label": _KIND_LABELS.get(item.change_kind, item.change_kind),
                 "reason": item.reason,
-                "when": _snapshot_time_label(item.created_at.isoformat()),
+                "created_at": item.created_at,
                 "actor": " · ".join(actor_parts),
                 "is_correction": item.change_kind == "correction",
                 "summary": _historical_amount(item.after) if item.change_kind == "confirmed" else "",
@@ -371,7 +371,7 @@ def _offset_timeline_entry(revision: ExpenseOffsetRevisionResponse) -> dict[str,
                 "after": _format_fact_value(field, after.get(field), after)})
     return {
         "kind": revision.change_kind, "kind_label": action + kind, "reason": revision.reason,
-        "when": _snapshot_time_label(revision.created_at.isoformat()),
+        "created_at": revision.created_at,
         "actor": " · ".join(part for part in (revision.actor_account_name, revision.actor_device_name) if part),
         "is_correction": revision.change_kind == "correction", "changes": changes,
         "summary": " · ".join(filter(None, [
@@ -421,9 +421,7 @@ def web_fact_context(
     # 由显式 context 事实决定，不能靠 URL 猜测；base.html 优先消费本标记。
     ctx["page_surface"] = "tertiary"
     ctx["expense"]["fact_revision"] = getattr(expense, "fact_revision", 0)
-    ctx["expense"]["confirmed_at_label"] = (
-        accounting_datetime_label(expense.confirmed_at) if expense.confirmed_at else ""
-    )
+    ctx["expense"]["confirmed_at"] = expense.confirmed_at
     ctx["page_title"] = "账单详情"
     if ctx["expense_review_inspection"]:
         ctx["expense_subtasks"] = {}
