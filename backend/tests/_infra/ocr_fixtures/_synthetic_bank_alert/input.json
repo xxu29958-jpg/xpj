@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "sample_id": "_synthetic_bank_alert",
+  "group_id": "synthetic-bank-alert-1",
+  "source_kind": "synthetic_text",
+  "split": "diagnostic",
+  "authorization": "repository-synthetic-fixture",
+  "timezone": "Asia/Shanghai",
+  "currency_code": "CNY",
+  "raw_text": "中国建设银行\n交易提醒\n交易时间：2026年5月4日 16:23:25\n交易金额：18.51（人民币）"
+}
