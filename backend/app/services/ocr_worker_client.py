@@ -166,19 +166,31 @@ class OcrWorkerClient:
         finally:
             with self._state_lock:
                 self._last_used = time.monotonic()
+                # A timer may run immediately. Release the completed call before
+                # arming it so a busy callback always belongs to a newer call,
+                # whose own completion will schedule retirement again.
+                self._call_lock.release()
                 if self._process is not None and not self._closed:
-                    self._timer = threading.Timer(self.idle_seconds, self._idle_stop, args=(self._generation,))
-                    self._timer.daemon = True
-                    self._timer.start()
-            self._call_lock.release()
+                    self._arm_idle_timer(self.idle_seconds)
+
+    def _arm_idle_timer(self, delay: float) -> None:
+        if self._timer:
+            self._timer.cancel()
+        self._timer = threading.Timer(delay, self._idle_stop, args=(self._generation,))
+        self._timer.daemon = True
+        self._timer.start()
 
     def _idle_stop(self, generation: str) -> None:
         if not self._call_lock.acquire(blocking=False):
             return
         try:
             with self._state_lock:
-                if self._generation == generation and time.monotonic() - self._last_used >= self.idle_seconds:
-                    self._stop()
+                if self._generation == generation and self._process is not None and not self._closed:
+                    remaining = self.idle_seconds - (time.monotonic() - self._last_used)
+                    if remaining > 0:
+                        self._arm_idle_timer(remaining)
+                    else:
+                        self._stop()
         except (OSError, TimeoutError, subprocess.TimeoutExpired) as exc:
             with self._state_lock:
                 self._closed = True

@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -66,6 +67,47 @@ def test_one_process_reused_then_idle_retires_and_new_generation_starts(tmp_path
         assert not _alive(first["pid"])
         third = client.recognize(tmp_path / "ok", "c")
         assert third["pid"] != first["pid"]
+    finally:
+        client.close()
+
+
+def test_idle_callback_before_deadline_keeps_retirement_scheduled(tmp_path):
+    client = _client(idle_seconds=0.2)
+    try:
+        pid = client.recognize(tmp_path / "ok", "a")["pid"]
+        client._timer.cancel()
+        client._idle_stop(client._generation)
+        assert client.pid is not None and _alive(pid)
+        _wait(lambda: client.pid is None)
+        assert not _alive(pid)
+    finally:
+        client.close()
+
+
+def test_timer_can_fire_as_soon_as_it_is_armed_without_losing_retirement(tmp_path, monkeypatch):
+    real_timer = threading.Timer
+    armed = []
+
+    class ImmediateFirstTimer:
+        def __init__(self, interval, function, args=()):
+            self.function, self.args = function, args
+            armed.append(interval)
+
+        def start(self):
+            self.function(*self.args)
+
+        def cancel(self):
+            pass
+
+    def timer(interval, function, args=()):
+        return real_timer(interval, function, args=args) if armed else ImmediateFirstTimer(interval, function, args)
+
+    monkeypatch.setattr("app.services.ocr_worker_client.threading.Timer", timer)
+    client = _client(idle_seconds=0.2)
+    try:
+        pid = client.recognize(tmp_path / "ok", "a")["pid"]
+        _wait(lambda: client.pid is None)
+        assert armed and not _alive(pid)
     finally:
         client.close()
 
