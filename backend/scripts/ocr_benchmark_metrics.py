@@ -16,24 +16,23 @@ def _merchant(value: str) -> str:
 
 
 def score(prediction: dict, labels: dict[str, Label], *, failed: bool = False) -> dict[str, bool | None]:
-    result = {}
-    for name in FIELDS:
-        label, actual = labels[name], prediction.get(name)
-        if label.state == "unlabeled":
-            result[name] = None
-        elif failed:
-            result[name] = False
-        elif label.state == "absent":
-            result[name] = actual is None
-        elif actual is None:
-            result[name] = False
-        elif name == "merchant":
-            result[name] = _merchant(actual) == _merchant(label.value)
-        elif name == "time":
-            result[name] = _time_match(actual, label.value)
-        else:
-            result[name] = actual == label.value
-    return result
+    return {name: _score_field(name, prediction.get(name), labels[name], failed) for name in FIELDS}
+
+
+def _score_field(name: str, actual: object, label: Label, failed: bool) -> bool | None:
+    if label.state == "unlabeled":
+        return None
+    if failed:
+        return False
+    if label.state == "absent":
+        return actual is None
+    if actual is None:
+        return False
+    if name == "merchant":
+        return _merchant(actual) == _merchant(label.value)
+    if name == "time":
+        return _time_match(actual, label.value)
+    return actual == label.value
 
 
 def _time_match(actual: dict, expected: dict) -> bool:
