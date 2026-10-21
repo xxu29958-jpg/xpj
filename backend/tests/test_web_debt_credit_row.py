@@ -57,5 +57,6 @@ def test_credit_account_row_names_the_account_and_ordinary_debts_keep_their_prin
     credit_label, credit_meta = _row_text(debts.text, "花呗")
     assert credit_meta.endswith("· CNY · 信用账户") and "本金" not in credit_meta
     assert credit_label.endswith("信用账户") and "本金" not in credit_label
+    assert "剩余 CNY ¥37.90" in credit_label
     family_label, family_meta = _row_text(debts.text, "家人甲")
     assert family_meta.endswith("· CNY · 本金 ¥1,200.00") and family_label.endswith("本金 ¥1,200.00")
