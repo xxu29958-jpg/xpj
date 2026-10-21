@@ -61,6 +61,11 @@ class MockOcrProvider:
 
 class RapidOcrProvider:
     def extract(self, expense: Expense, timezone_name: str | None = None) -> OcrResult:
+        with _original_snapshot(expense) as original:
+            return self.extract_snapshot(original, timezone_name=timezone_name)
+
+    def extract_snapshot(self, original: OriginalSnapshot, timezone_name: str | None = None) -> OcrResult:
+        """Recognize an already authorized immutable snapshot, without database access."""
         try:
             from rapidocr import RapidOCR  # type: ignore[import-not-found]
         except ImportError as exc:
@@ -70,11 +75,10 @@ class RapidOcrProvider:
                 status_code=500,
             ) from exc
 
-        with _original_snapshot(expense) as original:
-            try:
-                result = RapidOCR()(str(original.path))
-            except (ImportError, OSError, RuntimeError, ValueError, TypeError) as exc:
-                raise AppError("server_error", "本地 OCR 识别失败。", status_code=500) from exc
+        try:
+            result = RapidOCR()(str(original.path))
+        except (ImportError, OSError, RuntimeError, ValueError, TypeError) as exc:
+            raise AppError("server_error", "本地 OCR 识别失败。", status_code=500) from exc
 
         try:
             raw_texts = result.txts or ()
@@ -99,8 +103,12 @@ class LocalLlmOcrProvider:
         # Fail fast before reading the image off disk when config rejected the URL.
         require_local_llm_base_url(settings.local_llm_base_url)
         with _original_snapshot(expense) as original:
-            image_bytes = original.path.read_bytes()
-            media_type = original.media_type
+            return self.extract_snapshot(original, timezone_name=timezone_name)
+
+    def extract_snapshot(self, original: OriginalSnapshot, timezone_name: str | None = None) -> OcrResult:
+        require_local_llm_base_url(get_settings().local_llm_base_url)
+        image_bytes = original.path.read_bytes()
+        media_type = original.media_type
         parsed_json = call_local_llm_vision(image_bytes, media_type, _local_llm_prompt_text())
         return _result_from_llm_json(parsed_json, timezone_name=timezone_name)
 

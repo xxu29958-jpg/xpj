@@ -1,9 +1,29 @@
 {
-  "currency_code": "CNY",
-  "minor_unit_exponent": 2,
-  "amount_cents": 1851,
-  "merchant": "中国建设银行",
-  "expense_time": "2026-05-04T16:23:25+08:00",
-  "category": "其他",
-  "raw_text": "中国建设银行\n交易提醒\n交易时间：2026年5月4日 16:23:25\n交易金额：18.51（人民币）"
+  "schema_version": 2,
+  "annotator": "synthetic-fixture-author",
+  "annotation_version": "1",
+  "fields": {
+    "amount": {
+      "state": "present",
+      "value": {
+        "minor": 1851,
+        "currency": "CNY"
+      }
+    },
+    "merchant": {
+      "state": "present",
+      "value": "中国建设银行"
+    },
+    "time": {
+      "state": "present",
+      "value": {
+        "value": "2026-05-04T16:23:25+08:00",
+        "precision": "instant"
+      }
+    },
+    "category": {
+      "state": "present",
+      "value": "其他"
+    }
+  }
 }

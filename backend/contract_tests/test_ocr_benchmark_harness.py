@@ -1,149 +1,140 @@
-"""Framework test for scripts/ocr_benchmark.py.
-
-Verifies the harness mechanics on the synthetic image-less fixture
-``_synthetic_bank_alert`` so we know:
-
-- fixtures are discovered correctly
-- ``empty`` provider scores 0 hits (sanity floor)
-- ``mock`` provider extracts amount, merchant and time from the declared text
-- unavailable providers (``rapidocr``/``local_llm`` without their deps) are
-  reported as SKIP rather than crashing
-
-Real-receipt OCR quality is NOT under test here — that's whatever the
-harness reports when you point ``--fixture-dir`` at a directory of real
-screenshots.
-"""
+"""Exercise the actual benchmark runner, provider boundary and frozen data rules."""
 
 from __future__ import annotations
 
+import hashlib
 import json
-import sys
+import shutil
 from pathlib import Path
 
-# benchmark module lives in backend/scripts which isn't a package; add the
-# directory to sys.path for this single import.
-_SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
-if str(_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS))
+import pytest
 
-import ocr_benchmark  # noqa: E402
+from app.services.ocr_service import OcrResult
+from scripts import ocr_benchmark
+from scripts.ocr_benchmark_data import discover_fixtures
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "_infra" / "ocr_fixtures"
 
 
-def test_synthetic_bank_alert_fixture_is_discovered() -> None:
-    fixtures = ocr_benchmark._discover_fixtures(FIXTURE_DIR)
-    names = {name for name, _image, _gt in fixtures}
-    assert "_synthetic_bank_alert" in names, names
+def fixture_copy(tmp_path):
+    fixture = tmp_path / "sample"
+    shutil.copytree(FIXTURE_DIR / "_synthetic_bank_alert", fixture)
+    return fixture
 
 
-def test_empty_provider_is_sanity_floor() -> None:
-    report = ocr_benchmark.benchmark(FIXTURE_DIR, ["empty"], timezone_name="Asia/Shanghai")
-    rows = [r for r in report.rows if r.fixture == "_synthetic_bank_alert" and r.provider == "empty"]
-    assert len(rows) == 1, rows
-    row = rows[0]
-    # Empty provider sees nothing, so every populated GT field misses.
-    assert row.amount_match is False
-    assert row.merchant_match is False
-    assert row.time_match is False
-    assert row.category_match is False
+def change_json(path, **changes):
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.update(changes)
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
 
-def test_mock_provider_parses_bank_alert_correctly() -> None:
-    report = ocr_benchmark.benchmark(FIXTURE_DIR, ["mock"], timezone_name="Asia/Shanghai")
-    rows = [r for r in report.rows if r.fixture == "_synthetic_bank_alert" and r.provider == "mock"]
-    assert len(rows) == 1, rows
-    row = rows[0]
-    # Mock feeds the declared raw_text through the real receipt parser.
-    assert row.amount_match is True, f"amount miss: {row.note}"
-    assert row.merchant_match is True, f"merchant miss: {row.note}"
-    assert row.time_match is True, f"time miss: {row.note}"
-
-
-def test_unavailable_providers_are_skipped_not_crashed() -> None:
-    report = ocr_benchmark.benchmark(
-        FIXTURE_DIR,
-        ["rapidocr", "local_llm"],
-        timezone_name="Asia/Shanghai",
-    )
-    rows = [r for r in report.rows if r.fixture == "_synthetic_bank_alert"]
-    # Both providers refuse image-less synthetic fixture; harness must
-    # surface that as a SKIP note rather than letting the exception bubble.
-    assert len(rows) == 2, rows
-    for row in rows:
-        assert row.note.startswith("SKIP:"), row.note
-        assert row.attempted is False
-        # Score cells must be None (not ✓ / ✗) when the provider didn't run.
-        assert row.amount_match is None
-        assert row.merchant_match is None
-        assert row.time_match is None
-        assert row.category_match is None
-
-
-def test_local_llm_provider_uses_shared_vision_engine(tmp_path, monkeypatch) -> None:
-    fixture = tmp_path / "receipt_with_image"
-    fixture.mkdir()
-    image = fixture / "image.png"
-    image.write_bytes(b"\x89PNG fake receipt bytes")
-    (fixture / "ground_truth.json").write_text(
-        json.dumps(
-            {
-                "amount_cents": 1234,
-                "merchant": "Local Cafe",
-                "expense_time": "2026-05-03T04:20:00Z",
-            }
-        ),
-        encoding="utf-8",
-    )
-    calls: list[tuple[bytes, str | None, str]] = []
-
-    def fake_call_local_llm_vision(image_bytes, media_type, prompt_text):
-        calls.append((image_bytes, media_type, prompt_text))
-        return {
-            "amount_cents": 1234,
-            "merchant": "Local Cafe",
-            "expense_time": "2026-05-03T12:20:00+08:00",
-            "raw_text": "Local Cafe receipt",
-            "confidence": 0.91,
-        }
-
-    monkeypatch.setattr(ocr_benchmark, "call_local_llm_vision", fake_call_local_llm_vision)
-
-    report = ocr_benchmark.benchmark(tmp_path, ["local_llm"], timezone_name="Asia/Shanghai")
-
-    assert len(report.rows) == 1
+def test_mock_parses_explicit_input_through_fact_path():
+    report = ocr_benchmark.benchmark(FIXTURE_DIR, ["mock"])
     row = report.rows[0]
-    assert row.attempted is True
-    assert row.note == ""
-    assert row.amount_match is True
-    assert row.merchant_match is True
-    assert row.time_match is True
-    assert row.category_match is None
-    assert calls
-    image_bytes, media_type, prompt_text = calls[0]
-    assert image_bytes == b"\x89PNG fake receipt bytes"
-    assert media_type == "image/png"
-    assert "receipt OCR parser" in prompt_text
+    assert row.outcome == "success", row.error
+    assert row.scores["amount"] is True
+    assert row.scores["merchant"] is True
+    assert row.scores["time"] is True
+    assert report.to_dict()["product_qualified"] is False
+    assert report.manifest[0]["input_sha256"]
+    assert report.manifest[0]["labels_sha256"]
 
 
-def test_aggregate_table_renders() -> None:
-    report = ocr_benchmark.benchmark(FIXTURE_DIR, ["empty", "mock"], timezone_name="Asia/Shanghai")
-    md = report.to_markdown()
-    agg = report.aggregate_per_provider()
-    # Sanity: per-row markdown table has the right columns
-    assert "| Fixture | Provider | Amount | Merchant | Time | Category | Latency | Note |" in md
-    # Aggregate separates attempted runs from skipped providers.
-    assert "| Provider | Attempted | Skipped | Amount % | Merchant % |" in agg
-    assert "empty" in agg
-    assert "mock" in agg
+def test_image_provider_failure_remains_in_every_labeled_denominator(tmp_path):
+    report = ocr_benchmark.benchmark(FIXTURE_DIR, ["rapidocr"])
+    assert report.failed
+    assert report.rows[0].outcome == "error"
+    assert report.rows[0].elapsed_ms >= 0
+    assert all(value is False for value in report.rows[0].scores.values())
+    summary = report.to_dict()["providers"]["rapidocr"]
+    assert summary["attempted"] == 1
+    assert summary["fields"]["amount"]["labeled"] == 1
+    output = tmp_path / "failed.json"
+    assert ocr_benchmark.main(["--fixture-dir", str(FIXTURE_DIR), "--providers", "rapidocr",
+                               "--json-output", str(output)]) == 1
+    assert json.loads(output.read_text(encoding="utf-8"))["rows"][0]["outcome"] == "error"
 
 
-def test_aggregate_separates_attempted_from_skipped() -> None:
-    report = ocr_benchmark.benchmark(
-        FIXTURE_DIR,
-        ["mock", "rapidocr"],
-        timezone_name="Asia/Shanghai",
-    )
-    agg = report.aggregate_per_provider()
-    assert "| mock | 1 | 0 |" in agg
-    assert "| rapidocr | 0 | 1 | — | — | — | — | — |" in agg
+@pytest.mark.parametrize("providers", ["", "unknown", "mock,mock"])
+def test_bad_provider_selection_cannot_exit_success(providers):
+    assert ocr_benchmark.main(["--providers", providers]) == 2
+
+
+def test_empty_dataset_cannot_exit_success(tmp_path):
+    assert ocr_benchmark.main(["--fixture-dir", str(tmp_path), "--providers", "mock"]) == 2
+
+
+def test_ground_truth_currency_and_text_cannot_reach_provider(tmp_path, monkeypatch):
+    fixture = fixture_copy(tmp_path)
+    change_json(fixture / "input.json", currency_code=None)
+    observed = []
+
+    def provider(inputs):
+        observed.append(inputs)
+        return OcrResult(raw_text="交易金额：1200", confidence=None)
+
+    monkeypatch.setitem(ocr_benchmark._PROVIDER_RUNNERS, "rapidocr", provider)
+    first = ocr_benchmark.benchmark(tmp_path, ["rapidocr"]).rows[0]
+    truth = json.loads((fixture / "ground_truth.json").read_text(encoding="utf-8"))
+    truth["fields"]["amount"]["value"] = {"minor": 1200, "currency": "JPY"}
+    truth["raw_text"] = "不得作为输入的答案"
+    (fixture / "ground_truth.json").write_text(json.dumps(truth), encoding="utf-8")
+    second = ocr_benchmark.benchmark(tmp_path, ["rapidocr"]).rows[0]
+    assert first.prediction == second.prediction
+    assert first.prediction["amount"] is None
+    assert all(item.currency_code is None for item in observed)
+    assert not hasattr(observed[0], "labels")
+
+
+def test_rapidocr_uses_actual_provider_snapshot_and_keeps_source_bytes(tmp_path, monkeypatch):
+    fixture = fixture_copy(tmp_path)
+    image = fixture / "image.png"
+    image.write_bytes(b"fake-image-only-for-boundary-test")
+    change_json(fixture / "input.json", image_sha256=hashlib.sha256(image.read_bytes()).hexdigest())
+    snapshots = []
+
+    def extract_snapshot(self, original, timezone_name=None):
+        snapshots.append(original)
+        assert original.path.read_bytes() == image.read_bytes()
+        assert timezone_name == "Asia/Shanghai"
+        return OcrResult(raw_text="中国建设银行\n交易金额：18.51（人民币）\n交易时间：2026年5月4日 16:23:25", confidence=None)
+
+    monkeypatch.setattr(ocr_benchmark.RapidOcrProvider, "extract_snapshot", extract_snapshot)
+    report = ocr_benchmark.benchmark(tmp_path, ["rapidocr"])
+    assert report.rows[0].scores["amount"] is True
+    assert report.rows[0].scores["time"] is True
+    assert not snapshots[0].path.exists()
+    assert image.read_bytes() == b"fake-image-only-for-boundary-test"
+
+
+def test_changed_image_or_cross_split_event_cannot_be_evaluated(tmp_path):
+    fixture = fixture_copy(tmp_path)
+    image = fixture / "image.png"
+    image.write_bytes(b"changed")
+    change_json(fixture / "input.json", image_sha256="0" * 64)
+    with pytest.raises(ValueError, match="digest"):
+        discover_fixtures(tmp_path)
+    change_json(fixture / "input.json", image_sha256=hashlib.sha256(image.read_bytes()).hexdigest())
+    other = tmp_path / "variant"
+    shutil.copytree(fixture, other)
+    change_json(other / "input.json", sample_id="variant", split="holdout")
+    with pytest.raises(ValueError, match="crosses splits"):
+        discover_fixtures(tmp_path)
+
+
+def test_manifest_and_tables_report_complete_denominators():
+    report = ocr_benchmark.benchmark(FIXTURE_DIR, ["empty", "mock"])
+    assert "Amount + currency" in report.to_markdown()
+    assert "Attempted | Failed | Groups" in report.aggregate_per_provider()
+    assert set(report.to_dict()["providers"]) == {"empty", "mock"}
+
+
+def test_truth_only_dataset_is_not_an_ocr_input(tmp_path):
+    fixture = fixture_copy(tmp_path)
+    change_json(fixture / "input.json", raw_text=None)
+    truth = json.loads((fixture / "ground_truth.json").read_text(encoding="utf-8"))
+    truth["raw_text"] = "正确答案不可读入模型"
+    (fixture / "ground_truth.json").write_text(json.dumps(truth), encoding="utf-8")
+    report = ocr_benchmark.benchmark(tmp_path, ["mock"])
+    assert report.failed
+    assert report.rows[0].prediction == {}
