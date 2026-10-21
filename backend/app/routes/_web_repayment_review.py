@@ -114,7 +114,7 @@ def render_review(request: Request, db: Session, *, options, selected_id: str, p
     can_create = calendar is not None and can_recover and not ack
     initial = _initial_review_values(scope, selected_id, public_id, row, can_create, calendar, values)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对还款采集")
-    view = _audit_row_view(row, ctx.get("ledger_timezone_name") or "UTC") if row else None
+    view = _audit_row_view(row, ctx.get("ledger_timezone_name")) if row else None
     ctx.update(row=view, read_error=read_error, currencies=supported_currency_codes(), review={
         "public_id": public_id, "scope": scope, "values": initial,
         "can_create": can_create, "can_recover": can_recover, "visible": can_create or values is not None,
@@ -227,10 +227,11 @@ def _target_option(candidate, *, suggested_id: str | None) -> dict:
 
 def _audit_row_view(
     row: RepaymentDraftAuditRow,
-    timezone_name: str,
+    timezone_name: str | None,
 ) -> dict:
     """Read projection; original commands belong to the single capture review form."""
 
+    timezone_name = timezone_name or "UTC"
     view: dict = {
         "public_id": row.public_id,
         "source_expense_id": row.source_expense_id,
