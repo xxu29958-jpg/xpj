@@ -27,6 +27,7 @@ internal class RecurringOccurrenceHostDriver(
     val paymentTask = mutableStateOf<RecurringPaymentTask?>(null)
     val openedPayments = mutableListOf<RecurringPaymentTask>()
     val openedSubmissions = mutableListOf<String>()
+    val ledgerToday = mutableStateOf<java.time.LocalDate?>(null)
 
     fun close() {
         stopModel()
@@ -70,6 +71,7 @@ internal class RecurringOccurrenceHostDriver(
                         { openedSubmissions += it },
                     ),
                     RecurringPaymentRestore(items = listOf(occurrenceConnectedItem()), drafts = drafts),
+                    ledgerToday = ledgerToday.value,
                 )
             }
         }

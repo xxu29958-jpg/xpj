@@ -1,4 +1,5 @@
-{% macro saved_time(value) -%}
+{# Only the selected ledger's persisted rule may localize history. Without it, explicitly retain UTC. #}
+{% macro saved_time(value, timezone_name=none) -%}
 {% set iso = value|to_iso %}
-<time datetime="{{ iso }}" title="{{ iso }}">{{ iso[:10] }} {{ iso[11:19] }} UTC</time>
+<time datetime="{{ iso }}" title="{{ iso }}">{% if timezone_name %}{{ value|accounting_time(timezone_name) }}{% else %}{{ iso[:10] }} {{ iso[11:19] }} UTC{% endif %}</time>
 {%- endmacro %}

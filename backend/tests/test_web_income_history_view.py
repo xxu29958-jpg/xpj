@@ -45,6 +45,7 @@ def test_history_renders_original_definition_and_unknown_months_without_mutation
     environment.filters["grouped"] = _grouped_amount
     environment.filters["money"] = _money_amount
     environment.filters["to_iso"] = str
+    environment.filters["accounting_time"] = str
     snapshot = {"label": "<原工资预测>", "source_type": "salary", "frequency": "one_time",
         "income_month": "2026-11", "amount_cents": 1200, "home_currency_code": currency, "pay_day": 31, "status": "archived"}
     history = SimpleNamespace(public_id="original", next_before_version=3, items=[{

@@ -42,7 +42,7 @@ def invitation_facts(inv) -> dict:
             if source_amount is not None else "金额未记录",
         "source_date_label": original_day or _fmt_local(inv.expense_time_snapshot) or "发生日期未记录",
         "events": [
-            {"label": label, "time": _fmt_local(value)}
+            {"label": label, "time": value}
             for label, value in (("发出邀请", inv.created_at), ("已接受", inv.accepted_at),
                 ("已拒绝", inv.rejected_at), ("已撤回", inv.cancelled_at), ("记录为过期", inv.expired_at))
             if value is not None
@@ -63,7 +63,7 @@ def inbox_rows(db: Session, account_id: int, invitations: list, *, status: str) 
             **invitation_facts(inv), "public_id": inv.public_id, "status": inv.status,
             "amount_cents": str(inv.amount_cents), "home_currency_code": inv.home_currency_code,
             "sender_display_name": sender_name, "sender_context": sender_context,
-            "merchant": inv.merchant_snapshot or "", "expires_at": _fmt_local(inv.expires_at),
+            "merchant": inv.merchant_snapshot or "", "expires_at": inv.expires_at,
             "is_expired": inv.status == "invited" and ensure_utc(inv.expires_at) <= presented_at,
             "accept_choices": [{"ledger_id": ledger, "name": names.get(ledger, "账本")} for ledger in writer_ids
                                if ledger != inv.sender_ledger_id],
@@ -163,7 +163,7 @@ def build_split_invite_context(
                 "status": "expired" if is_expired else inv.status,
                 "amount_label": minor_amount_label(inv.amount_cents, inv.home_currency_code),
                 "receiver_display_name": inv.receiver_display_name_snapshot or "",
-                "expires_at": _fmt_local(inv.expires_at),
+                "expires_at": inv.expires_at,
                 "is_cancellable": inv.status == "invited" and not is_expired,
                 "debt_href": debt_links.get(inv.public_id, ""),
             }

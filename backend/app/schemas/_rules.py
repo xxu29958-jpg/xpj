@@ -48,15 +48,16 @@ __all__ = [
 class CategoryRuleCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    keyword: str
-    category: str
+    # Text limits are the category_rules column widths.
+    keyword: str = Field(max_length=255)
+    category: str = Field(max_length=64)
     enabled: bool = True
     priority: int = 100
     amount_min_cents: NonNegativeMoneyMinor | None = None
     amount_max_cents: NonNegativeMoneyMinor | None = None
     home_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
-    source_contains: str | None = None
-    tag_contains: str | None = None
+    source_contains: str | None = Field(default=None, max_length=64)
+    tag_contains: str | None = Field(default=None, max_length=64)
 
     @model_validator(mode="after")
     def require_threshold_currency(self):
@@ -69,15 +70,15 @@ class CategoryRuleUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int
-    keyword: str | None = None
-    category: str | None = None
+    keyword: str | None = Field(default=None, max_length=255)
+    category: str | None = Field(default=None, max_length=64)
     enabled: bool | None = None
     priority: int | None = None
     amount_min_cents: NonNegativeMoneyMinor | None = None
     amount_max_cents: NonNegativeMoneyMinor | None = None
     home_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
-    source_contains: str | None = None
-    tag_contains: str | None = None
+    source_contains: str | None = Field(default=None, max_length=64)
+    tag_contains: str | None = Field(default=None, max_length=64)
 
     @model_validator(mode="after")
     def require_threshold_currency(self):

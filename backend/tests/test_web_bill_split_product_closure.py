@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from uuid import uuid4
 
@@ -15,6 +16,7 @@ from app.models import Account, AuthToken, BillSplitInvitation, Device, Expense,
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.services import bill_split_service as bsplit
 from app.services.identity_service import hash_secret, new_session_token
+from app.services.ledger_calendar_service import current_calendar
 from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
 from tests._infra.identity import seeded_owner_account_id
@@ -122,11 +124,12 @@ def test_web_sent_shows_absolute_deadline_for_terminal_states(web_client: TestCl
             accepting_account_id=receiver_id,
             target_ledger_id=receiver_ledger,
         )
-        deadline = ensure_utc(invitation.expires_at).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
+        zone = current_calendar(db, ledger_id="owner").timezone_name
+        deadline = ensure_utc(invitation.expires_at).astimezone(accounting_zone(zone)).strftime("%Y-%m-%d %H:%M")
 
     response = web_client.get("/web/bill-splits/sent?ledger_id=owner")
     assert response.status_code == 200
-    assert f"原定截止 {deadline}" in response.text
+    assert re.search(rf"原定截止\s+<time[^>]+>{deadline}</time>", response.text)
     assert "/cancel" not in response.text
 
 
@@ -152,11 +155,12 @@ def test_web_sent_expired_row_shows_actual_expiry_boundary(web_client: TestClien
             .values(expires_at=past)
         )
         db.commit()
-    boundary = ensure_utc(past).astimezone(accounting_zone()).strftime("%Y-%m-%d %H:%M")
+        zone = current_calendar(db, ledger_id="owner").timezone_name
+    boundary = ensure_utc(past).astimezone(accounting_zone(zone)).strftime("%Y-%m-%d %H:%M")
 
     response = web_client.get("/web/bill-splits/sent?ledger_id=owner")
     assert response.status_code == 200
-    assert f"已于 {boundary} 过期" in response.text
+    assert re.search(rf"已于\s+<time[^>]+>{boundary}</time> 过期", response.text)
     assert "/cancel" not in response.text
 
 
