@@ -17,7 +17,6 @@ from app.database._managed_postgres_migration_runtime import _prearmed_transacti
 from app.models import (
     ExpenseItem,
     ExpenseSplit,
-    OcrFact,
 )
 from app.money_contract import MONEY_MINOR_MAX
 from tests._infra.c07_money_migration import (
@@ -296,7 +295,9 @@ def test_legacy_ocr_amount_fact_is_preserved_without_later_schema() -> None:
     run_alembic(command.upgrade, HEAD_REVISION)
 
     with SessionLocal() as db:
-        fact = db.get(OcrFact, fact_id)
+        # This migration stops before the evidence column was introduced.
+        fact = db.execute(text("SELECT parsed_amount_cents FROM ocr_facts WHERE id = :id"),
+            {"id": fact_id}).one_or_none()
         assert fact is not None
         assert fact.parsed_amount_cents == 1000
 

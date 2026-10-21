@@ -217,6 +217,8 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     ("POST", "/web/expenses/{expense_id}/fx"): "writer-only",
     ("GET", "/web/expenses/{expense_id}/ocr/retry"): "local-only-rendering",
     ("POST", "/web/expenses/{expense_id}/ocr/retry"): "writer-only",
+    ("GET", "/web/expenses/{expense_id}/ocr/tasks/{public_id}"): "principal-read",
+    ("POST", "/web/expenses/{expense_id}/ocr/tasks/{public_id}/cancel"): "writer-only",
     ("GET", "/web/expenses/{expense_id}/recognize-text"): "local-only-rendering",
     ("POST", "/web/expenses/{expense_id}/recognize-text"): "writer-only",
     # Keeps the raw editor draft while reading current saved FX/task state.

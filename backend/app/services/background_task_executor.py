@@ -121,7 +121,13 @@ class _ExecutorPool:
         _report_worker_outcome(task_id, future)
         with self._lock:
             self._active.pop(task_id, None)
-            self._dispatch()
+            try:
+                self._dispatch()
+            except RuntimeError as exc:
+                # A refused wakeup still has its original queued PG receipt.
+                # A callback has no HTTP caller to observe this pool failure.
+                report_error(logger, "background task %s stage=dispatch could not wake queued work",
+                    task_id, error=exc)
 
     def shutdown(self, *, wait: bool) -> None:
         with self._lock:

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from app.log_sanitize import SanitizedFormatter
 from app.services.ocr_worker_client import OcrWorkerClient
 from ocr_runtime.protocol import OcrRuntimeError
 
@@ -132,6 +133,43 @@ def test_child_does_not_receive_application_credentials(tmp_path, monkeypatch):
     client = _client()
     try:
         assert client.recognize(tmp_path / "ok", "a")["credential_names"] == []
+    finally:
+        client.close()
+
+
+def test_unexpected_reader_failure_is_observed_and_owned_process_is_reaped(tmp_path, monkeypatch, caplog):
+    def fail_read(*_args):
+        raise RuntimeError("token=synthetic-reader-secret")
+
+    monkeypatch.setattr("app.services.ocr_worker_client.read_message", fail_read)
+    client = _client()
+    try:
+        with pytest.raises(OcrRuntimeError, match="ocr_protocol_invalid"):
+            client.recognize(tmp_path / "ok", "a")
+        assert client.pid is None
+        output = "\n".join(SanitizedFormatter().format(record) for record in caplog.records)
+        assert "OCR pipe reader failed" in output and "in fail_read" in output
+        assert "synthetic-reader-secret" not in output
+    finally:
+        client.close()
+
+
+def test_idle_retirement_failure_is_reported_and_cannot_reopen_work(tmp_path, monkeypatch, caplog):
+    client = _client(idle_seconds=0.2)
+    try:
+        pid = client.recognize(tmp_path / "ok", "a")["pid"]
+
+        def fail_wait(_timeout):
+            raise TimeoutError("token=synthetic-idle-secret")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(client._owner, "terminate_and_wait", fail_wait)
+            _wait(lambda: any("OCR idle retirement failed" in record.getMessage() for record in caplog.records))
+            with pytest.raises(OcrRuntimeError, match="ocr_stopping"):
+                client.recognize(tmp_path / "ok", "b")
+        _wait(lambda: not _alive(pid))
+        output = "\n".join(SanitizedFormatter().format(record) for record in caplog.records)
+        assert "in fail_wait" in output and "synthetic-idle-secret" not in output
     finally:
         client.close()
 

@@ -239,7 +239,7 @@ def test_original_ocr_failure_page_preserves_intent_or_guides_review(
     monkeypatch.setattr(recognition_page, "_base_ctx", helpers._base_ctx)
     monkeypatch.setattr(recognition_page, "get_expense", helpers.get_expense)
     failure = SQLAlchemyError("synthetic database detail must stay private") if code == "database" else AppError(code, status_code=status)
-    monkeypatch.setattr(recognition, "submit_expense_ocr_retry", Mock(side_effect=failure))
+    monkeypatch.setattr(recognition, "submit_web_expense_ocr_task", Mock(side_effect=failure))
     env = templates.env.overlay(loader=ChoiceLoader([
         DictLoader({"base.html": "{% block content %}{% endblock %}"}), templates.env.loader]))
     monkeypatch.setattr(templates, "env", env)

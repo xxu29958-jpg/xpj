@@ -34,6 +34,18 @@ def retry_input(identity, monkeypatch):
 
 
 @pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("key", [None, ""])
+def test_keyless_retry_cannot_create_a_new_intent(retry_input, legacy, key):
+    with SessionLocal() as db:
+        with pytest.raises(AppError) as caught:
+            submit_expense_ocr_task(db, **{**retry_input, "idempotency_key": key}, legacy=legacy)
+        assert caught.value.error == "idempotency_key_required" and caught.value.status_code == 422
+        assert db.scalar(select(func.count()).select_from(ApiIdempotencyKey)) == 0
+        assert db.scalar(select(func.count()).select_from(BackgroundTask)
+            .where(BackgroundTask.task_type == "expense_ocr_retry")) == 0
+
+
+@pytest.mark.parametrize("legacy", [False, True])
 def test_acceptance_replay_and_atomic_completion_keep_protocols_distinct(retry_input, monkeypatch, legacy):
     calls = []
 

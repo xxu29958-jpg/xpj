@@ -8,6 +8,7 @@ import time
 import pytest
 
 from app.database import SessionLocal
+from app.log_sanitize import SanitizedFormatter
 from app.models import BackgroundTask
 from app.services.background_task_executor import _ExecutorPool
 from app.services.background_task_registry import TaskHandlerRegistry
@@ -106,6 +107,47 @@ def test_nonwaiting_stop_requires_old_owner_exit_before_restart(identity, monkey
         pool.start()
         pool.submit(ids[1], {}, registry, runner)
         assert finished.wait(timeout=5)
+    finally:
+        release.set()
+        pool.shutdown(wait=True)
+
+
+def test_callback_dispatch_refusal_keeps_queued_receipt_and_reports_failure(identity, monkeypatch, caplog):
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "0")
+    entered, release = threading.Event(), threading.Event()
+
+    def handler(db, task, payload):
+        db.rollback()
+        entered.set()
+        assert release.wait(timeout=10)
+
+    registry = TaskHandlerRegistry({"expense_enrichment": handler})
+    with SessionLocal() as db:
+        tasks = [BackgroundTask(task_type="expense_enrichment", status="queued") for _ in range(2)]
+        db.add_all(tasks)
+        db.commit()
+        first, waiting = [task.id for task in tasks]
+    pool = _ExecutorPool()
+    try:
+        pool.submit(first, {}, registry, run_task)
+        assert entered.wait(timeout=5)
+        pool.submit(waiting, {}, registry, run_task)
+
+        def refuse(*_args, **_kwargs):
+            raise RuntimeError("token=synthetic-dispatch-secret")
+
+        monkeypatch.setattr(pool._executor, "submit", refuse)
+        release.set()
+        deadline = time.monotonic() + 5
+        while not any("stage=dispatch" in row.getMessage() for row in caplog.records):
+            assert time.monotonic() < deadline, "Callback failure had no reporting owner"
+            time.sleep(0.01)
+        with SessionLocal() as db:
+            assert db.get(BackgroundTask, first).status == "completed"
+            row = db.get(BackgroundTask, waiting)
+            assert row.status == "queued" and row.started_at is None and row.error_code is None
+        output = "\n".join(SanitizedFormatter().format(record) for record in caplog.records)
+        assert "in refuse" in output and "synthetic-dispatch-secret" not in output
     finally:
         release.set()
         pool.shutdown(wait=True)

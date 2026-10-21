@@ -47,6 +47,8 @@ def test_upload_passes_client_timezone_and_occ_predecessor_to_durable_enrichment
         expected_row_version: int | None = None,
         before_apply=None,
         raise_on_failure: bool = False,
+        task_id: int | None = None,
+        explicit_retry: bool = False,
     ) -> PendingEnrichmentResult:
         captured["expense_id"] = expense_id
         captured["tenant_id"] = tenant_id
@@ -54,6 +56,8 @@ def test_upload_passes_client_timezone_and_occ_predecessor_to_durable_enrichment
         captured["expected_row_version"] = expected_row_version
         captured["before_apply"] = before_apply
         captured["raise_on_failure"] = raise_on_failure
+        captured["task_id"] = task_id
+        captured["explicit_retry"] = explicit_retry
         return PendingEnrichmentResult(
             expense_id=expense_id,
             outcome="no_result",
@@ -77,8 +81,13 @@ def test_upload_passes_client_timezone_and_occ_predecessor_to_durable_enrichment
     assert captured["tenant_id"] == "owner"
     assert captured["timezone_name"] == "America/Los_Angeles"
     assert captured["expected_row_version"] == 1
-    assert callable(captured["before_apply"])
+    assert captured["before_apply"] is None
     assert captured["raise_on_failure"] is True
+    assert captured["explicit_retry"] is False
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, captured["task_id"])
+        assert (task.task_type, task.source_expense_id, task.tenant_id) == (
+            "expense_enrichment", response.json()["id"], "owner")
 
 
 @pytest.mark.real_db

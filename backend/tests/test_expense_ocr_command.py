@@ -1,5 +1,9 @@
 """Old Android local-reference retry keeps its original fingerprint and version chain."""
 
+from datetime import date
+from decimal import Decimal
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -7,7 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import ApiIdempotencyKey, BackgroundTask, Expense, OcrFact
+from app.services import background_task_worker, pending_fx_task_service
 from app.services.expense_service import _ocr
+from app.services.fx_rate_provider import EcbDailyRates
 from app.services.idempotency import fingerprint_request
 from app.services.ocr_service import OcrResult
 
@@ -15,9 +21,14 @@ pytestmark = pytest.mark.real_db
 
 
 @pytest.mark.parametrize("lose_apply_ack", [False, True])
+@pytest.mark.parametrize("complete_fx_after_ack", [False, True])
 def test_original_local_retry_acknowledges_applied_version_before_following_outbox_write(
-    client, identity, monkeypatch, lose_apply_ack,
+    client, identity, monkeypatch, lose_apply_ack, complete_fx_after_ack,
 ):
+    # Keep the independent FX writer controlled; a later FX commit is a real
+    # OCC conflict, not a replay of the OCR command or an unapplied OCR result.
+    fx_settings = SimpleNamespace(fx_rate_auto_sync_enabled=False)
+    monkeypatch.setattr(pending_fx_task_service, "get_settings", lambda: fx_settings)
     creation = client.post("/api/expenses/manual", headers=identity.app_headers, json={
         "client_ref": "original-ocr-chain", "home_currency_code": "CNY", "original_currency": "JPY",
         "original_amount": "300", "merchant": "用户原填写", "category": "餐饮",
@@ -61,9 +72,31 @@ def test_original_local_retry_acknowledges_applied_version_before_following_outb
     assert accepted.json()["id"] == expense_id
     version = accepted.json()["row_version"]
     assert version == predecessor + 1 and accepted.json()["status"] == "pending"
+    if complete_fx_after_ack:
+        fx_settings.fx_rate_auto_sync_enabled = True
+        monkeypatch.setattr(pending_fx_task_service, "fetch_pending_fx_reference", lambda _: EcbDailyRates(
+            date(2026, 5, 5), {"EUR": Decimal(1), "JPY": Decimal(150), "CNY": Decimal(7)}))
+        with SessionLocal() as db:
+            ocr_task = db.scalar(select(BackgroundTask).where(BackgroundTask.task_type == "expense_ocr_retry"))
+            fx = pending_fx_task_service.prepare_pending_expense_fx(db, expense=db.get(Expense, expense_id),
+                initiator_account_id=ocr_task.initiated_by_account_id,
+                initiator_device_id=ocr_task.initiated_by_device_id)
+            db.commit()
+            fx_id, fx_payload = fx.task_id, fx.payload
+        background_task_worker.run_task(fx_id, fx_payload)
+        with SessionLocal() as db:
+            assert db.get(BackgroundTask, fx_id).status == "completed"
+            assert db.get(Expense, expense_id).row_version == version + 1
     # The next Outbox command depends on the completed OCR response's token.
     edited = client.patch(path, headers={**identity.app_headers, "Idempotency-Key": "next-edit-key"},
         json={"expected_row_version": version, "merchant": "另一端核对后的现商家"})
+    if complete_fx_after_ack:
+        assert edited.status_code == 409 and edited.json()["error"] == "state_conflict"
+        refreshed = client.post(path + "/ocr/retry", headers=headers, json={"expected_row_version": 0})
+        assert refreshed.status_code == 200 and refreshed.json()["row_version"] == version + 1
+        assert refreshed.json()["merchant"] == "用户原填写"
+        edited = client.patch(path, headers={**identity.app_headers, "Idempotency-Key": "next-edit-key"},
+            json={"expected_row_version": refreshed.json()["row_version"], "merchant": "另一端核对后的现商家"})
     assert edited.status_code == 200, edited.text
     replay = client.post(path + "/ocr/retry", headers=headers, json={"expected_row_version": 0})
     assert replay.status_code == 200, replay.text

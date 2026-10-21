@@ -23,7 +23,13 @@ PYTHON_OWNERS = {
     "backend/app/services/background_task_executor.py": {
         "submit_committed": {"app.error_reporting.report_error"},
         "_report_worker_outcome": {"app.error_reporting.report_error", "future.exception", "future.cancelled"},
-        "_ExecutorPool.submit": {"runner", "concurrent.futures.ThreadPoolExecutor.submit", "future.add_done_callback", "_report_worker_outcome"},
+        "_ExecutorPool.submit": {"runner", "self._dispatch", "concurrent.futures.ThreadPoolExecutor"},
+        "_ExecutorPool._dispatch": {"concurrent.futures.ThreadPoolExecutor.submit", "future.add_done_callback", "self._finished"},
+        "_ExecutorPool._finished": {"_report_worker_outcome", "self._dispatch", "app.error_reporting.report_error"},
+    },
+    "backend/app/services/ocr_worker_client.py": {
+        "OcrWorkerClient._read": {"app.error_reporting.report_error", "messages.put_nowait"},
+        "OcrWorkerClient._idle_stop": {"app.error_reporting.report_error", "self._stop"},
     },
     "backend/app/services/background_task_worker.py": {"run_task": {"app.error_reporting.report_error"}},
     "backend/app/log_sanitize.py": {
@@ -83,10 +89,16 @@ REVIEWED_BOUNDARIES = {
         "test": "backend/tests/test_owner_integration_settings.py::test_local_scan_worker_failures_reach_http_log",
         "reason": "The request consumes the pool.map iterator and joins the bounded pool before returning. Unexpected Future errors propagate to the HTTP boundary with the original traceback and request id; no detached job or new output owner exists. Expected unavailable model services produce an empty discovery result without changing settings.",
     },
-    ("backend/app/services/background_task_executor.py", "_ExecutorPool.submit"): {
-        "sha256": "3228d34871e9c9efc391ac6bcd4ea2fbf711dd1e09b8fe4137132484fa137056", "owner": "pool completion reports Future errors; inline errors propagate to submit_committed",
+    ("backend/app/services/background_task_executor.py", "_ExecutorPool._dispatch"): {
+        "sha256": "948a9ef77b36a9e06dd4861658508212ca6242b5322ceff72ad25d8241f88f2a", "owner": "pool completion reports Future errors; inline errors propagate to submit_committed",
         "test": "backend/tests/test_background_task_claim.py::test_claim_failure_is_observed_without_publishing_a_new_task_state",
-        "reason": "The existing pool Future retains outside-handler exceptions. Its completion callback reports them without consuming cancellation or changing task state.",
+        "reason": "Dispatch reserves capacity only for durable PG rows. Its Future callback observes outside-handler errors through _finished and _report_worker_outcome; callback dispatch refusal is also reported without inventing task completion. The common owner checks require every link. The original queued row remains recoverable after refusal.",
+    },
+    ("backend/app/services/ocr_worker_client.py", "OcrWorkerClient._start"): {
+        "sha256": "a316535ee7f955bec9ed3911928206ddbe1b74aa3005c532a7740a480a2192c3",
+        "owner": "bounded pipe response consumed by the task runner; unexpected reader errors use the shared sanitized logger",
+        "test": "backend/contract_tests/test_ocr_worker_process.py::test_unexpected_reader_failure_is_observed_and_owned_process_is_reaped",
+        "reason": "The reader only transports one bounded response/error to recognize. Invalid IPC, exit and timeout retire the owned process tree before releasing capacity; unexpected reader exceptions report and wake the caller with a safe code. Idle retirement has its own shared reporting boundary and fences new work after cleanup failure.",
     },
     ("backend/app/error_reporting.py", "report_error"): {
         "sha256": "846d33fc9a0853f2617085a4fd235523e42239695788f98212c58c9b8fbcaa82", "owner": "final log sink failure stays outside business state",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import importlib.util
 import json
+import logging
 import os
 import queue
 import subprocess
@@ -15,11 +16,13 @@ from contextlib import suppress
 from pathlib import Path
 from uuid import uuid4
 
+from app.error_reporting import report_error
 from app.services.ocr_process_owner import ProcessTreeOwner
 from ocr_runtime.native_runtime import PROCESS_ENVIRONMENT
 from ocr_runtime.protocol import MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, OcrRuntimeError, read_message, write_message
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
+logger = logging.getLogger(__name__)
 
 
 def _runtime_command() -> list[str]:
@@ -122,6 +125,10 @@ class OcrWorkerClient:
         except (ValueError, OSError, OcrRuntimeError, queue.Full) as exc:
             with suppress(queue.Full):
                 messages.put_nowait(OcrRuntimeError("ocr_protocol_invalid") if not isinstance(exc, OcrRuntimeError) else exc)
+        except Exception as exc:
+            report_error(logger, "OCR pipe reader failed", error=exc)
+            with suppress(queue.Full):
+                messages.put_nowait(OcrRuntimeError("ocr_protocol_invalid"))
 
     def recognize(self, path: Path, digest: str) -> dict:
         if not self._call_lock.acquire(timeout=self.timeout_seconds):
@@ -151,7 +158,8 @@ class OcrWorkerClient:
             return result
         except (OSError, ValueError, KeyError, OcrRuntimeError):
             with self._state_lock:
-                self._stop()
+                if not self._closed:
+                    self._stop()
             raise
         finally:
             with self._state_lock:
@@ -169,6 +177,10 @@ class OcrWorkerClient:
             with self._state_lock:
                 if self._generation == generation and time.monotonic() - self._last_used >= self.idle_seconds:
                     self._stop()
+        except Exception as exc:
+            with self._state_lock:
+                self._closed = True
+            report_error(logger, "OCR idle retirement failed; new work remains stopped", error=exc)
         finally:
             self._call_lock.release()
 

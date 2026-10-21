@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import time
 from contextlib import suppress
-from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -103,9 +102,11 @@ def submit_expense_ocr_task(
     """Commit one locator before dispatch; replay the original accepted intent."""
     operation = "retry_ocr" if legacy else "retry_ocr_async"
     try:
+        if not idempotency_key:
+            raise AppError("idempotency_key_required", status_code=422)
         lock_bootstrap_owner_transaction(db)
         claim = claim_idempotency_key(db, tenant_id=tenant_id,
-            idempotency_key=(idempotency_key or "").strip() or str(uuid4()), operation=operation,
+            idempotency_key=idempotency_key, operation=operation,
             target_type="expense", target_id=str(expense_id),
             request_fingerprint=fingerprint_request(operation=operation, target_id=str(expense_id),
                 body={}, expected_row_version=request_expected_row_version))

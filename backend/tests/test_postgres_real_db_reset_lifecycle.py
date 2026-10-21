@@ -7,7 +7,7 @@ from sqlalchemy import event, text
 
 from app.database import SessionLocal, engine
 from app.database._lifecycle import load_alembic_context
-from app.models import DatasetAuthorityRecord
+from app.models import BackgroundTask, DatasetAuthorityRecord
 from app.services import background_task_executor
 from app.services.background_task_registry import TaskHandlerRegistry
 from tests._infra import db as test_db
@@ -28,6 +28,11 @@ def test_clear_then_full_reset_restores_schema_migration_seed_and_files() -> Non
         assert connection.scalar(text("SELECT to_regclass('public.alembic_version')")) is None
 
     entered, release, finished = Event(), Event(), Event()
+    with SessionLocal() as db:
+        task = BackgroundTask(task_type="lifecycle_reader", status="queued")
+        db.add(task)
+        db.commit()
+        task_id = task.id
 
     def read_before_teardown(_task_id, _payload, _registry):
         with engine.connect() as connection:
@@ -44,7 +49,7 @@ def test_clear_then_full_reset_restores_schema_migration_seed_and_files() -> Non
     # Reset must join it before DDL, not race it or leave it querying the next test.
     event.listen(engine, "before_cursor_execute", bound_schema_wait)
     try:
-        background_task_executor.submit_task(0, {}, registry=TaskHandlerRegistry(), runner=read_before_teardown)
+        background_task_executor.submit_task(task_id, {}, registry=TaskHandlerRegistry(), runner=read_before_teardown)
         assert entered.wait(5)
         test_db.clear_db_state()
         assert finished.is_set()
