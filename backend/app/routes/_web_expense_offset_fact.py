@@ -15,9 +15,6 @@ from app.schemas import ExpenseFactBundleResponse
 from app.services.currency_common import currency_input_metadata, minor_amount_value
 from app.services.expense_offset_service import expense_fact_bundle
 from app.services.ledger_calendar_service import current_ledger_date
-from app.services.spending_contract_service import (
-    accounting_datetime_label,
-)
 
 _KIND_LABELS = {
     "refund": "商家退款",
@@ -73,7 +70,7 @@ def _recent_history_rows(bundle: ExpenseFactBundleResponse) -> list[dict[str, ob
             {
                 "kind_label": _CHANGE_LABELS[revision.change_kind],
                 "reason": revision.reason,
-                "when": accounting_datetime_label(revision.created_at),
+                "created_at": revision.created_at,
                 "actor": actor,
             }
         )

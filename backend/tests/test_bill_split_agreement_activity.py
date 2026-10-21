@@ -76,7 +76,7 @@ def test_actual_timeline_template_explains_terms_separately_from_payment(agreeme
     _paid(db, split, split["original_id"], 4_000)
     _accept(db, split, _request(db, split, share=2_000, net=-2_000))
     html = templates.get_template("_debt_activity.html").render(
-        activity=activity_view(history(db, split), selected_id="owner"),
+        activity=activity_view(history(db, split), selected_id="owner", timezone_name="Asia/Shanghai"),
         debt={"is_member": True, "public_id": split["debt"]}, can_write=False,
         action_form={"kind": ""}, selected_ledger_id="owner",
     )
