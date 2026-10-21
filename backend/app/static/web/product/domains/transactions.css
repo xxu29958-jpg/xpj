@@ -1011,9 +1011,10 @@
     color-scheme: dark;
 }
 
+/* 一列至少放得下币种搜索框和「CNY · 人民币」; 手机上金额与币种上下排, 宽屏并排。 */
 .manual-expense-money {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12ch), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12em), 1fr));
     gap: var(--space-4);
     align-items: end;
 }
