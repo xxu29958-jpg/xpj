@@ -43,7 +43,6 @@ from app.routes.web_common import (
     templates,
 )
 from app.services import bill_split_service as bsplit
-from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import (
     currency_symbol,
     major_amount_to_minor,
@@ -170,7 +169,7 @@ def web_bill_split_sent(
                 "receiver_display_name": inv.receiver_display_name_snapshot or "",
                 "merchant": inv.merchant_snapshot or "",
                 "expense_time": _fmt_local(inv.expense_time_snapshot),
-                "expires_at": _fmt_local(inv.expires_at),
+                "expires_at": inv.expires_at,
                 "is_expired": is_expired,
                 "is_cancellable": inv.status == "invited" and not is_expired,
                 "debt_href": debt_links.get(inv.public_id, ""),
@@ -228,10 +227,10 @@ def web_split_invite(
     # flash back onto the page instead of escaping to the global AppError
     # handler, which renders a bare-JSON page in the browser.
     try:
-        amount_cents = _yuan_to_cents(
-            amount_yuan,
-            require_runtime_home_currency_code(db),
-        )
+        # Read without reversing the command owner's key -> parent lock order.
+        # The owner rechecks this currency together with OCC under its lock.
+        currency = bsplit.split_parent_home_currency(db, sender_ledger_id=selected_id, expense_id=expense_id)
+        amount_cents = _yuan_to_cents(amount_yuan, currency)
         if amount_cents is None or amount_cents <= 0:
             raise AppError("split_amount_invalid", "拆账金额不正确。", status_code=422)
         bsplit.create_invitation(
@@ -243,6 +242,7 @@ def web_split_invite(
             amount_cents=amount_cents,
             idempotency_key=idempotency_key,
             expected_row_version=expected_row_version,
+            expected_home_currency_code=currency,
         )
         msg = "已发起拆账邀请。"
         flash_type = "success"

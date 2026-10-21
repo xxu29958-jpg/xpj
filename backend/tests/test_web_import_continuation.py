@@ -82,6 +82,7 @@ def test_batch_actions_follow_effective_remainder_and_actual_applied_rows(
         undefined=StrictUndefined,
         autoescape=True,
     )
+    environment.filters.update(import_route.templates.env.filters)
     batch = SimpleNamespace(
         public_id="original", file_name="saved.csv", status=status, total_rows=total,
         valid_rows=valid, applied_rows=applied, error_rows=errors, last_error=None,
@@ -97,7 +98,7 @@ def test_batch_actions_follow_effective_remainder_and_actual_applied_rows(
         "status": "", "home_currency_symbol": "¥", "home_currency_code": "CNY",
         "base_batch_url": "/web/import/original?ledger_id=family",
         "batch_page": CsvImportBatchPage([], page=1, page_size=20, total=0, total_pages=1),
-        "batch_created_labels": {}, "max_rows": 1000, "export_categories": [], "export_tags": [],
+        "max_rows": 1000, "export_categories": [], "export_tags": [],
     }
     body = environment.get_template("import_batch.html").render(context)
     hub = environment.get_template("import_export.html").render(context)

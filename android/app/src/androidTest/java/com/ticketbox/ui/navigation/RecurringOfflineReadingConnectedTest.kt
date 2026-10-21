@@ -112,6 +112,8 @@ class RecurringOfflineReadingConnectedTest {
         waitForText(context.getString(R.string.recurring_read_cached_title))
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("原日元固定支出"))
         compose.onNodeWithTag("recurring-item-offline-active").assertExists()
+        compose.onNodeWithText("预计 2026年10月9日").assertExists()
+        compose.onNodeWithText("下次 2026年10月9日").assertDoesNotExist()
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         automation.waitForIdle(300, 3_000)
         saveConsumerArtPreview("recurring-list-offline", requireNotNull(automation.takeScreenshot()))

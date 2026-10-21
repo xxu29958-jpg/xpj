@@ -74,11 +74,11 @@ def _parse_paid_at(raw: str, timezone_name: str = "") -> datetime | None:
     return datetime.combine(selected_date, time.min, tzinfo=zone)
 
 
-def _day_label(value) -> str:
-    """日粒度日期 (accounting tz Asia/Shanghai)，去对账味 (镜像 Android displayDate 到「日」)。"""
+def _day_label(value, timezone_name: str | None = None) -> str:
+    """日粒度显示；历史事件由消费者传入持久化账本时区。"""
     if value is None:
         return ""
-    return value.astimezone(accounting_zone()).strftime("%Y-%m-%d")
+    return value.astimezone(accounting_zone(timezone_name)).strftime("%Y-%m-%d")
 
 
 def _proposal_pending_line(pending, viewer_is_debtor: bool | None) -> str:
@@ -91,13 +91,13 @@ def _proposal_pending_line(pending, viewer_is_debtor: bool | None) -> str:
     return "他们之间有一笔正在确认"
 
 
-def _resolved_proposal_row(proposal) -> dict:
+def _resolved_proposal_row(proposal, timezone_name: str) -> dict:
     """已解决 proposal 的沉降行：冻结额 + 可选备注 + 日粒度日期(带状态前缀) + neutral 状态标签。
 
     §3.4 已解决态一律 neutral (confirmed 不挑成 success/绿)、集合零汇总；rejected→「在对账」/ expired→
     「这次没对上」不读作失败 (永不 danger)。逐字镜像 ResolvedProposalRow + resolvedDateText。
     """
-    day = _day_label(proposal.resolved_at or proposal.created_at)
+    day = _day_label(proposal.resolved_at or proposal.created_at, timezone_name)
     if proposal.status == "confirmed":
         date_text = _PROPOSAL_DATE_CONFIRMED.format(day)
     elif proposal.status == "partially_confirmed":

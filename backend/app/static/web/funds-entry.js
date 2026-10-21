@@ -7,8 +7,11 @@
     "draw_ids_json", "periods_json", "supersedes_public_id", "allocation_json", "overpayment", "repayment_public_id",
     "credit_limit", "available_credit", "credit_observed_on", "credit_source", "statement_day", "payment_due_day", "existing_debt",
     "source_repayment_draft_id", "source_amount_basis", "source_review_reason", "activity_event_id", "activity_parts_json", "activity_summary"];
+  // Several unfinished tasks can share one account; each retained draft names its own task.
+  const taskLabels = JSON.parse(document.querySelector("[data-funds-draft-shelf]")?.dataset.taskLabels || "{}");
+  const continueLabel = record => "继续" + (taskLabels[record.values.mode] || "资金任务");
   const definition = {family: "funds", label: "资金任务", list: "/web/funds", idField: "task_id", titleField: "name",
-    editLabel: "继续资金任务", creationLabel: "继续资金任务",
+    editLabel: continueLabel, creationLabel: continueLabel,
     create: fields, edit: fields, commandKeyField: "idempotency_key", reviewName: "review_latest",
     legacyMissing: ["activity_event_id", "activity_parts_json", "activity_summary", "reviewed_debt_amount", "credit_source_id", "credit_draw_id", "credit_review_id", "credit_source_label", "credit_draw_label", "fee_period_id", "payer_fee_amount","source_repayment_draft_id", "source_amount_basis", "source_review_reason", "edit_visibility"],
     reviewRequiresRejection: true, reviewWhileEditing: true, submitSelector: "[data-funds-submit]",
@@ -96,8 +99,12 @@
     const paid = field("payer_amount");
     if (value("mode") !== "repay" || !paid || paid.readOnly) return;
     if (value("payer_currency_code") === form.dataset.fundsAccountCurrency) { mirrorPayerAmount(); return; }
-    paid.value = "";
-    paid.dispatchEvent(new Event("input", {bubbles: true}));
+    paid.setCustomValidity("");
+    // Clearing an already empty deduction is not an edit; announcing it would save a draft nobody wrote.
+    if (paid.value !== "") {
+      paid.value = "";
+      paid.dispatchEvent(new Event("input", {bubbles: true}));
+    }
     if (!value("payer_currency_code") || !value("principal_amount") || !value("occurred_on")) return;
     const basis = quoteBasis(), controller = new AbortController();
     quoteController = controller;

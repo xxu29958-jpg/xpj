@@ -177,7 +177,8 @@ def test_repayment_history_reads_frozen_days_without_current_display_timezone(mo
     row.exchange_rate_date = datetime(2026, 4, 30, tzinfo=UTC)
     fact = repayment_fact_response(row, None)
     assert fact.model_dump(mode="json")["paid_at"] is None
-    assert _repayment_view(fact, "CNY")["date_text"] == "2026-04-30 · 账务归属 2026-05-01"
+    for zone in ("Asia/Shanghai", "America/Los_Angeles"):
+        assert _repayment_view(fact, "CNY", zone)["date_text"] == "2026-04-30 · 账务归属 2026-05-01"
 
 
 @pytest.mark.parametrize("kind", ["direct", "proposal"])

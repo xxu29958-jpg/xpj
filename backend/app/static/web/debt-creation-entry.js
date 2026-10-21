@@ -31,7 +31,9 @@
   }
   const definition = {family: "debtcreation", label: "往来", list: "/web/debts", titleField: "counterparty_label",
     create: names, edit: names, validRef, amount: "amount_major", receiptMatches, reviewRequiresRejection: true,
-    submitSelector: "[data-debtcreation-submit]", pendingLabel: "核实这笔往来", retainSelection: true,
+    // Opening the form selects nothing yet: a draft starts with the first input, and the rate
+    // lookup round trip retains the form itself (relatedAction).
+    submitSelector: "[data-debtcreation-submit]", pendingLabel: "核实这笔往来",
     href(record, scope) {
       const next = new URL("/web/debts/new", window.location.href);
       next.searchParams.set("ledger_id", scope.ledgerId);

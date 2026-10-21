@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from '_history_time.html' import saved_time %}
+{% from '_amount_fit.html' import fit_amount %}
 {% set page_title = '信封分配' %}
 {% set product_body_domain = 'plans' %}
 {% set page_surface = 'secondary' %}
@@ -19,7 +20,7 @@
 <section class="product-surface" aria-label="可分配现金">
 <div class="meta">{{ envelopes.valuation_date }} · {{ envelopes.home_currency_code }} · 已记录范围</div>
 <h2>{{ '还需补足现金' if envelopes.unassigned_minor is not none and envelopes.unassigned_minor < 0 else '还可分配' }}</h2>
-<strong class="product-amount">{{ money(envelopes.unassigned_minor|abs if envelopes.unassigned_minor is not none else none, envelopes.home_currency_code) }}</strong>
+{{ fit_amount(money(envelopes.unassigned_minor|abs if envelopes.unassigned_minor is not none else none, envelopes.home_currency_code)) }}
 <div class="product-form-grid"><div><span class="meta">资金池现金</span><p>{{ money(envelopes.cash_minor, envelopes.home_currency_code) }}</p></div>
 <div><span class="meta">所有月份已留出</span><p>{{ money(envelopes.reserved_minor, envelopes.home_currency_code) }}</p></div></div>
 <p class="hint">依据已核对账户和已记流水，不是银行实时余额。未到账收入、信用额度不计入；超支仍可记账，随后调整用途或补记实际到账。</p>
@@ -70,15 +71,15 @@
 <p class="hint">填入计划后仍需核对现金并保存，不会自动分配。</p></section>
 <p class="product-feedback" data-envelope-summary aria-live="polite" hidden></p>
 <div class="product-field"><label for="envelope-note">这次调整的说明</label><input class="product-input" id="envelope-note" name="note" value="{{ values.note }}" maxlength="255" required></div>
-<p class="hint" data-envelope-draft-status role="status"></p>
 <p class="hint" data-envelope-review-note hidden>原输入会保留。核对最新余额只准备继续编辑，确认后才保存分配。</p>
 <div class="product-task-actions"><button class="product-button product-button--primary" type="submit" data-envelope-submit {{ 'disabled' if not envelope_can_write }}>保存分配</button>
 <button class="product-button product-button--quiet" type="submit" name="review_latest" value="1" data-envelope-review formnovalidate hidden>核对最新余额后继续</button>
-<button class="product-button product-button--quiet" type="button" data-envelope-discard hidden>放弃这份原稿</button></div>
+<button class="product-button product-button--quiet" type="button" data-envelope-discard hidden>放弃这份原稿</button><p class="hint" data-envelope-draft-status role="status" hidden></p>
+</div>
 <a data-envelope-original-result class="text-link" hidden>查看原保存结果</a>
 </form>
 {% if history %}<section class="product-surface product-surface--plain"><h2>最近的分配记录</h2><ol class="product-history">
-{% for row in history %}<li><strong>{{ row.month }} · {{ row.reason }}</strong><p class="meta">第 {{ row.row_version }} 次 · {{ saved_time(row.recorded_at) }}</p>
+{% for row in history %}<li><strong>{{ row.month }} · {{ row.reason }}</strong><p class="meta">第 {{ row.row_version }} 次 · {{ saved_time(row.recorded_at, ledger_timezone_name|default(none)) }}</p>
 {% for purpose,amount in row.allocation_snapshot.allocations.items() %}<span>{{ {'spending':'其他消费','savings':'储蓄','buffer':'备用金'}.get(purpose,purpose.replace('category:','')) }} {{ money(amount,row.allocation_snapshot.home_currency_code) }}　</span>{% endfor %}</li>{% endfor %}
 </ol>{% if history|length == 20 %}<a class="text-link" href="/web/envelopes?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ envelopes.month }}&amp;before_version={{ history[-1].row_version }}">查看更早记录</a>{% endif %}</section>{% endif %}
 {% if before_version %}<a class="text-link" href="/web/envelopes?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ envelopes.month }}">返回最近记录</a>{% endif %}

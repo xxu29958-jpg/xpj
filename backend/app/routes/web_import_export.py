@@ -153,9 +153,6 @@ def web_import_form(
     ctx["q"] = "?ledger_id=" + selected_id
     ctx["portable_export_available"] = getattr(request.state, "web_session_auth", None) is not None
     ctx["batch_page"] = batches
-    ctx["batch_created_labels"] = {
-        item.batch.id: accounting_datetime_label(item.batch.created_at) for item in batches.items
-    }
     return templates.TemplateResponse(
         request=request, name="import_export.html", context=ctx
     )

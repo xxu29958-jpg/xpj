@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_history_time.html' import saved_time %}
 {% set page_title = '已发出拆账' %}
 {% set product_body_domain = 'obligations' %}
 {% set status_labels = {'invited':'待处理', 'accepted':'已接受', 'rejected':'已拒绝', 'cancelled':'已撤回', 'expired':'已过期'} %}
@@ -28,11 +29,11 @@
     <span class="product-entry-copy"><strong>查看来源账单</strong><span>{{ row.merchant or '一笔账单' }} · 原消费 {{ row.source_amount_label }}</span><span>{{ row.source_date_label }}</span></span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </a>
-  <ol class="product-history" aria-label="邀请处理时间">{% for event in row.events %}<li class="product-history-item"><strong>{{ event.label }}</strong><span>{{ event.time }}</span></li>{% endfor %}</ol>
+  <ol class="product-history" aria-label="邀请处理时间">{% for event in row.events %}<li class="product-history-item"><strong>{{ event.label }}</strong><span>{{ saved_time(event.time, ledger_timezone_name|default(none)) }}</span></li>{% endfor %}</ol>
   {% if live %}
-    <p class="hint">对方可在 {{ row.expires_at }} 前接受</p>
+    <p class="hint">对方可在 {{ saved_time(row.expires_at, ledger_timezone_name|default(none)) }} 前接受</p>
     {% if can_write %}<form method="post" action="/web/bill-splits/{{ row.public_id }}/cancel" class="product-form-actions"><input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}"><button type="submit" class="product-button">撤回</button></form>{% else %}<p class="hint">当前账本只读，不能撤回邀请。</p>{% endif %}
-  {% elif row.is_expired or row.status == 'expired' %}<p class="hint">已于 {{ row.expires_at }} 过期</p>{% else %}<p class="hint">原定截止 {{ row.expires_at }}</p>{% endif %}
+  {% elif row.is_expired or row.status == 'expired' %}<p class="hint">已于 {{ saved_time(row.expires_at, ledger_timezone_name|default(none)) }} 过期</p>{% else %}<p class="hint">原定截止 {{ saved_time(row.expires_at, ledger_timezone_name|default(none)) }}</p>{% endif %}
   {% if row.debt_href %}<a class="product-entry" href="{{ row.debt_href }}"><span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span><span class="product-entry-copy"><strong>查看这笔往来</strong><span>查看付款和当前约定，或提出新约定</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>{% endif %}
 </section>
 {% else %}

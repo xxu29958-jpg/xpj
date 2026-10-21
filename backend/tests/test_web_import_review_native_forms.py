@@ -1,7 +1,7 @@
 """Rendered import/review forms must work without client-side token injection."""
 
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from html import unescape
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +17,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.main import app
 from app.models import CsvImportBatch, Expense, LedgerMember
+from app.routes.web_common import templates
 from app.services.csv_import_batch_service import _claim_apply_lease
 from app.services.time_service import now_utc
 from tests._infra.csv import _apply_native_csv, _preview_native_csv
@@ -341,7 +342,9 @@ def test_native_csv_rendered_counts_preserve_each_financial_result_kind(monkeypa
         DictLoader({"base.html": "{% block content %}{% endblock %}"}),
         FileSystemLoader(Path(__file__).resolve().parents[1] / "app/templates/web"),
     ]), undefined=StrictUndefined, autoescape=True)
-    batch = SimpleNamespace(id=7, public_id="saved-events", file_name="events.csv", total_rows=53, last_error=None)
+    environment.filters.update(templates.env.filters)
+    batch = SimpleNamespace(id=7, public_id="saved-events", file_name="events.csv", total_rows=53,
+        last_error=None, created_at=datetime(2026, 9, 20, tzinfo=UTC))
     progress = CsvImportBatchProgress(batch, CsvImportRowCounts(remaining_valid_rows=17,
         applied_rows=5, error_rows=13, matched_rows=7, review_rows=11, confirmed_offset_rows=2))
     context = {"batch": batch, "progress": progress, "created_label": "2026-09-20", "updated_label": "2026-09-20",
@@ -349,7 +352,7 @@ def test_native_csv_rendered_counts_preserve_each_financial_result_kind(monkeypa
         "selected_ledger_name": "Family", "portable_export_available": False,
         "flash_message": "", "flash_type": "success", "rows": [], "page": 1, "page_size": 100,
         "total": 0, "total_pages": 1, "status": "", "home_currency_code": "CNY", "max_rows": 1000,
-        "export_categories": [], "export_tags": [], "batch_created_labels": {7: "2026-09-20"},
+        "export_categories": [], "export_tags": [],
         "batch_page": CsvImportBatchPage([progress], page=1, page_size=20, total=1, total_pages=1)}
     hub = environment.get_template("import_export.html").render(context)
     detail = environment.get_template("import_batch.html").render(context)

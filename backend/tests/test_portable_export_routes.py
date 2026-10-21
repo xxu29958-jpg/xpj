@@ -152,8 +152,11 @@ def test_import_export_page_retains_csv_and_offers_bound_download_or_identity_re
     from fastapi.templating import Jinja2Templates
     from jinja2 import ChoiceLoader, DictLoader, FileSystemLoader
 
+    from app.routes.web_common import templates as web_templates
+
     root = Path(__file__).parents[1] / "app/templates/web"
     templates = Jinja2Templates(directory=root)
+    templates.env.filters.update(web_templates.env.filters)
     templates.env.loader = ChoiceLoader([DictLoader({"base.html": "{% block content %}{% endblock %}"}),
                                         FileSystemLoader(root)])
     context = {

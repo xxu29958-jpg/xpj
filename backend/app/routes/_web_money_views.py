@@ -212,7 +212,7 @@ def _expense_time_view(expense) -> dict:
         "stat_time": accounting_datetime_label(stat_time(expense)),
         "expense_time_local": _expense_time_local_input(getattr(expense, "expense_time", None)),
         "updated_at_iso": _datetime_to_iso(getattr(expense, "updated_at", None)),
-        "created_at": accounting_datetime_label(expense.created_at),
+        "created_at": expense.created_at,
     }
 
 

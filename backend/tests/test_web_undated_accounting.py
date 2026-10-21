@@ -48,7 +48,7 @@ def test_typed_response_keeps_accounting_day_and_original_zone_in_the_web_view()
 def test_unknown_date_search_result_does_not_present_created_at_as_a_purchase_day():
     expense = Expense(category="餐饮", source="手动记账", status="confirmed",
         expense_time=None, accounting_date=None, created_at=datetime(2026, 6, 1, tzinfo=UTC))
-    label = _expense_subtitle(expense)
+    label = _expense_subtitle(expense, "Asia/Shanghai")
     assert "账务日期待核对" in label
     assert "2026-06-01" not in label
 
@@ -76,6 +76,8 @@ def test_undated_task_ignores_stale_month_and_retains_filter_when_paging(monkeyp
     monkeypatch.setattr(web_app, "_sidebar_counts", lambda *args: (0, 0))
     monkeypatch.setattr(web_app, "list_ledger_category_options", lambda *args, **kwargs: [])
     monkeypatch.setattr(web_common, "require_runtime_home_currency_code", lambda *args: "CNY")
+    monkeypatch.setattr(web_common, "current_calendar",
+        lambda *args, **kwargs: SimpleNamespace(timezone_name="Asia/Shanghai"))
     monkeypatch.setattr(web_common, "count_undated_expenses", lambda *args, **kwargs: 75)
     monkeypatch.setattr(csrf, "_csrf_secret", lambda: b"controlled-date-review-signing")
     origin = {"return_to": "reports", "return_month": "2026-05", "return_home_currency_code": "JPY",
@@ -88,6 +90,7 @@ def test_undated_task_ignores_stale_month_and_retains_filter_when_paging(monkeyp
         page=2, month="2026-05", tag="旅行", msg=None,
         filter="missing_accounting_date", home_currency_code="JPY")
     context = response.context
+    assert context["ledger_timezone_name"] == "Asia/Shanghai"
     assert (context["month"], context["home_currency_code"], context["total"], context["page"]) == ("", "JPY", 75, 2)
     assert calls[0]["month"] is None and calls[0]["missing_accounting_date"] is True
     assert calls[0]["tenant_id"] == "owner" and calls[0]["tag"] == "旅行"

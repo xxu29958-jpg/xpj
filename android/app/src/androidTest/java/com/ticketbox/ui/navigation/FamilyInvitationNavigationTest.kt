@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.InvitationCreateRequestDto
 import com.ticketbox.data.remote.dto.InvitationCreateResponseDto
@@ -122,8 +123,11 @@ class FamilyInvitationNavigationTest {
         assertEquals(false, model.uiState.value.invitationsFresh)
         compose.onNodeWithText("重新读取已发邀请").performScrollTo().performClick()
         compose.waitUntil(5_000) { model.uiState.value.invitationsFresh && model.uiState.value.invitations.single().revokedAt != null }
+        // Removing the one-time invite replaces the sheet body and resizes its native window.
+        // Scroll only after that layout settles; waiting after an old-bounds scroll cannot reposition it.
+        compose.waitForIdle()
+        InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 3_000)
         val revoked = compose.onNodeWithText("只读 · 已撤销").performScrollTo()
-        // Clearing the one-time invite changes sheet height; the model update precedes the window layout.
         compose.waitUntil(5_000) { revoked.isDisplayed() }
         revoked.assertIsDisplayed()
         compose.onNodeWithText("复制").assertDoesNotExist()

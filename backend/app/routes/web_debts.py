@@ -492,6 +492,7 @@ def _render_debt_detail(
         selected_id=selected_id,
         account_id=account_id,
         public_id=public_id,
+        timezone_name=ctx.get("ledger_timezone_name") or "UTC",
         focus_repayment=action_target_public_id if action_kind == "repayment_void" else None,
     )
     from app.routes._web_debt_void import add_void_detail_context
