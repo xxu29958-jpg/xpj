@@ -20,13 +20,12 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
-from ocr_benchmark_data import FIELDS, BenchmarkInput, discover_fixtures  # noqa: E402
-from ocr_benchmark_metrics import BenchmarkReport, ScoreRow, score  # noqa: E402
-
 from app.models import Expense  # noqa: E402
 from app.services.ocr_service import OcrResult, ocr_fact_snapshot  # noqa: E402
 from app.services.ocr_service._providers import LocalLlmOcrProvider, RapidOcrProvider  # noqa: E402
 from app.services.original_read_service import OriginalSnapshot, _copy_original  # noqa: E402
+from scripts.ocr_benchmark_data import FIELDS, BenchmarkInput, discover_fixtures  # noqa: E402
+from scripts.ocr_benchmark_metrics import BenchmarkReport, ScoreRow, score  # noqa: E402
 
 DEFAULT_FIXTURE_DIR = _BACKEND_ROOT / "tests" / "_infra" / "ocr_fixtures"
 

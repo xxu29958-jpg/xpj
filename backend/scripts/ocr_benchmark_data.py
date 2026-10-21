@@ -82,20 +82,13 @@ def _validate_time(value: object) -> None:
         raise ValueError("time precision must be instant or date_only")
 
 
-def _read_fixture(entry: Path) -> Fixture:
-    input_path, truth_path = entry / "input.json", entry / "ground_truth.json"
-    data = json.loads(input_path.read_text(encoding="utf-8"))
-    truth = json.loads(truth_path.read_text(encoding="utf-8"))
-    if data.get("schema_version") != 2 or truth.get("schema_version") != 2:
-        raise ValueError(f"{entry.name}: migrate input and ground truth to schema 2")
-    for name in ("sample_id", "group_id", "source_kind", "authorization"):
+def _require_text(data: dict, fields: tuple[str, ...], sample: str) -> None:
+    for name in fields:
         if not isinstance(data.get(name), str) or not data[name].strip():
-            raise ValueError(f"{entry.name}: missing {name}")
-    if data.get("split") not in {"diagnostic", "development", "holdout"}:
-        raise ValueError(f"{entry.name}: invalid split")
-    for name in ("annotator", "annotation_version"):
-        if not isinstance(truth.get(name), str) or not truth[name].strip():
-            raise ValueError(f"{entry.name}: missing {name}")
+            raise ValueError(f"{sample}: missing {name}")
+
+
+def _read_input(entry: Path, data: dict) -> BenchmarkInput:
     timezone_name = data["timezone"]
     ZoneInfo(timezone_name)
     currency = data.get("currency_code")
@@ -111,15 +104,28 @@ def _read_fixture(entry: Path) -> Fixture:
     raw_text = data.get("raw_text")
     if raw_text is not None and not isinstance(raw_text, str):
         raise ValueError(f"{entry.name}: raw_text must be a string")
+    return BenchmarkInput(image, raw_text, currency, timezone_name, data.get("image_sha256"))
+
+
+def _read_fixture(entry: Path) -> Fixture:
+    input_path, truth_path = entry / "input.json", entry / "ground_truth.json"
+    data = json.loads(input_path.read_text(encoding="utf-8"))
+    truth = json.loads(truth_path.read_text(encoding="utf-8"))
+    if data.get("schema_version") != 2 or truth.get("schema_version") != 2:
+        raise ValueError(f"{entry.name}: migrate input and ground truth to schema 2")
+    _require_text(data, ("sample_id", "group_id", "source_kind", "authorization"), entry.name)
+    _require_text(truth, ("annotator", "annotation_version"), entry.name)
+    if data.get("split") not in {"diagnostic", "development", "holdout"}:
+        raise ValueError(f"{entry.name}: invalid split")
+    inputs = _read_input(entry, data)
     labels = {name: _validate_label(name, truth["fields"].get(name, {"state": "unlabeled"}))
               for name in FIELDS}
     identity = {name: data[name] for name in ("sample_id", "group_id", "source_kind", "split", "authorization")}
     identity.update(input_sha256=sha256(input_path), labels_sha256=sha256(truth_path),
-                    image_sha256=sha256(image) if image else None,
+                    image_sha256=inputs.image_sha256,
                     annotator=truth["annotator"], annotation_version=truth["annotation_version"])
     return Fixture(data["sample_id"], data["group_id"], data["source_kind"], data["split"],
-                   data["authorization"], BenchmarkInput(image, raw_text, currency, timezone_name,
-                                                        data.get("image_sha256")), labels, identity)
+                   data["authorization"], inputs, labels, identity)
 
 
 def discover_fixtures(directory: Path) -> list[Fixture]:

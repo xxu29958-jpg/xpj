@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-
-from ocr_benchmark_data import FIELDS, Label  # noqa: E402
-from ocr_benchmark_metrics import ScoreRow, score, summarize  # noqa: E402
+from scripts.ocr_benchmark_data import FIELDS, Label
+from scripts.ocr_benchmark_metrics import ScoreRow, score, summarize
 
 
 def labels(**values):

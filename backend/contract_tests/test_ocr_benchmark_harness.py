@@ -5,17 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-
-import ocr_benchmark  # noqa: E402
-from ocr_benchmark_data import discover_fixtures  # noqa: E402
-
-from app.services.ocr_service import OcrResult  # noqa: E402
+from app.services.ocr_service import OcrResult
+from scripts import ocr_benchmark
+from scripts.ocr_benchmark_data import discover_fixtures
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "_infra" / "ocr_fixtures"
 

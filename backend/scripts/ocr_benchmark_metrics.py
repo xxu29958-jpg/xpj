@@ -8,7 +8,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
-from ocr_benchmark_data import FIELDS, Label
+from scripts.ocr_benchmark_data import FIELDS, Label
 
 
 def _merchant(value: str) -> str:
