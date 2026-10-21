@@ -17,7 +17,7 @@ from app.services.session_credential_lock import lock_bootstrap_owner_transactio
 
 PROGRESS_MESSAGES = {
     "updated": "识别结果已写入待确认账单。",
-    "no_result": "识别完成，未返回可用字段。",
+    "no_result": "识别完成，当前填写没有变化；请继续核对。",
     "not_pending": "账单已不在待确认队列。",
     "conflict": "用户后续修改已保留，识别结果未覆盖账单。",
 }

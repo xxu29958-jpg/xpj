@@ -50,7 +50,7 @@ def test_reopened_pending_template_shows_failed_and_no_result_original_tasks():
     failed = _task_fragment(html, tasks[0]["public_id"])
     no_result = _task_fragment(html, tasks[1]["public_id"])
     assert "失败" in failed and "重试识别" in failed
-    assert "完成" in no_result and ("可用字段" in no_result or "未识别" in no_result or "无结果" in no_result)
+    assert "识别完成" in no_result and "填写没有变化" in no_result
     for fragment, source in ((failed, 41), (no_result, 42)):
         assert f'/web/expenses/{source}/edit?ledger_id=owner' in fragment
         assert not re.search(r'<form\b[^>]*method="post"', fragment), "发现任务不能自动重跑旧上传任务"

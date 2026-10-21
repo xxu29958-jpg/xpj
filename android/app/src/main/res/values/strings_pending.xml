@@ -277,7 +277,7 @@
     <string name="pending_enrichment_active_hint">完成后列表会自动更新</string>
     <string name="pending_enrichment_active_more">还有 %1$d 张正在识别</string>
     <string name="pending_enrichment_updated">识别结果已更新，请核对后确认。</string>
-    <string name="pending_enrichment_no_result">识别完成，但没有返回可用字段，需要手动补全。</string>
+    <string name="pending_enrichment_no_result">识别完成，当前填写没有变化，请继续核对。</string>
     <string name="pending_enrichment_conflict">你后来保存的修改已保留，自动识别没有覆盖这张账单。</string>
     <string name="pending_enrichment_failed">自动识别失败，账单仍保留在队列中；可在详情里重试识别。</string>
     <string name="pending_enrichment_cancelled">自动识别已取消，账单仍在待确认队列。</string>
