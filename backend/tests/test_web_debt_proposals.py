@@ -7,11 +7,12 @@ communal/neutral 文案。HTML adapter 与 JSON API 复用同一 command/idempot
 from __future__ import annotations
 
 import re
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from html import unescape
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -438,16 +439,18 @@ def test_proposal_pending_line_by_role() -> None:
     assert _proposal_pending_line(debtor_pending, None) == "他们之间有一笔正在确认"
 
 
-def test_resolved_proposal_row_date_prefix_and_neutral_status() -> None:
-    confirmed = _resolved_proposal_row(_stub_proposal(status="confirmed"))
+@pytest.mark.parametrize(("zone", "day"), [("Asia/Shanghai", "2026-10-20"), ("America/Los_Angeles", "2026-10-19")])
+def test_resolved_proposal_row_date_prefix_and_neutral_status(zone, day) -> None:
+    timestamp = datetime(2026, 10, 19, 23, 46, tzinfo=UTC)
+    confirmed = _resolved_proposal_row(_stub_proposal(status="confirmed", resolved_at=timestamp), zone)
     assert confirmed["status_label"] == "已确认"
-    assert confirmed["date_text"].endswith(" 对上")
-    partial = _resolved_proposal_row(_stub_proposal(status="partially_confirmed"))
+    assert confirmed["date_text"] == f"{day} 对上"
+    partial = _resolved_proposal_row(_stub_proposal(status="partially_confirmed", resolved_at=timestamp), zone)
     assert partial["status_label"] == "收了一部分"
-    assert partial["date_text"].endswith(" 收了一部分")
-    rejected = _resolved_proposal_row(_stub_proposal(status="rejected"))
+    assert partial["date_text"] == f"{day} 收了一部分"
+    rejected = _resolved_proposal_row(_stub_proposal(status="rejected", resolved_at=timestamp), zone)
     assert rejected["status_label"] == "在对账"  # never 已拒绝/失败
-    assert "对上" not in rejected["date_text"]  # no positive prefix for a non-settled close
+    assert rejected["date_text"] == day  # no positive prefix for a non-settled close
 
 
 def test_proposal_section_retains_controls_and_defers_history_to_activity() -> None:

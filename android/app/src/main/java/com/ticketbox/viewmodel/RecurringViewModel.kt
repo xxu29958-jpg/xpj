@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.LedgerCalendarReader
+import com.ticketbox.data.repository.refreshedLedgerCalendar
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.RecurringPendingIntent
 import com.ticketbox.data.repository.RecurringPendingState
@@ -22,6 +24,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
+import java.time.Clock
+import java.time.LocalDate
 
 data class RecurringUiState(
     val loading: Boolean = false,
@@ -40,6 +44,7 @@ data class RecurringUiState(
     val editorEpoch: Long = 0,
     val editorRuntimeId: String = "",
     val history: RecurringHistoryState = RecurringHistoryState(),
+    val ledgerToday: LocalDate? = null,
 ) {
     val manualSaveInFlight: Boolean
         get() = manualSaveFeedback?.settlement == RecurringManualSaveSettlement.InFlight
@@ -57,10 +62,18 @@ enum class RecurringListLoadState {
     Failed,
 }
 
+private fun RecurringUiState.refreshedMessageTone(keepFeedback: Boolean, message: UiText?): MessageTone = when {
+    keepFeedback -> messageTone
+    message == null -> MessageTone.Neutral
+    else -> MessageTone.Danger
+}
+
 class RecurringViewModel(
     private val repository: RecurringActions,
     private val onDataChanged: () -> Unit = {},
     private val originalBinding: LogicalSessionBinding? = null,
+    private val calendars: LedgerCalendarReader? = null,
+    private val clock: Clock = Clock.systemUTC(),
 ) : ViewModel() {
     private val editorRuntimeId = UUID.randomUUID().toString()
     private val _uiState = MutableStateFlow(
@@ -70,6 +83,9 @@ class RecurringViewModel(
     private var requestGeneration = 0
     private var refreshGeneration = 0
     private var activeBinding: LogicalSessionBinding? = null
+    internal val ledgerDay = RecurringLedgerDay(calendars, clock) { today ->
+        _uiState.update { it.copy(ledgerToday = today) }
+    }
     private var activeCanModify = false
     private var observedCompletedKeys: Set<String> = emptySet()
     private var manualSaveSequence = 0L
@@ -77,9 +93,10 @@ class RecurringViewModel(
     private var editorEpoch = 0L
     private val retireDeniedReads: (Throwable) -> Unit = { error ->
         historyTask.dismiss()
+        ledgerDay.clear()
         refreshGeneration += 1
         _uiState.update { it.copy(items = emptyList(), itemsFetchedAt = null, itemsFromCache = false,
-            candidates = emptyList(), loading = false,
+            candidates = emptyList(), loading = false, ledgerToday = null,
             itemsLoadState = RecurringListLoadState.Failed, candidatesLoadState = RecurringListLoadState.Failed,
             message = error.toUiText(R.string.recurring_history_failed), messageTone = MessageTone.Danger) }
     }
@@ -104,6 +121,7 @@ class RecurringViewModel(
                         return@collect
                     }
                     activeBinding = nextBinding
+                    ledgerDay.clear()
                     historyTask.dismiss()
                     requestGeneration += 1
                     refreshGeneration += 1
@@ -148,14 +166,18 @@ class RecurringViewModel(
     }
 
     /** Shell financial changes retire old projections; an ordinary retry keeps its last readable page. */
-    fun refresh(retireCurrent: Boolean = false) {
+    fun refresh(retireCurrent: Boolean = false, preserveFeedback: Boolean = false) {
         if (retireCurrent) {
             refreshGeneration += 1
+            ledgerDay.clear()
             _uiState.update { it.copy(items = emptyList(), itemsFetchedAt = null, itemsFromCache = false,
-                candidates = emptyList()) }
+                candidates = emptyList(), ledgerToday = null) }
             historyTask.invalidate()
         }
-        refreshInternal(preserveMutationFeedback = retireCurrent)
+        val state = _uiState.value
+        val mutationMessage = state.manualSaveFeedback?.message
+        refreshInternal(preserveMutationFeedback =
+            retireCurrent || (preserveFeedback && mutationMessage != null && state.message == mutationMessage))
     }
 
     private fun refreshInternal(preserveMutationFeedback: Boolean) {
@@ -184,6 +206,9 @@ class RecurringViewModel(
             val denied = listOf(itemsResult.exceptionOrNull(), candidatesResult.exceptionOrNull())
                 .firstOrNull { it?.isReadAccessDenied() == true }
             if (denied != null) { retireDeniedReads(denied); return@launch }
+            val calendar = calendars.refreshedLedgerCalendar(binding).getOrNull()
+            if (requestGeneration != generation || refreshGeneration != refresh) return@launch
+            val ledgerToday = ledgerDay.update(binding, calendar)
             val message = listOf(itemsResult, candidatesResult)
                 .firstOrNull { it.isFailure }
                 ?.exceptionOrNull()
@@ -193,13 +218,7 @@ class RecurringViewModel(
                 state.copy(
                     loading = false,
                     message = if (keepFeedback) state.message else message,
-                    messageTone = if (keepFeedback) {
-                        state.messageTone
-                    } else if (message == null) {
-                        MessageTone.Neutral
-                    } else {
-                        MessageTone.Danger
-                    },
+                    messageTone = state.refreshedMessageTone(keepFeedback, message),
                     items = itemsResult.getOrNull()?.value ?: state.items,
                     itemsFetchedAt = itemsResult.getOrNull()?.fetchedAt ?: state.itemsFetchedAt,
                     itemsFromCache = itemsResult.getOrNull()?.fromCache ?: state.itemsFromCache,
@@ -207,6 +226,7 @@ class RecurringViewModel(
                     itemsLoadState = itemsResult.toRecurringListLoadState(),
                     candidatesLoadState = candidatesResult.toRecurringListLoadState(),
                     canModify = activeCanModify,
+                    ledgerToday = ledgerToday,
                 )
             }
         }

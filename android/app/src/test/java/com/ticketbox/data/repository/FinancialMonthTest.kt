@@ -12,6 +12,17 @@ class FinancialMonthTest {
     private val binding = LogicalSessionBinding("https://example.test", "ledger", "owner", "session", "revision")
     private val clock = Clock.fixed(Instant.parse("2026-06-01T00:30:00Z"), ZoneId.of("Asia/Tokyo"))
 
+    @Test fun currentPresentationRefreshesOwnerRuleAndOnlyUsesCacheAfterFailure() = runTest {
+        val calendars = MonthCalendarFixture(binding, calendar(binding, "Asia/Shanghai")).apply {
+            response = Result.success(calendar(binding, "America/Los_Angeles"))
+        }
+        assertEquals("2026-05-31", calendars.refreshedLedgerDate(binding, clock).getOrThrow().toString())
+        calendars.response = Result.failure(java.io.IOException("offline"))
+        assertEquals("2026-06-01", calendars.refreshedLedgerDate(binding, clock).getOrThrow().toString())
+        calendars.response = Result.success(null)
+        assertEquals(null, calendars.refreshedLedgerDate(binding, clock).getOrThrow())
+    }
+
     @Test fun capturedLedgerRuleOwnsMonthAcrossDeviceBoundaryAndWorksOffline() = runTest {
         val calendars = MonthCalendarFixture(binding, calendar(binding, "America/Los_Angeles"))
         assertEquals("2026-05", calendars.newTaskMonth(binding, clock))

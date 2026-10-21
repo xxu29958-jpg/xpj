@@ -3,6 +3,12 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.MonthCalendarFixture
+import com.ticketbox.data.repository.calendar
+import com.ticketbox.ui.screens.recurring.RecurringTab
+import com.ticketbox.ui.screens.recurring.recurringDueIsPast
+import com.ticketbox.ui.screens.recurring.recurringItemMeta
+import com.ticketbox.ui.screens.recurring.recurringScreenDerived
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.RecurringConflictDetails
 import com.ticketbox.data.repository.RecurringDateEdit
@@ -37,6 +43,13 @@ import kotlinx.coroutines.test.setMain
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalCoroutinesApi::class)
 private fun recurringTest(block: suspend TestScope.() -> Unit) = runTest {
@@ -51,6 +64,164 @@ private fun recurringTest(block: suspend TestScope.() -> Unit) = runTest {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecurringViewModelTest {
+    @Test
+    fun foregroundCalendarChangeReplacesTheOldMidnightAndUnsupportedRuleStopsTheClock() = recurringTest {
+        val binding = planAccess().binding
+        val start = Instant.parse("2026-10-19T15:59:00Z")
+        val clock = object : Clock() {
+            override fun getZone() = ZoneId.of("Pacific/Honolulu")
+            override fun withZone(zone: ZoneId): Clock = this
+            override fun instant() = start.plusMillis(testScheduler.currentTime)
+        }
+        val calendars = MonthCalendarFixture(binding, calendar(binding, "Asia/Shanghai")).apply { response = Result.success(rule) }
+        val vm = RecurringViewModel(FakeRecurringActions(itemsResult = Result.success(listOf(item()))),
+            calendars = calendars, clock = clock)
+        runCurrent()
+        backgroundScope.launch { vm.ledgerDay.observe() }
+        runCurrent()
+        calendars.response = Result.success(calendar(binding, "America/Los_Angeles").copy(revision = 2))
+        vm.refresh()
+        runCurrent()
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertEquals(LocalDate.parse("2026-10-19"), vm.uiState.value.ledgerToday)
+        advanceTimeBy(15 * 60 * 60_000L)
+        runCurrent()
+        assertEquals(LocalDate.parse("2026-10-20"), vm.uiState.value.ledgerToday)
+        calendars.response = Result.success(null)
+        vm.refresh()
+        runCurrent()
+        val unknown = vm.uiState.value
+        assertEquals(null, unknown.ledgerToday)
+        val reads = calendars.refreshes
+        advanceTimeBy(24 * 60 * 60_000L)
+        runCurrent()
+        assertEquals(unknown, vm.uiState.value)
+        assertEquals(reads, calendars.refreshes)
+    }
+
+    @Test
+    fun foregroundMidnightChangesOnlyTheLedgerDayIncludingTheLongDstDay() = recurringTest {
+        for ((zone, start, boundary) in listOf(
+            Triple("Asia/Shanghai", "2026-10-19T15:59:00Z", 60_000L),
+            Triple("America/Los_Angeles", "2026-11-01T07:00:00Z", 25 * 60 * 60_000L),
+        )) {
+            val elapsed = testScheduler.currentTime
+            val clock = object : Clock() {
+                override fun getZone() = ZoneId.of("Pacific/Honolulu")
+                override fun withZone(zone: ZoneId): Clock = this
+                override fun instant() = Instant.parse(start).plusMillis(testScheduler.currentTime - elapsed)
+            }
+            val binding = planAccess().binding
+            val calendars = MonthCalendarFixture(binding, calendar(binding, zone)).apply { response = Result.success(rule) }
+            val vm = RecurringViewModel(FakeRecurringActions(itemsResult = Result.success(listOf(item()))),
+                calendars = calendars, clock = clock)
+            runCurrent()
+            val before = vm.uiState.value
+            val reads = calendars.refreshes
+            val observer = backgroundScope.launch { vm.ledgerDay.observe() }
+            runCurrent()
+            advanceTimeBy(boundary - 1)
+            runCurrent()
+            assertEquals(before, vm.uiState.value)
+            advanceTimeBy(1)
+            runCurrent()
+            val tomorrow = requireNotNull(before.ledgerToday).plusDays(1)
+            assertEquals(before.copy(ledgerToday = tomorrow), vm.uiState.value)
+            assertEquals(reads, calendars.refreshes)
+            observer.cancel()
+            advanceTimeBy(24 * 60 * 60_000L)
+            runCurrent()
+            assertEquals(tomorrow, vm.uiState.value.ledgerToday)
+            val resumed = backgroundScope.launch { vm.ledgerDay.observe() }
+            runCurrent()
+            assertEquals(tomorrow.plusDays(1), vm.uiState.value.ledgerToday)
+            assertEquals(reads, calendars.refreshes)
+            resumed.cancel()
+        }
+    }
+
+    @Test
+    fun pastDueUsesBoundLedgerDayAcrossDeviceMidnightAndKeepsUnknownRulesUnknown() = recurringTest {
+        val access = planAccess()
+        val due = item().copy(nextDueDate = "2026-10-19")
+        for ((zone, expectedDay) in listOf("America/Los_Angeles" to "2026-10-19", "Asia/Shanghai" to "2026-10-20")) {
+            for (deviceZone in listOf("Pacific/Honolulu", "Asia/Tokyo")) {
+                val clock = Clock.fixed(Instant.parse("2026-10-20T00:30:00Z"), ZoneId.of(deviceZone))
+                val calendars = MonthCalendarFixture(access.binding, calendar(access.binding, zone)).apply {
+                    response = Result.success(rule)
+                }
+                val vm = RecurringViewModel(FakeRecurringActions(itemsResult = Result.success(listOf(due))),
+                    calendars = calendars, clock = clock)
+                advanceUntilIdle()
+                val state = vm.uiState.value
+                assertEquals(LocalDate.parse(expectedDay), state.ledgerToday)
+                val hero = recurringScreenDerived(state, RecurringTab.Active).hero
+                val meta = recurringItemMeta(state.items.single(), state.ledgerToday)
+                assertEquals(zone == "Asia/Shanghai", recurringDueIsPast(requireNotNull(hero.nearestNextDate), hero.ledgerToday))
+                assertEquals(zone == "Asia/Shanghai", recurringDueIsPast(requireNotNull(meta.nextExpectedDate), meta.ledgerToday))
+                calendars.rule = null
+                calendars.response = Result.failure(java.io.IOException("offline"))
+                vm.refresh()
+                advanceUntilIdle()
+                assertEquals(null, vm.uiState.value.ledgerToday)
+                assertEquals(listOf(due), vm.uiState.value.items)
+            }
+        }
+    }
+
+    @Test
+    fun lateCalendarFromPreviousBindingCannotChangeCurrentLedgerDay() = recurringTest {
+        val access = MutableStateFlow<LedgerAccessContext?>(planAccess())
+        val old = requireNotNull(access.value).binding
+        val gate = CompletableDeferred<Unit>()
+        val calendars = MonthCalendarFixture(old).apply {
+            this.gate = { gate.await() }
+            response = Result.success(calendar(old, "Asia/Shanghai"))
+        }
+        val vm = RecurringViewModel(FakeRecurringActions(activeAccessFlow = access), calendars = calendars,
+            clock = Clock.fixed(Instant.parse("2026-10-20T00:30:00Z"), ZoneId.of("Asia/Tokyo")))
+        runCurrent()
+        val replacement = planAccess(ledgerId = "other")
+        calendars.binding = replacement.binding
+        calendars.rule = calendar(replacement.binding, "America/Los_Angeles")
+        calendars.response = Result.success(calendars.rule)
+        calendars.gate = null
+        access.value = replacement
+        runCurrent()
+        assertEquals(LocalDate.parse("2026-10-19"), vm.uiState.value.ledgerToday)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(LocalDate.parse("2026-10-19"), vm.uiState.value.ledgerToday)
+    }
+
+    @Test
+    fun resumeRefreshesLedgerDayAfterMidnightWithoutChangingVisibleFactsOrEditor() = recurringTest {
+        val binding = planAccess().binding
+        var instant = Instant.parse("2026-10-19T15:59:00Z")
+        val clock = object : Clock() {
+            override fun getZone() = ZoneId.of("Pacific/Honolulu")
+            override fun withZone(zone: ZoneId): Clock = this
+            override fun instant() = instant
+        }
+        val calendars = MonthCalendarFixture(binding, calendar(binding, "Asia/Shanghai")).apply {
+            response = Result.success(rule)
+        }
+        val vm = RecurringViewModel(FakeRecurringActions(itemsResult = Result.success(listOf(item()))),
+            calendars = calendars, clock = clock)
+        advanceUntilIdle()
+        val before = vm.uiState.value
+        assertEquals(LocalDate.parse("2026-10-19"), before.ledgerToday)
+        instant = Instant.parse("2026-10-19T16:01:00Z")
+        vm.refresh(preserveFeedback = true)
+        advanceUntilIdle()
+        assertEquals(before.copy(ledgerToday = LocalDate.parse("2026-10-20")), vm.uiState.value)
+        calendars.response = Result.success(calendar(binding, "America/Los_Angeles"))
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(LocalDate.parse("2026-10-19"), vm.uiState.value.ledgerToday)
+    }
+
     @Test
     fun initialFailureMarksBothListsFailedWithoutFabricatingEmpty() = recurringTest {
         val fake = FakeRecurringActions(
@@ -102,6 +273,13 @@ class RecurringViewModelTest {
         assertEquals(listOf(existingCandidate), vm.uiState.value.candidates)
         assertEquals(RecurringListLoadState.Failed, vm.uiState.value.itemsLoadState)
         assertEquals(RecurringListLoadState.Failed, vm.uiState.value.candidatesLoadState)
+        fake.itemsResult = Result.success(listOf(existingItem))
+        fake.candidatesResult = Result.success(listOf(existingCandidate))
+        vm.refresh(preserveFeedback = true)
+        advanceUntilIdle()
+        assertEquals(RecurringListLoadState.Loaded, vm.uiState.value.itemsLoadState)
+        assertEquals(null, vm.uiState.value.message)
+        assertEquals(MessageTone.Neutral, vm.uiState.value.messageTone)
     }
 
     @Test

@@ -21,7 +21,7 @@
 {% set prior = loop.nextitem if loop.nextitem is defined and loop.nextitem.row_version == item.row_version - 1 else none %}
 <li class="product-history-item" aria-label="保存安排 · 版本 {{ item.row_version }}">
   <div class="product-entry-heading"><h2 class="product-panel-title">保存本月安排</h2><span class="product-status">版本 {{ item.row_version }}</span></div>
-  <span>{{ saved_time(item.recorded_at) }}</span>
+  <span>{{ saved_time(item.recorded_at, ledger_timezone_name|default(none)) }}</span>
   {{ comparison('计划储蓄', prior.home_currency_code ~ ' ' ~ arrangement_amount(prior.savings_target_cents, prior.home_currency_code) if prior else none, item.home_currency_code ~ ' ' ~ arrangement_amount(item.savings_target_cents, item.home_currency_code)) }}
   {{ boundary(item, prior, loop.last) }}
   <details class="product-disclosure"><summary>查看当时定义</summary>

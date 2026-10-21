@@ -1,0 +1,5 @@
+{# A headline amount shrinks to fit its card instead of breaking between digits. The width estimate counts CJK and the currency sign double. #}
+{% macro fit_amount(text) -%}
+{% set label = text|string %}
+<strong class="product-amount product-amount--fit" style="--amount-chars: {{ label|length + label|select('gt', '~')|list|length }}">{{ label }}</strong>
+{%- endmacro %}

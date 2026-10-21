@@ -63,6 +63,21 @@
     }, true);
   };
 
+  // A sticky task bar covers the bottom of the page. Focus and anchor scrolling stop above its
+  // measured height, which grows with wrapped buttons, status lines and larger text.
+  app.initTaskActionsInset = function initTaskActionsInset() {
+    const bars = [...document.querySelectorAll(".product-workspace > .product-task-actions, " +
+      "main.content .product-task-actions:not(.product-task-actions--page)")];
+    if (!bars.length || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(function () {
+      const height = Math.max(0, ...bars.map(bar => bar.getBoundingClientRect().height));
+      if (height > 0) root.style.setProperty("--task-actions-block-size", Math.ceil(height) + "px");
+      else root.style.removeProperty("--task-actions-block-size");
+    });
+    bars.forEach(bar => observer.observe(bar));
+  };
+
   // The disclosure reads the real input, preserving raw long values without
   // rounding or a second draft. Used by review, correction and restored rows.
   app.bindReviewFields = function bindReviewFields(root) {

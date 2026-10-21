@@ -112,9 +112,9 @@ def render_review(request: Request, db: Session, *, options, selected_id: str, p
             status_code = 503
     can_recover = _debt_write_gate(options, selected_id)
     can_create = calendar is not None and can_recover and not ack
-    view = _audit_row_view(row) if row else None
     initial = _initial_review_values(scope, selected_id, public_id, row, can_create, calendar, values)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对还款采集")
+    view = _audit_row_view(row, ctx.get("ledger_timezone_name")) if row else None
     ctx.update(row=view, read_error=read_error, currencies=supported_currency_codes(), review={
         "public_id": public_id, "scope": scope, "values": initial,
         "can_create": can_create, "can_recover": can_recover, "visible": can_create or values is not None,
@@ -227,9 +227,11 @@ def _target_option(candidate, *, suggested_id: str | None) -> dict:
 
 def _audit_row_view(
     row: RepaymentDraftAuditRow,
+    timezone_name: str | None,
 ) -> dict:
     """Read projection; original commands belong to the single capture review form."""
 
+    timezone_name = timezone_name or "UTC"
     view: dict = {
         "public_id": row.public_id,
         "source_expense_id": row.source_expense_id,
@@ -242,7 +244,7 @@ def _audit_row_view(
         "currency_code": row.original_currency_code or row.home_currency_code,
         "conversion_pending": row.status == "pending" and row.amount_cents is None,
         "home_currency_code": row.home_currency_code,
-        "captured_label": _day_label(row.captured_at),
+        "captured_label": _day_label(row.captured_at, timezone_name),
         "status_label": "已改为消费" if row.corrected_expense_id else _STATUS_LABELS.get(row.status, _STATUS_LABELS["pending"]),
         "status_tone": _STATUS_TONE.get(row.status, ""),
         "is_pending": row.status == "pending",
@@ -251,7 +253,7 @@ def _audit_row_view(
         "committed_debt_public_id": row.committed_debt_public_id,
         "source_expense_public_id": row.source_expense_public_id,
         "source_expense_requires_review": row.source_expense_requires_review,
-        "resolved_label": _day_label(row.resolved_at),
+        "resolved_label": _day_label(row.resolved_at, timezone_name),
     }
     if row.status == "confirmed":
         name = row.linked_debt_label or _COUNTERPARTY_FALLBACK["external"]

@@ -24,8 +24,7 @@
 <div data-funding-editor data-accounts="{{ funding_accounts|tojson|forceescape }}"><div data-funding-rows></div><button type="button" class="product-button product-button--quiet" data-funding-add>添加付款组成</button></div>
 <div class="product-field"><label for="funding-reason">本次核对依据</label><input class="product-input" id="funding-reason" name="reason" value="{{ values.reason }}" required maxlength="255"></div>
 <p class="hint">各项合计须等于原消费金额。旧消费已经纳入账户期初时，请勾选对应项，以免再次扣款。</p>
-<p class="hint" data-funding-draft-status role="status"></p>
 <p class="hint" data-funding-review-note hidden>核对只更新可继续编辑的版本，原金额和付款组成仍保留；确认前不会改变账单。</p>
-<div class="product-task-actions"><button type="submit" class="product-button product-button--primary" data-funding-submit>确认付款来源</button><button type="submit" name="review_latest" value="1" class="product-button product-button--quiet" data-funding-review formnovalidate hidden>核对最新记录后继续</button><button type="button" class="product-button product-button--quiet" data-funding-discard hidden>放弃此浏览器的原稿</button><a class="product-button product-button--quiet" href="{{ task_return_href }}">返回账单</a></div>
+<div class="product-task-actions"><button type="submit" class="product-button product-button--primary" data-funding-submit>确认付款来源</button><button type="submit" name="review_latest" value="1" class="product-button product-button--quiet" data-funding-review formnovalidate hidden>核对最新记录后继续</button><button type="button" class="product-button product-button--quiet" data-funding-discard hidden>放弃此浏览器的原稿</button><a class="product-button product-button--quiet" href="{{ task_return_href }}">返回账单</a><p class="hint" data-funding-draft-status role="status" hidden></p></div>
 </form>
 {% endblock %}

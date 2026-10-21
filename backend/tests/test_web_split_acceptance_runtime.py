@@ -1,6 +1,7 @@
 """Production invitation forms retain original acceptance; owner correctness lives in PG tests."""
 import importlib.util
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
@@ -20,7 +21,7 @@ def invitation_page(path, query):
     focused = path.endswith("/accept")
     row = {"public_id": PUBLIC_ID, "status": "accepted" if accepted else "invited", "share_label": "JPY ¥1,200",
         "source_amount_label": "JPY ¥5,000", "source_date_label": "2026-01-31", "sender_display_name": "家人甲",
-        "merchant": "一起聚餐", "is_expired": False, "expires_at": "2030-01-01", "events": [],
+        "merchant": "一起聚餐", "is_expired": False, "expires_at": datetime(2030, 1, 1, tzinfo=UTC), "events": [],
         "amount_cents": "1200", "home_currency_code": "JPY", "draft_ref": str(uuid4()),
         "accept_choices": [{"ledger_id": "private", "name": "个人账本"}, {"ledger_id": "travel", "name": "出差账本"}]}
     if focused and accepted:

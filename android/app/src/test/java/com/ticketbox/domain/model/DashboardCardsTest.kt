@@ -5,6 +5,10 @@ import kotlin.test.assertEquals
 import com.ticketbox.data.repository.DashboardCardsActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.userNetworkMessage
+import com.ticketbox.R
+import java.net.ConnectException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -14,7 +18,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class DashboardCardsTest {
@@ -120,7 +123,7 @@ class DashboardLayoutStateTest {
         vm.beginEdit()
         assertNull(vm.uiState.value.cards)
         assertNull(vm.uiState.value.draft)
-        assertNotNull(vm.uiState.value.loadError)
+        assertEquals(UiText.res(R.string.dashboard_load_failed), vm.uiState.value.loadError)
         repo.failLoad = false
         repo.access = repo.access.copy(canModify = false)
         vm.refresh()
@@ -149,7 +152,7 @@ private class LayoutActions : DashboardCardsActions {
     override fun canModifyLedger() = access.canModify
     override fun dashboardAccess() = access
     override suspend fun dashboardCards(binding: LogicalSessionBinding, surface: DashboardSurface): Result<DashboardCards> =
-        if (failLoad) Result.failure(IllegalStateException("offline")) else Result.success(defaults)
+        if (failLoad) Result.failure(RepositoryException(userNetworkMessage(ConnectException(), null))) else Result.success(defaults)
 
     override suspend fun updateDashboardCards(
         binding: LogicalSessionBinding,

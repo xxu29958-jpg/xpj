@@ -1,4 +1,5 @@
 {# 标签、备注与来源信息沿同一只读入口展开；发生时刻与账务日期分别保留。 #}
+{% from '_history_time.html' import saved_time %}
 <details class="fact-disclosure">
   <summary class="product-entry">
     <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span>
@@ -31,12 +32,12 @@
     </div>
     <div class="fact-row">
       <dt>上传时间</dt>
-      <dd>{{ expense.created_at }}</dd>
+      <dd>{{ saved_time(expense.created_at, ledger_timezone_name|default(none)) }}</dd>
     </div>
-    {% if expense.confirmed_at_label %}
+    {% if expense.confirmed_at %}
     <div class="fact-row">
       <dt>确认时间</dt>
-      <dd>{{ expense.confirmed_at_label }}</dd>
+      <dd>{{ saved_time(expense.confirmed_at, ledger_timezone_name|default(none)) }}</dd>
     </div>
     {% endif %}
   </dl>

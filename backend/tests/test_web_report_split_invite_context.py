@@ -1,6 +1,7 @@
 """Native fact split forms retain their report origin through failure and cancellation."""
 
 import re
+from datetime import UTC, datetime
 from html import unescape
 from pathlib import Path
 from types import SimpleNamespace
@@ -44,7 +45,7 @@ def split_page(monkeypatch):
                 "receiver_account_id": 9, "remaining_yuan": "30.00", "requires_review": True,
                 "idempotency_key": "original-key", "expected_row_version": 7,
                 "sent_rows": [{"public_id": "invitation-1", "receiver_display_name": "家人", "amount_label": "¥10.00",
-                    "status": "invited", "expires_at": "2026-05-31", "is_cancellable": True, "debt_href": ""}]}}
+                    "status": "invited", "expires_at": datetime(2026, 5, 31, tzinfo=UTC), "is_cancellable": True, "debt_href": ""}]}}
 
     def command(*_a, **kwargs):
         state.calls.append(kwargs)
@@ -56,7 +57,7 @@ def split_page(monkeypatch):
     monkeypatch.setattr(route, "_resolve_selected_ledger_id", lambda *_a, **_k: "family")
     monkeypatch.setattr(route, "_require_selected_ledger_write", lambda *_a: None)
     monkeypatch.setattr(route, "resolve_web_actor_account_id", lambda *_a: 3)
-    monkeypatch.setattr(route, "require_runtime_home_currency_code", lambda *_a: "CNY")
+    monkeypatch.setattr(route.bsplit, "split_parent_home_currency", lambda *_a, **_k: "CNY")
     monkeypatch.setattr(route.bsplit, "create_invitation", command)
     monkeypatch.setattr(route.bsplit, "cancel_invitation", command)
     root = Path(__file__).resolve().parents[1] / "app/templates/web"
@@ -103,7 +104,8 @@ def test_invite_error_preserves_native_origin_and_original_command(split_page):
     assert fields["idempotency_key"] == "original-key" and fields["expected_row_version"] == "7"
     assert 'value="12.00"' in response.text
     assert split_page.calls == [{"sender_account_id": 3, "sender_ledger_id": "family", "expense_id": 41,
-        "receiver_account_id": 9, "amount_cents": 1200, "idempotency_key": "original-key", "expected_row_version": 7}]
+        "receiver_account_id": 9, "amount_cents": 1200, "idempotency_key": "original-key", "expected_row_version": 7,
+        "expected_home_currency_code": "CNY"}]
 
 
 @pytest.mark.parametrize("failure", [False, True])

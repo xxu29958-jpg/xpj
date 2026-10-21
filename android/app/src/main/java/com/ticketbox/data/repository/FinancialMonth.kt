@@ -35,3 +35,22 @@ suspend fun LedgerCalendarReader?.newTaskDate(
         ?.let { ZoneId.of(it.timezoneName) }
     return zone?.let { instant.atZone(it).toLocalDate() }
 }
+
+/** Live presentation reads distinguish an unsupported calendar from a retryable read failure. */
+suspend fun LedgerCalendarReader?.refreshedLedgerDate(
+    binding: LogicalSessionBinding? = this?.currentBinding(),
+    clock: Clock = Clock.systemUTC(),
+): Result<LocalDate?> = refreshedLedgerCalendar(binding).mapCatching { rule ->
+    rule?.let { clock.instant().atZone(ZoneId.of(it.timezoneName)).toLocalDate() }
+}
+
+/** Return the same verified rule for both the displayed day and its next midnight. */
+suspend fun LedgerCalendarReader?.refreshedLedgerCalendar(
+    binding: LogicalSessionBinding? = this?.currentBinding(),
+): Result<LedgerCalendarDto?> {
+    if (this == null || binding == null || currentBinding() != binding) return Result.success(null)
+    return refresh(binding).recoverCatching { error -> cached(binding) ?: throw error }.mapCatching { rule ->
+        rule?.takeIf { it.ledgerId == binding.ledgerId && currentBinding() == binding }
+            ?.also { ZoneId.of(it.timezoneName) }
+    }
+}

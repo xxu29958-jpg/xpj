@@ -245,6 +245,7 @@ def _page_websocket(port: int) -> str:
         for target in targets:
             if target.get("type") == "page" and target.get("webSocketDebuggerUrl"):
                 return str(target["webSocketDebuggerUrl"])
+        time.sleep(0.05)
     raise _DevToolsTransportError("Edge did not expose a page DevTools target")
 
 
@@ -366,22 +367,24 @@ def _evaluate_page_once(
     result_timeout: float = 10.0,
 ) -> object:
     profile.mkdir(parents=True)
-    process = subprocess.Popen(
-        [
-            edge,
-            "--headless=new",
-            "--disable-background-networking",
-            "--disable-gpu",
-            "--no-first-run",
-            "--remote-allow-origins=*",
-            "--remote-debugging-port=0",
-            f"--user-data-dir={profile}",
-            "about:blank",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-    )
+    startup_log = profile / "browser-startup.log"
+    with startup_log.open("wb") as output:
+        process = subprocess.Popen(
+            [
+                edge,
+                "--headless=new",
+                "--disable-background-networking",
+                "--disable-gpu",
+                "--no-first-run",
+                "--remote-allow-origins=*",
+                "--remote-debugging-port=0",
+                f"--user-data-dir={profile}",
+                "about:blank",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=output,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
     page: _WebSocket | None = None
     browser_endpoint: str | None = None
     try:
@@ -415,6 +418,15 @@ def _evaluate_page_once(
         raise AssertionError(
             "layout probe did not become available; " + json.dumps(diagnostic, sort_keys=True),
         )
+    except _DevToolsTransportError as exc:
+        if page is None:
+            # No application navigation has occurred: retain bounded launcher
+            # diagnostics instead of discarding the evidence behind a retry.
+            with startup_log.open("rb") as output:
+                output.seek(max(0, startup_log.stat().st_size - 4096))
+                detail = output.read().decode("utf-8", errors="replace")
+            raise _DevToolsTransportError(f"{exc}; browser startup stderr: {detail}") from exc
+        raise
     finally:
         _stop_edge(process, page=page, browser_endpoint=browser_endpoint)
 
