@@ -124,7 +124,7 @@ def native_upload_and_ocr(j):
     j.goto("/web/pending")
     j.page.locator("#recognition > summary").click()
     task = j.page.locator(f'[data-recognition-task-id="{original_task["id"]}"]')
-    assert "当次未识别出可用字段" in task.inner_text()
+    assert "当次识别完成，填写没有变化" in task.inner_text()
     task.get_by_role("link", name=f'打开原单 #{original["id"]}', exact=True).click()
     assert j.page.locator('[name="amount_yuan"]').input_value() == "23.45"
     j.capture("native-ocr-current-source-original-task-retained")
