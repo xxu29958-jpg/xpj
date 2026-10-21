@@ -29,7 +29,6 @@ from app.services.invitation_audit import LedgerAuditSummary
 from app.services.invitation_invites import InvitationSummary
 from app.services.invitation_members import MemberSummary
 from app.services.ledger_service import rename_ledger
-from app.services.spending_contract_service import accounting_datetime_label
 from app.services.time_service import ensure_utc, now_utc
 from app.tenants import AuthContext
 
@@ -45,22 +44,18 @@ def _instant(value: str | None) -> datetime | None:
         return None
 
 
-def _local_moment(value: str | None) -> str:
-    return accounting_datetime_label(_instant(value)) or "—"
-
-
 def _member_view(item: MemberSummary) -> dict:
     view = asdict(item)
-    view["created_label"] = _local_moment(view["created_at"])
-    view["disabled_label"] = _local_moment(view["disabled_at"])
+    view["created_at"] = _instant(view["created_at"])
+    view["disabled_at"] = _instant(view["disabled_at"])
     return view
 
 
 def _invitation_view(item: InvitationSummary, *, current_time: datetime) -> dict:
     view = asdict(item)
     for field in ("created_at", "expires_at", "used_at", "revoked_at"):
-        view[f"{field.removesuffix('_at')}_label"] = _local_moment(view[field])
-    expires_at = _instant(view["expires_at"])
+        view[field] = _instant(view[field])
+    expires_at = view["expires_at"]
     if view["used_at"]:
         view["state"] = "used"
     elif view["revoked_at"]:
@@ -74,7 +69,7 @@ def _invitation_view(item: InvitationSummary, *, current_time: datetime) -> dict
 
 def _audit_view(item: LedgerAuditSummary) -> dict:
     view = asdict(item)
-    view["created_label"] = _local_moment(view["created_at"])
+    view["created_at"] = _instant(view["created_at"])
     return view
 
 

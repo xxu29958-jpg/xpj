@@ -68,7 +68,7 @@ def _render_repayment_drafts(
         page_title="支付通知核对",
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
-    ctx["rows"] = [_audit_row_view(row) for row in rows]
+    ctx["rows"] = [_audit_row_view(row, ctx.get("ledger_timezone_name")) for row in rows]
     ctx["empty_title"] = _EMPTY_TITLE
     ctx["empty_body"] = _EMPTY_BODY
     ctx["form_error"] = form_error

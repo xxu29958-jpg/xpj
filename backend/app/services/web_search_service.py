@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models import CategoryRule, Expense, Goal
 from app.services.expense_search_query import matches_expense_search, matches_text
+from app.services.ledger_calendar_service import current_calendar
 from app.services.spending_contract_service import (
     accounting_datetime_label,
     stat_time,
@@ -101,12 +102,14 @@ def _search_expenses(
         .order_by(Expense.created_at.desc(), Expense.id.desc())
     )
     rows = db.scalars(_limited(statement, limit)).all()
+    calendar = current_calendar(db, ledger_id=tenant_id)
+    timezone_name = calendar.timezone_name if calendar else "UTC"
     badge = "待确认" if status == "pending" else "已确认"
     return [
         WebSearchResult(
             group=status,
             title=expense.merchant or "未填写商家",
-            subtitle=_expense_subtitle(expense),
+            subtitle=_expense_subtitle(expense, timezone_name),
             href=_expense_edit_href(expense.id, tenant_id, term),
             badge=badge,
             amount_cents=expense.amount_cents,
@@ -116,7 +119,7 @@ def _search_expenses(
     ]
 
 
-def _expense_subtitle(expense: Expense) -> str:
+def _expense_subtitle(expense: Expense, timezone_name: str) -> str:
     parts = [
         expense.category or "未分类",
         source_label(expense.source, "未知来源"),
@@ -127,9 +130,9 @@ def _expense_subtitle(expense: Expense) -> str:
     elif expense.status == "confirmed":
         parts.append("账务日期待核对")
     elif when:
-        parts.append("发生时刻 " + accounting_datetime_label(when))
+        parts.append("发生时刻 " + accounting_datetime_label(when, timezone_name))
     elif expense.created_at:
-        parts.append("录入于 " + accounting_datetime_label(expense.created_at))
+        parts.append("录入于 " + accounting_datetime_label(expense.created_at, timezone_name))
     return " · ".join(parts)
 
 
