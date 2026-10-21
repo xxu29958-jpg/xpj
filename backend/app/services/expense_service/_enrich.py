@@ -163,6 +163,20 @@ def _commit_result(db: Session, task, result: PendingEnrichmentResult) -> Pendin
     return result
 
 
+def _complete_without_inference(task_id: int | None, expense_id: int, tenant_id: str,
+                                result: PendingEnrichmentResult) -> PendingEnrichmentResult:
+    if task_id is None:
+        return result
+    from app.database import SessionLocal
+
+    with SessionLocal() as db:
+        require_enrichment_actor(db, task_id, tenant_id)
+        task = lock_enrichment_receipt(db, task_id, expense_id)
+        if task.result_summary_json is not None:
+            return PendingEnrichmentResult(**json.loads(task.result_summary_json))
+        return _commit_result(db, task, result)
+
+
 def _verify_extraction_source(expense: Expense, prepared: _PreparedEnrichment) -> None:
     for extraction in prepared.ocr_extractions:
         evidence = extraction.result.evidence
@@ -291,16 +305,7 @@ def enrich_pending_expense(
             explicit_retry=explicit_retry,
         )
         if isinstance(prepared, PendingEnrichmentResult):
-            if task_id is not None:
-                from app.database import SessionLocal
-
-                with SessionLocal() as db:
-                    require_enrichment_actor(db, task_id, tenant_id)
-                    task = lock_enrichment_receipt(db, task_id, expense_id)
-                    if task.result_summary_json is not None:
-                        return PendingEnrichmentResult(**json.loads(task.result_summary_json))
-                    return _commit_result(db, task, prepared)
-            return prepared
+            return _complete_without_inference(task_id, expense_id, tenant_id, prepared)
         _checkpoint(before_apply)
         if prepared.thumbnail_needed:
             staged_thumbnail = _try_stage_thumbnail(

@@ -17,6 +17,12 @@ from tests.test_pending_enrichment_task_service import _ocr_result, _seed_pendin
 pytestmark = pytest.mark.real_db
 
 
+def test_async_retry_requires_an_authenticated_writer(client):
+    response = client.post("/api/expenses/1/ocr/tasks",
+        headers={"Idempotency-Key": "unauthenticated-retry"}, json={"expected_row_version": 1})
+    assert response.status_code == 401
+
+
 @pytest.fixture
 def retry_input(identity, monkeypatch):
     expense_id, predecessor, seed_task_id = _seed_pending_enrichment_task()

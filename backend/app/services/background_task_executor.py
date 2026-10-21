@@ -26,6 +26,10 @@ OCR_TASK_TYPES = frozenset({"expense_enrichment", "expense_ocr_retry"})
 TaskRunner = Callable[[int, dict[str, Any], TaskHandlerRegistry], None]
 
 
+class ExecutorLifecycleError(RuntimeError):
+    """The previous pool must finish stopping before accepting work."""
+
+
 class BackgroundTaskSubmissionError(RuntimeError):
     """A durable task row exists, but its in-process execution was not submitted."""
 
@@ -64,7 +68,7 @@ class _ExecutorPool:
     def start(self) -> None:
         with self._lock:
             if self._active:
-                raise RuntimeError("previous background executor still owns running tasks")
+                raise ExecutorLifecycleError("previous background executor still owns running tasks")
             if self._executor is not None:
                 self._executor.shutdown(wait=True, cancel_futures=True)
                 self._executor = None
@@ -87,7 +91,7 @@ class _ExecutorPool:
             task_type = task.task_type
         with self._lock:
             if self._stopping:
-                raise RuntimeError("background executor is stopping")
+                raise ExecutorLifecycleError("background executor is stopping")
             if task_id in self._active or task_id in self._waiting:
                 return
             if self._executor is None:

@@ -95,10 +95,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "Dispatch reserves capacity only for durable PG rows. Its Future callback observes outside-handler errors through _finished and _report_worker_outcome; callback dispatch refusal is also reported without inventing task completion. The common owner checks require every link. The original queued row remains recoverable after refusal.",
     },
     ("backend/app/services/ocr_worker_client.py", "OcrWorkerClient._start"): {
-        "sha256": "a316535ee7f955bec9ed3911928206ddbe1b74aa3005c532a7740a480a2192c3",
+        "sha256": "df16877c996a7a504d40eaa00c8117feb565a5af49d6cf7f736dc373b6c600a5",
         "owner": "bounded pipe response consumed by the task runner; unexpected reader errors use the shared sanitized logger",
         "test": "backend/contract_tests/test_ocr_worker_process.py::test_unexpected_reader_failure_is_observed_and_owned_process_is_reaped",
-        "reason": "The reader only transports one bounded response/error to recognize. Invalid IPC, exit and timeout retire the owned process tree before releasing capacity; unexpected reader exceptions report and wake the caller with a safe code. Idle retirement has its own shared reporting boundary and fences new work after cleanup failure.",
+        "reason": "The reader only transports one bounded response/error to recognize. Invalid IPC, exit and timeout retire the owned process tree before releasing capacity; unexpected reader exceptions report and wake the caller with a safe code. Idle retirement has its own shared reporting boundary and fences new work after cleanup failure. Attachment cleanup runs in finally, including interruption; test_attachment_failure_reaps_child_and_propagates_original_error verifies the child exits, both pipes close and the original error propagates.",
     },
     ("backend/app/error_reporting.py", "report_error"): {
         "sha256": "846d33fc9a0853f2617085a4fd235523e42239695788f98212c58c9b8fbcaa82", "owner": "final log sink failure stays outside business state",

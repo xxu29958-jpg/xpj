@@ -102,14 +102,15 @@ class OcrWorkerClient:
                                    env=_worker_environment(), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                    stderr=subprocess.DEVNULL, creationflags=0x08000000 if os.name == "nt" else 0,
                                    start_new_session=os.name != "nt")
+        owner = None
         try:
             owner = ProcessTreeOwner(process)
-        except BaseException:
-            process.kill()
-            process.wait(timeout=self.stop_seconds)
-            for stream in (process.stdin, process.stdout):
-                stream.close()
-            raise
+        finally:
+            if owner is None:
+                process.kill()
+                process.wait(timeout=self.stop_seconds)
+                for stream in (process.stdin, process.stdout):
+                    stream.close()
         self._process, self._owner = process, owner
         self._messages = queue.Queue(maxsize=1)
         self._reader = threading.Thread(target=self._read, args=(process, self._messages),
@@ -177,7 +178,7 @@ class OcrWorkerClient:
             with self._state_lock:
                 if self._generation == generation and time.monotonic() - self._last_used >= self.idle_seconds:
                     self._stop()
-        except Exception as exc:
+        except (OSError, TimeoutError, subprocess.TimeoutExpired) as exc:
             with self._state_lock:
                 self._closed = True
             report_error(logger, "OCR idle retirement failed; new work remains stopped", error=exc)

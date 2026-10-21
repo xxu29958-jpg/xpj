@@ -17,6 +17,16 @@ from app.services.background_task_worker import run_task
 pytestmark = pytest.mark.real_db
 
 
+def _wait_completed(task_ids: list[int]) -> None:
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        with SessionLocal() as db:
+            if all(db.get(BackgroundTask, task_id).status == "completed" for task_id in task_ids):
+                return
+        time.sleep(0.01)
+    raise AssertionError("accepted tasks did not complete")
+
+
 def test_waiting_ocr_does_not_occupy_non_ocr_worker(identity, monkeypatch):
     monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "0")
     release = threading.Event()
@@ -57,14 +67,7 @@ def test_waiting_ocr_does_not_occupy_non_ocr_worker(identity, monkeypatch):
         release.set()
         # Wait for both accepted OCR wakeups, then join before DB fixture teardown.
         try:
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline:
-                with SessionLocal() as db:
-                    if all(db.get(BackgroundTask, task_id).status == "completed" for task_id in ids):
-                        break
-                time.sleep(0.01)
-            else:
-                raise AssertionError("accepted tasks did not complete")
+            _wait_completed(ids)
         finally:
             pool.shutdown(wait=True)
     assert calls == ids[:2]

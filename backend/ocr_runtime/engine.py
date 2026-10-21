@@ -131,7 +131,7 @@ def _evidence_blocks(result, width: int, height: int) -> list[dict]:
 
 class RapidEngine:
     def __init__(self, recipe_path: Path, model_root: Path) -> None:
-        started = time.monotonic()
+        started = time.perf_counter()
         self.recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
         if self.recipe.get("schema") != 1:
             raise OcrRuntimeError("ocr_recipe_invalid")
@@ -177,14 +177,16 @@ class RapidEngine:
                              json.dumps(characters, ensure_ascii=False).encode("utf-8")).hexdigest(),
                          "dependencies": self.recipe["dependencies"], "sessions": identities,
                          "native_runtime": native,
-                         "load_ms": (time.monotonic() - started) * 1000}
+                         "load_ms": (time.perf_counter() - started) * 1000}
 
     def recognize(self, path: Path, digest: str) -> dict:
-        started = time.monotonic()
+        started = time.perf_counter()
         width, height = _admit_image(path, digest, self.recipe["input_limits"])
-        admitted = time.monotonic()
+        admitted = time.perf_counter()
         with inference_image(path, self.recipe.get("decode_limits")) as (input_image, decoding):
+            decoded = time.perf_counter()
             result = self.engine(input_image)
+        inferred = time.perf_counter()
         decoded_width, decoded_height = decoding.get("width", width), decoding.get("height", height)
         if result.img is not None:
             # RapidOCR reports boxes against the decoded, EXIF-transposed image.
@@ -200,5 +202,8 @@ class RapidEngine:
                 "decoding": decoding,
                 "input_sha256": digest, "identity": self.identity,
                 "timings_ms": {"admission": (admitted - started) * 1000,
-                               "inference": (time.monotonic() - admitted) * 1000,
+                               "inference": (time.perf_counter() - admitted) * 1000,
+                               "decode": (decoded - admitted) * 1000,
+                               "engine": (inferred - decoded) * 1000,
+                               "postprocess": (time.perf_counter() - inferred) * 1000,
                                "stages": stages}}

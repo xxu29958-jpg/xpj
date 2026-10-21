@@ -1,5 +1,8 @@
 """Resumable Web consumers of the existing text and image recognition commands."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -39,6 +42,9 @@ from app.services.expense_ocr_command_service import submit_expense_text_recogni
 from app.services.expense_ocr_task_service import get_expense_ocr_task, submit_web_expense_ocr_task
 from app.services.expense_service import get_expense
 
+if TYPE_CHECKING:
+    from app.models import BackgroundTask, Expense
+
 router = APIRouter(prefix="/web", tags=["web"])
 
 
@@ -54,7 +60,8 @@ def web_recognition_get(
     return recognition_page(request, db, options, selected, expense_id, return_context.as_kwargs())
 
 
-def _recognize(db, request, selected, expense_id, fields):
+def _recognize(db: Session, request: Request, selected: str, expense_id: int,
+               fields: dict[str, str]) -> BackgroundTask | Expense:
     account_id, device_id = resolve_web_actor(db, request, selected)
     version = parse_form_row_version_token(fields["expected_row_version"])
     if version is None or not fields["idempotency_key"].strip():
@@ -65,11 +72,9 @@ def _recognize(db, request, selected, expense_id, fields):
         raw = fields["raw_text"]
         if not raw.strip() or len(raw) > 20000:
             raise AppError("invalid_request", "请粘贴 1–20000 字的小票文字。", status_code=422)
-        submit_expense_text_recognition(db, **common,
+        return submit_expense_text_recognition(db, **common,
             payload=ExpenseRecognizeTextRequest(expected_row_version=version, raw_text=raw))
-    else:
-        return submit_web_expense_ocr_task(db, **common, request_expected_row_version=version)
-    return None
+    return submit_web_expense_ocr_task(db, **common, request_expected_row_version=version)
 
 
 @router.post("/expenses/{expense_id}/recognize-text", response_class=HTMLResponse, include_in_schema=False)

@@ -154,6 +154,27 @@ def test_unexpected_reader_failure_is_observed_and_owned_process_is_reaped(tmp_p
         client.close()
 
 
+@pytest.mark.parametrize("failure", [RuntimeError("attach failed"), KeyboardInterrupt()])
+def test_attachment_failure_reaps_child_and_propagates_original_error(tmp_path, monkeypatch, failure):
+    children = []
+
+    def refuse_owner(process):
+        children.append(process)
+        raise failure
+
+    monkeypatch.setattr("app.services.ocr_worker_client.ProcessTreeOwner", refuse_owner)
+    client = _client()
+    try:
+        with pytest.raises(type(failure)) as raised:
+            client.recognize(tmp_path / "ok", "a")
+        assert raised.value is failure
+        assert len(children) == 1 and children[0].poll() is not None
+        assert children[0].stdin.closed and children[0].stdout.closed
+        assert client.pid is None
+    finally:
+        client.close()
+
+
 def test_idle_retirement_failure_is_reported_and_cannot_reopen_work(tmp_path, monkeypatch, caplog):
     client = _client(idle_seconds=0.2)
     try:

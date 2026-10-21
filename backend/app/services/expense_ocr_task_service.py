@@ -54,9 +54,9 @@ def _existing_task(db: Session, claim, *, legacy: bool) -> BackgroundTask | Expe
     return task
 
 
-def _prepare_retry(db: Session, claim, *, expense_id: int, tenant_id: str,
+def _prepare_retry(db: Session, claim: ApiIdempotencyKey, *, expense_id: int, tenant_id: str,
                    initiator_account_id: int, initiator_device_id: int | None,
-                   expected_row_version: int, legacy: bool):
+                   expected_row_version: int, legacy: bool) -> background_task_service.PreparedBackgroundTask:
     resolve_write_capability(db)
     expense = get_expense(db, expense_id, tenant_id)
     db.refresh(expense)
