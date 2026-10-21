@@ -169,7 +169,10 @@ def test_ocr_failure_next_step_reaches_retry_on_the_original_bill(record_context
         PendingEnrichmentWatch("00000000-0000-0000-0000-000000000001", outcome, 30000),
         flash_message="", flash_type="",
     )
-    assert "打开账单重试识别" in feedback.flash_message
+    if outcome == "no_result":
+        assert "当前填写没有变化" in feedback.flash_message and "继续核对" in feedback.flash_message
+    else:
+        assert "打开账单重试识别" in feedback.flash_message
     targets = _ocr_retry_targets(_render(template, context))
     assert targets, "失败/无结果后，真实账单页面必须有可操作的原单识别重试入口"
     assert all("/expenses/41/" in target for target in targets)

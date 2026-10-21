@@ -1,4 +1,6 @@
-"""Lose a committed OCR reply from the real drawer and replay its original key."""
+"""Lose an accepted OCR task reply and recover its original key from the real drawer."""
+
+from scripts.planning_journey_android import wait_for
 
 def open_recognition_task(j, amount, note):
     draft = j.page.locator('form[data-expensereview-draft-scope]')
@@ -26,23 +28,28 @@ def drawer_lost_ocr_reply(j):
     retry = open_recognition_task(j, "20.00", "抽屉尚未保存的核对")
     original_key = retry.locator('[name="idempotency_key"]').input_value()
     original_version = retry.locator('[name="expected_row_version"]').input_value()
+    before = j.facts()
     delivered = []
 
     def lose_reply(route):
         response = route.fetch(max_redirects=0)
-        assert response.status == 200 and response.json()["receipt"]["accepted"], "OCR was not accepted before losing its reply"
+        receipt = response.json()["receipt"]
+        assert response.status == 200 and receipt["accepted"] and receipt["task_public_id"], "OCR task was not accepted before losing its reply"
         route.abort("connectionclosed")
-        delivered.append(True)
+        delivered.append(receipt["task_public_id"])
 
     j.page.context.route("**" + path, lose_reply)
     try:
         retry.get_by_role("button", name="重新识别原件", exact=True).click()
         j.page.get_by_text("暂未收到保存回执。", exact=False).wait_for()
-        assert delivered == [True], "The real OCR command was not delivered before reply loss"
+        assert len(delivered) == 1, "The real OCR command was not delivered before reply loss"
     finally:
         j.page.context.unroute("**" + path, lose_reply)
+    wait_for(lambda: any(task["id"] == delivered[0] and task["status"] == "completed"
+                        for task in j.facts()["tasks"]), "The accepted OCR task did not complete", 90)
     accepted = j.facts()
-    assert accepted["expenses"][0]["version"] > int(original_version)
+    assert len(accepted["tasks"]) == len(before["tasks"]) + 1
+    assert len(accepted["ocr_facts"]) == len(before["ocr_facts"]) + 1
     j.page.reload()
     j.page.wait_for_function("document.querySelector('[data-recognition-form]')?.expenseReviewContinuity")
     assert retry.locator('[name="idempotency_key"]').input_value() == original_key

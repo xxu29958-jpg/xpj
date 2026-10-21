@@ -174,24 +174,31 @@ class BackstageJourney:
         self.native.capture("backstage-task-after-restart")
 
     def retry_web(self):
+        before = self.facts()
         self.configure_ocr(provider="local_llm")
         self.goto(f"/web/expenses/{self.expense_id}/edit")
         retry = open_recognition_task(self, "19.00", "原窗口尚未保存的核对")
-        original_key = retry.locator('[name="idempotency_key"]').input_value()
-        original_version = retry.locator('[name="expected_row_version"]').input_value()
         retry.get_by_role("button", name="重新识别原件", exact=True).click()
-        self.page.locator('form[data-expenseocr-draft-phase="blocked"]').wait_for()
-        assert retry.locator('[name="idempotency_key"]').input_value() == original_key
-        assert retry.locator('[name="expected_row_version"]').input_value() == original_version
-        self.capture("ocr-failure-original-request")
+        self.page.wait_for_url("**/edit?*")
+        self.page.locator('[data-ocr-task-message]').filter(has_text="这次识别未完成").wait_for(timeout=90000)
+        failed = self.facts()
+        assert len(failed["tasks"]) == len(before["tasks"]) + 1
+        assert failed["tasks"][-1]["status"] == "failed"
+        assert failed["expenses"] == before["expenses"] and failed["ocr_facts"] == before["ocr_facts"]
+        self.capture("ocr-failed-task-original-draft")
         self.configure_ocr()
         self.restart_backend()
-        retry.get_by_role("button", name="核实这次识别结果", exact=True).click()
+        self.page.reload()
+        retry = open_recognition_task(self, "19.00", "原窗口尚未保存的核对")
+        retry.get_by_role("button", name="重新识别原件", exact=True).click()
         self.page.wait_for_url("**/edit?*")
+        wait_for(lambda: self.facts()["tasks"][-1]["status"] == "completed", "New OCR task did not recover", 90)
         draft = self.page.locator('form[data-expensereview-draft-scope]')
         self.page.wait_for_function("document.querySelector('[name=amount_yuan]').value === '19.00'")
         assert draft.locator('[name="note"]').input_value() == "原窗口尚未保存的核对"
         current = self.facts()
+        assert current["tasks"][:-1] == failed["tasks"], "Recovery rewrote an earlier task"
+        assert len(current["ocr_facts"]) == len(before["ocr_facts"]) + 1
         assert current["expenses"][0]["amount"] == 1851
         assert current["tasks"][0] == self.original_task, "Manual OCR rewrote the original asynchronous task"
         self.capture("ocr-original-request-recovered")
