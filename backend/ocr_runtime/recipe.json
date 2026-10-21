@@ -1,0 +1,165 @@
+{
+  "schema": 1,
+  "name": "ticketbox-ppocrv6-tiny-cpu-v1",
+  "dependencies": {
+    "rapidocr": "3.10.0",
+    "onnxruntime": "1.25.1",
+    "Pillow": "13.0.0",
+    "numpy": "2.4.6",
+    "opencv-python-headless": "5.0.0.93",
+    "omegaconf": "2.4.0",
+    "PyYAML": "6.0.3",
+    "pyclipper": "1.4.0",
+    "shapely": "2.2.0",
+    "threadpoolctl": "3.6.0"
+  },
+  "models": {
+    "Det": {
+      "file": "det-inference.onnx",
+      "sha256": "193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8"
+    },
+    "Cls": {
+      "file": "ch_ppocr_mobile_v2.0_cls_infer.onnx",
+      "sha256": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c"
+    },
+    "Rec": {
+      "file": "rec-inference.onnx",
+      "sha256": "9ef676d6ed3c88256a2d92c640c44f25b0c40947e111b14b8be8f594091563e6"
+    }
+  },
+  "dictionary": {
+    "file": "ppocr-v6-tiny-keys.txt",
+    "sha256": "c5cbe34ef40c29c4df07ed012bf96569cb69a2d2a01a07027e9f13cb832bd9cd"
+  },
+  "session_options": {
+    "intra_threads": 2,
+    "inter_threads": 1,
+    "spinning": false,
+    "cpu_mem_arena": false,
+    "memory_pattern": false
+  },
+  "params": {
+    "Global.text_score": 0.5,
+    "Global.use_det": true,
+    "Global.use_cls": true,
+    "Global.use_rec": true,
+    "Global.min_height": 30,
+    "Global.width_height_ratio": 8,
+    "Global.max_side_len": 2000,
+    "Global.min_side_len": 30,
+    "Global.return_word_box": false,
+    "Global.return_single_char_box": false,
+    "Global.log_level": "error",
+    "Det.engine_type": "onnxruntime",
+    "Det.lang_type": "ch",
+    "Det.model_type": "tiny",
+    "Det.ocr_version": "PP-OCRv6",
+    "Det.task_type": "det",
+    "Det.limit_side_len": 736,
+    "Det.limit_type": "min",
+    "Det.std": [
+      0.229,
+      0.224,
+      0.225
+    ],
+    "Det.mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "Det.thresh": 0.2,
+    "Det.box_thresh": 0.4,
+    "Det.max_candidates": 3000,
+    "Det.unclip_ratio": 1.4,
+    "Det.use_dilation": false,
+    "Det.score_mode": "fast",
+    "Cls.engine_type": "onnxruntime",
+    "Cls.lang_type": "ch",
+    "Cls.model_type": "mobile",
+    "Cls.ocr_version": "PP-OCRv4",
+    "Cls.task_type": "cls",
+    "Cls.cls_image_shape": [
+      3,
+      48,
+      192
+    ],
+    "Cls.cls_batch_num": 1,
+    "Cls.cls_thresh": 0.9,
+    "Cls.label_list": [
+      "0",
+      "180"
+    ],
+    "Rec.engine_type": "onnxruntime",
+    "Rec.lang_type": "ch",
+    "Rec.model_type": "tiny",
+    "Rec.ocr_version": "PP-OCRv6",
+    "Rec.task_type": "rec",
+    "Rec.rec_img_shape": [
+      3,
+      48,
+      320
+    ],
+    "Rec.rec_batch_num": 1
+  },
+  "input_limits": {
+    "bytes": 33554432,
+    "pixels": 40000000,
+    "side": 16000
+  },
+  "output_schema": "text-blocks/v1",
+  "official_inputs": {
+    "det_revision": "2ba1506c0380b8f0b03dd142459aac66d4421f6c",
+    "rec_revision": "2612ab37152ae0a677521bae4e1e3d4fb4cf7c30",
+    "dictionary_characters": 6904,
+    "recognition_output_classes": 6906
+  },
+  "decode_limits": {
+    "pixels": 6000000
+  },
+  "native_runtime": {
+    "blas_threads": 1,
+    "opencv_threads": 1,
+    "opencl": false
+  },
+  "worker_limits": {
+    "memory_bytes": 536870912
+  },
+  "distribution": {
+    "models": {
+      "Det": {
+        "kind": "https",
+        "url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_det_onnx/resolve/2ba1506c0380b8f0b03dd142459aac66d4421f6c/inference.onnx",
+        "sha256": "193bab7a04fca699a6c82e6abb5b81bdb28177f0abd4062552b04908dafb19f8",
+        "bytes": 1780590,
+        "license": "Apache-2.0"
+      },
+      "Rec": {
+        "kind": "https",
+        "url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_rec_onnx/resolve/2612ab37152ae0a677521bae4e1e3d4fb4cf7c30/inference.onnx",
+        "sha256": "9ef676d6ed3c88256a2d92c640c44f25b0c40947e111b14b8be8f594091563e6",
+        "bytes": 4462639,
+        "license": "Apache-2.0"
+      },
+      "Cls": {
+        "kind": "wheel",
+        "file": "ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+        "sha256": "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c",
+        "bytes": 585532,
+        "license": "Apache-2.0"
+      }
+    },
+    "license": {
+      "file": "MODEL_LICENSE.txt",
+      "sha256": "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e",
+      "source": "https://github.com/PaddlePaddle/PaddleOCR/blob/v3.7.0/LICENSE"
+    },
+    "dictionary": {
+      "kind": "https",
+      "transform": "paddle-characters",
+      "url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_rec_onnx/resolve/2612ab37152ae0a677521bae4e1e3d4fb4cf7c30/inference.yml",
+      "sha256": "66170210bad538e83fff3c4a3867e547d6bf20b50d64b20347c4b913f3034ea1",
+      "bytes": 55571,
+      "license": "Apache-2.0"
+    }
+  }
+}

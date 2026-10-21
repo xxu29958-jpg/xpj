@@ -5,11 +5,11 @@ import os
 from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 BACKEND = os.path.dirname(SPECPATH)
-with open(os.path.join(BACKEND, "ocr_runtime", "recipe-v4.json"), encoding="utf-8") as stream:
+with open(os.path.join(BACKEND, "ocr_runtime", "recipe.json"), encoding="utf-8") as stream:
     recipe = json.load(stream)
 
-# Models are copied separately from this exact locked wheel, hash-checked against
-# the source recipe, and placed beside the worker. There is no runtime download.
+# Models are acquired from recipe-pinned sources during the build, hash-checked
+# and placed beside the worker. There is no runtime download.
 datas = collect_data_files("rapidocr", excludes=["models/*"])
 for dependency in recipe["dependencies"]:
     datas += copy_metadata(dependency)

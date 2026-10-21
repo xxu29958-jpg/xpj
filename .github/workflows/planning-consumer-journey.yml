@@ -176,6 +176,7 @@ jobs:
         working-directory: backend
         run: |
           ./.ci-venv/bin/python -m pip install -r requirements-ocr.txt
+          ./.ci-venv/bin/python scripts/prepare_ocr_payload.py --recipe ocr_runtime/recipe.json --output build/ocr-runtime
           sudo apt-get install -y fonts-noto-cjk
       - name: Install the sample receipt font for original and financial journeys
         if: ${{ env.TICKETBOX_JOURNEY_GROUP == 'original-maintenance' || env.TICKETBOX_JOURNEY_GROUP == 'financial-facts' }}

@@ -19,8 +19,11 @@ Python、uv、PyInstaller 的精确版本只从
 只把校验通过的 staging 目录原子发布到 `dist\ticketbox-backend`，发布失败会恢复上一份完整目录。实际可执行文件 hash、
 完整执行树和分发快照写入 backend provenance。该证据用于追溯，不宣称 frozen 字节可重复。
 离线 OCR 随包放在 `ocr-runtime/`：独立 `ticketbox-ocr.exe`、原生库、固定 recipe、模型及字典。
-模型从同一 hash 锁定的 RapidOCR wheel 提取，再按 recipe 摘要校验；发布前实际启动冻结 worker
+默认模型由 `ocr_runtime/recipe.json` 确定，当前为官方 PP-OCRv6 tiny。检测/识别权重和字典源绑定官方仓库的精确 revision 与 SHA-256，方向分类权重来自锁定的 RapidOCR wheel；构建期获取并校验，模型许可证随包保留。字典使用规范 LF 字节。
+发布前实际启动冻结 worker
 识别合成票据并验证退出。运行时不安装依赖或下载模型，后端主进程不载入 OCR 原生库。
+
+源码运行时，在安装 `requirements-ocr.txt` 后执行 `python scripts/prepare_ocr_payload.py --recipe ocr_runtime/recipe.json --output build/ocr-runtime`。已取得的匹配模型可用 `--model-root` 指定，仍须通过全部哈希校验。源码与冻结运行时都只读取已准备好的离线 bundle；更换模型通过受审查的发布配方，不依赖用户输入底层参数。
 
 ## 档 B：Inno 捆绑安装器
 

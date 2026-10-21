@@ -1,5 +1,14 @@
 # Optional local OCR dependencies.
 # Install only on the Windows host that should run OCR:
 #   .venv\Scripts\python.exe -m pip install -r requirements-ocr.txt
-rapidocr==3.8.1
+# Then prepare the recipe-pinned offline bundle as described in packaging/README.md.
+rapidocr==3.10.0
 onnxruntime==1.25.1
+Pillow==13.0.0
+numpy==2.4.6
+opencv-python-headless==5.0.0.93
+omegaconf==2.4.0
+PyYAML==6.0.3
+pyclipper==1.4.0
+shapely==2.2.0
+threadpoolctl==3.6.0

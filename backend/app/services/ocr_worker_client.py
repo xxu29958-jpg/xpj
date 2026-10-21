@@ -35,8 +35,9 @@ def _runtime_command() -> list[str]:
     spec = importlib.util.find_spec("rapidocr")
     if spec is None or spec.origin is None:
         raise OcrRuntimeError("ocr_runtime_unavailable")
-    return [sys.executable, "-m", "ocr_runtime", "--recipe", str(_BACKEND_ROOT / "ocr_runtime/recipe-v4.json"),
-            "--model-root", str(Path(spec.origin).parent / "models")]
+    root = _BACKEND_ROOT / "build/ocr-runtime"
+    return [sys.executable, "-m", "ocr_runtime", "--recipe", str(root / "recipe.json"),
+            "--model-root", str(root / "models")]
 
 
 def _worker_environment() -> dict[str, str]:

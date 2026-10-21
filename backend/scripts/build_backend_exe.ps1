@@ -82,7 +82,7 @@ function Build-TicketboxOcrPayload(
     $target = Join-Path $OutputRoot "ticketbox-backend\ocr-runtime"
     Copy-Item -LiteralPath (Join-Path $OutputRoot "ticketbox-ocr") -Destination $target -Recurse
     & $Python -I -B (Join-Path $SourceRoot "scripts\prepare_ocr_payload.py") `
-        --recipe (Join-Path $SourceRoot "ocr_runtime\recipe-v4.json") --output $target
+        --recipe (Join-Path $SourceRoot "ocr_runtime\recipe.json") --output $target
     if ($LASTEXITCODE -ne 0) { throw "Offline OCR payload admission failed." }
     & $Python -I -B (Join-Path $SourceRoot "scripts\smoke_ocr_payload.py") --payload $target
     if ($LASTEXITCODE -ne 0) { throw "Frozen offline OCR smoke failed." }
