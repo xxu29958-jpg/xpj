@@ -1105,6 +1105,10 @@ function Get-TicketboxBackendSourcePaths([string]$BackendRoot) {
         "packaging\prepare_windows_build_toolchain.ps1",
         "packaging\launch.py",
         "packaging\ticketbox-backend.spec",
+        "packaging\launch_ocr.py",
+        "packaging\ticketbox-ocr.spec",
+        "scripts\prepare_ocr_payload.py",
+        "scripts\smoke_ocr_payload.py",
         "scripts\build_database_generation_program.py",
         "scripts\build_backend_exe.ps1",
         "scripts\windows_build_provenance.ps1",
@@ -1119,7 +1123,7 @@ function Get-TicketboxBackendSourcePaths([string]$BackendRoot) {
         }
         $paths += (Resolve-Path -LiteralPath $path).Path
     }
-    foreach ($relativeDir in @("app", "migrations")) {
+    foreach ($relativeDir in @("app", "migrations", "ocr_runtime")) {
         $directory = Join-Path $BackendRoot $relativeDir
         if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
             throw "Frozen backend source directory is missing: $directory"
@@ -1158,6 +1162,7 @@ function Assert-TicketboxFrozenBackendExecutableSet([string]$DistDir) {
         throw "Frozen backend directory does not exist: $DistDir"
     }
     $expected = @(
+        "ocr-runtime/ticketbox-ocr.exe",
         "ticketbox-backend.exe",
         "ticketbox-database-maintenance.exe"
     )

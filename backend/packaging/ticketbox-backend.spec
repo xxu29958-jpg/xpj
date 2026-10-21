@@ -1,4 +1,4 @@
-# PyInstaller spec — frozen Ticketbox backend (no OCR; OCR is opt-in and heavy).
+# PyInstaller spec — backend process; native OCR lives in ticketbox-ocr.spec.
 #
 # Build from the backend/ directory:
 #     .venv-build\Scripts\pyinstaller.exe packaging\ticketbox-backend.spec

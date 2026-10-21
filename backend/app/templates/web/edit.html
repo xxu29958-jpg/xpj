@@ -11,6 +11,7 @@
 <script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/expense-subtask-entry.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/expense-recognition-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/expense-ocr-watch.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/expense-funding.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/expense-review-entry.js?v={{ asset_version }}"></script>
 {% endblock %}
@@ -57,6 +58,7 @@
 {% if error and not conflict_current %}
 <div class="product-feedback product-feedback--error" role="alert">{{ error }}</div>
 {% endif %}
+{% include "_expense_ocr_watch.html" %}
 
 <div class="detail-layout expense-detail-layout" data-review-stage="primary">
   <div class="detail-main product-drawer-form">

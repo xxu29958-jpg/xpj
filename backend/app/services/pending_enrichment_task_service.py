@@ -12,7 +12,11 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import BackgroundTask
 from app.services import background_task_service
-from app.services.background_task_admission import BackgroundTaskCapacityFullError, readmit_orphaned_task
+from app.services.background_task_admission import (
+    INTERRUPTED_TASK_CODES,
+    BackgroundTaskCapacityFullError,
+    readmit_orphaned_task,
+)
 from app.services.background_task_handler_api import (
     TaskCancelledError,
     check_cancellation_requested,
@@ -23,14 +27,6 @@ from app.services.expense_service import enrich_pending_expense
 from app.services.pending_fx_task_service import prepare_pending_expense_fx
 
 PENDING_EXPENSE_ENRICHMENT_TASK_TYPE = "expense_enrichment"
-
-_PROGRESS_MESSAGES = {
-    "updated": "识别结果已写入待确认账单。",
-    "no_result": "识别完成，未返回可用字段。",
-    "not_pending": "账单已不在待确认队列。",
-    "conflict": "用户后续修改已保留，识别结果未覆盖账单。",
-}
-
 
 class PendingEnrichmentTaskError(Exception):
     """The enrichment owner returned an impossible task outcome."""
@@ -108,7 +104,7 @@ def resume_pending_expense_enrichment(
         BackgroundTask.task_type == PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
     ))
     if task is None or not (task.status == "queued" or
-            task.status == "failed" and task.error_code == "orphaned_after_restart"):
+            task.status == "failed" and task.error_code in INTERRUPTED_TASK_CODES):
         return
     try:
         payload = json.loads(task.input_payload_json or "null")
@@ -156,6 +152,8 @@ def run_pending_expense_enrichment_task(
     db: Session,
     task: BackgroundTask,
     payload: dict[str, Any],
+    *,
+    explicit_retry: bool = False,
 ) -> None:
     """Run one task-scoped enrichment and persist its exact user outcome."""
     expense_id, tenant_id, timezone_name, expected_row_version = _task_payload(
@@ -167,37 +165,27 @@ def run_pending_expense_enrichment_task(
     if task.result_summary_json is not None:
         return
 
-    def assert_not_cancelled() -> None:
-        if check_cancellation_requested(db, task.id):
-            raise TaskCancelledError
-
-    assert_not_cancelled()
+    task_id = task.id
+    if check_cancellation_requested(db, task_id):
+        raise TaskCancelledError
+    # The handler's read transaction must not remain idle during OCR. The
+    # expense owner reacquires identity/expense/task locks for atomic apply.
+    db.rollback()
 
     result = enrich_pending_expense(
         expense_id,
         tenant_id,
         timezone_name,
         expected_row_version=expected_row_version,
-        before_apply=assert_not_cancelled,
         raise_on_failure=True,
+        task_id=task_id,
+        explicit_retry=explicit_retry,
     )
     if result.outcome == "failed":
         raise PendingEnrichmentTaskError("expense enrichment failed without an exception")
 
-    task.result_summary_json = json.dumps(
-        {
-            "expense_id": result.expense_id,
-            "outcome": result.outcome,
-            "row_version": result.row_version,
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    task.progress_current = 1
-    task.progress_total = 1
-    task.progress_message = _PROGRESS_MESSAGES[result.outcome]
-    db.commit()
+    # Read back the same transaction's applied receipt; no second result commit.
+    db.refresh(task)
 
 
 def prepare_pending_enrichment_completion(

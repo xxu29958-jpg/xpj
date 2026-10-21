@@ -17,8 +17,10 @@ Python、uv、PyInstaller 的精确版本只从
 `packaging/windows-build-toolchain.json` 动态读取；传递依赖只从带 hash 的 `requirements-build.lock` 同步。构建会拒绝
 本机版本、配置/锁、完整 Python/site-packages 执行树或冻结期间环境漂移；同一仓库的冻结构建由机器级 mutex 串行化，
 只把校验通过的 staging 目录原子发布到 `dist\ticketbox-backend`，发布失败会恢复上一份完整目录。实际可执行文件 hash、
-完整执行树和分发快照写入 backend provenance。该证据用于追溯，不宣称 frozen 字节可重复。**不含 OCR**
-(rapidocr/onnxruntime/opencv 太重且可选)——需要 OCR 的话另装 `requirements-ocr.txt` 跑源码版。
+完整执行树和分发快照写入 backend provenance。该证据用于追溯，不宣称 frozen 字节可重复。
+离线 OCR 随包放在 `ocr-runtime/`：独立 `ticketbox-ocr.exe`、原生库、固定 recipe、模型及字典。
+模型从同一 hash 锁定的 RapidOCR wheel 提取，再按 recipe 摘要校验；发布前实际启动冻结 worker
+识别合成票据并验证退出。运行时不安装依赖或下载模型，后端主进程不载入 OCR 原生库。
 
 ## 档 B：Inno 捆绑安装器
 

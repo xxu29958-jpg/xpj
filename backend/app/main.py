@@ -173,6 +173,10 @@ _logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Reject an overlapping old runner before startup can alter its PG state.
+    from app.services.background_task_executor import start_executor
+
+    start_executor()
     # ADR-0047 §3: under the Windows-service model the SCM can mark the PostgreSQL
     # service RUNNING before it accepts connections, so block (bounded) until the
     # DB is reachable before init_db()'s first connection. No-op when the DB is
@@ -198,9 +202,12 @@ async def lifespan(_: FastAPI):
     from app.services.bill_split_service import reconcile_bill_split_debts_if_enabled
 
     reconcile_bill_split_debts_if_enabled()
-    # ADR-0030 orphan recovery: tasks that were running or queued when
-    # the previous process died are now phantoms — force-fail them.
+    # Complete committed OCR receipts without repeating inference; fence other
+    # lost process-local work for its domain's original-input recovery.
     recover_orphaned_tasks()
+    from app.services.ocr_worker_client import shutdown_ocr_worker, start_ocr_worker_service
+
+    start_ocr_worker_service()
     fx_scheduler = start_fx_rate_scheduler()
     # v1.2 ops: optional daily learning-table cleanup. Disabled by
     # default; opt in via LEARNING_CLEANUP_AUTO_ENABLED=true.
@@ -227,6 +234,7 @@ async def lifespan(_: FastAPI):
         device_cleanup_scheduler.stop()
         soft_delete_purge_scheduler.stop()
         shutdown_executor(wait=False)
+        shutdown_ocr_worker()
 
 
 app = FastAPI(

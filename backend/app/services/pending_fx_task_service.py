@@ -16,7 +16,11 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Account, BackgroundTask, Device, Expense
 from app.services import background_task_service
-from app.services.background_task_admission import BackgroundTaskCapacityFullError, readmit_orphaned_task
+from app.services.background_task_admission import (
+    INTERRUPTED_TASK_CODES,
+    BackgroundTaskCapacityFullError,
+    readmit_orphaned_task,
+)
 from app.services.background_task_handler_api import (
     TaskCancelledError,
     check_cancellation_requested,
@@ -212,7 +216,7 @@ def refill_pending_expense_fx(*, after_id: int = 0) -> int:
 
 def _can_resume(task: BackgroundTask) -> bool:
     return task.status in {"queued", "running"} or (
-        task.status == "failed" and task.error_code == "orphaned_after_restart"
+        task.status == "failed" and task.error_code in INTERRUPTED_TASK_CODES
         and task.cancellation_requested_at is None
     )
 

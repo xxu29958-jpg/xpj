@@ -169,6 +169,8 @@ def _write_minimal_backend(root: Path) -> Path:
     (root / "migrations" / "versions").mkdir(parents=True)
     (root / "packaging").mkdir()
     (root / "scripts").mkdir()
+    (root / "ocr_runtime").mkdir()
+    (root / "ocr_runtime" / "__main__.py").write_text("# OCR runtime\n", encoding="utf-8")
     (root / "app" / "version.py").write_text('BACKEND_VERSION = "7.8.9"\n', encoding="utf-8")
     (root / "app" / "main.py").write_text("VALUE = 1\n", encoding="utf-8")
     (root / "migrations" / "env.py").write_text("# migration\n", encoding="utf-8")
@@ -182,6 +184,10 @@ def _write_minimal_backend(root: Path) -> Path:
         "packaging/prepare_windows_build_toolchain.ps1",
         "packaging/launch.py",
         "packaging/ticketbox-backend.spec",
+        "packaging/launch_ocr.py",
+        "packaging/ticketbox-ocr.spec",
+        "scripts/prepare_ocr_payload.py",
+        "scripts/smoke_ocr_payload.py",
         "scripts/build_database_generation_program.py",
         "scripts/build_backend_exe.ps1",
         "scripts/windows_build_provenance.ps1",
@@ -252,6 +258,8 @@ def _write_minimal_backend(root: Path) -> Path:
     (dist / "_internal").mkdir(parents=True)
     (dist / "ticketbox-backend.exe").write_bytes(b"frozen-exe-v1")
     (dist / "ticketbox-database-maintenance.exe").write_bytes(b"database-maintenance-v1")
+    (dist / "ocr-runtime").mkdir()
+    (dist / "ocr-runtime" / "ticketbox-ocr.exe").write_bytes(b"ocr-worker-v1")
     (dist / "DATABASE_GENERATION_PROGRAM.json").write_text(
         '{"schema":"synthetic-generation-program"}', encoding="utf-8"
     )

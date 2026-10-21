@@ -223,8 +223,11 @@ def clear_db_state() -> None:
 
 def reset_db_state() -> None:
     """Drop & recreate schema, run init_db (migrations + seed)."""
+    from app.services.background_task_executor import start_executor
+
     clear_db_state()
     init_db()
+    start_executor()
 
 
 def cleanup_runtime() -> None:

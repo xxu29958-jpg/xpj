@@ -17,6 +17,7 @@ class OcrResult:
     merchant: str | None = None
     expense_time: datetime | None = None
     category: str | None = None
+    evidence: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)

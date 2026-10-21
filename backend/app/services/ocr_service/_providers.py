@@ -16,8 +16,10 @@ from app.services.local_llm_vision import call_local_llm_vision, require_local_l
 from app.services.ocr_service._llm_parsing import _result_from_llm_json
 from app.services.ocr_service._merge import _merge_result_with_text_parse
 from app.services.ocr_service._models import OcrProvider, OcrResult
+from app.services.ocr_worker_client import recognize_snapshot
 from app.services.original_read_service import OriginalSnapshot, read_original_snapshot
 from app.services.receipt_parse_service import parse_receipt_text
+from ocr_runtime.protocol import OcrRuntimeError
 
 
 def _original_snapshot(expense: Expense) -> OriginalSnapshot:
@@ -67,31 +69,18 @@ class RapidOcrProvider:
     def extract_snapshot(self, original: OriginalSnapshot, timezone_name: str | None = None) -> OcrResult:
         """Recognize an already authorized immutable snapshot, without database access."""
         try:
-            from rapidocr import RapidOCR  # type: ignore[import-not-found]
-        except ImportError as exc:
-            raise AppError(
-                "server_error",
-                "本地 RapidOCR 未安装。请先安装 backend/requirements-ocr.txt。",
-                status_code=500,
-            ) from exc
-
-        try:
-            result = RapidOCR()(str(original.path))
-        except (ImportError, OSError, RuntimeError, ValueError, TypeError) as exc:
-            raise AppError("server_error", "本地 OCR 识别失败。", status_code=500) from exc
-
-        try:
-            raw_texts = result.txts or ()
-            raw_scores = result.scores or ()
-        except AttributeError as exc:
-            raise AppError("server_error", "本地 OCR 识别失败。", status_code=500) from exc
-
-        texts = [text.strip() for text in raw_texts if text and text.strip()]
+            evidence = recognize_snapshot(original.path, original.sha256)
+            blocks = evidence["blocks"]
+            texts = [block["text"].strip() for block in blocks if block["text"].strip()]
+            scores = [float(block["confidence"]) for block in blocks]
+        except OcrRuntimeError as exc:
+            raise AppError(exc.code, status_code=503) from exc
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
+            raise AppError("ocr_inference_failed", status_code=503) from exc
         raw_text = "\n".join(texts)
-        scores = [float(score) for score in raw_scores if score is not None]
         confidence = (sum(scores) / len(scores)) if scores else None
         return _merge_result_with_text_parse(
-            OcrResult(raw_text=raw_text, confidence=confidence),
+            OcrResult(raw_text=raw_text, confidence=confidence, evidence=evidence),
             parsed_confidence=confidence,
             timezone_name=timezone_name,
         )

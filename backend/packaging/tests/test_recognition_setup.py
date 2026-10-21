@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import threading
 from dataclasses import asdict
@@ -20,6 +21,7 @@ from app.database import get_db
 from app.middleware import csrf
 from app.middleware.logging import SanitizedLoggingMiddleware
 from app.routes.owner_console import _settings
+from app.services import ocr_worker_client
 from app.services import runtime_settings_service as runtime
 from app.services.local_llm_vision import call_local_llm_vision, local_llm_slot
 
@@ -90,6 +92,31 @@ def test_reading_models_preserves_the_unsaved_form_and_effective_configuration(s
     assert result.status_code == 200 and "已读取 2 个模型" in result.text
     assert 'value="vision-two"' in result.text and 'value="45"' in result.text
     assert local_model.requests == [("/v1/models", None)]
+
+
+def test_owner_can_select_frozen_worker_without_ocr_in_the_parent(setup_page, tmp_path, monkeypatch):
+    client, _, form = setup_page
+    root = tmp_path / "release"
+    models = root / "ocr-runtime" / "models"
+    models.mkdir(parents=True)
+    (root / "ocr-runtime" / "ticketbox-ocr.exe").write_bytes(b"frozen-worker")
+    model = models / "sample.onnx"
+    model.write_bytes(b"controlled-model")
+    entry = {"file": model.name, "sha256": hashlib.sha256(model.read_bytes()).hexdigest()}
+    (root / "ocr-runtime" / "recipe.json").write_text(
+        json.dumps({"schema": 1, "models": {"Det": entry}, "dictionary": entry}), encoding="utf-8")
+    monkeypatch.setattr(ocr_worker_client.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(ocr_worker_client.sys, "executable", str(root / "ticketbox-backend.exe"))
+    monkeypatch.setattr(ocr_worker_client.importlib.util, "find_spec", lambda name: None)
+    assert runtime.get_recognition_view().rapidocr_available
+    result = client.post("/owner/settings/recognition", data={**form,
+        "ocr_provider": "rapidocr", "ocr_auto_run": "true", "recognition_action": "save"})
+    assert result.status_code in {200, 303}, result.text
+    assert config.get_settings().ocr_provider == "rapidocr"
+    assert ocr_worker_client._CLIENT.pid is None
+    model.write_bytes(b"damaged")
+    view = runtime.get_recognition_view()
+    assert not view.rapidocr_available and view.receipt_status == "本机文字识别组件不可用"
 
 
 def test_image_check_uses_draft_connection_and_only_a_fixed_test_image(setup_page, local_model):

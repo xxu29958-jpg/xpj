@@ -27,6 +27,7 @@ from app.routes._web_expense_helpers import (
     web_edit_context,
     web_save_response,
 )
+from app.routes._web_expense_ocr_watch import expense_ocr_watch_context
 from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     edit_context_params,
@@ -124,6 +125,7 @@ def web_edit_get(
         # Inspect the server's pending/rejected fields without restoring a local
         # command or opening another submission. The original task owns editing.
         ctx.update(can_write=False, expense_review_scope=None, expense_subtasks={})
+    ctx.update(expense_ocr_watch_context(db, request, tenant_id=selected_id, expense_id=expense_id))
     # ?fragment=1 returns the drawer fragment fetched by desktop.js.
     if fragment:
         return templates.TemplateResponse(request=request, name="_edit_drawer.html", context=ctx)

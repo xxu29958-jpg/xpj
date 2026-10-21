@@ -24,6 +24,7 @@ def _merge_result_with_text_parse(
         merchant=result.merchant or parsed.merchant,
         expense_time=result.expense_time or parsed.expense_time,
         category=_safe_category(result.category) or _safe_category(parsed.category),
+        evidence=result.evidence,
     )
 
 

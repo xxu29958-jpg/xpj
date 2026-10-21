@@ -13,7 +13,6 @@ Security:
 
 from __future__ import annotations
 
-import importlib.util
 from dataclasses import dataclass
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -26,6 +25,7 @@ from app.config import (
 )
 from app.errors import AppError
 from app.recognition_config import resolve_local_llm_base_url
+from app.services.ocr_worker_client import ocr_runtime_available
 from app.services.runtime_settings_store import (
     RecognitionSettingsProjection,
     RuntimeSettingsConflictError,
@@ -128,8 +128,11 @@ def get_recognition_view(
     )
     if form is None:
         form = effective
+    rapidocr_available = ocr_runtime_available()
     if effective.ocr_provider == "empty":
         receipt_status = "手动核对"
+    elif effective.ocr_provider == "rapidocr" and not rapidocr_available:
+        receipt_status = "本机文字识别组件不可用"
     elif not effective.ocr_auto_run:
         receipt_status = "已配置，自动识别关闭"
     elif effective.ocr_provider == "rapidocr":
@@ -139,7 +142,7 @@ def get_recognition_view(
     debt_bill_status = "本机视觉模型" if effective.debt_bill_provider == "local_llm" else "手动录入"
     return RecognitionSettingsView(
         form=form,
-        rapidocr_available=importlib.util.find_spec("rapidocr") is not None,
+        rapidocr_available=rapidocr_available,
         receipt_status=receipt_status,
         debt_bill_status=debt_bill_status,
     )
@@ -290,9 +293,9 @@ def _validated_recognition(form: RecognitionSettingsForm) -> RecognitionSettings
         raise _invalid("请选择可用的备用识别方式。")
     if debt_provider not in {"empty", "local_llm"}:
         raise _invalid("请选择可用的债务账单录入方式。")
-    rapidocr_available = importlib.util.find_spec("rapidocr") is not None
+    rapidocr_available = ocr_runtime_available()
     if "rapidocr" in {provider, fallback} and not rapidocr_available:
-        raise _invalid("这台主机没有安装 RapidOCR，请改用本机视觉模型或手动核对。")
+        raise _invalid("本机文字识别组件不完整，请修复安装后重试；仍可手动核对。")
     if fallback != "empty" and fallback == provider:
         raise _invalid("备用识别方式不能与主要方式相同。")
     if provider == "empty" and form.ocr_auto_run:

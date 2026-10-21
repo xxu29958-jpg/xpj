@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-import sys
 from dataclasses import replace
 from io import BytesIO
-from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -49,12 +47,13 @@ def _ocr_consumer(monkeypatch, provider: str, consumed: list[bytes]):
         monkeypatch.setattr(_providers, "call_local_llm_vision", call)
         return _providers.LocalLlmOcrProvider()
 
-    def run(path):
+    def run(path, digest):
         from pathlib import Path
         consumed.append(Path(path).read_bytes())
-        return SimpleNamespace(txts=[], scores=[])
+        assert hashlib.sha256(consumed[-1]).hexdigest() == digest
+        return {"blocks": [], "input_sha256": digest}
 
-    monkeypatch.setitem(sys.modules, "rapidocr", SimpleNamespace(RapidOCR=lambda: run))
+    monkeypatch.setattr(_providers, "recognize_snapshot", run)
     return _providers.RapidOcrProvider()
 
 
@@ -89,13 +88,14 @@ def test_rapidocr_reads_snapshot_when_source_changes_after_verification(monkeypa
     consumed = []
     paths = []
 
-    def run(path):
+    def run(path, digest):
         paths.append(Path(path))
         source.write_bytes(_png("blue"))
         consumed.append(Path(path).read_bytes())
-        return SimpleNamespace(txts=[], scores=[])
+        assert hashlib.sha256(consumed[-1]).hexdigest() == digest
+        return {"blocks": [], "input_sha256": digest}
 
-    monkeypatch.setitem(sys.modules, "rapidocr", SimpleNamespace(RapidOCR=lambda: run))
+    monkeypatch.setattr(_providers, "recognize_snapshot", run)
     _providers.RapidOcrProvider().extract(expense)
     assert consumed == [data]
     assert paths[0] != source and not paths[0].exists()

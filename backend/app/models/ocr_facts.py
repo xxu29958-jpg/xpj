@@ -115,6 +115,9 @@ class OcrFact(Base):
     ocr_provider: Mapped[str] = mapped_column(String(64), nullable=False)
     ocr_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Versioned blocks, source digest and exact offline recipe from the worker.
+    # Legacy/text-only facts have no image evidence; never backfill invented boxes.
+    evidence_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     parsed_amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     parsed_merchant: Mapped[str | None] = mapped_column(String(255), nullable=True)
     parsed_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
