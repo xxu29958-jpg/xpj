@@ -53,7 +53,9 @@ internal class PendingEnrichmentObserver(
 
     fun restore(receipts: List<PendingUploadReceipt>) {
         val pendingIds = receipts.map { it.expenseId }.toSet()
-        paused.entries.removeAll { it.value.expenseId !in pendingIds }
+        val absentTaskIds = paused.filterValues { it.expenseId !in pendingIds }.keys
+        paused.keys.removeAll(absentTaskIds)
+        observed.removeAll(absentTaskIds)
         if (latestFeedback?.expenseId?.let { it !in pendingIds } == true) dismissFeedback()
         receipts.forEach { start(it, restoring = true) }
     }

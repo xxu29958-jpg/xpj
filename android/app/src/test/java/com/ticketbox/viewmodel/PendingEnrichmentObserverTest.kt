@@ -13,6 +13,37 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class PendingEnrichmentObserverTest {
     @Test
+    fun aPausedTaskResumesWhenItsExpenseReturnsAfterRemoval() = runTest {
+        val replies = ArrayDeque(listOf(
+            Result.failure<PendingEnrichmentTask>(IllegalStateException("offline")),
+            Result.success(PendingEnrichmentTask("running", null)),
+            Result.success(PendingEnrichmentTask("completed", PendingEnrichmentOutcome.Updated)),
+        ))
+        val requests = mutableListOf<String>()
+        var state = PendingEnrichmentUiState()
+        var refreshes = 0
+        val observer = PendingEnrichmentObserver(this,
+            { requests += it; replies.removeFirst() }, { true }, { state = it }, { refreshes++ })
+        val receipt = PendingUploadReceipt(1, "original-task")
+        observer.track(receipt)
+        runCurrent()
+        assertEquals(PendingEnrichmentFeedbackKind.Unavailable, state.feedback?.kind)
+
+        observer.restore(emptyList())
+        assertEquals(null, state.feedback)
+        observer.retryPaused()
+        runCurrent()
+        assertEquals(listOf("original-task"), requests)
+
+        observer.restore(listOf(receipt))
+        advanceUntilIdle()
+        assertEquals(List(3) { "original-task" }, requests)
+        assertEquals(PendingEnrichmentFeedbackKind.Updated, state.feedback?.kind)
+        assertEquals(0, state.activeCount)
+        assertEquals(1, refreshes)
+    }
+
+    @Test
     fun dismissingOneFailureDoesNotCancelAnotherActiveRecognition() = runTest {
         val second = kotlinx.coroutines.CompletableDeferred<Result<PendingEnrichmentTask>>()
         var state = PendingEnrichmentUiState()
