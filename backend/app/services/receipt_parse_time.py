@@ -21,10 +21,11 @@ _CLOCK = (
 )
 _CLOCK_SUFFIX = rf"(?:[T\s]+(?:(?:时间|TIME)\s*[:：]?\s*)?{_CLOCK})?"
 _PATTERNS = (
+    ("ymd_zh", re.compile(r"(?<!\d)(?P<year>\d{4})年(?P<month>\d{1,2})月(?P<day>\d{1,2})日" + rf"(?:\s*{_CLOCK})?", re.I)),
     ("ymd_compact", re.compile(r"(?<!\d)(?P<year>\d{4})[/.-](?P<month>\d{2})[/.-](?P<day>\d{2})" + _CLOCK, re.I)),
     ("ymd", re.compile(r"(?<!\d)(?P<year>\d{4})[年/.-](?P<month>\d{1,2})[月/.-](?P<day>\d{1,2})日?(?!\d)" + _CLOCK_SUFFIX, re.I)),
     ("day_month", re.compile(r"(?<![\d/.-])(?P<first>\d{1,2})[/.-](?P<last>\d{1,2})[/.-](?P<year>\d{4})(?!\d)" + _CLOCK_SUFFIX, re.I)),
-    ("month_name", re.compile(r"(?<!\d)(?P<day>\d{1,2})[\s/-]+(?P<month_name>JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[\s/-]+(?P<year>\d{4})(?!\d)" + _CLOCK_SUFFIX, re.I)),
+    ("month_name", re.compile(r"(?<!\d)(?P<day>\d{1,2})[\s/-]+(?P<month_name>JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?),?[\s/-]+(?P<year>\d{4})(?!\d)" + _CLOCK_SUFFIX, re.I)),
     ("missing_year", re.compile(r"(?<![\d年/.-])(?P<month>\d{1,2})月(?P<day>\d{1,2})日\s*" + rf"(?:{_CLOCK})?", re.I)),
     ("relative_day", re.compile(r"(?P<relative_day>今天|今日|昨天|昨日)\s*" + rf"(?:{_CLOCK})?", re.I)),
     ("clock", re.compile(r"(?<!\d)" + _CLOCK, re.I)),
@@ -115,7 +116,7 @@ def _dates(
             return [(None, ("date",), "reference_time_missing")]
         day = reference.astimezone(zone).date() - timedelta(days=groups["relative_day"] in {"昨天", "昨日"})
         return [(day, ("date",), "date_inferred_from_capture_reference")]
-    month = _MONTHS[groups["month_name"].upper()] if groups.get("month_name") else int(groups.get("month") or 1)
+    month = _MONTHS[groups["month_name"][:3].upper()] if groups.get("month_name") else int(groups.get("month") or 1)
     day = int(groups.get("day") or 1)
     if kind == "missing_year":
         if reference is None or zone is None:

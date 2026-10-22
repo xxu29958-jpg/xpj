@@ -46,15 +46,15 @@ def find_duplicate_candidates(db: Session, expense: Expense) -> list[DuplicateCa
     # exact-image and original-money queries also reach older matching records.
     rows = {row.id: row for row in db.scalars(query.limit(limit))}
     if expense.image_hash:
-        rows.update((row.id, row) for row in db.scalars(query.where(Expense.image_hash == expense.image_hash).limit(limit)))
+        rows |= {row.id: row for row in db.scalars(query.where(Expense.image_hash == expense.image_hash).limit(limit))}
     if expense.original_amount_minor is not None:
-        rows.update((row.id, row) for row in db.scalars(query.where(
+        rows |= {row.id: row for row in db.scalars(query.where(
             Expense.original_currency_code == expense.original_currency_code,
-            Expense.original_amount_minor == expense.original_amount_minor).limit(limit)))
+            Expense.original_amount_minor == expense.original_amount_minor).limit(limit))}
     elif expense.amount_cents is not None and expense.original_currency_code == expense.home_currency_code:
-        rows.update((row.id, row) for row in db.scalars(query.where(
+        rows |= {row.id: row for row in db.scalars(query.where(
             Expense.original_currency_code == expense.original_currency_code,
-            Expense.amount_cents == expense.amount_cents).limit(limit)))
+            Expense.amount_cents == expense.amount_cents).limit(limit))}
     # Review one small group at a time. An explicit pair exclusion recalls the
     # next group; it never excludes candidates omitted by this display bound.
     return rank_duplicate_candidates(db, expense=expense, candidates=rows.values())[:5]

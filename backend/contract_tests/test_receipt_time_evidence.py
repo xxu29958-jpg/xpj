@@ -142,6 +142,13 @@ def test_ocr_future_date_is_reviewed_against_frozen_capture_instead_of_auto_fill
     assert times(result)[0].reference_time == reference.isoformat()
 
 
+def test_full_month_date_and_numeric_date_cannot_hide_a_conflicting_year():
+    result = parse("04:54 pm, 27 March, 2018\n27/03/2016 16:54:04")
+    assert result.expense_time is None
+    assert decision(result).status == "ambiguous"
+    assert {item.local_value for item in times(result)} == {"2018-03-27", "2016-03-27T16:54:04"}
+
+
 def test_time_provenance_joins_only_adjacent_original_blocks_and_preserves_crlf_offsets():
     blocks = [{"text": value} for value in ("小票", "支付时间", "2026-10-21", "10:20:31")]
     raw = "\n".join(item["text"] for item in blocks)

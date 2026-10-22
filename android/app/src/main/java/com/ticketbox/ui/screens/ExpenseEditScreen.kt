@@ -628,8 +628,8 @@ fun ExpenseEditScreen(
                     ),
                     actions = ExpenseEditActionBarActions(
                         onBack = handleBack,
-                        onSave = ::submitSave,
-                        onConfirm = ::submitConfirm,
+                        onSave = { submitSave() },
+                        onConfirm = { submitConfirm() },
                         onRequestReject = { showRejectDialog = true },
                     ),
                 )

@@ -158,6 +158,7 @@ class ExpenseEditScreenContractTest {
     @Test
     fun evidenceChoicesKeepEditedAmountAndOtherDuplicateCandidatesUntilExplicitSave() {
         var saved: ExpenseDraft? = null
+        var confirmed: ExpenseDraft? = null
         var opened: Long? = null
         var kept = 0
         val day = com.ticketbox.domain.model.RecognitionTimeCandidate("day", "交易日期", "原件只有日期。",
@@ -171,7 +172,7 @@ class ExpenseEditScreenContractTest {
         composeRule.setContent {
             TicketboxTheme(skin = skin) {
                 ExpenseEditScreen(expenseEditScreenState(expense = recorded), ExpenseEditScreenActions(
-                    primary = ExpenseEditPrimaryActions(onSave = { saved = it }),
+                    primary = ExpenseEditPrimaryActions(onSave = { saved = it }, onConfirm = { confirmed = it }),
                     related = ExpenseEditRelatedActions(onKeepDuplicate = { kept++ }, onOpenDuplicateReference = { opened = it }),
                 ))
             }
@@ -191,6 +192,8 @@ class ExpenseEditScreenContractTest {
             assertEquals("2025-12-31", saved?.timeInput?.userLocalDate)
             assertEquals(null, saved?.expenseTime)
         }
+        composeRule.onNodeWithText("确认入账").performClick()
+        composeRule.runOnIdle { assertEquals(requireNotNull(saved), confirmed) }
         composeRule.onNodeWithText("与参考账单不是重复，保留两笔").performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(1, kept) }
         composeRule.onNodeWithText("查看其他候选 #3").assertExists()
