@@ -73,7 +73,6 @@ class NotificationJourney:
                 for node in self.native.tree().iter("node"))
 
         wait_for(show_shade, "Android did not display the actual notification shade")
-        self.native.capture(f"notification-shade-{amount}")
         self.native.reveal_any(amount)
         self.native.capture(f"notification-tap-{amount}")
         action, control = notification_control(self.native.tree(), amount)
@@ -199,16 +198,19 @@ class NotificationJourney:
                 self.page.set_viewport_size({"width": width, "height": 960})
                 self.goto("/web/repayment-drafts")
                 self.capture(f"history-{width}-{theme}")
-                for capture in self.facts()["captures"]:
-                    self.goto("/web/repayment-drafts/" + capture["id"])
-                    assert "已记账" in self.page.inner_text("main")
-                    self.capture(f"original-{capture['original']}-{width}-{theme}")
-                    self.page.get_by_role("link", name="查看还款事实", exact=False).click()
-                    fact = self.page.locator("#repayment-" + capture["repayment"])
-                    fact.scroll_into_view_if_needed()
-                    paid = next(item["amount"] for item in self.facts()["payments"] if item["id"] == capture["repayment"])
-                    assert f"{paid // 100}.{paid % 100:02}" in fact.inner_text(), "The original link did not display its actual accepted repayment"
-                    self.capture(f"linked-repayment-{capture['original']}-{width}-{theme}")
+        # The wide/light edit and receipt were exercised above. Read both accepted
+        # originals and their exact repayment links once in the narrow/dark view;
+        # changing a theme does not require replaying the same business journey.
+        for capture in self.facts()["captures"]:
+            self.goto("/web/repayment-drafts/" + capture["id"])
+            assert "已记账" in self.page.inner_text("main")
+            self.capture(f"original-{capture['original']}-390-midnight")
+            self.page.get_by_role("link", name="查看还款事实", exact=False).click()
+            fact = self.page.locator("#repayment-" + capture["repayment"])
+            fact.scroll_into_view_if_needed()
+            paid = next(item["amount"] for item in self.facts()["payments"] if item["id"] == capture["repayment"])
+            assert f"{paid // 100}.{paid % 100:02}" in fact.inner_text(), "The original link did not display its actual accepted repayment"
+            self.capture(f"linked-repayment-{capture['original']}-390-midnight")
         for theme, description in (("paper", "浅色纸面 · 深绿点缀"), ("midnight", "柔和深色 · 浅绿点缀")):
             self.native.plan_home()
             self.native.click("打开账户与设置")
@@ -226,21 +228,21 @@ class NotificationJourney:
             self.native.click("已处理 2")
             self.native.reveal_any("花呗")
             self.native.capture("notification-native-history-" + theme)
-            for merchant, amount, paid in (("花呗", "90.00", "90.00"), ("白条", "80.00", "70.00")):
-                self.native.click_within(merchant, "查看原处理记录")
-                self.native.reveal_any(amount)
-                if merchant == "白条":
-                    self.native.reveal_any("这份本机输入没有提交")
-                self.native.capture(f"notification-native-original-{amount}-{theme}")
-                self.native.click("查看对应欠款与还款记录")
-                self.native.reveal_any("采集核对欠款")
-                self.native.reveal_any("往来历史")
-                self.native.reveal_any(paid)
-                self.native.capture(f"notification-native-linked-debt-{amount}-{theme}")
-                self.native.back()
-                self.native.reveal_any(amount)
-                self.native.back()
-                self.native.reveal_any("已处理 2")
+        for merchant, amount, paid in (("花呗", "90.00", "90.00"), ("白条", "80.00", "70.00")):
+            self.native.click_within(merchant, "查看原处理记录")
+            self.native.reveal_any(amount)
+            if merchant == "白条":
+                self.native.reveal_any("这份本机输入没有提交")
+            self.native.capture(f"notification-native-original-{amount}-midnight")
+            self.native.click("查看对应欠款与还款记录")
+            self.native.reveal_any("采集核对欠款")
+            self.native.reveal_any("往来历史")
+            self.native.reveal_any(paid)
+            self.native.capture(f"notification-native-linked-debt-{amount}-midnight")
+            self.native.back()
+            self.native.reveal_any(amount)
+            self.native.back()
+            self.native.reveal_any("已处理 2")
 
     def correct_notification(self):
         """One uncertain event is retained, reviewed and corrected through the actual UI."""
@@ -303,5 +305,5 @@ class NotificationJourney:
         result["identity"] = identity
         assert sorted(item["original"] for item in result["captures"]) == [3790, 6000, 6100, 8000, 10000]
         result["notification_correction"] = "Real 37.90 purchase counterexample; ambiguous evidence retained; human classification and reason; offline correction survives process death; one pending Expense and closed RepaymentDraft; original audit and Web/native result navigation"
-        result["verified_leg"] = "Actual Android notification-access grant and isolated source apps; application off/on and source allowlist; real native NLS/parser/Outbox/HTTP/notifier; cold and warm OS taps; native offline process restoration; Web retained edit and lost receipt; original money and one repayment per confirmation; real Expense confirmation; three fresh-source reminder channels refused then restored; original Budget/Backup/Recurring taps; retained unfinished input and original image share; actual ledger/account switches require the original identity; light/dark native history and original review plus wide/narrow Web"
+        result["verified_leg"] = "Actual Android notification-access grant and isolated source apps; application off/on and source allowlist; real native NLS/parser/Outbox/HTTP/notifier; cold and warm OS taps; native offline process restoration; Web retained edit and lost receipt; original money and one repayment per confirmation; real Expense confirmation; three fresh-source reminder channels refused then restored; original Budget/Backup/Recurring taps; retained unfinished input and original image share; actual ledger/account switches require the original identity; light/dark native history plus wide/narrow Web history; both original reviews and accepted repayment links read once per consumer"
         return result
