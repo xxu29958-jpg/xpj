@@ -53,8 +53,8 @@ internal class PendingEnrichmentObserver(
 
     fun restore(receipts: List<PendingUploadReceipt>) {
         val pendingIds = receipts.map { it.expenseId }.toSet()
-        val trackedIds = active.values.map { it.receipt.expenseId } + paused.values.map { it.expenseId } +
-            listOfNotNull(latestFeedback?.expenseId)
+        // A new upload can finish before it appears in the list; keep its active observation.
+        val trackedIds = paused.values.map { it.expenseId } + listOfNotNull(latestFeedback?.expenseId)
         trackedIds.filterNot { it in pendingIds }.distinct().forEach { clear(it) }
         receipts.forEach { start(it, restoring = true) }
     }
