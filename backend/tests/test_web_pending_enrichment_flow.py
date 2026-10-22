@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import re
-from urllib.parse import parse_qs, urlsplit
+from html import unescape
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
 from _web_bulk_test_support import create_pending as _create_pending
 from _web_bulk_test_support import seed_pending_with_amount as _seed_pending_with_amount
-from api_contract_helpers import web_save_expense
+from api_contract_helpers import web_confirm_expense, web_reject_expense, web_save_expense, web_undo_expense
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -60,6 +61,7 @@ def test_pending_watch_is_task_scoped_and_ignores_unrelated_expense_edits(
             initiated_by_account_id=account_id,
             status="queued",
             progress_total=1,
+            source_expense_id=expense_id,
         )
         db.add(task)
         db.commit()
@@ -117,6 +119,40 @@ def test_pending_watch_is_task_scoped_and_ignores_unrelated_expense_edits(
     conflict_page = web_client.get(watch_url)
     assert 'data-enrichment-state="conflict"' in conflict_page.text
     assert "你后来保存的修改已保留" in conflict_page.text
+
+
+@pytest.mark.parametrize("task_status", ["running", "failed"])
+@pytest.mark.parametrize("command", [web_confirm_expense, web_reject_expense])
+def test_pending_feedback_retires_when_original_leaves_queue(web_client, identity, task_status, command):
+    expense_id = _seed_pending_with_amount(web_client, identity=identity)
+    with SessionLocal() as db:
+        task = BackgroundTask(task_type="expense_enrichment", tenant_id="owner",
+            initiated_by_account_id=find_owner_account_id_for_ledger(db, ledger_id="owner"),
+            status=task_status, progress_total=1, source_expense_id=expense_id)
+        db.add(task)
+        db.commit()
+        task_public_id = task.public_id
+    watch_url = "/web/pending?" + urlencode({"ledger_id": "owner", "filter": "missing_amount",
+        "watch": task_public_id, "msg": "小票已收到，正在识别；完成后本页会自动更新。", "flash_type": "success"})
+    filtered = web_client.get(watch_url).text
+    assert "data-inbox-enrichment-" in filtered, "筛选隐藏原单不等于原单离开待处理队列"
+    assert f'data-expense-id="{expense_id}"' not in filtered
+    if task_status == "running":
+        assert f'watch={task_public_id}#recognition' in filtered, "筛选隐藏仍待处理原单时可继续查看进度"
+
+    result = command(web_client, expense_id, identity=identity)
+    assert result.status_code == 303, result.text
+    settled = web_client.get(watch_url).text
+    assert "data-inbox-enrichment-" not in settled
+    assert "小票已收到，正在识别" not in settled, "上传重定向的旧文案也必须随原单状态一起撤下"
+    assert f'data-recognition-task-id="{task_public_id}"' in settled
+    assert f'watch={task_public_id}#recognition' not in settled, "保留历史时不留下失效的进度入口"
+    with SessionLocal() as db:
+        assert db.scalar(select(BackgroundTask.status).where(BackgroundTask.public_id == task_public_id)) == task_status
+
+    if command is web_reject_expense:
+        assert web_undo_expense(web_client, expense_id).status_code == 303
+        assert "data-inbox-enrichment-" in web_client.get(watch_url).text
 
 
 @pytest.mark.real_db
@@ -198,3 +234,15 @@ def test_web_upload_enrichment_task_presents_provider_failure(
     assert "data-inbox-enrichment-watch" not in page.text
     assert 'data-enrichment-state="failed"' in page.text
     assert "自动识别失败，账单仍安全保留" in page.text
+    band = re.search(r'<div[^>]*data-inbox-enrichment-terminal.*?</div>', page.text, re.S).group()
+    open_link = re.search(r'href="([^"]+)"[^>]*>打开账单</a>', band)
+    close_link = re.search(r'href="([^"]+)"[^>]*>关闭提示</a>', band)
+    assert open_link and close_link, "失败提示必须有真实处理与关闭入口"
+    assert web_client.get(unescape(open_link.group(1))).status_code == 200
+    close_url = unescape(close_link.group(1))
+    assert "watch=" not in close_url
+    task_public_id = parse_qs(urlsplit(response.headers["location"]).query)["watch"][0]
+    for _ in range(2):
+        dismissed = web_client.get(close_url).text
+        assert "data-inbox-enrichment-" not in dismissed
+        assert f'data-recognition-task-id="{task_public_id}"' in dismissed

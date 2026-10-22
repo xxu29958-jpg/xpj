@@ -56,7 +56,7 @@ const server = http.createServer(async (req,res)=>{
   }
   if(url.pathname==='/image'){res.writeHead(200,{'Content-Type':'image/png','ETag':'"'+'e'.repeat(64)+'"'});return res.end(imageBytes);}
   if(url.pathname==='/review'){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(reviewPage());}
-  if(batch&&url.searchParams.has('watch')){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end('<div data-inbox-enrichment-terminal data-enrichment-state="updated">识别完成 · 待你核对</div>');}
+  if(batch&&url.searchParams.has('watch')){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end('<div data-inbox-enrichment-terminal data-enrichment-state="updated"><span>识别完成 · 待你核对</span><a href="/web/expenses/17/edit">打开账单</a><a href="/web/pending">关闭提示</a></div>');}
   if(req.method==='GET') {res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(page());}
   const chunks=[];for await(const chunk of req)chunks.push(chunk);
   const body=Buffer.concat(chunks);
@@ -95,6 +95,7 @@ async function checkBatch(browser,origin) {
   await tab.click(primary);
   await tab.waitForFunction(()=>document.querySelector('[data-capture-progress-label]').textContent==='2 / 2');
   await tab.waitForFunction(()=>[...document.querySelectorAll('[data-capture-open]')].every(e=>e.textContent==='去核对'));
+  assert.ok((await tab.locator('.inbox-upload-task [data-attachment-status]').allTextContents()).every(text=>!text.includes('关闭提示')&&!text.includes('打开账单')),'inline progress copies only the terminal message');
   assert.deepEqual(attempts[0],attempts[1]);assert.equal(receipt.size,2);assert.equal(attempts.length,3);
   assert.equal(await tab.evaluate(s=>TicketboxAttachmentDrafts.store.list(s).length,scope),0);
   await tab.evaluate(async s=>{

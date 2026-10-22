@@ -310,13 +310,14 @@
           if (terminal) {
             if (marker.hasAttribute("data-watch-inline")) {
               marker.setAttribute("aria-busy", "false");
-              marker.querySelector("span").textContent = terminal.textContent.trim();
+              marker.querySelector("span").textContent = terminal.querySelector("span").textContent.trim();
               marker.dispatchEvent(new CustomEvent("recognitioncomplete", {detail: {state: terminal.dataset.enrichmentState}}));
             } else window.location.replace(window.location.href);
             return;
           }
           if (!next.querySelector("[data-inbox-enrichment-watch]")) {
-            stopWaiting();
+            if (marker.hasAttribute("data-watch-inline")) stopWaiting();
+            else window.location.replace(window.location.href);
             return;
           }
         }

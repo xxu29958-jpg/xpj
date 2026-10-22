@@ -86,10 +86,10 @@ def test_recent_completed_result_requires_a_validated_outcome(monkeypatch, summa
 
 @pytest.mark.parametrize("status", ["queued", "running"])
 def test_reopened_active_task_link_uses_the_existing_watch_consumer(monkeypatch, status):
-    task = {"public_id": str(uuid4()), "status": status, "source_expense_id": None,
+    task = {"public_id": str(uuid4()), "status": status, "source_expense_id": 41,
         "created_at": datetime(2026, 9, 27, 2, tzinfo=UTC)}
     html = _render(templates, "pending.html", {"selected_ledger_id": "owner", "expenses": [],
-        "pending_count": 0, "filter": "missing_amount", "can_write": False, "recent_recognition_tasks": [task]})
+        "pending_count": 1, "pending_expenses": [{"id": 41}], "filter": "missing_amount", "can_write": False, "recent_recognition_tasks": [task]})
     fragment = _task_fragment(html, task["public_id"])
     link = re.search(r'href="([^"]+)"[^>]*>\s*查看进度\s*</a>', fragment)
     assert link, "重开页面的处理中任务必须能进入既有进度观察，而非成为静态死记录"
@@ -98,10 +98,11 @@ def test_reopened_active_task_link_uses_the_existing_watch_consumer(monkeypatch,
     assert target.path == "/web/pending"
     assert query["watch"] == [task["public_id"]] and query["ledger_id"] == ["owner"]
     assert query["filter"] == ["missing_amount"]
-    row = SimpleNamespace(task_type="expense_enrichment", status=status, result_summary_json=None)
+    row = SimpleNamespace(task_type="expense_enrichment", status=status, result_summary_json=None, source_expense_id=41)
     monkeypatch.setattr(recognition, "resolve_web_actor_account_id", lambda *_: 3)
     monkeypatch.setattr(recognition.background_task_service, "get_task", lambda *_a, **_k: row)
     monkeypatch.setattr(recognition, "pending_enrichment_watch_timeout_ms", lambda: 30000)
+    monkeypatch.setattr(recognition, "fetch_expense_row_version_in_status", lambda *_a, **_k: 1)
     request = Request({"type": "http", "method": "GET", "path": target.path,
         "headers": [], "query_string": target.query.encode()})
     watch = recognition.resolve_web_pending_enrichment_watch(object(), request,
@@ -217,4 +218,6 @@ def test_recent_http_tasks_without_valid_original_never_invent_links(web_client,
         fragment = _task_fragment(page.text, public_id)
         assert not re.search(r'href="/web/expenses/\d+/', fragment)
         assert "原单" in fragment and ("不可" in fragment or "无法" in fragment or "不再" in fragment)
+        watched = web_client.get(f"/web/pending?ledger_id=owner&watch={public_id}")
+        assert "data-inbox-enrichment-" not in watched.text
     assert _snapshot() == before
