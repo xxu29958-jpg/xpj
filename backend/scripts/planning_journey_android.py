@@ -127,12 +127,13 @@ class PlanningAndroid:
         original = wait_for(lambda: (text := focused_value()) is not None and [text],
             "The actual native field did not receive focus")[0]
         self.adb("shell", "input", "keyevent", "123")
-        for end in range(len(original) - 1, -1, -1):
+        for _ in original:
             self.adb("shell", "input", "keyevent", "67")
-            wait_for(lambda end=end: focused_value() == original[:end], "The native input did not remove the selected character")
-        for end, character in enumerate(value, start=1):
-            self.adb("shell", "input", "text", character)
-            wait_for(lambda end=end: focused_value() == value[:end], "The native input did not retain the typed text")
+        # Verify the complete field at the clear/type boundaries. Re-reading the
+        # entire hierarchy after every character only repeats the same input check.
+        wait_for(lambda: focused_value() == "", "The native input did not clear its previous value")
+        self.adb("shell", "input", "text", value)
+        wait_for(lambda: focused_value() == value, "The native input did not retain the typed text")
         self.adb("shell", "input", "keyevent", "4")
 
     def set_switch(self, label: str, checked: bool):

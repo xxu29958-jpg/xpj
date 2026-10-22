@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from scripts.planning_journey_android import PlanningAndroid
+from scripts.planning_journey_android import PlanningAndroid, wait_for
 
 
 class ScrollableNative(PlanningAndroid):
@@ -100,7 +100,11 @@ def test_domain_return_uses_navigation_instead_of_a_same_named_recycle_filter():
     assert native.visited == ["library", "ledger", "budget", "plans"]
 
 
-def test_fill_scrolls_the_input_above_the_sticky_footer_before_typing():
+@pytest.mark.parametrize("dropped", [None, "delete", "text"])
+def test_fill_scrolls_the_input_and_requires_the_complete_replacement(monkeypatch, dropped):
+    monkeypatch.setattr("scripts.planning_journey_android.wait_for",
+        lambda condition, message: wait_for(condition, message, timeout=1))
+
     class Native(PlanningAndroid):
         def __init__(self):
             self.value = "PeerNote"
@@ -122,10 +126,16 @@ def test_fill_scrolls_the_input_above_the_sticky_footer_before_typing():
                 assert 255 < int(args[4]) < 2021, "The input center is hidden behind the sticky footer"
                 self.focused = True
             elif args[2:] == ("keyevent", "67"):
-                self.value = self.value[:-1]
+                if dropped != "delete":
+                    self.value = self.value[:-1]
             elif args[2] == "text":
-                self.value += args[3]
+                self.value += args[3][:-1] if dropped == "text" else args[3]
 
     native = Native()
-    native.fill("LaterNote", previous="PeerNote")
-    assert native.value == "LaterNote"
+    if dropped:
+        error = "clear its previous value" if dropped == "delete" else "retain the typed text"
+        with pytest.raises(AssertionError, match=error):
+            native.fill("LaterNote", previous="PeerNote")
+    else:
+        native.fill("LaterNote", previous="PeerNote")
+        assert native.value == "LaterNote"
