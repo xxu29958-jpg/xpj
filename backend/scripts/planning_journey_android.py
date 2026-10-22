@@ -132,7 +132,11 @@ class PlanningAndroid:
         # Verify the complete field at the clear/type boundaries. Re-reading the
         # entire hierarchy after every character only repeats the same input check.
         wait_for(lambda: focused_value() == "", "The native input did not clear its previous value")
-        self.adb("shell", "input", "text", value)
+        # Compose-controlled inputs can recompose between key events from one
+        # `input text` burst (90.00 became 900 on the real emulator). Deliver
+        # characters separately; inspect only the complete replacement below.
+        for character in value:
+            self.adb("shell", "input", "text", character)
         wait_for(lambda: focused_value() == value, "The native input did not retain the typed text")
         self.adb("shell", "input", "keyevent", "4")
 
