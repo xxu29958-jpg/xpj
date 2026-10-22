@@ -22,7 +22,10 @@ STUB = Path(__file__).with_name("ocr_stub_worker.py")
 
 
 def _client(**kwargs) -> OcrWorkerClient:
-    return OcrWorkerClient(command=[sys.executable, str(STUB)], stop_seconds=0.1,
+    # This stdlib-only stub represents the executable worker. A Windows venv
+    # redirector would launch an extra interpreter with its own console policy.
+    executable = sys._base_executable if os.name == "nt" else sys.executable
+    return OcrWorkerClient(command=[executable, str(STUB)], stop_seconds=0.1,
                            **dict({"timeout_seconds": 3}, **kwargs))
 
 
@@ -246,6 +249,24 @@ def test_kernel_refuses_over_budget_allocation_then_worker_can_recover(tmp_path)
             client.recognize(tmp_path / "over-memory-limit", "limit")
         assert client.pid is None and not _alive(pid)
         assert client.recognize(tmp_path / "ok", "after")["pid"] != pid
+    finally:
+        client.close()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows console startup before Job assignment")
+def test_worker_has_no_console_host_even_when_job_assignment_is_delayed(tmp_path, monkeypatch):
+    from app.services.ocr_process_owner import ProcessTreeOwner
+
+    def delayed_owner(process):
+        time.sleep(0.05)
+        return ProcessTreeOwner(process)
+
+    monkeypatch.setattr("app.services.ocr_worker_client.ProcessTreeOwner", delayed_owner)
+    client = _client()
+    try:
+        result = client.recognize(tmp_path / "console-state", "console-probe")
+        assert result["console_process_count"] == 0
+        assert result["input_sha256"] == "console-probe"
     finally:
         client.close()
 

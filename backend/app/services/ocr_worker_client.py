@@ -99,9 +99,11 @@ class OcrWorkerClient:
                 return
             self._stop()
         self._generation = str(uuid4())
+        # A hidden console can start conhost before the Job is attached. Private
+        # pipes need no console; detached startup avoids that unowned helper.
         process = subprocess.Popen(self.command or _runtime_command(), cwd=_BACKEND_ROOT,
                                    env=_worker_environment(), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                   stderr=subprocess.DEVNULL, creationflags=0x08000000 if os.name == "nt" else 0,
+                                   stderr=subprocess.DEVNULL, creationflags=0x00000008 if os.name == "nt" else 0,
                                    start_new_session=os.name != "nt")
         owner = None
         try:

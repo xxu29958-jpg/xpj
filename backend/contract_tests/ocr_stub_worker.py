@@ -34,6 +34,11 @@ for line in sys.stdin.buffer:
             raise SystemExit(1) from None
     result = {"input_sha256": request["input_sha256"], "pid": os.getpid(),
               "credential_names": [name for name in os.environ if "DATABASE" in name or "TOKEN" in name]}
+    if mode == "console-state" and os.name == "nt":
+        import ctypes
+
+        processes = (ctypes.c_ulong * 1)()
+        result["console_process_count"] = ctypes.windll.kernel32.GetConsoleProcessList(processes, 1)
     response = {"schema": 1, "request_id": request["request_id"], "generation": request["generation"],
                 "outcome": "success", "result": result}
     if mode == "wrong-generation":
