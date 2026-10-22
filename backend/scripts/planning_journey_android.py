@@ -124,15 +124,21 @@ class PlanningAndroid:
             inputs = [node for node in self.tree().iter("node") if
                 node.attrib.get("class") == "android.widget.EditText" and node.attrib.get("focused") == "true"]
             return inputs[0].attrib.get("text", "") if len(inputs) == 1 else None
-        original = wait_for(lambda: (text := focused_value()) is not None and [text],
-            "The actual native field did not receive focus")[0]
-        self.adb("shell", "input", "keyevent", "123")
-        for end in range(len(original) - 1, -1, -1):
-            self.adb("shell", "input", "keyevent", "67")
-            wait_for(lambda end=end: focused_value() == original[:end], "The native input did not remove the selected character")
-        for end, character in enumerate(value, start=1):
+        wait_for(lambda: focused_value() is not None, "The actual native field did not receive focus")
+        # One selection/delete edit avoids dropping successive Compose value
+        # updates while clearing an existing amount.
+        self.adb("shell", "input", "keycombination", "-t", "100", "113", "29")
+        self.adb("shell", "input", "keyevent", "67")
+        # Verify the complete field at the clear/type boundaries. Re-reading the
+        # entire hierarchy after every character only repeats the same input check.
+        wait_for(lambda: focused_value() == "", "The native input did not clear its previous value")
+        # Compose-controlled inputs can recompose between key events from one
+        # `input text` burst (90.00 became 900 on the real emulator). Deliver
+        # characters separately; inspect only the complete replacement below.
+        for character in value:
             self.adb("shell", "input", "text", character)
-            wait_for(lambda end=end: focused_value() == value[:end], "The native input did not retain the typed text")
+            time.sleep(0.25)  # Human input cadence; readiness is asserted below.
+        wait_for(lambda: focused_value() == value, "The native input did not retain the typed text")
         self.adb("shell", "input", "keyevent", "4")
 
     def set_switch(self, label: str, checked: bool):
