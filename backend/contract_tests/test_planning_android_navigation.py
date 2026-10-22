@@ -109,6 +109,7 @@ def test_fill_scrolls_the_input_and_requires_the_complete_replacement(monkeypatc
         def __init__(self):
             self.value = "PeerNote"
             self.focused = False
+            self.selected = False
             self.field_bounds = "[63,1975][1017,2101]"
 
         def tree(self):
@@ -127,7 +128,10 @@ def test_fill_scrolls_the_input_and_requires_the_complete_replacement(monkeypatc
                 self.focused = True
             elif args[2:] == ("keyevent", "67"):
                 if dropped != "delete":
-                    self.value = self.value[:-1]
+                    self.value = "" if self.selected else self.value[:-1]
+                    self.selected = False
+            elif args[2] == "keycombination":
+                self.selected = args[3:] == ("-t", "100", "113", "29")
             elif args[2] == "text":
                 self.value += args[3][:-1] if dropped == "text" else args[3]
 
