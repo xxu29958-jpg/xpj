@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 from typing import TypeAlias
 
 from app.services._json_types import JsonObject, JsonValue
+from app.services.duplicate_evidence import ALGORITHM_VERSION as DUPLICATE_VERSION
 
 __all__ = [
     "ALGORITHM_TYPES",
@@ -142,9 +143,9 @@ CATEGORY_SUGGESTION = AlgorithmType(
 
 DUPLICATE_CANDIDATE = AlgorithmType(
     decision_type="duplicate_candidate",
-    current_version="duplicate-scoring-v1",
+    current_version=DUPLICATE_VERSION,
     display_label="疑似重复",
-    description="对照图片、金额、商家和时间辅助核对。选择不是重复后，记住这对账单，并降低近 90 天相同商家和金额的重复评分。",
+    description="对照原件、交易标识、原币金额、商家和交易时间。冲突的记录不作重复候选；选择保留两笔只记住这一对，不影响同商家同金额的其他交易。",
     subject_kinds=("expense",),
     default_retention_days=180,
     marker_keys=("amount_cents", "merchant"),

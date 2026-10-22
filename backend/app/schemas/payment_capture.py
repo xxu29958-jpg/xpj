@@ -3,9 +3,11 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from app.schemas._money import PositiveMoneyMinor
+from app.schemas._recognition_time import RecognitionTimeResponse
+from app.schemas.notification_time import NotificationTimeEvidence
 
 
 class PaymentCandidate(BaseModel):
@@ -27,6 +29,13 @@ class PaymentCaptureCreate(BaseModel):
     suggested_kind: Literal["expense", "repayment", "review"]
     parser_version: str = Field(min_length=1, max_length=64)
     candidates: list[PaymentCandidate] = Field(default_factory=list, max_length=24)
+    time_evidence: NotificationTimeEvidence | None = None
+
+    @model_validator(mode="after")
+    def aware_capture_time(self):
+        if self.captured_at.utcoffset() is None:
+            raise ValueError("Notification delivery time must include its UTC offset")
+        return self
 
 
 class PaymentCaptureDecision(BaseModel):
@@ -78,3 +87,11 @@ class PaymentCaptureResponse(BaseModel):
     expense_public_id: str | None
     repayment_public_id: str | None
     decisions: list[dict]
+    recognition_time: RecognitionTimeResponse | None = None
+
+    @model_serializer(mode="wrap")
+    def preserve_stored_response(self, handler):
+        data = handler(self)
+        if "recognition_time" not in self.model_fields_set:
+            data.pop("recognition_time", None)
+        return data

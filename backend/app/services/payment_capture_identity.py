@@ -11,6 +11,7 @@ from app.errors import AppError
 from app.models import Expense, PaymentCapture, RepaymentDraft
 from app.schemas.payment_capture import PaymentCaptureResponse
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.notification_time_service import notification_time
 from app.services.time_service import now_utc
 
 
@@ -57,7 +58,7 @@ def capture_response(db: Session, capture: PaymentCapture) -> PaymentCaptureResp
         original_amount_minor=capture.original_amount_minor, merchant=capture.merchant, kind=capture.kind,
         parser_version=capture.parser_version, candidates=capture.candidates, expense_id=expense_id,
         expense_public_id=capture.expense_public_id, repayment_public_id=capture.repayment_public_id,
-        decisions=capture.decisions)
+        decisions=capture.decisions, recognition_time=notification_time(capture))
 
 
 def link_capture(db: Session, capture: PaymentCapture, target: Expense | RepaymentDraft):

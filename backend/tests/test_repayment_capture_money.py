@@ -1,6 +1,5 @@
 """Captured originals survive FX refusal; human review creates one authoritative repayment."""
 
-from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -36,6 +35,10 @@ def test_foreign_capture_review_preserves_original_and_replays_one_confirmed_fac
     request = {"target_debt_public_id": debt["public_id"], "expected_row_version": debt["row_version"],
         "original_currency": "CNY", "original_amount": "90.00"}
     confirm_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    unknown_time = client.post(target + "/confirm", headers=confirm_headers, json=request)
+    assert (unknown_time.status_code, unknown_time.json()["error"]) == (422, "accounting_date_required")
+    request["time_input"] = {"precision": "date_only", "calendar_revision": draft["accounting_time"]["calendar_revision"],
+        "user_local_date": "2026-01-10"}
     monkeypatch.setattr(_money, "resolve_payload_rate", lambda *args, **kwargs: (None, None, "pending", None))
     refused = client.post(target + "/confirm", headers=confirm_headers, json=request)
     assert (refused.status_code, refused.json()["error"]) == (409, "exchange_rate_pending")
@@ -58,8 +61,9 @@ def test_foreign_capture_review_preserves_original_and_replays_one_confirmed_fac
     with SessionLocal() as db:
         fact = db.scalars(select(Repayment)).one()
         assert (fact.amount_cents, fact.original_amount_minor, fact.original_currency_code) == (1260, 9000, "CNY")
-        assert fact.paid_at == datetime(2026, 1, 12, 4, 34, 56, tzinfo=UTC)
-    assert [value.isoformat() for value in rate_dates] == ["2026-01-12"]
+        assert fact.paid_at is None
+        assert fact.accounting_time_snapshot["user_local_date"] == "2026-01-10"
+    assert [value.isoformat() for value in rate_dates] == ["2026-01-10"]
     changed = client.post(target + "/confirm", headers=confirm_headers, json={**request, "original_amount": "100.00"})
     assert (changed.status_code, changed.json()["error"]) == (422, "idempotency_key_reused")
     assert client.get(target, headers=identity.app_headers).json()["status"] == "confirmed"
@@ -73,7 +77,8 @@ def test_foreign_capture_review_preserves_original_and_replays_one_confirmed_fac
     current = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json()
     original = client.post(f"/api/repayment-drafts/{second['public_id']}/confirm",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={"target_debt_public_id": debt["public_id"], "expected_row_version": current["row_version"]})
+        json={"target_debt_public_id": debt["public_id"], "expected_row_version": current["row_version"],
+            "time_input": request["time_input"]})
     assert original.status_code == 201, original.json()
     with SessionLocal() as db:
         fact = db.scalar(select(Repayment).where(Repayment.public_id == original.json()["committed_repayment_public_id"]))

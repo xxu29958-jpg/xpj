@@ -86,6 +86,7 @@ internal fun NavGraphBuilder.addRecurringPaymentRoute(runtime: MainNavigationRun
                     factory,
                     exit,
                     related = ExpenseFactNavigation(
+                        onOpenExpense = runtime.navController::openExpense,
                         onOpenRepaymentDrafts = {
                             runtime.shellState.openRepaymentDrafts(it)
                             back()

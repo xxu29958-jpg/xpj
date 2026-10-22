@@ -132,7 +132,9 @@ def test_uncertain_payment_survives_until_explicit_review_without_financial_fact
     assert chosen.status_code == 200, chosen.text
     assert client.post(url, headers=headers, json=decision).json() == chosen.json()
     assert client.post(url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())}, json=decision).status_code == 409
-    assert client.get(f"/api/expenses/{chosen.json()['expense_id']}", headers=identity.app_headers).json()["status"] == "pending"
+    expense = client.get(f"/api/expenses/{chosen.json()['expense_id']}", headers=identity.app_headers).json()
+    assert expense["status"] == "pending" and expense["expense_time"] is None
+    assert expense["accounting_time"]["precision"] == "unknown"
 
 
 def test_capture_distinct_identities_same_content_create_two(

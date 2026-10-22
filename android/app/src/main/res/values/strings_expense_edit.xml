@@ -11,7 +11,10 @@
     <string name="expense_edit_status_confirmed">已入账</string>
     <string name="expense_edit_large_image_loading">原图加载中</string>
     <string name="expense_edit_large_image_failed">原图暂时加载失败，截图已保存</string>
-    <string name="expense_edit_keep_duplicate_button">不是重复，保留</string>
+    <string name="expense_edit_keep_duplicate_button">与参考账单不是重复，保留两笔</string>
+    <string name="expense_duplicate_reference">查看参考账单 #%1$d</string>
+    <string name="expense_duplicate_other_candidate">查看其他候选 #%1$d</string>
+    <string name="expense_duplicate_pair_choice">本次选择只针对参考账单，其他候选会继续保留供核对。</string>
     <string name="expense_edit_raw_text_empty">暂无识别原文</string>
     <string name="expense_edit_score_out_of_range">%1$s 只能填写 1 到 5。</string>
     <string name="expense_edit_score_value_label">值不值评分</string>

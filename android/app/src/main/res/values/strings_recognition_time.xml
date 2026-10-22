@@ -1,0 +1,9 @@
+<resources>
+    <string name="recognition_time_title">对照原件中的时间</string>
+    <string name="recognition_time_help">先核对时间含义，再选择填入当前草稿。保存后才会修改账单。</string>
+    <string name="recognition_time_conflict">原件有不同的时间，尚未替你选择。</string>
+    <string name="recognition_time_use">将此时间填入草稿</string>
+    <string name="recognition_time_incomplete">通知中还有未列出的时间，请对照原通知完整核对。</string>
+    <string name="recognition_time_date_help">此处可选发生日期，原件中的具体时刻继续保留供对照。</string>
+    <string name="recognition_time_use_date">将此日期填入还款草稿</string>
+</resources>

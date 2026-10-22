@@ -235,6 +235,12 @@ class OpenApiContractGateTest {
         // home-currency-only create DTO omits the original-currency surface (it does not exist —
         // the capture is CNY-only). Dismiss is a no-field body (the backend requires an empty {}).
         Pairing(RepaymentDraftDto::class, "RepaymentDraftResponse"),
+        Pairing(RecognitionTimeDto::class, "RecognitionTimeResponse"),
+        Pairing(RecognitionTimeCandidateDto::class, "RecognitionTimeCandidate"),
+        Pairing(NotificationTimeEvidenceDto::class, "NotificationTimeEvidence"),
+        Pairing(NotificationTimeFragmentDto::class, "NotificationTimeFragment"),
+        Pairing(PaymentCaptureCreateDto::class, "PaymentCaptureCreate"),
+        Pairing(PaymentCandidateDto::class, "PaymentCandidate"),
         Pairing(RepaymentDraftListResponseDto::class, "RepaymentDraftListResponse"),
         Pairing(RepaymentDraftCreateRequestDto::class, "RepaymentDraftCreateRequest"),
         Pairing(ExpenseRepaymentDraftCreateRequestDto::class, "ExpenseRepaymentDraftCreateRequest"),

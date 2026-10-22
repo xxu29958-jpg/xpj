@@ -15,10 +15,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_serializer
 
 from app.schemas._accounting_time import AccountingTimeInput, AccountingTimeSnapshot
 from app.schemas._money import PositiveCanonicalDecimalInput, PositiveMoneyMinor
+from app.schemas._recognition_time import RecognitionTimeResponse
 from app.schemas.payment_capture import RepaymentCorrectionVersions
 from app.services.time_service import to_iso
 
@@ -85,6 +86,7 @@ class RepaymentDraftDismissRequest(BaseModel):
 
 
 class RepaymentDraftResponse(BaseModel):
+    recognition_time: RecognitionTimeResponse | None = None
     correction_versions: RepaymentCorrectionVersions | None = None
     corrected_expense_id: int | None = None
     public_id: str
@@ -112,6 +114,13 @@ class RepaymentDraftResponse(BaseModel):
     @field_serializer("captured_at", "created_at", "resolved_at")
     def serialize_repayment_draft_datetime(self, value: datetime | None) -> str | None:
         return to_iso(value)
+
+    @model_serializer(mode="wrap")
+    def preserve_stored_response(self, handler):
+        data = handler(self)
+        if "recognition_time" not in self.model_fields_set:
+            data.pop("recognition_time", None)
+        return data
 
 
 class RepaymentDraftListResponse(BaseModel):

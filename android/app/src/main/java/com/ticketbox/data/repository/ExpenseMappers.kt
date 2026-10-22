@@ -57,6 +57,8 @@ fun ExpenseDto.toDomain(): Expense {
     val imageAvailable = isImageAvailable
     val thumbnailAvailable = isThumbnailAvailable
     return Expense(
+        recognitionTime = recognitionTime?.toDomain(),
+        recognitionNotes = recognitionNotes,
         id = id,
         publicId = requiredPublicId(),
         amountCents = amountCents,
@@ -85,6 +87,7 @@ fun ExpenseDto.toDomain(): Expense {
             com.ticketbox.domain.model.ExpenseCategorySuggestion(it.category, it.sampleSize)
         },
         duplicateSuggestionReasons = duplicateCandidates.firstOrNull()?.reasons.orEmpty(),
+        duplicateCandidateIds = duplicateCandidates.map { it.candidateId },
         note = note,
         source = source,
         imagePath = imagePath.takeIf { imageAvailable },

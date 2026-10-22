@@ -124,6 +124,7 @@ data class ExpenseEditMediaActions(
 
 data class ExpenseEditRelatedActions(
     val onKeepDuplicate: () -> Unit = {},
+    val onOpenDuplicateReference: (Long) -> Unit = {},
     val onFundingChange: (String) -> Unit = {},
     val onFundingReview: () -> Unit = {},
 )
@@ -452,6 +453,9 @@ fun ExpenseEditScreen(
 
     val hasDraftChanges = formValues != initialFormValues || timeForm.changed
     val formSections: @Composable () -> Unit = {
+        if (currentExpense.status == "pending") currentExpense.recognitionNotes.forEach { note ->
+            androidx.compose.material3.Text(note, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+        }
         ExpenseFxStatusCard(
             expense = currentExpense,
             editState = state,
@@ -518,7 +522,12 @@ fun ExpenseEditScreen(
             subtitle = timeForm.summary(),
             icon = R.drawable.ic_lucide_calendar_check,
             modifier = Modifier.testTag("expense-edit-time-section"),
-        ) { com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, !readOnly, showTitle = false) }
+        ) {
+            if (currentExpense.status == "pending") com.ticketbox.ui.screens.expense.RecognizedTimeCandidates(
+                currentExpense.recognitionTime, timeForm, setTimeForm, !readOnly,
+            )
+            com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, !readOnly, showTitle = false)
+        }
         if (timeForm.changed) androidx.compose.material3.TextButton(enabled = !readOnly, onClick = {
             com.ticketbox.ui.screens.expense.readExpenseTimeForm(baselineTimeFormJson)?.let(setTimeForm)
         }) { androidx.compose.material3.Text(stringResource(R.string.expense_edit_undo_change_button)) }
@@ -630,8 +639,19 @@ fun ExpenseEditScreen(
         if (currentExpense.duplicateStatus == DuplicateStatusValues.SUSPECTED) {
             DuplicateNotice(
                 reason = currentExpense.duplicateReason,
-                feedbackAdjusted = "recent_user_reject" in currentExpense.duplicateSuggestionReasons,
             )
+            (listOfNotNull(currentExpense.duplicateOfId) + currentExpense.duplicateCandidateIds).distinct().forEach { candidateId ->
+                androidx.compose.material3.TextButton(onClick = { relatedActions.onOpenDuplicateReference(candidateId) },
+                    enabled = !state.saving) {
+                    androidx.compose.material3.Text(stringResource(
+                        if (candidateId == currentExpense.duplicateOfId) R.string.expense_duplicate_reference
+                        else R.string.expense_duplicate_other_candidate, candidateId))
+                }
+            }
+            if (currentExpense.duplicateCandidateIds.size > 1) {
+                androidx.compose.material3.Text(stringResource(R.string.expense_duplicate_pair_choice),
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+            }
             if (!readOnly) {
                 ExpenseDetailActionButtonRow(
                     text = stringResource(R.string.expense_edit_keep_duplicate_button),

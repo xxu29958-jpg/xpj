@@ -15,6 +15,7 @@ data class PaymentCaptureCreateDto(
     @Json(name = "original_amount_minor") val originalAmountMinor: Long?, val merchant: String?,
     @Json(name = "suggested_kind") val suggestedKind: String,
     @Json(name = "parser_version") val parserVersion: String, val candidates: List<PaymentCandidateDto>,
+    @Json(name = "time_evidence") val timeEvidence: NotificationTimeEvidenceDto? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -27,6 +28,7 @@ data class PaymentCaptureDto(
     @Json(name = "expense_id") val expenseId: Long?,
     @Json(name = "expense_public_id") val expensePublicId: String?,
     @Json(name = "repayment_public_id") val repaymentPublicId: String?,
+    @Json(name = "recognition_time") val recognitionTime: RecognitionTimeDto? = null,
 )
 
 @JsonClass(generateAdapter = true)

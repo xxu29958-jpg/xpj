@@ -16,13 +16,13 @@ from sqlalchemy.orm import Session
 
 from app.models import AlgorithmDecision, Expense, LedgerLearningEvent
 from app.services._json_types import JsonObject
+from app.services.duplicate_service import find_duplicate_candidates
 from app.services.learning_service import (
     DecisionDraft,
     EventDraft,
     compute_category_suggestion,
     record_decision,
     record_event,
-    score_duplicate_candidates,
     set_decision_status,
     supersede_decision,
 )
@@ -91,9 +91,11 @@ def record_category_choice(db: Session, *, expense: Expense, previous_category: 
 
 
 def record_duplicate_choice(db: Session, *, expense: Expense, actor_account_id: int | None = None) -> None:
-    """A successful 'keep both' command also teaches the existing duplicate scorer."""
+    """Record only the pair the command actually presented, never other recalled pairs."""
     suggestions = _duplicate_candidates(db, tenant_id=expense.tenant_id, expense=expense, actor_account_id=actor_account_id)
     for suggestion in suggestions:
+        if suggestion.candidate_id != expense.duplicate_of_id:
+            continue
         record_pending_suggestion_event(db, tenant_id=expense.tenant_id, expense_id=expense.id,
             decision_public_id=suggestion.decision_public_id, event_type="reject", actor_account_id=actor_account_id)
 
@@ -251,21 +253,12 @@ def _duplicate_candidates(
 ) -> list[PendingDuplicateCandidate]:
     if expense.duplicate_of_id is None:
         return []
-    candidate = db.scalar(
-        select(Expense)
-        .where(Expense.tenant_id == tenant_id)
-        .where(Expense.id == expense.duplicate_of_id)
-        .limit(1)
-    )
-    if candidate is None:
-        return []
-    scored = score_duplicate_candidates(
-        db, tenant_id=tenant_id, expense=expense, candidates=[candidate], actor_account_id=actor_account_id
-    )
+    scored = find_duplicate_candidates(db, expense)
+    candidates = {row.id: row for row in db.scalars(select(Expense).where(Expense.tenant_id == tenant_id,
+        Expense.id.in_([item.candidate_id for item in scored])))}
     results: list[PendingDuplicateCandidate] = []
     for item in scored:
-        if item.score <= 0:
-            continue
+        candidate = candidates[item.candidate_id]
         payload = {
             "candidate_id": item.candidate_id,
             "candidate_public_id": candidate.public_id,
@@ -298,12 +291,13 @@ def _duplicate_candidates(
     return results
 
 
-def _active_decision(db, *, tenant_id, decision_type, expense_id, actor_account_id):
+def _active_decision(db, *, tenant_id, decision_type, expense_id, actor_account_id, candidate_id=None):
     rows = db.scalars(select(AlgorithmDecision).where(AlgorithmDecision.tenant_id == tenant_id,
         AlgorithmDecision.subject_kind == "expense", AlgorithmDecision.subject_id == expense_id,
         AlgorithmDecision.decision_type == decision_type, AlgorithmDecision.status == "active")
         .order_by(AlgorithmDecision.id.desc()))
-    return next((row for row in rows if _loads(row.output_payload).get("_decision_context", {}).get("actor_account_id") == actor_account_id), None)
+    return next((row for row in rows if _loads(row.output_payload).get("_decision_context", {}).get("actor_account_id") == actor_account_id
+        and _loads(row.output_payload).get("candidate_id") == candidate_id), None)
 
 
 def _ensure_decision(
@@ -327,10 +321,12 @@ def _ensure_decision(
     marker = build_feedback_marker(decision_type, payload)
     for row in closed:
         previous = _loads(row.output_payload)
-        if build_feedback_marker(decision_type, previous) == marker and previous.get("_resolved_context", previous.get("_decision_context")) == payload["_decision_context"]:
+        if (build_feedback_marker(decision_type, previous) == marker
+                and previous.get("candidate_id") == payload.get("candidate_id")
+                and previous.get("_resolved_context", previous.get("_decision_context")) == payload["_decision_context"]):
             return None
     existing = _active_decision(db, tenant_id=tenant_id, decision_type=decision_type,
-        expense_id=expense.id, actor_account_id=actor_account_id)
+        expense_id=expense.id, actor_account_id=actor_account_id, candidate_id=payload.get("candidate_id"))
     if (
         existing is not None
         and existing.algorithm_version == algorithm_version

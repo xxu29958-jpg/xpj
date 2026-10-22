@@ -96,7 +96,15 @@
       </div>
     </details>
     <p class="duplicate-reason meta">{{ pair.reason_label }}。请按实际消费判断；保留两笔后仍需核对待确认账单。</p>
-    {% if pair.feedback_applied %}<p class="meta">已参考你之前“不是重复”的选择，降低相同商家和金额的重复评分；这次仍需对照原件。</p>{% endif %}
+    {% if pair.other_candidates %}
+    <p class="meta">还有其他候选。本次选择只针对上方参考账单，其他候选会继续保留供核对。</p>
+    <div class="product-actions">
+      {% for candidate in pair.other_candidates %}
+      <a class="product-button product-button--quiet" href="{{ candidate.href }}" data-duplicate-candidate-id="{{ candidate.id }}">查看其他候选 #{{ candidate.id }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if pair.feedback_applied %}<p class="meta">你曾对同商家、同金额的账单选择“不是重复”；这个历史决定不代替当前两笔的核对。</p>{% endif %}
     <div class="duplicate-decision">
       {% if can_write or duplicate_task_action %}
       {% for decision, decision_label in [('keep', '不是重复，保留两笔'), ('reject-current', '忽略本次收到的账单'), ('reject-original', '忽略参考账单，保留本次收到')] %}

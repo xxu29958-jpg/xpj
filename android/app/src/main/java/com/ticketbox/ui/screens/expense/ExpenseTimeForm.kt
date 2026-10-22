@@ -48,7 +48,8 @@ data class ExpenseTimeForm(
             ?: return ExpenseTimeResolution(error = R.string.calendar_input_fold)
         val instant = if (!changed && originalInstant != null) originalInstant else local.toInstant(offset).toString()
         val input = calendarRevision?.let { revision ->
-            ExpenseTimeInput("instant", revision, day.toString(), instant, sourceZone, offset.totalSeconds)
+            ExpenseTimeInput("instant", revision, day.toString(), instant,
+                sourceZone.takeUnless { zone.normalized() is ZoneOffset }, offset.totalSeconds)
         }
         return ExpenseTimeResolution(instant, input)
     }
@@ -69,7 +70,8 @@ data class ExpenseTimeForm(
         )
 
         fun initial(instant: String?, evidence: ExpenseAccountingTime?, rule: LedgerCalendarDto?, zone: ZoneId): ExpenseTimeForm {
-            val source = evidence?.sourceTimezone?.let(ZoneId::of) ?: zone
+            val source = evidence?.sourceTimezone?.let(ZoneId::of)
+                ?: evidence?.sourceUtcOffsetSeconds?.let(ZoneOffset::ofTotalSeconds) ?: zone
             val known = evidence?.instantUtc ?: instant
             val local = known?.let { runCatching { Instant.parse(it).atZone(source) }.getOrNull() }
             return ExpenseTimeForm(

@@ -42,9 +42,12 @@ from app.routes.web_common import (
 )
 from app.services.category_service import list_ledger_category_options
 from app.services.expense_service import get_expense, list_pending
+from app.services.learning_service import read_ocr_facts
 from app.services.ledger_calendar_service import calendar_revision
 from app.services.manual_expense_draft_presenter import manual_draft_ack
+from app.services.notification_time_service import notification_times_for_expenses
 from app.services.receipt_item_service import list_expense_items
+from app.services.recognition_time_service import recognition_amount_notes, recognition_time
 
 
 def _edit_page_or_flash_redirect(
@@ -271,6 +274,14 @@ def web_edit_context(
     if form_values is not None:
         time_values = submitted_time_form_values(form_values, wall_time_field="expense_time")
     ctx["time_form"] = time_form_projection(time_values) if time_values is not None else None
+    fact = read_ocr_facts(db, tenant_id=selected_id, expenses=[expense]).get(expense.id)
+    ctx["recognition_time"] = recognition_time(fact)
+    ctx["recognition_notes"] = recognition_amount_notes(fact)
+    if ctx["recognition_time"] is None:
+        auth = getattr(request.state, "web_session_auth", None)
+        ctx["recognition_time"] = notification_times_for_expenses(db, tenant_id=selected_id,
+            actor_account_id=auth.account_id if auth else None,
+            expense_public_ids=[expense.public_id]).get(expense.public_id)
     project_manual_fx_edit_views(expense_view, current_expense_view, form_values)
     if form_values and not conflict and form_values.get("expected_row_version"):
         expense_view["row_version"] = form_values["expected_row_version"]

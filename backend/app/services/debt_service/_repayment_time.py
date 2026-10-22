@@ -32,13 +32,15 @@ def resolve_repayment_time(
 
 
 def capture_repayment_time(db: Session, *, ledger_id: str, captured_at: datetime) -> AccountingTimeSnapshot:
-    """Keep a notification's original instant and calendar before delayed review."""
+    """Freeze the review calendar without inventing a payment time from delivery.
+
+    The caller retains captured_at on the capture itself. Existing historical
+    snapshots are not rewritten; a new capture without transaction evidence is
+    unknown until the original payment date is supplied during review.
+    """
     if captured_at.utcoffset() is None:
         raise AppError("accounting_time_invalid", "采集时刻需要明确的 UTC 偏移。", status_code=422)
     rule = current_calendar(db, ledger_id=ledger_id)
     if rule is None:
         raise AppError("calendar_revision_conflict", "未找到采集任务的账务日历。", status_code=409)
-    return resolve_accounting_time(AccountingTimeInput(
-        precision="instant", calendar_revision=rule.revision, user_local_date=captured_at.date(),
-        instant_utc=captured_at, source_utc_offset_seconds=int(captured_at.utcoffset().total_seconds()),
-    ), ledger_timezone=rule.timezone_name, calendar_revision=rule.revision)
+    return AccountingTimeSnapshot(precision="unknown", calendar_revision=rule.revision)

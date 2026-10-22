@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
+from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from app.errors import AppError
@@ -16,6 +18,8 @@ from app.services.receipt_parse_amount import (
     _text_currency_matches_context,
     _validated_money_context,
 )
+from app.services.receipt_parse_amount_roles import bind_amount_roles
+from app.services.receipt_parse_candidates import evidence_block_spans, resolve_field
 from app.services.receipt_parse_category import (
     _calibrate_category_candidates,
     _category_candidates,
@@ -24,7 +28,6 @@ from app.services.receipt_parse_common import (
     ParsedReceipt,
     ParsedReceiptItem,
     _AmountCandidate,
-    _best_candidate,
     _build_receipt_context,
     _CategoryCandidate,
     _MerchantCandidate,
@@ -38,10 +41,7 @@ from app.services.receipt_parse_merchant import (
     _merchant_candidates,
 )
 from app.services.receipt_parse_rules import CATEGORY_HINT_RULES
-from app.services.receipt_parse_time import (
-    _calibrate_time_candidates,
-    _time_candidates,
-)
+from app.services.receipt_parse_time import _time_candidates
 
 ITEM_LINE_PATTERN = re.compile(
     r"^(?P<name>[A-Za-z一-鿿][A-Za-z0-9一-鿿（）()·+\-/&\s]{0,80}?)"
@@ -374,35 +374,52 @@ def parse_receipt_text(
     *,
     currency_code: str | None = None,
     minor_unit_exponent: int | None = None,
+    evidence_blocks: Sequence[dict] | None = None,
+    reference_time: datetime | None = None,
 ) -> ParsedReceipt:
     text = _normalize_text(raw_text)
     if not text:
         return ParsedReceipt()
 
     context = _build_receipt_context(text)
-    amount_candidate = _best_candidate(
-        _calibrate_amount_candidates(
+    blocks = evidence_block_spans(raw_text, evidence_blocks)
+    amount_blocks = [evidence_blocks[index] for index, _, _ in blocks]
+    if len(amount_blocks) != len(text.splitlines()) or not all(len(block.get("box", [])) == 4 for block in amount_blocks):
+        amount_blocks = []
+    amount_candidate, amounts, amount_decision = resolve_field(
+        raw_text, "amount_cents",
+        bind_amount_roles(text, _calibrate_amount_candidates(
             _amount_candidates(
                 text,
                 currency_code=currency_code,
                 minor_unit_exponent=minor_unit_exponent,
+                evidence_blocks=amount_blocks,
             ),
             context,
-        )
+        )),
+        block_spans=blocks,
+        currency_code=currency_code,
+        minor_unit_exponent=minor_unit_exponent,
     )
-    merchant_candidate = _best_candidate(
-        _calibrate_merchant_candidates(_merchant_candidates(text), context)
+    merchant_candidate, merchants, merchant_decision = resolve_field(
+        raw_text, "merchant",
+        _calibrate_merchant_candidates(_merchant_candidates(text), context),
+        block_spans=blocks,
     )
-    time_candidate = _best_candidate(
-        _calibrate_time_candidates(_time_candidates(text, timezone_name), context)
+    time_candidate, times, time_decision = resolve_field(
+        raw_text, "expense_time",
+        _time_candidates(text, timezone_name, reference_time=reference_time),
+        block_spans=blocks,
     )
     amount_cents = amount_candidate.amount_cents if amount_candidate else None
     merchant = merchant_candidate.value if merchant_candidate else None
     expense_time = time_candidate.value if time_candidate else None
-    category_candidate = _best_candidate(
+    category_candidate, categories, category_decision = resolve_field(
+        raw_text, "category",
         _calibrate_category_candidates(
             _category_candidates(text, merchant), context, merchant_candidate
-        )
+        ),
+        block_spans=blocks,
     )
     category = category_candidate.category if category_candidate else None
     confidence = _estimate_confidence(
@@ -427,4 +444,6 @@ def parse_receipt_text(
         category=category,
         confidence=confidence,
         items=items,
+        candidates=amounts + merchants + times + categories,
+        decisions=(amount_decision, merchant_decision, time_decision, category_decision),
     )

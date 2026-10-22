@@ -1,25 +1,23 @@
 from __future__ import annotations
 
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import UTC, datetime
 
 import pytest
 
-from app.services.receipt_parse_common import _ReceiptContext, _ReceiptSignals
-from app.services.receipt_parse_service import _context_quality_bonus, parse_receipt_text
-from app.services.time_service import ensure_utc
+from app.services.receipt_parse_service import parse_receipt_text
 
 
 def _utc_iso(value) -> str:
     return value.isoformat().replace("+00:00", "Z")
 
 
-def _parse_cny(raw_text: str, *, timezone_name: str | None = None):
+def _parse_cny(raw_text: str, *, timezone_name: str | None = None, reference_time=None):
     return parse_receipt_text(
         raw_text,
         timezone_name=timezone_name,
         currency_code="CNY",
         minor_unit_exponent=2,
+        reference_time=reference_time,
     )
 
 
@@ -69,31 +67,6 @@ def test_receipt_time_parser_accepts_client_timezone() -> None:
     assert los_angeles.expense_time is not None
     assert _utc_iso(shanghai.expense_time) == "2026-04-30T15:30:00Z"
     assert _utc_iso(los_angeles.expense_time) == "2026-05-01T06:30:00Z"
-
-
-def test_context_quality_bonus_rewards_structured_profile_evidence() -> None:
-    context = _ReceiptContext(
-        text="structured receipt",
-        lines=("title", "amount", "merchant", "time", "success"),
-        profile="alipay_bill_detail",
-        signals=_ReceiptSignals(
-            line_count=5,
-            transaction_success_count=1,
-            amount_label_count=1,
-            merchant_label_count=1,
-            time_label_count=1,
-            discount_marker_count=1,
-        ),
-    )
-
-    bonus = _context_quality_bonus(
-        context=context,
-        amount_candidate=None,
-        merchant_candidate=None,
-        time_candidate=None,
-    )
-
-    assert bonus > 0.06
 
 
 def test_profile_calibration_demotes_alipay_order_amount() -> None:
@@ -200,7 +173,7 @@ def test_labeled_amount_and_merchant_parse_with_long_spacing() -> None:
     assert parsed.merchant == "罗森便利店"
 
 
-def test_profile_calibration_keeps_mobility_provider_over_destination_text() -> None:
+def test_future_mobility_payment_keeps_merchant_and_amount_evidence_without_filling_expense() -> None:
     raw_text = "\n".join(
         [
             "花溪工业园区",
@@ -221,7 +194,9 @@ def test_profile_calibration_keeps_mobility_provider_over_destination_text() -> 
 
     parsed = _parse_cny(raw_text)
 
-    assert parsed.amount_cents == 1173
+    assert parsed.amount_cents is None
+    assert any(item.field == "amount_cents" and item.value == 1173 for item in parsed.candidates)
+    assert next(item for item in parsed.decisions if item.field == "amount_cents").reason == "transaction_not_completed"
     assert parsed.merchant == "高德"
     assert parsed.category == "交通"
 
@@ -242,16 +217,19 @@ def test_bank_push_reminder_extracts_inline_spend_time() -> None:
         ]
     )
 
-    parsed = _parse_cny(raw_text)
-    current_year = datetime.now(ZoneInfo("Asia/Shanghai")).year
-    expected_time = ensure_utc(datetime(current_year, 5, 7, 15, 29, tzinfo=ZoneInfo("Asia/Shanghai")))
+    reference = datetime(2025, 5, 8, tzinfo=UTC)
+    parsed = _parse_cny(raw_text, reference_time=reference)
 
     assert parsed.amount_cents == 175479
-    assert parsed.expense_time == expected_time
-    assert parsed.confidence is not None and parsed.confidence >= 0.6
+    assert parsed.expense_time is None
+    candidate = next(item for item in parsed.candidates if item.field == "expense_time")
+    assert candidate.local_value == "2025-05-07T15:29"
+    assert candidate.inferred_components == ("year",)
+    assert candidate.reference_time == reference.isoformat()
+    assert candidate.review_reason == "year_inferred_from_capture_reference"
 
 
-def test_taobao_flash_payment_sheet_prefers_bottom_amount_and_merchant() -> None:
+def test_taobao_payment_in_progress_preserves_amount_evidence_without_claiming_spend() -> None:
     raw_text = "\n".join(
         [
             "15:17",
@@ -277,7 +255,9 @@ def test_taobao_flash_payment_sheet_prefers_bottom_amount_and_merchant() -> None
 
     parsed = _parse_cny(raw_text)
 
-    assert parsed.amount_cents == 2568
+    assert parsed.amount_cents is None
+    assert any(item.field == "amount_cents" and item.value == 2568 for item in parsed.candidates)
+    assert next(item for item in parsed.decisions if item.field == "amount_cents").reason == "transaction_not_completed"
     assert parsed.merchant == "淘宝闪购商户"
     assert parsed.category == "餐饮"
 

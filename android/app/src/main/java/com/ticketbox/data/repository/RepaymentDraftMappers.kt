@@ -22,6 +22,7 @@ fun RepaymentDraftDto.toDomain(): RepaymentDraft = RepaymentDraft(
     originalCurrencyCode = originalCurrencyCode,
     originalAmountMinor = originalAmountMinor,
     accountingTime = accountingTime?.toDomain(),
+    recognitionTime = recognitionTime?.toDomain(),
     sourceExpensePublicId = sourceExpensePublicId,
     sourceExpenseRequiresReview = sourceExpenseRequiresReview,
     correctedExpenseId = correctedExpenseId,

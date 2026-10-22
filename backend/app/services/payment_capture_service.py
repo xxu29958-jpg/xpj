@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import Expense, RepaymentDraft
 from app.schemas import NotificationDraftCreateRequest, RepaymentDraftCreateRequest
-from app.schemas.payment_capture import PaymentCaptureCreate
+from app.schemas.payment_capture import PaymentCaptureCreate, PaymentCaptureResponse
 from app.services.currency_common import minor_amount_value, normalize_currency_code
 from app.services.exchange_rate_service import amount_major_to_minor
+from app.services.notification_time_service import freeze_notification_time
 from app.services.payment_capture_identity import capture_response, link_capture, reserve_capture
 from app.services.time_service import ensure_utc, now_utc
+from app.tenants import AuthContext
 
 
 def _finish_expense(db, expense, fx_task):
@@ -87,7 +89,8 @@ def stage_capture_target(db, capture, *, auth, kind, currency, amount, merchant,
 
         expense, fx_task = stage_notification_draft(db, NotificationDraftCreateRequest(source=capture.source,
             original_currency=currency, original_amount=minor_amount_value(amount, currency),
-            merchant=merchant, expense_time=capture.captured_at, notification_key=key), auth)
+            # Delivery can be delayed; no transaction time was supplied here.
+            merchant=merchant, notification_key=key), auth)
         return link_capture(db, capture, expense), fx_task
     from app.services.debt_service._repayment_capture import stage_repayment_draft
 
@@ -98,7 +101,7 @@ def stage_capture_target(db, capture, *, auth, kind, currency, amount, merchant,
     return link_capture(db, capture, draft), None
 
 
-def capture_notification(db, *, auth, payload: PaymentCaptureCreate):
+def capture_notification(db: Session, *, auth: AuthContext, payload: PaymentCaptureCreate) -> PaymentCaptureResponse:
     from app.services.expense_service._helpers import _clean_notification_source
 
     source = _clean_notification_source(payload.source)
@@ -107,6 +110,7 @@ def capture_notification(db, *, auth, payload: PaymentCaptureCreate):
         notification_key=payload.notification_key, source=source, captured_at=ensure_utc(payload.captured_at),
         original_currency=currency, original_amount_minor=payload.original_amount_minor, merchant=payload.merchant,
         parser_version=payload.parser_version, candidates=[item.model_dump() for item in payload.candidates],
+        time_evidence=freeze_notification_time(payload.time_evidence, ensure_utc(payload.captured_at)),
         kind=payload.suggested_kind)
     fx_task = None
     if fresh and capture.kind != "review":

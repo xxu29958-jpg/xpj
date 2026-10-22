@@ -137,8 +137,7 @@ class ExpenseEditScreenContractTest {
                         expense = expense().copy(
                             hasImage = true,
                             duplicateStatus = "suspected",
-                            duplicateReason = "amount, merchant, time",
-                            duplicateSuggestionReasons = listOf("recent_user_reject"),
+                            duplicateReason = "原件完全一致；交易信息不足，需对照原件核实",
                         ),
                         editState = ExpenseEditUiState(readOnly = true),
                     ),
@@ -149,11 +148,52 @@ class ExpenseEditScreenContractTest {
             }
         }
 
-        composeRule.onNodeWithText("已参考你之前“不是重复”的选择", substring = true)
+        composeRule.onNodeWithText("交易信息不足", substring = true)
             .performScrollTo().assertIsDisplayed()
-        capture("review-learning-duplicate-feedback")
+        capture("review-duplicate-evidence-readonly")
         composeRule.onNodeWithText("看原图").performScrollTo().assertIsEnabled().performClick()
         composeRule.runOnIdle { assertEquals(1, originalRequests) }
+    }
+
+    @Test
+    fun evidenceChoicesKeepEditedAmountAndOtherDuplicateCandidatesUntilExplicitSave() {
+        var saved: ExpenseDraft? = null
+        var opened: Long? = null
+        var kept = 0
+        val day = com.ticketbox.domain.model.RecognitionTimeCandidate("day", "交易日期", "原件只有日期。",
+            "交易日期：2025-12-31", "2025-12-31", "date_only", "Asia/Shanghai", null, true)
+        val recorded = expense().copy(expenseTime = null, originalAmountMinor = 1234L,
+            accountingTime = com.ticketbox.domain.model.ExpenseAccountingTime("unknown", calendarRevision = 1L),
+            recognitionTime = com.ticketbox.domain.model.RecognitionTime("fact", "receipt-fields-v2", "needs_review", listOf(day)),
+            recognitionNotes = listOf("原件金额存在冲突，请核对现有草稿。"),
+            duplicateStatus = "suspected", duplicateOfId = 2L, duplicateCandidateIds = listOf(2L, 3L),
+            duplicateReason = "原件完全一致；交易信息不足，需对照原件核实")
+        composeRule.setContent {
+            TicketboxTheme(skin = skin) {
+                ExpenseEditScreen(expenseEditScreenState(expense = recorded), ExpenseEditScreenActions(
+                    primary = ExpenseEditPrimaryActions(onSave = { saved = it }),
+                    related = ExpenseEditRelatedActions(onKeepDuplicate = { kept++ }, onOpenDuplicateReference = { opened = it }),
+                ))
+            }
+        }
+        composeRule.onNodeWithText("原件金额存在冲突，请核对现有草稿。").performScrollTo().assertIsDisplayed()
+        composeRule.onNode(hasSetTextAction() and hasText("12.34")).performScrollTo().performTextReplacement("22.00")
+        closeSoftKeyboard()
+        composeRule.onNodeWithText("查看其他候选 #3").performScrollTo().performClick()
+        composeRule.onNodeWithTag("expense-edit-time-section").performScrollTo().performClick()
+        composeRule.onNodeWithText("将此时间填入草稿").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(3L, opened); assertEquals(null, saved); assertEquals(0, kept) }
+        capture("review-recognized-date-explicit-choice")
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle {
+            assertEquals(2200L, saved?.originalAmountMinor)
+            assertEquals("date_only", saved?.timeInput?.precision)
+            assertEquals("2025-12-31", saved?.timeInput?.userLocalDate)
+            assertEquals(null, saved?.expenseTime)
+        }
+        composeRule.onNodeWithText("与参考账单不是重复，保留两笔").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(1, kept) }
+        composeRule.onNodeWithText("查看其他候选 #3").assertExists()
     }
 
     @Test

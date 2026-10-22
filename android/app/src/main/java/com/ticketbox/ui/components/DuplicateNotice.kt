@@ -19,7 +19,6 @@ import com.ticketbox.ui.design.LocalStateTokens
 fun DuplicateNotice(
     reason: String?,
     modifier: Modifier = Modifier,
-    feedbackAdjusted: Boolean = false,
 ) {
     val tone = LocalStateTokens.current.warn
     Column(
@@ -47,13 +46,6 @@ fun DuplicateNotice(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        if (feedbackAdjusted) {
-            Text(
-                text = stringResource(R.string.expense_learning_duplicate_adjusted),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
     }
 }
 
@@ -61,6 +53,8 @@ fun DuplicateNotice(
 fun duplicateNoticeBody(reason: String?): String {
     val normalized = reason.orEmpty().trim()
     return when {
+        normalized.contains("交易信息不足") || normalized.contains("原币金额相同") ||
+            normalized.contains("交易标识相同") -> normalized
         normalized.hasAnyReasonToken(
             "image hash",
             "perceptual hash",

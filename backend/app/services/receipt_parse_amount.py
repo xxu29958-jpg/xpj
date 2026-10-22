@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
+from dataclasses import replace
 
 from app.money_contract import MONEY_MINOR_MAX
 from app.services.receipt_parse_common import (
@@ -43,6 +45,7 @@ def _amount_candidates(
     *,
     currency_code: str | None,
     minor_unit_exponent: int | None,
+    evidence_blocks: Sequence[dict] | None = None,
 ) -> list[_AmountCandidate]:
     context_pair = _validated_money_context(currency_code, minor_unit_exponent)
     if context_pair is None:
@@ -53,7 +56,7 @@ def _amount_candidates(
     lines = text.splitlines()
     candidates = [
         *_primary_line_amount_candidates(lines, code, exponent),
-        *_labeled_amount_candidates(lines, code, exponent),
+        *_labeled_amount_candidates(lines, code, exponent, evidence_blocks),
         *_inline_amount_candidates(text, lines, code, exponent),
     ]
     return _apply_amount_cross_evidence(candidates)
@@ -128,6 +131,8 @@ def _primary_line_amount_candidate(
         source="line",
         evidence=dimensions.evidence,
         dimensions=dimensions,
+        normalized_span=(sum(len(line) + 1 for line in lines[:index]),
+            sum(len(line) + 1 for line in lines[:index]) + len(line_text)),
     )
 
 
@@ -135,9 +140,10 @@ def _labeled_amount_candidates(
     lines: list[str],
     currency_code: str,
     minor_unit_exponent: int,
+    evidence_blocks: Sequence[dict] | None,
 ) -> list[_AmountCandidate]:
     candidates: list[_AmountCandidate] = []
-    for match in iter_labeled_amount_matches(lines):
+    for match in iter_labeled_amount_matches(lines, evidence_blocks):
         cents = _money_to_cents(
             match.amount,
             currency_code=currency_code,
@@ -169,6 +175,8 @@ def _labeled_amount_candidates(
                 source=f"label:{label}",
                 evidence=dimensions.evidence,
                 dimensions=dimensions,
+                normalized_span=match.normalized_span,
+                role=label if label in {"total", "final_total", "rounded_total"} else "unknown",
             )
         )
     return candidates
@@ -210,7 +218,8 @@ def _inline_amount_candidates(
             if score > 0:
                 candidates.append(
                     _AmountCandidate(
-                        cents, score, index, source, dimensions.evidence, dimensions
+                        cents, score, index, source, dimensions.evidence, dimensions,
+                        normalized_span=match.span(),
                     )
                 )
     return candidates
@@ -262,11 +271,9 @@ def _calibrate_amount_candidates(
             evidence=tuple(evidence),
         )
         calibrated.append(
-            _AmountCandidate(
-                amount_cents=candidate.amount_cents,
+            replace(
+                candidate,
                 score=dimensions.total,
-                line_index=candidate.line_index,
-                source=candidate.source,
                 evidence=dimensions.evidence,
                 dimensions=dimensions,
             )
@@ -392,11 +399,9 @@ def _apply_amount_cross_evidence(
             evidence=(f"same_amount_support:+{support}",),
         )
         boosted.append(
-            _AmountCandidate(
-                amount_cents=candidate.amount_cents,
+            replace(
+                candidate,
                 score=dimensions.total,
-                line_index=candidate.line_index,
-                source=candidate.source,
                 evidence=dimensions.evidence,
                 dimensions=dimensions,
             )

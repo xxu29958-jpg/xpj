@@ -42,6 +42,38 @@ class ParsedReceiptItem:
 
 
 @dataclass(frozen=True)
+class ReceiptFieldCandidate:
+    id: str
+    field: str
+    value: str | int
+    rank_score: int
+    source: str
+    raw_spans: tuple[tuple[int, int], ...]
+    block_indices: tuple[int, ...]
+    reasons: tuple[str, ...]
+    currency_code: str | None = None
+    minor_unit_exponent: int | None = None
+    role: str | None = None
+    precision: str | None = None
+    local_value: str | None = None
+    timezone_name: str | None = None
+    timezone_basis: str | None = None
+    utc_offset_seconds: int | None = None
+    inferred_components: tuple[str, ...] = ()
+    reference_time: str | None = None
+    review_reason: str | None = None
+    rule_version: str = "receipt-fields-v2"
+
+
+@dataclass(frozen=True)
+class ReceiptFieldDecision:
+    field: str
+    status: str
+    selected_id: str | None
+    reason: str
+
+
+@dataclass(frozen=True)
 class ParsedReceipt:
     amount_cents: int | None = None
     merchant: str | None = None
@@ -49,6 +81,8 @@ class ParsedReceipt:
     category: str | None = None
     confidence: float | None = None
     items: tuple[ParsedReceiptItem, ...] = ()
+    candidates: tuple[ReceiptFieldCandidate, ...] = ()
+    decisions: tuple[ReceiptFieldDecision, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -118,6 +152,9 @@ class _AmountCandidate:
     source: str
     evidence: tuple[str, ...] = ()
     dimensions: _ScoreDimensions | None = None
+    normalized_span: tuple[int, int] | None = None
+    role: str = "unknown"
+    review_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -132,12 +169,22 @@ class _MerchantCandidate:
 
 @dataclass(frozen=True)
 class _TimeCandidate:
-    value: datetime
+    value: datetime | str
     score: int
     line_index: int
     source: str
     evidence: tuple[str, ...] = ()
     dimensions: _ScoreDimensions | None = None
+    role: str = "unknown"
+    precision: str = "second"
+    local_value: str | None = None
+    timezone_name: str | None = None
+    timezone_basis: str | None = None
+    utc_offset_seconds: int | None = None
+    inferred_components: tuple[str, ...] = ()
+    reference_time: str | None = None
+    review_reason: str | None = None
+    normalized_span: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)

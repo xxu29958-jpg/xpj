@@ -8,6 +8,8 @@ import com.ticketbox.domain.model.NotificationDraftSource
 import com.ticketbox.domain.model.RepaymentDraftSource
 import com.ticketbox.domain.model.RepaymentNotificationDraft
 import com.ticketbox.notification.PaymentNotificationResult
+import com.ticketbox.data.remote.dto.NotificationTimeEvidenceDto
+import com.ticketbox.data.remote.dto.toDto
 import java.time.Instant
 
 /** Only parsed payment fields enter Room. The original notification body and system key do not. */
@@ -24,6 +26,7 @@ data class NotificationCapturePayload(
     val capturedAt: String,
     val parserVersion: String = "legacy",
     val candidates: List<com.ticketbox.data.remote.dto.PaymentCandidateDto> = emptyList(),
+    val timeEvidence: NotificationTimeEvidenceDto? = null,
 ) {
     internal fun expenseRequest() = NotificationDraft(NotificationDraftSource.entries.single { it.apiValue == source },
         requireNotNull(originalAmountMinor), merchant, category, capturedAt).toRequest(notificationKey)
@@ -32,7 +35,7 @@ data class NotificationCapturePayload(
         requireNotNull(originalAmountMinor), merchant, capturedAt).toCreateRequest(notificationKey)
 
     internal fun request() = com.ticketbox.data.remote.dto.PaymentCaptureCreateDto(notificationKey, source, capturedAt,
-        originalCurrencyCode, originalAmountMinor, merchant, kind, parserVersion, candidates)
+        originalCurrencyCode, originalAmountMinor, merchant, kind, parserVersion, candidates, timeEvidence)
 }
 
 @JsonClass(generateAdapter = true)
@@ -51,14 +54,15 @@ internal fun PaymentNotificationResult.captureIntent(key: String): PendingMutati
     val parsed = when (this) {
         is PaymentNotificationResult.Expense -> NotificationCapturePayload(
             1, "expense", key, draft.source.apiValue, requireNotNull(draft.amountCents), "CNY", draft.merchant?.trim(), draft.category,
-            requireNotNull(draft.expenseTime))
+            requireNotNull(capturedAt))
         is PaymentNotificationResult.Repayment -> NotificationCapturePayload(
             1, "repayment", key, draft.source.apiValue, draft.amountCents, "CNY", draft.merchantLabel?.trim(), null,
             requireNotNull(draft.capturedAt))
         is PaymentNotificationResult.Review -> NotificationCapturePayload(
             2, "review", key, source, null, "CNY", merchant, null, capturedAt)
     }
-    val payload = parsed.copy(revision = 2, parserVersion = com.ticketbox.notification.PaymentNotificationParser.VERSION,
+    val payload = parsed.copy(revision = 3, parserVersion = com.ticketbox.notification.PaymentNotificationParser.VERSION,
+        timeEvidence = timeEvidence?.toDto(),
         candidates = candidates.map { com.ticketbox.data.remote.dto.PaymentCandidateDto(it.kind, it.amountMinor, it.field, it.evidence) })
     require(payload.kind == "review" || (payload.originalAmountMinor ?: 0) > 0)
     Instant.parse(payload.capturedAt)
@@ -68,14 +72,14 @@ internal fun PaymentNotificationResult.captureIntent(key: String): PendingMutati
 internal fun OutboxRow.notificationCapture(): NotificationCapturePayload? = runCatching {
     require(type == PendingMutationType.CapturePaymentNotification && expectedRowVersion == 0L)
     val capture = requireNotNull(NotificationCaptureWire.payload.fromJson(payloadJson))
-    require(capture.revision in 1..2 && capture.notificationKey.isNotBlank() && capture.notificationKey == idempotencyKey &&
+    require(capture.revision in 1..3 && capture.notificationKey.isNotBlank() && capture.notificationKey == idempotencyKey &&
         targetId == "notification:${capture.notificationKey}")
     require(capture.originalCurrencyCode == "CNY" && (capture.kind == "review" || (capture.originalAmountMinor ?: 0) > 0))
     Instant.parse(capture.capturedAt)
     when (capture.kind) {
         "expense" -> capture.expenseRequest()
         "repayment" -> capture.repaymentRequest()
-        "review" -> require(capture.revision == 2)
+        "review" -> require(capture.revision >= 2)
         else -> error("Unknown capture kind")
     }
     capture

@@ -36,7 +36,7 @@ enum class RepaymentDraftSource(val apiValue: String) {
 
 /**
  * NLS 抠出的还款通知金额明确按人民币分解析，mapper 会发送 CNY 原币及十进制金额。
- * [capturedAt] 是通知投递时刻（confirm 时透传成 `Repayment.paid_at`，
+ * [capturedAt] 是通知投递证据；实际还款时间由原快照或用户核对输入决定（
  * 让晚几天复核也不把还款时间回填到复核时刻）。[merchantLabel] 是尽力抠出的卡 / 平台标签（尾号 /
  * 花呗 / 白条…），用于 ③b 模糊匹配与展示，可为空（③a 用户手动选债，匹配不到也无妨）。
  */
@@ -84,6 +84,7 @@ data class RepaymentDraft(
     val sourceExpenseRequiresReview: Boolean = false,
     val correctedExpenseId: Long? = null,
     val correctionVersions: RepaymentCorrectionVersions? = null,
+    val recognitionTime: RecognitionTime? = null,
 ) {
     val isPending: Boolean get() = status == RepaymentDraftStatuses.PENDING
     val correctionNeedsMoney: Boolean get() = correctionVersions?.fundsAccountVersions?.isNotEmpty() == true && sourceExpensePublicId == null

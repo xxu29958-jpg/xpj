@@ -98,7 +98,9 @@ def record_repayment(
         )
         paid_at = payment_time.instant_utc if payment_time is not None else (payload.paid_at or now_utc())
         rate_date = (payment_time.user_local_date or payment_time.accounting_date) if payment_time else None
-        if payment_time and rate_date is None and paid_at is None and payload.original_currency is not None:
+        if (payment_time and rate_date is None and paid_at is None
+                and payload.original_currency is not None
+                and payload.original_currency != debt.home_currency_code):
             raise AppError("accounting_date_required", "原还款日期未知，请先核对日期再换算金额。", status_code=422)
         money = freeze_home_amount(
             db, tenant_id=tenant_id, home_currency_code=debt.home_currency_code,

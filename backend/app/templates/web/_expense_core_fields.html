@@ -76,6 +76,11 @@
   {% endif %}
 
   {% if core_fields_compact|default(false) %}
+  {% if e.status == 'pending' and recognition_notes | default([]) %}
+  <div class="product-feedback" role="note" data-recognition-amount-notes>
+    {% for note in recognition_notes %}<p class="meta">{{ note }}</p>{% endfor %}
+  </div>
+  {% endif %}
   <details class="product-surface review-amount-field" open>
     <summary>
       <span>金额 · {{ e.original_currency_code }}{% if e.needs_amount %} · 待补{% endif %}</span>

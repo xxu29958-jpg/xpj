@@ -49,6 +49,7 @@ data class RepaymentDraftDto(
     @param:Json(name = "source_expense_requires_review") val sourceExpenseRequiresReview: Boolean = false,
     @param:Json(name = "corrected_expense_id") val correctedExpenseId: Long? = null,
     @param:Json(name = "correction_versions") val correctionVersions: RepaymentCorrectionVersionsDto? = null,
+    @param:Json(name = "recognition_time") val recognitionTime: RecognitionTimeDto? = null,
 )
 
 data class RepaymentDraftListResponseDto(

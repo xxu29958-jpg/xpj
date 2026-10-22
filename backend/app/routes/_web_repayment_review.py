@@ -36,6 +36,7 @@ from app.services.debt_service import (
 from app.services.debt_service._repayment_capture import REPAYMENT_DRAFT_SOURCE_LABELS
 from app.services.debt_service._repayment_draft import get_repayment_draft_response
 from app.services.debt_service._repayment_time import repayment_calendar
+from app.services.notification_time_service import notification_time_for_repayment
 from app.services.repayment_draft_command_service import confirm_repayment_draft_idempotently
 
 _STATUS_LABELS = {"pending": "待复核", "confirmed": "已记账", "dismissed": "已忽略"}
@@ -115,6 +116,8 @@ def render_review(request: Request, db: Session, *, options, selected_id: str, p
     initial = _initial_review_values(scope, selected_id, public_id, row, can_create, calendar, values)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对还款采集")
     view = _audit_row_view(row, ctx.get("ledger_timezone_name")) if row else None
+    ctx["recognition_time"] = notification_time_for_repayment(db, tenant_id=selected_id,
+        actor_account_id=account_id, repayment_public_id=public_id) if row and row.status == "pending" else None
     ctx.update(row=view, read_error=read_error, currencies=supported_currency_codes(), review={
         "public_id": public_id, "scope": scope, "values": initial,
         "can_create": can_create, "can_recover": can_recover, "visible": can_create or values is not None,

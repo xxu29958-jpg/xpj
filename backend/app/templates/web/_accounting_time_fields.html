@@ -1,5 +1,6 @@
 <fieldset class="product-field product-field--wide" {% if time_disabled %}disabled{% endif %}>
   <legend>发生日期与账务日期</legend>
+  {% if time_name == 'expense_time' and recognition_time is defined and recognition_time %}{% include "_recognized_time_candidates.html" %}{% endif %}
   {% if expense is defined %}<span class="meta">已存账务日期：{{ expense.accounting_date or '待核对' }}{% if expense.accounting_date_assumed %}（按初始账本日历推定）{% endif %}</span>{% endif %}
   <input type="hidden" name="calendar_revision" value="{{ time_form.calendar_revision }}">
   <label for="{{ time_prefix }}-precision">已知时间精度</label>

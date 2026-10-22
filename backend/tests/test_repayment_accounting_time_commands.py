@@ -115,16 +115,16 @@ def test_a_date_only_payment_cannot_silently_override_a_different_legacy_instant
     assert error.value.error == "accounting_time_invalid"
 
 
-def test_notification_capture_keeps_its_offset_and_calendar_before_review(monkeypatch):
+def test_notification_delivery_freezes_review_calendar_but_does_not_invent_payment_time(monkeypatch):
     from app.services.debt_service import _repayment_time as payment_time
 
     monkeypatch.setattr(payment_time, "current_calendar", lambda *_a, **_k:
         LedgerCalendarRevision(ledger_id="original-ledger", revision=3, timezone_name="Pacific/Honolulu"))
     snapshot = payment_time.capture_repayment_time(MagicMock(spec=Session), ledger_id="original-ledger",
         captured_at=datetime.fromisoformat("2026-05-01T00:30:00+08:00"))
-    assert snapshot.user_local_date == date(2026, 5, 1)
-    assert snapshot.accounting_date == date(2026, 4, 30) and snapshot.calendar_revision == 3
-    assert snapshot.source_utc_offset_seconds == 28800
+    assert snapshot.precision == "unknown" and snapshot.calendar_revision == 3
+    assert snapshot.instant_utc is None and snapshot.user_local_date is None
+    assert snapshot.accounting_date is None and snapshot.source_utc_offset_seconds is None
 
 
 def test_human_review_date_drives_the_repayment_and_fx_without_rewriting_capture(monkeypatch):

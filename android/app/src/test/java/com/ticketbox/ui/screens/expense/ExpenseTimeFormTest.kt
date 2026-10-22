@@ -1,6 +1,7 @@
 package com.ticketbox.ui.screens.expense
 
 import com.ticketbox.data.remote.dto.LedgerCalendarDto
+import com.ticketbox.domain.model.RecognitionTimeCandidate
 import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -75,4 +76,21 @@ class ExpenseTimeFormTest {
         assertEquals(com.ticketbox.R.string.calendar_input_invalid_zone, invalid.resolve().error)
         assertEquals(invalid, readExpenseTimeForm(invalid.toSavedJson()))
     }
+    @Test fun printedOffsetChoiceSurvivesDraftRestoreWithoutInventingARegion() {
+        val candidate = RecognitionTimeCandidate("candidate", "支付时间", "精确到分", "支付时间 2026-11-01 01:30-05:00",
+            "2026-11-01T01:30", "minute", null, -18000, true)
+        val original = form()
+        val chosen = original.withRecognizedTime(candidate)
+        val restored = requireNotNull(readExpenseTimeForm(chosen.toSavedJson()))
+        val resolved = restored.resolveEdit(original.originalInstant)
+        assertEquals("2026-11-01T06:30:00Z", resolved.instant)
+        assertEquals(-18000, resolved.input?.sourceUtcOffsetSeconds)
+        assertNull(resolved.input?.sourceTimezone)
+        assertEquals(original.calendarRevision, resolved.input?.calendarRevision)
+        assertEquals(false, original.changed)
+        val day = original.withRecognizedTime(candidate.copy(localValue = "2026-10-31", precision = "date_only"))
+        assertNull(day.resolve().instant)
+        assertEquals("2026-10-31", day.resolve().input?.userLocalDate)
+    }
+
 }

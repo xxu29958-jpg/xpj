@@ -93,7 +93,8 @@ def test_web_duplicates_renders_pair(web_client: TestClient, *, identity) -> Non
     assert f'/web/expenses/{second}/edit?' in body
     assert f'/web/expenses/{first}/edit?' in body
     assert "保留两笔" in body
-    assert "图片一致" in body
+    assert "原件相似，交易待核对" in body
+    assert "交易信息不足" in body
     assert "% 相似" not in body
     assert "置信度" not in body
     assert f'name="original_expense_id" value="{first}"' in body

@@ -37,6 +37,9 @@
 <section class="product-surface product-section" aria-label="支付通知待核对">
   <h2 class="product-panel-title">支付通知待核对 · {{ capture.captured_at.strftime('%Y-%m-%d') }}</h2>
   <p>请核对原支付记录，再选择消费、还款或忽略；当前尚未记账。</p>
+  {% if capture.recognition_time %}
+  {% with recognition_time=capture.recognition_time, recognition_time_readonly=true %}{% include "_recognized_time_candidates.html" %}{% endwith %}
+  {% endif %}
   <ul>{% for candidate in capture.candidates %}{% if candidate.amount_minor %}<li>{{ {'expense':'消费候选', 'repayment':'还款候选', 'refund':'退款候选'}.get(candidate.kind, '金额候选') }}：{{ capture.original_currency }} {{ capture_amount_label(candidate.amount_minor, capture.original_currency) }}</li>{% endif %}{% endfor %}</ul>
   <form class="product-form" method="post" action="/web/payment-captures/{{ capture.public_id }}/decision">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

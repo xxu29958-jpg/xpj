@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 
@@ -43,6 +44,7 @@ class LabeledAmountMatch:
     line_index: int
     label: str
     amount: str
+    normalized_span: tuple[int, int]
 
 
 @dataclass(frozen=True)
@@ -61,8 +63,8 @@ LABELED_AMOUNT_PATTERN = re.compile(
     r"\s*[:：]?\s*(?:人民币|RMB|CNY|¥|￥)?\s*(?P<amount>[0-9][0-9,]*(?:\.[0-9]{1,2})?)",
     re.IGNORECASE,
 )
-CURRENCY_AMOUNT_PATTERN = re.compile(r"(?:¥|￥)\s*(?P<amount>[0-9][0-9,]*(?:\.[0-9]{1,2})?)")
-YUAN_AMOUNT_PATTERN = re.compile(r"(?P<amount>[0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:元|人民币)")
+CURRENCY_AMOUNT_PATTERN = re.compile(r"(?:¥|￥)\s*(?P<amount>[0-9][0-9,]*(?:\.[0-9]+)?)(?![0-9.,])")
+YUAN_AMOUNT_PATTERN = re.compile(r"(?<![0-9.,])(?P<amount>[0-9][0-9,]*(?:\.[0-9]+)?)\s*(?:元|人民币)")
 CLOCK_LINE_PATTERN = re.compile(r"^\d{1,2}:\d{2}$")
 PAYMENT_METHOD_LINE_PATTERN = re.compile(r"^使用.+支付$")
 
@@ -89,7 +91,7 @@ MERCHANT_LABEL_PATTERN = re.compile(
 TRANSACTION_SUCCESS_KEYWORDS = ("交易成功", "支付成功", "付款成功")
 DISCOUNT_AMOUNT_LABELS = ("优惠", "立减", "红包", "券", "奖励", "抵扣")
 MONEY_MARKERS = ("¥", "￥", "元", "人民币")
-UPPER_MONEY_MARKERS = ("RMB", "CNY")
+UPPER_MONEY_MARKERS = ("RMB", "CNY", "RM")
 
 AMOUNT_LABEL_SCORES = {
     "交易金额": 78,
@@ -149,21 +151,97 @@ def is_primary_amount_line(value: str | None) -> bool:
     return parse_primary_amount_line(value or "") is not None
 
 
-def iter_labeled_amount_matches(lines: tuple[str, ...] | list[str]) -> list[LabeledAmountMatch]:
+def iter_labeled_amount_matches(lines: tuple[str, ...] | list[str],
+        blocks: Sequence[dict] | None = None) -> list[LabeledAmountMatch]:
     matches: list[LabeledAmountMatch] = []
+    offset = 0
     for line_index, line in enumerate(lines):
         for label, label_start in _label_hits(line, AMOUNT_LABELS):
             tail = line[label_start + len(label) :].lstrip()
             if tail.startswith((":", "：")):
                 tail = tail[1:].lstrip()
             tail = _strip_currency_prefix(tail)
+            amount_start = offset + len(line) - len(tail)
             parsed = _read_amount_token(tail)
             if parsed is None and not tail:
                 parsed = _next_line_amount(lines, line_index)
+                if parsed is not None:
+                    next_tail = _strip_currency_prefix(lines[line_index + 1].strip())
+                    amount_start = offset + len(line) + 1 + len(lines[line_index + 1]) - len(next_tail)
             if parsed is None:
                 continue
             amount, _tail = parsed
-            matches.append(LabeledAmountMatch(line_index=line_index, label=label, amount=amount))
+            matches.append(LabeledAmountMatch(line_index=line_index, label=label, amount=amount,
+                normalized_span=(offset + label_start, amount_start + len(amount))))
+        offset += len(line) + 1
+    return matches + _printed_total_matches(lines, blocks)
+
+
+_PRINTED_TOTAL = re.compile(
+    r"^(?P<label>GRAND\s+TOTAL|NET\s+TOTAL(?:\s+ROUNDED)?|TOTAL\s+AMT\s+ROUNDED|"
+    r"TOTAL\s+AFTER\s+ADJ(?:USTMENT)?\s+INCL\.?\s+GST|"
+    r"(?:TOTAL\s+(?:SALES\s*)?)?INCL(?:\.|USIVE|UDING)?(?:\s+OF)?\s*"
+    r"(?:[0-9.]+\s*%?\s*)?(?:GST|TAX)(?:\s*@\s*[0-9.]+\s*%)?|"
+    r"TOTAL(?:\s+(?:AMOUNT|AMT|PAYABLE))?|AMOUNT\s+DUE)(?=$|[\s:(：])", re.I)
+
+
+def _same_row_totals(lines: Sequence[str], blocks: Sequence[dict], index: int,
+        kind: str, offset: int) -> list[LabeledAmountMatch]:
+    label_box = blocks[index]["box"]
+    label_y = sum(point[1] for point in label_box) / len(label_box)
+    label_height = max(point[1] for point in label_box) - min(point[1] for point in label_box)
+    matches = []
+    for other in range(max(0, index - 3), min(len(lines), index + 4)):
+        if other == index:
+            continue
+        parsed = parse_primary_amount_line(lines[other])
+        if parsed is None or parsed[0] is not None:
+            continue
+        box = blocks[other]["box"]
+        y = sum(point[1] for point in box) / len(box)
+        height = max(point[1] for point in box) - min(point[1] for point in box)
+        if abs(y - label_y) <= 0.6 * min(height, label_height):
+            other_offset = sum(len(line) + 1 for line in lines[:other])
+            matches.append(LabeledAmountMatch(index, kind, parsed[1],
+                (min(offset, other_offset), max(offset + len(lines[index]), other_offset + len(lines[other])))))
+    return matches
+
+
+def _printed_total_matches(lines: tuple[str, ...] | list[str], blocks: Sequence[dict] | None) -> list[LabeledAmountMatch]:
+    matches = []
+    offset = 0
+    tax_summary = False
+    for index, line in enumerate(lines):
+        tax_summary = tax_summary or bool(re.search(r"(?:GST|TAX)\s+SUMMARY", line, re.I))
+        label = _PRINTED_TOTAL.match(line) if not tax_summary else None
+        if label:
+            # Total/RM/value can occupy three OCR blocks. Cash tendered, change,
+            # pre-tax subtotals and the later tax table are different roles.
+            kind = "rounded_total" if re.search(r"ROUNDED|AFTER\s+ADJ", label["label"], re.I) else "total" if label["label"].upper() == "TOTAL" else "final_total"
+            tail = line[label.end():].strip(" :：")
+            tail = re.sub(r"^\(?(?:RM|MYR)\s*\)?\s*[:：]?\s*", "", tail, flags=re.I)
+            parsed = _read_amount_token(tail)
+            if tail and (parsed is None or parsed[1].strip(" :：")) and not re.fullmatch(r"\(\d+\)", tail):
+                offset += len(line) + 1
+                continue  # TOTAL QUANTITY / TOTAL INCLUDES TAX are not totals owed.
+            same_row = _same_row_totals(lines, blocks, index, kind, offset) if blocks and not parsed else []
+            if same_row:
+                matches.extend(same_row)
+                offset += len(line) + 1
+                continue
+            if not blocks and not tail and index and re.match(r"^(?:RM|MYR)\s*\d", lines[index - 1], re.I):
+                offset += len(line) + 1
+                continue  # Flattened text cannot bind money on either side of this label.
+            money_start = offset + len(line) - len(tail)
+            for following in range(index + 1, min(index + 3, len(lines))):
+                if tail:
+                    break
+                tail = _strip_currency_prefix(lines[following]).strip(" :：()")
+                money_start = offset + sum(len(value) + 1 for value in lines[index:following]) + len(lines[following]) - len(tail)
+            parsed = _read_amount_token(tail)
+            if parsed and not parsed[1].strip(" :："):
+                matches.append(LabeledAmountMatch(index, kind, parsed[0], (offset, money_start + len(parsed[0]))))
+        offset += len(line) + 1
     return matches
 
 
@@ -203,7 +281,7 @@ def _label_hits(line: str, labels: tuple[str, ...]) -> list[tuple[str, int]]:
 
 def _strip_currency_prefix(value: str) -> str:
     tail = value.lstrip()
-    for prefix in ("人民币", "RMB", "CNY", "¥", "￥"):
+    for prefix in ("人民币", "RMB", "CNY", "MYR", "RM", "¥", "￥"):
         if tail.upper().startswith(prefix):
             return tail[len(prefix) :].lstrip()
     return tail
@@ -221,8 +299,6 @@ def _read_amount_token(value: str) -> tuple[str, str] | None:
         if char.isdigit():
             if saw_decimal:
                 decimal_digits += 1
-                if decimal_digits > 2:
-                    break
             index += 1
             continue
         if char == "," and not saw_decimal:
@@ -240,7 +316,9 @@ def _read_amount_token(value: str) -> tuple[str, str] | None:
     parts = compact.split(".")
     if len(parts) > 2 or not parts[0].isdigit():
         return None
-    if len(parts) == 2 and (not parts[1].isdigit() or len(parts[1]) > 2):
+    if len(parts) == 2 and not parts[1].isdigit():
+        return None
+    if index < len(text) and text[index] in ".,0123456789":
         return None
     return token, text[index:]
 
@@ -310,6 +388,14 @@ BANK_KEYWORDS = (
     "邮储银行",
 )
 MERCHANT_IGNORED_LINES = {
+    "退款成功",
+    "还款成功",
+    "收款成功",
+    "支付失败",
+    "付款失败",
+    "交易失败",
+    "正在付款中...",
+    "正在支付中...",
     "账单详情",
     "账单详情>",
     "全部账单",
@@ -318,6 +404,7 @@ MERCHANT_IGNORED_LINES = {
     "付款成功",
     "交易状态",
     "查看账单详情",
+    "返回商家",
     "商家名片",
     "我的账单",
     "支付服务",

@@ -72,7 +72,8 @@ def test_duplicate_detection_uses_perceptual_hash_for_near_images(*, identity) -
         assert duplicate.duplicate_status == "suspected"
         assert duplicate.duplicate_of_id == original.id
         assert duplicate.duplicate_reason is not None
-        assert "hash" in duplicate.duplicate_reason
+        assert "原件内容近似" in duplicate.duplicate_reason
+        assert "交易信息不足" in duplicate.duplicate_reason
 
 
 def test_perceptual_scan_is_bounded_by_config_limit(*, identity, monkeypatch) -> None:
