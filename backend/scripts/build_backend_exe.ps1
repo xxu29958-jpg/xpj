@@ -71,6 +71,23 @@ function Invoke-TicketboxVersionProbe(
     return $match.Groups[1].Value
 }
 
+function Build-TicketboxOcrPayload(
+    [string]$Python, [string]$SourceRoot, [string]$OutputRoot, [string]$WorkDirectory
+) {
+    Write-Host "Freezing and checking the offline OCR worker ..."
+    & $Python -I -B -m PyInstaller --noconfirm --clean `
+        --distpath $OutputRoot --workpath $WorkDirectory `
+        (Join-Path $SourceRoot "packaging\ticketbox-ocr.spec")
+    if ($LASTEXITCODE -ne 0) { throw "OCR PyInstaller failed (exit=$LASTEXITCODE)." }
+    $target = Join-Path $OutputRoot "ticketbox-backend\ocr-runtime"
+    Copy-Item -LiteralPath (Join-Path $OutputRoot "ticketbox-ocr") -Destination $target -Recurse
+    & $Python -I -B (Join-Path $SourceRoot "scripts\prepare_ocr_payload.py") `
+        --recipe (Join-Path $SourceRoot "ocr_runtime\recipe.json") --output $target
+    if ($LASTEXITCODE -ne 0) { throw "Offline OCR payload admission failed." }
+    & $Python -I -B (Join-Path $SourceRoot "scripts\smoke_ocr_payload.py") --payload $target
+    if ($LASTEXITCODE -ne 0) { throw "Frozen offline OCR smoke failed." }
+}
+
 if (-not (Test-Path -LiteralPath $ProvenanceScript -PathType Leaf)) {
     throw "Missing build provenance helper: $ProvenanceScript"
 }
@@ -220,12 +237,13 @@ try {
         --workpath $WorkRoot `
         (Join-Path $InputSnapshotRoot "packaging\ticketbox-backend.spec")
     $pyInstallerExitCode = $LASTEXITCODE
+    if ($pyInstallerExitCode -ne 0) {
+        throw "Backend PyInstaller failed (exit=$pyInstallerExitCode)."
+    }
+    Build-TicketboxOcrPayload $PyBuild $InputSnapshotRoot $StagingRoot $WorkRoot
     $executionTreeAfterFreeze = Get-TicketboxPythonExecutionTreeSnapshot $PyBuild
     Assert-TicketboxStructuredEvidence "PyInstaller interpreter and site-packages during freeze" $executionTreeBeforeFreeze $executionTreeAfterFreeze
     $toolchainProvenance = New-TicketboxBackendBuildToolchainProvenance -BackendRoot $BackendRoot -Config $toolchain -PythonPath $PyBuild -PythonSourcePath $SourcePython -PythonVersion $pythonVersion -UvPath $UvPath -UvVersion $uvVersion -PyInstallerPath $PyInstaller -PyInstallerVersion $pyInstallerVersion -InstalledDistributions $installedDistributions -PythonExecutionTree $executionTreeBeforeFreeze
-    if ($pyInstallerExitCode -ne 0) {
-        throw "PyInstaller failed (exit=$pyInstallerExitCode); no final frozen payload was published."
-    }
     $stagedExe = Join-Path $StagingDir "ticketbox-backend.exe"
     if (-not (Test-Path -LiteralPath $stagedExe -PathType Leaf)) {
         throw "PyInstaller completed without the staged backend executable."

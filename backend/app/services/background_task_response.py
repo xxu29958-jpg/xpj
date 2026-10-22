@@ -51,7 +51,7 @@ def task_response_dicts(
 
 
 def _source_expense_id(task: BackgroundTask, *, tenant_id: str) -> int | None:
-    if task.task_type not in {"expense_enrichment", "expense_fx"} or task.tenant_id != tenant_id:
+    if task.task_type not in {"expense_enrichment", "expense_ocr_retry", "expense_fx"} or task.tenant_id != tenant_id:
         return None
     return task.source_expense_id
 

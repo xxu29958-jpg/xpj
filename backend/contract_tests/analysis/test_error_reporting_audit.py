@@ -117,6 +117,9 @@ example = "logging.basicConfig(filename='raw.log')"
     ("android/app/src/main/java/com/ticketbox/data/repository/NetworkErrorHandler.kt",
         "copy(requestId = requestId)", "copy(requestId = null)"),
     ("backend/packaging/launch.py", "app.log_sanitize.SanitizedFormatter", "logging.Formatter"),
+    ("backend/app/services/background_task_executor.py", "_report_worker_outcome(task_id, future)", "pass"),
+    ("backend/app/services/ocr_worker_client.py",
+        'report_error(logger, "OCR pipe reader failed", error=exc)', "pass"),
 ])
 def test_common_owner_and_android_id_loss_are_blocked(guard_repo, target, old, new):
     path = guard_repo[0] / target

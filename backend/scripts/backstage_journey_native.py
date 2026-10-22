@@ -95,6 +95,7 @@ def native_upload_and_ocr(j):
     wait_for(lambda: j.facts()["tasks"][-1]["status"] == "completed", "The automatic-disabled task did not settle")
     original = j.facts()["expenses"][-1]
     original_task = j.facts()["tasks"][-1]
+    original_facts = j.facts()["ocr_facts"]
     assert original["amount"] is None and original["status"] == "pending"
     assert original["original_sha256"] == digest, "The actual share did not preserve its synthetic original"
     assert original_task["expense_id"] == original["id"] and original_task["result"]["outcome"] == "no_result"
@@ -119,12 +120,15 @@ def native_upload_and_ocr(j):
     j.native.reveal_any("23.45", toward_start=True)
     j.native.capture("backstage-native-ocr-explicit-review")
     current = j.facts()
-    assert current["tasks"][-1] == original_task, "Manual native OCR rewrote the original upload result"
+    assert next(task for task in current["tasks"] if task["id"] == original_task["id"]) == original_task
+    manual_task = current["tasks"][-1]
+    assert manual_task["type"] == "expense_ocr_retry" and manual_task["status"] == "completed"
+    assert manual_task["expense_id"] == original["id"] and len(current["ocr_facts"]) == len(original_facts) + 1
     assert current["expenses"][-1]["original_sha256"] == original["original_sha256"]
     j.goto("/web/pending")
     j.page.locator("#recognition > summary").click()
     task = j.page.locator(f'[data-recognition-task-id="{original_task["id"]}"]')
-    assert "当次未识别出可用字段" in task.inner_text()
+    assert "当次识别完成，填写没有变化" in task.inner_text()
     task.get_by_role("link", name=f'打开原单 #{original["id"]}', exact=True).click()
     assert j.page.locator('[name="amount_yuan"]').input_value() == "23.45"
     j.capture("native-ocr-current-source-original-task-retained")

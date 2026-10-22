@@ -22,7 +22,8 @@ Cancellation contract:
 
 Orphan recovery:
     :func:`recover_orphaned_tasks` is called from the FastAPI lifespan and
-    force-fails any task in ``running`` or ``queued`` state. The
+    finishes committed OCR applied receipts, including their FX handoff, and
+    force-fails other tasks in ``running`` or ``queued`` state. The
     in-process executor model means that a backend restart immediately
     voids every in-flight task (the ThreadPoolExecutor died with the
     previous process; nothing in this process can resume it) and every
@@ -33,7 +34,7 @@ Orphan recovery:
     worker force-failing fresh work still heartbeating in another process.
     The upload domain may explicitly readmit its original restart-orphaned
     enrichment from durable input and through the same capacity authority.
-    Startup itself does not automatically execute tasks or restart terminal work.
+    Startup never reruns OCR for an applied receipt or restarts terminal work.
 """
 
 from __future__ import annotations
@@ -250,7 +251,8 @@ def request_cancellation(
     next chunk boundary and bails. Idempotent: cancelling an already-
     terminal task returns it unchanged."""
     task = get_task(db, public_id, account_id=account_id, tenant_id=tenant_id)
-    if task.status in _TERMINAL_STATUSES:
+    db.refresh(task, with_for_update=True)
+    if task.status in _TERMINAL_STATUSES or task.result_summary_json is not None:
         return task
     if task.cancellation_requested_at is None:
         task.cancellation_requested_at = now_utc()
@@ -266,9 +268,8 @@ def request_cancellation(
 def recover_orphaned_tasks() -> int:
     """Recover active tasks that the current deployment should treat as dead.
 
-    Default behavior remains the single-process ADR-0030 rule: fail every
-    ``running`` and ``queued`` row on startup because the previous in-memory
-    executor and queue cannot be resumed. When
+    Complete OCR rows that already own an applied receipt; fence the other
+    ``running`` and ``queued`` rows because their old executor is gone. When
     ``BACKGROUND_TASK_ORPHAN_GRACE_SECONDS`` is positive, fresh active rows are
     preserved and only rows whose heartbeat/creation timestamp exceeded the
     grace window are failed. That is the cloud/multi-worker compatibility

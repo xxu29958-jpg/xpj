@@ -22,6 +22,7 @@ class NotificationReminders:
 
         from app.database import SessionLocal
         from app.models import Budget, Expense, RecurringItem, RecurringOccurrence
+        from app.services.ledger_calendar_service import current_ledger_date
 
         with SessionLocal() as db:
             ledger = self.j.fixture.ledger_id
@@ -29,6 +30,7 @@ class NotificationReminders:
             series = db.scalar(select(RecurringItem).where(RecurringItem.tenant_id == ledger))
             return {"budget": budget.total_amount_cents if budget else None,
                 "series": series.public_id if series else None,
+                "ledger_today": current_ledger_date(db, ledger_id=ledger).isoformat(),
                 "expected_date": str(series.next_expected_date) if series else None,
                 "expenses": [{"id": item.id, "status": item.status, "amount": item.amount_cents} for item in
                     db.scalars(select(Expense).where(Expense.tenant_id == ledger))],
@@ -110,7 +112,9 @@ class NotificationReminders:
         from scripts.planning_notification_context import share_original, shared_original_result
 
         reminder_day = date.fromisoformat(self.expected_date)
-        displayed_reminder = f"下次提醒：{reminder_day.year}年{reminder_day.month}月{reminder_day.day}日"
+        ledger_today = date.fromisoformat(self.facts()["ledger_today"])
+        reminder_label = "待处理提醒" if reminder_day < ledger_today else "下次提醒"
+        displayed_reminder = f"{reminder_label}：{reminder_day.year}年{reminder_day.month}月{reminder_day.day}日"
         self.j.tap_notification("本月预算超了", expected="调整本月预算")
         self.native.click("调整本月预算")
         self.native.fill("321.09", label="月度总预算")

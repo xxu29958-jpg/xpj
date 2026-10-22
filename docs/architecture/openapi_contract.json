@@ -40567,6 +40567,122 @@
         ]
       }
     },
+    "/api/expenses/{expense_id}/ocr/tasks": {
+      "post": {
+        "operationId": "post_ocr_task_api_expenses__expense_id__ocr_tasks_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "title": "Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseOcrRetryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundTaskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Ocr Task",
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
     "/api/expenses/{expense_id}/offsets": {
       "post": {
         "operationId": "post_expense_offset_api_expenses__expense_id__offsets_post",

@@ -54,6 +54,7 @@ from app.services.category_preference_service import (
 from app.services.debt_service import repayment_draft_response
 from app.services.expense_edit_command_service import edit_expense_submission
 from app.services.expense_ocr_command_service import submit_expense_ocr_retry, submit_expense_text_recognition
+from app.services.expense_ocr_task_service import submit_expense_ocr_task
 from app.services.expense_response_service import (
     expense_fx_tasks_by_id,
     expense_raw_text_by_id,
@@ -597,6 +598,21 @@ def post_undo_expense(
         tenant_id=auth.tenant_id, expected_row_version=payload.expected_row_version,
         request_expected_row_version=payload.expected_row_version, idempotency_key=idempotency_key,
         actor_account_id=auth.account_id)
+
+
+@router.post("/{expense_id}/ocr/tasks", response_model=BackgroundTaskResponse, status_code=202)
+def post_ocr_task(
+    expense_id: str, payload: ExpenseOcrRetryRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db),
+) -> BackgroundTaskResponse:
+    expense_pk, effective_row_version = resolve_expense_for_mutation(db, auth.tenant_id, expense_id,
+        device_id=auth.device_id, expected_row_version=payload.expected_row_version)
+    task = submit_expense_ocr_task(db, expense_id=expense_pk, tenant_id=auth.tenant_id,
+        initiator_account_id=auth.account_id, initiator_device_id=auth.device_id,
+        expected_row_version=effective_row_version, request_expected_row_version=payload.expected_row_version,
+        idempotency_key=idempotency_key)
+    return BackgroundTaskResponse.model_validate(task_response_dicts(db, [task], tenant_id=auth.tenant_id)[0])
 
 
 @router.post("/{expense_id}/ocr/retry", response_model=ExpenseResponse)

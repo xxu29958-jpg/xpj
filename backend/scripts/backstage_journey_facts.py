@@ -11,7 +11,7 @@ def facts(ledger_id):
     from sqlalchemy import select
 
     from app.database import SessionLocal
-    from app.models import BackgroundTask, Expense
+    from app.models import BackgroundTask, Expense, OcrFact
     from app.services.original_read_service import read_original_snapshot
 
     with SessionLocal() as db:
@@ -35,7 +35,10 @@ def facts(ledger_id):
                   "error_code": task.error_code}
                  for task in db.scalars(select(BackgroundTask).where(
                      BackgroundTask.tenant_id == ledger_id).order_by(BackgroundTask.id))]
-        return {"expenses": expenses, "tasks": tasks}
+        ocr_facts = [{"id": fact.id, "expense_id": fact.expense_id}
+                     for fact in db.scalars(select(OcrFact).where(
+                         OcrFact.tenant_id == ledger_id).order_by(OcrFact.id))]
+        return {"expenses": expenses, "tasks": tasks, "ocr_facts": ocr_facts}
 
 
 @contextmanager

@@ -1,5 +1,8 @@
 """Resumable Web consumers of the existing text and image recognition commands."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -32,9 +35,15 @@ from app.routes.web_common import (
     _web_redirect,
     preserve_original_ledger_form,
 )
-from app.schemas import ExpenseRecognizeTextRequest
-from app.services.expense_ocr_command_service import submit_expense_ocr_retry, submit_expense_text_recognition
+from app.schemas import BackgroundTaskResponse, ExpenseRecognizeTextRequest
+from app.services import background_task_service
+from app.services.background_task_response import task_response_dicts
+from app.services.expense_ocr_command_service import submit_expense_text_recognition
+from app.services.expense_ocr_task_service import get_expense_ocr_task, submit_web_expense_ocr_task
 from app.services.expense_service import get_expense
+
+if TYPE_CHECKING:
+    from app.models import BackgroundTask, Expense
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -51,7 +60,8 @@ def web_recognition_get(
     return recognition_page(request, db, options, selected, expense_id, return_context.as_kwargs())
 
 
-def _recognize(db, request, selected, expense_id, fields):
+def _recognize(db: Session, request: Request, selected: str, expense_id: int,
+               fields: dict[str, str]) -> BackgroundTask | Expense:
     account_id, device_id = resolve_web_actor(db, request, selected)
     version = parse_form_row_version_token(fields["expected_row_version"])
     if version is None or not fields["idempotency_key"].strip():
@@ -62,10 +72,9 @@ def _recognize(db, request, selected, expense_id, fields):
         raw = fields["raw_text"]
         if not raw.strip() or len(raw) > 20000:
             raise AppError("invalid_request", "请粘贴 1–20000 字的小票文字。", status_code=422)
-        submit_expense_text_recognition(db, **common,
+        return submit_expense_text_recognition(db, **common,
             payload=ExpenseRecognizeTextRequest(expected_row_version=version, raw_text=raw))
-    else:
-        submit_expense_ocr_retry(db, **common, request_expected_row_version=version)
+    return submit_web_expense_ocr_task(db, **common, request_expected_row_version=version)
 
 
 @router.post("/expenses/{expense_id}/recognize-text", response_class=HTMLResponse, include_in_schema=False)
@@ -99,7 +108,7 @@ def web_recognition_post(
                 raise AppError("state_conflict", "账单已离开待确认状态。原识别请求仍保留。", status_code=409)
             fields.update(expected_row_version=str(current.row_version), idempotency_key=str(uuid4()))
             return recognition_page(request, db, options, selected, expense_id, fields, prepared=True)
-        _recognize(db, request, selected, expense_id, fields)
+        accepted = _recognize(db, request, selected, expense_id, fields)
     except (AppError, SQLAlchemyError) as exc:
         db.rollback()
         if isinstance(exc, SQLAlchemyError) or exc.status_code >= 500:
@@ -113,5 +122,28 @@ def web_recognition_post(
         **edit_context_params(**return_context.as_kwargs()))
     receipt = {"expense_id": expense_id, "operation": "recognize_text" if text else "retry_ocr",
         "accepted": True, "request_key": idempotency_key}
+    if accepted is not None and getattr(accepted, "task_type", None) == "expense_ocr_retry":
+        receipt["task_public_id"] = accepted.public_id
     return draft_ack_response(request, draft_scope=fields["draft_scope"], idempotency_key=idempotency_key,
         receipt=receipt, next_href=next_response.headers["location"]) or next_response
+
+
+@router.get("/expenses/{expense_id}/ocr/tasks/{public_id}", response_model=BackgroundTaskResponse, include_in_schema=False)
+def web_ocr_task_status(request: Request, expense_id: int, public_id: str, ledger_id: str,
+    _local: None = LocalOnly, db: Session = Depends(get_db)) -> BackgroundTaskResponse:
+    account_id, _device_id = resolve_web_actor(db, request, ledger_id)
+    task = get_expense_ocr_task(db, public_id, tenant_id=ledger_id, expense_id=expense_id, account_id=account_id)
+    return BackgroundTaskResponse.model_validate(task_response_dicts(db, [task], tenant_id=ledger_id)[0])
+
+
+@router.post("/expenses/{expense_id}/ocr/tasks/{public_id}/cancel", response_class=HTMLResponse, include_in_schema=False)
+def web_ocr_task_cancel(request: Request, expense_id: int, public_id: str, ledger_id: str = Form(""),
+    return_context: ExpenseReturnContext = Depends(expense_return_form_context),
+    _local: None = LocalOnly, db: Session = Depends(get_db)) -> Response:
+    options = _list_ledger_options(db)
+    _require_selected_ledger_write(options, ledger_id)
+    account_id, _device_id = resolve_web_actor(db, request, ledger_id)
+    get_expense_ocr_task(db, public_id, tenant_id=ledger_id, expense_id=expense_id, account_id=account_id)
+    background_task_service.request_cancellation(db, public_id, account_id=account_id, tenant_id=ledger_id)
+    return _web_redirect(f"/web/expenses/{expense_id}/edit", ledger_id,
+        **edit_context_params(**return_context.as_kwargs()))

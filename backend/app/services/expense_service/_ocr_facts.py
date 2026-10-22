@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from sqlalchemy.orm import Session
 
 from app.models import Expense
@@ -74,6 +76,8 @@ def append_ocr_fact(
             ocr_provider=provider_name,
             ocr_model=ocr_model,
             raw_text=snapshot.raw_text,
+            evidence_json=(json.dumps(result.evidence, ensure_ascii=False, allow_nan=False)
+                           if result.evidence is not None else None),
             parsed_amount_cents=snapshot.parsed_amount_cents,
             parsed_merchant=snapshot.parsed_merchant,
             parsed_category=snapshot.parsed_category,

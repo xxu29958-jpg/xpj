@@ -50,7 +50,7 @@ class PendingEnrichmentPresentation:
 _TERMINAL_FEEDBACK = {
     "updated": ("识别结果已更新，请核对后确认。", "success"),
     "no_result": (
-        "识别已完成，但未返回可用字段；可手动补全或打开账单重试识别。",
+        "识别完成，当前填写没有变化；请打开账单继续核对。",
         "",
     ),
     "failed": (

@@ -196,7 +196,7 @@ def test_restart_replay_finishes_the_committed_result_without_repeating_enrichme
         lambda task_id, payload, *, registry, runner: runner(task_id, payload, registry))
     with SessionLocal() as db:
         task = db.get(BackgroundTask, task_id)
-        assert task.status == "failed" and task.error_code == "orphaned_after_restart"
+        assert task.status == "completed" and task.error_code is None
         assert task.result_summary_json == committed_result
         resume_pending_expense_enrichment(db, task_public_id=public_id, expense_id=expense_id, tenant_id="owner")
     with SessionLocal() as db:

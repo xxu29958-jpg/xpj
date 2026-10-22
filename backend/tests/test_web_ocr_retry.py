@@ -10,8 +10,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import Expense, LedgerMember, OcrFact
+from app.models import BackgroundTask, Expense, LedgerMember, OcrFact
 from app.routes.web_auth import SESSION_COOKIE_NAME
+from app.services import background_task_worker
+from app.services.expense_service import _enrich
 from app.services.ocr_service import OcrResult
 from tests._web_native_form_support import hidden_post_forms
 from tests._web_public_session_support import PUBLIC_HOST, mint_session, public_client
@@ -84,6 +86,9 @@ def test_failed_original_retry_can_resume_same_key_and_occ_then_replay_one_sugge
     expense_id, action, original = _open_retry(web_client, identity)
     before = _record(expense_id)
     calls = []
+    submissions = []
+    monkeypatch.setattr("app.services.background_task_executor.submit_task",
+        lambda task_id, payload, **kwargs: submissions.append((task_id, payload)))
     monkeypatch.setattr("app.services.expense_service._ocr._active_provider_name", lambda: "mock")
 
     def extract(expense):
@@ -96,30 +101,44 @@ def test_failed_original_retry_can_resume_same_key_and_occ_then_replay_one_sugge
 
     monkeypatch.setattr("app.services.expense_service._ocr.extract_ocr_result", extract)
     if failure == "database":
-        from app.services import expense_ocr_command_service as command
-        prepare = command.prepare_pending_expense_fx
+        apply = _enrich._apply_extractions
 
         def fail_first_staging(*args, **kwargs):
             if len(calls) == 1:
                 raise SQLAlchemyError("synthetic database detail must stay private")
-            return prepare(*args, **kwargs)
-        monkeypatch.setattr(command, "prepare_pending_expense_fx", fail_first_staging)
-    failed = web_client.post(action, data=original, follow_redirects=False)
-    assert failed.status_code == (429 if failure == "queue_busy" else 503), failed.text
-    expected_message = {"provider": "识别暂时不可用", "queue_busy": "识别队列繁忙", "database": "暂时未能取得识别结果"}
-    assert expected_message[failure] in failed.text
-    assert "synthetic database detail" not in failed.text
+            return apply(*args, **kwargs)
+        monkeypatch.setattr(_enrich, "_apply_extractions", fail_first_staging)
+    accepted = web_client.post(action, data=original, follow_redirects=False)
+    assert accepted.status_code == 303
     assert _record(expense_id) == before
-    retry = hidden_post_forms(failed.text)[action]
-    for name in ("ledger_id", "expected_row_version", "idempotency_key", "return_to"):
-        assert retry[name] == original[name]
+    first_id, payload = submissions[0]
+    background_task_worker.run_task(first_id, payload)
+    with SessionLocal() as db:
+        first = db.get(BackgroundTask, first_id)
+        assert first.status == "failed" and first.result_summary_json is None
+        first_public_id = first.public_id
+    failed_page = web_client.get(accepted.headers["location"])
+    assert "这次识别未完成" in failed_page.text and "synthetic database detail" not in failed_page.text
+    assert _record(expense_id) == before
+    # Replaying an accepted async request observes its failure. It cannot create
+    # an unseen second computation; a deliberate new retry receives a new key.
+    replay = web_client.post(action, data=original, follow_redirects=False)
+    assert replay.status_code == 303 and len(submissions) == 1
+    status = web_client.get(f"/web/expenses/{expense_id}/ocr/tasks/{first_public_id}?ledger_id=owner")
+    assert status.status_code == 200 and status.json()["status"] == "failed"
+    assert "synthetic database detail" not in status.text
+    new_page = web_client.get(action + "?ledger_id=owner&return_to=pending")
+    retry = hidden_post_forms(new_page.text)[action]
+    assert retry["idempotency_key"] != original["idempotency_key"]
+    assert retry["expected_row_version"] == original["expected_row_version"]
     accepted = web_client.post(action, data=retry, follow_redirects=False)
+    background_task_worker.run_task(*submissions[-1])
     _accepted_current_page(web_client, accepted, expense_id, "中国建设银行")
     after, fact_count = _record(expense_id)
     assert fact_count == 1 and after[0] == "pending" and after[-1] is None
     assert after[1] == before[0][1] + 1 and after[3] == 1851
     assert after[2] == before[0][2], "OCR 建议不得创建确认事实修订"
-    replay = web_client.post(action, data=original, follow_redirects=False)
+    replay = web_client.post(action, data=retry, follow_redirects=False)
     _accepted_current_page(web_client, replay, expense_id, "中国建设银行")
     assert _record(expense_id) == (after, fact_count)
     assert calls == [expense_id, expense_id], "原请求重放不得再次调用 provider 或新增 OCR fact"
@@ -129,7 +148,7 @@ def test_failed_original_retry_can_resume_same_key_and_occ_then_replay_one_sugge
     canonical = _record(expense_id)
     assert canonical[0][1] > after[1] and canonical[0][3] == 2345
     assert canonical[1] == fact_count
-    replay_after_edit = web_client.post(action, data=original, follow_redirects=False)
+    replay_after_edit = web_client.post(action, data=retry, follow_redirects=False)
     _accepted_current_page(web_client, replay_after_edit, expense_id, "另一端核对后的现商家")
     assert _record(expense_id) == canonical, "原 OCR 请求重放不得倒退另一端的人工核对事实"
     assert calls == [expense_id, expense_id]

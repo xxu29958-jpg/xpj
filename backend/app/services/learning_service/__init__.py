@@ -424,6 +424,7 @@ class OcrFactDraft:
     ocr_provider: str
     ocr_model: str | None = None
     raw_text: str | None = None
+    evidence_json: str | None = None
     parsed_amount_cents: int | None = None
     parsed_merchant: str | None = None
     parsed_category: str | None = None
@@ -463,6 +464,7 @@ def record_ocr_fact(
         ocr_provider=provider_name,
         ocr_model=draft.ocr_model,
         raw_text=draft.raw_text,
+        evidence_json=draft.evidence_json,
         parsed_amount_cents=parsed_amount_cents,
         parsed_merchant=draft.parsed_merchant,
         parsed_category=draft.parsed_category,

@@ -97,12 +97,12 @@ private fun BackgroundTaskTitleLine(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SettingsEntryIcon(icon = ImageVector.vectorResource(when (task.taskType) {
-            "expense_enrichment" -> R.drawable.ic_lucide_scan_line
+            "expense_enrichment", "expense_ocr_retry" -> R.drawable.ic_lucide_scan_line
             "csv_import" -> R.drawable.ic_lucide_download
             "expense_fx" -> R.drawable.ic_lucide_refresh_cw
             else -> R.drawable.ic_lucide_sliders_horizontal
         }), shape = RoundedCornerShape(AppRadius.medium), background = when (task.taskType) {
-            "expense_enrichment" -> SettingsColors.generalEntry
+            "expense_enrichment", "expense_ocr_retry" -> SettingsColors.generalEntry
             "csv_import" -> SettingsColors.householdEntry
             "expense_fx" -> SettingsColors.connectionEntry
             else -> SettingsColors.appearanceEntry

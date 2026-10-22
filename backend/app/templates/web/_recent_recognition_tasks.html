@@ -5,7 +5,7 @@
   </summary>
   <p class="text-muted">当前账号在这个账本最近 10 次上传识别的记录。之后手动补全或重试不会改写这些记录；账单现在的内容请打开原单查看。</p>
   {% set statuses = {'queued': '等待识别', 'running': '识别中', 'completed': '已完成', 'failed': '失败', 'cancelled': '已取消'} %}
-  {% set outcomes = {'updated': '当次识别结果已写入待确认账单', 'no_result': '当次未识别出可用字段', 'not_pending': '执行时账单已离开待确认队列', 'conflict': '保留了后续修改，当次识别未覆盖账单'} %}
+  {% set outcomes = {'updated': '当次识别结果已写入待确认账单', 'no_result': '当次识别完成，填写没有变化，请继续核对', 'not_pending': '执行时账单已离开待确认队列', 'conflict': '保留了后续修改，当次识别未覆盖账单'} %}
   <ul>
     {% for task in recent_recognition_tasks %}
     {% set state = task.recognition_state|default('failed') %}

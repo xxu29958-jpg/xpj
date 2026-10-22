@@ -169,7 +169,10 @@ def test_ocr_failure_next_step_reaches_retry_on_the_original_bill(record_context
         PendingEnrichmentWatch("00000000-0000-0000-0000-000000000001", outcome, 30000),
         flash_message="", flash_type="",
     )
-    assert "打开账单重试识别" in feedback.flash_message
+    if outcome == "no_result":
+        assert "当前填写没有变化" in feedback.flash_message and "继续核对" in feedback.flash_message
+    else:
+        assert "打开账单重试识别" in feedback.flash_message
     targets = _ocr_retry_targets(_render(template, context))
     assert targets, "失败/无结果后，真实账单页面必须有可操作的原单识别重试入口"
     assert all("/expenses/41/" in target for target in targets)
@@ -239,7 +242,7 @@ def test_original_ocr_failure_page_preserves_intent_or_guides_review(
     monkeypatch.setattr(recognition_page, "_base_ctx", helpers._base_ctx)
     monkeypatch.setattr(recognition_page, "get_expense", helpers.get_expense)
     failure = SQLAlchemyError("synthetic database detail must stay private") if code == "database" else AppError(code, status_code=status)
-    monkeypatch.setattr(recognition, "submit_expense_ocr_retry", Mock(side_effect=failure))
+    monkeypatch.setattr(recognition, "submit_web_expense_ocr_task", Mock(side_effect=failure))
     env = templates.env.overlay(loader=ChoiceLoader([
         DictLoader({"base.html": "{% block content %}{% endblock %}"}), templates.env.loader]))
     monkeypatch.setattr(templates, "env", env)

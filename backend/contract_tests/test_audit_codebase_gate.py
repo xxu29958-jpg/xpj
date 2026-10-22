@@ -23,6 +23,18 @@ def _load_gate() -> object:
     return importlib.reload(importlib.import_module("codebase_audit_gate"))
 
 
+def test_marker_audit_distinguishes_environment_literals_from_unfinished_comments(tmp_path, monkeypatch):
+    mod = _load()
+    sample = tmp_path / "worker.py"
+    sample.write_text('names = {"TEMP", "TMP"}\nmessage = "TODO in fixture input"\n', encoding="utf-8")
+    monkeypatch.setattr(mod, "walk", lambda *_roots: iter([sample]))
+    assert mod.audit_todos() == {"todo_markers": 0}
+    sample.write_text(sample.read_text() + '# TODO implement shutdown\n', encoding="utf-8")
+    assert mod.audit_todos() == {"todo_markers": 1}
+    sample.write_text(sample.read_text() + 'def resume():\n    """FIXME complete recovery."""\n', encoding="utf-8")
+    assert mod.audit_todos() == {"todo_markers": 2}
+
+
 def _n_plus_one_hits(source: str) -> list:
     mod = _load()
     items: list = []
@@ -263,6 +275,28 @@ def test_exception_audit_distinguishes_original_reraise_from_swallow_or_conversi
 def test_n_plus_one_flags_business_loop_query() -> None:
     for name, source in _N_PLUS_ONE_FLAGGED_CASES.items():
         assert len(_n_plus_one_hits(source)) == 1, name
+
+
+@pytest.mark.parametrize(("symbol", "handler", "expected"), [
+    ("_read", "report_error(logger, 'reader failed', error=exc)", 0),
+    ("_read", "report_error(logger, 'reader failed')", 1),
+    ("_read", "report_error(logger, 'reader failed', error=other)", 1),
+    ("_read", "logger.error(str(exc))", 1),
+    ("_read", "return\nreport_error(logger, 'reader failed', error=exc)", 1),
+    ("unregistered", "report_error(logger, 'reader failed', error=exc)", 1),
+])
+def test_broad_exception_audit_requires_registered_owner_and_original_error(
+    tmp_path, monkeypatch, symbol, handler, expected,
+):
+    monkeypatch.chdir(tmp_path)
+    sample = Path("app/services/ocr_worker_client.py")
+    sample.parent.mkdir(parents=True)
+    sample.write_text("from app.error_reporting import report_error\nclass OcrWorkerClient:\n"
+        + f"    def {symbol}(self):\n        try:\n            read()\n        except Exception as exc:\n"
+        + textwrap.indent(handler, "            ") + "\n", encoding="utf-8")
+    mod = _load()
+    monkeypatch.setattr(mod, "walk", lambda *_roots: [sample])
+    assert mod.audit_bare_except()["broad_exception"] == expected
 
 
 def test_n_plus_one_ignores_bounded_integrity_recovery_read() -> None:

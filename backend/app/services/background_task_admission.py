@@ -11,6 +11,7 @@ from app.services.time_service import now_utc
 
 _ACTIVE_STATUSES = ("queued", "running")
 _ADMISSION_LOCK_LABEL = "ticketbox-background-task-admission"
+INTERRUPTED_TASK_CODES = frozenset({"orphaned_after_restart", "task_submission_failed"})
 
 
 class BackgroundTaskCapacityFullError(RuntimeError):
@@ -59,7 +60,7 @@ def readmit_orphaned_task(db: Session, task_id: int) -> BackgroundTask | None:
     # acknowledgement. Its original queued task still needs a safe worker wakeup.
     if task.status == "queued":
         return task
-    if (task.status != "failed" or task.error_code != "orphaned_after_restart"
+    if (task.status != "failed" or task.error_code not in INTERRUPTED_TASK_CODES
             or task.cancellation_requested_at is not None):
         return None
     _reserve_active_slot(db)

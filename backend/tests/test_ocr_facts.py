@@ -427,6 +427,7 @@ def test_expense_response_reads_raw_text_from_ocr_facts(
     )
 
 
+@pytest.mark.real_db
 def test_retry_ocr_appends_fact_each_time(
     client, monkeypatch: pytest.MonkeyPatch, *, identity
 ) -> None:

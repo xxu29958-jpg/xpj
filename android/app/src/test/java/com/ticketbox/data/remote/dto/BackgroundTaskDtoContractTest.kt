@@ -88,6 +88,7 @@ class BackgroundTaskDtoContractTest {
             "source_expense_id":42,"created_at":"2026-09-07T12:00:00Z"}
         """.trimIndent()))
         assertEquals(42L, dto.toDomain().sourceExpenseId)
+        assertEquals(42L, dto.copy(taskType = "expense_ocr_retry").toDomain().sourceExpenseId)
         assertNull(dto.copy(taskType = "unknown").toDomain().sourceExpenseId)
     }
 }

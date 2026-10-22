@@ -24,6 +24,7 @@ from app.services.expense_service import retry_expense_ocr
 from app.services.ocr_service import OcrResult
 
 
+@pytest.mark.real_db
 def test_ocr_retry_and_recognize_text_only_update_pending_draft(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity,
 ) -> None:
@@ -228,6 +229,7 @@ def test_retry_ocr_unknown_expense_returns_404(
     assert response.json()["error"] == "expense_not_found"
 
 
+@pytest.mark.real_db
 def test_retry_ocr_replay_same_key_returns_canonical_not_409(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch, *, identity,

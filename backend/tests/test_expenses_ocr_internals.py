@@ -226,25 +226,19 @@ def test_local_llm_prompt_uses_canonical_categories_and_server_owned_source() ->
 
 
 def test_rapidocr_result_shape_drift_maps_to_app_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    class NoOcrFields:
-        pass
-
-    class FakeRapidOCR:
-        def __call__(self, path: str) -> NoOcrFields:
-            return NoOcrFields()
-
-    monkeypatch.setitem(__import__("sys").modules, "rapidocr", SimpleNamespace(RapidOCR=lambda: FakeRapidOCR()))
+    monkeypatch.setattr(ocr_providers, "recognize_snapshot", lambda *_: {})
     image_path = tmp_path / "ticket.png"
     image_path.write_bytes(b"fake image bytes")
     from contextlib import nullcontext
-    monkeypatch.setattr(ocr_providers, "_original_snapshot", lambda *_args: nullcontext(SimpleNamespace(path=image_path)))
+    monkeypatch.setattr(ocr_providers, "_original_snapshot", lambda *_args:
+        nullcontext(SimpleNamespace(path=image_path, sha256="test-digest")))
 
     with pytest.raises(AppError) as exc_info:
         ocr_providers.RapidOcrProvider().extract(
             _expense(image_path="uploads/ticket.png", tenant_id="owner")
         )
 
-    assert exc_info.value.error == "server_error"
+    assert exc_info.value.error == "ocr_inference_failed"
 
 
 @pytest.mark.parametrize(

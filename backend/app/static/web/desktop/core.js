@@ -285,7 +285,7 @@
       marker.setAttribute("aria-busy", "false");
       const message = marker.querySelector("span");
       if (message) {
-        message.textContent = "识别仍在处理中或未返回可用字段；可以稍后刷新，也可直接手动补全。";
+        message.textContent = "暂未取得最新识别状态；可以稍后刷新，也可打开账单继续核对。";
       }
     };
 

@@ -70,7 +70,7 @@ def test_web_pending_upload_uses_shared_owner_and_creates_real_pending_expense(
     assert final_page.status_code == 200
     assert "data-inbox-enrichment-terminal" in final_page.text
     assert 'data-enrichment-state="no_result"' in final_page.text
-    assert "未返回可用字段" in final_page.text
+    assert "当前填写没有变化" in final_page.text
 
 
 @pytest.mark.real_db

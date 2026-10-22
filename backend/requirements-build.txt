@@ -1,5 +1,14 @@
 # Build-time deps for freezing the backend into a distributable EXE.
 # Installed into a SEPARATE .venv-build so the runtime .venv stays lean
-# (no OCR). PyInstaller's exact version comes from the checked-in Windows
+# (no build tooling). OCR is frozen into its own process payload. PyInstaller's exact version comes from the checked-in Windows
 # toolchain contract. See packaging/README.md + scripts/build_backend_exe.ps1.
 -r requirements.txt
+rapidocr==3.10.0
+onnxruntime==1.25.1
+numpy==2.4.6
+opencv-python-headless==5.0.0.93
+omegaconf==2.4.0
+PyYAML==6.0.3
+pyclipper==1.4.0
+shapely==2.2.0
+threadpoolctl==3.6.0

@@ -11,7 +11,7 @@ SPEC = PACKAGING / "ticketbox-backend.spec"
 PROVENANCE = BACKEND / "scripts" / "windows_backend_build_provenance.ps1"
 
 
-def test_frozen_backend_allows_only_the_two_shipped_executables(tmp_path: Path) -> None:
+def test_frozen_backend_allows_only_the_three_shipped_executables(tmp_path: Path) -> None:
     spec = SPEC.read_text(encoding="utf-8-sig")
     provenance = PROVENANCE.read_text(encoding="utf-8-sig")
     assert re.findall(r'(?m)^\s+name="([^"]+)",$', spec) == [
@@ -31,7 +31,8 @@ $dist = Join-Path {_ps_literal(tmp_path)} (
     'dist-' + $PSVersionTable.PSEdition + '-' + $PSVersionTable.PSVersion.Major
 )
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
-foreach ($name in @('ticketbox-backend.exe', 'ticketbox-database-maintenance.exe')) {{
+New-Item -ItemType Directory -Force -Path (Join-Path $dist 'ocr-runtime') | Out-Null
+foreach ($name in @('ticketbox-backend.exe', 'ticketbox-database-maintenance.exe', 'ocr-runtime/ticketbox-ocr.exe')) {{
     [IO.File]::WriteAllBytes((Join-Path $dist $name), [byte[]](1))
 }}
 Assert-TicketboxFrozenBackendExecutableSet $dist

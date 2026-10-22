@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models import BackgroundTask
+from app.services.background_task_executor import OCR_TASK_TYPES
 from app.services.time_service import ensure_utc, now_utc
 
 _RECOVERABLE_STATUSES = frozenset({"running", "queued"})
@@ -24,7 +25,7 @@ def _should_recover_active_task(task: BackgroundTask, *, grace_seconds: int) -> 
 
 
 def recover_orphaned_tasks() -> int:
-    """Force-fail orphaned ``running`` and ``queued`` tasks on startup.
+    """Finish applied OCR receipts; fence other orphaned tasks for domain recovery.
 
     The default grace is zero seconds, preserving the single-process ADR-0030
     behavior. Cloud/multi-worker deployments can set a positive
@@ -33,6 +34,7 @@ def recover_orphaned_tasks() -> int:
     """
 
     grace_seconds = get_settings().background_task_orphan_grace_seconds
+    applied = []
     with SessionLocal() as db:
         active_tasks = list(
             db.scalars(
@@ -47,6 +49,9 @@ def recover_orphaned_tasks() -> int:
             if _should_recover_active_task(task, grace_seconds=grace_seconds)
         ]
         for task in orphans:
+            if task.task_type in OCR_TASK_TYPES and task.result_summary_json is not None:
+                applied.append(task.id)
+                continue
             task.status = "failed"
             task.completed_at = now_utc()
             task.error_code = "orphaned_after_restart"
@@ -62,7 +67,11 @@ def recover_orphaned_tasks() -> int:
                 )
         if orphans:
             db.commit()
-        return len(orphans)
+    from app.services.background_task_worker import complete_applied_task
+
+    for task_id in applied:
+        complete_applied_task(task_id)
+    return len(orphans)
 
 
 __all__ = ["recover_orphaned_tasks"]

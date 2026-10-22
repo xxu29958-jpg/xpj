@@ -21,11 +21,19 @@ from app.services.expense_service._helpers import _replace_ocr_draft_items_from_
 from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
 from app.services.expense_service._query import get_expense, resolve_expense
 from app.services.learning_service import read_ocr_text
-from app.services.ocr_service import OcrResult, extract_ocr_result
+from app.services.ocr_service import OcrExtraction, OcrResult, extract_ocr_result
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
 
 __all__ = ["recognize_expense_text", "retry_expense_ocr"]
+
+
+def extract_explicit_ocr(expense: Expense, timezone_name: str | None = None) -> OcrExtraction:
+    provider_name = _active_provider_name()
+    if provider_name == "empty":
+        raise AppError("ocr_not_configured", status_code=503)
+    result = extract_ocr_result(expense) if timezone_name is None else extract_ocr_result(expense, timezone_name=timezone_name)
+    return OcrExtraction(provider_name=provider_name, ocr_model=_active_provider_model(provider_name), result=result)
 
 
 def _claim_pending_expense_for_ocr(

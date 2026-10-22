@@ -1,0 +1,19 @@
+{% if ocr_task_watch %}
+{% set _active = ocr_task_watch.status in ['queued', 'running'] %}
+<aside class="product-feedback" role="status" aria-live="polite" aria-busy="{{ 'true' if _active else 'false' }}"
+  data-expense-ocr-watch data-ocr-active="{{ 'true' if _active else 'false' }}"
+  data-ocr-task-id="{{ ocr_task_watch.public_id }}" data-ocr-expense-id="{{ expense.id }}"
+  data-ocr-status-href="/web/expenses/{{ expense.id }}/ocr/tasks/{{ ocr_task_watch.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}"
+  data-ocr-messages='{{ ocr_task_messages|tojson }}'>
+  <p data-ocr-task-message>{{ ocr_task_message }}</p>
+  <a class="product-button product-button--quiet" data-ocr-result-link href="{{ edit_reload_href }}" hidden>查看当前识别建议</a>
+  {% if _active and can_write %}
+  <form method="post" action="/web/expenses/{{ expense.id }}/ocr/tasks/{{ ocr_task_watch.public_id }}/cancel" data-ocr-cancel>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
+    {% for field_name, field_value in edit_return_fields.items() %}<input type="hidden" name="{{ field_name }}" value="{{ field_value }}">{% endfor %}
+    <button class="product-button product-button--quiet" type="submit">取消本次识别</button>
+  </form>
+  {% endif %}
+</aside>
+{% endif %}

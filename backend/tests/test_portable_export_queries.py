@@ -91,6 +91,15 @@ def test_all_projections_execute_as_mapping_reads_and_identity_refs_stay_authori
     assert {row["public_id"] for row in _rows(records, "accounts")} == {"actor", "historical-member"}
 
 
+def test_ocr_export_preserves_image_evidence_only_in_the_selected_ledger(records):
+    evidence = '{"schema":"text-blocks/v1","blocks":[{"text":"visible shop"}],"identity":{"recipe_sha256":"pinned"}}'
+    for id_, ledger in ((1, "selected"), (2, "other")):
+        _seed(records, m.OcrFact, id=id_, public_id=f"fact-{id_}", tenant_id=ledger,
+              expense_id=id_, ocr_provider="rapidocr", evidence_json=evidence)
+    rows = _rows(records, "ocr_facts")
+    assert len(rows) == 1 and rows[0]["evidence_json"] == evidence
+
+
 def test_budget_history_export_keeps_saved_snapshots_and_excludes_another_ledger(records):
     snapshot = {"home_currency_code": "JPY", "total_amount_cents": 1200,
         "category_budgets": [{"category": "餐饮", "amount_cents": 300}], "archived": True}

@@ -5,13 +5,17 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import io
 import os
 import pathlib
 import re
 import sys
+import tokenize
 from collections import Counter, defaultdict
 
 from codebase_audit_gate import DebtCounts, evaluate_debt
+from error_reporting_contract import PYTHON_OWNERS
+from error_reporting_rules import aliases_for, function_nodes, resolve
 
 APP = pathlib.Path("app")
 TESTS = pathlib.Path("tests")
@@ -689,8 +693,11 @@ def audit_bare_except() -> DebtCounts:
         # (graceful degradation paths the linter accepts); skipping them
         # here keeps the audit signal focused on accidental swallows.
         ble001_lines = _suppressed_lines(p, "BLE001")
+        observed_lines = _observed_boundary_handlers(p, tree)
         for node in ast.walk(tree):
             if not isinstance(node, ast.ExceptHandler):
+                continue
+            if node.lineno in observed_lines:
                 continue
             _collect_exception_handler_debt(p, node, ble001_lines, bare, broad, swallow)
     print(f"== F1. Bare `except:` ({len(bare)}) ==")
@@ -710,6 +717,30 @@ def audit_bare_except() -> DebtCounts:
         "broad_exception": len(broad),
         "swallowed_exceptions": len(swallow),
     }
+
+
+def _observed_boundary_handlers(path: pathlib.Path, tree: ast.Module) -> set[int]:
+    """Common owners must report the caught error before publishing a safe outcome."""
+    owners = PYTHON_OWNERS.get("backend/" + path.as_posix(), {})
+    aliases = aliases_for(tree)
+    lines = set()
+    reporter = "app.error_reporting.report_error"
+    for symbol, function in function_nodes(tree).items():
+        if reporter not in owners.get(symbol, set()):
+            continue
+        for node in ast.walk(function):
+            if not isinstance(node, ast.ExceptHandler) or not isinstance(node.type, ast.Name):
+                continue
+            first = node.body[0]
+            if node.type.id != "Exception" or not isinstance(first, ast.Expr) or not isinstance(first.value, ast.Call):
+                continue
+            call = first.value
+            if resolve(call.func, aliases) == reporter and any(
+                item.arg == "error" and isinstance(item.value, ast.Name) and item.value.id == node.name
+                for item in call.keywords
+            ):
+                lines.add(node.lineno)
+    return lines
 
 
 def _collect_exception_handler_debt(
@@ -789,6 +820,16 @@ def audit_raise_generic() -> DebtCounts:
 # G. MAINTAINABILITY & RISK
 # -----------------------------------------------------------------------------
 
+def _marker_annotations(source: str) -> list[tuple[int, str]]:
+    annotations = [(token.start[0], token.string) for token in tokenize.generate_tokens(io.StringIO(source).readline)
+                   if token.type == tokenize.COMMENT]
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and ast.get_docstring(node):
+            value = node.body[0].value
+            annotations.extend((value.lineno + offset, line) for offset, line in enumerate(value.value.splitlines()))
+    return annotations
+
+
 def audit_todos() -> DebtCounts:
     marker_words = ("TO" "DO", "FIX" "ME", "XX" "X", "HA" "CK", "TE" "MP")
     rx = re.compile(r"\b(" + "|".join(marker_words) + r")\b", re.IGNORECASE)
@@ -797,9 +838,9 @@ def audit_todos() -> DebtCounts:
         text = _read_text_or_none(p)
         if text is None:
             continue
-        for i, line in enumerate(text.splitlines(), 1):
-            if rx.search(line):
-                items.append((p, i, line.strip()[:100]))
+        for line_number, annotation in _marker_annotations(text):
+            if rx.search(annotation):
+                items.append((p, line_number, annotation.strip()[:100]))
     print(f"== G1. marker comments ({len(items)}) ==")
     counts: dict[str, int] = Counter()
     for _path, _, line in items:

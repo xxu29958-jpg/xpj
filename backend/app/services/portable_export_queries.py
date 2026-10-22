@@ -106,7 +106,7 @@ _LEDGER_RECORDS = (
     (m.DashboardCardPreference, "id public_id tenant_id surface card_key position visible created_at updated_at"),
     (m.ExchangeRate, "id public_id tenant_id currency_code home_currency_code rate_date rate_to_cny source "
         "created_at updated_at row_version"),
-    (m.OcrFact, "id public_id tenant_id expense_id ocr_provider ocr_model raw_text parsed_amount_cents "
+    (m.OcrFact, "id public_id tenant_id expense_id ocr_provider ocr_model raw_text evidence_json parsed_amount_cents "
         "parsed_merchant parsed_category parsed_expense_time parse_confidence extracted_at created_at retention_days"),
     (m.AlgorithmDecision, "id public_id tenant_id decision_type algorithm_version subject_kind subject_id "
         "subject_public_id score output_payload status superseded_by_id created_at retention_days"),
