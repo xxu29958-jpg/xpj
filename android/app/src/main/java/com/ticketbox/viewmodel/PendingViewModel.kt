@@ -150,6 +150,7 @@ class PendingViewModel(
     private var enrichmentObserver: PendingEnrichmentObserver? = null
     private var uploadObservation: UploadIntentObservation? = null
     private val observedUploadReceipts = mutableSetOf<Long>()
+    private val acknowledgedUploadReceipts = mutableSetOf<Long>()
     internal var commandObservation: ExpenseCommandObservation? = null
     internal val commandRowsByExpense = mutableMapOf<Long, Set<Long>>()
     internal val observedCommandRowIds = mutableSetOf<Long>()
@@ -200,6 +201,8 @@ class PendingViewModel(
             requestGeneration += 1
             observedUploadReceipts.clear()
             observedUploadReceipts.addAll(completed.map { it.row.id })
+            acknowledgedUploadReceipts.clear()
+            acknowledgedUploadReceipts.addAll(completed.map { it.row.id })
             enrichmentObserver?.clear()
             enrichmentObserver = null
             cancelUndoTimer()
@@ -208,7 +211,7 @@ class PendingViewModel(
             reviewInputGeneration++
             pendingCacheSeeded = false
             _uiState.value = PendingUiState(
-                readOnly = isReadOnly(), upload = observation.toPendingUploadUiState(),
+                readOnly = isReadOnly(), upload = observation.toPendingUploadUiState(acknowledgedUploadReceipts),
                 uploadBinding = observation.access?.binding,
             )
             if (observation.access != null) {
@@ -217,7 +220,7 @@ class PendingViewModel(
             }
             return
         }
-        _uiState.update { it.copy(readOnly = isReadOnly(), upload = observation.toPendingUploadUiState()) }
+        _uiState.update { it.copy(readOnly = isReadOnly(), upload = observation.toPendingUploadUiState(acknowledgedUploadReceipts)) }
         val newlyCompleted = completed.filter { observedUploadReceipts.add(it.row.id) }
         newlyCompleted.forEach {
             onDataChanged()
@@ -310,6 +313,7 @@ class PendingViewModel(
                     if (requestGeneration != generation) return@onFailure
                     if (refreshSkipEpoch != skipEpoch) return@onFailure
                     if (uploadIntents.currentUploadBinding() != binding) return@onFailure
+                    val previousIds = _uiState.value.items.map { it.id }.toSet()
                     _uiState.update {
                         PendingUiStateReducer.afterKnownConfirmed(it, knownConfirmed).copy(
                             hasLoadedOnce = true,
@@ -318,6 +322,7 @@ class PendingViewModel(
                             message = error.toUiText(R.string.pending_msg_load_failed),
                         )
                     }
+                    (previousIds - _uiState.value.items.map { it.id }.toSet()).forEach { updateEnrichmentExpense(it, isPending = false) }
                     recomputeReviewRemaining()
                 }
         }
@@ -408,13 +413,38 @@ class PendingViewModel(
         enrichmentObserver?.retryPaused()
     }
 
+    fun dismissEnrichmentFeedback() {
+        enrichmentObserver?.dismissFeedback()
+    }
+
+    internal fun updateEnrichmentExpense(expenseId: Long, isPending: Boolean) {
+        if (!isPending) {
+            enrichmentObserver?.clear(expenseId)
+            return
+        }
+        uploadObservation?.uploads.orEmpty()
+            .filter { it.row.status == PendingMutationStatus.Done }
+            .mapNotNull { it.receipt?.toPendingUploadReceipt() }
+            .filter { it.expenseId == expenseId }
+            .forEach { enrichmentObserver()?.track(it) }
+    }
+
+    /** Acknowledges the prompt only; Room originals, receipts and recovery remain intact. */
+    fun dismissCompletedUpload() {
+        val observation = uploadObservation ?: return
+        if (!_uiState.value.upload.completed || _uiState.value.uploading) return
+        acknowledgedUploadReceipts.addAll(observation.uploads
+            .filter { it.row.status == PendingMutationStatus.Done }.map { it.row.id })
+        _uiState.update { it.copy(upload = observation.toPendingUploadUiState(acknowledgedUploadReceipts)) }
+    }
+
     private fun restorePendingEnrichment(expenses: List<Expense>) {
         val pendingIds = expenses.map { it.id }.toSet()
         val receipts = uploadObservation?.uploads.orEmpty()
             .filter { it.row.status == PendingMutationStatus.Done }
             .mapNotNull { it.receipt?.toPendingUploadReceipt() }
             .filter { it.expenseId in pendingIds }
-        if (receipts.isNotEmpty()) enrichmentObserver()?.restore(receipts)
+        enrichmentObserver()?.restore(receipts)
     }
 
     private fun enrichmentObserver(): PendingEnrichmentObserver? {

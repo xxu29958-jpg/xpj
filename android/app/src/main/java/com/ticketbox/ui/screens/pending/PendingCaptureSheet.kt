@@ -113,7 +113,8 @@ private fun PendingCaptureFeedback(state: PendingUiState, actions: PendingScreen
     val target = state.items.firstOrNull { it.id == state.enrichment.feedback?.expenseId }
     PendingEnrichmentStatusBand(state.enrichment, target != null,
         onOpenFeedbackExpense = { target?.let { onDismiss(); onOpenExpense(it) } },
-        onRetryObservation = actions.onRetryEnrichment)
+        onRetryObservation = actions.onRetryEnrichment,
+        onDismissFeedback = actions.onDismissEnrichment)
 }
 
 @Composable

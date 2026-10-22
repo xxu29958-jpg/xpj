@@ -20,6 +20,61 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class PendingViewModelUploadContinuationTest : PendingViewModelReviewTestBase() {
     @Test
+    fun completedHistoryStaysReachableWithoutReappearingAsANewUpload() = review {
+        val fake = FakeReviewActions()
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done))
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.upload.showSummary)
+        assertEquals(1L, vm.uiState.value.upload.originals.single().expenseId)
+        vm.refresh()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.upload.showSummary)
+        assertTrue(fake.uploadIntents.recoveries.isEmpty())
+    }
+
+    @Test
+    fun closingCompletedUploadStaysQuietThroughRefreshReemissionAndReopening() = review {
+        val fake = FakeReviewActions()
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done))
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.upload.showSummary)
+        vm.dismissCompletedUpload()
+        vm.refresh()
+        // A new immutable observation of the same receipt must not resurrect the summary.
+        val original = observedUpload(1, PendingMutationStatus.Done)
+        fake.uploadIntents.publish(original.copy(row = original.row.copy(retryCount = 2)))
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.upload.showSummary)
+        assertEquals(1L, vm.uiState.value.upload.originals.single().expenseId)
+        clearPendingViewModels()
+        val reopened = pendingViewModel(fake)
+        advanceUntilIdle()
+        assertFalse(reopened.uiState.value.upload.showSummary)
+        assertTrue(fake.uploadIntents.recoveries.isEmpty())
+        fake.uploadIntents.publish(original, observedUpload(2, PendingMutationStatus.Done))
+        advanceUntilIdle()
+        assertTrue(reopened.uiState.value.upload.showSummary)
+        assertEquals(listOf(1L, 2L), reopened.uiState.value.upload.originals.map { it.expenseId })
+    }
+
+    @Test
+    fun closingUnfinishedUploadCannotHideRecoveryOrChangeTheOriginalRequest() = review {
+        val fake = FakeReviewActions()
+        val original = observedUpload(1, PendingMutationStatus.Unknown)
+        fake.uploadIntents.publish(original)
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+        vm.dismissCompletedUpload()
+        assertTrue(vm.uiState.value.upload.showSummary)
+        assertTrue(vm.uiState.value.canStopUpload)
+        assertEquals(listOf(original), fake.uploadIntents.snapshots.value.uploads)
+        assertTrue(fake.uploadIntents.recoveries.isEmpty())
+    }
+
+    @Test
     fun pausedGroupAcceptsAnotherOriginalSelectionWithoutImplicitRetry() = review {
         val fake = FakeReviewActions()
         fake.uploadIntents.publish(observedUpload(2, PendingMutationStatus.Failed, "enrichment_capacity_full"), observedUpload(3))

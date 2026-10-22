@@ -153,6 +153,8 @@ internal fun pendingScreenChromeActions(
     onOpenDataQuality = navigation.onOpenDataQuality,
     onOpenUploadExpense = navigation.onOpenUploadExpense,
     onRetryEnrichment = viewModel::retryEnrichmentObservation,
+    onDismissEnrichment = viewModel::dismissEnrichmentFeedback,
+    onDismissCompletedUpload = viewModel::dismissCompletedUpload,
     onRetryCapacityUpload = viewModel::retryCapacityUpload,
     onDiscardCapacityUpload = viewModel::discardCapacityUpload,
     requestedFilter = filterRequest.pending,

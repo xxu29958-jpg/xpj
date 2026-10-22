@@ -90,14 +90,19 @@ private fun PendingViewModel.adoptPendingCommand(command: PendingExpenseCommand)
     val accepted = command.acceptedExpense
     val expenseId = expenseRefreshTargetId(row.targetId, row.receiptJson)
     when (row.type) {
-        PendingMutationType.ConfirmExpense -> _uiState.update { state ->
-            state.copy(items = state.items.filterNot { it.id == expenseId || expenseOutboxTargetId(it) == row.targetId })
+        PendingMutationType.ConfirmExpense -> {
+            val removedIds = _uiState.value.items.filter { it.id == expenseId || expenseOutboxTargetId(it) == row.targetId }.map { it.id }
+            _uiState.update { state ->
+                state.copy(items = state.items.filterNot { it.id == expenseId || expenseOutboxTargetId(it) == row.targetId })
+            }
+            (removedIds + listOfNotNull(expenseId)).distinct().forEach { updateEnrichmentExpense(it, isPending = false) }
         }
         PendingMutationType.RejectExpense -> if (accepted?.status == "rejected") {
             _uiState.update { state ->
                 val updated = PendingUiStateReducer.afterRejected(state, accepted, message = UiText.res(R.string.pending_msg_rejected))
                 if (row.id in ignoredRejectRows || state.readOnly) updated else updated.copy(undoableExpense = accepted)
             }
+            updateEnrichmentExpense(accepted.id, isPending = false)
             if (_uiState.value.undoableExpense == accepted) startUndoTimer(accepted.id)
         }
         PendingMutationType.UndoExpense -> if (accepted != null) {
@@ -107,6 +112,7 @@ private fun PendingViewModel.adoptPendingCommand(command: PendingExpenseCommand)
                 state.copy(items = if (accepted.status == "pending") listOf(accepted) + others else others,
                     message = UiText.res(R.string.pending_msg_undo_restored))
             }
+            updateEnrichmentExpense(accepted.id, isPending = accepted.status == "pending")
         }
         else -> Unit
     }

@@ -17,7 +17,11 @@ data class PendingUploadUiState(
     val retryable: Boolean = false,
     val message: UiText? = null,
     val originals: List<PendingUploadOriginalUi> = emptyList(),
-)
+    val showSummary: Boolean = false,
+) {
+    val completed: Boolean get() = originals.isNotEmpty() &&
+        originals.all { it.status == PendingMutationStatus.Done && it.expenseId != null }
+}
 
 data class PendingUploadOriginalUi(
     val position: Int,
@@ -26,7 +30,9 @@ data class PendingUploadOriginalUi(
     val expenseId: Long? = null,
 )
 
-internal fun UploadIntentObservation.toPendingUploadUiState(): PendingUploadUiState {
+internal fun UploadIntentObservation.toPendingUploadUiState(
+    acknowledgedReceipts: Set<Long>,
+): PendingUploadUiState {
     val unfinished = uploads.filter { it.row.status != PendingMutationStatus.Done }
     val first = unfinished.firstOrNull() ?: uploads.lastOrNull() ?: return PendingUploadUiState()
     val group = uploads.filter { it.row.targetId == first.row.targetId }
@@ -39,6 +45,7 @@ internal fun UploadIntentObservation.toPendingUploadUiState(): PendingUploadUiSt
         inFlight = group.any { it.row.status == PendingMutationStatus.InFlight },
         failedCount = failures.size,
         retryable = group.any { it.canRetry },
+        showSummary = pending.isNotEmpty() || group.any { it.row.id !in acknowledgedReceipts },
         message = if (pending.isEmpty()) null else uploadGroupMessage(pending, failures),
         originals = group.mapIndexed { index, intent ->
             PendingUploadOriginalUi(index + 1, intent.payload?.file?.metadata?.fileName, intent.row.status, intent.receipt?.id)

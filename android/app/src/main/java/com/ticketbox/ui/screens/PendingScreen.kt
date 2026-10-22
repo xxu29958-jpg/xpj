@@ -14,6 +14,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -78,8 +79,6 @@ import com.ticketbox.ui.screens.pending.PendingSupportingPaneBody
 import com.ticketbox.ui.screens.pending.PendingSupportingPaneContent
 import com.ticketbox.ui.screens.pending.pendingSupportingPaneContent
 import com.ticketbox.ui.screens.pending.pendingPaneExit
-import com.ticketbox.ui.screens.pending.PendingUploadEntrySlot
-import com.ticketbox.ui.screens.pending.pendingUploadEntrySlot
 import com.ticketbox.ui.screens.pending.PendingScreenChromeActions
 import com.ticketbox.ui.screens.pending.PendingToolsSheet
 import com.ticketbox.ui.screens.pending.PendingTop
@@ -129,8 +128,7 @@ fun PendingScreen(
     )
     val readOnly = state.readOnly
     val filteredItems = applyNeedsReviewFilter(state.items, needsReviewFilter)
-    // 识别状态带：终态反馈的「打开账单」仅当目标仍在当前队列时出现，
-    // Screen 只做这一次 items 查找与导航窄组合，不复制状态语义。
+    // Both the feedback and its navigation belong to the current pending expense.
     val enrichmentTarget = state.enrichment.feedback?.let { feedback ->
         state.items.firstOrNull { it.id == feedback.expenseId }
     }
@@ -141,10 +139,6 @@ fun PendingScreen(
     val messageCardText = state.message?.asString()
     val haptics = rememberAppHaptics()
     val adaptivePolicy = LocalAppAdaptiveLayoutPolicy.current
-    val uploadEntrySlot = pendingUploadEntrySlot(
-        bodyState = bodyState,
-        readOnly = readOnly,
-    )
     val supportingContent = pendingSupportingPaneContent(
         showsSupportingPane = adaptivePolicy.showsSupportingPane,
         activeSheet = state.activeSheet,
@@ -255,7 +249,10 @@ fun PendingScreen(
         }
     }
 
-    if (showCapture) PendingCaptureSheet(state, chromeActions, itemActions.onEdit, onDismiss = { showCapture = false })
+    if (showCapture) PendingCaptureSheet(state, chromeActions, itemActions.onEdit, onDismiss = {
+        showCapture = false
+        chromeActions.onDismissCompletedUpload()
+    })
 
     val reviewSheetState = PendingReviewSheetHostState(
         sheet = state.activeSheet,
@@ -330,25 +327,21 @@ fun PendingScreen(
                 ),
                 listState = listState,
             ) {
-                if (bodyState != PendingListBodyState.Empty) item {
+                item(key = "pending-header") {
                     PendingTop(
                         state = PendingTopState(
                             counts = queueCounts,
                             uploading = state.uploading,
                             readOnly = readOnly,
-                            showUploadAction = uploadEntrySlot == PendingUploadEntrySlot.Header,
+                            showUploadAction = !readOnly,
                             canStartUpload = state.canStartUpload,
                         ),
                         onUploadScreenshot = chromeActions.onUploadScreenshot,
-                        trailingAction = if (state.items.isNotEmpty()) {
-                            {
-                                PendingDisplayModeButton(
-                                    loading = blockingRefresh,
-                                    onClick = { showPendingTools = true },
-                                )
-                            }
-                        } else {
-                            null
+                        trailingAction = {
+                            PendingDisplayModeButton(
+                                loading = blockingRefresh,
+                                onClick = { showPendingTools = true },
+                            )
                         },
                     )
                 }
@@ -376,7 +369,7 @@ fun PendingScreen(
             }
         }
 
-        if (chromeActions.uploadSelection.pendingCount > 0 || state.upload.originals.isNotEmpty() || state.uploading) {
+        if (chromeActions.uploadSelection.pendingCount > 0 || state.upload.showSummary || state.uploading) {
             item {
                 SettingsEntryRow(
                     title = stringResource(R.string.pending_capture_open),
@@ -386,6 +379,12 @@ fun PendingScreen(
                     icon = R.drawable.ic_lucide_image_plus,
                     onClick = { showCapture = true },
                 )
+                if (state.upload.showSummary && state.upload.completed && !state.uploading &&
+                    chromeActions.uploadSelection.pendingCount == 0) {
+                    TextButton(onClick = chromeActions.onDismissCompletedUpload) {
+                        Text(stringResource(R.string.pending_capture_dismiss_completed))
+                    }
+                }
             }
         }
 
@@ -402,6 +401,7 @@ fun PendingScreen(
                     feedbackTargetPresent = enrichmentTarget != null,
                     onOpenFeedbackExpense = { enrichmentTarget?.let(itemActions.onEdit) },
                     onRetryObservation = chromeActions.onRetryEnrichment,
+                    onDismissFeedback = chromeActions.onDismissEnrichment,
                 )
             }
         }
@@ -438,9 +438,7 @@ fun PendingScreen(
                             loading = state.loading,
                             readOnly = readOnly,
                             showUploadGuide = showUploadGuide,
-                            canStartUpload = state.canStartUpload,
                         ),
-                        onUploadScreenshot = chromeActions.onUploadScreenshot,
                         onToggleGuide = { showUploadGuide = !showUploadGuide },
                         onRefresh = chromeActions.onRefresh,
                     )

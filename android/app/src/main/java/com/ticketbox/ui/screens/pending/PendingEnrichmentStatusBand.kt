@@ -4,6 +4,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -45,12 +47,12 @@ import com.ticketbox.viewmodel.PendingEnrichmentUiState
  * 收件队列头的识别状态带（ambient status band）：上传后的 OCR/后台识别在
  * Pending 内唯一的环境化表达。单条、队列头、非第二队列；不做逐行 chip、
  * 不展示假百分比。视觉语言与 [com.ticketbox.ui.components.AppStatusBanner]
- * 同源（三端共享的 state bg/fg/border token），另带图标与最多一个动作。
+ * 同源（三端共享的 state bg/fg/border token），并提供处理与关闭入口。
  *
  * 呈现决策拆为声明式 [FEEDBACK_KIND_SPECS] 表 + 聚焦小函数
  * （[pendingEnrichmentActiveModel] / [pendingEnrichmentActiveDetail] /
  * [pendingEnrichmentFeedbackAction]），纯逻辑可单测；组合层只渲染。
- * 文案与「重试检查≠重新 OCR」的措辞边界是冻结合同，改动需先过产品裁决。
+ * 重试检查只重新观察任务，不重新提交 OCR。
  */
 
 internal enum class PendingEnrichmentBandTone {
@@ -135,13 +137,13 @@ private val FEEDBACK_KIND_SPECS: Map<PendingEnrichmentFeedbackKind, PendingEnric
  * - 有终态反馈 → 反馈为主文案；若仍有任务在跑，副行报「还有 N 张正在识别」，
  *   终态不得吃掉活动计数；
  * - Updated/NoResult/Conflict/Failed 仅当目标账单仍在当前队列（[feedbackTargetPresent]）
- *   时给 OpenExpense 动作；Unavailable 恒给 RetryObservation。
+ *   时展示反馈与 OpenExpense 动作；Unavailable 保留 RetryObservation。
  */
 internal fun pendingEnrichmentBandModel(
     state: PendingEnrichmentUiState,
     feedbackTargetPresent: Boolean,
 ): PendingEnrichmentBandModel? {
-    val feedback = state.feedback
+    val feedback = state.feedback?.takeIf { feedbackTargetPresent || it.kind == PendingEnrichmentFeedbackKind.Unavailable }
         ?: return pendingEnrichmentActiveModel(state.activeCount)
     val spec = FEEDBACK_KIND_SPECS.getValue(feedback.kind)
     val (action, actionLabelRes) = pendingEnrichmentFeedbackAction(spec, feedback.kind, feedbackTargetPresent)
@@ -195,62 +197,56 @@ internal fun PendingEnrichmentStatusBand(
     feedbackTargetPresent: Boolean,
     onOpenFeedbackExpense: () -> Unit,
     onRetryObservation: () -> Unit,
+    onDismissFeedback: () -> Unit,
 ) {
     val model = pendingEnrichmentBandModel(state, feedbackTargetPresent) ?: return
     val palette = LocalStateTokens.current.forBandTone(model.tone)
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.small))
             .background(palette.bg)
             .border(1.dp, palette.border, RoundedCornerShape(AppRadius.small))
             .padding(horizontal = AppSpacing.cardGap, vertical = AppSpacing.compactGap),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
     ) {
-        Icon(
-            imageVector = bandIcon(model.kind),
-            contentDescription = null,
-            tint = palette.fg,
-            modifier = Modifier.size(AppIconSize.compact),
-        )
-        // 文案区合并为一个 Polite liveRegion 节点，状态变化整体播报；
-        // 动作按钮自带点击语义，不参与合并，仍可独立聚焦。
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .semantics(mergeDescendants = true) {
-                    liveRegion = LiveRegionMode.Polite
-                },
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = model.titleArg?.let { stringResource(model.titleRes, it) }
-                    ?: stringResource(model.titleRes),
-                color = palette.fg,
-                style = MaterialTheme.typography.bodySmall,
+            Icon(
+                imageVector = bandIcon(model.kind), contentDescription = null,
+                tint = palette.fg, modifier = Modifier.size(AppIconSize.compact),
             )
-            model.detailRes?.let { detailRes ->
+            Column(Modifier.weight(1f).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }) {
                 Text(
-                    text = model.detailArg?.let { stringResource(detailRes, it) }
-                        ?: stringResource(detailRes),
-                    color = palette.fg,
-                    style = MaterialTheme.typography.bodySmall,
+                    text = model.titleArg?.let { stringResource(model.titleRes, it) } ?: stringResource(model.titleRes),
+                    color = palette.fg, style = MaterialTheme.typography.bodySmall,
                 )
+                model.detailRes?.let { detailRes ->
+                    Text(
+                        text = model.detailArg?.let { stringResource(detailRes, it) } ?: stringResource(detailRes),
+                        color = palette.fg, style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
-        if (model.action != null && model.actionLabelRes != null) {
-            AppSecondaryButton(
-                text = stringResource(model.actionLabelRes),
-                leadingIcon = if (model.action == PendingEnrichmentBandAction.RetryObservation) {
-                    Icons.Filled.Refresh
-                } else {
-                    null
-                },
-                onClick = when (model.action) {
-                    PendingEnrichmentBandAction.OpenExpense -> onOpenFeedbackExpense
-                    PendingEnrichmentBandAction.RetryObservation -> onRetryObservation
-                },
-            )
+        if (model.kind != null) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+                if (model.action != null && model.actionLabelRes != null) {
+                    AppSecondaryButton(
+                        text = stringResource(model.actionLabelRes),
+                        leadingIcon = if (model.action == PendingEnrichmentBandAction.RetryObservation) Icons.Filled.Refresh else null,
+                        onClick = when (model.action) {
+                            PendingEnrichmentBandAction.OpenExpense -> onOpenFeedbackExpense
+                            PendingEnrichmentBandAction.RetryObservation -> onRetryObservation
+                        },
+                    )
+                }
+                if (model.kind != PendingEnrichmentFeedbackKind.Unavailable) {
+                    TextButton(onClick = onDismissFeedback) { Text(stringResource(R.string.pending_enrichment_dismiss)) }
+                }
+            }
         }
     }
 }

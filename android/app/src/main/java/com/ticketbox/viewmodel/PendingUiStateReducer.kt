@@ -92,6 +92,7 @@ internal object PendingUiStateReducer {
         val remainingItems = current.items.filterNot { expense -> expense.id == expenseId }
         return current.copy(
             items = remainingItems,
+            enrichment = current.enrichment.copy(feedback = current.enrichment.feedback?.takeUnless { it.expenseId == expenseId }),
             thumbnails = current.thumbnails - expenseId,
             actionInProgressIds = current.actionInProgressIds - expenseId,
             activeSheet = reconcileActiveSheet(current.activeSheet, remainingItems),
