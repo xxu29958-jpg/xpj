@@ -145,7 +145,7 @@ def web_pending(
     ctx.update(bulk_context)
     ctx["upload_intent"] = attachment_form_context(db, request, action="/web/pending/upload", ledger_id=selected_id)
     ctx["pending_count"] = pending_total
-    ctx["pending_expense_ids"] = {expense.id for expense in pending}
+    ctx["pending_expenses"] = raw_items
     ctx["inbox_is_empty"] = pending_total == 0
     ctx["inbox_has_history"] = pending_total == 0 and ledger_has_any_expense(db, selected_id)
     ctx["filtered_count"] = len(items)

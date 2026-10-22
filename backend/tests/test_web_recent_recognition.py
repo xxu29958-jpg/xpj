@@ -89,7 +89,7 @@ def test_reopened_active_task_link_uses_the_existing_watch_consumer(monkeypatch,
     task = {"public_id": str(uuid4()), "status": status, "source_expense_id": 41,
         "created_at": datetime(2026, 9, 27, 2, tzinfo=UTC)}
     html = _render(templates, "pending.html", {"selected_ledger_id": "owner", "expenses": [],
-        "pending_count": 1, "pending_expense_ids": {41}, "filter": "missing_amount", "can_write": False, "recent_recognition_tasks": [task]})
+        "pending_count": 1, "pending_expenses": [{"id": 41}], "filter": "missing_amount", "can_write": False, "recent_recognition_tasks": [task]})
     fragment = _task_fragment(html, task["public_id"])
     link = re.search(r'href="([^"]+)"[^>]*>\s*查看进度\s*</a>', fragment)
     assert link, "重开页面的处理中任务必须能进入既有进度观察，而非成为静态死记录"
