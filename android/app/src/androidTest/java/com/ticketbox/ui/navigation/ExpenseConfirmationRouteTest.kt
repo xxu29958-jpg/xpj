@@ -53,7 +53,7 @@ class ExpenseConfirmationRouteTest {
             CompositionLocalProvider(LocalViewModelStoreOwner provides compose.activity) {
                 TicketboxTheme(skin = if (dark) AppSkin.Midnight else AppSkin.Paper) {
                     if (mounted.value) ExpenseEditRoute(42, harness.screenFactory, ExpenseEditExitActions(
-                        { exits++ }, { changed -> assertTrue(changed); exits++ }), ExpenseFactNavigation({}, { _, _ -> }))
+                        { exits++ }, { changed -> assertTrue(changed); exits++ }), ExpenseFactNavigation({}, { _, _ -> }, {} ))
                 }
             }
         }
