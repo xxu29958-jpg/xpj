@@ -20,7 +20,7 @@
       {% elif task.progress_message %}
       <p>{{ task.progress_message }}</p>
       {% endif %}
-      {% if task.status in ['queued', 'running'] %}
+      {% if task.status in ['queued', 'running'] and task.source_expense_id in pending_expense_ids %}
       <a class="product-button" href="/web/pending?ledger_id={{ selected_ledger_id|urlencode }}&amp;filter={{ filter|default('all')|urlencode }}&amp;watch={{ task.public_id|urlencode }}#recognition">查看进度</a>
       {% endif %}
       {% if task.source_expense_id %}

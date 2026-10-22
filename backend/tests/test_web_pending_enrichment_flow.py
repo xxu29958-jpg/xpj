@@ -137,6 +137,8 @@ def test_pending_feedback_retires_when_original_leaves_queue(web_client, identit
     filtered = web_client.get(watch_url).text
     assert "data-inbox-enrichment-" in filtered, "筛选隐藏原单不等于原单离开待处理队列"
     assert f'data-expense-id="{expense_id}"' not in filtered
+    if task_status == "running":
+        assert f'watch={task_public_id}#recognition' in filtered, "筛选隐藏仍待处理原单时可继续查看进度"
 
     result = command(web_client, expense_id, identity=identity)
     assert result.status_code == 303, result.text
@@ -144,6 +146,7 @@ def test_pending_feedback_retires_when_original_leaves_queue(web_client, identit
     assert "data-inbox-enrichment-" not in settled
     assert "小票已收到，正在识别" not in settled, "上传重定向的旧文案也必须随原单状态一起撤下"
     assert f'data-recognition-task-id="{task_public_id}"' in settled
+    assert f'watch={task_public_id}#recognition' not in settled, "保留历史时不留下失效的进度入口"
     with SessionLocal() as db:
         assert db.scalar(select(BackgroundTask.status).where(BackgroundTask.public_id == task_public_id)) == task_status
 
