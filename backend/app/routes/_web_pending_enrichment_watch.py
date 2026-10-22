@@ -16,6 +16,7 @@ from app.errors import AppError
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.services import background_task_service
 from app.services.background_task_response import task_response_dicts
+from app.services.expense_service import fetch_expense_row_version_in_status
 from app.services.pending_enrichment_task_service import (
     PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
 )
@@ -37,6 +38,7 @@ class PendingEnrichmentWatch:
     task_public_id: str
     state: PendingEnrichmentState
     timeout_ms: int
+    source_expense_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +60,7 @@ _TERMINAL_FEEDBACK = {
         "error",
     ),
     "cancelled": ("自动识别已取消，账单仍保留在待确认队列。", ""),
-    "not_pending": ("账单已离开待确认队列，无需继续等待识别。", ""),
+    "not_pending": ("当次识别时账单不在待确认队列；可打开账单继续核对。", ""),
     "conflict": (
         "你后来保存的修改已保留，自动识别没有覆盖这张账单。",
         "",
@@ -122,6 +124,10 @@ def resolve_pending_enrichment_watch(
     )
     if task.task_type != PENDING_EXPENSE_ENRICHMENT_TASK_TYPE:
         return None
+    if task.source_expense_id is None or fetch_expense_row_version_in_status(
+        db, expense_id=task.source_expense_id, tenant_id=tenant_id, status="pending",
+    ) is None:
+        return None
 
     if task.status in {"queued", "running"}:
         state: PendingEnrichmentState = "pending"
@@ -135,6 +141,7 @@ def resolve_pending_enrichment_watch(
         task_public_id=task_public_id,
         state=state,
         timeout_ms=pending_enrichment_watch_timeout_ms(),
+        source_expense_id=task.source_expense_id,
     )
 
 
@@ -192,13 +199,13 @@ def web_pending_enrichment_context(
     flash_type: str,
 ) -> dict[str, object]:
     """Project the active watch and this account's recent upload records."""
+    watch = resolve_web_pending_enrichment_watch(
+        db, request, tenant_id=tenant_id, raw_task_public_id=raw_task_public_id,
+    )
+    if raw_task_public_id and watch is None:
+        flash_message, flash_type = "", ""
     presentation = pending_enrichment_presentation(
-        resolve_web_pending_enrichment_watch(
-            db,
-            request,
-            tenant_id=tenant_id,
-            raw_task_public_id=raw_task_public_id,
-        ),
+        watch,
         flash_message=flash_message,
         flash_type=flash_type,
     )
