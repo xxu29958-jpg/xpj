@@ -23,26 +23,6 @@ internal fun pendingListBodyState(
 }
 
 /**
- * 上传入口的唯一槽位：任一屏幕态最多一个「上传小票」入口——
- * Content/Loading/LoadFailed 在页头（上传命令不依赖列表 query 成功，
- * 加载中或加载失败都不得夺走上传能力），settled Empty 在空态卡；
- * 只读角色没有入口。
- */
-internal enum class PendingUploadEntrySlot {
-    Header,
-    EmptyState,
-}
-
-internal fun pendingUploadEntrySlot(
-    bodyState: PendingListBodyState,
-    readOnly: Boolean,
-): PendingUploadEntrySlot? = when {
-    readOnly -> null
-    bodyState == PendingListBodyState.Empty -> PendingUploadEntrySlot.EmptyState
-    else -> PendingUploadEntrySlot.Header
-}
-
-/**
  * expanded 宽度 supporting pane 的内容：无活动复核时承载 triage；
  * 有活动复核时复用现有 [PendingSheet] 状态把复核提升为常驻面板，
  * 不新造 selection/receipt owner。非 expanded 返回 null——复核继续
@@ -126,6 +106,8 @@ data class PendingScreenChromeActions(
     val requestedFilter: NeedsReviewFilter? = null,
     val onRequestedFilterConsumed: () -> Unit = {},
     val onOpenUploadExpense: (Long) -> Unit = {},
+    val onDismissCompletedUpload: () -> Unit = {},
+    val onDismissEnrichment: () -> Unit = {},
 )
 
 data class PendingExpenseQueueActions(

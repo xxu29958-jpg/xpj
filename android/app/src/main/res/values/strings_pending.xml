@@ -163,6 +163,8 @@
     <string name="pending_capture_submit">上传 %1$d 张小票</string>
     <string name="pending_capture_back">返回收件箱</string>
     <string name="pending_capture_open">查看上传任务</string>
+    <string name="pending_capture_dismiss_completed">收起已完成上传</string>
+    <string name="pending_enrichment_dismiss">关闭提示</string>
     <string name="pending_capture_progress">上传进度</string>
     <string name="pending_capture_received">服务器已收到 %1$d / %2$d 张</string>
     <string name="pending_capture_received_review">图片已收到</string>

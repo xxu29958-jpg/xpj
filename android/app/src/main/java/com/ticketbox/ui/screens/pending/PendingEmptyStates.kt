@@ -1,22 +1,14 @@
 package com.ticketbox.ui.screens.pending
 
-import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,96 +17,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import com.ticketbox.R
-import com.ticketbox.ui.components.AppButtonIcons
-import com.ticketbox.ui.components.AppPrimaryButton
-import com.ticketbox.ui.components.ReceiptEmptyIllustration
-import com.ticketbox.ui.design.AppAdaptiveBreakpoints
-import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
-import com.ticketbox.ui.design.AppWindowWidthClass
-import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
-import com.ticketbox.ui.design.LocalThemeVisuals
 
 @Composable
 internal fun EmptyPendingState(
     state: EmptyPendingStateModel,
-    onUploadScreenshot: () -> Unit,
     onToggleGuide: () -> Unit,
     onRefresh: () -> Unit,
 ) {
-    // 单一主任务焦点构图：中宽以上窗口内容居中并封顶焦点宽度，
-    // 主操作不再横跨整窗；compact 单栏维持全宽。
-    val focusCap = if (LocalAppAdaptiveLayoutPolicy.current.widthClass == AppWindowWidthClass.Compact) {
-        null
-    } else {
-        AppAdaptiveBreakpoints.focusContentMaxWidth
-    }
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.TopCenter,
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
     ) {
-        Surface(
-            modifier = if (focusCap != null) {
-                Modifier.widthIn(max = focusCap).fillMaxWidth()
-            } else {
-                Modifier.fillMaxWidth()
-            },
-            shape = RoundedCornerShape(AppRadius.large),
-            color = LocalThemeVisuals.current.solidCard,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(AppSpacing.cardPadding),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
-            ) {
-                if (!state.loading) {
-                    ReceiptEmptyIllustration(
-                        modifier = Modifier.padding(bottom = AppSpacing.miniGap),
-                    )
-                }
-                PendingStateTitle(
-                    title = if (state.loading) {
-                        stringResource(R.string.pending_empty_card_title_loading)
-                    } else {
-                        stringResource(R.string.pending_empty_card_title)
-                    },
-                    body = if (state.readOnly) {
-                        stringResource(R.string.pending_empty_card_body_readonly)
-                    } else if (state.loading) {
-                        stringResource(R.string.pending_empty_card_body_loading)
-                    } else {
-                        stringResource(R.string.pending_empty_card_body)
-                    },
-                )
-                if (state.loading) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-                emptyPendingUploadCta(
-                    uploading = state.uploading,
-                    loading = state.loading,
-                    readOnly = state.readOnly,
-                )?.let { cta ->
-                    AppPrimaryButton(
-                        text = stringResource(cta.labelRes),
-                        icons = AppButtonIcons(leading = ImageVector.vectorResource(R.drawable.ic_lucide_image_plus)),
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = cta.enabled && state.canStartUpload,
-                        onClick = onUploadScreenshot,
-                    )
-                }
-                PendingEmptyActions(
-                    state = state,
-                    onToggleGuide = onToggleGuide,
-                    onRefresh = onRefresh,
-                )
-                if (state.showUploadGuide && !state.readOnly) {
-                    PendingUploadGuide()
-                }
-            }
-        }
+        PendingStateTitle(
+            title = stringResource(R.string.pending_empty_card_title),
+            body = stringResource(if (state.readOnly) R.string.pending_empty_card_body_readonly else R.string.pending_empty_card_body),
+        )
+        PendingEmptyActions(state, onToggleGuide, onRefresh)
+        if (state.showUploadGuide && !state.readOnly) PendingUploadGuide()
     }
 }
 
@@ -123,33 +45,7 @@ internal data class EmptyPendingStateModel(
     val loading: Boolean = false,
     val readOnly: Boolean,
     val showUploadGuide: Boolean,
-    val canStartUpload: Boolean = !uploading && !readOnly,
 )
-
-/**
- * 空态主上传 CTA 的纯模型：只读角色没有上传入口（返回 null）；上传中 / 加载中
- * 置灰防重入。标签复用页头 CTA 文案，不新增字符串。
- */
-internal data class EmptyPendingUploadCta(
-    @param:StringRes val labelRes: Int,
-    val enabled: Boolean,
-)
-
-internal fun emptyPendingUploadCta(
-    uploading: Boolean,
-    loading: Boolean,
-    readOnly: Boolean,
-): EmptyPendingUploadCta? {
-    if (readOnly) return null
-    return EmptyPendingUploadCta(
-        labelRes = if (uploading) {
-            R.string.pending_top_cta_uploading
-        } else {
-            R.string.pending_top_cta_upload
-        },
-        enabled = !uploading && !loading,
-    )
-}
 
 @Composable
 private fun PendingUploadGuide() {

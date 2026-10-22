@@ -51,6 +51,7 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
     fun unavailableObservationPausesUntilTheUserRetries() = review {
         val ledgerFlow = MutableStateFlow<String?>("owner")
         val fake = FakeReviewActions(
+            pending = listOf(expense(8)),
             activeLedgerFlow = ledgerFlow,
             activeLedgerIdProvider = { ledgerFlow.value },
         )
@@ -115,6 +116,7 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         val first = CompletableDeferred<Result<PendingEnrichmentTask>>()
         val second = CompletableDeferred<Result<PendingEnrichmentTask>>()
         val fake = FakeReviewActions(
+            pending = listOf(expense(1), expense(2)),
             activeLedgerFlow = ledgerFlow,
             activeLedgerIdProvider = { ledgerFlow.value },
         )
@@ -231,6 +233,53 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
         assertEquals(2, fake.fetchPendingCalls)
         assertNull(vm.uiState.value.enrichment.feedback)
         assertEquals(0, changes)
+    }
+
+    @Test
+    fun failedFeedbackCanBeDismissedWithoutDeletingItsReceiptOrRepeatingOnRefresh() = review {
+        val fake = FakeReviewActions(pending = listOf(expense(1)))
+        val original = observedUpload(1, PendingMutationStatus.Done)
+        fake.uploadIntents.publish(original)
+        fake.enrichmentTasks.responder = { Result.success(task("failed")) }
+        val vm = pendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
+        advanceUntilIdle()
+        assertEquals(PendingEnrichmentFeedbackKind.Failed, vm.uiState.value.enrichment.feedback?.kind)
+        vm.dismissEnrichmentFeedback()
+        vm.refresh()
+        advanceUntilIdle()
+        assertNull(vm.uiState.value.enrichment.feedback)
+        assertEquals(listOf(original), fake.uploadIntents.snapshots.value.uploads)
+        assertEquals(listOf(1L), vm.uiState.value.items.map { it.id })
+    }
+
+    @Test
+    fun successfulQueueRefreshRetiresFeedbackButOfflineRefreshKeepsIt() = review {
+        val fake = FakeReviewActions(pending = listOf(expense(1)))
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done))
+        fake.enrichmentTasks.responder = { Result.success(task("failed")) }
+        val vm = pendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
+        advanceUntilIdle()
+        fake.fetchPendingResponder = { Result.failure(IllegalStateException("offline")) }
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(PendingEnrichmentFeedbackKind.Failed, vm.uiState.value.enrichment.feedback?.kind)
+        fake.fetchPendingResponder = { Result.success(emptyList()) }
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(emptyList(), vm.uiState.value.items)
+        assertNull(vm.uiState.value.enrichment.feedback)
+        vm.retryEnrichmentObservation()
+        advanceUntilIdle()
+        assertNull(vm.uiState.value.enrichment.feedback)
+    }
+
+    @Test
+    fun confirmedAndRejectedExpensesImmediatelyLoseTheirFeedback() = review {
+        val item = expense(1)
+        val state = PendingUiState(items = listOf(item), enrichment = PendingEnrichmentUiState(
+            feedback = PendingEnrichmentFeedback(1, PendingEnrichmentFeedbackKind.Failed)))
+        assertNull(PendingUiStateReducer.afterConfirmed(state, item, null).enrichment.feedback)
+        assertNull(PendingUiStateReducer.afterRejected(state, item, null).enrichment.feedback)
     }
 
     private fun task(

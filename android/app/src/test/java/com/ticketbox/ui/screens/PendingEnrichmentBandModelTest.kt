@@ -68,9 +68,8 @@ class PendingEnrichmentBandModelTest {
             val gone = pendingEnrichmentBandModel(
                 state = PendingEnrichmentUiState(feedback = feedback(kind)),
                 feedbackTargetPresent = false,
-            )!!
-            assertNull(gone.action, kind.name)
-            assertNull(gone.actionLabelRes, kind.name)
+            )
+            assertNull(gone, kind.name)
         }
     }
 
@@ -104,28 +103,28 @@ class PendingEnrichmentBandModelTest {
             PendingEnrichmentBandTone.Success,
             pendingEnrichmentBandModel(
                 PendingEnrichmentUiState(feedback = feedback(PendingEnrichmentFeedbackKind.Updated)),
-                feedbackTargetPresent = false,
+                feedbackTargetPresent = true,
             )!!.tone,
         )
         assertEquals(
             PendingEnrichmentBandTone.Warn,
             pendingEnrichmentBandModel(
                 PendingEnrichmentUiState(feedback = feedback(PendingEnrichmentFeedbackKind.NoResult)),
-                feedbackTargetPresent = false,
+                feedbackTargetPresent = true,
             )!!.tone,
         )
         assertEquals(
             PendingEnrichmentBandTone.Danger,
             pendingEnrichmentBandModel(
                 PendingEnrichmentUiState(feedback = feedback(PendingEnrichmentFeedbackKind.Failed)),
-                feedbackTargetPresent = false,
+                feedbackTargetPresent = true,
             )!!.tone,
         )
         assertEquals(
             PendingEnrichmentBandTone.Info,
             pendingEnrichmentBandModel(
                 PendingEnrichmentUiState(feedback = feedback(PendingEnrichmentFeedbackKind.Conflict)),
-                feedbackTargetPresent = false,
+                feedbackTargetPresent = true,
             )!!.tone,
         )
     }
