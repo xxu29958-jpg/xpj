@@ -78,7 +78,7 @@ class PendingEmptyStateUploadCtaInteractionTest {
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) { inbox(state.value, actions) } }
         compose.onNodeWithText("查看上传任务").performScrollTo().performClick()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        compose.onNodeWithText(context.getString(R.string.pending_capture_back)).performScrollTo().performClick()
+        compose.onNodeWithText(context.getString(R.string.pending_capture_back)).assertIsDisplayed().performClick()
         compose.onNodeWithText("查看上传任务").assertDoesNotExist()
         compose.onNodeWithContentDescription("收件工具").performClick()
         compose.onNodeWithText("近期上传").performClick()
