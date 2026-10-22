@@ -313,6 +313,7 @@ class PendingViewModel(
                     if (requestGeneration != generation) return@onFailure
                     if (refreshSkipEpoch != skipEpoch) return@onFailure
                     if (uploadIntents.currentUploadBinding() != binding) return@onFailure
+                    val previousIds = _uiState.value.items.map { it.id }.toSet()
                     _uiState.update {
                         PendingUiStateReducer.afterKnownConfirmed(it, knownConfirmed).copy(
                             hasLoadedOnce = true,
@@ -321,6 +322,7 @@ class PendingViewModel(
                             message = error.toUiText(R.string.pending_msg_load_failed),
                         )
                     }
+                    (previousIds - _uiState.value.items.map { it.id }.toSet()).forEach { updateEnrichmentExpense(it, isPending = false) }
                     recomputeReviewRemaining()
                 }
         }
@@ -413,6 +415,18 @@ class PendingViewModel(
 
     fun dismissEnrichmentFeedback() {
         enrichmentObserver?.dismissFeedback()
+    }
+
+    internal fun updateEnrichmentExpense(expenseId: Long, isPending: Boolean) {
+        if (!isPending) {
+            enrichmentObserver?.clear(expenseId)
+            return
+        }
+        uploadObservation?.uploads.orEmpty()
+            .filter { it.row.status == PendingMutationStatus.Done }
+            .mapNotNull { it.receipt?.toPendingUploadReceipt() }
+            .filter { it.expenseId == expenseId }
+            .forEach { enrichmentObserver()?.track(it) }
     }
 
     /** Acknowledges the prompt only; Room originals, receipts and recovery remain intact. */

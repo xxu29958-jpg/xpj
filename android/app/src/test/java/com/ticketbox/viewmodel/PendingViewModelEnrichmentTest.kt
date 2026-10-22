@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.domain.model.PendingEnrichmentOutcome
 import com.ticketbox.domain.model.PendingEnrichmentTask
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -274,12 +275,72 @@ internal class PendingViewModelEnrichmentTest : PendingViewModelReviewTestBase()
     }
 
     @Test
-    fun confirmedAndRejectedExpensesImmediatelyLoseTheirFeedback() = review {
+    fun completedCommandsRetirePausedRecognitionEvenIfRefreshFails() = review {
+        for (type in listOf(PendingMutationType.ConfirmExpense, PendingMutationType.RejectExpense)) {
+            val item = expense(1)
+            val fake = FakeReviewActions(listOf(item))
+            val original = observedUpload(1, PendingMutationStatus.Done)
+            fake.uploadIntents.publish(original)
+            fake.enrichmentTasks.responder = { Result.failure(IllegalStateException("offline")) }
+            val vm = pendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
+            advanceUntilIdle()
+            assertEquals(PendingEnrichmentFeedbackKind.Unavailable, vm.uiState.value.enrichment.feedback?.kind)
+            fake.fetchPendingResponder = { Result.failure(IllegalStateException("offline")) }
+            if (type == PendingMutationType.ConfirmExpense) vm.confirm(item) else vm.reject(item)
+            runCurrent()
+            fake.publishCommand(1, type, PendingMutationStatus.Done,
+                item.copy(status = if (type == PendingMutationType.ConfirmExpense) "confirmed" else "rejected"))
+            advanceUntilIdle()
+            assertEquals(emptyList(), vm.uiState.value.items)
+            assertNull(vm.uiState.value.enrichment.feedback)
+            vm.retryEnrichmentObservation()
+            advanceUntilIdle()
+            assertEquals(1, fake.enrichmentTasks.calls)
+            assertEquals(listOf(original), fake.uploadIntents.snapshots.value.uploads)
+        }
+    }
+
+    @Test
+    fun undoRestoresPausedRecognitionThroughTheCommandReceipt() = review {
         val item = expense(1)
-        val state = PendingUiState(items = listOf(item), enrichment = PendingEnrichmentUiState(
-            feedback = PendingEnrichmentFeedback(1, PendingEnrichmentFeedbackKind.Failed)))
-        assertNull(PendingUiStateReducer.afterConfirmed(state, item, null).enrichment.feedback)
-        assertNull(PendingUiStateReducer.afterRejected(state, item, null).enrichment.feedback)
+        val fake = FakeReviewActions(listOf(item))
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done))
+        fake.enrichmentTasks.responder = { Result.failure(IllegalStateException("offline")) }
+        val vm = pendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
+        advanceUntilIdle()
+        fake.fetchPendingResponder = { Result.failure(IllegalStateException("offline")) }
+        vm.reject(item)
+        runCurrent()
+        fake.publishCommand(1, PendingMutationType.RejectExpense, PendingMutationStatus.Done, item.copy(status = "rejected"))
+        runCurrent()
+        vm.undoReject()
+        runCurrent()
+        fake.enrichmentTasks.responder = { Result.success(task("completed", PendingEnrichmentOutcome.Updated)) }
+        fake.publishCommand(1, PendingMutationType.UndoExpense, PendingMutationStatus.Done, item)
+        advanceUntilIdle()
+        assertEquals(listOf(1L), vm.uiState.value.items.map { it.id })
+        assertEquals(2, fake.enrichmentTasks.calls)
+        assertEquals(1, fake.enrichmentTasks.fetchedTaskIds.distinct().size)
+        assertEquals(PendingEnrichmentFeedbackKind.Updated, vm.uiState.value.enrichment.feedback?.kind)
+    }
+
+    @Test
+    fun confirmedCacheRetiresPausedRecognitionWhenPendingReadFails() = review {
+        val item = expense(1)
+        val fake = FakeReviewActions(listOf(item))
+        fake.uploadIntents.publish(observedUpload(1, PendingMutationStatus.Done))
+        fake.enrichmentTasks.responder = { Result.failure(IllegalStateException("offline")) }
+        val vm = pendingViewModel(fake, enrichmentTaskReader = fake.enrichmentTasks)
+        advanceUntilIdle()
+        fake.cachedConfirmed = listOf(item.copy(status = "confirmed", rowVersion = item.rowVersion + 1))
+        fake.fetchPendingResponder = { Result.failure(IllegalStateException("offline")) }
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(emptyList(), vm.uiState.value.items)
+        assertNull(vm.uiState.value.enrichment.feedback)
+        vm.retryEnrichmentObservation()
+        advanceUntilIdle()
+        assertEquals(1, fake.enrichmentTasks.calls)
     }
 
     private fun task(

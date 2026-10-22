@@ -96,9 +96,10 @@ class PendingEmptyStateUploadCtaInteractionTest {
         val targetPresent = mutableStateOf(true)
         val state = mutableStateOf(PendingEnrichmentUiState(feedback = PendingEnrichmentFeedback(42, PendingEnrichmentFeedbackKind.Failed)))
         var opened = 0
+        var retries = 0
         compose.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
-                PendingEnrichmentStatusBand(state.value, targetPresent.value, { opened++ }, {},
+                PendingEnrichmentStatusBand(state.value, targetPresent.value, { opened++ }, { retries++ },
                     onDismissFeedback = { state.value = state.value.copy(feedback = null) })
             }
         }
@@ -112,6 +113,12 @@ class PendingEmptyStateUploadCtaInteractionTest {
             targetPresent.value = false
         }
         compose.onNodeWithText("自动识别失败", substring = true).assertDoesNotExist()
+        compose.runOnIdle {
+            state.value = PendingEnrichmentUiState(feedback = PendingEnrichmentFeedback(42, PendingEnrichmentFeedbackKind.Unavailable))
+        }
+        compose.onNodeWithText("关闭提示").assertDoesNotExist()
+        compose.onNodeWithText("重试检查").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals(1, retries) }
     }
 
     private fun capture(name: String) = saveConsumerArtPreview(name, compose.onRoot().captureToImage().asAndroidBitmap())

@@ -243,7 +243,9 @@ internal fun PendingEnrichmentStatusBand(
                         },
                     )
                 }
-                TextButton(onClick = onDismissFeedback) { Text(stringResource(R.string.pending_enrichment_dismiss)) }
+                if (model.kind != PendingEnrichmentFeedbackKind.Unavailable) {
+                    TextButton(onClick = onDismissFeedback) { Text(stringResource(R.string.pending_enrichment_dismiss)) }
+                }
             }
         }
     }

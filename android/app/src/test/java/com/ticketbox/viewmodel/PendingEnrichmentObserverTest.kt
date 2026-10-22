@@ -13,6 +13,31 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class PendingEnrichmentObserverTest {
     @Test
+    fun dismissingTerminalFeedbackKeepsAPausedTaskRetryable() = runTest {
+        var online = false
+        var state = PendingEnrichmentUiState()
+        val requests = mutableListOf<String>()
+        val observer = PendingEnrichmentObserver(this, {
+            requests += it
+            if (it == "paused" && !online) Result.failure(IllegalStateException("offline"))
+            else Result.success(if (it == "paused") PendingEnrichmentTask("completed", PendingEnrichmentOutcome.Updated)
+                else PendingEnrichmentTask("failed", null))
+        }, { true }, { state = it }, {})
+        observer.track(PendingUploadReceipt(1, "paused"))
+        runCurrent()
+        observer.track(PendingUploadReceipt(2, "failed"))
+        runCurrent()
+        assertEquals(PendingEnrichmentFeedbackKind.Failed, state.feedback?.kind)
+        observer.dismissFeedback()
+        assertEquals(PendingEnrichmentFeedback(1, PendingEnrichmentFeedbackKind.Unavailable), state.feedback)
+        online = true
+        observer.retryPaused()
+        advanceUntilIdle()
+        assertEquals(listOf("paused", "failed", "paused"), requests)
+        assertEquals(PendingEnrichmentFeedback(1, PendingEnrichmentFeedbackKind.Updated), state.feedback)
+    }
+
+    @Test
     fun aPausedTaskResumesWhenItsExpenseReturnsAfterRemoval() = runTest {
         val replies = ArrayDeque(listOf(
             Result.failure<PendingEnrichmentTask>(IllegalStateException("offline")),
@@ -56,6 +81,7 @@ internal class PendingEnrichmentObserverTest {
         assertEquals(1, state.activeCount)
         assertEquals(PendingEnrichmentFeedbackKind.Failed, state.feedback?.kind)
         observer.dismissFeedback()
+        observer.clear(1)
         assertEquals(1, state.activeCount)
         assertEquals(null, state.feedback)
         second.complete(Result.success(PendingEnrichmentTask("completed", PendingEnrichmentOutcome.Updated)))

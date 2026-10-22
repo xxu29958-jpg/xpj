@@ -53,10 +53,9 @@ internal class PendingEnrichmentObserver(
 
     fun restore(receipts: List<PendingUploadReceipt>) {
         val pendingIds = receipts.map { it.expenseId }.toSet()
-        val absentTaskIds = paused.filterValues { it.expenseId !in pendingIds }.keys
-        paused.keys.removeAll(absentTaskIds)
-        observed.removeAll(absentTaskIds)
-        if (latestFeedback?.expenseId?.let { it !in pendingIds } == true) dismissFeedback()
+        val trackedIds = active.values.map { it.receipt.expenseId } + paused.values.map { it.expenseId } +
+            listOfNotNull(latestFeedback?.expenseId)
+        trackedIds.filterNot { it in pendingIds }.distinct().forEach { clear(it) }
         receipts.forEach { start(it, restoring = true) }
     }
 
@@ -90,13 +89,17 @@ internal class PendingEnrichmentObserver(
         emitState()
     }
 
-    fun clear() {
-        val jobs = active.values.map(TrackedTask::job)
-        active.clear()
-        paused.clear()
-        observed.clear()
-        latestFeedback = null
-        jobs.forEach(Job::cancel)
+    fun clear(expenseId: Long? = null) {
+        val tasks = active.filterValues { expenseId == null || it.receipt.expenseId == expenseId }
+        val pausedIds = paused.filterValues { expenseId == null || it.expenseId == expenseId }.keys
+        (tasks.keys + pausedIds).forEach {
+            active.remove(it)
+            paused.remove(it)
+            observed.remove(it)
+        }
+        if (expenseId == null) observed.clear()
+        if (expenseId == null || latestFeedback?.expenseId == expenseId) latestFeedback = null
+        tasks.values.forEach { it.job.cancel() }
         emitState()
     }
 
@@ -153,7 +156,7 @@ internal class PendingEnrichmentObserver(
         onStateChanged(
             PendingEnrichmentUiState(
                 activeCount = active.size,
-                feedback = latestFeedback,
+                feedback = latestFeedback ?: paused.values.firstOrNull()?.feedback(PendingEnrichmentFeedbackKind.Unavailable),
             ),
         )
     }
