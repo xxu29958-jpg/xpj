@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -69,10 +70,11 @@ class PendingEmptyStateUploadCtaInteractionTest {
 
     @Test
     fun closingCompletedTaskHidesItsSummaryAndToolsStillOpenTheOriginalReceipt() {
+        var openedExpense: Long? = null
         val state = mutableStateOf(PendingUiState(listLoadState = PendingListLoadState.Loaded,
             upload = PendingUploadUiState(showSummary = true,
                 originals = listOf(PendingUploadOriginalUi(1, "receipt.png", PendingMutationStatus.Done, 42)))))
-        val actions = chrome().copy(onDismissCompletedUpload = {
+        val actions = chrome().copy(onOpenUploadExpense = { openedExpense = it }, onDismissCompletedUpload = {
             state.value = state.value.copy(upload = state.value.upload.copy(showSummary = false))
         })
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) { inbox(state.value, actions) } }
@@ -84,7 +86,9 @@ class PendingEmptyStateUploadCtaInteractionTest {
         compose.onNodeWithText("近期上传").performClick()
         compose.onNodeWithText("receipt.png").assertIsDisplayed()
         compose.onNodeWithText("查看原单").assertIsDisplayed()
-        capture("inbox-completed-history")
+        saveConsumerArtPreview("inbox-completed-history", compose.onNode(isDialog()).captureToImage().asAndroidBitmap())
+        compose.onNodeWithText("查看原单").performClick()
+        compose.runOnIdle { assertEquals(42L, openedExpense) }
     }
 
     @Test
