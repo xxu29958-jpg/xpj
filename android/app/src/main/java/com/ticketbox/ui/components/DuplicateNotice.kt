@@ -53,8 +53,6 @@ fun DuplicateNotice(
 fun duplicateNoticeBody(reason: String?): String {
     val normalized = reason.orEmpty().trim()
     return when {
-        normalized.contains("交易信息不足") || normalized.contains("原币金额相同") ||
-            normalized.contains("交易标识相同") -> normalized
         normalized.hasAnyReasonToken(
             "image hash",
             "perceptual hash",
@@ -66,7 +64,7 @@ fun duplicateNoticeBody(reason: String?): String {
             "time",
             "field",
         ) -> stringResource(R.string.components_duplicate_notice_field_match)
-        else -> stringResource(R.string.components_duplicate_notice_generic)
+        else -> normalized.ifBlank { stringResource(R.string.components_duplicate_notice_generic) }
     }
 }
 

@@ -202,6 +202,11 @@ async def lifespan(_: FastAPI):
     from app.services.bill_split_service import reconcile_bill_split_debts_if_enabled
 
     reconcile_bill_split_debts_if_enabled()
+    from app.services.duplicate_service import reconcile_legacy_duplicate_statuses
+
+    with _SessionLocal() as _db:
+        reconcile_legacy_duplicate_statuses(_db)
+        _db.commit()
     # Complete committed OCR receipts without repeating inference; fence other
     # lost process-local work for its domain's original-input recovery.
     recover_orphaned_tasks()

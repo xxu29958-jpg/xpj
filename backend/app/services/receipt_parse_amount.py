@@ -106,6 +106,20 @@ def _primary_line_amount_candidate(
     if not (has_money_marker or has_nearby_success or has_sign):
         return None
 
+    dimensions = _primary_amount_dimensions(lines, index, line_text, cents, minor_unit_exponent,
+        has_money_marker=has_money_marker, has_nearby_success=has_nearby_success, has_sign=has_sign)
+    if dimensions.total <= 0:
+        return None
+    start = sum(len(line) + 1 for line in lines[:index])
+    return _AmountCandidate(
+        amount_cents=cents, score=dimensions.total, line_index=index, source="line",
+        evidence=dimensions.evidence, dimensions=dimensions,
+        normalized_span=(start, start + len(line_text)),
+    )
+
+
+def _primary_amount_dimensions(lines, index, line_text, cents, minor_unit_exponent,
+        *, has_money_marker: bool, has_nearby_success: bool, has_sign: bool) -> _ScoreDimensions:
     evidence = [f"line:{line_text}"]
     if has_money_marker:
         evidence.append("money_marker")
@@ -114,25 +128,13 @@ def _primary_line_amount_candidate(
     has_discount_context = _has_discount_context(lines, index)
     if has_discount_context:
         evidence.append("discount_context:-50")
-    dimensions = _ScoreDimensions(
+    return _ScoreDimensions(
         source=28 if has_money_marker else 24,
         context=62 if has_nearby_success else 0,
         label=12 if has_sign else 0,
         consistency=_amount_plausibility_score(cents, minor_unit_exponent),
         noise=-50 if has_discount_context else 0,
         evidence=tuple(evidence),
-    )
-    if dimensions.total <= 0:
-        return None
-    return _AmountCandidate(
-        amount_cents=cents,
-        score=dimensions.total,
-        line_index=index,
-        source="line",
-        evidence=dimensions.evidence,
-        dimensions=dimensions,
-        normalized_span=(sum(len(line) + 1 for line in lines[:index]),
-            sum(len(line) + 1 for line in lines[:index]) + len(line_text)),
     )
 
 

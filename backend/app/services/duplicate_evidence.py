@@ -86,47 +86,62 @@ def compare_duplicate_evidence(expense: Expense, candidate: Expense, *,
             or expense.status == "rejected" or candidate.status == "rejected"
             or _source_conflict(expense, expense_fact) or _source_conflict(candidate, candidate_fact)):
         return None
+    money_relation = _money_relation(expense, candidate)
+    id_relation = _identifier_relation(expense, candidate, expense_fact, candidate_fact)
+    time_reason = _time_relation(expense, candidate)
+    if "conflict" in (money_relation, id_relation, time_reason):
+        return None
+    reasons = _duplicate_reasons(expense, candidate, money_relation, id_relation, time_reason)
+    if reasons is None:
+        return None
+    weights = {"transaction_id_match": 0.5, "image_hash_match": 0.2, "image_perceptual_hash_match": 0.1,
+        "amount_match": 0.3, "merchant_match": 0.15, "time_within_1h": 0.15,
+        "time_within_24h": 0.05, "same_transaction_date": 0.05, "transaction_evidence_incomplete": 0}
+    score = min(1.0, sum(weights[reason] for reason in reasons))
+    return DuplicateCandidateScore(candidate.id, round(score, 4), tuple(reasons))
+
+
+def _money_relation(expense: Expense, candidate: Expense) -> str:
     code, amount = _money(expense)
     other_code, other_amount = _money(candidate)
     if code and other_code and code != other_code:
-        return None
-    if amount is not None and other_amount is not None and code == other_code and amount != other_amount:
-        return None
+        return "conflict"
+    if amount is not None and other_amount is not None and code == other_code:
+        if amount != other_amount:
+            return "conflict"
+        if code:
+            return "match"
+    return "unknown"
+
+
+def _identifier_relation(expense, candidate, expense_fact, candidate_fact) -> str:
     namespace, identifiers = _identifiers(expense, expense_fact)
     other_namespace, other_identifiers = _identifiers(candidate, candidate_fact)
     comparable_ids = bool(namespace and namespace == other_namespace and identifiers and other_identifiers)
     if comparable_ids and (len(identifiers) != 1 or identifiers != other_identifiers):
-        return None
-    time_reason = _time_relation(expense, candidate)
-    if time_reason == "conflict":
-        return None
+        return "conflict"
+    return "match" if comparable_ids else "unknown"
+
+
+def _duplicate_reasons(expense, candidate, money_relation, id_relation, time_reason):
     image_equal = bool(expense.image_hash and expense.image_hash == candidate.image_hash)
     image_near = phash_distance(expense.image_perceptual_hash, candidate.image_perceptual_hash) <= 5
-    amount_equal = bool(code and code == other_code and amount is not None and amount == other_amount)
+    amount_equal = money_relation == "match"
+    comparable_ids = id_relation == "match"
     merchant_equal = bool(normalised_merchant(expense.merchant)
         and normalised_merchant(expense.merchant) == normalised_merchant(candidate.merchant))
-    if not (image_equal or image_near or comparable_ids or (amount_equal and merchant_equal and time_reason)):
+    transaction_match = comparable_ids or (amount_equal and merchant_equal and time_reason)
+    if not (image_equal or image_near or transaction_match):
         return None
     # Rank evidence strength, not a calibrated probability. Compatible transaction
     # fields outrank image-only recall so a first visual hit cannot hide stronger matches.
-    weights = {"transaction_id_match": 0.5, "image_hash_match": 0.2, "image_perceptual_hash_match": 0.1,
-        "amount_match": 0.3, "merchant_match": 0.15, "time_within_1h": 0.15,
-        "time_within_24h": 0.05, "same_transaction_date": 0.05}
-    reasons = []
-    if comparable_ids:
-        reasons.append("transaction_id_match")
-    if image_equal or image_near:
-        reasons.append("image_hash_match" if image_equal else "image_perceptual_hash_match")
-    if amount_equal:
-        reasons.append("amount_match")
-    if merchant_equal:
-        reasons.append("merchant_match")
-    if time_reason:
-        reasons.append(time_reason)
-    score = min(1.0, sum(weights[reason] for reason in reasons))
-    if not (comparable_ids or (amount_equal and merchant_equal and time_reason)):
+    evidence = [("transaction_id_match", comparable_ids), ("image_hash_match", image_equal),
+        ("image_perceptual_hash_match", image_near and not image_equal),
+        ("amount_match", amount_equal), ("merchant_match", merchant_equal), (time_reason, bool(time_reason))]
+    reasons = [reason for reason, matched in evidence if matched]
+    if not transaction_match:
         reasons.append("transaction_evidence_incomplete")
-    return DuplicateCandidateScore(candidate.id, round(score, 4), tuple(reasons))
+    return reasons
 
 
 def duplicate_reason(match: DuplicateCandidateScore) -> str:

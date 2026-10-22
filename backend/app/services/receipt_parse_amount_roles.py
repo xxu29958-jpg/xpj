@@ -48,28 +48,37 @@ def _role(text: str, start: int, end: int) -> str:
     return "unknown"
 
 
-def bind_amount_roles(text: str, candidates: list[_AmountCandidate]) -> list[_AmountCandidate]:
+def _transaction_review_reason(text: str) -> str | None:
     kinds = {kind for kind, pattern in _EVENTS.items() if pattern.search(text)}
-    reason = None
     if _UNFINISHED.search(text):
-        reason = "transaction_not_completed"
-    elif len(kinds) > 1:
-        reason = "conflicting_transaction_kinds"
-    elif kinds and kinds != {"expense"}:
-        reason = f"{next(iter(kinds))}_receipt"
+        return "transaction_not_completed"
+    if len(kinds) > 1:
+        return "conflicting_transaction_kinds"
+    if kinds and kinds != {"expense"}:
+        return f"{next(iter(kinds))}_receipt"
+    return None
+
+
+def _unlabeled_review_reason(text: str, item: _AmountCandidate, *, has_total: bool) -> str | None:
+    if has_total:
+        return "unlabeled_amount_beside_total"
+    if "signed_primary_amount" in item.evidence and not any(word in text for word in TRANSACTION_SUCCESS_KEYWORDS):
+        return "unlabeled_negative_amount"
+    return None
+
+
+def bind_amount_roles(text: str, candidates: list[_AmountCandidate]) -> list[_AmountCandidate]:
+    reason = _transaction_review_reason(text)
     has_total = any(_PRINTED_TOTAL.match(line) for line in text.splitlines())
     unresolved_rounding = bool(re.search(r"ROUNDING\s+ADJ", text, re.I)) and not any(
         item.role == "rounded_total" for item in candidates)
+    if unresolved_rounding:
+        reason = reason or "rounding_total_unresolved"
     bound = []
     for item in candidates:
         role = item.role if item.role != "unknown" else _role(text, *item.normalized_span)
         item_reason = reason
-        if unresolved_rounding:
-            item_reason = item_reason or "rounding_total_unresolved"
-        if role == "unknown" and has_total:
-            item_reason = item_reason or "unlabeled_amount_beside_total"
-        if (role == "unknown" and "signed_primary_amount" in item.evidence
-                and not any(word in text for word in TRANSACTION_SUCCESS_KEYWORDS)):
-            item_reason = item_reason or "unlabeled_negative_amount"
+        if role == "unknown":
+            item_reason = item_reason or _unlabeled_review_reason(text, item, has_total=has_total)
         bound.append(replace(item, role=role, review_reason=item_reason))
     return bound

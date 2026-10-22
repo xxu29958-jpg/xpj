@@ -210,39 +210,44 @@ def _same_row_totals(lines: Sequence[str], blocks: Sequence[dict], index: int,
 def _printed_total_matches(lines: tuple[str, ...] | list[str], blocks: Sequence[dict] | None) -> list[LabeledAmountMatch]:
     matches = []
     offset = 0
-    tax_summary = False
     for index, line in enumerate(lines):
-        tax_summary = tax_summary or bool(re.search(r"(?:GST|TAX)\s+SUMMARY", line, re.I))
-        label = _PRINTED_TOTAL.match(line) if not tax_summary else None
+        if re.search(r"(?:GST|TAX)\s+SUMMARY", line, re.I):
+            break
+        label = _PRINTED_TOTAL.match(line)
         if label:
-            # Total/RM/value can occupy three OCR blocks. Cash tendered, change,
-            # pre-tax subtotals and the later tax table are different roles.
-            kind = "rounded_total" if re.search(r"ROUNDED|AFTER\s+ADJ", label["label"], re.I) else "total" if label["label"].upper() == "TOTAL" else "final_total"
-            tail = line[label.end():].strip(" :：")
-            tail = re.sub(r"^\(?(?:RM|MYR)\s*\)?\s*[:：]?\s*", "", tail, flags=re.I)
-            parsed = _read_amount_token(tail)
-            if tail and (parsed is None or parsed[1].strip(" :：")) and not re.fullmatch(r"\(\d+\)", tail):
-                offset += len(line) + 1
-                continue  # TOTAL QUANTITY / TOTAL INCLUDES TAX are not totals owed.
-            same_row = _same_row_totals(lines, blocks, index, kind, offset) if blocks and not parsed else []
-            if same_row:
-                matches.extend(same_row)
-                offset += len(line) + 1
-                continue
-            if not blocks and not tail and index and re.match(r"^(?:RM|MYR)\s*\d", lines[index - 1], re.I):
-                offset += len(line) + 1
-                continue  # Flattened text cannot bind money on either side of this label.
-            money_start = offset + len(line) - len(tail)
-            for following in range(index + 1, min(index + 3, len(lines))):
-                if tail:
-                    break
-                tail = _strip_currency_prefix(lines[following]).strip(" :：()")
-                money_start = offset + sum(len(value) + 1 for value in lines[index:following]) + len(lines[following]) - len(tail)
-            parsed = _read_amount_token(tail)
-            if parsed and not parsed[1].strip(" :："):
-                matches.append(LabeledAmountMatch(index, kind, parsed[0], (offset, money_start + len(parsed[0]))))
+            matches.extend(_printed_total_line_matches(lines, blocks, index, label, offset))
         offset += len(line) + 1
     return matches
+
+
+def _printed_total_line_matches(lines, blocks, index, label, offset) -> list[LabeledAmountMatch]:
+    # Total/RM/value can occupy three OCR blocks; nearby cash or tax cannot.
+    kind = "rounded_total" if re.search(r"ROUNDED|AFTER\s+ADJ", label["label"], re.I) else "total" if label["label"].upper() == "TOTAL" else "final_total"
+    tail = lines[index][label.end():].strip(" :：")
+    tail = re.sub(r"^\(?(?:RM|MYR)\s*\)?\s*[:：]?\s*", "", tail, flags=re.I)
+    parsed = _read_amount_token(tail)
+    if tail and (parsed is None or parsed[1].strip(" :：")) and not re.fullmatch(r"\(\d+\)", tail):
+        return []  # TOTAL QUANTITY / TOTAL INCLUDES TAX are not totals owed.
+    if blocks and not parsed:
+        same_row = _same_row_totals(lines, blocks, index, kind, offset)
+        if same_row:
+            return same_row
+    if not blocks and not tail and index and re.match(r"^(?:RM|MYR)\s*\d", lines[index - 1], re.I):
+        return []  # Flattened text cannot bind money on either side of this label.
+    return _following_total_amount(lines, index, kind, offset, tail)
+
+
+def _following_total_amount(lines, index, kind, offset, tail) -> list[LabeledAmountMatch]:
+    money_start = offset + len(lines[index]) - len(tail)
+    for following in range(index + 1, min(index + 3, len(lines))):
+        if tail:
+            break
+        tail = _strip_currency_prefix(lines[following]).strip(" :：()")
+        money_start = offset + sum(len(value) + 1 for value in lines[index:following]) + len(lines[following]) - len(tail)
+    parsed = _read_amount_token(tail)
+    if parsed and not parsed[1].strip(" :："):
+        return [LabeledAmountMatch(index, kind, parsed[0], (offset, money_start + len(parsed[0])))]
+    return []
 
 
 def iter_labeled_merchant_matches(lines: tuple[str, ...] | list[str]) -> list[LabeledMerchantMatch]:

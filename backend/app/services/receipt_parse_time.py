@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -119,31 +120,39 @@ def _dates(
     month = _MONTHS[groups["month_name"][:3].upper()] if groups.get("month_name") else int(groups.get("month") or 1)
     day = int(groups.get("day") or 1)
     if kind == "missing_year":
-        if reference is None or zone is None:
-            return [(None, ("year",), "reference_time_missing")]
-        reference_day = reference.astimezone(zone).date()
-        choices = []
-        for year in (reference_day.year, reference_day.year - 1):
-            try:
-                value = date(year, month, day)
-            except ValueError:
-                continue
-            if value <= reference_day:
-                choices.append(value)
-        return [(max(choices) if choices else None, ("year",), "year_inferred_from_capture_reference")]
+        return _missing_year_dates(month, day, reference, zone)
     if kind == "day_month":
-        first, last, year = int(groups["first"]), int(groups["last"]), int(groups["year"])
-        choices = set()
-        for month, day in ((last, first), (first, last)):
-            try:
-                choices.add(date(year, month, day))
-            except ValueError:
-                continue
-        return [(value, (), "ambiguous_date_order" if len(choices) > 1 else None) for value in sorted(choices)] or [(None, (), "invalid_date")]
+        return _day_month_dates(int(groups["first"]), int(groups["last"]), int(groups["year"]))
     try:
         return [(date(int(groups["year"]), month, day), (), None)]
     except ValueError:
         return [(None, (), "invalid_date")]
+
+
+def _missing_year_dates(month, day, reference, zone):
+    if reference is None or zone is None:
+        return [(None, ("year",), "reference_time_missing")]
+    reference_day = reference.astimezone(zone).date()
+    choices = []
+    for year in (reference_day.year, reference_day.year - 1):
+        try:
+            value = date(year, month, day)
+        except ValueError:
+            continue
+        if value <= reference_day:
+            choices.append(value)
+    return [(max(choices) if choices else None, ("year",), "year_inferred_from_capture_reference")]
+
+
+def _day_month_dates(first: int, last: int, year: int):
+    choices = set()
+    for month, day in ((last, first), (first, last)):
+        try:
+            choices.add(date(year, month, day))
+        except ValueError:
+            continue
+    reason = "ambiguous_date_order" if len(choices) > 1 else None
+    return [(value, (), reason) for value in sorted(choices)] or [(None, (), "invalid_date")]
 
 
 def _clock_time(groups: dict[str, str | None]) -> time:
@@ -165,48 +174,59 @@ def _candidate(
 ) -> _TimeCandidate:
     groups = match.groupdict()
     role, start, label = _role(text, match.start())
-    score = 100 if role in {"transaction", "payment", "consumption"} else 60 if role == "unknown" else 20
+    score = {"transaction": 100, "payment": 100, "consumption": 100, "unknown": 60}.get(role, 20)
     precision = "second" if groups.get("second") else "minute" if groups.get("hour") else "date_only"
     local_value = day.isoformat() if day else match.group()
-    instant = None
-    utc_offset = None
-    zone_name = str(zone) if zone else None
     unresolved_zone = re.match(r"[ \t]*(?:UTC|GMT|CST|EST|PST|[+-])[A-Za-z0-9:+-]*", text[match.end():], re.I)
+    candidate = _TimeCandidate(value=local_value, score=score,
+        line_index=_line_index_for_offset(text, start), source=f"time:{kind}",
+        evidence=(), dimensions=_ScoreDimensions(), role=role, precision=precision,
+        local_value=local_value, timezone_name=str(zone) if zone else None, timezone_basis=zone_basis,
+        inferred_components=inferred, review_reason=reason,
+        normalized_span=(start, match.end() + (unresolved_zone.end() if unresolved_zone else 0)))
+    candidate, zone = _resolve_clock(candidate, groups, day, zone, bool(unresolved_zone))
+    candidate = _review_capture_date(candidate, day, reference, zone)
+    evidence = (match.group(), f"time_role:{role}", f"precision:{precision}")
+    if label:
+        evidence += (f"label:{label}",)
+    if candidate.review_reason:
+        evidence += (candidate.review_reason,)
+    return replace(candidate, evidence=evidence, dimensions=_ScoreDimensions(label=score, evidence=evidence))
+
+
+def _resolve_clock(candidate, groups, day, zone, unresolved_zone):
     try:
         if unresolved_zone:
             raise ValueError("Unresolved or malformed printed timezone")
         clock = _clock_time(groups) if groups.get("hour") else None
         if clock is None:
-            reason = reason or "date_only"
+            candidate = replace(candidate, review_reason=candidate.review_reason or "date_only")
         elif day is not None:
             local = datetime.combine(day, clock)
-            local_value = local.isoformat(timespec="seconds" if precision == "second" else "minutes")
+            local_value = local.isoformat(timespec="seconds" if candidate.precision == "second" else "minutes")
+            candidate = replace(candidate, value=local_value, local_value=local_value)
             if groups.get("offset"):
-                zone, zone_basis = _printed_zone(groups["offset"]), "printed_offset"
-            zone_name = str(zone) if zone else None
+                zone = _printed_zone(groups["offset"])
+                candidate = replace(candidate, timezone_basis="printed_offset")
             instant, timezone_reason = _local_instant(local, zone) if zone is not None else (None, "invalid_timezone")
-            reason = reason or timezone_reason
             utc_offset = int(instant.astimezone(zone).utcoffset().total_seconds()) if instant is not None else None
+            candidate = replace(candidate, value=instant or local_value, local_value=local_value,
+                timezone_name=str(zone) if zone else None, utc_offset_seconds=utc_offset,
+                review_reason=candidate.review_reason or timezone_reason)
     except (ValueError, OverflowError):
-        reason = "invalid_datetime"
+        candidate = replace(candidate, review_reason="invalid_datetime")
+    return candidate, zone
+
+
+def _review_capture_date(candidate, day, reference, zone):
+    reason = candidate.review_reason
     after_capture = day is not None and reference is not None and zone is not None and day > reference.astimezone(zone).date()
     if after_capture and reason in {None, "date_only"}:
         reason = "after_capture_date"
-    if role in NON_TRANSACTION_TIME_ROLES:
+    if candidate.role in NON_TRANSACTION_TIME_ROLES:
         reason = "non_transaction_time"
-    evidence = (match.group(), f"time_role:{role}", f"precision:{precision}")
-    if label:
-        evidence += (f"label:{label}",)
-    if reason:
-        evidence += (reason,)
-    dimensions = _ScoreDimensions(label=score, evidence=evidence)
-    return _TimeCandidate(value=instant or local_value, score=score,
-        line_index=_line_index_for_offset(text, start), source=f"time:{kind}",
-        evidence=evidence, dimensions=dimensions, role=role, precision=precision,
-        local_value=local_value, timezone_name=zone_name, timezone_basis=zone_basis,
-        utc_offset_seconds=utc_offset, inferred_components=inferred,
-        reference_time=reference.isoformat() if (inferred or after_capture) and reference else None,
-        review_reason=reason, normalized_span=(start, match.end() + (unresolved_zone.end() if unresolved_zone else 0)))
+    return replace(candidate, review_reason=reason,
+        reference_time=reference.isoformat() if (candidate.inferred_components or after_capture) and reference else None)
 
 
 def _time_candidates(text: str, timezone_name: str | None = None, *, reference_time: datetime | None = None) -> list[_TimeCandidate]:

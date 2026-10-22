@@ -133,16 +133,21 @@ def resolve_field(
 
 def _resolve_amount(candidates: list[_CandidateT], public: tuple[ReceiptFieldCandidate, ...]
         ) -> tuple[_CandidateT | None, ReceiptFieldDecision]:
-    eligible = [index for index, item in enumerate(public)
-        if item.role in AMOUNT_ROLE_PRIORITY and item.rank_score > 0 and not item.review_reason]
-    if not eligible:
+    leaders = _amount_leaders(public)
+    if not leaders:
         reason = next((item.review_reason for item in public if item.review_reason), "non_expense_amount")
         return None, ReceiptFieldDecision("amount_cents", "needs_review", None, reason)
-    priority = max(AMOUNT_ROLE_PRIORITY[public[index].role] for index in eligible)
-    leaders = [index for index in eligible if AMOUNT_ROLE_PRIORITY[public[index].role] == priority]
-    if priority == 0:
-        leaders = [index for index in leaders if public[index].rank_score == public[leaders[0]].rank_score]
     if len({public[index].value for index in leaders}) != 1:
         return None, ReceiptFieldDecision("amount_cents", "ambiguous", None, "conflicting_transaction_amounts")
     winner = leaders[0]
     return candidates[winner], ReceiptFieldDecision("amount_cents", "selected", public[winner].id, "amount_role_and_value")
+
+
+def _amount_leaders(public: tuple[ReceiptFieldCandidate, ...]) -> list[int]:
+    priorities = {index: AMOUNT_ROLE_PRIORITY[item.role] for index, item in enumerate(public)
+        if item.role in AMOUNT_ROLE_PRIORITY and item.rank_score > 0 and not item.review_reason}
+    priority = max(priorities.values(), default=-1)
+    leaders = [index for index, value in priorities.items() if value == priority]
+    if priority == 0:
+        leaders = [index for index in leaders if public[index].rank_score == public[leaders[0]].rank_score]
+    return leaders

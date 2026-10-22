@@ -7,12 +7,18 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import Session, aliased
 
 from app.config import get_settings
-from app.models import DuplicateIgnore, Expense, ExpenseOffsetFact
-from app.services.duplicate_evidence import DuplicateCandidateScore, compare_duplicate_evidence, duplicate_reason
+from app.models import AppMeta, DuplicateIgnore, Expense, ExpenseOffsetFact, Ledger
+from app.services.duplicate_evidence import (
+    ALGORITHM_VERSION,
+    DuplicateCandidateScore,
+    compare_duplicate_evidence,
+    duplicate_reason,
+)
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.time_service import now_utc
 
 ACTIVE_DUPLICATE_IGNORE_KINDS = ("image_hash", "image_perceptual_hash", "similar")
+PROJECTION_VERSION_KEY = "duplicate_admission_projection"
 
 
 def rank_duplicate_candidates(db: Session, *, expense: Expense,
@@ -66,6 +72,51 @@ def mark_duplicate_status(db: Session, expense: Expense) -> Expense:
     expense.duplicate_of_id = matches[0].candidate_id if matches else None
     expense.duplicate_reason = duplicate_reason(matches[0]) if matches else None
     return expense
+
+
+def _refresh_duplicate_status(db: Session, expense: Expense) -> bool:
+    previous = (expense.duplicate_status, expense.duplicate_of_id, expense.duplicate_reason)
+    mark_duplicate_status(db, expense)
+    changed = previous != (expense.duplicate_status, expense.duplicate_of_id, expense.duplicate_reason)
+    if changed:
+        expense.updated_at = now_utc()
+        bump_row_version(expense)
+    return changed
+
+
+def reconcile_legacy_duplicate_statuses(db: Session) -> int:
+    """Reassess old hints before serving consumers; caller owns the transaction.
+
+    Page only existing suspected rows, without OCR or financial changes. The
+    completion marker commits with all corrected hints; a failed upgrade rolls
+    back both. Currency adoption invokes this too when startup cannot write yet.
+    """
+    from app.services.currency_binding_service import authorize_currency_metadata_write, get_capability
+
+    marker = db.get(AppMeta, PROJECTION_VERSION_KEY)
+    if marker is not None and marker.value == ALGORITHM_VERSION:
+        return 0
+    if get_capability(db).health != "active_match":
+        return 0
+    authorize_currency_metadata_write(db)
+    changed = 0
+    for tenant_id in db.scalars(select(Ledger.ledger_id).order_by(Ledger.id)):
+        last_id = 0
+        while rows := list(db.scalars(select(Expense).where(Expense.tenant_id == tenant_id,
+                Expense.id > last_id, Expense.duplicate_status == "suspected",
+                Expense.status.in_(("pending", "confirmed")))
+                .order_by(Expense.id).limit(100).with_for_update())):
+            for row in rows:
+                changed += _refresh_duplicate_status(db, row)
+            last_id = rows[-1].id
+            db.flush()
+    if marker is None:
+        marker = AppMeta(key=PROJECTION_VERSION_KEY)
+        db.add(marker)
+    marker.value = ALGORITHM_VERSION
+    marker.updated_at = now_utc()
+    db.flush()
+    return changed
 
 
 def _remember_duplicate_ignore(db: Session, tenant_id: str, expense_id: int, duplicate_of_id: int, kind: str) -> None:
@@ -134,20 +185,7 @@ def revalidate_duplicate_references_to(db: Session, *, tenant_id: str, duplicate
         )
     )
     for expense in referenced:
-        previous = (
-            expense.duplicate_status,
-            expense.duplicate_of_id,
-            expense.duplicate_reason,
-        )
-        mark_duplicate_status(db, expense)
-        current = (
-            expense.duplicate_status,
-            expense.duplicate_of_id,
-            expense.duplicate_reason,
-        )
-        if current != previous:
-            expense.updated_at = now_utc()
-            bump_row_version(expense)
+        _refresh_duplicate_status(db, expense)
     return len(referenced)
 
 

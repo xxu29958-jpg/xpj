@@ -1,21 +1,30 @@
 /* A deliberate copy into the existing draft; never a request or automatic update. */
+(function () {
+"use strict";
 document.addEventListener("click", function (event) {
   const button = event.target.closest("[data-recognized-time]");
   if (!button || button.disabled) return;
+  const candidate = JSON.parse(button.dataset.recognizedTime);
+  if (!candidate.can_apply) return;
   if (button.hasAttribute("data-recognized-date")) {
+    copyRepaymentDate(button, candidate);
+  } else {
+    copyExpenseTime(button, candidate);
+  }
+});
+
+function copyRepaymentDate(button, candidate) {
     const date = button.closest("form")?.querySelector('[name="payment_date"]');
-    const candidate = JSON.parse(button.dataset.recognizedTime);
-    if (!date || date.disabled || !candidate.can_apply) return;
+    if (!date || date.disabled) return;
     date.value = candidate.local_value.slice(0, 10);
     date.dispatchEvent(new Event("input", { bubbles: true }));
     date.dispatchEvent(new Event("change", { bubbles: true }));
     button.closest("[data-recognized-times]").querySelector("[data-recognized-time-status]").textContent = "已填入还款草稿，请核对后保存。";
-    return;
-  }
+}
+
+function copyExpenseTime(button, candidate) {
   const fieldset = button.closest("fieldset");
   if (!fieldset || fieldset.disabled) return;
-  const candidate = JSON.parse(button.dataset.recognizedTime);
-  if (!candidate.can_apply) return;
   const dateOnly = candidate.precision === "date_only";
   const values = {
     time_precision: dateOnly ? "date_only" : "instant",
@@ -27,6 +36,12 @@ document.addEventListener("click", function (event) {
   for (const [name, value] of Object.entries(values)) {
     const input = fieldset.querySelector(`[name="${name}"]`);
     if (!input) continue;
+    copyTimeField(input, value);
+  }
+  fieldset.querySelector("[data-recognized-time-status]").textContent = "已填入当前草稿，请核对后保存。";
+}
+
+function copyTimeField(input, value) {
     if (input.tagName === "SELECT" && value && !Array.from(input.options).some(option => option.value === value)) {
       const seconds = Number(value);
       const hours = String(Math.floor(Math.abs(seconds) / 3600)).padStart(2, "0");
@@ -36,6 +51,5 @@ document.addEventListener("click", function (event) {
     input.value = value;
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-  fieldset.querySelector("[data-recognized-time-status]").textContent = "已填入当前草稿，请核对后保存。";
-});
+}
+})();

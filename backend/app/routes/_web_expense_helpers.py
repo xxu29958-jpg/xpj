@@ -274,14 +274,7 @@ def web_edit_context(
     if form_values is not None:
         time_values = submitted_time_form_values(form_values, wall_time_field="expense_time")
     ctx["time_form"] = time_form_projection(time_values) if time_values is not None else None
-    fact = read_ocr_facts(db, tenant_id=selected_id, expenses=[expense]).get(expense.id)
-    ctx["recognition_time"] = recognition_time(fact)
-    ctx["recognition_notes"] = recognition_amount_notes(fact)
-    if ctx["recognition_time"] is None:
-        auth = getattr(request.state, "web_session_auth", None)
-        ctx["recognition_time"] = notification_times_for_expenses(db, tenant_id=selected_id,
-            actor_account_id=auth.account_id if auth else None,
-            expense_public_ids=[expense.public_id]).get(expense.public_id)
+    ctx.update(_recognition_context(db, request, selected_id, expense))
     project_manual_fx_edit_views(expense_view, current_expense_view, form_values)
     if form_values and not conflict and form_values.get("expected_row_version"):
         expense_view["row_version"] = form_values["expected_row_version"]
@@ -327,6 +320,17 @@ def web_edit_context(
     ctx["split_members"] = web_split_members(db, selected_id)
     ctx["category_options"] = list_ledger_category_options(db, tenant_id=selected_id)
     return ctx
+
+
+def _recognition_context(db, request, ledger_id, expense) -> dict:
+    fact = read_ocr_facts(db, tenant_id=ledger_id, expenses=[expense]).get(expense.id)
+    time = recognition_time(fact)
+    if time is None:
+        auth = getattr(request.state, "web_session_auth", None)
+        time = notification_times_for_expenses(db, tenant_id=ledger_id,
+            actor_account_id=auth.account_id if auth else None,
+            expense_public_ids=[expense.public_id]).get(expense.public_id)
+    return {"recognition_time": time, "recognition_notes": recognition_amount_notes(fact)}
 
 
 def _web_item_rows(
