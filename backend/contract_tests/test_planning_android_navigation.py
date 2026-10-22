@@ -123,16 +123,19 @@ def test_fill_scrolls_the_input_and_requires_the_complete_replacement(monkeypatc
             assert args[:2] == ("shell", "input")
             if args[2] == "swipe":
                 self.field_bounds = "[63,1200][1017,1326]"
-            elif args[2] == "tap":
+                return
+            if args[2] == "tap":
                 assert 255 < int(args[4]) < 2021, "The input center is hidden behind the sticky footer"
                 self.focused = True
-            elif args[2:] == ("keyevent", "67"):
-                if dropped != "delete":
-                    self.value = "" if self.selected else self.value[:-1]
-                    self.selected = False
-            elif args[2] == "keycombination":
+                return
+            if args[2:] == ("keyevent", "67") and dropped != "delete":
+                self.value = "" if self.selected else self.value[:-1]
+                self.selected = False
+                return
+            if args[2] == "keycombination":
                 self.selected = args[3:] == ("-t", "100", "113", "29")
-            elif args[2] == "text":
+                return
+            if args[2] == "text":
                 self.value += args[3][:-1] if dropped == "text" else args[3]
 
     native = Native()
