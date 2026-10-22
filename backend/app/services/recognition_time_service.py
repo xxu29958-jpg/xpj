@@ -56,13 +56,18 @@ def _candidate(item: dict, raw_text: str) -> RecognitionTimeCandidate:
         and reason not in {"invalid_date", "invalid_datetime", "nonexistent_local_time"})
 
 
-def recognition_time(fact: OcrFact | None) -> RecognitionTimeResponse | None:
-    if fact is None or not fact.evidence_json:
-        return None
-    evidence = json.loads(fact.evidence_json).get("field_parse")
-    if not evidence:
-        return None  # Historical facts never acquire newly inferred precision.
-    return project_time_evidence(fact.public_id, "image", evidence, fact.raw_text)
+def recognition_time(fact: OcrFact | None, *,
+        notification: RecognitionTimeResponse | None = None) -> RecognitionTimeResponse | None:
+    image = None
+    if fact is not None and fact.evidence_json:
+        evidence = json.loads(fact.evidence_json).get("field_parse")
+        if evidence:
+            image = project_time_evidence(fact.public_id, "image", evidence, fact.raw_text)
+    # A print/order/capture clock cannot hide an actionable notification time.
+    # Historical facts without field evidence still acquire no inferred precision.
+    if image is not None and any(candidate.can_apply for candidate in image.candidates):
+        return image
+    return notification or image
 
 
 def project_time_evidence(public_id: str, source: str, evidence: dict, raw_text: str) -> RecognitionTimeResponse | None:

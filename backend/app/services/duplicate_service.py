@@ -48,9 +48,12 @@ def find_duplicate_candidates(db: Session, expense: Expense) -> list[DuplicateCa
     query = select(Expense).where(Expense.id != expense.id, Expense.tenant_id == expense.tenant_id,
         Expense.status != "rejected").order_by(Expense.created_at.desc(), Expense.id.desc())
     limit = get_settings().duplicate_phash_scan_limit
-    # The bounded recent scan recalls visual/transaction-ID candidates. Indexed
-    # exact-image and original-money queries also reach older matching records.
+    # Keep recent transaction-ID recall, with a separate visual budget so manual
+    # rows cannot evict older perceptual matches. Indexed exact-image and money
+    # queries also reach older matching records.
     rows = {row.id: row for row in db.scalars(query.limit(limit))}
+    if expense.image_perceptual_hash:
+        rows |= {row.id: row for row in db.scalars(query.where(Expense.image_perceptual_hash.is_not(None)).limit(limit))}
     if expense.image_hash:
         rows |= {row.id: row for row in db.scalars(query.where(Expense.image_hash == expense.image_hash).limit(limit))}
     if expense.original_amount_minor is not None:
@@ -100,16 +103,20 @@ def reconcile_legacy_duplicate_statuses(db: Session) -> int:
         return 0
     authorize_currency_metadata_write(db)
     changed = 0
-    for tenant_id in db.scalars(select(Ledger.ledger_id).order_by(Ledger.id)):
-        last_id = 0
-        while rows := list(db.scalars(select(Expense).where(Expense.tenant_id == tenant_id,
-                Expense.id > last_id, Expense.duplicate_status == "suspected",
-                Expense.status.in_(("pending", "confirmed")))
-                .order_by(Expense.id).limit(100).with_for_update())):
-            for row in rows:
-                changed += _refresh_duplicate_status(db, row)
-            last_id = rows[-1].id
-            db.flush()
+    last_id = 0
+    while True:
+        # This installation-owned upgrade visits every ledger in one keyset scan;
+        # each row is still compared only with candidates from its own ledger.
+        rows = list(db.scalars(select(Expense).where(Expense.tenant_id.in_(select(Ledger.ledger_id)),
+            Expense.id > last_id, Expense.duplicate_status == "suspected",
+            Expense.status.in_(("pending", "confirmed")))
+            .order_by(Expense.id).limit(100).with_for_update()))
+        if not rows:
+            break
+        for row in rows:
+            changed += _refresh_duplicate_status(db, row)
+        last_id = rows[-1].id
+        db.flush()
     if marker is None:
         marker = AppMeta(key=PROJECTION_VERSION_KEY)
         db.add(marker)

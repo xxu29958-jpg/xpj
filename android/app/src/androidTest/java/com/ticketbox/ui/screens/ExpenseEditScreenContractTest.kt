@@ -162,7 +162,7 @@ class ExpenseEditScreenContractTest {
         var opened: Long? = null
         var kept = 0
         val day = com.ticketbox.domain.model.RecognitionTimeCandidate("day", "交易日期", "原件只有日期。",
-            "交易日期：2025-12-31", "2025-12-31", "date_only", "Asia/Shanghai", null, true)
+            "交易日期：2025-12-31", "2025-12-31", "date_only", "America/New_York", null, true)
         val recorded = expense().copy(expenseTime = null, originalAmountMinor = 1234L,
             accountingTime = com.ticketbox.domain.model.ExpenseAccountingTime("unknown", calendarRevision = 1L),
             recognitionTime = com.ticketbox.domain.model.RecognitionTime("fact", "receipt-fields-v2", "needs_review", listOf(day)),
@@ -190,6 +190,7 @@ class ExpenseEditScreenContractTest {
             assertEquals(2200L, saved?.originalAmountMinor)
             assertEquals("date_only", saved?.timeInput?.precision)
             assertEquals("2025-12-31", saved?.timeInput?.userLocalDate)
+            assertEquals("America/New_York", saved?.timeInput?.sourceTimezone)
             assertEquals(null, saved?.expenseTime)
         }
         composeRule.onNodeWithText("确认入账").performClick()

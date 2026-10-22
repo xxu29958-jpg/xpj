@@ -88,9 +88,15 @@ class ExpenseTimeFormTest {
         assertNull(resolved.input?.sourceTimezone)
         assertEquals(original.calendarRevision, resolved.input?.calendarRevision)
         assertEquals(false, original.changed)
-        val day = original.withRecognizedTime(candidate.copy(localValue = "2026-10-31", precision = "date_only"))
+        val day = original.withRecognizedTime(candidate.copy(localValue = "2026-10-31", precision = "date_only",
+            sourceTimezone = "America/New_York", sourceUtcOffsetSeconds = null))
         assertNull(day.resolve().instant)
         assertEquals("2026-10-31", day.resolve().input?.userLocalDate)
+        assertEquals("America/New_York", requireNotNull(readExpenseTimeForm(day.toSavedJson())).resolve().input?.sourceTimezone)
+        val offsetDay = chosen.withPrecision("date_only", rule).resolve()
+        assertNull(offsetDay.error)
+        assertNull(offsetDay.input?.sourceTimezone)
+        assertNull(offsetDay.input?.sourceUtcOffsetSeconds)
     }
 
 }

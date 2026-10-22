@@ -9,10 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Expense, PaymentCapture, RepaymentDraft
+from app.schemas.notification_time import NotificationTimeEvidence
 from app.schemas.payment_capture import PaymentCaptureResponse
 from app.services.currency_binding_service import resolve_write_capability
-from app.services.notification_time_service import notification_time
-from app.services.time_service import now_utc
+from app.services.notification_time_service import freeze_notification_time, notification_time
+from app.services.time_service import ensure_utc, now_utc
 
 
 def capture_query(tenant_id: str, actor_account_id: int):
@@ -67,10 +68,14 @@ def link_capture(db: Session, capture: PaymentCapture, target: Expense | Repayme
         .where(field == target.public_id, PaymentCapture.id != capture.id).with_for_update())
     if previous is not None:
         # An old device replay supplies the identity absent from a historical draft.
-        # Only the empty, uncommitted reservation is removed; original evidence stays.
+        # Preserve the first time fragments before removing the uncommitted reservation;
+        # missing years remain anchored to the historical delivery, never replay time.
         if previous.identity_hash not in (None, capture.identity_hash):
             raise AppError("state_conflict", "原通知身份不一致，请核对采集记录。", status_code=409)
         original_hash = capture.identity_hash
+        if previous.time_evidence is None and capture.time_evidence is not None:
+            previous.time_evidence = freeze_notification_time(
+                NotificationTimeEvidence.model_validate(capture.time_evidence["input"]), ensure_utc(previous.captured_at))
         db.delete(capture)
         db.flush()
         previous.identity_hash = original_hash

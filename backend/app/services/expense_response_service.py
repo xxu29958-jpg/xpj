@@ -33,7 +33,7 @@ def expense_to_response(
         ocr_facts_by_id = read_ocr_facts(db, tenant_id=tenant_id, expenses=[expense])
     fact = ocr_facts_by_id.get(int(expense.id))
     dto.raw_text = fact.raw_text if fact is not None else None
-    dto.recognition_time = recognition_time(fact) or (notification_times_by_id or {}).get(expense.public_id)
+    dto.recognition_time = recognition_time(fact, notification=(notification_times_by_id or {}).get(expense.public_id))
     dto.recognition_notes = recognition_amount_notes(fact)
     return dto
 

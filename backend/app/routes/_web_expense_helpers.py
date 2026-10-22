@@ -324,12 +324,11 @@ def web_edit_context(
 
 def _recognition_context(db, request, ledger_id, expense) -> dict:
     fact = read_ocr_facts(db, tenant_id=ledger_id, expenses=[expense]).get(expense.id)
-    time = recognition_time(fact)
-    if time is None:
-        auth = getattr(request.state, "web_session_auth", None)
-        time = notification_times_for_expenses(db, tenant_id=ledger_id,
-            actor_account_id=auth.account_id if auth else None,
-            expense_public_ids=[expense.public_id]).get(expense.public_id)
+    auth = getattr(request.state, "web_session_auth", None)
+    notification = notification_times_for_expenses(db, tenant_id=ledger_id,
+        actor_account_id=auth.account_id if auth else None,
+        expense_public_ids=[expense.public_id]).get(expense.public_id)
+    time = recognition_time(fact, notification=notification)
     return {"recognition_time": time, "recognition_notes": recognition_amount_notes(fact)}
 
 

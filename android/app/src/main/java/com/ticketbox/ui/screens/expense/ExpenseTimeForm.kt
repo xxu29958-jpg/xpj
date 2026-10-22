@@ -33,15 +33,15 @@ data class ExpenseTimeForm(
     fun resolve(): ExpenseTimeResolution {
         val day = runCatching { LocalDate.parse(date) }.getOrNull()
             ?: return ExpenseTimeResolution(error = R.string.calendar_input_invalid_day)
+        val zone = runCatching { ZoneId.of(sourceZone) }.getOrNull()
+            ?: return ExpenseTimeResolution(error = R.string.calendar_input_invalid_zone)
         if (precision == "date_only") {
             val revision = calendarRevision ?: return ExpenseTimeResolution(error = R.string.calendar_input_rule_required)
             return ExpenseTimeResolution(input = ExpenseTimeInput("date_only", revision, day.toString(),
-                sourceTimezone = calendarZone, accountingDate = day.toString()))
+                sourceTimezone = sourceZone.takeUnless { zone is ZoneOffset }, accountingDate = day.toString()))
         }
         val local = runCatching { LocalDateTime.of(day, LocalTime.parse(time)) }.getOrNull()
             ?: return ExpenseTimeResolution(error = R.string.calendar_input_invalid_clock)
-        val zone = runCatching { ZoneId.of(sourceZone) }.getOrNull()
-            ?: return ExpenseTimeResolution(error = R.string.calendar_input_invalid_zone)
         val offsets = zone.rules.getValidOffsets(local)
         if (offsets.isEmpty()) return ExpenseTimeResolution(error = R.string.calendar_input_gap)
         val offset = offsets.singleOrNull() ?: offsets.find { it.totalSeconds == offsetSeconds }

@@ -62,6 +62,61 @@ def test_delivery_replay_keeps_original_evidence_and_expense_choice_is_explicit(
         assert capture.time_evidence["input"]["source_timezone"] == "Asia/Shanghai"
 
 
+@pytest.mark.parametrize("kind", ["expense", "repayment"])
+def test_identity_backfill_keeps_new_time_evidence_and_original_delivery(client, identity, kind):
+    payload = _capture(kind)
+    legacy = client.post("/api/payment-captures", headers=identity.app_headers,
+        json={**payload, "time_evidence": None}).json()
+    with SessionLocal() as db:
+        capture = db.scalar(select(PaymentCapture).where(PaymentCapture.public_id == legacy["public_id"]))
+        capture.identity_hash = None  # Historical draft materialized before notification identity was available.
+        db.commit()
+    if kind == "expense":
+        payload["captured_at"] = "2027-01-01T02:00:01Z"
+    response = client.post("/api/payment-captures", headers=identity.app_headers, json=payload)
+    assert response.status_code == 201, response.json()
+    restored = response.json()
+    assert restored["public_id"] == legacy["public_id"]
+    assert restored["captured_at"] == legacy["captured_at"]
+    assert restored["original_amount_minor"] == legacy["original_amount_minor"]
+    assert restored["recognition_time"]["candidates"][0]["local_value"] == "2025-12-31T23:59"
+    payload["time_evidence"]["fragments"][0]["literal"] = "2026-02-03 08:00"
+    assert client.post("/api/payment-captures", headers=identity.app_headers, json=payload).json() == restored
+    with SessionLocal() as db:
+        assert len(list(db.scalars(select(PaymentCapture)))) == 1
+
+
+def test_printed_ocr_time_does_not_hide_actionable_notification_time(web_client, identity):
+    from fastapi.testclient import TestClient
+
+    from app.routes.web_auth import PAIRING_ATTEMPT_COOKIE_NAME, SESSION_COOKIE_NAME
+
+    created = web_client.post("/api/payment-captures", headers=identity.app_headers, json=_capture()).json()
+    url = f"/api/expenses/{created['expense_id']}"
+    before = web_client.get(url, headers=identity.app_headers).json()
+    headers = negotiated_headers(web_client, {**identity.app_headers, "Idempotency-Key": str(uuid4())})
+    raw = "打印时间：2026-01-01 09:00"
+    parsed = web_client.post(url + "/recognize-text", headers=headers,
+        json={"expected_row_version": before["row_version"], "raw_text": raw})
+    assert parsed.status_code == 200, parsed.json()
+    current = web_client.get(url, headers=identity.app_headers).json()
+    assert current["recognition_time"] == created["recognition_time"]
+    assert current["raw_text"] == raw and current["expense_time"] is None
+    assert current["original_amount_minor"] == before["original_amount_minor"]
+    login_form = web_client.get("/web/auth/login")
+    connected = web_client.post("/web/auth/login", data={"pairing_code": identity.pairing_code,
+        "device_name": "notification evidence review"}, follow_redirects=False,
+        headers={"Cookie": f"{PAIRING_ATTEMPT_COOKIE_NAME}={login_form.cookies[PAIRING_ATTEMPT_COOKIE_NAME]}"})
+    assert connected.status_code == 303
+    # A real peer/host exercises cookie authentication; the legacy testserver
+    # peer intentionally skips that middleware in the shared fixture.
+    with TestClient(web_client.app, base_url="https://api.example.com", client=("203.0.113.20", 50002)) as browser:
+        page = browser.get(f"/web/expenses/{created['expense_id']}/edit?ledger_id=owner",
+            headers={"Cookie": f"{SESSION_COOKIE_NAME}={connected.cookies[SESSION_COOKIE_NAME]}"})
+    assert page.status_code == 200
+    assert "2025-12-31T23:59" in page.text and f'data-fact-id="{created["public_id"]}"' in page.text
+
+
 def test_repayment_date_review_and_replay_preserve_delivery_and_original_time_evidence(client, identity):
     response = client.post("/api/payment-captures", headers=identity.app_headers, json=_capture("repayment"))
     assert response.status_code == 201, response.json()

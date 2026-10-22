@@ -72,6 +72,27 @@ def test_visual_recall_cannot_override_transaction_conflicts(conflict, *, identi
         assert scores == []
 
 
+def test_manual_rows_do_not_evict_older_visual_candidates(monkeypatch, *, identity):
+    from dataclasses import replace
+
+    from app.config import get_settings
+    from app.services import duplicate_service
+    from app.services.duplicate_service import find_duplicate_candidates
+
+    monkeypatch.setattr(duplicate_service, "get_settings", lambda: replace(get_settings(), duplicate_phash_scan_limit=2))
+    older = _make_expense(amount_cents=None, merchant=None, image_hash="older", status="pending")
+    for _ in range(2):
+        _make_expense(amount_cents=None, merchant=None, status="pending")
+    current = _make_expense(amount_cents=None, merchant=None, image_hash="newer", status="pending")
+    with SessionLocal() as db:
+        for identifier in (older.id, current.id):
+            db.get(Expense, identifier).image_perceptual_hash = "0000000000000000"
+        db.flush()
+        matches = find_duplicate_candidates(db, db.get(Expense, current.id))
+        assert [row.candidate_id for row in matches] == [older.id]
+        assert "image_perceptual_hash_match" in matches[0].reasons
+
+
 def test_confirmation_clock_does_not_supply_transaction_time(*, identity):
     a, b = _make_expense(), _make_expense()
     with SessionLocal() as db:

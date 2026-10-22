@@ -123,7 +123,8 @@ def _identifier_relation(expense, candidate, expense_fact, candidate_fact) -> st
     return "match" if comparable_ids else "unknown"
 
 
-def _duplicate_reasons(expense, candidate, money_relation, id_relation, time_reason):
+def _duplicate_reasons(expense: Expense, candidate: Expense, money_relation: str,
+        id_relation: str, time_reason: str | None) -> list[str] | None:
     image_equal = bool(expense.image_hash and expense.image_hash == candidate.image_hash)
     image_near = phash_distance(expense.image_perceptual_hash, candidate.image_perceptual_hash) <= 5
     amount_equal = money_relation == "match"
@@ -137,7 +138,7 @@ def _duplicate_reasons(expense, candidate, money_relation, id_relation, time_rea
     # fields outrank image-only recall so a first visual hit cannot hide stronger matches.
     evidence = [("transaction_id_match", comparable_ids), ("image_hash_match", image_equal),
         ("image_perceptual_hash_match", image_near and not image_equal),
-        ("amount_match", amount_equal), ("merchant_match", merchant_equal), (time_reason, bool(time_reason))]
+        ("amount_match", amount_equal), ("merchant_match", merchant_equal), (time_reason or "", bool(time_reason))]
     reasons = [reason for reason, matched in evidence if matched]
     if not transaction_match:
         reasons.append("transaction_evidence_incomplete")

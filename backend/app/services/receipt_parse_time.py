@@ -194,7 +194,8 @@ def _candidate(
     return replace(candidate, evidence=evidence, dimensions=_ScoreDimensions(label=score, evidence=evidence))
 
 
-def _resolve_clock(candidate, groups, day, zone, unresolved_zone):
+def _resolve_clock(candidate: _TimeCandidate, groups: dict[str, str | None], day: date | None,
+        zone: tzinfo | None, unresolved_zone: bool) -> tuple[_TimeCandidate, tzinfo | None]:
     try:
         if unresolved_zone:
             raise ValueError("Unresolved or malformed printed timezone")
