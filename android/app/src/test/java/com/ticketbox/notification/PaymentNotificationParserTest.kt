@@ -27,7 +27,7 @@ class PaymentNotificationParserTest {
         assertEquals(NotificationDraftSource.WeChat, draft.source)
         assertEquals(2580L, draft.amountCents)
         assertEquals("星巴克", draft.merchant)
-        assertEquals("2026-05-13T08:00:00Z", draft.expenseTime)
+        assertNull(draft.expenseTime) // Delivery is separate; a notification does not establish payment time.
 
         val exactTrailingZero = expenseOf(
             snapshot(

@@ -17,7 +17,8 @@ import com.ticketbox.viewmodel.leaveFactPage
 import com.ticketbox.viewmodel.canLeaveOriginalSelection
 
 internal data class ExpenseFactNavigation(val onOpenRepaymentDrafts: (String) -> Unit,
-    val onRepairRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction)
+    val onRepairRate: com.ticketbox.ui.screens.expense.fact.CorrectionRateAction,
+    val onOpenExpense: (Long) -> Unit)
 
 /**
  * A1: confirmed 账单事实/更正的独立 Owner 路由（由 [ExpenseEditRoute] 按

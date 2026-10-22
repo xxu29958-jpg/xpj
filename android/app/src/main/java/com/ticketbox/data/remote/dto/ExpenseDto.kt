@@ -137,6 +137,10 @@ data class ExpenseDto(
     val accountingTime: ExpenseAccountingTimeDto? = null,
     @param:Json(name = "confirmation_receipt")
     val confirmationReceipt: ExpenseConfirmationReceiptDto? = null,
+    @param:Json(name = "recognition_time")
+    val recognitionTime: RecognitionTimeDto? = null,
+    @param:Json(name = "recognition_notes")
+    val recognitionNotes: List<String> = emptyList(),
 )
 
 @JsonClass(generateAdapter = true)

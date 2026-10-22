@@ -134,6 +134,10 @@ private fun RepaymentReviewInputs(state: RepaymentDraftInboxUiState, model: Repa
         RepaymentReviewMoneySection(state, model, editable)
         Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
             if (editable) {
+                com.ticketbox.ui.screens.expense.RecognizedTimeChoices(capture?.recognitionTime,
+                    enabled = true, dateOnly = true) { candidate ->
+                    model.reviewEditor.updateReviewDate(candidate.localValue.substringBefore('T'))
+                }
                 DebtDateField(input.paymentDate.orEmpty(), true, onChange = model.reviewEditor::updateReviewDate)
                 Text(stringResource(R.string.repayment_review_date_hint), style = MaterialTheme.typography.bodySmall, color = muted)
             } else {

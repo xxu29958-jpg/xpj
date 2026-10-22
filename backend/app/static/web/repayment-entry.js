@@ -254,7 +254,7 @@
   }
   function describeOriginal(saved) {
     if (captureReview) return [saved.review_action === "dismiss" ? "忽略通知" : "记为还款", saved.original_currency,
-      saved.original_amount || "未填金额", saved.payment_date || "沿用采集时间"];
+      saved.original_amount || "未填金额", saved.payment_date || "未填写日期"];
     if (kindCorrection) return [kindLabels[saved.debt_kind] || saved.debt_kind];
     if (voidCommand) return [saved.home_currency_code, saved.reason || "未填原因", saved.repayment_public_id || saved.debt_public_id];
     if (splitChange) return [saved.home_currency_code, commandLabels[saved.command], saved.new_share_amount_major];

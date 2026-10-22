@@ -35,6 +35,7 @@ class OcrFactSnapshot:
     parsed_category: str | None
     parsed_expense_time: datetime | None
     parse_confidence: float | None
+    evidence: dict[str, object] | None = None
 
 
 class OcrProvider(Protocol):

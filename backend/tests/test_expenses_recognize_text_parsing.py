@@ -55,7 +55,8 @@ def test_recognize_text_prefers_transaction_time_over_other_times(
     assert response.status_code == 200
     payload = response.json()
     assert payload["amount_cents"] == 1851
-    assert payload["merchant"] == "中国建设银行"
+    # Both the bank and the delivery company occur without a payee label.
+    assert payload["merchant"] is None
     assert payload["expense_time"] == "2026-05-04T08:23:25Z"
 
 
@@ -165,7 +166,7 @@ def test_recognize_text_alipay_success_body_ignores_navigation_title(
     assert payload["category"] == "购物"
 
 
-def test_recognize_text_wechat_payment_line_merchant_candidate(
+def test_recognize_text_wechat_multiple_payees_remain_unresolved(
     client: TestClient, *, identity,
 ) -> None:
     expense_id = upload_png(client, identity=identity)
@@ -196,7 +197,7 @@ def test_recognize_text_wechat_payment_line_merchant_candidate(
     assert response.status_code == 200
     payload = response.json()
     assert payload["amount_cents"] == 500
-    assert payload["merchant"] == "Jack"
+    assert payload["merchant"] is None
     assert payload["category"] == "其他"
 
 
@@ -232,6 +233,8 @@ def test_recognize_text_ignores_status_bar_numbers_and_destination_text(
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["amount_cents"] == 1173
+    # The page explicitly says the debit is scheduled and still asks for payment.
+    assert payload["amount_cents"] is None
+    assert payload["recognition_notes"]
     assert payload["merchant"] == "高德"
     assert payload["category"] == "交通"

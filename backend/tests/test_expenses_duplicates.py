@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
-from app.models import DuplicateIgnore
+from app.models import AppMeta, DuplicateIgnore, Expense
 from app.services.duplicate_service import _remember_duplicate_ignore
 
 
@@ -229,3 +229,71 @@ def test_editing_duplicate_original_revalidates_stale_references(client: TestCli
     assert after.json()["duplicate_status"] == "none"
     assert after.json()["duplicate_of_id"] is None
     assert after.json()["row_version"] == second_row_version + 1
+
+
+def test_legacy_visual_flag_reconciles_for_every_consumer_without_changing_money(web_client, monkeypatch, *, identity):
+    import pytest
+
+    from app.services import duplicate_service
+    from app.services.currency_binding_service import authorize_currency_metadata_write
+    from app.services.data_quality_service import data_quality_summary
+    from app.services.duplicate_service import PROJECTION_VERSION_KEY, reconcile_legacy_duplicate_statuses
+    from app.services.server_settings_service import server_settings_snapshot
+    from app.services.web_stats_service import sidebar_counts
+
+    first_id = upload_png(web_client, identity=identity)
+    second_id = upload_png(web_client, identity=identity)
+    for row_id, amount in ((first_id, 1851), (second_id, 2200)):
+        changed = patch_expense(web_client, row_id, headers=identity.app_headers,
+            fields={"amount_cents": amount, "merchant": "Legacy Store"})
+        assert changed.status_code == 200
+    with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
+        marker = db.get(AppMeta, PROJECTION_VERSION_KEY)
+        if marker is not None:
+            db.delete(marker)
+        current = db.get(Expense, second_id)
+        current.duplicate_status = "suspected"
+        current.duplicate_of_id = first_id
+        current.duplicate_reason = "图片相同"  # Persisted by the previous admission algorithm.
+        db.commit()
+        version = current.row_version
+        untouched = {row.id: {column.name: getattr(row, column.name) for column in Expense.__table__.columns
+            if column.name not in {"duplicate_status", "duplicate_of_id", "duplicate_reason", "row_version", "updated_at"}}
+            for row in db.scalars(select(Expense).where(Expense.tenant_id == "owner"))}
+
+    original = duplicate_service.mark_duplicate_status
+
+    def interrupted(db, expense):
+        original(db, expense)
+        db.flush()
+        raise RuntimeError("interrupted upgrade")
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(duplicate_service, "mark_duplicate_status", interrupted)
+        with SessionLocal() as db, pytest.raises(RuntimeError, match="interrupted upgrade"):
+            reconcile_legacy_duplicate_statuses(db)
+    with SessionLocal() as db:
+        assert db.get(AppMeta, PROJECTION_VERSION_KEY) is None
+        assert db.get(Expense, second_id).duplicate_of_id == first_id
+        assert db.get(Expense, second_id).row_version == version
+        assert reconcile_legacy_duplicate_statuses(db) == 1
+        db.commit()
+        assert reconcile_legacy_duplicate_statuses(db) == 0
+
+    detail = web_client.get(f"/api/expenses/{second_id}", headers=identity.app_headers).json()
+    assert detail["duplicate_candidates"] == []
+    assert detail["duplicate_status"] == "none"
+    assert detail["duplicate_of_id"] is None
+    assert detail["row_version"] == version + 1
+    assert web_client.get("/api/duplicates", headers=identity.app_headers).json() == []
+    assert "没有疑似重复" in web_client.get("/web/duplicates?ledger_id=owner").text
+    pending = web_client.get("/api/expenses/pending", headers=identity.app_headers).json()
+    assert all(row["duplicate_status"] == "none" for row in pending)
+    with SessionLocal() as db:
+        assert sidebar_counts(db, "owner") == (2, 0)
+        assert data_quality_summary(db, tenant_id="owner").suspected_duplicates == 0
+        assert server_settings_snapshot(db, ledger_id="owner", account_name="Owner", ledger_name="Owner",
+            device_name="QA", role="owner")["suspected_duplicate_count"] == 0
+        for row in db.scalars(select(Expense).where(Expense.tenant_id == "owner")):
+            assert {key: getattr(row, key) for key in untouched[row.id]} == untouched[row.id]

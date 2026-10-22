@@ -11,6 +11,7 @@ from app.services.duplicate_service import (
     ACTIVE_DUPLICATE_IGNORE_KINDS,
     _remember_duplicate_ignore,
     list_suspected_duplicates,
+    mark_duplicate_status,
 )
 from app.services.expense_service._helpers import EDITABLE_STATUSES
 from app.services.expense_service._query import get_expense, resolve_expense
@@ -82,6 +83,8 @@ def mark_expense_not_duplicate(
 
     db.expire_all()
     expense = get_expense(db, expense_id, tenant_id)
+    # Excluding one pair must not hide the remaining independently recalled pairs.
+    mark_duplicate_status(db, expense)
     if commit:
         db.commit()
         db.refresh(expense)

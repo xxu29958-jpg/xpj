@@ -64,7 +64,7 @@ def test_ocr_draft_field_aliases_are_canonicalized_when_applying_result() -> Non
     apply_ocr_result(
         expense,
         OcrResult(
-            raw_text="Changed Cafe\n交易金额：19.00",
+            raw_text="Changed Cafe\n交易金额：19.00\n交易时间：2026-05-02 08:00:00+08:00",
             amount_cents=1900,
             merchant="Changed Cafe",
             expense_time=datetime(2026, 5, 2, tzinfo=UTC),

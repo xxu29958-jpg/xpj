@@ -47,6 +47,7 @@ internal fun PaymentCaptureReviewCard(capture: PaymentCaptureDto, original: Outb
             Text(stringResource(R.string.payment_capture_review_title), style = MaterialTheme.typography.titleMedium)
             Text("${capture.merchant.orEmpty()} · ${capture.capturedAt.take(10)}", style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.payment_capture_review_body), style = MaterialTheme.typography.bodyMedium)
+            com.ticketbox.ui.screens.expense.RecognizedTimeChoices(capture.recognitionTime?.toDomain(), enabled = false)
             capture.candidates.filter { it.amountMinor != null }.distinctBy { it.kind to it.amountMinor }.forEach { candidate ->
                 TextButton(onClick = { amount = formatMinorAmount(requireNotNull(candidate.amountMinor), currency) }, enabled = editable) {
                     Text("${stringResource(paymentKindLabel(candidate.kind))} · ${formatMinorAmount(requireNotNull(candidate.amountMinor), currency)} ${currency.storageKey}")

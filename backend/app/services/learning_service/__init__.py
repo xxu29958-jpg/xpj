@@ -503,46 +503,24 @@ def read_ocr_text(
     (``bb00c453bf29``).
     """
 
-    if expense.tenant_id != tenant_id:
-        return None
-    return db.scalar(
-        select(OcrFact.raw_text)
-        .where(OcrFact.tenant_id == tenant_id)
-        .where(OcrFact.expense_id == expense.id)
-        .where(OcrFact.raw_text.is_not(None))
-        .where(OcrFact.raw_text != "")
-        .order_by(OcrFact.extracted_at.desc(), OcrFact.id.desc())
-        .limit(1)
-    )
+    fact = read_ocr_facts(db, tenant_id=tenant_id, expenses=[expense]).get(expense.id)
+    return fact.raw_text if fact is not None else None
 
 
-def read_ocr_texts(
-    db: Session,
-    *,
-    tenant_id: str,
-    expenses: Iterable[Expense],
-) -> dict[int, str]:
-    """Bulk variant of :func:`read_ocr_text` for response assembly."""
+def read_ocr_texts(db: Session, *, tenant_id: str, expenses: Iterable[Expense]) -> dict[int, str]:
+    """Text and structured evidence share the same meaningful fact selection."""
+    return {key: fact.raw_text for key, fact in read_ocr_facts(db, tenant_id=tenant_id, expenses=expenses).items()}
 
-    expense_ids = [
-        int(expense.id)
-        for expense in expenses
-        if expense.id is not None and expense.tenant_id == tenant_id
-    ]
-    if not expense_ids:
+
+def read_ocr_facts(db: Session, *, tenant_id: str, expenses: Iterable[Expense]) -> dict[int, OcrFact]:
+    """Latest nonempty fact, including stable append-order ties and ledger isolation."""
+    ids = [int(expense.id) for expense in expenses if expense.id is not None and expense.tenant_id == tenant_id]
+    if not ids:
         return {}
-
-    rows = db.execute(
-        select(OcrFact.expense_id, OcrFact.raw_text)
-        .where(OcrFact.tenant_id == tenant_id)
-        .where(OcrFact.expense_id.in_(expense_ids))
-        .where(OcrFact.raw_text.is_not(None))
-        .where(OcrFact.raw_text != "")
-        .order_by(OcrFact.expense_id, OcrFact.extracted_at.desc(), OcrFact.id.desc())
-    )
-    by_expense_id: dict[int, str] = {}
-    for expense_id, raw_text in rows:
-        expense_id_int = int(expense_id)
-        if expense_id_int not in by_expense_id:
-            by_expense_id[expense_id_int] = raw_text
-    return by_expense_id
+    rows = db.scalars(select(OcrFact).where(OcrFact.tenant_id == tenant_id, OcrFact.expense_id.in_(ids),
+        OcrFact.raw_text.is_not(None), OcrFact.raw_text != "")
+        .order_by(OcrFact.expense_id, OcrFact.extracted_at.desc(), OcrFact.id.desc()))
+    facts = {}
+    for fact in rows:
+        facts.setdefault(fact.expense_id, fact)
+    return facts

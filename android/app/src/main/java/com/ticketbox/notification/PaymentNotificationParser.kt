@@ -20,16 +20,21 @@ data class NotificationEvidence(val kind: String, val amountMinor: Long?, val fi
 
 sealed interface PaymentNotificationResult {
     val candidates: List<NotificationEvidence>
+    val timeEvidence: NotificationTimeEvidence?
     data class Expense(val draft: NotificationDraft,
-        override val candidates: List<NotificationEvidence> = emptyList()) : PaymentNotificationResult
+        override val candidates: List<NotificationEvidence> = emptyList(),
+        override val timeEvidence: NotificationTimeEvidence? = null,
+        val capturedAt: String? = draft.expenseTime) : PaymentNotificationResult
     data class Repayment(val draft: RepaymentNotificationDraft,
-        override val candidates: List<NotificationEvidence> = emptyList()) : PaymentNotificationResult
+        override val candidates: List<NotificationEvidence> = emptyList(),
+        override val timeEvidence: NotificationTimeEvidence? = null) : PaymentNotificationResult
     data class Review(val source: String, val capturedAt: String, val merchant: String?,
-        override val candidates: List<NotificationEvidence>) : PaymentNotificationResult
+        override val candidates: List<NotificationEvidence>,
+        override val timeEvidence: NotificationTimeEvidence? = null) : PaymentNotificationResult
 }
 
 object PaymentNotificationParser {
-    const val VERSION = "transaction-evidence-v2"
+    const val VERSION = "transaction-evidence-v3"
     private val bankContext = Regex("""(银行|信用卡|储蓄账户|尾号|动账|交易|支出人民币|消费人民币)""")
     private val sources = mapOf("com.tencent.mm" to "wechat", "com.eg.android.alipaygphone" to "alipay",
         "com.jingdong.app.mall" to "jd", "com.jd.jrapp" to "jd", "com.sankuai.meituan" to "meituan")
@@ -56,15 +61,17 @@ object PaymentNotificationParser {
         val conflict = evidence.size > 24 || evidence.any { it.kind == "refund" } || amounts.size != 1 ||
             financial.any { it.kind != amounts.singleOrNull()?.kind }
         val time = Instant.ofEpochMilli(snapshot.postTimeMillis).toString()
+        val timeEvidence = NotificationTimeExtractor.read(fields)
         if (conflict) return PaymentNotificationResult.Review(source, time,
-            PaymentNotificationFields.parseMerchant(snapshot, joined), candidates)
+            PaymentNotificationFields.parseMerchant(snapshot, joined), candidates, timeEvidence)
         val chosen = amounts.single()
         return if (chosen.kind == "repayment") PaymentNotificationResult.Repayment(
             RepaymentNotificationDraft(RepaymentDraftSource.entries.single { it.apiValue == source },
-                requireNotNull(chosen.amountMinor), PaymentNotificationFields.parseRepaymentLabel(joined), time), candidates)
+                requireNotNull(chosen.amountMinor), PaymentNotificationFields.parseRepaymentLabel(joined), time), candidates, timeEvidence)
         else PaymentNotificationResult.Expense(
             NotificationDraft(NotificationDraftSource.entries.single { it.apiValue == source },
-                requireNotNull(chosen.amountMinor), PaymentNotificationFields.parseMerchant(snapshot, joined), null, time), candidates)
+                requireNotNull(chosen.amountMinor), PaymentNotificationFields.parseMerchant(snapshot, joined), null, null),
+            candidates, timeEvidence, capturedAt = time)
     }
 }
 

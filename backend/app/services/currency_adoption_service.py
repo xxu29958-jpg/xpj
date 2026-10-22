@@ -245,6 +245,10 @@ def _adopt_in_transaction(
     db.execute(update(MonthlyIncomePlan).where(MonthlyIncomePlan.home_currency_code.is_(None)).values(home_currency_code=code))
     db.execute(update(IncomePlanRevision).where(IncomePlanRevision.home_currency_code.is_(None)).values(home_currency_code=code))
 
+    from app.services.duplicate_service import reconcile_legacy_duplicate_statuses
+
+    reconcile_legacy_duplicate_statuses(db)
+
     receipt = _receipt(binding, event, evidence_sha256=evidence.sha256, activated_at=activated_at)
     claimed.status = "succeeded"
     claimed.receipt = asdict(receipt)

@@ -24,6 +24,7 @@ from app.schemas._money import (
     SignedMoneyMinor,
     expense_item_money_schema_extra,
 )
+from app.schemas._recognition_time import RecognitionTimeResponse
 from app.schemas.funds import FundingPart
 from app.services.time_service import to_iso
 from app.tag_text import validate_tags_fit_storage
@@ -350,6 +351,9 @@ class ExpenseConfirmationReceipt(BaseModel):
 class ExpenseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    recognition_time: RecognitionTimeResponse | None = None
+    recognition_notes: list[str] = Field(default_factory=list)
+
     accounting_time: AccountingTimeSnapshot | None = None
     confirmation_receipt: ExpenseConfirmationReceipt | None = None
     id: int
@@ -404,6 +408,10 @@ class ExpenseResponse(BaseModel):
             data.pop("accounting_time", None)
         if "confirmation_receipt" not in self.model_fields_set:
             data.pop("confirmation_receipt", None)
+        if "recognition_time" not in self.model_fields_set:
+            data.pop("recognition_time", None)
+        if "recognition_notes" not in self.model_fields_set:
+            data.pop("recognition_notes", None)
         return data
 
     @field_serializer(

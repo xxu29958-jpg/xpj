@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 from decimal import Decimal
 
 from sqlalchemy import inspect as sa_inspect
@@ -112,8 +113,11 @@ def _merge_result_with_explicit_parse(
         raw_text=result.raw_text,
         confidence=_best_confidence(result.confidence, parsed.confidence),
         amount_cents=merged_amount,
-        merchant=result.merchant or parsed.merchant,
-        expense_time=result.expense_time or parsed.expense_time,
+        merchant=(None if any(item.field == "merchant" and item.status == "ambiguous"
+            for item in parsed.decisions) else parsed.merchant or result.merchant),
+        # A provider's guessed date cannot bypass deterministic abstention or
+        # turn a print/capture/order timestamp into the transaction instant.
+        expense_time=parsed.expense_time,
         category=_safe_category(result.category) or _safe_category(parsed.category),
         evidence=result.evidence,
     )
@@ -133,6 +137,8 @@ def _parse_and_merge_for_expense(
         timezone_name=timezone_name,
         currency_code=currency_code,
         minor_unit_exponent=minor_unit_exponent,
+        evidence_blocks=(result.evidence or {}).get("blocks"),
+        reference_time=ensure_utc(expense.created_at),
     )
     return (
         parsed,
@@ -461,6 +467,12 @@ def ocr_fact_snapshot(
         parse_confidence=_best_confidence(
             merged.confidence, parsed.confidence, None
         ),
+        evidence={**(result.evidence or {}), "field_parse": {
+            "version": "receipt-fields-v2",
+            "reference_time": ensure_utc(expense.created_at).isoformat() if expense.created_at else None,
+            "candidates": [asdict(item) for item in parsed.candidates],
+            "decisions": [asdict(item) for item in parsed.decisions],
+        }},
     )
 
 

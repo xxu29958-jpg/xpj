@@ -138,7 +138,12 @@ def test_image_evidence_is_preserved_with_the_fact_and_task_receipt(identity, mo
         run_pending_expense_enrichment_task(db, task, _payload(expense_id, predecessor))
     with SessionLocal() as observer:
         fact = observer.scalar(select(OcrFact).where(OcrFact.expense_id == expense_id))
-        assert json.loads(fact.evidence_json) == evidence
+        recorded = json.loads(fact.evidence_json)
+        field_parse = recorded.pop("field_parse")
+        assert recorded == evidence
+        amount = next(item for item in field_parse["candidates"] if item["field"] == "amount_cents")
+        assert amount["value"] == 1990
+        assert extraction.result.raw_text[slice(*amount["raw_spans"][0])] == "交易金额：19.90"
         assert fact.raw_text == extraction.result.raw_text
         assert json.loads(observer.get(BackgroundTask, task_id).result_summary_json)["row_version"] == predecessor + 1
 

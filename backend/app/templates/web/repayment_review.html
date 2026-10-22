@@ -32,7 +32,7 @@
   <span class="product-status">{{ row.status_label }}</span>
   {% if row.is_pending %}<a class="product-button product-button--secondary" href="/web/funds?ledger_id={{ selected_ledger_id|urlencode }}&source_repayment_draft_id={{ row.public_id }}">还信用卡、花呗或其他信用账户</a>{% endif %}
   {% if row.corrected_expense_id %}<a href="/web/expenses/{{ row.corrected_expense_id }}/edit?ledger_id={{ selected_ledger_id }}">打开更正后的消费，继续核对</a>{% endif %}
-  {% if row.conversion_pending %}<p class="product-amount-meta">确认时按核对后的还款日期换算为 {{ row.home_currency_code }}；未更改日期时沿用原采集时间。</p>{% endif %}
+  {% if row.conversion_pending %}<p class="product-amount-meta">请核对原支付记录中的还款日期，再换算为 {{ row.home_currency_code }}。通知接收时间不能代替还款日期。</p>{% endif %}
   {% if row.provenance %}<p class="product-amount-meta">{{ row.provenance }}。请核对后选择。</p>{% endif %}
   {% if row.is_pending and row.source_expense_public_id %}
   <p class="product-amount-meta">{% if row.source_expense_requires_review %}这份旧草稿未保留原流水的复核版本。请回到原流水重新选择“作为还款处理”，或忽略这份草稿。{% else %}确认还款时会同时冲正来源流水的消费金额；原流水、原件和历史继续保留。忽略不会改变原流水。{% endif %}</p>
@@ -49,7 +49,7 @@
   {% if review.ack and review.ack.status == 'confirmed' %}<section class="product-surface" aria-label="原提交">
     <span class="product-amount-label">原提交金额 · {{ review.ack['values']['original_currency'] }}</span>
     <output class="product-amount">{{ review.ack['values']['original_amount'] }}</output>
-    <p class="product-amount-meta">还款日期：{{ review.ack['values'].get('payment_date') or '沿用原采集时间' }}</p>
+    <p class="product-amount-meta">还款日期：{{ review.ack['values'].get('payment_date') or '保留原记录的时间与未知状态' }}</p>
   </section>{% endif %}
   <section data-repayment-panel{% if not review.visible or review.ack %} hidden{% endif %}>
     <form class="product-form" id="repayment-review-form" method="post" action="/web/repayment-drafts/{{ review.public_id }}/review" novalidate
@@ -100,9 +100,12 @@
           </select>
         </div>
         <div class="product-field"{% if row and row.can_correct_confirmed %} hidden{% endif %}>
+          {% if review.can_create and not review.result and not review.rejected %}
+          {% set recognition_time_date_only = true %}{% include "_recognized_time_candidates.html" %}
+          {% endif %}
           <label for="review-date">更正还款日期（可选）</label>
           <input class="product-input" id="review-date" name="payment_date" type="date" value="{{ review['values'].get('payment_date', '') }}" aria-describedby="review-date-help"{% if 'payment_date' not in review['values'] %} disabled{% endif %}>
-          <p class="hint" id="review-date-help">留空沿用原采集时间；更正只记录这一天，不推测具体时刻。采集原值保持不变。</p>
+          <p class="hint" id="review-date-help">请按原支付记录核对日期；只有日期就不补具体时刻。留空保留原记录的时间，未知时仍为未知。通知接收时间不代表还款时间。</p>
         </div>
       </div>
       <div class="product-field"><label for="review-reason">更正原因（转为消费时填写）</label><input class="product-input" id="review-reason" name="reason" value="{{ review['values'].get('reason', '') }}" maxlength="255"></div>

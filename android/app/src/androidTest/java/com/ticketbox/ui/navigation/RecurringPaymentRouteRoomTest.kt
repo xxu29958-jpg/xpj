@@ -954,7 +954,7 @@ class RecurringPaymentRouteRoomTest {
                                         clientRef,
                                         harness.screenFactory,
                                         ExpenseEditExitActions({}, {}),
-                                        related = ExpenseFactNavigation({}, { _, _ -> }),
+                                        related = ExpenseFactNavigation({}, { _, _ -> }, {} ),
                                     )
                                 },
                             )

@@ -20,6 +20,7 @@ _EXPLICIT_CURRENCY_MARKERS = {
     "EUR": ("EUR", "€", "欧元", "歐元"),
     "GBP": ("GBP", "£", "英镑", "英鎊"),
     "HKD": ("HKD", "HK$", "港币", "港幣"),
+    "MYR": ("MYR", "RM", "令吉"),
 }
 
 
@@ -39,6 +40,18 @@ def validated_money_context(
     return code, minor_unit_exponent
 
 
+def _currency_code_is_monetary(text: str, marker: str) -> bool:
+    for match in re.finditer(rf"(?<![A-Z]){re.escape(marker)}(?![A-Z])", text):
+        before, after = text[max(0, match.start() - 80):match.start()], text[match.end():match.end() + 80]
+        if (re.search(r"\d(?:[.,]\d+)?\s*$", before) or re.match(r"\s*[:：]?\s*\d", after)
+                or (before.endswith("(") and after.startswith(")"))
+                or re.search(r"(?:币种|货币|CURRENCY)\s*[:：]?\s*$", before)
+                or re.fullmatch(r"\s*", before.rsplit("\n", 1)[-1])
+                and re.fullmatch(r"\s*", after.split("\n", 1)[0])):
+            return True
+    return False
+
+
 def text_currency_matches_context(text: str, currency_code: str) -> bool:
     upper_text = text.upper()
     declared_codes: set[str] = set()
@@ -46,8 +59,7 @@ def text_currency_matches_context(text: str, currency_code: str) -> bool:
         for marker in markers:
             upper_marker = marker.upper()
             if upper_marker.isascii() and upper_marker.isalpha():
-                pattern = rf"(?<![A-Z]){re.escape(upper_marker)}(?![A-Z])"
-                present = re.search(pattern, upper_text) is not None
+                present = _currency_code_is_monetary(upper_text, upper_marker)
             else:
                 present = upper_marker in upper_text
             if present:

@@ -196,7 +196,9 @@ def test_persistent_ocr_refreshes_legacy_day_before_fx_and_fact(monkeypatch):
     monkeypatch.setattr(_ocr_facts, "append_ocr_fact", lambda *_a, **_k: observed.append(
         (expense.accounting_date, expense.exchange_rate_date)))
     _ocr_facts.apply_ocr_result_and_append_fact(db, expense=expense,
-        result=OcrResult(raw_text="", confidence=0.9, expense_time=datetime(2026, 4, 30, 16, 30, tzinfo=UTC)), provider_name="mock")
+        result=OcrResult(raw_text="交易时间：2026年5月1日00:30:00", confidence=0.9,
+            expense_time=datetime(2026, 4, 30, 16, 30, tzinfo=UTC)),
+        provider_name="mock", timezone_name="Asia/Shanghai")
     assert observed == [(date(2026, 5, 1), date(2026, 5, 1))]
 
 

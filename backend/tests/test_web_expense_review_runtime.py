@@ -604,7 +604,8 @@ def test_duplicate_review_keeps_both_originals_currency_and_group_return(related
     returned = client.get(response.headers["location"])
     assert 'id="duplicate-44"' in returned.text and 'autofocus' in returned.text
     with confirmation_store() as db:
-        assert (db.get(Expense, 42).status, db.get(Expense, 42).duplicate_status) == ("pending", "none")
+        kept = db.get(Expense, 42)
+        assert (kept.status, kept.duplicate_status, kept.duplicate_of_id) == ("pending", "suspected", 44)
         assert db.get(Expense, 43).status == "confirmed"
         assert db.get(Expense, 44).duplicate_status == "suspected"
 

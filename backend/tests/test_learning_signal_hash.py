@@ -20,7 +20,7 @@ from app.services.learning_service import (
     record_event,
 )
 from app.services.learning_service._duplicate_scoring import (
-    _has_recent_reject,
+    duplicate_feedback_expense_ids,
 )
 from tests._infra.identity import seeded_owner_account_id
 
@@ -161,31 +161,12 @@ def test_duplicate_reject_via_signal_hash(*, identity) -> None:
         )
         db.commit()
 
-        # _has_recent_reject reads the indexed path — no
-        # before_payload is set on the event above, so a working test
-        # confirms the index branch fires.
-        assert (
-            _has_recent_reject(
-                db,
-                tenant_id="owner",
-                merchant="cafe",
-                amount_cents=1000,
-                horizon_days=90,
-                actor_account_id=seeded_owner_account_id(),
-            )
-            is True
-        )
-        assert (
-            _has_recent_reject(
-                db,
-                tenant_id="owner",
-                merchant="other",
-                amount_cents=1000,
-                horizon_days=90,
-                actor_account_id=seeded_owner_account_id(),
-            )
-            is False
-        )
+        source = db.get(Expense, source_id)
+        assert duplicate_feedback_expense_ids(db, tenant_id="owner", expenses=[source],
+            actor_account_id=seeded_owner_account_id()) == {source_id}
+        assert duplicate_feedback_expense_ids(db, tenant_id="owner", expenses=[source],
+            actor_account_id=None) == set()
+
 
 
 def test_legacy_rows_with_null_signal_hash_no_longer_counted(

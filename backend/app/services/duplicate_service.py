@@ -1,146 +1,129 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from collections.abc import Iterable
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import Session, aliased
 
 from app.config import get_settings
-from app.models import DuplicateIgnore, Expense
+from app.models import AppMeta, DuplicateIgnore, Expense, ExpenseOffsetFact, Ledger
+from app.services.duplicate_evidence import (
+    ALGORITHM_VERSION,
+    DuplicateCandidateScore,
+    compare_duplicate_evidence,
+    duplicate_reason,
+)
 from app.services.optimistic_concurrency import bump_row_version
-from app.services.time_service import ensure_utc, now_utc
+from app.services.time_service import now_utc
 
 ACTIVE_DUPLICATE_IGNORE_KINDS = ("image_hash", "image_perceptual_hash", "similar")
+PROJECTION_VERSION_KEY = "duplicate_admission_projection"
+
+
+def rank_duplicate_candidates(db: Session, *, expense: Expense,
+        candidates: Iterable[Expense]) -> list[DuplicateCandidateScore]:
+    # Runtime import keeps the append-only fact reader as the sole OCR authority
+    # without introducing a package-initialization cycle with learning exports.
+    from app.services.learning_service import read_ocr_facts
+
+    rows = [row for row in candidates if row.id != expense.id and row.tenant_id == expense.tenant_id]
+    ids = {row.id for row in rows} | {expense.id}
+    excluded = set(db.scalars(select(ExpenseOffsetFact.expense_id).where(
+        ExpenseOffsetFact.tenant_id == expense.tenant_id, ExpenseOffsetFact.expense_id.in_(ids),
+        ExpenseOffsetFact.kind == "reversal", ExpenseOffsetFact.status == "active")))
+    ignored = db.scalars(select(DuplicateIgnore).where(DuplicateIgnore.tenant_id == expense.tenant_id,
+        or_(DuplicateIgnore.expense_id == expense.id, DuplicateIgnore.duplicate_of_id == expense.id)))
+    excluded.update(row.duplicate_of_id if row.expense_id == expense.id else row.expense_id for row in ignored)
+    if expense.id in excluded:
+        return []
+    facts = read_ocr_facts(db, tenant_id=expense.tenant_id, expenses=[expense, *rows])
+    matches = [match for row in rows if row.id not in excluded
+        if (match := compare_duplicate_evidence(expense, row,
+            expense_fact=facts.get(expense.id), candidate_fact=facts.get(row.id))) is not None]
+    return sorted(matches, key=lambda item: (-item.score, item.candidate_id))
+
+
+def find_duplicate_candidates(db: Session, expense: Expense) -> list[DuplicateCandidateScore]:
+    query = select(Expense).where(Expense.id != expense.id, Expense.tenant_id == expense.tenant_id,
+        Expense.status != "rejected").order_by(Expense.created_at.desc(), Expense.id.desc())
+    limit = get_settings().duplicate_phash_scan_limit
+    # Keep recent transaction-ID recall, with a separate visual budget so manual
+    # rows cannot evict older perceptual matches. Indexed exact-image and money
+    # queries also reach older matching records.
+    rows = {row.id: row for row in db.scalars(query.limit(limit))}
+    if expense.image_perceptual_hash:
+        rows |= {row.id: row for row in db.scalars(query.where(Expense.image_perceptual_hash.is_not(None)).limit(limit))}
+    if expense.image_hash:
+        rows |= {row.id: row for row in db.scalars(query.where(Expense.image_hash == expense.image_hash).limit(limit))}
+    if expense.original_amount_minor is not None:
+        rows |= {row.id: row for row in db.scalars(query.where(
+            Expense.original_currency_code == expense.original_currency_code,
+            Expense.original_amount_minor == expense.original_amount_minor).limit(limit))}
+    elif expense.amount_cents is not None and expense.original_currency_code == expense.home_currency_code:
+        rows |= {row.id: row for row in db.scalars(query.where(
+            Expense.original_currency_code == expense.original_currency_code,
+            Expense.amount_cents == expense.amount_cents).limit(limit))}
+    # Review one small group at a time. An explicit pair exclusion recalls the
+    # next group; it never excludes candidates omitted by this display bound.
+    return rank_duplicate_candidates(db, expense=expense, candidates=rows.values())[:5]
 
 
 def mark_duplicate_status(db: Session, expense: Expense) -> Expense:
-    duplicate = _find_same_image(db, expense)
-    if duplicate is not None:
-        expense.duplicate_status = "suspected"
-        expense.duplicate_of_id = duplicate.id
-        expense.duplicate_reason = "图片 hash 完全一致，可能是重复截图。"
-        return expense
-
-    duplicate = _find_visually_similar_image(db, expense)
-    if duplicate is not None:
-        expense.duplicate_status = "suspected"
-        expense.duplicate_of_id = duplicate.id
-        expense.duplicate_reason = "图片感知 hash 接近，可能是重复截图。"
-        return expense
-
-    duplicate = _find_similar_expense(db, expense)
-    if duplicate is not None:
-        expense.duplicate_status = "suspected"
-        expense.duplicate_of_id = duplicate.id
-        expense.duplicate_reason = "金额、商家和消费时间接近，可能是重复账单。"
-        return expense
-
-    expense.duplicate_status = "none"
-    expense.duplicate_of_id = None
-    expense.duplicate_reason = None
+    matches = find_duplicate_candidates(db, expense)
+    expense.duplicate_status = "suspected" if matches else "none"
+    expense.duplicate_of_id = matches[0].candidate_id if matches else None
+    expense.duplicate_reason = duplicate_reason(matches[0]) if matches else None
     return expense
 
 
-def _find_same_image(db: Session, expense: Expense) -> Expense | None:
-    if not expense.image_hash:
-        return None
-
-    candidates = db.scalars(
-        select(Expense)
-        .where(Expense.id != expense.id)
-        .where(Expense.tenant_id == expense.tenant_id)
-        .where(Expense.status != "rejected")
-        .where(Expense.image_hash == expense.image_hash)
-        .order_by(Expense.created_at.asc())
-    )
-    for candidate in candidates:
-        if not _is_duplicate_ignored(db, expense.tenant_id, expense.id, candidate.id, "image_hash"):
-            return candidate
-    return None
+def _refresh_duplicate_status(db: Session, expense: Expense) -> bool:
+    previous = (expense.duplicate_status, expense.duplicate_of_id, expense.duplicate_reason)
+    mark_duplicate_status(db, expense)
+    changed = previous != (expense.duplicate_status, expense.duplicate_of_id, expense.duplicate_reason)
+    if changed:
+        expense.updated_at = now_utc()
+        bump_row_version(expense)
+    return changed
 
 
-def _find_visually_similar_image(db: Session, expense: Expense) -> Expense | None:
-    match: Expense | None = None
-    if expense.image_perceptual_hash:
-        # Bounded scan over the most-recent phash-bearing expenses: Hamming
-        # distance can't be a SQL predicate, so we sweep candidates in Python.
-        # A re-upload's near-duplicate is almost always recent, so newest-first
-        # within a configured cap maximises catch rate while keeping the upload
-        # path O(limit) instead of O(ledger size) (ENGINEERING_RULES §12).
-        candidates = db.scalars(
-            select(Expense)
-            .where(Expense.id != expense.id)
-            .where(Expense.tenant_id == expense.tenant_id)
-            .where(Expense.status != "rejected")
-            .where(Expense.image_perceptual_hash.is_not(None))
-            .order_by(Expense.created_at.desc())
-            .limit(get_settings().duplicate_phash_scan_limit)
-        )
-        for candidate in candidates:
-            if _is_duplicate_ignored(
-                db,
-                expense.tenant_id,
-                expense.id,
-                candidate.id,
-                "image_perceptual_hash",
-            ):
-                continue
-            if _phash_distance(expense.image_perceptual_hash, candidate.image_perceptual_hash) <= 5:
-                match = candidate
-                break
-    return match
+def reconcile_legacy_duplicate_statuses(db: Session) -> int:
+    """Reassess old hints before serving consumers; caller owns the transaction.
 
+    Page only existing suspected rows, without OCR or financial changes. The
+    completion marker commits with all corrected hints; a failed upgrade rolls
+    back both. Currency adoption invokes this too when startup cannot write yet.
+    """
+    from app.services.currency_binding_service import authorize_currency_metadata_write, get_capability
 
-def _phash_distance(left: str | None, right: str | None) -> int:
-    if not left or not right:
-        return 64
-    try:
-        return (int(left, 16) ^ int(right, 16)).bit_count()
-    except ValueError:
-        return 64
-
-
-def _find_similar_expense(db: Session, expense: Expense) -> Expense | None:
-    if expense.amount_cents is None or not expense.merchant:
-        return None
-    current_time = ensure_utc(expense.expense_time) or ensure_utc(expense.confirmed_at)
-    if current_time is None:
-        return None
-
-    candidates = db.scalars(
-        select(Expense)
-        .where(Expense.id != expense.id)
-        .where(Expense.tenant_id == expense.tenant_id)
-        .where(Expense.status != "rejected")
-        .where(Expense.amount_cents == expense.amount_cents)
-        .where(Expense.merchant == expense.merchant)
-        .order_by(Expense.created_at.asc())
-    )
-    for candidate in candidates:
-        if _is_duplicate_ignored(db, expense.tenant_id, expense.id, candidate.id, "similar"):
-            continue
-        candidate_time = ensure_utc(candidate.expense_time) or ensure_utc(candidate.confirmed_at)
-        if candidate_time is None:
-            continue
-        if abs(current_time - candidate_time) <= timedelta(hours=24):
-            return candidate
-    return None
-
-
-def _is_duplicate_ignored(db: Session, tenant_id: str, expense_id: int, duplicate_of_id: int, kind: str) -> bool:
-    left_id, right_id = _normalize_pair(expense_id, duplicate_of_id)
-    return (
-        db.scalar(
-            select(DuplicateIgnore)
-            .where(DuplicateIgnore.tenant_id == tenant_id)
-            .where(DuplicateIgnore.expense_id == left_id)
-            .where(DuplicateIgnore.duplicate_of_id == right_id)
-            .where(DuplicateIgnore.kind == kind)
-            .limit(1)
-        )
-        is not None
-    )
+    marker = db.get(AppMeta, PROJECTION_VERSION_KEY)
+    if marker is not None and marker.value == ALGORITHM_VERSION:
+        return 0
+    if get_capability(db).health != "active_match":
+        return 0
+    authorize_currency_metadata_write(db)
+    changed = 0
+    last_id = 0
+    while True:
+        # This installation-owned upgrade visits every ledger in one keyset scan;
+        # each row is still compared only with candidates from its own ledger.
+        rows = list(db.scalars(select(Expense).where(Expense.tenant_id.in_(select(Ledger.ledger_id)),
+            Expense.id > last_id, Expense.duplicate_status == "suspected",
+            Expense.status.in_(("pending", "confirmed")))
+            .order_by(Expense.id).limit(100).with_for_update()))
+        if not rows:
+            break
+        for row in rows:
+            changed += _refresh_duplicate_status(db, row)
+        last_id = rows[-1].id
+        db.flush()
+    if marker is None:
+        marker = AppMeta(key=PROJECTION_VERSION_KEY)
+        db.add(marker)
+    marker.value = ALGORITHM_VERSION
+    marker.updated_at = now_utc()
+    db.flush()
+    return changed
 
 
 def _remember_duplicate_ignore(db: Session, tenant_id: str, expense_id: int, duplicate_of_id: int, kind: str) -> None:
@@ -209,20 +192,7 @@ def revalidate_duplicate_references_to(db: Session, *, tenant_id: str, duplicate
         )
     )
     for expense in referenced:
-        previous = (
-            expense.duplicate_status,
-            expense.duplicate_of_id,
-            expense.duplicate_reason,
-        )
-        mark_duplicate_status(db, expense)
-        current = (
-            expense.duplicate_status,
-            expense.duplicate_of_id,
-            expense.duplicate_reason,
-        )
-        if current != previous:
-            expense.updated_at = now_utc()
-            bump_row_version(expense)
+        _refresh_duplicate_status(db, expense)
     return len(referenced)
 
 

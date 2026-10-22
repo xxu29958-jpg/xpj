@@ -43,7 +43,8 @@ internal fun NavGraphBuilder.addManualExpenseSubmissionRoute(runtime: MainNaviga
             related = ExpenseFactNavigation(onOpenRepaymentDrafts = {
                 runtime.shellState.openRepaymentDrafts(it)
                 runtime.navController.popBackStack()
-            }, onRepairRate = { binding, gap -> runtime.navController.navigate(correctionRateRoute(binding, gap)) }))
+            }, onRepairRate = { binding, gap -> runtime.navController.navigate(correctionRateRoute(binding, gap)) },
+                onOpenExpense = runtime.navController::openExpense))
     }
 }
 

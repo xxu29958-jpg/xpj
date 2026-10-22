@@ -29,8 +29,8 @@
     <string name="repayment_review_target_label">对应欠款</string>
     <string name="repayment_review_saved">输入已保存在本机，返回或重启后可继续。</string>
     <string name="repayment_review_money_note">采集原值保持不变；确认按核对后的还款日期记还款。需要换算时，由服务端冻结汇率。</string>
-    <string name="repayment_review_date_hint">日期留空时沿用原采集时间；更正只记录这一天，不推测具体时刻。</string>
-    <string name="repayment_review_original_time">沿用原采集时间</string>
+    <string name="repayment_review_date_hint">请按原支付记录核对日期；只有日期就不补具体时刻。留空保留原记录的时间，未知时仍为未知。通知接收时间不代表还款时间。</string>
+    <string name="repayment_review_original_time">保留原记录的时间与未知状态</string>
     <string name="repayment_review_confirm">确认记还款</string>
     <string name="repayment_review_dismiss_command">忽略原还款采集</string>
     <string name="repayment_review_interrupted">连接中断，原提交仍保留，将沿用原内容重试。</string>

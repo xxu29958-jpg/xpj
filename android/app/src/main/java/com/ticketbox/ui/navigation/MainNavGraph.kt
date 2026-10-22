@@ -357,7 +357,8 @@ private fun androidx.navigation.NavGraphBuilder.addExpenseEditRoute(runtime: Mai
                 related = ExpenseFactNavigation(onOpenRepaymentDrafts = { draftPublicId ->
                     runtime.shellState.openRepaymentDrafts(draftPublicId)
                     runtime.navController.popBackStack()
-                }, onRepairRate = { binding, gap -> runtime.navController.navigate(correctionRateRoute(binding, gap)) }),
+                }, onRepairRate = { binding, gap -> runtime.navController.navigate(correctionRateRoute(binding, gap)) },
+                    onOpenExpense = runtime.navController::openExpense),
             )
             }
         }

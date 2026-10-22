@@ -834,11 +834,11 @@ def _patch_second_duplicate_for_auto_classification(base_url: str, second_id: in
 def _mark_expense_not_duplicate(
     base_url: str,
     expense_id: int,
-    row_version: str,
+    snapshot: dict,
     status_label: str,
 ) -> dict:
     body = json.dumps(
-        {"expected_row_version": row_version},
+        {"expected_row_version": snapshot["row_version"]},
         ensure_ascii=False,
     ).encode("utf-8")
     result = request(
@@ -853,7 +853,9 @@ def _mark_expense_not_duplicate(
     )
     assert_equal(result.status, 200, status_label)
     payload = result.json()
-    assert_equal(payload["duplicate_status"], "none", "duplicate cleared")
+    assert payload["duplicate_of_id"] != snapshot["duplicate_of_id"], "reviewed pair must be excluded"
+    for field in ("status", "amount_cents", "original_currency_code", "original_amount_minor"):
+        assert_equal(payload[field], snapshot[field], f"keep both preserves {field}")
     return payload
 
 
@@ -867,7 +869,7 @@ def _mark_second_not_duplicate(base_url: str, second_id: int) -> None:
     _mark_expense_not_duplicate(
         base_url,
         second_id,
-        second_mnd_snapshot.json()["row_version"],
+        second_mnd_snapshot.json(),
         "mark not duplicate status",
     )
     print("OK mark not duplicate")
@@ -885,7 +887,7 @@ def _upload_similar_candidate(base_url: str) -> int:
     _mark_expense_not_duplicate(
         base_url,
         similar_id,
-        similar_mnd_snapshot["row_version"],
+        similar_mnd_snapshot,
         "similar clear hash duplicate",
     )
     return similar_id

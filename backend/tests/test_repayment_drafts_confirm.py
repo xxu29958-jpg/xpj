@@ -16,7 +16,6 @@ model true FOR UPDATE contention the shared-savepoint connection cannot.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -29,7 +28,7 @@ from app.errors import AppError
 from app.models import Account, Debt, LedgerMember, Repayment, RepaymentDraft
 from app.services import debt_service
 from app.services.currency_binding_service import resolve_write_capability
-from app.services.time_service import ensure_utc, now_utc
+from app.services.time_service import now_utc
 from tests._infra.identity import seeded_owner_account_id
 from tests.debt_proposal_helpers import _create_external_debt, capture_repayment_draft
 from tests.family_ledger_test_support import set_owner_ledger_role
@@ -90,13 +89,11 @@ def test_confirm_records_repayment_and_reduces_remaining(client: TestClient, *, 
         ]
 
 
-def test_confirm_records_repayment_at_captured_time_not_review_time(
+def test_confirm_keeps_unknown_payment_time_instead_of_delivery_or_review_time(
     client: TestClient, *, identity
 ) -> None:
-    # The recorded Repayment.paid_at must be the draft's captured_at (when the notification
-    # fired ≈ when the payment happened), NOT now() — a delayed review must not back-stamp
-    # the debt history to review time. (mutation: drop paid_at=draft.captured_at in confirm
-    # → paid_at falls back to now() and this fails.)
+    # Neither delayed notification delivery nor later human review proves the
+    # transaction instant. The explicit amount can still settle a home-currency debt.
     debt = _create_external_debt(client, identity.app_headers, principal_amount_cents=50000, counterparty_label='花呗')
     captured = "2026-05-01T03:30:00Z"
     create = client.post(
@@ -112,7 +109,9 @@ def test_confirm_records_repayment_at_captured_time_not_review_time(
     with SessionLocal() as db:
         repayment = db.scalar(select(Repayment).where(Repayment.public_id == repayment_public_id))
         assert repayment is not None
-        assert ensure_utc(repayment.paid_at) == datetime(2026, 5, 1, 3, 30, tzinfo=UTC)
+        assert repayment.paid_at is None
+        assert repayment.accounting_time_snapshot["precision"] == "unknown"
+        assert draft["captured_at"] == captured
 
 
 def test_confirm_clearing_debt_latches_cleared(client: TestClient, *, identity) -> None:

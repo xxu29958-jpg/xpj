@@ -18195,6 +18195,23 @@
             ],
             "title": "Raw Text"
           },
+          "recognition_notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recognition Notes",
+            "type": "array"
+          },
+          "recognition_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecognitionTimeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "regret_score": {
             "anyOf": [
               {
@@ -24143,6 +24160,66 @@
         "title": "NotificationDraftCreateRequest",
         "type": "object"
       },
+      "NotificationTimeEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "fragments": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationTimeFragment"
+            },
+            "maxItems": 8,
+            "title": "Fragments",
+            "type": "array"
+          },
+          "source_timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Timezone"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "title": "NotificationTimeEvidence",
+        "type": "object"
+      },
+      "NotificationTimeFragment": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "pattern": "^(title|text|bigText|subText)$",
+            "title": "Field",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "maxLength": 32,
+            "title": "Label",
+            "type": "string"
+          },
+          "literal": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Literal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "literal"
+        ],
+        "title": "NotificationTimeFragment",
+        "type": "object"
+      },
       "OriginalCleanupObservation": {
         "additionalProperties": false,
         "properties": {
@@ -24882,6 +24959,16 @@
             ],
             "title": "Suggested Kind",
             "type": "string"
+          },
+          "time_evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NotificationTimeEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -25044,6 +25131,16 @@
           "public_id": {
             "title": "Public Id",
             "type": "string"
+          },
+          "recognition_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecognitionTimeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "repayment_public_id": {
             "anyOf": [
@@ -25261,6 +25358,106 @@
           "rate_date"
         ],
         "title": "ProjectionReferenceDto",
+        "type": "object"
+      },
+      "RecognitionTimeCandidate": {
+        "properties": {
+          "can_apply": {
+            "title": "Can Apply",
+            "type": "boolean"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "local_value": {
+            "title": "Local Value",
+            "type": "string"
+          },
+          "original_text": {
+            "title": "Original Text",
+            "type": "string"
+          },
+          "precision": {
+            "title": "Precision",
+            "type": "string"
+          },
+          "source_timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Timezone"
+          },
+          "source_utc_offset_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Utc Offset Seconds"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "explanation",
+          "original_text",
+          "local_value",
+          "precision",
+          "can_apply"
+        ],
+        "title": "RecognitionTimeCandidate",
+        "type": "object"
+      },
+      "RecognitionTimeResponse": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RecognitionTimeCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "evidence_public_id": {
+            "title": "Evidence Public Id",
+            "type": "string"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_public_id",
+          "source",
+          "parser_version",
+          "status"
+        ],
+        "title": "RecognitionTimeResponse",
         "type": "object"
       },
       "RecordedRecurringDefinition": {
@@ -27523,6 +27720,16 @@
           "public_id": {
             "title": "Public Id",
             "type": "string"
+          },
+          "recognition_time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecognitionTimeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "resolved_at": {
             "anyOf": [

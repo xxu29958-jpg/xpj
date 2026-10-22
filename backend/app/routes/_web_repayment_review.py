@@ -36,6 +36,7 @@ from app.services.debt_service import (
 from app.services.debt_service._repayment_capture import REPAYMENT_DRAFT_SOURCE_LABELS
 from app.services.debt_service._repayment_draft import get_repayment_draft_response
 from app.services.debt_service._repayment_time import repayment_calendar
+from app.services.notification_time_service import notification_time_for_repayment
 from app.services.repayment_draft_command_service import confirm_repayment_draft_idempotently
 
 _STATUS_LABELS = {"pending": "待复核", "confirmed": "已记账", "dismissed": "已忽略"}
@@ -89,11 +90,9 @@ def _initial_review_values(scope, selected_id, public_id, row, can_create, calen
     return initial
 
 
-def render_review(request: Request, db: Session, *, options, selected_id: str, public_id: str, account_id: int,
-                  values: dict[str, str] | None = None, error: str = "", result: str = "",
-                  rejected: bool = False, ack: dict | None = None, status_code: int = 200) -> HTMLResponse:
-    scope = repayment_scope(request, db)
+def _read_review_source(request, db, selected_id, public_id, account_id):
     row, read_error, calendar = None, "", None
+    status_code = 200
     try:
         rows = list_repayment_draft_audit_for_account(
             db, account_id=account_id, tenant_id=selected_id, public_id=public_id)
@@ -102,19 +101,29 @@ def render_review(request: Request, db: Session, *, options, selected_id: str, p
             calendar = repayment_calendar(db, ledger_id=selected_id)
         if row is None:
             read_error = "原采集不在当前账号和账本中。请回到原身份查看。"
-            if not ack and not error:
-                status_code = 404
+            status_code = 404
     except (AppError, SQLAlchemyError) as exc:
         retain_handled_error(request, exc)
         db.rollback()
         read_error = "当前采集暂时无法读取。浏览器保留的原输入仍可在下方核对。"
-        if not ack and not error:
-            status_code = 503
+        status_code = 503
+    return row, read_error, calendar, status_code
+
+
+def render_review(request: Request, db: Session, *, options, selected_id: str, public_id: str, account_id: int,
+                  values: dict[str, str] | None = None, error: str = "", result: str = "",
+                  rejected: bool = False, ack: dict | None = None, status_code: int = 200) -> HTMLResponse:
+    scope = repayment_scope(request, db)
+    row, read_error, calendar, read_status = _read_review_source(request, db, selected_id, public_id, account_id)
+    if read_error and not ack and not error:
+        status_code = read_status
     can_recover = _debt_write_gate(options, selected_id)
     can_create = calendar is not None and can_recover and not ack
     initial = _initial_review_values(scope, selected_id, public_id, row, can_create, calendar, values)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="核对还款采集")
     view = _audit_row_view(row, ctx.get("ledger_timezone_name")) if row else None
+    ctx["recognition_time"] = notification_time_for_repayment(db, tenant_id=selected_id,
+        actor_account_id=account_id, repayment_public_id=public_id) if row and row.status == "pending" else None
     ctx.update(row=view, read_error=read_error, currencies=supported_currency_codes(), review={
         "public_id": public_id, "scope": scope, "values": initial,
         "can_create": can_create, "can_recover": can_recover, "visible": can_create or values is not None,

@@ -35,6 +35,7 @@ data class Expense(
     /** Fresh server advice; never a financial fact or an offline persisted intent. */
     val categorySuggestion: ExpenseCategorySuggestion? = null,
     val duplicateSuggestionReasons: List<String> = emptyList(),
+    val duplicateCandidateIds: List<Long> = emptyList(),
     val note: String?,
     val source: String,
     val imagePath: String?,
@@ -82,6 +83,8 @@ data class Expense(
      */
     val originalCurrencyCodeRaw: String? = null,
     val accountingTime: ExpenseAccountingTime? = null,
+    val recognitionTime: RecognitionTime? = null,
+    val recognitionNotes: List<String> = emptyList(),
 ) {
     // Metadata permits an image request; the protected reader still checks access and bytes.
     val hasUndeletedImage: Boolean get() = hasImage && imageDeletedAt == null

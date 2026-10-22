@@ -61,6 +61,7 @@ from app.routes.web_common import (
     templates,
 )
 from app.services.currency_binding_service import require_runtime_home_currency_code
+from app.services.duplicate_service import find_duplicate_candidates
 from app.services.expense_review_command_service import (
     reject_duplicate_original_keep_current,
     submit_expense_duplicate_decision,
@@ -118,6 +119,12 @@ def _duplicate_evidence(reason: str) -> tuple[str, str, str]:
     cleaned = (reason or "").strip()
     if not cleaned:
         return "系统未提供判定原因", "待人工核对", ""
+    if "交易信息不足" in cleaned:
+        return cleaned, "原件相似，交易待核对", "warning"
+    if "交易标识相同" in cleaned:
+        return cleaned, "交易标识相同", "warning"
+    if "原币金额相同" in cleaned:
+        return cleaned, "交易字段接近", "warning"
     if "感知" in cleaned and "hash" in cleaned:
         return "两张图片内容高度相似", "图片近似", "warning"
     if "hash" in cleaned or "完全一致" in cleaned:
@@ -186,6 +193,10 @@ def web_duplicates(
         actor_account_id=resolve_web_actor(db, request, selected_id)[0])
     for row, pair in zip(rows, pairs, strict=True):
         pair["feedback_applied"] = row.id in feedback_ids
+        pair["other_candidates"] = [{"id": match.candidate_id,
+            "href": flow_href(f"/web/expenses/{match.candidate_id}/edit", ledger_id=selected_id,
+                return_to="duplicates", return_duplicate_expense_id=str(row.id))}
+            for match in find_duplicate_candidates(db, row) if match.candidate_id != row.duplicate_of_id]
     ctx = _base_ctx(
         request,
         db=db,

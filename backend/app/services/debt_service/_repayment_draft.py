@@ -69,14 +69,21 @@ def _corrected_expense_id(draft: RepaymentDraft) -> int | None:
 
 
 def repayment_draft_response(
-    draft: RepaymentDraft, *, suggested_debt_public_id: str | None = None
+    draft: RepaymentDraft, *, suggested_debt_public_id: str | None = None, notification_times: dict | None = None,
 ) -> RepaymentDraftResponse:
+    from app.services.notification_time_service import notification_times_for_repayments
+
+    db = object_session(draft)
+    if notification_times is None:
+        notification_times = notification_times_for_repayments(db, tenant_id=draft.tenant_id,
+            actor_account_id=draft.created_by_account_id, repayment_public_ids=[draft.public_id]) if db is not None else {}
     # ``suggested_debt_public_id`` is the §杠杆③ slice-3b inbox match — supplied ONLY by the
     # list path for a pending draft (ephemeral, never stored). Every other caller (create /
     # confirm / dismiss responses, the confirm idempotency-replay re-serialize) returns a
     # draft with no suggestion: a freshly-captured draft is for the NLS poster (which never
     # uses the match) and a resolved draft is already linked.
     return RepaymentDraftResponse(
+        recognition_time=notification_times.get(draft.public_id),
         corrected_expense_id=_corrected_expense_id(draft),
         correction_versions=(repayment_correction_versions(object_session(draft), draft)
             if object_session(draft) is not None and _corrected_expense_id(draft) is None else None),
@@ -129,6 +136,7 @@ def create_repayment_draft(db: Session, *, payload: RepaymentDraftCreateRequest,
 def list_repayment_drafts(
     db: Session, *, tenant_id: str, actor_account_id: int, status: str | None = None
 ) -> RepaymentDraftListResponse:
+    from app.services.notification_time_service import notification_times_for_repayments
     # Account-scoped (§8 / privacy, see module docstring): the inbox shows ONLY the actor's own.
     statement = ledger_scoped_select(RepaymentDraft, tenant_id).where(
         RepaymentDraft.created_by_account_id == actor_account_id
@@ -137,6 +145,8 @@ def list_repayment_drafts(
         statement = statement.where(RepaymentDraft.status == status)
     statement = statement.order_by(RepaymentDraft.created_at.desc(), RepaymentDraft.id.desc())
     drafts = list(db.scalars(statement))
+    notification_times = notification_times_for_repayments(db, tenant_id=tenant_id, actor_account_id=actor_account_id,
+        repayment_public_ids=[draft.public_id for draft in drafts])
     # §杠杆③ slice 3b: suggest a target Debt for each PENDING draft (ephemeral — recomputed
     # here, never stored). Fetch the repayable candidate set once (only when there is a
     # pending draft to match) and run the pure matcher per pending draft; a resolved /
@@ -147,6 +157,7 @@ def list_repayment_drafts(
         items=[
             repayment_draft_response(
                 draft,
+                notification_times=notification_times,
                 suggested_debt_public_id=(
                     suggest_debt_for_draft(
                         db,

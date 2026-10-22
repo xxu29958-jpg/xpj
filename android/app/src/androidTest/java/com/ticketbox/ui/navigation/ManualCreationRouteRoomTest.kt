@@ -77,7 +77,7 @@ class ManualCreationRouteRoomTest {
                             addManualExpenseSubmissionRoute(MainNavigationRuntime(nav, harness.shell, harness.screenFactory))
                             composable(EXPENSE_ROUTE, arguments = listOf(navArgument(EXPENSE_ID_ARG) { type = NavType.LongType }, notificationArgument)) { entry ->
                                 ExpenseEditRoute(requireNotNull(entry.arguments).getLong(EXPENSE_ID_ARG), harness.screenFactory,
-                                    ExpenseEditExitActions({ nav.popBackStack() }, { nav.popBackStack() }), ExpenseFactNavigation({}, { _, _ -> }))
+                                    ExpenseEditExitActions({ nav.popBackStack() }, { nav.popBackStack() }), ExpenseFactNavigation({}, { _, _ -> }, {} ))
                             }
                         }
                     }
@@ -133,7 +133,7 @@ class ManualCreationRouteRoomTest {
                         NavHost(rememberNavController(), startDestination = "manual-original") {
                             composable("manual-original") {
                                 ExpenseEditRoute(expense.id, harness.screenFactory,
-                                    ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
+                                    ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }, {} ))
                             }
                         }
                     }

@@ -50,6 +50,7 @@ def record_context(monkeypatch):
     monkeypatch.setattr(helpers, "calendar_revision", lambda *_a, **_k: SimpleNamespace(
         revision=1, timezone_name="Asia/Shanghai"))
     monkeypatch.setattr(helpers, "get_expense", lambda *_a: expense)
+    monkeypatch.setattr(helpers, "read_ocr_facts", lambda *_a, **_k: {})
     monkeypatch.setattr(helpers, "list_pending", lambda *_a: [expense] if expense.status == "pending" else [])
     monkeypatch.setattr(fact, "get_expense", lambda *_a: expense)
     monkeypatch.setattr(helpers, "_base_ctx", lambda request, **_k: {

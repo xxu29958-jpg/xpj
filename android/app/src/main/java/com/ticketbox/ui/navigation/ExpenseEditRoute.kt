@@ -134,6 +134,7 @@ internal fun ExpenseEditRoute(
             primary = expenseEditPrimaryActions(editViewModel, exit, canLeave),
             media = expenseEditMediaActions(editViewModel),
             related = expenseEditRelatedActions(editViewModel).copy(
+                onOpenDuplicateReference = { if (canLeave()) related.onOpenExpense(it) },
                 onFundingChange = editViewModel::editFunding,
                 onFundingReview = { editViewModel.reviewPendingFunding(screenFactory.fundsRepository) },
             ),

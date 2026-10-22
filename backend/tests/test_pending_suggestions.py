@@ -109,8 +109,8 @@ def test_pending_api_returns_duplicate_candidate(client: TestClient, *, identity
     candidates = item["duplicate_candidates"]
     assert len(candidates) == 1
     assert candidates[0]["candidate_id"] == first.json()["id"]
-    assert candidates[0]["score"] >= 0.5
     assert "image_hash_match" in candidates[0]["reasons"]
+    assert "transaction_evidence_incomplete" in candidates[0]["reasons"]
     assert candidates[0]["decision_public_id"]
 
 
@@ -266,7 +266,7 @@ def test_feedback_changes_the_next_real_review_without_changing_money(client, we
         assert [e.event_type for e in sorted(events, key=lambda e: e.id)] == ["reject", "reject"]
 
 
-def test_keep_both_changes_future_duplicate_evidence_and_preserves_both_bills(client, web_client, identity):
+def test_keep_both_excludes_only_that_pair_and_preserves_other_candidates(client, web_client, identity):
     from api_contract_helpers import mark_not_duplicate_api, patch_expense
     from sqlalchemy import event
 
@@ -279,8 +279,20 @@ def test_keep_both_changes_future_duplicate_evidence_and_preserves_both_bills(cl
     assert kept.status_code == 200, kept.text
     third_id = _pending_notification(client, identity=identity, merchant="重复核对店")
     after = client.get(f"/api/expenses/{third_id}", headers=identity.app_headers).json()
-    assert after["duplicate_candidates"][0]["score"] < original_score
-    assert "recent_user_reject" in after["duplicate_candidates"][0]["reasons"]
+    assert {item["candidate_id"] for item in after["duplicate_candidates"]} == {first_id, second_id}
+    assert all(item["score"] == original_score for item in after["duplicate_candidates"])
+    assert len({item["decision_public_id"] for item in after["duplicate_candidates"]}) == 2
+    repeated = client.get(f"/api/expenses/{third_id}", headers=identity.app_headers).json()
+    assert repeated["duplicate_candidates"] == after["duplicate_candidates"]
+    page = web_client.get(f"/web/duplicates?ledger_id=owner&focus={third_id}")
+    assert f'data-duplicate-candidate-id="{second_id}"' in page.text
+    assert "本次选择只针对上方参考账单" in page.text
+    kept_third = mark_not_duplicate_api(client, third_id, headers=identity.app_headers)
+    assert kept_third.status_code == 200, kept_third.text
+    assert kept_third.json()["duplicate_status"] == "suspected"
+    assert kept_third.json()["duplicate_of_id"] == second_id
+    remaining = client.get(f"/api/expenses/{third_id}", headers=identity.app_headers).json()
+    assert [item["candidate_id"] for item in remaining["duplicate_candidates"]] == [second_id]
     for _ in range(2):
         _pending_notification(client, identity=identity, merchant="重复核对店")
     feedback_queries = []
@@ -297,7 +309,7 @@ def test_keep_both_changes_future_duplicate_evidence_and_preserves_both_bills(cl
         finally:
             event.remove(engine, "before_cursor_execute", capture_feedback_query)
     assert len(feedback_queries) == 1  # The whole review page shares one indexed feedback read.
-    assert "已参考你之前“不是重复”的选择" in page.text
+    assert "这个历史决定不代替当前两笔的核对" in page.text
     for expense_id in (first_id, second_id):
         expense = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
         assert expense["amount_cents"] == 1888 and expense["status"] == "pending"

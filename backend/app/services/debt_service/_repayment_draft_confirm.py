@@ -83,6 +83,8 @@ def confirm_repayment_draft(
     else:
         money = {"original_currency": draft.original_currency_code,
             "original_amount": Decimal(minor_amount_value(draft.original_amount_minor, draft.original_currency_code))}
+    original_time = (AccountingTimeSnapshot.model_validate(draft.accounting_time_snapshot)
+        if draft.accounting_time_snapshot is not None else None)
     result = record_repayment(
         db,
         tenant_id=tenant_id,
@@ -91,15 +93,15 @@ def confirm_repayment_draft(
         payload=RepaymentCreateRequest(
             **money,
             # Human review may correct the payment day without changing capture evidence.
-            # Old submissions still use the original captured instant/snapshot, never now().
-            paid_at=draft.captured_at if time_input is None else None,
+            # A new unknown snapshot must not fall back to notification delivery.
+            # Historical captures with no snapshot retain their old command contract.
+            paid_at=draft.captured_at if time_input is None and original_time is None else None,
             time_input=time_input,
             expected_row_version=expected_row_version,
         ),
         idempotency_key=idempotency_key,
         commit=False,
-        captured_time=(AccountingTimeSnapshot.model_validate(draft.accounting_time_snapshot)
-            if time_input is None and draft.accounting_time_snapshot is not None else None),
+        captured_time=original_time if time_input is None else None,
     )
 
     resolve_repayment_draft(db, draft, actor_account_id=actor_account_id,

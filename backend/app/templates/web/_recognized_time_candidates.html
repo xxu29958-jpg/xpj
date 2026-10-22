@@ -1,0 +1,20 @@
+{% if recognition_time is defined and recognition_time and ((expense is defined and expense.status == 'pending') or recognition_time_date_only | default(false) or recognition_time_readonly | default(false)) %}
+<details class="product-disclosure" data-recognized-times data-fact-id="{{ recognition_time.evidence_public_id }}">
+  <summary>对照原件中的时间</summary>
+  {% if not recognition_time_readonly | default(false) %}<p class="meta">先核对时间含义，再选择填入当前草稿。保存后才会修改账单。</p>{% endif %}
+  {% if recognition_time_date_only | default(false) %}<p class="meta">此处可选发生日期，原件中的具体时刻继续保留供对照。</p>{% endif %}
+  {% if recognition_time.status == 'ambiguous' %}<p class="meta">原件有不同的时间，尚未替你选择。</p>{% endif %}
+  {% if recognition_time.status == 'incomplete' %}<p class="meta">通知中还有未列出的时间，请对照原通知完整核对。</p>{% endif %}
+  {% for candidate in recognition_time.candidates %}
+  <div class="product-field">
+    <strong>{{ candidate.label }} · {{ candidate.local_value }}</strong>
+    <span>{{ candidate.original_text }}</span>
+    <span class="meta">{{ candidate.explanation }}</span>
+    {% if candidate.can_apply and can_write and not expense_review_basis_changed and not recognition_time_readonly | default(false) %}
+    <button type="button" class="product-button product-button--secondary" {% if recognition_time_date_only | default(false) %}data-recognized-date{% endif %} data-recognized-time='{{ candidate.model_dump() | tojson }}'>{{ '将此日期填入还款草稿' if recognition_time_date_only | default(false) else '将此时间填入草稿' }}</button>
+    {% endif %}
+  </div>
+  {% endfor %}
+  <p class="meta" role="status" data-recognized-time-status></p>
+</details>
+{% endif %}

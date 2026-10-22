@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
@@ -203,11 +204,13 @@ def test_apply_with_fact_updates_mirror_and_appends_snapshot(*, identity) -> Non
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)
         assert expense is not None
+        expense.created_at = datetime(2025, 1, 1, tzinfo=UTC)
+        raw = "paired mirror text\n交易金额：12.00\n交易时间：12月31日23:59"
         apply_ocr_result_and_append_fact(
             db,
             expense=expense,
             result=OcrResult(
-                raw_text="paired mirror text\n交易金额：12.00",
+                raw_text=raw,
                 confidence=0.8,
             ),
             provider_name="manual_text",
@@ -218,10 +221,16 @@ def test_apply_with_fact_updates_mirror_and_appends_snapshot(*, identity) -> Non
         rows = _stored_ocr_facts(
             db, tenant_id="owner", expense_id=expense_id
         )
-        assert expense.raw_text == "paired mirror text\n交易金额：12.00"
+        assert expense.raw_text == raw
         assert len(rows) == 1
         assert rows[0].raw_text == expense.raw_text
         assert rows[0].ocr_provider == "manual_text"
+        evidence = json.loads(rows[0].evidence_json)
+        candidate = next(item for item in evidence["field_parse"]["candidates"] if item["field"] == "expense_time")
+        assert candidate["local_value"] == "2024-12-31T23:59"
+        assert candidate["inferred_components"] == ["year"]
+        assert expense.expense_time is None and rows[0].parsed_expense_time is None
+        assert "blocks" not in evidence  # Manual text must not acquire fabricated image boxes.
 
 
 @pytest.mark.parametrize(

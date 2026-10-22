@@ -96,7 +96,7 @@ class ExpenseFxContinuationRouteTest {
         compose.setContent {
             CompositionLocalProvider(LocalViewModelStoreOwner provides compose.activity) {
                 TicketboxTheme(skin = AppSkin.Default) {
-                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
+                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }, {} ))
                 }
             }
         }
@@ -139,7 +139,7 @@ class ExpenseFxContinuationRouteTest {
         compose.setContent {
             CompositionLocalProvider(LocalViewModelStoreOwner provides compose.activity) {
                 TicketboxTheme(skin = AppSkin.Default) {
-                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
+                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }, {} ))
                 }
             }
         }
@@ -154,7 +154,7 @@ class ExpenseFxContinuationRouteTest {
         compose.setContent {
             CompositionLocalProvider(LocalViewModelStoreOwner provides compose.activity) {
                 TicketboxTheme(skin = AppSkin.Default) {
-                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
+                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }, {} ))
                 }
             }
         }
@@ -194,7 +194,7 @@ class ExpenseFxContinuationRouteTest {
         compose.setContent {
             CompositionLocalProvider(LocalViewModelStoreOwner provides compose.activity) {
                 TicketboxTheme(skin = AppSkin.Default) {
-                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }))
+                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }, {} ))
                 }
             }
         }

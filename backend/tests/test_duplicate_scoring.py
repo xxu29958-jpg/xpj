@@ -10,7 +10,9 @@ from app.database import SessionLocal
 from app.models import Expense
 from app.services.learning_service import (
     EventDraft,
+    OcrFactDraft,
     record_event,
+    record_ocr_fact,
     score_duplicate_candidates,
 )
 from tests._infra.identity import seeded_owner_account_id
@@ -24,6 +26,7 @@ def _make_expense(
     image_hash: str | None = None,
     expense_time: datetime | None = None,
     status: str = "confirmed",
+    currency: str = "CNY",
 ) -> Expense:
     base_time = expense_time or datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
     with SessionLocal() as db:
@@ -36,6 +39,9 @@ def _make_expense(
             source="pytest",
             raw_text="",
             status=status,
+            home_currency_code=currency,
+            original_currency_code=currency,
+            original_amount_minor=amount_cents,
             expense_time=base_time,
             confirmed_at=base_time if status == "confirmed" else None,
         )
@@ -45,22 +51,56 @@ def _make_expense(
         return expense
 
 
-def test_image_hash_match_dominates_score(*, identity) -> None:
-    a = _make_expense(image_hash="aabb", amount_cents=999, merchant="X")
-    b = _make_expense(image_hash="aabb", amount_cents=1234, merchant="Y")
+@pytest.mark.parametrize("conflict", ["amount", "currency", "time", "transaction_id"])
+def test_visual_recall_cannot_override_transaction_conflicts(conflict, *, identity):
+    base = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
+    a = _make_expense(image_hash="same-image", expense_time=base)
+    b = _make_expense(image_hash="same-image", amount_cents=2000 if conflict == "amount" else 1000,
+        currency="JPY" if conflict == "currency" else "CNY",
+        expense_time=base + timedelta(days=2) if conflict == "time" else base)
     with SessionLocal() as db:
-        candidates = [db.get(Expense, b.id)]
-        scores = score_duplicate_candidates(
-            db, tenant_id="owner", expense=db.get(Expense, a.id),
-            candidates=candidates,
-            actor_account_id=seeded_owner_account_id(),
-        )
-        assert len(scores) == 1
-        # Image hash alone = 0.50; no amount, no merchant, no time
-        # overlap (same default base_time gives time_within_1h = +0.15).
-        assert scores[0].score == pytest.approx(0.65)
-        assert "image_hash_match" in scores[0].reasons
-        assert "time_within_1h" in scores[0].reasons
+        if conflict == "transaction_id":
+            for row, identifier in ((a, "202605010001"), (b, "202605010002")):
+                stored = db.get(Expense, row.id)
+                stored.source = "alipay"
+                stored.merchant = f"OCR merchant {row.id}"
+                record_ocr_fact(db, OcrFactDraft(tenant_id="owner", expense_id=row.id,
+                    ocr_provider="manual_text", raw_text=f"交易号：{identifier}"))
+            db.flush()
+        scores = score_duplicate_candidates(db, tenant_id="owner", expense=db.get(Expense, a.id),
+            candidates=[db.get(Expense, b.id)], actor_account_id=seeded_owner_account_id())
+        assert scores == []
+
+
+def test_manual_rows_do_not_evict_older_visual_candidates(monkeypatch, *, identity):
+    from dataclasses import replace
+
+    from app.config import get_settings
+    from app.services import duplicate_service
+    from app.services.duplicate_service import find_duplicate_candidates
+
+    monkeypatch.setattr(duplicate_service, "get_settings", lambda: replace(get_settings(), duplicate_phash_scan_limit=2))
+    older = _make_expense(amount_cents=None, merchant=None, image_hash="older", status="pending")
+    for _ in range(2):
+        _make_expense(amount_cents=None, merchant=None, status="pending")
+    current = _make_expense(amount_cents=None, merchant=None, image_hash="newer", status="pending")
+    with SessionLocal() as db:
+        for identifier in (older.id, current.id):
+            db.get(Expense, identifier).image_perceptual_hash = "0000000000000000"
+        db.flush()
+        matches = find_duplicate_candidates(db, db.get(Expense, current.id))
+        assert [row.candidate_id for row in matches] == [older.id]
+        assert "image_perceptual_hash_match" in matches[0].reasons
+
+
+def test_confirmation_clock_does_not_supply_transaction_time(*, identity):
+    a, b = _make_expense(), _make_expense()
+    with SessionLocal() as db:
+        current, candidate = db.get(Expense, a.id), db.get(Expense, b.id)
+        current.expense_time = candidate.expense_time = None
+        scores = score_duplicate_candidates(db, tenant_id="owner", expense=current,
+            candidates=[candidate], actor_account_id=seeded_owner_account_id())
+        assert scores == []
 
 
 def test_amount_plus_merchant_plus_time_stacks(*, identity) -> None:
@@ -110,7 +150,7 @@ def test_far_time_only_gets_24h_bucket(*, identity) -> None:
         assert "time_within_24h" in scores[0].reasons
 
 
-def test_recent_user_reject_applies_penalty(*, identity) -> None:
+def test_unrelated_reject_does_not_suppress_current_transaction_evidence(*, identity) -> None:
     base = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
     a = _make_expense(
         amount_cents=2000, merchant="Cafe", expense_time=base
@@ -141,10 +181,8 @@ def test_recent_user_reject_applies_penalty(*, identity) -> None:
             candidates=[db.get(Expense, b.id)],
             actor_account_id=seeded_owner_account_id(),
         )
-        # Without penalty: amount + merchant + time_within_1h = 0.60.
-        # Penalty: -0.40 → 0.20.
-        assert scores[0].score == pytest.approx(0.20)
-        assert "recent_user_reject" in scores[0].reasons
+        assert scores[0].score == pytest.approx(0.60)
+        assert "recent_user_reject" not in scores[0].reasons
 
 
 def test_candidates_ranked_descending(*, identity) -> None:
@@ -179,9 +217,9 @@ def test_candidates_ranked_descending(*, identity) -> None:
             actor_account_id=seeded_owner_account_id(),
         )
         ordered_ids = [s.candidate_id for s in scores]
-        assert ordered_ids == [high.id, medium.id, low.id]
+        assert ordered_ids == [high.id, medium.id]
         # Each strictly greater than the next.
-        assert scores[0].score > scores[1].score > scores[2].score
+        assert scores[0].score > scores[1].score
 
 
 def test_self_candidate_excluded(*, identity) -> None:
@@ -195,36 +233,3 @@ def test_self_candidate_excluded(*, identity) -> None:
             actor_account_id=seeded_owner_account_id(),
         )
         assert scores == []
-
-
-def test_score_clamped_to_unit_range(*, identity) -> None:
-    # Concoct a pathological scenario where penalties exceed signal.
-    base = datetime(2026, 5, 1, 12, 0, tzinfo=UTC)
-    a = _make_expense(amount_cents=500, merchant="Other", expense_time=base)
-    b = _make_expense(amount_cents=999, merchant="Mismatch", expense_time=base)
-    marker = {"amount_cents": 500, "merchant": "other"}
-    with SessionLocal() as db:
-        record_event(
-            db,
-            EventDraft(
-                tenant_id="owner",
-                event_type="reject",
-                subject_kind="expense",
-                subject_id=a.id,
-                before_payload=marker,
-                signal_type="duplicate_candidate",
-                signal_marker=marker,
-                actor_account_id=seeded_owner_account_id(),
-            ),
-        )
-        db.commit()
-        scores = score_duplicate_candidates(
-            db,
-            tenant_id="owner",
-            expense=db.get(Expense, a.id),
-            candidates=[db.get(Expense, b.id)],
-            actor_account_id=seeded_owner_account_id(),
-        )
-        # Penalty alone with no positive buckets → would be negative,
-        # clamped to 0.
-        assert scores[0].score == pytest.approx(0.0)

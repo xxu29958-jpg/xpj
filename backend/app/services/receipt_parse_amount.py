@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
+from dataclasses import replace
 
 from app.money_contract import MONEY_MINOR_MAX
 from app.services.receipt_parse_common import (
@@ -43,6 +45,7 @@ def _amount_candidates(
     *,
     currency_code: str | None,
     minor_unit_exponent: int | None,
+    evidence_blocks: Sequence[dict] | None = None,
 ) -> list[_AmountCandidate]:
     context_pair = _validated_money_context(currency_code, minor_unit_exponent)
     if context_pair is None:
@@ -53,7 +56,7 @@ def _amount_candidates(
     lines = text.splitlines()
     candidates = [
         *_primary_line_amount_candidates(lines, code, exponent),
-        *_labeled_amount_candidates(lines, code, exponent),
+        *_labeled_amount_candidates(lines, code, exponent, evidence_blocks),
         *_inline_amount_candidates(text, lines, code, exponent),
     ]
     return _apply_amount_cross_evidence(candidates)
@@ -103,6 +106,20 @@ def _primary_line_amount_candidate(
     if not (has_money_marker or has_nearby_success or has_sign):
         return None
 
+    dimensions = _primary_amount_dimensions(lines, index, line_text, cents, minor_unit_exponent,
+        has_money_marker=has_money_marker, has_nearby_success=has_nearby_success, has_sign=has_sign)
+    if dimensions.total <= 0:
+        return None
+    start = sum(len(line) + 1 for line in lines[:index])
+    return _AmountCandidate(
+        amount_cents=cents, score=dimensions.total, line_index=index, source="line",
+        evidence=dimensions.evidence, dimensions=dimensions,
+        normalized_span=(start, start + len(line_text)),
+    )
+
+
+def _primary_amount_dimensions(lines, index, line_text, cents, minor_unit_exponent,
+        *, has_money_marker: bool, has_nearby_success: bool, has_sign: bool) -> _ScoreDimensions:
     evidence = [f"line:{line_text}"]
     if has_money_marker:
         evidence.append("money_marker")
@@ -111,7 +128,7 @@ def _primary_line_amount_candidate(
     has_discount_context = _has_discount_context(lines, index)
     if has_discount_context:
         evidence.append("discount_context:-50")
-    dimensions = _ScoreDimensions(
+    return _ScoreDimensions(
         source=28 if has_money_marker else 24,
         context=62 if has_nearby_success else 0,
         label=12 if has_sign else 0,
@@ -119,25 +136,16 @@ def _primary_line_amount_candidate(
         noise=-50 if has_discount_context else 0,
         evidence=tuple(evidence),
     )
-    if dimensions.total <= 0:
-        return None
-    return _AmountCandidate(
-        amount_cents=cents,
-        score=dimensions.total,
-        line_index=index,
-        source="line",
-        evidence=dimensions.evidence,
-        dimensions=dimensions,
-    )
 
 
 def _labeled_amount_candidates(
     lines: list[str],
     currency_code: str,
     minor_unit_exponent: int,
+    evidence_blocks: Sequence[dict] | None,
 ) -> list[_AmountCandidate]:
     candidates: list[_AmountCandidate] = []
-    for match in iter_labeled_amount_matches(lines):
+    for match in iter_labeled_amount_matches(lines, evidence_blocks):
         cents = _money_to_cents(
             match.amount,
             currency_code=currency_code,
@@ -169,6 +177,8 @@ def _labeled_amount_candidates(
                 source=f"label:{label}",
                 evidence=dimensions.evidence,
                 dimensions=dimensions,
+                normalized_span=match.normalized_span,
+                role=label if label in {"total", "final_total", "rounded_total"} else "unknown",
             )
         )
     return candidates
@@ -210,7 +220,8 @@ def _inline_amount_candidates(
             if score > 0:
                 candidates.append(
                     _AmountCandidate(
-                        cents, score, index, source, dimensions.evidence, dimensions
+                        cents, score, index, source, dimensions.evidence, dimensions,
+                        normalized_span=match.span(),
                     )
                 )
     return candidates
@@ -262,11 +273,9 @@ def _calibrate_amount_candidates(
             evidence=tuple(evidence),
         )
         calibrated.append(
-            _AmountCandidate(
-                amount_cents=candidate.amount_cents,
+            replace(
+                candidate,
                 score=dimensions.total,
-                line_index=candidate.line_index,
-                source=candidate.source,
                 evidence=dimensions.evidence,
                 dimensions=dimensions,
             )
@@ -392,11 +401,9 @@ def _apply_amount_cross_evidence(
             evidence=(f"same_amount_support:+{support}",),
         )
         boosted.append(
-            _AmountCandidate(
-                amount_cents=candidate.amount_cents,
+            replace(
+                candidate,
                 score=dimensions.total,
-                line_index=candidate.line_index,
-                source=candidate.source,
                 evidence=dimensions.evidence,
                 dimensions=dimensions,
             )

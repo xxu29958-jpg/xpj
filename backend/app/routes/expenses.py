@@ -42,6 +42,7 @@ from app.schemas import (
     StatusResponse,
     TagsResponse,
 )
+from app.schemas._recognition_time import RecognitionTimeResponse
 from app.schemas._reference_creation import ReferenceCreatedResponse, ReferenceCreateRequest
 from app.services.background_task_response import task_response_dicts
 from app.services.category_preference_service import (
@@ -57,7 +58,7 @@ from app.services.expense_ocr_command_service import submit_expense_ocr_retry, s
 from app.services.expense_ocr_task_service import submit_expense_ocr_task
 from app.services.expense_response_service import (
     expense_fx_tasks_by_id,
-    expense_raw_text_by_id,
+    expense_ocr_facts_by_id,
     expense_to_response,
 )
 from app.services.expense_review_command_service import (
@@ -79,6 +80,7 @@ from app.services.expense_service import (
 from app.services.expense_split_service import list_expense_splits
 from app.services.expense_subtask_command_service import submit_expense_subtask
 from app.services.ledger_calendar_commands import read_ledger_calendar
+from app.services.notification_time_service import notification_times_for_expenses
 from app.services.pending_fx_task_service import (
     request_pending_expense_fx,
 )
@@ -94,7 +96,7 @@ from app.services.tag_service import list_tags
 from app.tenants import AuthContext
 
 if TYPE_CHECKING:
-    from app.models import Expense
+    from app.models import Expense, OcrFact
 
 router = APIRouter(
     prefix="/api/expenses",
@@ -108,7 +110,9 @@ def get_pending_expenses(
     db: Session = Depends(get_db),
 ) -> list[ExpenseResponse]:
     expenses = list_pending(db, auth.tenant_id)
-    raw_text_by_id = expense_raw_text_by_id(db, tenant_id=auth.tenant_id, expenses=expenses)
+    notification_times = notification_times_for_expenses(db, tenant_id=auth.tenant_id,
+        actor_account_id=auth.account_id, expense_public_ids=[item.public_id for item in expenses])
+    ocr_facts_by_id = expense_ocr_facts_by_id(db, tenant_id=auth.tenant_id, expenses=expenses)
     fx_tasks_by_id = expense_fx_tasks_by_id(db, tenant_id=auth.tenant_id, expenses=expenses)
     items: list[ExpenseResponse] = []
     for expense in expenses:
@@ -117,7 +121,8 @@ def get_pending_expenses(
                 db,
                 tenant_id=auth.tenant_id,
                 expense=expense, actor_account_id=auth.account_id,
-                raw_text_by_id=raw_text_by_id,
+                ocr_facts_by_id=ocr_facts_by_id,
+                notification_times_by_id=notification_times,
                 fx_tasks_by_id=fx_tasks_by_id,
             )
         )
@@ -743,15 +748,20 @@ def _expense_response_with_suggestions(
     tenant_id: str,
     expense: Expense,
     actor_account_id: int | None = None,
-    raw_text_by_id: dict[int, str] | None = None,
+    ocr_facts_by_id: dict[int, OcrFact] | None = None,
     fx_tasks_by_id: dict[int, BackgroundTaskResponse] | None = None,
+    notification_times_by_id: dict[str, RecognitionTimeResponse] | None = None,
 ) -> ExpenseResponse:
+    if notification_times_by_id is None:
+        notification_times_by_id = notification_times_for_expenses(db, tenant_id=tenant_id,
+            actor_account_id=actor_account_id, expense_public_ids=[expense.public_id])
     suggestions = suggestions_for_pending_expense(db, tenant_id=tenant_id, expense=expense, actor_account_id=actor_account_id)
     dto = expense_to_response(
         db,
         tenant_id=tenant_id,
         expense=expense,
-        raw_text_by_id=raw_text_by_id,
+        ocr_facts_by_id=ocr_facts_by_id,
+        notification_times_by_id=notification_times_by_id,
         fx_tasks_by_id=fx_tasks_by_id,
     )
     if suggestions.category_suggestion is not None:
