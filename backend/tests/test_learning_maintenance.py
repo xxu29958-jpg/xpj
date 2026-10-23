@@ -32,7 +32,9 @@ def local_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_require_local, None)
 
 
-def _seed_active_decision(*, retention_days: int = 30, days_ago: int = 0) -> int:
+def _seed_active_decision(
+    *, retention_days: int = 30, days_ago: int = 0, subject_id: int = 1,
+) -> int:
     now = datetime.now(UTC) - timedelta(days=days_ago)
     with SessionLocal() as db:
         row = record_decision(
@@ -42,7 +44,7 @@ def _seed_active_decision(*, retention_days: int = 30, days_ago: int = 0) -> int
                 decision_type="category_suggestion",
                 algorithm_version="category-history-v1",
                 subject_kind="expense",
-                subject_id=1,
+                subject_id=subject_id,
                 payload={"category": "餐饮"},
             ),
             now=now,
@@ -322,8 +324,11 @@ def test_owner_maintenance_failure_shows_partial_result_without_retry(
     from app.models import AlgorithmDecision
     from app.services.learning_service import _cleanup
 
+    _seed_pending_expense()
     expense_id = _seed_pending_expense()
-    decision_id = _seed_active_decision(retention_days=1, days_ago=3)
+    decision_id = _seed_active_decision(
+        retention_days=1, days_ago=3, subject_id=expense_id,
+    )
     with SessionLocal() as db:
         db.get(AlgorithmDecision, decision_id).status = "dismissed"
         event = record_event(db, EventDraft(tenant_id="owner", event_type="manual_override",
