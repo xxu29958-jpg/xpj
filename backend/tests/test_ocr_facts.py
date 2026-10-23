@@ -346,6 +346,10 @@ def test_upload_link_auto_ocr_writes_fact(
     assert len(rows) == 1
     assert rows[0].ocr_provider == "mock"
     assert rows[0].parsed_amount_cents == 1851
+    with SessionLocal() as db:
+        evidence = db.get(Expense, response.json()["id"]).image_evidence
+        assert evidence is not None
+        assert json.loads(rows[0].evidence_json)["image_source"] == evidence
 
 
 @pytest.mark.real_db

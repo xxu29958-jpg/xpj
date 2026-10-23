@@ -38,6 +38,7 @@ class UploadScreenshotDispatcherTest {
             assertEquals(payload.file.key, key)
             assertEquals("Asia/Shanghai", timezone)
             assertTrue(file.headers.toString().contains("original.png"))
+            assertEquals(payload.file.metadata.sourceContext, file.headers?.get("X-Ticketbox-Image-Context"))
             assertEquals("image/png", file.body.contentType().toString())
             assertEquals("original", Buffer().also { file.body.writeTo(it) }.readUtf8())
             receipt()
@@ -127,7 +128,8 @@ class UploadScreenshotDispatcherTest {
             LogicalSessionBinding(binding.serverUrl, binding.ledgerId, binding.ownerStorageKey, "session", "binding"),
             "Asia/Shanghai", UploadIntentFileDescriptor(uploadItemKey(id, 0), 8L,
                 "original".encodeToByteArray().toByteString().sha256().hex(),
-                UploadIntentFileMetadata("original.png", "image/png", 1L, 8L)))
+                UploadIntentFileMetadata("original.png", "image/png", 1L, 8L,
+                    """{"schema_version":1,"upload_sha256":"${"original".encodeToByteArray().toByteString().sha256().hex()}","times":[]}""")))
     }
 
     private fun originalRow(): OutboxRow {

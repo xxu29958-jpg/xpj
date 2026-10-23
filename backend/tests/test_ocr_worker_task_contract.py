@@ -125,6 +125,7 @@ def test_image_evidence_is_preserved_with_the_fact_and_task_receipt(identity, mo
     expense_id, predecessor, task_id = _seed_pending_enrichment_task()
     with SessionLocal() as db:
         source_digest = db.get(Expense, expense_id).image_hash
+        image_source = db.get(Expense, expense_id).image_evidence
     evidence = {"schema": "text-blocks/v1", "input_sha256": source_digest,
                 "width": 1, "height": 1, "coordinate_space": "exif-transposed-pixels",
                 "blocks": [{"text": "盒马", "confidence": 0.98, "box": [[0, 0], [1, 0], [1, 1], [0, 1]]}],
@@ -140,6 +141,7 @@ def test_image_evidence_is_preserved_with_the_fact_and_task_receipt(identity, mo
         fact = observer.scalar(select(OcrFact).where(OcrFact.expense_id == expense_id))
         recorded = json.loads(fact.evidence_json)
         field_parse = recorded.pop("field_parse")
+        assert recorded.pop("image_source") == image_source
         assert recorded == evidence
         amount = next(item for item in field_parse["candidates"] if item["field"] == "amount_cents")
         assert amount["value"] == 1990

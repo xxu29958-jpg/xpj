@@ -13,6 +13,8 @@ from fastapi import UploadFile
 
 from app.config import BACKEND_ROOT, get_settings
 from app.errors import AppError, PathTraversalError
+from app.schemas.image_source import ImageSourceContext
+from app.services.image_source_evidence import image_source_evidence, original_image_context
 from app.tenants import DEFAULT_TENANT_ID
 
 # Pre-decode caps: PIL.verify() only checks magic bytes, so a tiny file
@@ -46,6 +48,7 @@ class SavedUpload:
     image_perceptual_hash: str | None
     media_type: str
     size_bytes: int
+    image_evidence: dict | None = None
 
 
 def _extension_from_metadata(filename: str | None, content_type: str | None) -> str | None:
@@ -227,12 +230,16 @@ def save_upload_bytes(
     content_type: str | None = None,
     max_size_bytes: int | None = None,
     before_publish: Callable[[str], None] | None = None,
+    source_context: ImageSourceContext | None = None,
 ) -> SavedUpload:
     ext = _validated_upload_extension(
         data, filename=filename, content_type=content_type, max_size_bytes=max_size_bytes,
     )
+    original = original_image_context(data)
     sanitized_data, ext = _sanitize_image_bytes(ext, data)
-    return _store_admitted_image(sanitized_data, tenant_id=tenant_id, ext=ext, before_publish=before_publish)
+    evidence = image_source_evidence(original, sanitized_data, source_context)
+    return _store_admitted_image(sanitized_data, tenant_id=tenant_id, ext=ext,
+        before_publish=before_publish, image_evidence=evidence)
 
 
 def save_original_replenishment_bytes(
@@ -266,7 +273,8 @@ def save_original_replenishment_bytes(
 
 
 def _store_admitted_image(data: bytes, *, tenant_id: str, ext: str,
-                          before_publish: Callable[[str], None] | None = None) -> SavedUpload:
+                          before_publish: Callable[[str], None] | None = None,
+                          image_evidence: dict | None = None) -> SavedUpload:
     settings = get_settings()
     image_perceptual_hash = compute_image_perceptual_hash(data)
 
@@ -299,6 +307,7 @@ def _store_admitted_image(data: bytes, *, tenant_id: str, ext: str,
         # Report bytes actually written to disk (post-sanitization), not the raw
         # request body — the daily byte budget reconciles against storage cost.
         size_bytes=len(data),
+        image_evidence=image_evidence,
     )
 
 

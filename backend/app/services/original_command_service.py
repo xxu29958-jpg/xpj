@@ -18,6 +18,7 @@ from app.schemas._original_attachment import (
     OriginalReplenishmentRequest,
     OriginalVerificationRequest,
 )
+from app.schemas.image_source import ImageSourceContext
 from app.services.attachment_cleanup_service import read_cleanup_request, settle_cleanup_request
 from app.services.attachment_publication_lock import retain_publication
 from app.services.currency_binding_service import authorize_currency_metadata_write
@@ -94,14 +95,17 @@ def _record_original_command(db: Session, claim: _OriginalClaim, *, auth: AuthCo
 def attach_original(db: Session, *, expense_id: int, auth: AuthContext,
                     payload: OriginalAttachmentRequest, data: bytes,
                     filename: str | None, content_type: str | None,
-                    idempotency_key: str) -> OriginalCommandReceipt:
+                    idempotency_key: str, source_context: ImageSourceContext | None = None) -> OriginalCommandReceipt:
     """Associate admitted evidence once; the bill's financial facts stay intact."""
     saved = None
     commit_attempted = False
     try:
+        body = {"upload_sha256": hashlib.sha256(data).hexdigest(), "filename": filename, "content_type": content_type}
+        if source_context is not None:
+            body["source_context"] = source_context.model_dump(mode="json")
         claim = _claim_original_command(db, expense_id=expense_id, auth=auth, operation="attach_original",
             expected_row_version=payload.expected_row_version, idempotency_key=idempotency_key,
-            body={"upload_sha256": hashlib.sha256(data).hexdigest(), "filename": filename, "content_type": content_type})
+            body=body)
         if isinstance(claim, OriginalCommandReceipt):
             return claim
         expense = claim.expense
@@ -109,8 +113,9 @@ def attach_original(db: Session, *, expense_id: int, auth: AuthContext,
                 expense.thumbnail_path, expense.thumbnail_deleted_at)):
             raise AppError("original_already_associated", status_code=409)
         saved = save_upload_bytes(data, tenant_id=auth.tenant_id, filename=filename, content_type=content_type,
-            before_publish=lambda reference: retain_publication(db, reference))
+            before_publish=lambda reference: retain_publication(db, reference), source_context=source_context)
         expense.image_path, expense.image_hash = saved.relative_path, saved.image_hash
+        expense.image_evidence = saved.image_evidence
         expense.image_perceptual_hash = saved.image_perceptual_hash
         expense.image_replenished_at = now_utc()
         receipt = _record_original_command(db, claim, auth=auth, operation="attach_original",

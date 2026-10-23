@@ -86,6 +86,7 @@ def stage_pending_expense(
         image_path=saved_file.relative_path,
         thumbnail_path=None,
         image_hash=saved_file.image_hash,
+        image_evidence=saved_file.image_evidence,
         image_perceptual_hash=saved_file.image_perceptual_hash,
         raw_text="",
         confidence=None,

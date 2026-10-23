@@ -12,6 +12,7 @@ data class UploadIntentFileMetadata(
     val contentType: String?,
     val preparationDurationMs: Long,
     val sourceSizeBytes: Long,
+    val sourceContext: String? = null,
 )
 
 /** A private file identity and integrity proof; it is not a filesystem path or an upload receipt. */

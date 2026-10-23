@@ -198,6 +198,7 @@ def collect_auto_ocr_extractions(
             merchant=expense.merchant,
             category=expense.category,
             raw_text=expense.raw_text,
+            image_evidence=expense.image_evidence,
             confidence=expense.confidence,
             expense_time=expense.expense_time,
             time_precision=expense.time_precision,
@@ -469,7 +470,7 @@ def ocr_fact_snapshot(
         parse_confidence=_best_confidence(
             merged.confidence, parsed.confidence, None
         ),
-        evidence={**(result.evidence or {}), "field_parse": {
+        evidence={**(result.evidence or {}), "image_source": expense.image_evidence, "field_parse": {
             "version": FIELD_PARSE_VERSION,
             "reference_time": None,
             "candidates": [asdict(item) for item in parsed.candidates],

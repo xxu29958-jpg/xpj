@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.provider.OpenableColumns
 import androidx.exifinterface.media.ExifInterface
 import java.io.ByteArrayOutputStream
+import java.io.File
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -19,22 +20,54 @@ data class PreparedUploadImage(
     val bytes: ByteArray,
     val sourceSizeBytes: Long,
     val preparationDurationMs: Long = 0L,
+    val sourceContext: String? = null,
+    val sourceTransforms: List<String> = emptyList(),
 )
 
 private const val MAX_UPLOAD_LONG_SIDE = 1600
 private const val JPEG_QUALITY = 84
 private const val KEEP_ORIGINAL_MAX_BYTES = 450_000L
 internal const val MAX_ORIGINAL_FALLBACK_BYTES = 10L * 1024L * 1024L
+private const val MAX_SOURCE_SNAPSHOT_BYTES = 256L * 1024L * 1024L
 
 fun Context.prepareScreenshotUpload(uri: Uri): PreparedUploadImage? {
     val startedAt = SystemClock.elapsedRealtime()
-    return prepareScreenshotUploadImage(uri)?.let { prepared ->
-        prepared.copy(preparationDurationMs = SystemClock.elapsedRealtime() - startedAt)
+    val metadata = readUploadMetadata(uri)
+    val snapshot = File.createTempFile("screenshot-source-", ".image", cacheDir)
+    try {
+        // A document provider may return different revisions on successive opens.
+        // Freeze once on disk, retaining support for photos larger than the upload fallback limit.
+        if (!copySourceSnapshot(uri, snapshot)) return null
+        val stableUri = Uri.fromFile(snapshot)
+        val context = readImageSourceContext(stableUri, galleryUri = uri)
+        return prepareScreenshotUploadImage(stableUri, metadata.copy(sizeBytes = snapshot.length()),
+            context.optInt("orientation", 1))?.let { prepared ->
+            prepared.withSourceContext(context).copy(preparationDurationMs = SystemClock.elapsedRealtime() - startedAt)
+        }
+    } finally {
+        snapshot.delete()
     }
 }
 
-private fun Context.prepareScreenshotUploadImage(uri: Uri): PreparedUploadImage? {
-    val metadata = readUploadMetadata(uri)
+private fun Context.copySourceSnapshot(uri: Uri, snapshot: File): Boolean {
+    val input = contentResolver.openInputStream(uri) ?: return false
+    return input.use { source ->
+        snapshot.outputStream().use { output ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0L
+            while (true) {
+                val count = source.read(buffer)
+                if (count < 0) break
+                total += count
+                if (total > MAX_SOURCE_SNAPSHOT_BYTES) return false
+                output.write(buffer, 0, count)
+            }
+            total > 0
+        }
+    }
+}
+
+private fun Context.prepareScreenshotUploadImage(uri: Uri, metadata: UploadMetadata, orientation: Int): PreparedUploadImage? {
     val bounds = readImageBounds(uri)
     if (bounds == null) {
         return readOriginalUpload(uri, metadata)
@@ -49,13 +82,15 @@ private fun Context.prepareScreenshotUploadImage(uri: Uri): PreparedUploadImage?
         return readOriginalUpload(uri, metadata)
     }
 
-    val sampled = decodeSampledBitmap(uri, bounds) ?: return readOriginalUpload(uri, metadata)
+    val decoded = decodeSampledBitmap(uri, bounds, orientation) ?: return readOriginalUpload(uri, metadata)
+    val sampled = decoded.bitmap
     val normalized = scaleToLongSide(sampled, MAX_UPLOAD_LONG_SIDE)
     if (normalized !== sampled) {
         sampled.recycle()
     }
 
     val output = ByteArrayOutputStream()
+    val resized = max(normalized.width, normalized.height) != longSide
     normalized.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)
     normalized.recycle()
     val bytes = output.toByteArray()
@@ -68,6 +103,11 @@ private fun Context.prepareScreenshotUploadImage(uri: Uri): PreparedUploadImage?
         contentType = "image/jpeg",
         bytes = bytes,
         sourceSizeBytes = metadata.sizeBytes,
+        sourceTransforms = buildList {
+            add("transcoded")
+            if (resized) add("resized")
+            if (decoded.orientationApplied) add("orientation_applied")
+        },
     )
 }
 
@@ -114,7 +154,7 @@ private fun Context.readImageBounds(uri: Uri): ImageBounds? {
     return ImageBounds(width = options.outWidth, height = options.outHeight)
 }
 
-private fun Context.decodeSampledBitmap(uri: Uri, bounds: ImageBounds): Bitmap? {
+private fun Context.decodeSampledBitmap(uri: Uri, bounds: ImageBounds, orientation: Int): OrientedScreenshot? {
     val options = BitmapFactory.Options().apply {
         inSampleSize = calculateSampleSize(bounds)
         inPreferredConfig = Bitmap.Config.ARGB_8888
@@ -126,20 +166,18 @@ private fun Context.decodeSampledBitmap(uri: Uri, bounds: ImageBounds): Bitmap? 
     // Android 28+. Apply EXIF rotation here so that photos captured in
     // portrait orientation are uploaded right-side up. PNG/WebP typically
     // carry no EXIF tag, so the matrix is identity and returns the source.
-    val oriented = decoded?.let { applyExifOrientation(uri, it) }
-    return oriented ?: decodeBitmapWithImageDecoder(uri, targetLongSide = MAX_UPLOAD_LONG_SIDE)
+    return decoded?.let { orientScreenshotBitmap(it, orientation) }
+        ?: decodeBitmapWithImageDecoder(uri, targetLongSide = MAX_UPLOAD_LONG_SIDE)?.let {
+            OrientedScreenshot(it, orientation in 2..8)
+        }
 }
 
-private fun Context.applyExifOrientation(uri: Uri, bitmap: Bitmap): Bitmap {
-    val orientation = runCatching {
-        contentResolver.openInputStream(uri)?.use { input ->
-            ExifInterface(input).getAttributeInt(
-                ExifInterface.TAG_ORIENTATION,
-                ExifInterface.ORIENTATION_NORMAL,
-            )
-        } ?: ExifInterface.ORIENTATION_NORMAL
-    }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+internal data class OrientedScreenshot(val bitmap: Bitmap, val orientationApplied: Boolean)
 
+internal fun orientScreenshotBitmap(bitmap: Bitmap, orientation: Int,
+    rotate: (Bitmap, Matrix) -> Bitmap = { source, matrix ->
+        Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+    }): OrientedScreenshot {
     val matrix = Matrix()
     when (orientation) {
         ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
@@ -153,13 +191,13 @@ private fun Context.applyExifOrientation(uri: Uri, bitmap: Bitmap): Bitmap {
         ExifInterface.ORIENTATION_TRANSVERSE -> {
             matrix.postRotate(270f); matrix.postScale(-1f, 1f)
         }
-        else -> return bitmap
+        else -> return OrientedScreenshot(bitmap, false)
     }
     val rotated = runCatching {
-        Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-    }.getOrNull() ?: return bitmap
+        rotate(bitmap, matrix)
+    }.getOrNull() ?: return OrientedScreenshot(bitmap, false)
     if (rotated !== bitmap) bitmap.recycle()
-    return rotated
+    return OrientedScreenshot(rotated, rotated !== bitmap)
 }
 
 private fun Context.readImageBoundsWithImageDecoder(uri: Uri): ImageBounds? {

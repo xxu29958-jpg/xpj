@@ -425,12 +425,20 @@ def test_upload_rejects_spoofed_extension_and_content_type(client: TestClient, *
     assert _stored_upload_files() == []
 
 
-def test_saved_upload_strips_exif_metadata() -> None:
+@pytest.mark.parametrize("original_time,expected", [
+    ("2025:12:31 23:58:00", "2025-12-31T23:58:00+08:00"), ("not a date", None), (None, None)])
+def test_saved_upload_strips_exif_metadata(original_time, expected) -> None:
+    import hashlib
+
     from PIL import Image
 
-    image = Image.new("RGB", (8, 8), color=(20, 40, 60))
+    image = Image.new("RGB", (12, 8), color=(20, 40, 60))
     exif = Image.Exif()
     exif[0x010F] = "SensitiveCamera"
+    exif[0x010E] = "Private comment"
+    exif[0x0112] = 6
+    if original_time is not None:
+        exif[0x8769] = {0x9003: original_time, 0x9011: "+08:00"}
     buffer = BytesIO()
     image.save(buffer, format="JPEG", exif=exif)
 
@@ -445,9 +453,38 @@ def test_saved_upload_strips_exif_metadata() -> None:
     try:
         with Image.open(stored_path) as stored:
             assert not stored.getexif()
+            assert stored.size == (8, 12)
         assert b"SensitiveCamera" not in stored_path.read_bytes()
+        evidence = saved.image_evidence
+        assert evidence["uploaded"]["sha256"] == hashlib.sha256(buffer.getvalue()).hexdigest()
+        assert evidence["stored"]["sha256"] == saved.image_hash == hashlib.sha256(stored_path.read_bytes()).hexdigest()
+        assert evidence["uploaded"]["orientation"] == 6 and evidence["automatic_transaction_anchor"] is False
+        assert evidence["uploaded"]["times"] == ([] if expected is None else [
+            {"origin": "exif_original", "value": expected, "precision": "second", "role": "generated"}])
+        assert "Private comment" not in str(evidence) and "SensitiveCamera" not in str(evidence)
     finally:
         stored_path.unlink(missing_ok=True)
+
+
+def test_valid_pixels_with_corrupt_nested_exif_keep_unknown_metadata() -> None:
+    import struct
+
+    from PIL import Image
+
+    # A signed negative IFD pointer is corrupt metadata, but the JPEG pixels are valid.
+    exif = b"Exif\0\0II*\0" + struct.pack("<IH", 8, 1) + struct.pack("<HHIiI", 0x8769, 9, 1, -1, 0)
+    buffer = BytesIO()
+    Image.new("RGB", (12, 8), color=(20, 40, 60)).save(buffer, format="JPEG", exif=exif)
+    saved = save_upload_bytes(buffer.getvalue(), tenant_id="owner", filename="receipt.jpg", content_type="image/jpeg")
+    path, _ = resolve_protected_image(saved.relative_path, "owner")
+    try:
+        assert saved.image_evidence["uploaded"]["times"] == []
+        assert saved.image_evidence["uploaded"]["orientation"] is None
+        with Image.open(path) as stored:
+            stored.load()
+            assert stored.size == (12, 8) and not stored.getexif()
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def test_upload_rejects_fake_heic_brand_without_decodable_image(
