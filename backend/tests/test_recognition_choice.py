@@ -1,7 +1,7 @@
 """Successful original choices affect independent drafts, never confirmed money."""
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -39,7 +39,7 @@ def _choose(client, identity, expense_id, *, choice=None, day=None, stale=False,
     date = day or candidate["local_value"][:10]
     offset = candidate["source_utc_offset_seconds"]
     instant = datetime.fromisoformat(date + candidate["local_value"][10:]).replace(
-        tzinfo=timezone(timedelta(seconds=offset))).astimezone(timezone.utc).isoformat()
+        tzinfo=timezone(timedelta(seconds=offset))).astimezone(UTC).isoformat()
     body = {"expected_row_version": before["row_version"] - int(stale), "recognition_time_choice": selected,
         "time_input": {"precision": "instant", "calendar_revision": before["accounting_time"]["calendar_revision"],
             "user_local_date": date, "instant_utc": instant,
@@ -187,3 +187,40 @@ def test_changed_printed_offset_invalidates_the_original_time_choice(client, ide
     assert changed.status_code == 200, changed.json()
     assert all("明确选择" not in row["explanation"] for row in
         client.get(f"/api/expenses/{second}", headers=identity.app_headers).json()["recognition_time"]["candidates"])
+
+
+def test_pending_list_reads_time_cases_once_and_refreshes_after_withdrawal(client, identity):
+    from sqlalchemy import event
+
+    from app.database import engine
+    from app.services.learning_service._withdrawal import withdraw_feedback
+
+    first = _image(identity)
+    assert _choose(client, identity, first)[0].status_code == 200
+    targets = [_image(identity, day=19, family=f"{index:02x}") for index in range(12)]
+    reads = []
+
+    def observe(_connection, _cursor, statement, parameters, _context, _many):
+        if (statement.startswith("SELECT") and "FROM ledger_learning_events" in statement
+                and "LIMIT" in statement and "recognition_time_choice" in parameters.values()):
+            reads.append(statement)
+
+    event.listen(engine, "before_cursor_execute", observe)
+    try:
+        response = client.get("/api/expenses/pending", headers=identity.app_headers)
+    finally:
+        event.remove(engine, "before_cursor_execute", observe)
+    assert response.status_code == 200, response.text
+    rows = {row["id"]: row for row in response.json() if row["id"] in targets}
+    assert len(rows) == 12
+    assert all(row["recognition_time"]["candidates"][0]["role"] == "consumption" for row in rows.values())
+    assert all(row["amount_cents"] == 2500 and row["status"] == "pending" for row in rows.values())
+    assert len(reads) == 1, f"One pending refresh scanned the actor's time cases {len(reads)} times"
+    with SessionLocal() as db:
+        source = db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == first)).one()
+        withdraw_feedback(db, tenant_id="owner", public_id=source.public_id)
+        db.commit()
+    refreshed = client.get("/api/expenses/pending", headers=identity.app_headers)
+    assert refreshed.status_code == 200, refreshed.text
+    assert all("明确选择" not in candidate["explanation"]
+        for row in refreshed.json() if row["id"] in targets for candidate in row["recognition_time"]["candidates"])
