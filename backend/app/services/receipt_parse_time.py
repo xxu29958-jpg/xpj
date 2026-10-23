@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -55,9 +56,11 @@ def is_time_fragment(literal: str, label: str) -> bool:
     return (not label or label.upper() in labels) and any(pattern.fullmatch(dated) for _, pattern in _PATTERNS)
 
 
-def _role(text: str, start: int) -> tuple[str, int, str | None]:
+def _role(text: str, start: int, blocks: Sequence[dict] | None = None) -> tuple[str, int, str | None]:
     line_start = text.rfind("\n", 0, start) + 1
     prefix = text[line_start:start]
+    if not prefix.strip() and blocks:
+        return _spatial_role(text, start, blocks)
     if not prefix.strip() and line_start:
         line_start = text.rfind("\n", 0, line_start - 1) + 1
         prefix = text[line_start:start]
@@ -73,6 +76,62 @@ def _role(text: str, start: int) -> tuple[str, int, str | None]:
     if re.search(r"支出|消费|扣款|动账", line):
         return "transaction", start, "inline_business_time"
     return "unknown", start, None
+
+
+def _time_label_role(label: str) -> str | None:
+    # A bilingual label can repeat one role. Two different roles on the same
+    # block do not identify which event the neighbouring value belongs to.
+    if re.search(r"\d", label):
+        return None
+    roles = {role for role, aliases in _ROLE_LABELS.items()
+        if any(re.search(re.escape(alias), label, re.I) for alias in aliases)}
+    return next(iter(roles)) if len(roles) == 1 else None
+
+
+def _same_time_row(left_box: Sequence, right_box: Sequence) -> bool:
+    left_top, left_bottom = min(p[1] for p in left_box), max(p[1] for p in left_box)
+    right_top, right_bottom = min(p[1] for p in right_box), max(p[1] for p in right_box)
+    height = min(left_bottom - left_top, right_bottom - right_top)
+    # Partial overlap tolerates skewed camera pages and differing glyph heights.
+    return height > 0 and min(left_bottom, right_bottom) - max(left_top, right_top) >= height / 4
+
+
+def _label_distance(label_box: Sequence, value_box: Sequence) -> tuple[int, float] | None:
+    left, right = min(p[0] for p in value_box), max(p[0] for p in value_box)
+    label_left, label_right = min(p[0] for p in label_box), max(p[0] for p in label_box)
+    if label_right <= left and _same_time_row(label_box, value_box):
+        return 0, left - label_right
+    top = min(p[1] for p in value_box)
+    bottom = max(p[1] for p in label_box)
+    height = min(max(p[1] for p in value_box) - top, bottom - min(p[1] for p in label_box))
+    overlap = min(right, label_right) - max(left, label_left)
+    if height > 0 and 0 <= top - bottom <= height * 2 and overlap >= min(right - left, label_right - label_left) / 2:
+        return 1, top - bottom
+    return None
+
+
+def _spatial_role(text: str, start: int, blocks: Sequence[dict]) -> tuple[str, int, str | None]:
+    """Prefer same-row labels, then a nearby label above in the same column."""
+    lines = text.splitlines()
+    index = text.count("\n", 0, start)
+    box = blocks[index]["box"]
+    hits = []
+    offset = 0
+    for line, block in zip(lines, blocks, strict=True):
+        label = line.strip(" :：")
+        role = _time_label_role(label)
+        distance = _label_distance(block["box"], box)
+        if role is not None and distance is not None:
+            hits.append((distance, role, offset + line.index(label), label))
+        offset += len(line) + 1
+    if not hits:
+        return "unknown", start, None
+    nearest = min(item[0] for item in hits)
+    winners = [item for item in hits if item[0] == nearest]
+    if len({item[1] for item in winners}) != 1:
+        return "unknown", start, None
+    _, role, position, label = winners[0]
+    return role, position, label
 
 
 def _zone(name: str | None):
@@ -171,9 +230,14 @@ def _clock_time(groups: dict[str, str | None]) -> time:
 def _candidate(
     text: str, match: re.Match, kind: str, day: date | None, inferred: tuple[str, ...],
     reason: str | None, zone: tzinfo | None, zone_basis: str, reference: datetime | None,
+    blocks: Sequence[dict] | None = None,
 ) -> _TimeCandidate:
     groups = match.groupdict()
-    role, start, label = _role(text, match.start())
+    role, start, label = _role(text, match.start(), blocks)
+    label_span = None
+    if blocks and label and text.count("\n", 0, start) != text.count("\n", 0, match.start()):
+        label_span = (start, start + len(label))
+        start = match.start()
     score = {"transaction": 100, "payment": 100, "consumption": 100, "unknown": 60}.get(role, 20)
     precision = "second" if groups.get("second") else "minute" if groups.get("hour") else "date_only"
     local_value = day.isoformat() if day else match.group()
@@ -183,7 +247,7 @@ def _candidate(
         evidence=(), dimensions=_ScoreDimensions(), role=role, precision=precision,
         local_value=local_value, timezone_name=str(zone) if zone else None, timezone_basis=zone_basis,
         inferred_components=inferred, review_reason=reason,
-        normalized_span=(start, match.end() + (unresolved_zone.end() if unresolved_zone else 0)))
+        normalized_span=(start, match.end() + (unresolved_zone.end() if unresolved_zone else 0)), label_span=label_span)
     candidate, zone = _resolve_clock(candidate, groups, day, zone, bool(unresolved_zone))
     candidate = _review_capture_date(candidate, day, reference, zone)
     evidence = (match.group(), f"time_role:{role}", f"precision:{precision}")
@@ -230,7 +294,8 @@ def _review_capture_date(candidate, day, reference, zone):
         reference_time=reference.isoformat() if (candidate.inferred_components or after_capture) and reference else None)
 
 
-def _time_candidates(text: str, timezone_name: str | None = None, *, reference_time: datetime | None = None) -> list[_TimeCandidate]:
+def _time_candidates(text: str, timezone_name: str | None = None, *, reference_time: datetime | None = None,
+        evidence_blocks: Sequence[dict] | None = None) -> list[_TimeCandidate]:
     # Never consult datetime.now(): retrying a frozen image must not change its year.
     reference = reference_time if reference_time is not None and reference_time.utcoffset() is not None else None
     zone, basis = _zone(timezone_name)
@@ -241,10 +306,10 @@ def _time_candidates(text: str, timezone_name: str | None = None, *, reference_t
             if any(start < match.end() and match.start() < end for start, end in occupied):
                 continue
             occupied.append(match.span())
-            if kind == "clock" and _role(text, match.start())[0] == "unknown":
+            if kind == "clock" and _role(text, match.start(), evidence_blocks)[0] == "unknown":
                 continue  # Status-bar clocks cannot establish transaction evidence.
             for day, inferred, reason in _dates(kind, match.groupdict(), reference, zone):
-                candidates.append(_candidate(text, match, kind, day, inferred, reason, zone, basis, reference))
+                candidates.append(_candidate(text, match, kind, day, inferred, reason, zone, basis, reference, evidence_blocks))
     return candidates
 
 

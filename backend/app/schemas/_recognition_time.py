@@ -13,6 +13,10 @@ class RecognitionTimeCandidate(BaseModel):
     source_timezone: str | None = None
     source_utc_offset_seconds: int | None = None
     can_apply: bool
+    evidence_public_id: str | None = None
+    source: str | None = None
+    parser_version: str | None = None
+    role: str = "unknown"
 
 
 class RecognitionTimeResponse(BaseModel):

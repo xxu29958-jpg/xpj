@@ -408,7 +408,7 @@ def parse_receipt_text(
     )
     time_candidate, times, time_decision = resolve_field(
         raw_text, "expense_time",
-        _time_candidates(text, timezone_name, reference_time=reference_time),
+        _time_candidates(text, timezone_name, reference_time=reference_time, evidence_blocks=amount_blocks),
         block_spans=blocks,
     )
     amount_cents = amount_candidate.amount_cents if amount_candidate else None

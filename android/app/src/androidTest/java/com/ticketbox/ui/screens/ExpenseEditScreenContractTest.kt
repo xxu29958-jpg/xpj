@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
@@ -161,11 +162,14 @@ class ExpenseEditScreenContractTest {
         var confirmed: ExpenseDraft? = null
         var opened: Long? = null
         var kept = 0
-        val day = com.ticketbox.domain.model.RecognitionTimeCandidate("day", "交易日期", "原件只有日期。",
-            "交易日期：2025-12-31", "2025-12-31", "date_only", "America/New_York", null, true)
+        val day = com.ticketbox.domain.model.RecognitionTimeCandidate("day", "图片 · 交易日期", "原件只有日期。",
+            "交易日期：2025-12-31", "2025-12-31", "date_only", "America/New_York", null, true,
+            evidencePublicId = "fact", source = "image", parserVersion = "receipt-fields-v3", role = "transaction")
+        val notification = day.copy(id = "notice-day", label = "通知 · 交易日期", localValue = "2026-01-01",
+            originalText = "交易日期：2026-01-01", evidencePublicId = "capture", source = "notification")
         val recorded = expense().copy(expenseTime = null, originalAmountMinor = 1234L,
             accountingTime = com.ticketbox.domain.model.ExpenseAccountingTime("unknown", calendarRevision = 1L),
-            recognitionTime = com.ticketbox.domain.model.RecognitionTime("fact", "receipt-fields-v2", "needs_review", listOf(day)),
+            recognitionTime = com.ticketbox.domain.model.RecognitionTime("fact", "receipt-fields-v3", "ambiguous", listOf(day, notification), "multiple"),
             recognitionNotes = listOf("原件金额存在冲突，请核对现有草稿。"),
             duplicateStatus = "suspected", duplicateOfId = 2L, duplicateCandidateIds = listOf(2L, 3L),
             duplicateReason = "原件完全一致；交易信息不足，需对照原件核实")
@@ -182,7 +186,9 @@ class ExpenseEditScreenContractTest {
         closeSoftKeyboard()
         composeRule.onNodeWithText("查看其他候选 #3").performScrollTo().performClick()
         composeRule.onNodeWithTag("expense-edit-time-section").performScrollTo().performClick()
-        composeRule.onNodeWithText("将此时间填入草稿").performScrollTo().performClick()
+        composeRule.onNodeWithText("图片 · 交易日期 · 2025-12-31").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("通知 · 交易日期 · 2026-01-01").performScrollTo().assertIsDisplayed()
+        composeRule.onAllNodesWithText("将此时间填入草稿")[0].performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(3L, opened); assertEquals(null, saved); assertEquals(0, kept) }
         capture("review-recognized-date-explicit-choice")
         composeRule.onNodeWithText("保存").performClick()

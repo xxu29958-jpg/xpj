@@ -1,7 +1,8 @@
 """Project saved recognition evidence into the existing explicit review."""
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.models import OcrFact
 from app.schemas._recognition_time import RecognitionTimeCandidate, RecognitionTimeResponse
@@ -30,7 +31,16 @@ _REASONS = {
 }
 
 
-def _candidate(item: dict, raw_text: str) -> RecognitionTimeCandidate:
+def _time_explanation(item: dict, precision: str) -> str:
+    note = _REASONS.get(item.get("review_reason"), "精确到秒。" if precision == "second" else "精确到分，原件未给出秒。")
+    if item.get("timezone_basis") == "configured_timezone" and precision != "date_only":
+        note += " 时区采用识别设置，请核对发生地区。"
+    if item.get("timezone_basis") == "capture_timezone" and precision != "date_only":
+        note += " 时区采用接收通知时的手机设置，请核对交易发生地区。"
+    return note
+
+
+def _candidate(item: dict, raw_text: str, *, public_id: str, source: str, version: str) -> RecognitionTimeCandidate:
     local = item.get("local_value") or ""
     precision = item.get("precision") or "unknown"
     reason = item.get("review_reason")
@@ -41,19 +51,16 @@ def _candidate(item: dict, raw_text: str) -> RecognitionTimeCandidate:
     except ValueError:
         valid = False
     original = "\n".join(raw_text[start:end] for start, end in item["raw_spans"])
-    note = _REASONS.get(reason, "精确到秒。" if precision == "second" else "精确到分，原件未给出秒。")
-    if item.get("timezone_basis") == "configured_timezone" and precision != "date_only":
-        note += " 时区采用识别设置，请核对发生地区。"
-    if item.get("timezone_basis") == "capture_timezone" and precision != "date_only":
-        note += " 时区采用接收通知时的手机设置，请核对交易发生地区。"
     # Fixed offsets use the existing offset-only accounting command. An invented
     # IANA zone would change the printed clock or fail the kernel validation.
     zone = None if item.get("timezone_basis") == "printed_offset" else item.get("timezone_name")
-    return RecognitionTimeCandidate(id=item["id"], label=_ROLES.get(role, _ROLES["unknown"]),
-        explanation=note, original_text=original, local_value=local, precision=precision,
+    origin = "通知" if source == "notification" else "图片"
+    return RecognitionTimeCandidate(id=item["id"], label=f"{origin} · {_ROLES.get(role, _ROLES['unknown'])}",
+        explanation=_time_explanation(item, precision), original_text=original, local_value=local, precision=precision,
         source_timezone=zone, source_utc_offset_seconds=item.get("utc_offset_seconds"),
         can_apply=valid and role in {"payment", "transaction", "consumption", "unknown"}
-        and reason not in {"invalid_date", "invalid_datetime", "nonexistent_local_time"})
+        and reason not in {"invalid_date", "invalid_datetime", "nonexistent_local_time"},
+        evidence_public_id=public_id, source=source, parser_version=version, role=role)
 
 
 def recognition_time(fact: OcrFact | None, *,
@@ -63,15 +70,62 @@ def recognition_time(fact: OcrFact | None, *,
         evidence = json.loads(fact.evidence_json).get("field_parse")
         if evidence:
             image = project_time_evidence(fact.public_id, "image", evidence, fact.raw_text)
-    # A print/order/capture clock cannot hide an actionable notification time.
-    # Historical facts without field evidence still acquire no inferred precision.
-    if image is not None and any(candidate.can_apply for candidate in image.candidates):
-        return image
+    if image is not None and notification is not None:
+        return _combined_time(image, notification)
     return notification or image
 
 
+def _evidence_timezone(item: RecognitionTimeCandidate) -> tzinfo | None:
+    if item.source_utc_offset_seconds is not None:
+        return timezone(timedelta(seconds=item.source_utc_offset_seconds))
+    try:
+        return ZoneInfo(item.source_timezone) if item.source_timezone else None
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+
+
+def _date_matches_instant(day: RecognitionTimeCandidate, instant: RecognitionTimeCandidate) -> bool:
+    value = datetime.fromisoformat(instant.local_value)
+    day_zone, instant_zone = _evidence_timezone(day), _evidence_timezone(instant)
+    if day_zone is not None and instant_zone is not None:
+        value = value.replace(tzinfo=instant_zone).astimezone(day_zone)
+    return date.fromisoformat(day.local_value) == value.date()
+
+
+def _compatible_candidates(left: RecognitionTimeCandidate, right: RecognitionTimeCandidate) -> bool:
+    if left.precision == right.precision == "date_only":
+        return left.local_value == right.local_value
+    if left.precision == "date_only":
+        return _date_matches_instant(left, right)
+    if right.precision == "date_only":
+        return _date_matches_instant(right, left)
+    values = [datetime.fromisoformat(item.local_value) for item in (left, right)]
+    if left.source_utc_offset_seconds is not None and right.source_utc_offset_seconds is not None:
+        values = [value.replace(tzinfo=timezone(timedelta(seconds=item.source_utc_offset_seconds)))
+            for value, item in zip(values, (left, right), strict=True)]
+    if "minute" in {left.precision, right.precision}:
+        values = [value.replace(second=0, microsecond=0) for value in values]
+    return values[0] == values[1]
+
+
+def _combined_time(image: RecognitionTimeResponse, notification: RecognitionTimeResponse) -> RecognitionTimeResponse:
+    # Both sources are already attached to this expense by the business owner.
+    # Showing them together is not proof of the attachment or an automatic vote.
+    conflicts = any(not _compatible_candidates(left, right)
+        for left in image.candidates[:1] if left.can_apply
+        for right in notification.candidates[:1] if right.can_apply)
+    states = {image.status, notification.status}
+    # Candidates retain resolver order. Equal-rank conflicts already set the
+    # source status; a lower-ranked alternative cannot overrule that resolution.
+    status = "incomplete" if "incomplete" in states else "ambiguous" if conflicts or "ambiguous" in states else "needs_review"
+    return RecognitionTimeResponse(evidence_public_id=image.evidence_public_id, source="multiple",
+        parser_version=image.parser_version if image.parser_version == notification.parser_version else "mixed",
+        status=status, candidates=image.candidates + notification.candidates)
+
+
 def project_time_evidence(public_id: str, source: str, evidence: dict, raw_text: str) -> RecognitionTimeResponse | None:
-    candidates = [_candidate(item, raw_text) for item in evidence["candidates"]
+    candidates = [_candidate(item, raw_text, public_id=public_id, source=source, version=evidence["version"])
+        for item in evidence["candidates"]
         if item["field"] == "expense_time"]
     if not candidates:
         return None

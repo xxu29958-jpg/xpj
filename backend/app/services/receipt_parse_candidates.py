@@ -10,6 +10,7 @@ from datetime import datetime
 
 from app.services.receipt_parse_amount_roles import AMOUNT_ROLE_PRIORITY
 from app.services.receipt_parse_common import (
+    FIELD_PARSE_VERSION,
     ReceiptFieldCandidate,
     ReceiptFieldDecision,
     _AmountCandidate,
@@ -42,6 +43,15 @@ def evidence_block_spans(raw_text: str, blocks: Sequence[dict] | None) -> tuple[
     return tuple(spans)
 
 
+def _original_spans(lines: tuple[tuple[int, int], ...], spans: Sequence[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
+    # Normalized offsets are converted once for both amount and time evidence.
+    positions = []
+    for raw_start, raw_end in lines:
+        positions.extend(range(raw_start, raw_end))
+        positions.append(raw_end)
+    return tuple((positions[left], positions[right - 1] + 1) for left, right in sorted(spans))
+
+
 def _candidate_spans(raw_text: str, field: str, candidate) -> tuple[tuple[int, int], ...]:
     if field == "category":
         # Category's legacy line_index is a rule index, not an OCR line number.
@@ -52,11 +62,10 @@ def _candidate_spans(raw_text: str, field: str, candidate) -> tuple[tuple[int, i
         # The parser normalizes blank lines/CRLF, but published offsets always
         # address the immutable original text (including all original whitespace).
         start, end = candidate.normalized_span
-        positions = []
-        for raw_start, raw_end in lines:
-            positions.extend(range(raw_start, raw_end))
-            positions.append(raw_end)
-        return ((positions[start], positions[end - 1] + 1),)
+        spans = [(start, end)]
+        if (label_span := getattr(candidate, "label_span", None)) is not None:
+            spans.append(label_span)
+        return _original_spans(lines, spans)
     start, end = lines[candidate.line_index]
     if field == "amount_cents" and candidate.source.startswith("label:"):
         label = candidate.source.partition(":")[2]
@@ -85,7 +94,7 @@ def _public_candidate(raw_text: str, field: str, candidate: _CandidateT,
     )} if isinstance(candidate, _TimeCandidate) else {}
     if isinstance(candidate, _AmountCandidate):
         semantic_fields = {"role": candidate.role, "review_reason": candidate.review_reason}
-    identity = json.dumps(["receipt-fields-v2", field, value, candidate.source, spans,
+    identity = json.dumps([FIELD_PARSE_VERSION, field, value, candidate.source, spans,
         currency_code, minor_unit_exponent, semantic_fields], ensure_ascii=False, separators=(",", ":"))
     return ReceiptFieldCandidate(
         id=hashlib.sha256(identity.encode()).hexdigest(), field=field, value=value,

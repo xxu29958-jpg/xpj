@@ -28,7 +28,7 @@ from app.services.ocr_service._models import (
     OcrResult,
 )
 from app.services.ocr_service._providers import get_ocr_provider
-from app.services.receipt_parse_common import ParsedReceipt
+from app.services.receipt_parse_common import FIELD_PARSE_VERSION, ParsedReceipt
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.time_service import ensure_utc
 
@@ -138,7 +138,9 @@ def _parse_and_merge_for_expense(
         currency_code=currency_code,
         minor_unit_exponent=minor_unit_exponent,
         evidence_blocks=(result.evidence or {}).get("blocks"),
-        reference_time=ensure_utc(expense.created_at),
+        # Upload/record creation is not the image's capture date. Old material
+        # without an original capture reference keeps missing components unknown.
+        reference_time=None,
     )
     return (
         parsed,
@@ -468,8 +470,8 @@ def ocr_fact_snapshot(
             merged.confidence, parsed.confidence, None
         ),
         evidence={**(result.evidence or {}), "field_parse": {
-            "version": "receipt-fields-v2",
-            "reference_time": ensure_utc(expense.created_at).isoformat() if expense.created_at else None,
+            "version": FIELD_PARSE_VERSION,
+            "reference_time": None,
             "candidates": [asdict(item) for item in parsed.candidates],
             "decisions": [asdict(item) for item in parsed.decisions],
         }},
