@@ -79,6 +79,7 @@ def test_material_equal_amount_cards_do_not_form_one_cross_event_draft():
 @pytest.mark.parametrize("heading,amounts,prefix", [
     ("交易成功", ("¥17.89", "¥29.20"), True),
     ("交易成功", ("-17.89", "-17.89"), True),
+    ("交易成功", ("支付金额：17.89元", "支付金额：29.20元"), True),
     ("支付成功", ("-17.89", "-29.20"), False),
     ("扣款成功", ("支付金额17.89", "支付金额29.20"), False),
 ])
@@ -115,10 +116,11 @@ def test_material_card_limit_leaves_the_unparsed_tail_outside_the_last_event():
     assert not any(candidate.field == "merchant" and candidate.value == "门店20号" for candidate in parsed.candidates)
 
 
-def test_material_status_clock_is_not_a_merchant_and_auto_debit_is_a_paid_event():
-    parsed = _parse_cny("17:04 8…\n账单详情\n城市打车\n-13.20\n自动扣款成功\n付款方式\n信用卡")
+@pytest.mark.parametrize("merchant", ["城市打车", "7:11便利店", "8:30咖啡", "7:11 24小时便利店"])
+def test_material_status_clock_is_not_a_merchant_and_auto_debit_is_a_paid_event(merchant):
+    parsed = _parse_cny(f"17:04 8…\n账单详情\n{merchant}\n-13.20\n自动扣款成功\n付款方式\n信用卡")
     assert parsed.amount_cents == 1320
-    assert parsed.merchant == "城市打车"
+    assert parsed.merchant == merchant
     assert not any(candidate.field == "merchant" and str(candidate.value).startswith("17:04")
         for candidate in parsed.candidates)
 

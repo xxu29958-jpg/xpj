@@ -464,7 +464,7 @@ def _is_title_merchant_candidate(value: str | None) -> bool:
     upper_value = value.upper()
     if (
         CLOCK_LINE_PATTERN.match(value)
-        or re.match(r"^\d{1,2}[:：]\d{2}(?:\D|$)", value)
+        or re.fullmatch(r"\d{1,2}[:：]\d{2}(?:\s+\d{1,3}(?:%|…|\.\.\.)?)?", value)
         or "4G" in upper_value
         or "5G" in upper_value
         or "WIFI" in upper_value

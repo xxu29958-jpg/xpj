@@ -13,7 +13,7 @@ from app.services.receipt_parse_rules import (
 def _card_start(lines: list[tuple[int, int, str]], index: int, lower: int, message_list: bool) -> int:
 
     start = index
-    if index > lower and is_primary_amount_line(lines[index - 1][2]):
+    if index > lower and _card_has_amount(lines[index - 1][2]):
         start = index - 1
         if start > lower and _is_title_merchant_candidate(lines[start - 1][2]):
             start -= 1
