@@ -56,23 +56,37 @@ def _card_has_amount(card: str) -> bool:
         or any(pattern.search(card) for pattern, _, _ in INLINE_AMOUNT_PATTERNS))
 
 
+def _card_anchors(lines: list[tuple[int, int, str]]) -> list[int]:
+    headings = {*TRANSACTION_SUCCESS_KEYWORDS, "交易提醒"}
+    # A labelled status value describes the enclosing payment, not another card.
+    status_labels = {"交易状态", "支付状态", "付款状态", "订单状态"}
+    return [index for index, (_, _, text) in enumerate(lines) if text in headings
+        and (not index or lines[index - 1][2].rstrip(":： ") not in status_labels)]
+
+
 def transaction_event_spans(raw_text: str) -> tuple[tuple[int, int], ...]:
     """Separate repeated cards, retaining the merchant/amount prefix of a success status."""
 
     lines = [(match.start(), match.end(), match.group().strip())
              for match in re.finditer(r"[^\r\n]+", raw_text) if match.group().strip()]
-    headings = {*TRANSACTION_SUCCESS_KEYWORDS, "交易提醒"}
-    anchors = [index for index, (_, _, text) in enumerate(lines) if text in headings]
+    anchors = _card_anchors(lines)
     if len(anchors) < 2:
         return ()
     # Separate success toasts alone are not sufficient: each card needs money.
     spans = []
     message_list = "服务消息" in raw_text or "支付消息" in raw_text
-    starts = []
+    first_start = _card_start(lines, anchors[0], 0, message_list)
+    prefix_layout = first_start < lines[anchors[0]][0]
+    starts = [first_start]
     # One look-ahead boundary prevents the twentieth card from absorbing an unparsed tail.
-    for number, index in enumerate(anchors[:21]):
-        lower = anchors[number - 1] + 1 if number else 0
-        starts.append(_card_start(lines, index, lower, message_list))
+    for number, index in enumerate(anchors[1:21], start=1):
+        start = lines[index][0]
+        if prefix_layout:
+            prefix = _card_start(lines, index, anchors[number - 1] + 1, message_list)
+            # Prefix ownership cannot remove the preceding card's only amount.
+            if _card_has_amount(raw_text[starts[-1]:prefix]):
+                start = prefix
+        starts.append(start)
     for number, start in enumerate(starts[:20]):
         end = starts[number + 1] if number + 1 < len(starts) else len(raw_text)
         card = raw_text[start:end]

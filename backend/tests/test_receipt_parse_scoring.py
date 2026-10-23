@@ -143,6 +143,25 @@ def test_material_inline_bank_amounts_are_separate_transaction_evidence(second_a
         assert any(item.field == "amount_cents" and item.event_id == event["id"] for item in parsed.candidates)
 
 
+@pytest.mark.parametrize("second_amount", ["17.89", "29.20"])
+def test_material_heading_first_cards_keep_their_trailing_amount(second_amount):
+    cards = [f"支付成功\n商家：{merchant}\n支付金额：{amount}元"
+        for amount, merchant in [("17.89", "松针小笼包"), (second_amount, "罗森便利店")]]
+    raw = "\n".join(cards)
+    parsed = _parse_cny(raw)
+    assert len(parsed.events) == 2 and parsed.amount_cents is None and parsed.merchant is None
+    for event, card in zip(parsed.events, cards, strict=True):
+        assert "".join(raw[start:end] for start, end in event["raw_spans"]).strip() == card
+
+
+def test_material_status_detail_row_does_not_invent_another_transaction():
+    raw = "支付成功\n商家：罗森便利店\n支付金额：17.89元\n交易状态\n交易成功\n订单金额：20.00元"
+    parsed = _parse_cny(raw)
+    assert parsed.amount_cents == 1789 and parsed.merchant == "罗森便利店"
+    assert not parsed.events
+    assert all(item.reason != "multiple_transaction_events" for item in parsed.decisions)
+
+
 @pytest.mark.parametrize("merchant", ["城市打车", "7:11便利店", "8:30咖啡", "7:11 24小时便利店"])
 def test_material_status_clock_is_not_a_merchant_and_auto_debit_is_a_paid_event(merchant):
     parsed = _parse_cny(f"17:04 8…\n账单详情\n{merchant}\n-13.20\n自动扣款成功\n付款方式\n信用卡")
