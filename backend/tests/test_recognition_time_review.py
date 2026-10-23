@@ -35,24 +35,26 @@ def _seed(raw):
         return expense.id, fact_id
 
 
-def test_missing_year_completion_records_only_the_supplied_year_without_relabeling_the_whole_time(client, identity):
+@pytest.mark.parametrize("literal,month,day", [("02月29日", 2, 29), ("05/06", 6, 5)])
+def test_missing_year_completion_records_only_the_supplied_year_without_relabeling_the_whole_time(client, identity, literal, month, day):
     from sqlalchemy import select
 
     from app.models import LedgerLearningEvent
 
-    expense_id, _ = _seed("支付时间：02月29日23:04:05 +07:00")
+    expense_id, _ = _seed(f"支付时间：{literal} 23:04:05 +07:00")
     headers = negotiated_headers(client, identity.app_headers)
     before = client.get(f"/api/expenses/{expense_id}", headers=headers).json()
-    candidate = before["recognition_time"]["candidates"][0]
+    candidate = next(item for item in before["recognition_time"]["candidates"]
+        if item["components"].get("month") == month and item["components"].get("day") == day)
     assert candidate["requires_year"] and not candidate["can_apply"]
-    assert candidate["components"] == {"month": 2, "day": 29, "hour": 23, "minute": 4, "second": 5}
+    assert candidate["components"] == {"month": month, "day": day, "hour": 23, "minute": 4, "second": 5}
     assert candidate["source_utc_offset_seconds"] == 25200 and candidate["source_timezone"] is None
     choice = {"evidence_public_id": candidate["evidence_public_id"], "candidate_id": candidate["id"],
         "parser_version": candidate["parser_version"], "source": "image", "intent": "original_correction"}
     saved = client.patch(f"/api/expenses/{expense_id}", headers={**headers, "Idempotency-Key": str(uuid4())},
         json={"expected_row_version": before["row_version"], "recognition_time_choice": choice,
-            "time_input": {"precision": "instant", "calendar_revision": 1, "user_local_date": "2024-02-29",
-                "instant_utc": "2024-02-29T16:04:05Z", "source_utc_offset_seconds": 25200}})
+            "time_input": {"precision": "instant", "calendar_revision": 1, "user_local_date": f"2024-{month:02}-{day:02}",
+                "instant_utc": f"2024-{month:02}-{day:02}T16:04:05Z", "source_utc_offset_seconds": 25200}})
     assert saved.status_code == 200, saved.text
     assert saved.json()["amount_cents"] is None and saved.json()["status"] == "pending"
     with SessionLocal() as db:

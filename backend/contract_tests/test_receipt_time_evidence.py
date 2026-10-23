@@ -171,6 +171,25 @@ def test_numeric_date_order_remains_ambiguous_without_a_format_contract():
     assert clear.expense_time.isoformat() == "2026-04-13T05:20:00+00:00"
 
 
+@pytest.mark.parametrize("prefix,reference", [
+    ("", None), ("", datetime(2026, 10, 1, tzinfo=UTC)), ("2020年账单\n", None),
+])
+def test_yearless_numeric_dates_keep_both_orders_for_explicit_year_completion(prefix, reference):
+    result = parse(prefix + "交易日期：05/06 13:20:31 +07:00", reference_time=reference)
+    candidates = times(result)
+    assert {(item.components["month"], item.components["day"]) for item in candidates} == {(5, 6), (6, 5)}
+    assert len({item.id for item in candidates}) == len({item.local_value for item in candidates}) == 2
+    assert all(item.utc_offset_seconds == 25200 and item.components["second"] == 31 for item in candidates)
+    assert result.expense_time is None
+
+
+@pytest.mark.parametrize("literal,expected", [("13/04", (4, 13)), ("04/13", (4, 13)), ("04/04", (4, 4))])
+def test_yearless_numeric_date_has_only_its_valid_distinct_month_day(literal, expected):
+    candidate, = times(parse("交易日期：" + literal))
+    assert (candidate.components["month"], candidate.components["day"]) == expected
+    assert candidate.review_reason == "reference_time_missing"
+
+
 @pytest.mark.parametrize("literal", ["2518-03-12", "2518-03-12 13:07"])
 def test_ocr_future_date_is_reviewed_against_frozen_capture_instead_of_auto_filled(literal):
     reference = datetime(2026, 10, 22, tzinfo=UTC)
