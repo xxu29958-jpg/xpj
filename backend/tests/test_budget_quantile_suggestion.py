@@ -108,11 +108,14 @@ def test_under_min_months_returns_none(*, client, identity, recorded_months) -> 
         assert explanation.verdict == "no_history" and explanation.p75_cents is None
 
 
-def test_zero_padding_reflects_actual_cadence(*, identity) -> None:
+@pytest.mark.parametrize("established", [False, True])
+def test_zero_padding_reflects_actual_cadence(*, identity, established) -> None:
     # Records begin in February. Other categories establish the known months;
     # this category's zeroes do not invent December/January history.
     for month in (2, 3, 5):
         _seed(category="交通", confirmed_year=2026, confirmed_month=month, amount_cents=100)
+    if established:
+        _seed(category="交通", confirmed_year=2025, confirmed_month=10, amount_cents=100)
     _seed(confirmed_year=2026, confirmed_month=4, amount_cents=600)
     now = datetime(2026, 6, 30, tzinfo=UTC)
     with SessionLocal() as db:
@@ -127,8 +130,8 @@ def test_zero_padding_reflects_actual_cadence(*, identity) -> None:
         assert result is not None
         assert result.p50_cents == 0
         # P75 of [0, 0, 0, 600] interpolates between the third and fourth values.
-        assert result.p75_cents == 150
-        assert result.sample_months == 4
+        assert result.p75_cents == (0 if established else 150)
+        assert result.sample_months == (6 if established else 4)
 
 
 def test_include_zero_months_false_drops_empty_months(*, identity) -> None:
