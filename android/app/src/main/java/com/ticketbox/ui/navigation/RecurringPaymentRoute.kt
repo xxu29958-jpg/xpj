@@ -299,21 +299,15 @@ private fun RecurringPaymentEntry(ctx: RecurringPaymentEntryContext, draftState:
             PeriodPaymentCurrencyChoice(
                 onChoose = { code ->
                     chosenCurrency = code
-                    val previous = ctx.drafts.read(task.clientRef)
-                    ctx.drafts.write(
-                        RecurringPaymentDraft(
-                            clientRef = task.clientRef,
-                            amountText = previous?.amountText ?: formatMinorAmountInput(
-                                task.suggestedAmountMinor, CurrencyCode.fromStorageKeyOrNull(code) ?: CurrencyCode.CNY,
-                            ),
-                            currencyCode = code, merchant = previous?.merchant ?: task.merchant,
-                            category = previous?.category ?: DEFAULT_EXPENSE_CATEGORIES.first(),
-                            note = previous?.note.orEmpty(), expenseTime = previous?.expenseTime.orEmpty(),
-                            timeFormJson = previous?.timeFormJson,
-                            fundingJson = previous?.fundingJson ?: "[]",
-                            categoryChoice = previous?.categoryChoice,
-                        ),
+                    val previous = ctx.drafts.read(task.clientRef) ?: RecurringPaymentDraft(
+                        clientRef = task.clientRef, currencyCode = code, merchant = task.merchant,
+                        category = DEFAULT_EXPENSE_CATEGORIES.first(), note = "", expenseTime = "",
                     )
+                    ctx.drafts.write(previous.copy(currencyCode = code,
+                        amountText = previous.amountText ?: formatMinorAmountInput(
+                            task.suggestedAmountMinor, CurrencyCode.fromStorageKeyOrNull(code) ?: CurrencyCode.CNY,
+                        ),
+                    ))
                 },
                 onDismiss = ctx.exit.onBack,
             )

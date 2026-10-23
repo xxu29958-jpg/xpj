@@ -25,7 +25,7 @@ from app.services.learning_service._duplicate_scoring import (
 from tests._infra.identity import seeded_owner_account_id
 
 
-def _seed_confirmed(category: str, *, merchant: str = "麦当劳") -> int:
+def _seed_confirmed(category: str, *, merchant: str = "麦当劳", explicit_category: bool = False) -> int:
     now = datetime.now(UTC)
     with SessionLocal() as db:
         resolve_write_capability(db)
@@ -42,6 +42,11 @@ def _seed_confirmed(category: str, *, merchant: str = "麦当劳") -> int:
         )
         refresh_legacy_expense_time(db, expense)
         db.add(expense)
+        db.flush()
+        if explicit_category:
+            from app.services.pending_suggestion_service import record_category_choice
+            record_category_choice(db, expense=expense, previous_category="其他", previous_merchant=merchant,
+                actor_account_id=seeded_owner_account_id(), choice="manual")
         db.commit()
         return expense.id
 
@@ -183,7 +188,7 @@ def test_legacy_rows_with_null_signal_hash_no_longer_counted(
     backfill makes the fallback unnecessary."""
 
     for _ in range(4):
-        _seed_confirmed("餐饮", merchant="legacy_path")
+        _seed_confirmed("餐饮", merchant="legacy_path", explicit_category=True)
 
     with SessionLocal() as db:
         for _ in range(2):
@@ -222,7 +227,7 @@ def test_backfilled_marker_without_source_context_stays_reviewable(
     columns explicitly (matches what the migration does)."""
 
     for _ in range(4):
-        _seed_confirmed("餐饮", merchant="backfilled_path")
+        _seed_confirmed("餐饮", merchant="backfilled_path", explicit_category=True)
 
     marker = build_feedback_marker(
         CATEGORY_SUGGESTION.decision_type, {"category": "餐饮"}

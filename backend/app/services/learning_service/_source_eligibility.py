@@ -121,7 +121,7 @@ def _event_qualification(event: LedgerLearningEvent, latest_ids: set[int] | None
     return None
 
 
-def _choice_qualification(event: LedgerLearningEvent, payload: dict):
+def _choice_qualification(event: LedgerLearningEvent, payload: dict) -> tuple[str, str, dict] | None:
     if event.signal_type == "category_suggestion" and (
             payload.get("_category_intent") == "one_off"
             or (event.event_type == "manual_override" and payload.get("_category_intent") != "manual")):

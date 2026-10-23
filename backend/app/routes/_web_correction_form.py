@@ -126,6 +126,8 @@ def web_correction_idempotency_body(form: CorrectionFormData) -> dict[str, objec
     submitted.pop("draft_client_ref")
     if submitted["time_fields"] is None:
         submitted.pop("time_fields")
+    if submitted["category_choice"] is None:
+        submitted.pop("category_choice")
     return {"web_form": submitted}
 
 
