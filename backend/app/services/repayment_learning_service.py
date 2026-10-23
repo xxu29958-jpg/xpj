@@ -74,7 +74,7 @@ def _show_memory(db: Session, draft: RepaymentDraft, target: str, cases: list[Le
     key = hashlib.sha256(json.dumps([draft.public_id, draft.created_by_account_id, target,
         sorted(row.public_id for row in cases)]).encode()).hexdigest()
     for previous in memory.decisions.get(draft.id, []):
-        if json.loads(previous.output_payload).get("memory_key") == key:
+        if json.loads(previous.output_payload).get("memory_key") == key and previous.status != "superseded":
             return previous.status == "active"
     if not memory.enabled:
         return False
@@ -88,7 +88,38 @@ def _show_memory(db: Session, draft: RepaymentDraft, target: str, cases: list[Le
     return True
 
 
+def _current_decisions(db: Session, draft: RepaymentDraft) -> list[AlgorithmDecision] | None:
+    # All consumers serialize check/create on the existing source row. The second
+    # reader must refresh decisions after the first commits, not use its old list.
+    current = db.scalar(select(RepaymentDraft.id).where(RepaymentDraft.id == draft.id,
+        RepaymentDraft.tenant_id == draft.tenant_id, RepaymentDraft.created_by_account_id == draft.created_by_account_id,
+        RepaymentDraft.status == "pending").with_for_update())
+    if current is None:
+        return None
+    return list(db.scalars(select(AlgorithmDecision).where(AlgorithmDecision.tenant_id == draft.tenant_id,
+        AlgorithmDecision.subject_kind == "repayment_draft", AlgorithmDecision.subject_id == draft.id,
+        AlgorithmDecision.decision_type == REPAYMENT_CHOICE.decision_type,
+        AlgorithmDecision.algorithm_version == REPAYMENT_CHOICE.current_version)
+        .order_by(AlgorithmDecision.id.desc()).execution_options(populate_existing=True)))
+
+
+def _retire_changed_decisions(decisions: list[AlgorithmDecision], targets: set[str], cases: list[LedgerLearningEvent]) -> None:
+    case_ids = sorted(row.public_id for row in cases)
+    for decision in decisions:
+        payload = json.loads(decision.output_payload)
+        if decision.status == "active" and (len(targets) != 1 or
+                payload.get("target_debt_public_id") not in targets or payload.get("case_public_ids") != case_ids):
+            decision.status = "superseded"
+            decision.retention_days = REPAYMENT_CHOICE.retention_for_status("superseded")
+
+
 def recalled_repayment_target(db: Session, *, draft: RepaymentDraft, feasible_ids: set[str], memory: RepaymentMemory) -> str | None:
+    if not memory.cases and not memory.decisions.get(draft.id):
+        return None
+    decisions = _current_decisions(db, draft)
+    if decisions is None:
+        return None
+    memory.decisions[draft.id] = decisions
     cases = []
     for event in memory.cases:
         source = _event_payload(event).get("_repayment_source", {})
@@ -97,6 +128,7 @@ def recalled_repayment_target(db: Session, *, draft: RepaymentDraft, feasible_id
                 and source.get("committed_debt_public_id") in feasible_ids):
             cases.append(event)
     targets = {_event_payload(row)["_repayment_source"]["committed_debt_public_id"] for row in cases}
+    _retire_changed_decisions(decisions, targets, cases)
     if len(targets) != 1:
         return None
     target = targets.pop()

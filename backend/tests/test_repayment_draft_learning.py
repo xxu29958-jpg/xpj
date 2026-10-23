@@ -298,6 +298,8 @@ def test_owner_repayment_axes_preserve_facts_and_withdrawal_survives_cleanup(loc
         tombstone = db.query(LedgerLearningEvent).filter_by(event_type="withdraw").one()
         assert tombstone.actor_account_id is None and tombstone.retention_days == 0
     assert _suggestion(client, identity, second["public_id"]) is None
+    with SessionLocal() as db:
+        assert db.query(AlgorithmDecision).filter_by(decision_type="repayment_choice", status="active").count() == 0
     assert client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json() == facts
 
 
@@ -326,7 +328,7 @@ def test_repayment_training_quarantine_and_replay_do_not_change_financial_result
     assert _suggestion(client, identity, pending["public_id"]) == debt["public_id"], "ordinary balance changes do not invalidate target identity"
 
 
-@pytest.mark.parametrize("changed", ["source", "target", "version"])
+@pytest.mark.parametrize("changed", ["source", "target", "version", "deterministic"])
 def test_repayment_memory_rechecks_both_sides_and_algorithm_version(client, identity, changed):
     debt = _create_external_debt(client, identity, counterparty_label="卡A")
     prior = _create_draft(client, identity, merchant_label=_NO_MATCH_LABEL, notification_key="changed-prior")
@@ -338,11 +340,15 @@ def test_repayment_memory_rechecks_both_sides_and_algorithm_version(client, iden
             db.query(RepaymentDraft).filter_by(public_id=prior["public_id"]).one().merchant_label = "其它原件"
         elif changed == "target":
             db.query(Debt).filter_by(public_id=debt["public_id"]).one().counterparty_label = "改判后的主体"
+        elif changed == "deterministic":
+            db.query(RepaymentDraft).filter_by(public_id=pending["public_id"]).one().merchant_label = "卡A"
         else:
             event = db.query(LedgerLearningEvent).filter_by(signal_type="repayment_choice").one()
             event.after_payload = json.dumps({**json.loads(event.after_payload), "_algorithm_version": "future-version"})
         db.commit()
-    assert _suggestion(client, identity, pending["public_id"]) is None
+    assert _suggestion(client, identity, pending["public_id"]) == (debt["public_id"] if changed == "deterministic" else None)
+    with SessionLocal() as db:
+        assert db.query(AlgorithmDecision).filter_by(decision_type="repayment_choice", status="active").count() == 0
 
 
 @pytest.mark.parametrize("action,expected", [("explicit", "accepted"), ("default", "dismissed"), ("dismiss", "dismissed")])
@@ -367,6 +373,38 @@ def test_finishing_repayment_closes_shown_advice_without_inventing_acceptance(cl
         assert len(events) == (2 if action == "explicit" else 1)
         if action == "explicit":
             assert events[-1].decision_id == decision.id
+
+
+@pytest.mark.real_db
+def test_simultaneous_consumers_persist_one_repayment_suggestion(client, identity):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from app.services.repayment_learning_service import load_repayment_memory, recalled_repayment_target
+
+    debt = _create_external_debt(client, identity, counterparty_label="卡A")
+    prior = _create_draft(client, identity, merchant_label=_NO_MATCH_LABEL, notification_key="concurrent-prior")
+    _confirm(client, identity, prior["public_id"], debt)
+    with SessionLocal() as db:
+        actor = db.query(RepaymentDraft).filter_by(public_id=prior["public_id"]).one().created_by_account_id
+    pending = _create_draft(client, identity, merchant_label=_NO_MATCH_LABEL, notification_key="concurrent-next")["public_id"]
+    both_read = Barrier(2)
+
+    def read_and_commit():
+        with SessionLocal() as db:
+            draft = db.query(RepaymentDraft).filter_by(tenant_id="owner", public_id=pending).one()
+            memory = load_repayment_memory(db, tenant_id="owner", actor_account_id=actor, drafts=[draft])
+            both_read.wait(timeout=10)
+            chosen = recalled_repayment_target(db, draft=draft, feasible_ids={debt["public_id"]}, memory=memory)
+            db.commit()
+            return chosen
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(read_and_commit) for _ in range(2)]
+        assert [future.result(timeout=15) for future in futures] == [debt["public_id"]] * 2
+    with SessionLocal() as db:
+        decisions = db.query(AlgorithmDecision).filter_by(decision_type="repayment_choice", status="active").all()
+        assert len(decisions) == 1
 
 
 @pytest.mark.parametrize("removed", [False, True])

@@ -166,7 +166,6 @@ def suggest_debt_for_draft(db: Session, *, draft: RepaymentDraft,
     """Current label and feasibility rules precede explicitly qualified personal cases."""
     confident = suggest_debt_public_id(amount_cents=draft.amount_cents,
         merchant_label=draft.merchant_label, candidates=candidates)
-    if confident is not None:
-        return confident
     feasible_ids = {candidate.public_id for candidate in candidates if draft.amount_cents <= candidate.remaining_amount_cents}
-    return recalled_repayment_target(db, draft=draft, feasible_ids=feasible_ids, memory=memory)
+    learned = recalled_repayment_target(db, draft=draft, feasible_ids=feasible_ids if confident is None else set(), memory=memory)
+    return confident if confident is not None else learned

@@ -73,6 +73,24 @@ class RepaymentReviewRoomTest {
     }
     @After fun close() = fixture.close()
 
+    @Test fun defaultTargetStaysNonExplicitThroughReapplicationAndLostReply() = runBlocking {
+        val graph = fixture.reopen()
+        val binding = requireNotNull(graph.reportsRepository.dashboardAccess()).binding
+        graph.repaymentReviewRepository.open(binding, capture.toDomain(), debt(binding)).getOrThrow()
+        graph.repaymentReviewRepository.edit(binding, capture.publicId,
+            RepaymentReviewChange.TargetDebt(debt(binding), explicitlySelected = false)).getOrThrow()
+        graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Money("CNY", "90.00")).getOrThrow()
+        assertEquals(false, graph.repaymentReviewRepository.observe(binding, capture.publicId).first().input?.targetChoiceExplicit)
+        graph.repaymentReviewRepository.submit(binding, capture.toDomain(), false).getOrThrow()
+        drain()
+        assertEquals(false, confirmCalls.single().second.targetChoiceExplicit)
+        fixture.reopen()
+        loseReply = false
+        drain()
+        assertEquals(2, confirmCalls.size)
+        assertEquals(confirmCalls[0], confirmCalls[1])
+    }
+
     @Test fun rawInputAndOriginalReceiptSurviveReopenAndQueryCleanup() = runBlocking {
         expectedReviewDate = "2026-08-31"
         var graph = fixture.reopen()
@@ -80,6 +98,8 @@ class RepaymentReviewRoomTest {
         graph.repaymentReviewRepository.open(binding, capture.toDomain(), debt(binding)).getOrThrow()
         assertEquals(false, graph.repaymentReviewRepository.observe(binding, capture.publicId).first().input?.targetChoiceExplicit)
         graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.TargetDebt(debt(binding))).getOrThrow()
+        graph.repaymentReviewRepository.edit(binding, capture.publicId,
+            RepaymentReviewChange.TargetDebt(debt(binding), explicitlySelected = false)).getOrThrow()
         graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Money("CNY", " 90.")).getOrThrow()
         graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Date("2026-08-31")).getOrThrow()
         val raw = graph.repaymentReviewRepository.observe(binding, capture.publicId).first()

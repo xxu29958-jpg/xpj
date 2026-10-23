@@ -342,6 +342,7 @@ class RepaymentDraftInboxViewModelTest {
         advanceUntilIdle()
 
         val call = draftsRepo.confirmCalls.single()
+        assertEquals(false, draftsRepo.targetEdits.single().explicitlySelected)
         assertEquals(adjustmentBinding(), draftsRepo.confirmBindings.single())
         assertEquals("d1", call.draftPublicId)
         assertEquals("debt-9", call.targetDebtPublicId)
@@ -652,6 +653,7 @@ private class FakeRepaymentDraftActions(
         Result.success(ReadSnapshot(emptyList<com.ticketbox.data.remote.dto.PaymentCaptureDto>(), "2026-10-18T00:00:00Z", false))
     var listCalls = 0
     val confirmCalls = mutableListOf<ConfirmCall>()
+    val targetEdits = mutableListOf<com.ticketbox.data.repository.RepaymentReviewChange.TargetDebt>()
     val confirmBindings = mutableListOf<com.ticketbox.data.repository.LogicalSessionBinding>()
     val dismissCalls = mutableListOf<String>()
 
@@ -680,7 +682,10 @@ private class FakeRepaymentDraftActions(
         override suspend fun open(binding: com.ticketbox.data.repository.LogicalSessionBinding, draft: RepaymentDraft, suggested: Debt?) = Result.success(Unit)
         override suspend fun edit(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String,
             change: com.ticketbox.data.repository.RepaymentReviewChange): Result<Unit> {
-            if (change is com.ticketbox.data.repository.RepaymentReviewChange.TargetDebt) selected[draftId] = change.debt
+            if (change is com.ticketbox.data.repository.RepaymentReviewChange.TargetDebt) {
+                selected[draftId] = change.debt
+                targetEdits += change
+            }
             return Result.success(Unit)
         }
         override suspend fun submit(binding: com.ticketbox.data.repository.LogicalSessionBinding, draft: RepaymentDraft, dismiss: Boolean): Result<Long> {
