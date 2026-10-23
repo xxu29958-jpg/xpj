@@ -35,6 +35,7 @@ def _make_confirmed(
     *,
     amount_cents: int = 1000,
     days_ago: int = 1,
+    explicit: bool = True,
 ) -> int:
     confirmed_at = datetime.now(UTC) - timedelta(days=days_ago)
     with SessionLocal() as db:
@@ -51,8 +52,40 @@ def _make_confirmed(
         )
         refresh_legacy_expense_time(db, expense)
         db.add(expense)
+        db.flush()
+        if explicit:
+            from app.services.pending_suggestion_service import record_category_choice
+
+            record_category_choice(db, expense=expense, previous_category=expense.category,
+                previous_merchant=expense.merchant, actor_account_id=seeded_owner_account_id(), choice="manual")
         db.commit()
         return expense.id
+
+
+@pytest.mark.parametrize("history", ["untouched_default", "other_member", "one_off", "same_original"])
+def test_personal_category_does_not_learn_unrelated_or_repeated_votes(history: str, *, identity) -> None:
+    from app.services.pending_suggestion_service import record_category_choice
+
+    ids = [_make_confirmed("owner", "混合用途商店", "购物", explicit=False) for _ in range(3)]
+    with SessionLocal() as db:
+        actor = seeded_owner_account_id()
+        if history == "other_member":
+            other = Account(display_name="另一位记账人")
+            db.add(other)
+            db.flush()
+            db.add(LedgerMember(ledger_id="owner", account_id=other.id, role="member"))
+            actor = other.id
+        for expense_id in ids:
+            expense = db.get(Expense, expense_id)
+            if history == "same_original":
+                expense.image_hash = "same-payment-original"
+            if history != "untouched_default":
+                record_category_choice(db, expense=expense, previous_category=expense.category,
+                    previous_merchant=expense.merchant, actor_account_id=actor,
+                    choice="one_off" if history == "one_off" else "manual")
+        db.commit()
+        assert compute_category_suggestion(db, tenant_id="owner", merchant="混合用途商店",
+            actor_account_id=seeded_owner_account_id()) is None
 
 
 @pytest.mark.parametrize("legacy_confirmation", [False, True])
@@ -75,7 +108,7 @@ def test_suggests_majority_category_for_merchant(legacy_confirmation: bool, *, i
         assert result.category == "餐饮"
         assert result.sample_size == 4
         assert result.score == 0.75
-        assert result.algorithm_version == "category-history-v2"
+        assert result.algorithm_version == "category-history-v3"
 
 
 def test_no_suggestion_when_under_sample_threshold(*, identity) -> None:
@@ -171,6 +204,12 @@ def test_suppressed_when_recently_rejected(*, identity) -> None:
         db.flush()
         db.add(LedgerMember(ledger_id="owner", account_id=other.id, role="member"))
         db.flush()
+        from app.services.pending_suggestion_service import record_category_choice
+
+        for expense_id in expense_ids:
+            expense = db.get(Expense, expense_id)
+            record_category_choice(db, expense=expense, previous_category=expense.category,
+                previous_merchant=expense.merchant, actor_account_id=other.id, choice="manual")
         other_view = compute_category_suggestion(db, tenant_id="owner", merchant="Costa", actor_account_id=other.id)
         assert other_view is not None and other_view.category == "餐饮"
 

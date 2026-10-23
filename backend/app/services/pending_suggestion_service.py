@@ -94,14 +94,18 @@ def record_category_choice(db: Session, *, expense: Expense, previous_category: 
             recorded = record_pending_suggestion_event(db, tenant_id=expense.tenant_id, expense_id=expense.id,
                 decision_public_id=decision.public_id, actor_account_id=actor_account_id,
                 event_type="accept" if payload.get("category") == expense.category else "reject",
-                source_category_before=previous_category, source_was_edited=True)
+                source_category_before=previous_category, source_was_edited=True, category_intent=choice)
             if recorded:
                 return
     if choice != "suggestion":
-        _record_manual_category_choice(db, expense=expense, previous_category=previous_category, actor_account_id=actor_account_id)
+        _record_manual_category_choice(db, expense=expense, previous_category=previous_category,
+            actor_account_id=actor_account_id, category_intent=choice)
 
 
-def _record_manual_category_choice(db: Session, *, expense: Expense, previous_category: str | None, actor_account_id: int) -> None:
+def _record_manual_category_choice(db: Session, *, expense: Expense, previous_category: str | None,
+        actor_account_id: int, category_intent: str | None) -> None:
+    from app.services.learning_service._category_context import category_contexts
+
     previous = db.scalar(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == expense.tenant_id,
         LedgerLearningEvent.subject_kind == "expense", LedgerLearningEvent.subject_id == expense.id,
         LedgerLearningEvent.actor_account_id == actor_account_id,
@@ -109,12 +113,22 @@ def _record_manual_category_choice(db: Session, *, expense: Expense, previous_ca
     record_event(db, EventDraft(tenant_id=expense.tenant_id, decision_id=None,
         event_type="manual_override", subject_kind="expense", subject_id=expense.id, actor_account_id=actor_account_id,
         before_payload={"category": previous_category}, after_payload={"category": expense.category,
-            "_algorithm_version": "manual-choice-v1",
+            "_algorithm_version": "manual-choice-v2", "_category_intent": category_intent,
+            "_category_context": category_contexts(db, tenant_id=expense.tenant_id, expenses=[expense])[expense.id],
             "_selected_category": expense.category, "_action_outcome": "committed",
             "_feedback_revision": int(_loads(previous.after_payload).get("_feedback_revision", 1)) + 1 if previous else 1,
             "_supersedes_event_public_id": previous.public_id if previous else None},
         signal_type=CATEGORY_SUGGESTION.decision_type,
         signal_marker=build_feedback_marker(CATEGORY_SUGGESTION.decision_type, {"category": expense.category})))
+
+
+def _category_feedback_context(db, *, expense, category_intent, source_was_edited):
+    from app.services.learning_service._category_context import category_contexts
+
+    return {
+        "_category_intent": category_intent or ("suggestion" if not source_was_edited else None),
+        "_category_context": category_contexts(db, tenant_id=expense.tenant_id, expenses=[expense])[expense.id],
+    }
 
 
 def record_pending_suggestion_event(
@@ -128,6 +142,7 @@ def record_pending_suggestion_event(
     source_category_before: str | None = None,
     source_was_edited: bool = False,
     operation_key: str | None = None,
+    category_intent: str | None = None,
 ) -> bool:
     if event_type not in {"accept", "reject"}:
         raise ValueError("unsupported pending suggestion event")
@@ -163,6 +178,9 @@ def record_pending_suggestion_event(
         "_supersedes_event_public_id": previous.public_id if previous else None}
     if source_was_edited:
         feedback["_selected_category"] = expense.category
+    if decision.decision_type == CATEGORY_SUGGESTION.decision_type:
+        feedback.update(_category_feedback_context(db, expense=expense,
+            category_intent=category_intent, source_was_edited=source_was_edited))
     if decision.decision_type == DUPLICATE_CANDIDATE.decision_type:
         feedback["_relation"] = "same" if event_type == "accept" else "distinct"
         feedback["_resolution"] = "no_financial_action"

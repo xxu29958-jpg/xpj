@@ -90,6 +90,7 @@ def web_correction_context(
     ctx["correction_mode"] = True
     ctx["error"] = error
     ctx["reason_input"] = (form_values or {}).get("reason", "")
+    ctx["category_choice"] = (form_values or {}).get("category_choice", "")
     _retain_form_identity(ctx, db, request, form_values)
     ctx["frozen_scalars"] = (
         (*_SPLIT_RECEIVED_FROZEN_FIELDS, "original_currency") if ctx["expense"]["is_split_received"] else ()

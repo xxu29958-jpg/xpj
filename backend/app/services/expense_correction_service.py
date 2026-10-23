@@ -392,9 +392,6 @@ def _apply_correction_sections(
             tenant_id=tenant_id,
             payload=scalar_payload,
         )
-        if scalar_payload.category is not None:
-            record_category_choice(db, expense=expense, previous_category=category_before,
-                previous_merchant=merchant_before, actor_account_id=actor_account_id)
     if payload.items is not None:
         apply_expense_items_to_claimed_row(
             db,
@@ -419,6 +416,10 @@ def _apply_correction_sections(
     if expense.amount_cents != amount_before or payload.splits is not None:
         validate_current_expense_split_allocation(db, expense=expense)
     apply_funding_correction(db, expense=expense, before_money=before_money, payload=payload, actor_account_id=actor_account_id)
+    if payload.category is not None:
+        record_category_choice(db, expense=expense, previous_category=category_before,
+            previous_merchant=merchant_before, actor_account_id=actor_account_id,
+            choice=payload.category_choice, decision_public_id=payload.category_decision_public_id)
     expense.updated_at = now
 
 

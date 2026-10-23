@@ -1,37 +1,19 @@
-"""v1.2 P1 — category self-learning suggestions.
+"""Personal category advice from explicit, independent examples.
 
-Read-only service that mines confirmed expenses for the user's
-historical merchant→category mapping and turns it into a suggestion.
-The suggestion is recorded in ``algorithm_decisions`` (via
-:func:`learning_service.record_decision`) and surfaced in the pending
-review UI — it never auto-mutates the expense row.
-
-Algorithm v2 (``algorithm_version='category-history-v2'``):
-
-* Find confirmed expenses in the same tenant with the same merchant
-  (case-insensitive exact match after stripping). Limit to the last
-  ``look_back_days`` to keep the recency horizon explicit.
-* Aggregate by category. If the top category has at least
-  ``min_samples`` confirmed expenses, that's the candidate. ``score``
-  is the ratio top_count / total within the lookback window.
-* Down-weight: if the user has rejected this exact (merchant,
-  category) suggestion ``reject_threshold`` times or more in the past
-  ``feedback_horizon_days``, the suggestion is suppressed entirely.
-  This is where the "反馈带来个性化" loop closes.
-
-Returns ``None`` whenever there's no defensible suggestion (no
-merchant, not enough samples, suppressed by feedback). Callers should
-treat that as "no AI hint this time" — the rule-based ``classify_expense``
-remains the existing autoclassification path.
+V3 limits recall to the same member, ledger, merchant and recorded purpose
+within 180 days. Defaults, accepted advice and single-use choices do not vote.
+Current taxonomy, source edits, reversal, withdrawal and version isolation
+remain authoritative. Each transaction contributes at most once; ties and
+insufficient support yield no advice. Context-matched independent rejections
+can suppress a candidate. Neither this reader nor its advice changes facts.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, LedgerLearningEvent
@@ -39,8 +21,9 @@ from app.services.learning_service._algorithm_registry import (
     CATEGORY_SUGGESTION,
     canonical_marker_hash,
 )
+from app.services.learning_service._category_memory import independent_category_rejects, personal_category_counts
 from app.services.learning_service._policy import policy_enabled
-from app.services.learning_service._source_eligibility import effective_expense_predicate, eligible_feedback
+from app.services.learning_service._source_eligibility import eligible_feedback
 from app.services.ledger_calendar_service import current_calendar
 from app.services.time_service import now_utc, strict_zone
 
@@ -81,6 +64,7 @@ def _count_recent_rejects(
     merchant: str,
     category: str,
     horizon_days: int, actor_account_id: int | None = None,
+    expense_id: int | None = None,
 ) -> int:
     """Count user rejects of (merchant, category) in the recent past.
 
@@ -103,15 +87,18 @@ def _count_recent_rejects(
         .where(LedgerLearningEvent.subject_id.is_not(None))
         .where(LedgerLearningEvent.event_type.in_(("reject", "edit")))
         .where(LedgerLearningEvent.created_at >= cutoff)
+        .where(LedgerLearningEvent.created_at <= now_utc())
+        .where(LedgerLearningEvent.actor_account_id == actor_account_id)
         .where(
             LedgerLearningEvent.signal_type
             == CATEGORY_SUGGESTION.decision_type
         )
         .where(LedgerLearningEvent.signal_hash == indexed_hash)
         .where(func.lower(func.trim(Expense.merchant)) == merchant)
+        .order_by(LedgerLearningEvent.id.desc()).limit(200)
     ))
-    return len({event.subject_id for event in eligible_feedback(db, tenant_id=tenant_id,
-        events=events, actor_account_id=actor_account_id)})
+    valid = eligible_feedback(db, tenant_id=tenant_id, events=events, actor_account_id=actor_account_id)
+    return independent_category_rejects(db, tenant_id=tenant_id, events=valid, expense_id=expense_id)
 
 
 def compute_category_suggestion(
@@ -128,13 +115,12 @@ def compute_category_suggestion(
 ) -> CategorySuggestion | None:
     """Return the historically-most-frequent category for ``merchant``.
 
-    The ``expense_id`` argument is purely for excluding self-matches
-    (an in-flight pending expense shouldn't vote for its own category
-    if the row is somehow already in the confirmed bucket).
+    ``expense_id`` excludes self-matches and supplies the proposed expense's
+    purpose, items, currency and accounts for scoped recall.
     """
 
     normalised = _normalised_merchant(merchant)
-    if not normalised or not policy_enabled(db, tenant_id=tenant_id, decision_type=CATEGORY_SUGGESTION.decision_type,
+    if not normalised or actor_account_id is None or not policy_enabled(db, tenant_id=tenant_id, decision_type=CATEGORY_SUGGESTION.decision_type,
             version=ALGORITHM_VERSION, axis="new_suggestions"):
         return None
 
@@ -142,25 +128,9 @@ def compute_category_suggestion(
     observed_at = now_utc()
     current_date = observed_at.astimezone(zone).date()
     cutoff = current_date - timedelta(days=max(look_back_days, 0))
-    conditions = [
-        Expense.tenant_id == tenant_id,
-        Expense.status == "confirmed",
-        effective_expense_predicate(),
-        Expense.accounting_date >= cutoff,
-        Expense.accounting_date <= current_date,
-        or_(Expense.confirmed_at.is_(None), Expense.confirmed_at <= observed_at),
-        func.lower(func.trim(Expense.merchant)) == normalised,
-    ]
-    if expense_id is not None:
-        conditions.append(Expense.id != expense_id)
-
-    rows: Iterable[tuple[str, int]] = db.execute(
-        select(Expense.category, func.count())
-        .where(and_(*conditions))
-        .group_by(Expense.category)
-        .order_by(func.count().desc())
-    ).all()
-    rows = list(rows)
+    rows = personal_category_counts(db, tenant_id=tenant_id, merchant=normalised,
+        actor_account_id=actor_account_id, expense_id=expense_id, cutoff=cutoff,
+        current_date=current_date, observed_at=observed_at)
     if not rows:
         return None
     total = sum(count for _, count in rows)
@@ -176,6 +146,7 @@ def compute_category_suggestion(
         merchant=normalised,
         category=top_category,
         horizon_days=feedback_horizon_days, actor_account_id=actor_account_id,
+        expense_id=expense_id,
     )
     if rejects >= max(reject_threshold, 1):
         return None

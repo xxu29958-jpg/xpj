@@ -12,19 +12,27 @@
     const phase = form?.dataset.expensereviewDraftPhase;
     if (!input || input.disabled || (phase && phase !== "editing")) return;
     put(form, "category", button.dataset.categorySuggestion);
-    put(form, "category_choice", "suggestion");
-    put(form, "category_decision_public_id", button.dataset.categoryDecision);
+    const oneOff = form.querySelector("[data-category-one-off]")?.checked;
+    put(form, "category_choice", oneOff ? "one_off" : "suggestion");
+    put(form, "category_decision_public_id", oneOff ? "" : button.dataset.categoryDecision);
     input.focus();
   });
   document.addEventListener("input", event => {
     if (event.target.name === "category" && event.isTrusted) {
-      put(event.target.form, "category_choice", "manual");
+      put(event.target.form, "category_choice", event.target.form?.querySelector("[data-category-one-off]")?.checked ? "one_off" : "manual");
       put(event.target.form, "category_decision_public_id", "");
     }
     if (event.target.name !== "merchant") return;
     event.target.form?.querySelectorAll("[data-learning-suggestion]").forEach(hint => {
       hint.hidden = event.target.value !== hint.dataset.categoryMerchant;
     });
+  });
+  document.addEventListener("change", event => {
+    if (!event.target.matches("[data-category-one-off]")) return;
+    const form = event.target.form;
+    if (!form || event.target.disabled || (form.dataset.expensereviewDraftPhase && form.dataset.expensereviewDraftPhase !== "editing")) return;
+    put(form, "category_choice", event.target.checked ? "one_off" : "manual");
+    put(form, "category_decision_public_id", "");
   });
   function continueAfterAcceptance(saved, receipt) {
         switch (saved.command_action) {
@@ -61,6 +69,10 @@
     let input = form.elements.namedItem(name);
     if (!input) { input = document.createElement("input"); input.type = "hidden"; input.name = name; form.append(input); }
     window.TicketboxWeb.putReviewField(input, value);
+    if (name === "category_choice") {
+      const oneOff = form.querySelector("[data-category-one-off]");
+      if (oneOff) oneOff.checked = value === "one_off";
+    }
     (typeof input.dispatchEvent === "function" ? input : input[0]).dispatchEvent(new Event("input"));
   }
   function restoreScoreAvailability(form, present, originalPhase) {
@@ -139,6 +151,8 @@
       read, href, present: () => {},
       restore(current, values, originalPhase) {
         const present = JSON.parse(values.present_fields);
+        const oneOff = current.querySelector("[data-category-one-off]");
+        if (oneOff) oneOff.checked = values.category_choice === "one_off";
         for (const name of ["category_choice", "category_decision_public_id", "duplicate_decision_public_id", "recognition_time_choice"]) {
           if (!present.includes(name)) current.elements.namedItem(name)?.remove();
         }

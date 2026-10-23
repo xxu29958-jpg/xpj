@@ -20,10 +20,11 @@ internal data class FactCorrectionInput(
     val itemDrafts: List<EditableItem>, val itemsTouched: Boolean,
     val splitDrafts: List<EditableSplit>, val splitsTouched: Boolean,
     val itemDraftsInitialized: Boolean, val splitDraftsInitialized: Boolean,
+    val categoryChoice: String? = null,
 ) {
     fun form(basis: Expense): CorrectionFormState = initialCorrectionFormState(basis,
         java.time.ZoneId.of(expenseTimeZoneId ?: "UTC")).copy(open = false, reason = reason, merchant = merchant,
-        category = category, tags = tags, note = note, amountText = amountText, currency = currency,
+        category = category, categoryChoice = categoryChoice, tags = tags, note = note, amountText = amountText, currency = currency,
         currencyTouched = currencyTouched, expenseTimeText = expenseTimeText, timeFormJson = timeFormJson,
         expenseTimeZoneId = expenseTimeZoneId, valueScore = valueScore, regretScore = regretScore,
         itemDrafts = itemDrafts, itemsTouched = itemsTouched, splitDrafts = splitDrafts, splitsTouched = splitsTouched,
@@ -32,7 +33,7 @@ internal data class FactCorrectionInput(
 
 internal fun CorrectionFormState.originalValues() = FactCorrectionInput(reason, merchant, category, tags, note,
     amountText, currency, currencyTouched, expenseTimeText, timeFormJson, expenseTimeZoneId, valueScore, regretScore,
-    itemDrafts, itemsTouched, splitDrafts, splitsTouched, itemDraftsInitialized, splitDraftsInitialized)
+    itemDrafts, itemsTouched, splitDrafts, splitsTouched, itemDraftsInitialized, splitDraftsInitialized, categoryChoice)
 
 @JsonClass(generateAdapter = true)
 internal data class ExpenseFactInputDraft(

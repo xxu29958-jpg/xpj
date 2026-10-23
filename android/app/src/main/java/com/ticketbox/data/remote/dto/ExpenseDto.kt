@@ -194,6 +194,8 @@ data class ExpenseManualCreateRequestDto(
     val spentAt: String? = null,
     val merchant: String?,
     val category: String?,
+    @param:Json(name = "category_choice")
+    val categoryChoice: String? = null,
     val note: String?,
     @param:Json(name = "expense_time")
     val expenseTime: String?,

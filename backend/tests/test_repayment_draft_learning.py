@@ -396,7 +396,10 @@ def test_finishing_repayment_closes_shown_advice_without_inventing_acceptance(cl
         events = list(db.query(LedgerLearningEvent).filter_by(signal_type="repayment_choice"))
         assert len(events) == (2 if action == "explicit" else 1)
         if action == "explicit":
-            assert events[-1].decision_id == decision.id
+            selected = [event for event in events if event.subject_kind == "repayment_draft"
+                and event.subject_id == decision.subject_id]
+            assert len(selected) == 1
+            assert selected[0].decision_id == decision.id
 
 
 @pytest.mark.real_db

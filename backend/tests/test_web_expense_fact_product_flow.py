@@ -56,6 +56,7 @@ def test_correction_blank_reason_keeps_draft_and_return_context(
             "ledger_id": "owner",
             "reason": "",
             "merchant": "想改但没写原因",
+            "category_choice": "one_off",
             "expected_row_version": _hidden_input(form.text, "expected_row_version"),
             "idempotency_key": _hidden_input(form.text, "idempotency_key"),
             "return_to": _hidden_input(form.text, "return_to"),
@@ -67,5 +68,6 @@ def test_correction_blank_reason_keeps_draft_and_return_context(
     assert response.status_code == 422
     assert "请说明这次更正的原因" in response.text
     assert "想改但没写原因" in response.text
+    assert _hidden_input(response.text, "category_choice") == "one_off"
     assert _hidden_input(response.text, "return_to") == "search"
     assert _hidden_input(response.text, "return_query") == "上下文咖啡"

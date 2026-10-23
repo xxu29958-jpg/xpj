@@ -110,6 +110,7 @@ private fun FactCorrectionHost(
             onReasonChange = { viewModel.updateCorrectionField(CorrectionScalarField.Reason, it) },
             onMerchantChange = { viewModel.updateCorrectionField(CorrectionScalarField.Merchant, it) },
             onCategoryChange = { viewModel.updateCorrectionField(CorrectionScalarField.Category, it) },
+            onCategoryChoiceChange = { viewModel.updateCorrectionField(CorrectionScalarField.CategoryChoice, it) },
             onTagsChange = { viewModel.updateCorrectionField(CorrectionScalarField.Tags, it) },
             onNoteChange = { viewModel.updateCorrectionField(CorrectionScalarField.Note, it) },
             onAmountChange = { viewModel.updateCorrectionField(CorrectionScalarField.Amount, it) },

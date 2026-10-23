@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.expense.correction
 
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.TextButton
@@ -51,6 +52,7 @@ internal data class ExpenseCorrectionSheetActions(
     val onReasonChange: (String) -> Unit,
     val onMerchantChange: (String) -> Unit,
     val onCategoryChange: (String) -> Unit,
+    val onCategoryChoiceChange: (String) -> Unit = {},
     val onTagsChange: (String) -> Unit,
     val onNoteChange: (String) -> Unit,
     val onAmountChange: (String) -> Unit,
@@ -252,6 +254,16 @@ private fun CorrectionScalarSection(
         onCategoryChange = actions.onCategoryChange,
         enabled = !form.saving,
     )
+    androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text(stringResource(R.string.category_single_use), modifier = Modifier.weight(1f))
+        com.ticketbox.ui.components.AppSwitch(
+            checked = form.categoryChoice == "one_off",
+            onCheckedChange = { actions.onCategoryChoiceChange(if (it) "one_off" else "manual") },
+            enabled = !form.saving,
+            contentDescription = stringResource(R.string.category_single_use),
+            modifier = Modifier.testTag("correction-category-single-use"),
+        )
+    }
     AppTextInput(
         state = AppTextInputState(
             label = stringResource(R.string.expense_correction_tags_label),

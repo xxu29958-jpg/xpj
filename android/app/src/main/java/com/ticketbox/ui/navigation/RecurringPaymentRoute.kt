@@ -161,6 +161,7 @@ internal data class RecurringPaymentEntryContext(
             expenseTime = stored?.expenseTime?.takeIf { it.isNotBlank() },
             timeFormJson = stored?.timeFormJson,
             fundingJson = stored?.fundingJson ?: "[]",
+            categoryChoice = stored?.categoryChoice,
         ),
     )
 }
@@ -298,20 +299,15 @@ private fun RecurringPaymentEntry(ctx: RecurringPaymentEntryContext, draftState:
             PeriodPaymentCurrencyChoice(
                 onChoose = { code ->
                     chosenCurrency = code
-                    val previous = ctx.drafts.read(task.clientRef)
-                    ctx.drafts.write(
-                        RecurringPaymentDraft(
-                            clientRef = task.clientRef,
-                            amountText = previous?.amountText ?: formatMinorAmountInput(
-                                task.suggestedAmountMinor, CurrencyCode.fromStorageKeyOrNull(code) ?: CurrencyCode.CNY,
-                            ),
-                            currencyCode = code, merchant = previous?.merchant ?: task.merchant,
-                            category = previous?.category ?: DEFAULT_EXPENSE_CATEGORIES.first(),
-                            note = previous?.note.orEmpty(), expenseTime = previous?.expenseTime.orEmpty(),
-                            timeFormJson = previous?.timeFormJson,
-                            fundingJson = previous?.fundingJson ?: "[]",
-                        ),
+                    val previous = ctx.drafts.read(task.clientRef) ?: RecurringPaymentDraft(
+                        clientRef = task.clientRef, currencyCode = code, merchant = task.merchant,
+                        category = DEFAULT_EXPENSE_CATEGORIES.first(), note = "", expenseTime = "",
                     )
+                    ctx.drafts.write(previous.copy(currencyCode = code,
+                        amountText = previous.amountText ?: formatMinorAmountInput(
+                            task.suggestedAmountMinor, CurrencyCode.fromStorageKeyOrNull(code) ?: CurrencyCode.CNY,
+                        ),
+                    ))
                 },
                 onDismiss = ctx.exit.onBack,
             )
@@ -365,7 +361,7 @@ private fun RecurringPaymentKnownCurrencySheet(
             ctx.drafts.write(
                 RecurringPaymentDraft(
                     ctx.task.clientRef, form.amountText, form.currency.storageKey,
-                    form.merchant, form.category, form.note, form.expenseTime, form.timeFormJson, form.fundingJson,
+                    form.merchant, form.category, form.note, form.expenseTime, form.timeFormJson, form.fundingJson, form.categoryChoice,
                 ),
             )
         },

@@ -190,6 +190,9 @@
   <datalist id="{{ _p }}-category-options">
     {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
   </datalist>
+  <label class="product-field">
+    <span><input type="checkbox" data-category-one-off {% if form_values and form_values.get('category_choice') == 'one_off' %}checked{% endif %} {% if not can_write %}disabled{% endif %}> 此分类只用于这笔</span>
+  </label>
   {% if form_values and form_values.get('category_choice') %}<input type="hidden" name="category_choice" value="{{ form_values.category_choice }}">{% endif %}
   {% if form_values and form_values.get('recognition_time_choice') %}<input type="hidden" name="recognition_time_choice" value="{{ form_values.recognition_time_choice }}">{% endif %}
   {% if form_values and form_values.get('category_decision_public_id') %}<input type="hidden" name="category_decision_public_id" value="{{ form_values.category_decision_public_id }}">{% endif %}

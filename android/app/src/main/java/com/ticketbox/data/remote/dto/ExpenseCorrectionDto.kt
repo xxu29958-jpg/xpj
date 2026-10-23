@@ -133,6 +133,8 @@ data class ExpenseCorrectionRequestDto(
     val originalAmountMinor: Long? = null,
     val merchant: String? = null,
     val category: String? = null,
+    @param:Json(name = "category_choice")
+    val categoryChoice: String? = null,
     val note: String? = null,
     @param:Json(name = "expense_time")
     val expenseTime: CorrectionOptionalString = CorrectionOptionalString.unchanged(),

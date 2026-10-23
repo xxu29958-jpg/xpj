@@ -96,6 +96,7 @@ class ExpenseManualCreateRequest(BaseModel):
     original_amount_minor: NonNegativeMoneyMinor | None = None
     merchant: str | None = Field(default=None, max_length=255)
     category: str | None = Field(default=None, max_length=64)
+    category_choice: Literal["manual", "one_off"] | None = None
     note: str | None = None
     expense_time: datetime | None = None
     tags: str | None = Field(default=None, max_length=500)
@@ -113,6 +114,12 @@ class ExpenseManualCreateRequest(BaseModel):
         return value
 
     _tags_fit_mirror = field_validator("tags")(validate_tags_fit_storage)
+
+    @model_validator(mode="after")
+    def explicit_category_requires_value(self):
+        if self.category_choice is not None and not (self.category or "").strip():
+            raise ValueError("explicit category choice requires a category")
+        return self
 
 
 class NotificationDraftCreateRequest(BaseModel):
@@ -158,6 +165,8 @@ class ExpenseFieldChanges(BaseModel):
     original_amount_minor: NonNegativeMoneyMinor | None = None
     merchant: str | None = Field(default=None, max_length=255)
     category: str | None = Field(default=None, max_length=64)
+    category_choice: Literal["manual", "suggestion", "one_off"] | None = None
+    category_decision_public_id: str | None = Field(default=None, min_length=1, max_length=36)
     note: str | None = None
     expense_time: datetime | None = None
     tags: str | None = Field(default=None, max_length=500)
@@ -166,16 +175,6 @@ class ExpenseFieldChanges(BaseModel):
 
     _tags_fit_mirror = field_validator("tags")(validate_tags_fit_storage)
 
-
-class ExpenseUpdateRequest(ExpenseFieldChanges):
-    recognition_time_choice: RecognitionTimeChoice | None = None
-    category_choice: Literal["manual", "suggestion"] | None = None
-    category_decision_public_id: str | None = Field(default=None, min_length=1, max_length=36)
-    manual_exchange_rate: NonNegativeCanonicalDecimalInput | None = Field(
-        default=None,
-        description="Pending bill only: one original-currency major unit in home-currency major units. Applies only to this bill.",
-    )
-
     @model_validator(mode="after")
     def explicit_category_requires_value(self):
         if self.category_choice is not None and not (self.category or "").strip():
@@ -183,6 +182,14 @@ class ExpenseUpdateRequest(ExpenseFieldChanges):
         if (self.category_choice == "suggestion") != (self.category_decision_public_id is not None):
             raise ValueError("suggestion choice requires its original decision")
         return self
+
+
+class ExpenseUpdateRequest(ExpenseFieldChanges):
+    recognition_time_choice: RecognitionTimeChoice | None = None
+    manual_exchange_rate: NonNegativeCanonicalDecimalInput | None = Field(
+        default=None,
+        description="Pending bill only: one original-currency major unit in home-currency major units. Applies only to this bill.",
+    )
 
 
 class ExpenseConfirmRequest(BaseModel):
