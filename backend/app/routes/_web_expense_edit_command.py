@@ -110,6 +110,8 @@ def expense_edit_form_values(form: WebExpenseEditForm) -> dict[str, str]:
         values["category_choice"] = form.category_choice
     if form.recognition_time_choice:
         values["recognition_time_choice"] = form.recognition_time_choice
+    if form.recognition_field_choices:
+        values["recognition_field_choices"] = form.recognition_field_choices
     if form.category_decision_public_id:
         values["category_decision_public_id"] = form.category_decision_public_id
     if form.duplicate_decision_public_id:
@@ -370,7 +372,10 @@ def _validated_update_request(
 
 
 def _explicit_choice_fields(form_values: dict[str, str], category: str) -> dict[str, object]:
+    from pydantic import TypeAdapter
+
     from app.schemas._recognition_choice import RecognitionTimeChoice
+    from app.schemas._recognition_fields import RecognitionFieldChoice
 
     fields = {}
     if form_values.get("category_choice"):
@@ -379,6 +384,8 @@ def _explicit_choice_fields(form_values: dict[str, str], category: str) -> dict[
         fields["category_decision_public_id"] = form_values["category_decision_public_id"]
     if form_values.get("recognition_time_choice"):
         fields["recognition_time_choice"] = RecognitionTimeChoice.model_validate_json(form_values["recognition_time_choice"])
+    if form_values.get("recognition_field_choices"):
+        fields["recognition_field_choices"] = TypeAdapter(list[RecognitionFieldChoice]).validate_json(form_values["recognition_field_choices"])
     return fields
 
 
@@ -409,6 +416,7 @@ def apply_web_expense_form(
             score_fields=form.score_fields, funding_json=form.funding_json,
             category_choice=form.category_choice, category_decision_public_id=form.category_decision_public_id,
             recognition_time_choice=form.recognition_time_choice,
+            recognition_field_choices=form.recognition_field_choices,
         )
         if payload is None:
             return prepared
@@ -477,6 +485,7 @@ def prepare_web_expense_form(
     category_choice: str | None = None,
     category_decision_public_id: str | None = None,
     recognition_time_choice: str | None = None,
+    recognition_field_choices: str | None = None,
 ) -> tuple[ExpenseUpdateRequest | None, WebExpenseSaveOutcome]:
     """Parse one browser snapshot without owning its write transaction."""
 
@@ -503,6 +512,8 @@ def prepare_web_expense_form(
         form_values["category_decision_public_id"] = category_decision_public_id
     if recognition_time_choice:
         form_values["recognition_time_choice"] = recognition_time_choice
+    if recognition_field_choices:
+        form_values["recognition_field_choices"] = recognition_field_choices
     try:
         expense = get_expense(db, expense_id, selected_ledger_id)
         time_input = None

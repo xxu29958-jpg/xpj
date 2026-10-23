@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import Expense, LedgerLearningEvent
+from app.models import AlgorithmDecision, Expense, LedgerLearningEvent
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
 from app.services.ocr_service import OcrResult
@@ -76,6 +76,9 @@ def test_choice_survives_replay_and_reorders_a_new_case_then_withdraws(client, i
         db.commit()
         cleanup_expired_learning_events(db, tenant_id="owner", now=now_utc() + timedelta(days=400))
     assert client.get(f"/api/expenses/{second}", headers=identity.app_headers).json()["recognition_time"] == original["recognition_time"]
+    with SessionLocal() as db:
+        assert db.query(AlgorithmDecision).filter_by(subject_id=second,
+            decision_type="recognition_time_choice", status="active").count() == 0
 
 
 @pytest.mark.parametrize("problem", ["foreign", "version", "stale", "accounting_date"])

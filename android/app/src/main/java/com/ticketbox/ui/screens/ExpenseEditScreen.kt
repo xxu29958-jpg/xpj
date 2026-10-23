@@ -47,6 +47,9 @@ import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.ui.design.appAdaptiveSupportingPaneWidth
 import com.ticketbox.ui.screens.expense.ExpenseFxStatusCard
 import com.ticketbox.ui.screens.expense.ExpenseEditFormValues
+import com.ticketbox.ui.screens.expense.RecognizedFieldCandidates
+import com.ticketbox.ui.screens.expense.readFieldChoices
+import com.ticketbox.ui.screens.expense.updateFieldChoice
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBar
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarActions
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarState
@@ -249,6 +252,7 @@ fun ExpenseEditScreen(
         mutableStateOf(initialFormValues.category)
     }
     var categoryChoice by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
+    var fieldChoicesJson by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
     var categoryDecisionPublicId by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
     var note by rememberSaveable(formIdentity) { mutableStateOf(initialFormValues.note) }
     val (timeForm, setTimeForm) = com.ticketbox.ui.screens.expense.rememberExpenseTimeForm(
@@ -306,7 +310,7 @@ fun ExpenseEditScreen(
     val foreignCurrency = currency.storageKey != homeCurrencyCode
     val formValues = ExpenseEditFormValues(
         currency, amountText, manualExchangeRateText, merchant, category, note, expenseTime, tags, valueScoreText, regretScoreText,
-        categoryChoice, categoryDecisionPublicId,
+        categoryChoice, categoryDecisionPublicId, fieldChoicesJson,
     )
     val fxIdentityChanged = formValues.changesFxIdentity(currentExpense)
     val manualExchangeRateVisible = manualExchangeRateEditorVisible(
@@ -402,6 +406,7 @@ fun ExpenseEditScreen(
             categoryChoice = categoryChoice,
             categoryDecisionPublicId = categoryDecisionPublicId,
             recognitionTimeChoice = timeForm.recognitionChoice,
+            recognitionFieldChoices = readFieldChoices(fieldChoicesJson).takeIf { it.isNotEmpty() },
             note = note,
             expenseTime = expenseTime.ifBlank { null },
             timeInput = time.input,
@@ -465,6 +470,19 @@ fun ExpenseEditScreen(
         categoryChoice = intent
         categoryDecisionPublicId = decisionId
     }
+    fun chooseOriginalField(candidate: com.ticketbox.domain.model.RecognitionFieldCandidate) {
+        if (candidate.field == "amount_cents") {
+            val code = CurrencyCode.fromStorageKeyOrNull(candidate.currencyCode) ?: return
+            val minor = candidate.value.toLongOrNull() ?: return
+            if (currency != code) {
+                manualExchangeRateText = ""
+                manualExchangeRateIsError = false
+            }
+            currency = code
+            amountText = com.ticketbox.ui.components.formatMinorAmountInput(minor, code)
+        } else merchant = candidate.value
+        fieldChoicesJson = updateFieldChoice(fieldChoicesJson, candidate.field, candidate.choice())
+    }
     val formSections: @Composable () -> Unit = {
         if (currentExpense.status == "pending") currentExpense.recognitionNotes.forEach { note ->
             androidx.compose.material3.Text(note, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
@@ -489,6 +507,7 @@ fun ExpenseEditScreen(
             ),
             actions = ExpenseEditAmountClusterActions(
                 onCurrencyChange = { code ->
+                    fieldChoicesJson = updateFieldChoice(fieldChoicesJson, "amount_cents")
                     if (currency != code) {
                         manualExchangeRateText = ""
                         manualExchangeRateIsError = false
@@ -496,7 +515,7 @@ fun ExpenseEditScreen(
                     currency = code
                     amountText = sanitizeMinorAmountInput(amountText, code)
                 },
-                onAmountChange = { amountText = it },
+                onAmountChange = { amountText = it; fieldChoicesJson = updateFieldChoice(fieldChoicesJson, "amount_cents") },
                 onAmountFocusChanged = { amountFocused = it },
                 onManualExchangeRateChange = {
                     manualExchangeRateText = it
@@ -512,7 +531,13 @@ fun ExpenseEditScreen(
             icon = R.drawable.ic_lucide_store,
             modifier = Modifier.testTag("expense-edit-merchant-row"),
         ) {
-            ExpenseEditMerchantField(merchant = merchant, onMerchantChange = { merchant = it }, enabled = !readOnly)
+            ExpenseEditMerchantField(merchant = merchant, onMerchantChange = {
+                merchant = it; fieldChoicesJson = updateFieldChoice(fieldChoicesJson, "merchant")
+            }, enabled = !readOnly)
+        }
+        if (isPendingExpense) RecognizedFieldCandidates(currentExpense.recognitionFields, !readOnly, ::chooseOriginalField) { candidate ->
+            fieldChoicesJson = updateFieldChoice(fieldChoicesJson, candidate.field,
+                candidate.choice().copy(intent = "original_correction"))
         }
         ExpenseEditCategorySelector(
             state = ExpenseEditCategorySelectorState(

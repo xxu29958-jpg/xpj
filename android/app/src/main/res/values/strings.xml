@@ -331,4 +331,7 @@
     <string name="category_rule_rollback_finished">本批次已处理完成</string>
     <string name="category_rule_rollback_verify">核实原回退</string>
     <string name="category_rule_rollback_original_pending">保留原批次与原说明。核实只读取或完成这一次回退，已处理项不会再次执行。</string>
+    <string name="recognition_fields_correction_help">若识别文字有误，先修改上方金额或商户，再指出原件中识别错的这一处。</string>
+    <string name="recognition_fields_correct_amount">已对照此处纠正金额</string>
+    <string name="recognition_fields_correct_merchant">已对照此处纠正商户</string>
 </resources>

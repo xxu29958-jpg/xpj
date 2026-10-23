@@ -126,7 +126,7 @@ def _choice_qualification(event: LedgerLearningEvent, payload: dict) -> tuple[st
             payload.get("_category_intent") == "one_off"
             or (event.event_type == "manual_override" and payload.get("_category_intent") != "manual")):
         return "needs_review", "保留单笔分类或未注明用途的历史修改；不当作个人偏好样本", {}
-    if event.signal_type == "recognition_time_choice" and not payload.get("_learning_qualified"):
+    if event.signal_type in {"recognition_time_choice", "recognition_field_choice"} and not payload.get("_learning_qualified"):
         return "needs_review", "保留原件纠正或记账意图；没有把普通修改当作候选选择标签", {}
     if event.signal_type == "duplicate_candidate" and (
             payload.get("_relation") not in {"same", "distinct"} or payload.get("_action_outcome") != "committed"):
@@ -149,6 +149,9 @@ def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, re
     if event.signal_type == "recognition_time_choice":
         required = ("expense_time", "image_hash", "time_precision", "source_timezone", "accounting_date",
             "source_utc_offset_seconds", "user_local_date")
+    if event.signal_type == "recognition_field_choice":
+        required = (("merchant", "image_hash") if payload.get("field") == "merchant" else
+            ("amount_cents", "original_currency_code", "original_amount_minor", "image_hash"))
     result = _source_qualification(expense, payload.get("_source_context"), tenant_id=event.tenant_id,
         reversed_ids=reversed_ids, required=required, deliberately_discarded=resolution == "keep_candidate")
     if result[0] != "valid" or event.signal_type != "duplicate_candidate":
@@ -168,12 +171,14 @@ def _latest_feedback_ids(db, *, tenant_id: str, events: list[LedgerLearningEvent
         return set()
     rows = db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == tenant_id,
         LedgerLearningEvent.subject_kind.in_(("expense", "repayment_draft")), LedgerLearningEvent.subject_id.in_(identifiers),
-        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice", "repayment_choice")),
+        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice", "recognition_field_choice", "repayment_choice")),
         LedgerLearningEvent.event_type.in_(("accept", "reject", "edit", "manual_override", "withdraw")),
         LedgerLearningEvent.created_at <= now_utc()).order_by(LedgerLearningEvent.id.desc()))
     current = {}
     for row in rows:
         pair = _event_payload(row).get("candidate_id") if row.signal_type == "duplicate_candidate" else None
+        if row.signal_type == "recognition_field_choice":
+            pair = _event_payload(row).get("field")
         current.setdefault((row.actor_account_id, row.subject_kind, row.subject_id, row.signal_type, pair), row.id)
     return set(current.values())
 
@@ -189,14 +194,14 @@ def eligible_feedback(db, *, tenant_id, events, actor_account_id):
 def _current_time_facts(db: Session, tenant_id: str, events: list[LedgerLearningEvent], sources: dict) -> dict:
     from app.services.learning_service import read_ocr_facts
 
-    image_subjects = {row.subject_id for row in events if row.signal_type == "recognition_time_choice"
+    image_subjects = {row.subject_id for row in events if row.signal_type in {"recognition_time_choice", "recognition_field_choice"}
         and _event_payload(row).get("source") == "image"}
     return read_ocr_facts(db, tenant_id=tenant_id,
         expenses=[row for key, row in sources.items() if key in image_subjects])
 
 
 def _image_choice_replaced(event: LedgerLearningEvent, payload: dict, facts: dict) -> bool:
-    if event.signal_type != "recognition_time_choice" or payload.get("source") != "image":
+    if event.signal_type not in {"recognition_time_choice", "recognition_field_choice"} or payload.get("source") != "image":
         return False
     fact = facts.get(event.subject_id)
     return fact is None or fact.public_id != payload.get("evidence_public_id")
@@ -264,6 +269,6 @@ def feedback_impact_preview(db, *, tenant_id):
     # sees counts; original individual feedback stays in its existing history.
     events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == tenant_id,
         LedgerLearningEvent.subject_kind.in_(("expense", "repayment_draft")),
-        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice", "repayment_choice")))))
+        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice", "recognition_field_choice", "repayment_choice")))))
     counts = Counter(result[0] for result in feedback_assessments(db, tenant_id=tenant_id, events=events).values())
     return {name: counts[name] for name in ("valid", "invalid", "superseded", "needs_review", "quarantined")}

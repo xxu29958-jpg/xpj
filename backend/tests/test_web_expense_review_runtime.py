@@ -991,8 +991,9 @@ def test_actual_review_browser_resolves_original_action_before_starting_next_com
 
 
 @pytest.mark.real_db
-@pytest.mark.parametrize("year_completion,single_use", [(False, False), (True, False), (False, True)])
-def test_browser_explicit_same_category_replays_original_advice_once(review_browser, confirmation_store, monkeypatch, tmp_path, year_completion, single_use):
+@pytest.mark.parametrize("year_completion,single_use,field_choice", [(False, False, False), (True, False, False),
+    (False, True, False), (False, False, True), (False, False, "original_correction")])
+def test_browser_explicit_same_category_replays_original_advice_once(review_browser, confirmation_store, monkeypatch, tmp_path, year_completion, single_use, field_choice):
     from app.models import AlgorithmDecision, LedgerLearningEvent
     from app.routes import web_expense_edit
     from app.services.expense_accounting_time_service import refresh_legacy_expense_time
@@ -1008,8 +1009,12 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
     monkeypatch.setattr(web_expense_edit, "resolve_web_actor", lambda *args: (actor.account_id, actor.device_id))
     with confirmation_store() as db:
         resolve_write_capability(db)
+        text = "支付时间：02月29日23:04:05 +07:00" if year_completion else "支付时间：2026-10-18 12:20"
+        if field_choice:
+            text = ("商户：首识便利店\n支付金额：JPY 28500\n" if field_choice == "original_correction"
+                else "商户：首次便利店\n支付金额：JPY 2850\n") + text
         append_ocr_fact(db, expense=db.get(Expense, 42), provider_name="mock", timezone_name="Asia/Shanghai",
-            result=OcrResult(raw_text="支付时间：02月29日23:04:05 +07:00" if year_completion else "支付时间：2026-10-18 12:20", confidence=0.9))
+            result=OcrResult(raw_text=text, confidence=0.9))
         for _ in range(3):
             previous = Expense(tenant_id="owner", merchant="首次便利店", category="购物", amount_cents=1000,
                 original_amount_minor=1000, original_currency_code=original.original_currency_code,
@@ -1027,7 +1032,8 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
     @client.app.get("/learning-choice-probe.js")
     def learning_probe():
         probe = (Path(__file__).parent / "fixtures/expense_learning_choice_probe.js").read_text(encoding="utf-8")
-        return Response("window.__categorySingleUse=" + json.dumps(single_use) + ";" + probe, media_type="text/javascript")
+        flags = "window.__categorySingleUse=" + json.dumps(single_use) + ";window.__fieldChoice=" + json.dumps(field_choice) + ";"
+        return Response(flags + probe, media_type="text/javascript")
 
     cdp = browser_runtime._edge_cdp()
     evaluate = cdp._evaluate_script
@@ -1036,7 +1042,7 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
         value = evaluate(page, expression)
         if value.get("type") != "undefined":
             page.request("Runtime.evaluate", {"expression": """(() => {
-                const target = document.querySelector('[data-recognized-year]') || document.querySelector('[data-learning-suggestion]');
+                const target = document.querySelector('[data-recognized-field]') || document.querySelector('[data-recognized-year]') || document.querySelector('[data-learning-suggestion]');
                 if (!target) return;
                 for (let parent = target.parentElement; parent; parent = parent.parentElement) {
                     if (parent.tagName === 'DETAILS' && !parent.open) parent.querySelector(':scope > summary').click();
@@ -1054,18 +1060,34 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
         current = db.get(Expense, 42)
         assert (current.amount_cents, current.original_amount_minor, current.original_currency_code, current.status) == financial
         events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == 42)))
-        assert len(events) == 2
+        assert len(events) == (4 if field_choice else 2)
+        _assert_replayed_source_choices(events, actor, current, result, field_choice, year_completion)
         event = next(row for row in events if row.signal_type == "category_suggestion")
         assert event.event_type == "accept" and event.actor_account_id == actor.account_id
         assert json.loads(event.after_payload)["_category_intent"] == ("one_off" if single_use else "suggestion")
         assert db.get(AlgorithmDecision, event.decision_id).public_id == result["decision"]
-        time_event = next(row for row in events if row.signal_type == "recognition_time_choice")
-        assert time_event.event_type == ("edit" if year_completion else "accept") and time_event.actor_account_id == actor.account_id
-        assert json.loads(time_event.after_payload)["candidate_id"] == json.loads(result["timeChoice"])["candidate_id"]
-        if year_completion:
-            payload = json.loads(time_event.after_payload)
-            assert payload["intent"] == "original_correction" and payload["modified_components"] == ["year"]
-            assert current.expense_time.isoformat() == "2024-02-29T16:04:05+00:00"
+
+
+def _assert_replayed_source_choices(events, actor, current, result, field_choice, year_completion):
+    if field_choice:
+        _assert_replayed_field_choices(events, actor, result, field_choice)
+    time_event = next(row for row in events if row.signal_type == "recognition_time_choice")
+    assert time_event.event_type == ("edit" if year_completion else "accept") and time_event.actor_account_id == actor.account_id
+    assert json.loads(time_event.after_payload)["candidate_id"] == json.loads(result["timeChoice"])["candidate_id"]
+    if year_completion:
+        payload = json.loads(time_event.after_payload)
+        assert payload["intent"] == "original_correction" and payload["modified_components"] == ["year"]
+        assert current.expense_time.isoformat() == "2024-02-29T16:04:05+00:00"
+
+
+def _assert_replayed_field_choices(events, actor, result, field_choice):
+    field_events = [row for row in events if row.signal_type == "recognition_field_choice"]
+    assert {json.loads(row.after_payload)["field"] for row in field_events} == {"amount_cents", "merchant"}
+    expected_type = "edit" if field_choice == "original_correction" else "accept"
+    assert all(row.actor_account_id == actor.account_id and row.event_type == expected_type for row in field_events)
+    assert all(json.loads(row.after_payload)["_learning_qualified"] for row in field_events)
+    assert {json.loads(row.after_payload)["candidate_id"] for row in field_events} == {
+        row["candidate_id"] for row in json.loads(result["fieldChoices"])}
 
 
 @pytest.mark.real_db

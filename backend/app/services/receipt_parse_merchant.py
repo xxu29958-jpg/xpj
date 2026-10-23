@@ -153,7 +153,7 @@ def _labeled_merchant_candidates(text: str, lines: list[str], blocks: Sequence[d
         )
         if candidate:
             candidates.append(replace(candidate, normalized_span=match.value_span, label_span=match.label_span,
-                role="merchant" if label in {"商家名称", "商户名称", "商家", "店铺", "门店"} else "payee"))
+                role="merchant" if label in {"商家名称", "商户名称", "商家", "商户", "店铺", "门店"} else "payee"))
     return candidates
 
 
@@ -510,7 +510,8 @@ def _has_more_specific_nearby_merchant_alias(
 def _clean_merchant(value: str) -> str | None:
     cleaned = re.sub(r"\s+", " ", value).strip(" ：:，,。；;")
     for label in sorted(MERCHANT_LABELS, key=len, reverse=True):
-        if cleaned.startswith(label):
+        if cleaned.startswith(label) and (len(cleaned) == len(label)
+                or cleaned[len(label)].isspace() or cleaned[len(label)] in ":："):
             cleaned = cleaned[len(label) :].strip(" ：:，,。；;")
             break
     return cleaned or None

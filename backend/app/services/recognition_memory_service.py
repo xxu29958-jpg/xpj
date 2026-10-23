@@ -13,6 +13,7 @@ from app.schemas._recognition_time import RecognitionTimeCandidate, RecognitionT
 from app.services.learning_service._algorithm_registry import RECOGNITION_TIME_CHOICE
 from app.services.learning_service._policy import policy_enabled
 from app.services.learning_service._source_eligibility import _event_payload, eligible_feedback
+from app.services.recognition_decision_service import reconcile_image_decision
 from app.services.time_service import now_utc
 
 
@@ -66,22 +67,15 @@ def time_candidate_key(raw_text: str, candidate: dict) -> list:
 
 def _visible_memory(db: Session, *, expense: Expense, actor: int, fact: OcrFact, candidate,
         events: list, memory: TimeMemory) -> bool:
-    from app.services.learning_service import DecisionDraft, record_decision
-
     entry = RECOGNITION_TIME_CHOICE
-    key = hashlib.sha256(json.dumps([actor, fact.public_id, candidate.id,
-        sorted(row.public_id for row in events)]).encode()).hexdigest()
-    for decision in memory.decisions.get(expense.id, []):
-        if json.loads(decision.output_payload).get("memory_key") == key:
-            return decision.status == "active"
-    if not memory.new_suggestions_enabled:
-        return False
-    decision = record_decision(db, DecisionDraft(tenant_id=expense.tenant_id, decision_type=entry.decision_type,
-        algorithm_version=entry.current_version, subject_kind="expense", subject_id=expense.id,
-        subject_public_id=expense.public_id, payload={"memory_key": key, "actor_account_id": actor,
-            "candidate_id": candidate.id, "evidence_public_id": fact.public_id}))
-    memory.decisions.setdefault(expense.id, []).insert(0, decision)
-    return True
+    payload = None
+    if candidate is not None:
+        key = hashlib.sha256(json.dumps([actor, fact.public_id, candidate.id,
+            sorted(row.public_id for row in events)]).encode()).hexdigest()
+        payload = {"memory_key": key, "actor_account_id": actor, "field": "expense_time",
+            "candidate_id": candidate.id, "evidence_public_id": fact.public_id}
+    return reconcile_image_decision(db, expense=expense, actor=actor, entry=entry, slot="expense_time",
+        payload=payload, previous=memory.decisions.setdefault(expense.id, []), enabled=memory.new_suggestions_enabled)
 
 
 def _matching_cases(expense: Expense, fact: OcrFact, memory: TimeMemory) -> list:
@@ -109,15 +103,13 @@ def _agreed_candidate(matches: list, fact: OcrFact, response: RecognitionTimeRes
 def recall_time_choice(db: Session, *, expense: Expense, actor_account_id: int | None,
         fact: OcrFact | None, response: RecognitionTimeResponse | None,
         memory: TimeMemory | None = None) -> RecognitionTimeResponse | None:
-    if (actor_account_id is None or fact is None or response is None or expense.status != "pending"
-            or not expense.image_hash or len(response.candidates) < 2):
+    if actor_account_id is None or expense.status != "pending":
         return response
     if memory is None:
         memory = load_time_memory(db, tenant_id=expense.tenant_id, actor_account_id=actor_account_id, expense_ids=[expense.id])
-    matches = _matching_cases(expense, fact, memory)
-    chosen = _agreed_candidate(matches, fact, response)
-    if chosen is None:
-        return response
+    available = fact is not None and response is not None and expense.image_hash and len(response.candidates) >= 2
+    matches = _matching_cases(expense, fact, memory) if available else []
+    chosen = _agreed_candidate(matches, fact, response) if available else None
     if not _visible_memory(db, expense=expense, actor=actor_account_id, fact=fact, candidate=chosen, events=matches, memory=memory):
         return response
     chosen = chosen.model_copy(update={"explanation": chosen.explanation + " 你曾在同类原件中明确选择这一处时间。"})

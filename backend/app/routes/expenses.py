@@ -89,6 +89,7 @@ from app.services.pending_suggestion_service import (
     suggestions_for_pending_expense,
 )
 from app.services.receipt_item_service import list_expense_items
+from app.services.recognition_field_memory import FieldMemory, load_field_memory, recall_field_choices
 from app.services.recognition_memory_service import TimeMemory, load_time_memory, recall_time_choice
 from app.services.reference_creation_service import create_reference
 from app.services.spending_contract_service import count_undated_expenses
@@ -117,6 +118,8 @@ def get_pending_expenses(
     fx_tasks_by_id = expense_fx_tasks_by_id(db, tenant_id=auth.tenant_id, expenses=expenses)
     time_memory = load_time_memory(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
         expense_ids=list(ocr_facts_by_id))
+    field_memory = load_field_memory(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+        expense_ids=list(ocr_facts_by_id))
     items: list[ExpenseResponse] = []
     for expense in expenses:
         items.append(
@@ -128,6 +131,7 @@ def get_pending_expenses(
                 notification_times_by_id=notification_times,
                 fx_tasks_by_id=fx_tasks_by_id,
                 time_memory=time_memory,
+                field_memory=field_memory,
             )
         )
     db.commit()
@@ -761,6 +765,7 @@ def _expense_response_with_suggestions(
     fx_tasks_by_id: dict[int, BackgroundTaskResponse] | None = None,
     notification_times_by_id: dict[str, RecognitionTimeResponse] | None = None,
     time_memory: TimeMemory | None = None,
+    field_memory: FieldMemory | None = None,
 ) -> ExpenseResponse:
     if notification_times_by_id is None:
         notification_times_by_id = notification_times_for_expenses(db, tenant_id=tenant_id,
@@ -778,6 +783,8 @@ def _expense_response_with_suggestions(
     )
     dto.recognition_time = recall_time_choice(db, expense=expense, actor_account_id=actor_account_id,
         fact=ocr_facts_by_id.get(expense.id), response=dto.recognition_time, memory=time_memory)
+    dto.recognition_fields = recall_field_choices(db, expense=expense, actor_account_id=actor_account_id,
+        fact=ocr_facts_by_id.get(expense.id), candidates=dto.recognition_fields, memory=field_memory)
     if suggestions.category_suggestion is not None:
         dto.category_suggestion = PendingCategorySuggestionResponse(
             decision_public_id=suggestions.category_suggestion.decision_public_id,

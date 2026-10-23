@@ -63,12 +63,41 @@
       assert(field("category").value === state.category, "This case must exercise a same-value choice");
       assert(field("category_choice").value === state.categoryChoice, "Choice was not preserved");
   }
+  function chooseFields(form, field) {
+    assert(!field("recognition_field_choices")?.value, "Untouched source fields became feedback");
+    const before = [field("amount_yuan").value, field("original_currency").value, field("merchant").value];
+    const correction = window.__fieldChoice === "original_correction";
+    const buttons = [...form.querySelectorAll(correction ? "[data-recognized-field-correction]" : "[data-recognized-field]")].filter(button =>
+      ["payment", "merchant"].includes(JSON.parse(button.dataset.recognizedField || button.dataset.recognizedFieldCorrection).role));
+    assert(buttons.length === 2, "Original money and merchant choices are missing");
+    for (const button of buttons) {
+      for (let parent = button.parentElement; parent; parent = parent.parentElement) {
+        if (parent.tagName === "DETAILS" && !parent.open) parent.querySelector(":scope > summary").click();
+      }
+      button.scrollIntoView({block: "center"});
+      assert(!button.disabled && button.getClientRects().length, "Source field is not actionable");
+      button.click();
+    }
+    state.fieldChoices = field("recognition_field_choices")?.value;
+    assert(JSON.parse(state.fieldChoices).length === 2, "Explicit source choices are missing");
+    assert(JSON.parse(state.fieldChoices).every(item => item.intent === (correction ? "original_correction" : "candidate")),
+      "The original correction and ordinary candidate choice must remain distinct");
+    assert(JSON.stringify(before) === JSON.stringify([field("amount_yuan").value,
+      field("original_currency").value, field("merchant").value]), "Same-value source choices changed the draft");
+  }
+  function assertNextCommand(field) {
+    assert(!field("category_choice")?.value && !field("category_decision_public_id")?.value,
+      "The next command inherited the already accepted vote");
+    assert(!field("recognition_time_choice")?.value, "The next command inherited a previous time choice");
+    assert(!field("recognition_field_choices")?.value, "The next command inherited previous source choices");
+  }
   try {
     const form = document.querySelector("form.edit-form"), field = name => form.elements.namedItem(name);
     const primary = form.querySelector("[data-expensereview-submit]");
     await wait(() => form.dataset.expensereviewDraftPhase && !primary.disabled);
     if (state.stage === "choose") {
       chooseCategory(form, field);
+      if (window.__fieldChoice) chooseFields(form, field);
       chooseSourceTime(form, field);
       state.stage = "sent"; save();
       form.requestSubmit([...form.querySelectorAll("button")].find(button => button.textContent === "保存草稿"));
@@ -79,11 +108,10 @@
       assert(field("category_decision_public_id").value === (window.__categorySingleUse ? "" : state.decision), "Reload borrowed a newer advice identity");
       assert(field("category_choice").value === state.categoryChoice, "Reload lost explicit choice");
       assert(field("recognition_time_choice").value === state.timeChoice, "Reload borrowed a newer time candidate");
+      if (window.__fieldChoice) assert(field("recognition_field_choices")?.value === state.fieldChoices, "Reload lost source field identities");
       state.stage = "replay"; save(); form.requestSubmit(primary);
     } else if (state.stage === "replay") {
-      assert(!field("category_choice")?.value && !field("category_decision_public_id")?.value,
-        "The next command inherited the already accepted vote");
-      assert(!field("recognition_time_choice")?.value, "The next command inherited a previous time choice");
+      assertNextCommand(field);
       window.__expenseReviewResult = {...state, completed: true};
     }
   } catch (error) {

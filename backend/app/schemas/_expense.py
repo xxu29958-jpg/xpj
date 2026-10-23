@@ -25,6 +25,7 @@ from app.schemas._money import (
     expense_item_money_schema_extra,
 )
 from app.schemas._recognition_choice import RecognitionTimeChoice
+from app.schemas._recognition_fields import RecognitionFieldCandidate, RecognitionFieldChoice
 from app.schemas._recognition_time import RecognitionTimeResponse
 from app.schemas.funds import FundingPart
 from app.services.time_service import to_iso
@@ -156,6 +157,7 @@ class ExpenseFieldChanges(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     time_input: AccountingTimeInput | None = None
+    recognition_field_choices: list[RecognitionFieldChoice] | None = Field(default=None, max_length=2)
     expected_row_version: int
     amount_cents: NonNegativeMoneyMinor | None = None
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
@@ -177,6 +179,10 @@ class ExpenseFieldChanges(BaseModel):
 
     @model_validator(mode="after")
     def explicit_category_requires_value(self):
+        if self.recognition_field_choices is not None:
+            fields = [choice.field for choice in self.recognition_field_choices]
+            if len(fields) != len(set(fields)):
+                raise ValueError("each original field can have only one explicit choice")
         if self.category_choice is not None and not (self.category or "").strip():
             raise ValueError("explicit category choice requires a category")
         if (self.category_choice == "suggestion") != (self.category_decision_public_id is not None):
@@ -373,6 +379,7 @@ class ExpenseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     recognition_time: RecognitionTimeResponse | None = None
+    recognition_fields: list[RecognitionFieldCandidate] = Field(default_factory=list)
     recognition_notes: list[str] = Field(default_factory=list)
 
     accounting_time: AccountingTimeSnapshot | None = None
@@ -431,6 +438,8 @@ class ExpenseResponse(BaseModel):
             data.pop("confirmation_receipt", None)
         if "recognition_time" not in self.model_fields_set:
             data.pop("recognition_time", None)
+        if "recognition_fields" not in self.model_fields_set:
+            data.pop("recognition_fields", None)
         if "recognition_notes" not in self.model_fields_set:
             data.pop("recognition_notes", None)
         return data

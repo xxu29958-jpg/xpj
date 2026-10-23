@@ -47,6 +47,8 @@ from app.services.ledger_calendar_service import calendar_revision
 from app.services.manual_expense_draft_presenter import manual_draft_ack
 from app.services.notification_time_service import notification_times_for_expenses
 from app.services.receipt_item_service import list_expense_items
+from app.services.recognition_field_memory import recall_field_choices
+from app.services.recognition_field_service import recognition_fields
 from app.services.recognition_memory_service import recall_time_choice
 from app.services.recognition_time_service import recognition_amount_notes, recognition_time
 
@@ -332,7 +334,9 @@ def _recognition_context(db, request, ledger_id, expense) -> dict:
     time = recognition_time(fact, notification=notification)
     time = recall_time_choice(db, expense=expense, actor_account_id=auth.account_id if auth else None,
         fact=fact, response=time)
-    return {"recognition_time": time, "recognition_notes": recognition_amount_notes(fact)}
+    fields = recall_field_choices(db, expense=expense, actor_account_id=auth.account_id if auth else None,
+        fact=fact, candidates=recognition_fields(fact))
+    return {"recognition_time": time, "recognition_fields": fields, "recognition_notes": recognition_amount_notes(fact)}
 
 
 def _web_item_rows(
