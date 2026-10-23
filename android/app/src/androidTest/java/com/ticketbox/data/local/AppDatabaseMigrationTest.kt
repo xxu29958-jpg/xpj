@@ -19,6 +19,29 @@ import org.junit.Test
  * suite (which never opens Room) cannot.
  */
 class AppDatabaseMigrationTest {
+    @Test fun migrate29To30PreservesFactsAndQueuedInputWithoutInventingPairEvidence() {
+        val name = "migration-29-30-pair-evidence.db"
+        helper.createDatabase(name, 29).use { db ->
+            db.execSQL("""INSERT INTO expenses (id, ledgerId, serverId, publicId, amountCents, homeCurrencyCode,
+                originalCurrencyCode, fxStatus, category, source, duplicateStatus, status, createdAt, rowVersion)
+                VALUES (1, 'owner', 9, 'original', 1234, 'CNY', 'CNY', 'ready', '其他', '截图', 'suspected',
+                    'pending', '2026-09-30T00:00:00Z', 7)""")
+            db.execSQL("""INSERT INTO pending_mutations (serverUrl, ledgerId, ownerKey, type, targetId, payload,
+                expectedRowVersion, status, retryCount, createdAt, idempotencyKey)
+                VALUES ('https://isolated.invalid', 'owner', 'original-owner', 'reject_expense', 'expense:9',
+                    '{"original":true}', 7, 'pending', 2, '2026-09-30T00:00:00Z', 'original-key')""")
+        }
+        helper.runMigrationsAndValidate(name, 30, true, AppDatabase.Migration29To30).use { db ->
+            db.query("SELECT amountCents, rowVersion, duplicateDecisionPublicId FROM expenses WHERE serverId = 9").use {
+                assertTrue(it.moveToFirst()); assertEquals(1234L, it.getLong(0)); assertEquals(7L, it.getLong(1)); assertTrue(it.isNull(2))
+            }
+            db.query("SELECT payload, expectedRowVersion, idempotencyKey, status, retryCount FROM pending_mutations").use {
+                assertTrue(it.moveToFirst()); assertEquals("{\"original\":true}", it.getString(0))
+                assertEquals(7L, it.getLong(1)); assertEquals("original-key", it.getString(2))
+                assertEquals("pending", it.getString(3)); assertEquals(2, it.getInt(4))
+            }
+        }
+    }
     @Test fun migrate27To28PreservesOriginalRepaymentInputWithoutInventingADate() {
         val name = "migration-27-28-repayment-review.db"
         helper.createDatabase(name, 27).use { db ->
@@ -92,7 +115,7 @@ class AppDatabaseMigrationTest {
         val originals = setOf(input, rename, otherRename, merge)
         var room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
             .addMigrations(AppDatabase.Migration25To26, AppDatabase.Migration26To27, AppDatabase.Migration27To28,
-                AppDatabase.Migration28To29).build()
+                AppDatabase.Migration28To29, AppDatabase.Migration29To30).build()
         try {
             kotlinx.coroutines.runBlocking {
                 room.merchantCreationInputDao().put(MerchantCreationInputEntity(binding.serverUrl, binding.ownerKey, binding.ledgerId,
@@ -177,7 +200,7 @@ class AppDatabaseMigrationTest {
         val room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
             .addMigrations(AppDatabase.Migration21To22, AppDatabase.Migration22To23, AppDatabase.Migration23To24, AppDatabase.Migration24To25,
                 AppDatabase.Migration25To26, AppDatabase.Migration26To27, AppDatabase.Migration27To28,
-                AppDatabase.Migration28To29).build()
+                AppDatabase.Migration28To29, AppDatabase.Migration29To30).build()
         try {
                 room.openHelper.readableDatabase.query("SELECT amountCents, homeCurrencyCode, rowVersion FROM expenses WHERE id = 1").use {
                     assertTrue(it.moveToFirst()); assertEquals(100, it.getInt(0)); assertEquals("JPY", it.getString(1)); assertEquals(7, it.getInt(2))

@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
+import com.ticketbox.data.remote.dto.PendingDuplicateCandidateDto
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -34,8 +35,9 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
     }
 
     private suspend fun assertStateAdmission(type: PendingMutationType) {
-        val baseline = baselineExpense().copy(duplicateStatus = "suspected", duplicateOfId = 81L,
-            duplicateDecisionPublicId = "displayed-pair-decision")
+        val baseline = successExpenseDto().copy(status = "pending", duplicateStatus = "suspected", duplicateOfId = 81L,
+            duplicateCandidates = listOf(PendingDuplicateCandidateDto("displayed-pair-decision", 81L,
+                score = 0.8, algorithmVersion = "duplicate-candidate-v2"))).toEntity("owner").toDomain()
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao)
         val success = ApiResult.Success(successExpenseDto())

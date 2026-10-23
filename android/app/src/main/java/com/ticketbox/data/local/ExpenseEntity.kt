@@ -73,6 +73,7 @@ data class ExpenseEntity(
     val duplicateStatus: String,
     val duplicateOfId: Long?,
     val duplicateReason: String?,
+    val duplicateDecisionPublicId: String? = null,
     val tags: String?,
     val valueScore: Int?,
     val regretScore: Int?,
