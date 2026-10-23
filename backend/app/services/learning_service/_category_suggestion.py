@@ -31,7 +31,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, LedgerLearningEvent
@@ -148,7 +148,7 @@ def compute_category_suggestion(
         effective_expense_predicate(),
         Expense.accounting_date >= cutoff,
         Expense.accounting_date <= current_date,
-        Expense.confirmed_at <= observed_at,
+        or_(Expense.confirmed_at.is_(None), Expense.confirmed_at <= observed_at),
         func.lower(func.trim(Expense.merchant)) == normalised,
     ]
     if expense_id is not None:

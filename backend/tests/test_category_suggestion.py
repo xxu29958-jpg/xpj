@@ -55,12 +55,16 @@ def _make_confirmed(
         return expense.id
 
 
-def test_suggests_majority_category_for_merchant(*, identity) -> None:
-    for _ in range(3):
-        _make_confirmed("owner", "麦当劳", "餐饮")
-    _make_confirmed("owner", "麦当劳", "购物")
+@pytest.mark.parametrize("legacy_confirmation", [False, True])
+def test_suggests_majority_category_for_merchant(legacy_confirmation: bool, *, identity) -> None:
+    expense_ids = [_make_confirmed("owner", "麦当劳", "餐饮") for _ in range(3)]
+    expense_ids.append(_make_confirmed("owner", "麦当劳", "购物"))
 
     with SessionLocal() as db:
+        if legacy_confirmation:
+            for expense_id in expense_ids:
+                db.get(Expense, expense_id).confirmed_at = None
+            db.flush()
         result = compute_category_suggestion(
             db,
             tenant_id="owner",
@@ -99,10 +103,17 @@ def test_sparse_or_tied_history_does_not_choose_a_category(categories: tuple[str
             actor_account_id=seeded_owner_account_id()) is None
 
 
-def test_future_history_cannot_support_a_current_suggestion(*, identity) -> None:
-    for _ in range(3):
-        _make_confirmed("owner", "Future shop", "餐饮", days_ago=-1)
+@pytest.mark.parametrize("future_component", ["accounting_date", "confirmed_at"])
+def test_future_history_cannot_support_a_current_suggestion(future_component: str, *, identity) -> None:
+    expense_ids = [_make_confirmed("owner", "Future shop", "餐饮", days_ago=-1) for _ in range(3)]
     with SessionLocal() as db:
+        for expense_id in expense_ids:
+            expense = db.get(Expense, expense_id)
+            if future_component == "accounting_date":
+                expense.confirmed_at = None
+            else:
+                expense.accounting_date -= timedelta(days=2)
+        db.flush()
         assert compute_category_suggestion(db, tenant_id="owner", merchant="Future shop",
             actor_account_id=seeded_owner_account_id()) is None
 
