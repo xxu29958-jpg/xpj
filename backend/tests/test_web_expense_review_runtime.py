@@ -991,7 +991,8 @@ def test_actual_review_browser_resolves_original_action_before_starting_next_com
 
 
 @pytest.mark.real_db
-def test_browser_explicit_same_category_replays_original_advice_once(review_browser, confirmation_store, monkeypatch, tmp_path):
+@pytest.mark.parametrize("year_completion", [False, True])
+def test_browser_explicit_same_category_replays_original_advice_once(review_browser, confirmation_store, monkeypatch, tmp_path, year_completion):
     from app.models import AlgorithmDecision, LedgerLearningEvent
     from app.routes import web_expense_edit
     from app.services.expense_accounting_time_service import refresh_legacy_expense_time
@@ -1007,7 +1008,7 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
     with confirmation_store() as db:
         resolve_write_capability(db)
         append_ocr_fact(db, expense=db.get(Expense, 42), provider_name="mock", timezone_name="Asia/Shanghai",
-            result=OcrResult(raw_text="支付时间：2026-10-18 12:20", confidence=0.9))
+            result=OcrResult(raw_text="支付时间：02月29日23:04:05 +07:00" if year_completion else "支付时间：2026-10-18 12:20", confidence=0.9))
         for _ in range(3):
             previous = Expense(tenant_id="owner", merchant="首次便利店", category="购物", amount_cents=1000,
                 original_amount_minor=1000, original_currency_code="CNY", home_currency_code="CNY",
@@ -1028,7 +1029,14 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
     def capture(page, expression):
         value = evaluate(page, expression)
         if value.get("type") != "undefined":
-            page.request("Runtime.evaluate", {"expression": "document.querySelector('[data-learning-suggestion]')?.scrollIntoView({block:'center'})"})
+            page.request("Runtime.evaluate", {"expression": """(() => {
+                const target = document.querySelector('[data-recognized-year]') || document.querySelector('[data-learning-suggestion]');
+                if (!target) return;
+                for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+                    if (parent.tagName === 'DETAILS' && !parent.open) parent.querySelector(':scope > summary').click();
+                }
+                target.scrollIntoView({block:'center'});
+            })()"""})
             (tmp_path / "learning-choice.png").write_bytes(base64.b64decode(page.request("Page.captureScreenshot", {"format": "png"})["data"]))
         return value
 
@@ -1045,8 +1053,12 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
         assert event.event_type == "accept" and event.actor_account_id == actor.account_id
         assert db.get(AlgorithmDecision, event.decision_id).public_id == result["decision"]
         time_event = next(row for row in events if row.signal_type == "recognition_time_choice")
-        assert time_event.event_type == "accept" and time_event.actor_account_id == actor.account_id
+        assert time_event.event_type == ("edit" if year_completion else "accept") and time_event.actor_account_id == actor.account_id
         assert json.loads(time_event.after_payload)["candidate_id"] == json.loads(result["timeChoice"])["candidate_id"]
+        if year_completion:
+            payload = json.loads(time_event.after_payload)
+            assert payload["intent"] == "original_correction" and payload["modified_components"] == ["year"]
+            assert current.expense_time.isoformat() == "2024-02-29T16:04:05+00:00"
 
 
 @pytest.mark.real_db

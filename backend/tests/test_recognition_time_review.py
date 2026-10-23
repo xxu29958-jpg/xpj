@@ -35,6 +35,33 @@ def _seed(raw):
         return expense.id, fact_id
 
 
+def test_missing_year_completion_records_only_the_supplied_year_without_relabeling_the_whole_time(client, identity):
+    from sqlalchemy import select
+
+    from app.models import LedgerLearningEvent
+
+    expense_id, _ = _seed("支付时间：02月29日23:04:05 +07:00")
+    headers = negotiated_headers(client, identity.app_headers)
+    before = client.get(f"/api/expenses/{expense_id}", headers=headers).json()
+    candidate = before["recognition_time"]["candidates"][0]
+    assert candidate["requires_year"] and not candidate["can_apply"]
+    assert candidate["components"] == {"month": 2, "day": 29, "hour": 23, "minute": 4, "second": 5}
+    assert candidate["source_utc_offset_seconds"] == 25200 and candidate["source_timezone"] is None
+    choice = {"evidence_public_id": candidate["evidence_public_id"], "candidate_id": candidate["id"],
+        "parser_version": candidate["parser_version"], "source": "image", "intent": "original_correction"}
+    saved = client.patch(f"/api/expenses/{expense_id}", headers={**headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": before["row_version"], "recognition_time_choice": choice,
+            "time_input": {"precision": "instant", "calendar_revision": 1, "user_local_date": "2024-02-29",
+                "instant_utc": "2024-02-29T16:04:05Z", "source_utc_offset_seconds": 25200}})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["amount_cents"] is None and saved.json()["status"] == "pending"
+    with SessionLocal() as db:
+        event = db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == expense_id)).one()
+        payload = json.loads(event.after_payload)
+        assert payload["modified_components"] == ["year"]
+        assert payload["intent"] == "original_correction" and not payload["_learning_qualified"]
+
+
 @pytest.mark.parametrize("manual_amount", [None, 2200])
 def test_multi_transaction_image_keeps_event_identity_in_actual_review(client, web_client, identity, manual_amount):
     raw = ("支付成功\n商户：蓝湾餐厅\n支付金额：12.60元\n支付时间：2025-12-20 12:30\n"
@@ -114,7 +141,11 @@ def test_web_keeps_missing_image_date_unknown_without_a_capture_anchor(web_clien
     page = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert page.status_code == 200, page.text
     choices = [json.loads(unescape(value)) for value in re.findall(r"data-recognized-time='([^']+)'", page.text)]
-    assert not choices
+    if literal == "12月31日23:59":
+        assert len(choices) == 1 and choices[0]["requires_year"] and not choices[0]["can_apply"]
+        assert 'data-recognized-year' in page.text
+    else:
+        assert not choices
     assert raw in page.text and "缺少完整日期" in page.text
     assert "2025-12-31T23:59" not in page.text
     assert f'data-fact-id="{fact_id}"' in page.text

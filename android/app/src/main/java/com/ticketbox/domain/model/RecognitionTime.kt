@@ -35,4 +35,6 @@ data class RecognitionTimeCandidate(
     val source: String? = null,
     val parserVersion: String? = null,
     val role: String = "unknown",
+    val components: Map<String, Int> = emptyMap(),
+    val requiresYear: Boolean = false,
 )
