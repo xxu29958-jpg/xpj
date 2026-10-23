@@ -154,18 +154,18 @@ def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, re
 
 
 def _latest_feedback_ids(db, *, tenant_id: str, events: list[LedgerLearningEvent]) -> set[int]:
-    identifiers = {event.subject_id for event in events if event.subject_kind == "expense"}
+    identifiers = {event.subject_id for event in events if event.subject_kind in {"expense", "repayment_draft"}}
     if not identifiers:
         return set()
     rows = db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == tenant_id,
-        LedgerLearningEvent.subject_kind == "expense", LedgerLearningEvent.subject_id.in_(identifiers),
-        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice")),
+        LedgerLearningEvent.subject_kind.in_(("expense", "repayment_draft")), LedgerLearningEvent.subject_id.in_(identifiers),
+        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice", "repayment_choice")),
         LedgerLearningEvent.event_type.in_(("accept", "reject", "edit", "manual_override", "withdraw")),
         LedgerLearningEvent.created_at <= now_utc()).order_by(LedgerLearningEvent.id.desc()))
     current = {}
     for row in rows:
         pair = _event_payload(row).get("candidate_id") if row.signal_type == "duplicate_candidate" else None
-        current.setdefault((row.actor_account_id, row.subject_id, row.signal_type, pair), row.id)
+        current.setdefault((row.actor_account_id, row.subject_kind, row.subject_id, row.signal_type, pair), row.id)
     return set(current.values())
 
 
@@ -195,7 +195,10 @@ def _image_choice_replaced(event: LedgerLearningEvent, payload: dict, facts: dic
 
 def feedback_assessments(db: Session, *, tenant_id: str,
         events: list[LedgerLearningEvent]) -> dict[int, tuple[str, str, dict[str, str]]]:
+    from app.services.learning_service._repayment_sources import repayment_source_assessments
+
     sources, reversed_ids = feedback_sources(db, tenant_id=tenant_id, events=events)
+    repayments = repayment_source_assessments(db, tenant_id=tenant_id, events=events)
     image_facts = _current_time_facts(db, tenant_id, events, sources)
     latest = _latest_feedback_ids(db, tenant_id=tenant_id, events=events)
     decisions = {row.id: row.algorithm_version for row in db.scalars(select(AlgorithmDecision).where(
@@ -210,8 +213,11 @@ def feedback_assessments(db: Session, *, tenant_id: str,
         key = (row.signal_type, version)
         if key not in policies:
             policies[key] = policy_enabled(db, tenant_id=tenant_id, decision_type=key[0], version=key[1], axis="training")
-        status, reason, fields = feedback_eligibility(row, sources.get(row.subject_id), reversed_ids,
-            sources.get(payload.get("candidate_id")), latest)
+        if row.id in repayments:
+            status, reason, fields = _event_qualification(row, latest) or repayments[row.id]
+        else:
+            status, reason, fields = feedback_eligibility(row, sources.get(row.subject_id), reversed_ids,
+                sources.get(payload.get("candidate_id")), latest)
         if status == "valid" and _image_choice_replaced(row, payload, image_facts):
             status, reason = "superseded", "原件识别证据已有更新；保留当时选择，不再用于新建议"
         if row.public_id in withdrawn:
@@ -226,7 +232,7 @@ def feedback_impact_preview(db, *, tenant_id):
     # No data rewrite, no new label inferred from historical defaults. The admin
     # sees counts; original individual feedback stays in its existing history.
     events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == tenant_id,
-        LedgerLearningEvent.subject_kind == "expense",
-        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice")))))
+        LedgerLearningEvent.subject_kind.in_(("expense", "repayment_draft")),
+        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice", "repayment_choice")))))
     counts = Counter(result[0] for result in feedback_assessments(db, tenant_id=tenant_id, events=events).values())
     return {name: counts[name] for name in ("valid", "invalid", "superseded", "needs_review", "quarantined")}

@@ -16,6 +16,9 @@ def test_unchanged_original_preserves_known_home_amount_but_corrected_money_is_e
     unchanged = review_confirmation(values, capture)
     assert unchanged.original_currency is None and unchanged.original_amount is None
     assert "original_amount" not in unchanged.model_dump(exclude_unset=True)
+    assert "target_choice_explicit" not in unchanged.model_dump(exclude_unset=True)
+    selected = review_confirmation({**values, "target_choice_explicit": "true"}, capture)
+    assert selected.target_choice_explicit and selected.target_debt_public_id == "debt"
     reviewed = review_confirmation({**values, "original_amount": "90.00"}, capture)
     assert reviewed.original_currency == "CNY" and reviewed.original_amount == Decimal("90.00")
     assert reviewed.target_debt_public_id == "debt" and reviewed.expected_row_version == 7

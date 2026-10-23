@@ -150,7 +150,7 @@ class RepaymentReviewRepository internal constructor(
                 inputs.put(when (change) {
                     is RepaymentReviewChange.Money -> input.copy(currency = change.currency, amountText = change.amount)
                     is RepaymentReviewChange.Date -> input.copy(paymentDate = change.value)
-                    is RepaymentReviewChange.TargetDebt -> input.selectDebt(binding, change.debt)
+                    is RepaymentReviewChange.TargetDebt -> input.selectDebt(binding, change.debt).copy(targetChoiceExplicit = true)
                 })
             }
         }
@@ -219,7 +219,7 @@ class RepaymentReviewRepository internal constructor(
                 inputs.put(retained.copy(originalKey = UUID.randomUUID().toString(), submittedAction = null,
                     serverUrl = binding.serverUrl,
                     sessionGeneration = binding.sessionGeneration, bindingRevision = binding.bindingRevision,
-                    debtPublicId = null, debtLabel = null, debtHomeCurrency = null, debtRowVersion = null))
+                    debtPublicId = null, debtLabel = null, debtHomeCurrency = null, debtRowVersion = null, targetChoiceExplicit = false))
             }
         }
     }

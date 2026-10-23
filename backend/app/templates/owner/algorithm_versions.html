@@ -15,6 +15,7 @@
     {% for kind, title, benefit, location, href, tone in [
       ('category_suggestion', '少重复选分类', '记住同一家店通常归到哪类，下次核对时可一键填入。', '收件 → 打开小票 → 分类', '/web/pending', 'green'),
       ('recognition_time_choice', '少重复找时间', '记住你在同类原件中选过的位置，下一份相近材料优先展示这一处。', '收件 → 打开小票 → 原件时间', '/web/pending', 'green'),
+      ('repayment_choice', '记住对应欠款', '参考本人明确选过的对应欠款；改判或撤回后不再参考。', '收件 → 还款采集 → 对应欠款', '/web/repayment-drafts', 'green'),
       ('duplicate_candidate', '让重复核对更有依据', '结合图片、金额、商家和时间提醒相似账单；你的决定只绑定当时核对的两笔。', '收件 → 相似账单', '/web/duplicates', 'apricot'),
       ('budget_suggestion', '看懂支出是否偏高', '用自己的历史支出作比较，帮助判断本月各类花费。', '洞察 → 报表 → 月报摘要与预算对照', '/web/reports', 'lilac')
     ] %}
@@ -27,6 +28,7 @@
         {% if kind == 'category_suggestion' %}<p class="workspace-note">填入建议只是修改草稿。明确选分类并保存才记录选择；未触碰分类的保存或确认不算反馈。同一条已处理的建议不会因刷新再次出现。账本历史作为参考，个人反馈只用于本人；记录不足或最高类别并列时可照常手动选择。</p>
         {% elif kind == 'duplicate_candidate' %}<p class="workspace-note">“不是重复，保留两条”记录不同交易；保留其中一笔记录同一交易及保留对象。判断限定当时两侧证据，任一侧后来变化会重新核对；不会自动删除其他记录。</p>
         {% elif kind == 'recognition_time_choice' %}<p class="workspace-note">明确选择并保存原件时间后，只在本人遇到相近格式的新材料时调整候选顺序。时间冲突仍需核对；普通记账修改不作为识别标签。撤回选择或更新原件识别证据后，不再参考旧选择。</p>
+        {% elif kind == 'repayment_choice' %}<p class="workspace-note">在核对页主动选择对应欠款并保存后，下一次相同来源和名称的还款可参考这次选择。默认展示不算反馈；欠款仍须可还，原还款作废、改判或反馈撤回后不再参考。</p>
         {% else %}<p class="workspace-note">这是随账目计算的历史参考，不会根据赞成或反对训练模型。缺少历史、日期或汇率时，洞察会说明原因。需要模型分析时，另用 <a href="/owner/ai-advisor">AI 预算顾问</a>。</p>{% endif %}
         {% if selected_ledger %}
         <p class="workspace-note"><strong>{{ selected_ledger.name }}</strong> · {% if kind == 'budget_suggestion' %}进入洞察时按实际账目计算，不生成待采纳学习记录。{% elif usage %}保留 {{ usage.count }} 条生成记录，最近一次 {{ usage.last_at|owner_datetime }}。记录数不代表准确率。{% else %}尚无生成记录。可到下方入口使用；没有记录不等于功能关闭。{% endif %}</p>
@@ -42,8 +44,9 @@
     <div class="workspace-disclosure__body">
       {% for row in activity.feedback %}
       <div class="workspace-learning-record">
-        <h3>{{ row.expense.merchant or '未填写商家' }} · {{ algorithm_types[row.event.signal_type].display_label }}</h3>
-        <p>{{ {'accept': '已采用这次建议', 'reject': '未采用这次建议', 'manual_override': '明确选择了分类', 'edit': '已更正选择', 'withdraw': '已撤回这次反馈'}.get(row.event.event_type, '未确认选择结果') }} · {{ row.event.created_at|owner_datetime }}</p>
+        <h3>{{ (row.repayment.merchant_label if row.repayment else row.expense.merchant if row.expense else '') or '原记录' }} · {{ algorithm_types[row.event.signal_type].display_label }}</h3>
+        <p>{{ {'accept': '已采用这次建议', 'reject': '未采用这次建议', 'manual_override': '明确选择了对应欠款' if row.repayment else '明确选择了分类', 'edit': '已更正选择', 'withdraw': '已撤回这次反馈'}.get(row.event.event_type, '未确认选择结果') }} · {{ row.event.created_at|owner_datetime }}</p>
+        {% if row.repayment and row.payload.get('_repayment_target') %}<p class="workspace-note">当时选择：{{ row.payload._repayment_target.counterparty_label or '未命名欠款' }}。</p>{% endif %}
         <p class="workspace-note">{{ row.reason }}。{% if row.payload.get('_selected_category') %}当时选择：{{ row.payload._selected_category }}。{% endif %}{% if row.event.signal_type == 'duplicate_candidate' %}这次关系：{{ '同一交易' if row.payload.get('_relation') == 'same' else '不同交易' if row.payload.get('_relation') == 'distinct' else '证据不足' }}；不套用到其它同商家、同金额账单。{% endif %}</p>
         {% if row.event.signal_type == 'recognition_time_choice' and row.payload.get('selected') %}<p class="workspace-note">当时选择：{{ row.payload.selected.label }} · {{ row.payload.selected.original_text }}。{% if row.payload.intent == 'bookkeeping' %}保存值另有记账调整，没有把它当作原件识别纠正。{% endif %}</p>{% endif %}
         {% if row.eligibility in ['valid', 'quarantined'] %}
@@ -53,7 +56,7 @@
           <button type="submit" class="btn btn-secondary">不再参考这次选择</button>
         </form>
         {% endif %}
-        {% if row.expense.status in ['pending', 'confirmed'] %}<a href="/web/expenses/{{ row.expense.id }}/edit?ledger_id={{ selected_ledger.ledger_id|urlencode }}">查看这笔账目</a>{% else %}<p class="workspace-note">原小票已移出当前账目，保留这次选择记录。</p>{% endif %}
+        {% if row.repayment %}<a href="/web/repayment-drafts/{{ row.repayment.public_id }}?ledger_id={{ selected_ledger.ledger_id|urlencode }}">查看这次还款</a>{% elif row.expense and row.expense.status in ['pending', 'confirmed'] %}<a href="/web/expenses/{{ row.expense.id }}/edit?ledger_id={{ selected_ledger.ledger_id|urlencode }}">查看这笔账目</a>{% else %}<p class="workspace-note">原记录已移出当前账目，保留这次选择记录。</p>{% endif %}
       </div>
       {% else %}<p>还没有保存采用或纠正记录。</p><p class="workspace-note">明确选择并保存分类，或核对两笔账单后作出保留决定，会保存反馈。单纯查看、未触碰分类的确认或清理记录不算学习。</p>{% endfor %}
     </div>
@@ -86,7 +89,7 @@
             <div><dt>关闭但未作选择</dt><dd>{{ row.closed_without_feedback_count }}</dd></div>
           </dl>
           <p class="workspace-note">操作事件保留改判历史；已关闭不等于明确拒绝，数量不能作为准确率。</p>
-          {% if row.decision_type in ['category_suggestion', 'duplicate_candidate', 'recognition_time_choice'] %}
+          {% if row.decision_type in ['category_suggestion', 'duplicate_candidate', 'recognition_time_choice', 'repayment_choice'] %}
           {% for axis, enabled, label, stop, resume in [('new_suggestions', row.new_suggestions_enabled, '新建议', '停止生成新建议', '恢复生成新建议'), ('training', row.training_enabled, '此版本反馈', '隔离此版本反馈', '恢复此版本反馈资格')] %}
           {% if axis == 'training' or (entry and row.algorithm_version == entry.current_version) %}
           <form method="post" action="/owner/algorithm-versions/policy">

@@ -109,6 +109,8 @@ data class RepaymentDraftConfirmRequestDto(
     val originalAmount: String? = null,
     @param:Json(name = "time_input")
     val timeInput: ExpenseTimeInputDto? = null,
+    @param:Json(name = "target_choice_explicit")
+    val targetChoiceExplicit: Boolean? = null,
 )
 
 /**

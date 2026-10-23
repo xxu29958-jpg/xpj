@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database import SessionLocal
 from app.errors import AppError
 from app.middleware.csrf import CSRF_COOKIE_NAME
-from app.models import Debt, Repayment, RepaymentDraft
+from app.models import Debt, LedgerLearningEvent, Repayment, RepaymentDraft
 from app.routes import _web_repayment_review as review
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.schemas import RepaymentDraftCreateRequest
@@ -95,7 +95,7 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
     headers = {"Cookie": f"{cookie}; {CSRF_COOKIE_NAME}={page.cookies.get(CSRF_COOKIE_NAME)}",
         "Origin": "http://127.0.0.1:8000"}
     original = {**_form(page.text, action), "original_amount": "90.00", "payment_date": "2026-08-31",
-        "target_with_expected_row_version": f"{debt_id}:{version}"}
+        "target_with_expected_row_version": f"{debt_id}:{version}", "target_choice_explicit": "true"}
     assert original["calendar_revision"]
     scope = _installed_scope(installed_web, token)
     assert json.loads(original["origin_binding"]) == scope
@@ -137,7 +137,11 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
         assert ack["clientRef"] == original["idempotency_key"] and ack["scope"] == scope
         assert ack["resultPublicId"] == public_id and ack["status"] == "confirmed"
         assert ack["values"]["payment_date"] == "2026-08-31"
+        assert ack["values"]["target_choice_explicit"] == "true"
         with SessionLocal() as db:
+            choices = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.signal_type == "repayment_choice")))
+            assert len(choices) == 1 and choices[0].actor_account_id == installed_web.installation_account_id
+            assert json.loads(choices[0].after_payload)["_repayment_target"]["public_id"] == debt_id
             facts = list(db.scalars(select(Repayment)))
             assert len(facts) == 1
             assert facts[0].amount_cents == 9000 and facts[0].idempotency_key == original["idempotency_key"]

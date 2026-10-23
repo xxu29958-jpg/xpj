@@ -33,6 +33,7 @@ from app.services.learning_service._algorithm_registry import (
     CATEGORY_SUGGESTION,
     DUPLICATE_CANDIDATE,
     RECOGNITION_TIME_CHOICE,
+    REPAYMENT_CHOICE,
 )
 from app.services.learning_service._policy import policy_enabled
 from app.services.learning_service._source_eligibility import _event_payload
@@ -120,10 +121,11 @@ def list_algorithm_versions(
         if status in grouped[key]:
             grouped[key][status] = int(n)
     feedback = _feedback_inventory(db, tenant_id=tenant_id)
-    for entry in (CATEGORY_SUGGESTION, DUPLICATE_CANDIDATE, RECOGNITION_TIME_CHOICE):
+    controlled = (CATEGORY_SUGGESTION, DUPLICATE_CANDIDATE, RECOGNITION_TIME_CHOICE, REPAYMENT_CHOICE)
+    for entry in controlled:
         grouped.setdefault((entry.decision_type, entry.current_version), {})
     for key in feedback:
-        if key[0] in {CATEGORY_SUGGESTION.decision_type, DUPLICATE_CANDIDATE.decision_type, RECOGNITION_TIME_CHOICE.decision_type}:
+        if key[0] in {entry.decision_type for entry in controlled}:
             grouped.setdefault(key, {})
 
     results = [

@@ -129,6 +129,9 @@ def dismiss_repayment_draft(
 
     resolve_write_capability(db)
     draft.status = "dismissed"
+    from app.services.learning_service._lifecycle import close_active_decisions_for_subject
+
+    close_active_decisions_for_subject(db, tenant_id=draft.tenant_id, subject_kind="repayment_draft", subject_id=draft.id)
     draft.resolved_at = now_utc()
     draft.resolved_by_account_id = actor_account_id
     db.flush()

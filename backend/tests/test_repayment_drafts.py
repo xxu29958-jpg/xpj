@@ -251,6 +251,7 @@ def _confirm_draft_to_debt(
         json={
             "target_debt_public_id": debt["public_id"],
             "expected_row_version": debt["row_version"],
+            "target_choice_explicit": True,
         },
     )
     assert response.status_code == 201, response.json()

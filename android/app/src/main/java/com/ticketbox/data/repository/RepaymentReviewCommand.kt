@@ -27,7 +27,8 @@ internal fun RepaymentReviewInputEntity.command(binding: LogicalSessionBinding, 
     }
     // Unchanged legacy/Expense-derived money keeps its already known home amount and frozen FX.
     val request = RepaymentDraftConfirmRequestDto(subject.publicId, requireNotNull(debtRowVersion),
-        currency.takeIf { changedMoney }, amountText.trim().takeIf { changedMoney }, reviewedTime)
+        currency.takeIf { changedMoney }, amountText.trim().takeIf { changedMoney }, reviewedTime,
+        targetChoiceExplicit = true.takeIf { targetChoiceExplicit })
     val payload = RepaymentReviewPayload(1, draftPublicId, subject, binding.sessionGeneration, binding.bindingRevision,
         request, currency, amountText)
     return PendingMutationIntent(PendingMutationType.ConfirmRepaymentDraft, debtWriteTarget(subject.publicId),

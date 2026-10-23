@@ -98,7 +98,7 @@ def web_repayment_drafts(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    return _render_repayment_drafts(
+    response = _render_repayment_drafts(
         request,
         db,
         options=options,
@@ -106,6 +106,8 @@ def web_repayment_drafts(
         flash_message=flash_message,
         form_error=form_error,
     )
+    db.commit()
+    return response
 
 
 @router.get("/{public_id}", response_class=HTMLResponse)
@@ -115,8 +117,10 @@ def web_repayment_review(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    return render_review(request, db, options=options, selected_id=selected_id, public_id=public_id,
+    response = render_review(request, db, options=options, selected_id=selected_id, public_id=public_id,
         account_id=_actor_account_id(request, db, selected_id))
+    db.commit()
+    return response
 
 
 @router.post("/{public_id}/review", response_class=HTMLResponse)
@@ -129,6 +133,7 @@ def web_submit_repayment_review(
     payment_date: str | None = Form(default=None), calendar_revision: str | None = Form(default=None),
     csrf_token: str = Form(default=""), _local: None = LocalOnly, db: Session = Depends(get_db),
     reason: str | None = Form(default=None), correction_versions: str | None = Form(default=None),
+    target_choice_explicit: str | None = Form(default=None),
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
@@ -140,6 +145,7 @@ def web_submit_repayment_review(
     if calendar_revision is not None and payment_date is None:
         payment_date = ""
     values.update({name: value for name, value in {"payment_date": payment_date,
-        "calendar_revision": calendar_revision, "reason": reason, "correction_versions": correction_versions}.items() if value is not None})
+        "calendar_revision": calendar_revision, "reason": reason, "correction_versions": correction_versions,
+        "target_choice_explicit": target_choice_explicit}.items() if value is not None})
     return submit_review(request, db, options=options, selected_id=selected_id, public_id=public_id,
         account_id=_actor_account_id(request, db, selected_id), values=values)

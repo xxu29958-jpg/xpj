@@ -88,6 +88,10 @@ def confirm_repayment_draft_idempotently(
         time_input=payload.time_input,
         commit=False,
     )
+    if payload.target_choice_explicit:
+        from app.services.repayment_learning_service import record_repayment_choice
+
+        record_repayment_choice(db, draft=draft, actor_account_id=actor_account_id)
     result = repayment_draft_response(draft)
     mark_idempotency_succeeded(
         db,
