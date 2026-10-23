@@ -38,6 +38,17 @@ function copyExpenseTime(button, candidate) {
     if (!input) continue;
     copyTimeField(input, value);
   }
+  const form = button.closest("form");
+  if (candidate.evidence_public_id && candidate.parser_version && candidate.source) {
+    let input = form.elements.namedItem("recognition_time_choice");
+    if (!input) {
+      input = document.createElement("input"); input.type = "hidden";
+      input.name = "recognition_time_choice"; form.append(input);
+    }
+    input.value = JSON.stringify({evidence_public_id: candidate.evidence_public_id,
+      candidate_id: candidate.id, parser_version: candidate.parser_version, source: candidate.source, intent: "candidate"});
+    input.dispatchEvent(new Event("input", {bubbles: true}));
+  }
   fieldset.querySelector("[data-recognized-time-status]").textContent = "已填入当前草稿，请核对后保存。";
 }
 

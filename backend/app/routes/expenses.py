@@ -89,6 +89,7 @@ from app.services.pending_suggestion_service import (
     suggestions_for_pending_expense,
 )
 from app.services.receipt_item_service import list_expense_items
+from app.services.recognition_memory_service import TimeMemory, load_time_memory, recall_time_choice
 from app.services.reference_creation_service import create_reference
 from app.services.spending_contract_service import count_undated_expenses
 from app.services.stats_service import export_confirmed_csv, list_categories, list_months
@@ -114,6 +115,8 @@ def get_pending_expenses(
         actor_account_id=auth.account_id, expense_public_ids=[item.public_id for item in expenses])
     ocr_facts_by_id = expense_ocr_facts_by_id(db, tenant_id=auth.tenant_id, expenses=expenses)
     fx_tasks_by_id = expense_fx_tasks_by_id(db, tenant_id=auth.tenant_id, expenses=expenses)
+    time_memory = load_time_memory(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+        expense_ids=list(ocr_facts_by_id))
     items: list[ExpenseResponse] = []
     for expense in expenses:
         items.append(
@@ -124,6 +127,7 @@ def get_pending_expenses(
                 ocr_facts_by_id=ocr_facts_by_id,
                 notification_times_by_id=notification_times,
                 fx_tasks_by_id=fx_tasks_by_id,
+                time_memory=time_memory,
             )
         )
     db.commit()
@@ -756,11 +760,14 @@ def _expense_response_with_suggestions(
     ocr_facts_by_id: dict[int, OcrFact] | None = None,
     fx_tasks_by_id: dict[int, BackgroundTaskResponse] | None = None,
     notification_times_by_id: dict[str, RecognitionTimeResponse] | None = None,
+    time_memory: TimeMemory | None = None,
 ) -> ExpenseResponse:
     if notification_times_by_id is None:
         notification_times_by_id = notification_times_for_expenses(db, tenant_id=tenant_id,
             actor_account_id=actor_account_id, expense_public_ids=[expense.public_id])
     suggestions = suggestions_for_pending_expense(db, tenant_id=tenant_id, expense=expense, actor_account_id=actor_account_id)
+    if ocr_facts_by_id is None:
+        ocr_facts_by_id = expense_ocr_facts_by_id(db, tenant_id=tenant_id, expenses=[expense])
     dto = expense_to_response(
         db,
         tenant_id=tenant_id,
@@ -769,6 +776,8 @@ def _expense_response_with_suggestions(
         notification_times_by_id=notification_times_by_id,
         fx_tasks_by_id=fx_tasks_by_id,
     )
+    dto.recognition_time = recall_time_choice(db, expense=expense, actor_account_id=actor_account_id,
+        fact=ocr_facts_by_id.get(expense.id), response=dto.recognition_time, memory=time_memory)
     if suggestions.category_suggestion is not None:
         dto.category_suggestion = PendingCategorySuggestionResponse(
             decision_public_id=suggestions.category_suggestion.decision_public_id,

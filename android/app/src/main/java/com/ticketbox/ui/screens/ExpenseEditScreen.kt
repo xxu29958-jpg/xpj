@@ -401,6 +401,7 @@ fun ExpenseEditScreen(
             category = category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) },
             categoryChoice = categoryChoice,
             categoryDecisionPublicId = categoryDecisionPublicId,
+            recognitionTimeChoice = timeForm.recognitionChoice,
             note = note,
             expenseTime = expenseTime.ifBlank { null },
             timeInput = time.input,

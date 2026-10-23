@@ -16,7 +16,7 @@ def learning_activity(db: Session, *, tenant_id: str) -> dict:
         .join(Expense, Expense.id == LedgerLearningEvent.subject_id)
         .where(LedgerLearningEvent.tenant_id == tenant_id, Expense.tenant_id == tenant_id,
             LedgerLearningEvent.subject_kind == "expense",
-            LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate")))
+            LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice")))
         .order_by(LedgerLearningEvent.created_at.desc(), LedgerLearningEvent.id.desc()).limit(10)).all()
     assessments = feedback_assessments(db, tenant_id=tenant_id, events=[event for event, _ in feedback])
     return {

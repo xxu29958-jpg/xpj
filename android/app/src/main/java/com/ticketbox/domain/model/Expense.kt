@@ -157,6 +157,7 @@ data class ExpenseDraft(
     val funding: List<ExpenseFunding> = emptyList(),
     val categoryChoice: String? = null,
     val categoryDecisionPublicId: String? = null,
+    val recognitionTimeChoice: RecognitionTimeChoice? = null,
 )
 
 data class ExpenseItem(

@@ -1,5 +1,17 @@
 package com.ticketbox.domain.model
 
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
+data class RecognitionTimeChoice(
+    @param:Json(name = "evidence_public_id") val evidencePublicId: String,
+    @param:Json(name = "candidate_id") val candidateId: String,
+    @param:Json(name = "parser_version") val parserVersion: String,
+    val source: String,
+    val intent: String = "candidate",
+)
+
 /** Read-only source evidence. Only a deliberate choice changes the existing edit draft. */
 data class RecognitionTime(
     val evidencePublicId: String,

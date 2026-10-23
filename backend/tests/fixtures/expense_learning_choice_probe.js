@@ -40,6 +40,15 @@
       suggestion.click();
       assert(field("category").value === state.category, "This case must exercise a same-value choice");
       assert(field("category_choice").value === "suggestion", "Choice was not preserved");
+      assert(!field("recognition_time_choice")?.value, "Untouched time became feedback");
+      const time = form.querySelector("[data-recognized-time]");
+      assert(time, "Original time candidate is missing");
+      assert(!time.disabled, "Original time candidate is not actionable");
+      time.click();
+      state.timeChoice = field("recognition_time_choice").value;
+      assert(state.timeChoice, "Explicit time choice is missing");
+      assert(JSON.parse(state.timeChoice).candidate_id === JSON.parse(time.dataset.recognizedTime).id,
+        "Explicit time choice lost its original evidence identity");
       state.stage = "sent"; save();
       form.requestSubmit([...form.querySelectorAll("button")].find(button => button.textContent === "保存草稿"));
       await wait(() => state.stage === "unknown" && form.querySelector("[data-expensereview-draft-status]").textContent.includes("暂未收到"));
@@ -48,10 +57,12 @@
       assert(form.dataset.expensereviewDraftPhase === "submitted", "Unknown save became a new editable command");
       assert(field("category_decision_public_id").value === state.decision, "Reload borrowed a newer advice identity");
       assert(field("category_choice").value === "suggestion", "Reload lost explicit choice");
+      assert(field("recognition_time_choice").value === state.timeChoice, "Reload borrowed a newer time candidate");
       state.stage = "replay"; save(); form.requestSubmit(primary);
     } else if (state.stage === "replay") {
       assert(!field("category_choice")?.value && !field("category_decision_public_id")?.value,
         "The next command inherited the already accepted vote");
+      assert(!field("recognition_time_choice")?.value, "The next command inherited a previous time choice");
       window.__expenseReviewResult = {...state, completed: true};
     }
   } catch (error) {

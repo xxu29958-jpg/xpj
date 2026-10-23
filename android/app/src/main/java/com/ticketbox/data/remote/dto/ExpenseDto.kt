@@ -145,6 +145,8 @@ data class ExpenseDto(
 
 @JsonClass(generateAdapter = true)
 data class ExpenseUpdateRequest(
+    @param:Json(name = "recognition_time_choice")
+    val recognitionTimeChoice: com.ticketbox.domain.model.RecognitionTimeChoice? = null,
     @param:Json(name = "category_choice")
     val categoryChoice: String? = null,
     @param:Json(name = "category_decision_public_id")

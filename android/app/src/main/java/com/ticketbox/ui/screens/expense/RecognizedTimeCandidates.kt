@@ -48,4 +48,7 @@ internal fun ExpenseTimeForm.withRecognizedTime(candidate: RecognitionTimeCandid
     offsetSeconds = candidate.sourceUtcOffsetSeconds,
     originalInstant = null,
     changed = true,
+    recognitionChoice = if (candidate.evidencePublicId != null && candidate.parserVersion != null && candidate.source != null)
+        com.ticketbox.domain.model.RecognitionTimeChoice(candidate.evidencePublicId, candidate.id, candidate.parserVersion, candidate.source)
+        else null,
 )

@@ -163,10 +163,22 @@ BUDGET_SUGGESTION = AlgorithmType(
 )
 
 
+RECOGNITION_TIME_CHOICE = AlgorithmType(
+    decision_type="recognition_time_choice",
+    current_version="time-case-memory-v1",
+    display_label="原件时间选择",
+    description="记住你在同类原件中明确选过的位置，仅调整可核对候选的顺序；记账时间改动不自动当作识别标签。",
+    subject_kinds=("expense",),
+    default_retention_days=0,
+    marker_keys=("field", "evidence_public_id"),
+)
+
+
 ALGORITHM_TYPES: dict[str, AlgorithmType] = {
     CATEGORY_SUGGESTION.decision_type: CATEGORY_SUGGESTION,
     DUPLICATE_CANDIDATE.decision_type: DUPLICATE_CANDIDATE,
     BUDGET_SUGGESTION.decision_type: BUDGET_SUGGESTION,
+    RECOGNITION_TIME_CHOICE.decision_type: RECOGNITION_TIME_CHOICE,
 }
 
 

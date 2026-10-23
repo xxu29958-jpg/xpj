@@ -89,7 +89,7 @@ def owner_algorithm_policy_post(request: Request, ledger_id: str = Form(...),
     if not any(row.decision_type == decision_type and row.algorithm_version == algorithm_version for row in versions):
         raise AppError("not_found", status_code=404)
     supported = ALGORITHM_TYPES.get(decision_type)
-    if (decision_type not in {"category_suggestion", "duplicate_candidate"}
+    if (decision_type not in {"category_suggestion", "duplicate_candidate", "recognition_time_choice"}
             or (axis == "new_suggestions" and (supported is None or supported.current_version != algorithm_version))):
         raise AppError("not_found", status_code=404)
     try:

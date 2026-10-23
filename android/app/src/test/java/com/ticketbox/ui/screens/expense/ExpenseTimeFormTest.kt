@@ -78,10 +78,15 @@ class ExpenseTimeFormTest {
     }
     @Test fun printedOffsetChoiceSurvivesDraftRestoreWithoutInventingARegion() {
         val candidate = RecognitionTimeCandidate("candidate", "支付时间", "精确到分", "支付时间 2026-11-01 01:30-05:00",
-            "2026-11-01T01:30", "minute", null, -18000, true)
+            "2026-11-01T01:30", "minute", null, -18000, true,
+            evidencePublicId = "original-fact", parserVersion = "receipt-fields-v3", source = "image")
         val original = form()
         val chosen = original.withRecognizedTime(candidate)
         val restored = requireNotNull(readExpenseTimeForm(chosen.toSavedJson()))
+        assertEquals("original-fact", restored.recognitionChoice?.evidencePublicId)
+        assertEquals("candidate", restored.recognitionChoice?.candidateId)
+        assertEquals(chosen.recognitionChoice, restored.copy(time = "01:40").recognitionChoice)
+        assertNull(original.recognitionChoice)
         val resolved = restored.resolveEdit(original.originalInstant)
         assertEquals("2026-11-01T06:30:00Z", resolved.instant)
         assertEquals(-18000, resolved.input?.sourceUtcOffsetSeconds)

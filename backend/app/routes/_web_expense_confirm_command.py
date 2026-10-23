@@ -116,6 +116,7 @@ def prepare_web_expense_confirmation(
         funding_json=form.funding_json,
         category_choice=form.category_choice,
         category_decision_public_id=form.category_decision_public_id,
+        recognition_time_choice=form.recognition_time_choice,
     )
     if payload is None:
         return WebExpenseConfirmPreparation(
