@@ -284,7 +284,7 @@
           {% if item.p75_yuan is not none %}
             P75 {{ item.home_currency_code }} {{ item.p75_yuan|grouped }}
           {% elif item.verdict == 'no_history' %}
-            无历史
+            历史不足
           {% else %}
             待补信息
           {% endif %}
