@@ -21,6 +21,7 @@ internal data class ExpenseEditFormValues(
     val regretScoreText: String,
     val categoryChoice: String? = null,
     val categoryDecisionPublicId: String? = null,
+    val recognitionFieldChoicesJson: String? = null,
 ) {
     fun changesFxIdentity(expense: Expense): Boolean {
         return currency != expense.originalCurrencyCode ||

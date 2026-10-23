@@ -6,7 +6,12 @@ import re
 from dataclasses import replace
 
 from app.services.receipt_parse_common import _AmountCandidate
-from app.services.receipt_parse_rules import _PRINTED_TOTAL, CURRENCY_AMOUNT_PATTERN, TRANSACTION_SUCCESS_KEYWORDS
+from app.services.receipt_parse_rules import (
+    _PRINTED_TOTAL,
+    CURRENCY_AMOUNT_PATTERN,
+    CURRENCY_PREFIX_PATTERN,
+    TRANSACTION_SUCCESS_KEYWORDS,
+)
 from app.services.receipt_parse_structure import promotion_start
 
 _LABELS = {
@@ -25,7 +30,7 @@ _LABELS = {
 }
 _ROLE_BY_LABEL = {label: role for role, labels in _LABELS.items() for label in labels}
 _LABEL = re.compile("|".join(re.escape(label) for label in sorted(_ROLE_BY_LABEL, key=len, reverse=True)))
-_BRIDGE = re.compile(r"(?:的|已|成功|人民币|RMB|CNY|金额|合计|为|共|[:：\s¥￥])*", re.I)
+_BRIDGE = re.compile(r"(?:的|已|成功|" + CURRENCY_PREFIX_PATTERN + r"|金额|合计|为|共|[:：\s])*", re.I)
 _UNFINISHED = re.compile(
     r"^(?:交易状态[:：\s]*)?(?:(?:支付|付款|交易)(?:失败|关闭|取消|处理中)|"
     r"正在(?:付款|支付)中|待付款|待支付|未付款|未支付|确认支付)|(?:将于|预计).{0,48}(?:扣款|支付)", re.M)

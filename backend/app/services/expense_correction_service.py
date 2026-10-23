@@ -35,6 +35,7 @@ from app.services.idempotency import claim_idempotent_request, mark_idempotency_
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.pending_suggestion_service import record_category_choice
 from app.services.receipt_item_service import apply_expense_items_to_claimed_row
+from app.services.recognition_field_service import record_field_choices
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import now_utc
 
@@ -416,6 +417,7 @@ def _apply_correction_sections(
     if expense.amount_cents != amount_before or payload.splits is not None:
         validate_current_expense_split_allocation(db, expense=expense)
     apply_funding_correction(db, expense=expense, before_money=before_money, payload=payload, actor_account_id=actor_account_id)
+    record_field_choices(db, expense=expense, choices=payload.recognition_field_choices, actor_account_id=actor_account_id)
     if payload.category is not None:
         record_category_choice(db, expense=expense, previous_category=category_before,
             previous_merchant=merchant_before, actor_account_id=actor_account_id,

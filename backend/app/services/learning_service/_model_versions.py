@@ -32,6 +32,7 @@ from app.models import AlgorithmDecision, LedgerLearningEvent
 from app.services.learning_service._algorithm_registry import (
     CATEGORY_SUGGESTION,
     DUPLICATE_CANDIDATE,
+    RECOGNITION_FIELD_CHOICE,
     RECOGNITION_TIME_CHOICE,
     REPAYMENT_CHOICE,
 )
@@ -121,7 +122,7 @@ def list_algorithm_versions(
         if status in grouped[key]:
             grouped[key][status] = int(n)
     feedback = _feedback_inventory(db, tenant_id=tenant_id)
-    controlled = (CATEGORY_SUGGESTION, DUPLICATE_CANDIDATE, RECOGNITION_TIME_CHOICE, REPAYMENT_CHOICE)
+    controlled = (CATEGORY_SUGGESTION, DUPLICATE_CANDIDATE, RECOGNITION_TIME_CHOICE, RECOGNITION_FIELD_CHOICE, REPAYMENT_CHOICE)
     for entry in controlled:
         grouped.setdefault((entry.decision_type, entry.current_version), {})
     for key in feedback:

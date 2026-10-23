@@ -4189,6 +4189,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "recognition_field_choices": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Field Choices"
+          },
           "recognition_time_choice": {
             "anyOf": [
               {
@@ -5603,6 +5614,17 @@
             "default": "",
             "title": "Original Currency",
             "type": "string"
+          },
+          "recognition_field_choices": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Field Choices"
           },
           "recognition_time_choice": {
             "anyOf": [
@@ -7785,6 +7807,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "recognition_field_choices": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Field Choices"
+          },
           "recognition_time_choice": {
             "anyOf": [
               {
@@ -8132,6 +8165,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "recognition_field_choices": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Field Choices"
+          },
           "recognition_time_choice": {
             "anyOf": [
               {
@@ -8457,6 +8501,17 @@
             "default": "",
             "title": "Original Currency",
             "type": "string"
+          },
+          "recognition_field_choices": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Field Choices"
           },
           "recognition_time_choice": {
             "anyOf": [
@@ -8938,6 +8993,17 @@
             "default": "",
             "title": "Original Currency",
             "type": "string"
+          },
+          "recognition_field_choices": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Field Choices"
           },
           "recognition_time_choice": {
             "anyOf": [
@@ -16814,6 +16880,21 @@
             "title": "Reason",
             "type": "string"
           },
+          "recognition_field_choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RecognitionFieldChoice"
+                },
+                "maxItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Field Choices"
+          },
           "regret_score": {
             "anyOf": [
               {
@@ -18639,6 +18720,13 @@
             ],
             "title": "Raw Text"
           },
+          "recognition_fields": {
+            "items": {
+              "$ref": "#/components/schemas/RecognitionFieldCandidate"
+            },
+            "title": "Recognition Fields",
+            "type": "array"
+          },
           "recognition_notes": {
             "items": {
               "type": "string"
@@ -19345,6 +19433,21 @@
               }
             ],
             "title": "Original Currency Code"
+          },
+          "recognition_field_choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RecognitionFieldChoice"
+                },
+                "maxItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Field Choices"
           },
           "recognition_time_choice": {
             "anyOf": [
@@ -25841,6 +25944,178 @@
           "rate_date"
         ],
         "title": "ProjectionReferenceDto",
+        "type": "object"
+      },
+      "RecognitionFieldCandidate": {
+        "properties": {
+          "can_apply": {
+            "title": "Can Apply",
+            "type": "boolean"
+          },
+          "currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency Code"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "evidence_public_id": {
+            "title": "Evidence Public Id",
+            "type": "string"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "field": {
+            "enum": [
+              "amount_cents",
+              "merchant"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "minor_unit_exponent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minor Unit Exponent"
+          },
+          "original_text": {
+            "title": "Original Text",
+            "type": "string"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "selection_intent": {
+            "default": "candidate",
+            "enum": [
+              "candidate",
+              "bookkeeping"
+            ],
+            "title": "Selection Intent",
+            "type": "string"
+          },
+          "source": {
+            "const": "image",
+            "default": "image",
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field",
+          "id",
+          "value",
+          "label",
+          "original_text",
+          "explanation",
+          "role",
+          "can_apply",
+          "evidence_public_id",
+          "parser_version"
+        ],
+        "title": "RecognitionFieldCandidate",
+        "type": "object"
+      },
+      "RecognitionFieldChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "evidence_public_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Evidence Public Id",
+            "type": "string"
+          },
+          "field": {
+            "enum": [
+              "amount_cents",
+              "merchant"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "intent": {
+            "default": "candidate",
+            "enum": [
+              "candidate",
+              "original_correction",
+              "bookkeeping"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "parser_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "source": {
+            "const": "image",
+            "default": "image",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "evidence_public_id",
+          "candidate_id",
+          "parser_version"
+        ],
+        "title": "RecognitionFieldChoice",
         "type": "object"
       },
       "RecognitionTimeCandidate": {

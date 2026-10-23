@@ -185,11 +185,23 @@ REPAYMENT_CHOICE = AlgorithmType(
 )
 
 
+RECOGNITION_FIELD_CHOICE = AlgorithmType(
+    decision_type="recognition_field_choice",
+    current_version="field-case-memory-v1",
+    display_label="原件金额与商户选择",
+    description="只参考本人明确选过的原件位置；保存普通改动和默认展示不会自动形成识别标签。",
+    subject_kinds=("expense",),
+    default_retention_days=0,
+    marker_keys=("field", "evidence_public_id"),
+)
+
+
 ALGORITHM_TYPES: dict[str, AlgorithmType] = {
     CATEGORY_SUGGESTION.decision_type: CATEGORY_SUGGESTION,
     DUPLICATE_CANDIDATE.decision_type: DUPLICATE_CANDIDATE,
     BUDGET_SUGGESTION.decision_type: BUDGET_SUGGESTION,
     RECOGNITION_TIME_CHOICE.decision_type: RECOGNITION_TIME_CHOICE,
+    RECOGNITION_FIELD_CHOICE.decision_type: RECOGNITION_FIELD_CHOICE,
     REPAYMENT_CHOICE.decision_type: REPAYMENT_CHOICE,
 }
 

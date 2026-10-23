@@ -168,9 +168,14 @@ class ExpenseEditScreenContractTest {
             evidencePublicId = "fact", source = "image", parserVersion = "receipt-fields-v3", role = "transaction")
         val notification = day.copy(id = "notice-day", label = "通知 · 交易日期", localValue = "2026-01-01",
             originalText = "交易日期：2026-01-01", evidencePublicId = "capture", source = "notification")
+        val amount = com.ticketbox.domain.model.RecognitionFieldCandidate("amount_cents", "payment", "1234", "支付金额",
+            "支付金额：CNY 12.34", "图片原文", "payment", true, "fact", "receipt-fields-v5", "CNY", 2)
+        val merchant = amount.copy(field = "merchant", id = "merchant", value = "原件商户", label = "商户",
+            originalText = "商户：原件商户", role = "merchant", currencyCode = null, minorUnitExponent = null)
         val recorded = expense().copy(expenseTime = null, originalAmountMinor = 1234L,
             accountingTime = com.ticketbox.domain.model.ExpenseAccountingTime("unknown", calendarRevision = 1L),
             recognitionTime = com.ticketbox.domain.model.RecognitionTime("fact", "receipt-fields-v3", "ambiguous", listOf(day, notification), "multiple"),
+            recognitionFields = listOf(amount, merchant),
             recognitionNotes = listOf("原件金额存在冲突，请核对现有草稿。"),
             duplicateStatus = "suspected", duplicateOfId = 2L, duplicateCandidateIds = listOf(2L, 3L),
             duplicateReason = "原件完全一致；交易信息不足，需对照原件核实")
@@ -185,6 +190,11 @@ class ExpenseEditScreenContractTest {
         composeRule.onNodeWithText("原件金额存在冲突，请核对现有草稿。").performScrollTo().assertIsDisplayed()
         composeRule.onNode(hasSetTextAction() and hasText("12.34")).performScrollTo().performTextReplacement("22.00")
         closeSoftKeyboard()
+        composeRule.onNodeWithText("采用此金额").performScrollTo().assertIsEnabled().performClick()
+        composeRule.onNode(hasSetTextAction() and hasText("12.34")).performScrollTo().performTextReplacement("22.00")
+        closeSoftKeyboard()
+        composeRule.onNodeWithText("已对照此处纠正金额").performScrollTo().assertIsEnabled().performClick()
+        composeRule.onNodeWithText("采用此商户").performScrollTo().assertIsEnabled().performClick()
         composeRule.onNodeWithText("查看其他候选 #3").performScrollTo().performClick()
         composeRule.onNodeWithTag("expense-edit-time-section").performScrollTo().performClick()
         composeRule.onNodeWithText("图片 · 交易日期 · 2025-12-31").performScrollTo().assertIsDisplayed()
@@ -195,6 +205,9 @@ class ExpenseEditScreenContractTest {
         composeRule.onNodeWithText("保存").performClick()
         composeRule.runOnIdle {
             assertEquals(2200L, saved?.originalAmountMinor)
+            assertEquals("原件商户", saved?.merchant)
+            assertEquals(listOf(amount.choice().copy(intent = "original_correction"), merchant.choice()),
+                saved?.toRequest(recorded)?.recognitionFieldChoices)
             assertEquals("date_only", saved?.timeInput?.precision)
             assertEquals("2025-12-31", saved?.timeInput?.userLocalDate)
             assertEquals("America/New_York", saved?.timeInput?.sourceTimezone)

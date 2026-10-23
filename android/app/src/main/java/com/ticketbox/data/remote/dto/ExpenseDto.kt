@@ -141,12 +141,16 @@ data class ExpenseDto(
     val recognitionTime: RecognitionTimeDto? = null,
     @param:Json(name = "recognition_notes")
     val recognitionNotes: List<String> = emptyList(),
+    @param:Json(name = "recognition_fields")
+    val recognitionFields: List<com.ticketbox.domain.model.RecognitionFieldCandidate> = emptyList(),
 )
 
 @JsonClass(generateAdapter = true)
 data class ExpenseUpdateRequest(
     @param:Json(name = "recognition_time_choice")
     val recognitionTimeChoice: com.ticketbox.domain.model.RecognitionTimeChoice? = null,
+    @param:Json(name = "recognition_field_choices")
+    val recognitionFieldChoices: List<com.ticketbox.domain.model.RecognitionFieldChoice>? = null,
     @param:Json(name = "category_choice")
     val categoryChoice: String? = null,
     @param:Json(name = "category_decision_public_id")

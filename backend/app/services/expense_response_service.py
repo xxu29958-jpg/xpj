@@ -12,6 +12,7 @@ from app.schemas._recognition_time import RecognitionTimeResponse
 from app.services.accounting_time_service import accounting_time_snapshot
 from app.services.background_task_response import task_response_dicts
 from app.services.learning_service import read_ocr_facts
+from app.services.recognition_field_service import recognition_fields
 from app.services.recognition_time_service import recognition_amount_notes, recognition_time
 
 
@@ -35,6 +36,7 @@ def expense_to_response(
     dto.raw_text = fact.raw_text if fact is not None else None
     dto.recognition_time = recognition_time(fact, notification=(notification_times_by_id or {}).get(expense.public_id))
     dto.recognition_notes = recognition_amount_notes(fact)
+    dto.recognition_fields = recognition_fields(fact)
     return dto
 
 

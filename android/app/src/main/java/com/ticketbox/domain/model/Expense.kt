@@ -86,6 +86,7 @@ data class Expense(
     val accountingTime: ExpenseAccountingTime? = null,
     val recognitionTime: RecognitionTime? = null,
     val recognitionNotes: List<String> = emptyList(),
+    val recognitionFields: List<RecognitionFieldCandidate> = emptyList(),
 ) {
     // Metadata permits an image request; the protected reader still checks access and bytes.
     val hasUndeletedImage: Boolean get() = hasImage && imageDeletedAt == null
@@ -158,6 +159,7 @@ data class ExpenseDraft(
     val categoryChoice: String? = null,
     val categoryDecisionPublicId: String? = null,
     val recognitionTimeChoice: RecognitionTimeChoice? = null,
+    val recognitionFieldChoices: List<RecognitionFieldChoice>? = null,
 )
 
 data class ExpenseItem(

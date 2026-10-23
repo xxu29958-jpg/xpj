@@ -59,6 +59,7 @@ fun ExpenseDto.toDomain(): Expense {
     return Expense(
         recognitionTime = recognitionTime?.toDomain(),
         recognitionNotes = recognitionNotes,
+        recognitionFields = recognitionFields,
         id = id,
         publicId = requiredPublicId(),
         amountCents = amountCents,
@@ -367,6 +368,7 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
 
     return ExpenseUpdateRequest(
         recognitionTimeChoice = recognitionTimeChoice,
+        recognitionFieldChoices = recognitionFieldChoices,
         categoryChoice = categoryChoice,
         categoryDecisionPublicId = categoryDecisionPublicId,
         timeInput = changedTimeInput?.toRequest(),

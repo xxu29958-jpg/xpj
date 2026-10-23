@@ -4,8 +4,14 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from app.services.receipt_parse_money import _EXPLICIT_CURRENCY_MARKERS
 from app.services.receipt_parse_structure import related_value_index
 
+_CURRENCY_PREFIXES = sorted(
+    {marker for markers in _EXPLICIT_CURRENCY_MARKERS.values() for marker in markers} | {"¥", "￥"},
+    key=len, reverse=True,
+)
+CURRENCY_PREFIX_PATTERN = "(?:" + "|".join(re.escape(value) for value in _CURRENCY_PREFIXES) + ")"
 
 @dataclass(frozen=True)
 class CategoryHintRule:
@@ -35,6 +41,7 @@ MERCHANT_LABELS = (
     "付款给",
     "对方户名",
     "商家",
+    "商户",
     "店铺",
     "门店",
     "平台",
@@ -121,6 +128,7 @@ MERCHANT_LABEL_SCORES = {
     "商家名称": 96,
     "商户名称": 96,
     "商家": 88,
+    "商户": 88,
     "店铺": 84,
     "门店": 84,
     "交易对象": 82,
@@ -309,9 +317,12 @@ def _label_hits(line: str, labels: tuple[str, ...]) -> list[tuple[str, int]]:
 
 def _strip_currency_prefix(value: str) -> str:
     tail = value.lstrip()
-    for prefix in ("人民币", "RMB", "CNY", "MYR", "RM", "¥", "￥"):
-        if tail.upper().startswith(prefix):
-            return tail[len(prefix) :].lstrip()
+    for prefix in _CURRENCY_PREFIXES:
+        if tail.upper().startswith(prefix.upper()):
+            remainder = tail[len(prefix):]
+            if prefix[-1].isascii() and prefix[-1].isalpha() and remainder and remainder[0].isalpha():
+                continue
+            return remainder.lstrip(" :：")
     return tail
 
 

@@ -1,0 +1,19 @@
+{% if recognition_fields is defined and recognition_fields and expense is defined and expense.status == 'pending' %}
+<details class="product-disclosure" data-recognized-fields>
+  <summary>对照原件金额与商户</summary>
+  <p class="meta">选择属于本次交易的内容填入草稿，保存后才会修改账单。</p>
+  <p class="meta">若识别文字有误，先修改上方金额或商户，再指出原件中识别错的这一处。</p>
+  {% for candidate in recognition_fields %}
+  <div class="product-field">
+    <strong>{{ candidate.label }}</strong>
+    <p>{{ candidate.original_text }}</p>
+    <p class="meta">{{ candidate.explanation }}</p>
+    {% if candidate.can_apply and can_write and not expense_review_basis_changed %}
+    <button type="button" class="product-button product-button--secondary" data-recognized-field='{{ candidate.model_dump() | tojson }}'>{{ '采用此金额' if candidate.field == 'amount_cents' else '采用此商户' }}</button>
+    <button type="button" class="product-button product-button--secondary" data-recognized-field-correction='{{ candidate.model_dump() | tojson }}'>{{ '已对照此处纠正金额' if candidate.field == 'amount_cents' else '已对照此处纠正商户' }}</button>
+    {% endif %}
+  </div>
+  {% endfor %}
+  <p class="meta" role="status" data-recognized-field-status></p>
+</details>
+{% endif %}

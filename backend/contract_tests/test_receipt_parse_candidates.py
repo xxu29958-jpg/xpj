@@ -68,9 +68,20 @@ def test_invalid_money_is_not_shortened_to_a_different_valid_amount(raw):
     assert parse(raw).amount_cents is None
 
 
-def test_three_decimal_currency_retains_its_exact_minor_units():
-    result = parse_receipt_text("实付金额：1.234", currency_code="KWD", minor_unit_exponent=3)
-    assert result.amount_cents == 1234
+@pytest.mark.parametrize("text,code,exponent,minor", [
+    ("实付金额：1.234", "KWD", 3, 1234),
+    ("支付金额：JPY 2850", "JPY", 0, 2850),
+    ("实付金额：KWD 1.234", "KWD", 3, 1234),
+    ("实付金额：USD 12.34", "USD", 2, 1234),
+    ("支付金额：JPY 2850", "CNY", 2, None),
+    ("支付金额：JPYSHOP2850", "JPY", 0, None),
+])
+def test_explicit_currency_retains_exact_minor_units_without_borrowing_other_codes(text, code, exponent, minor):
+    result = parse_receipt_text(text, currency_code=code, minor_unit_exponent=exponent)
+    assert result.amount_cents == minor
+    if minor is not None:
+        amount = next(item for item in result.candidates if item.field == "amount_cents" and item.value == minor)
+        assert amount.role == "payment" and amount.currency_code == code
 
 
 def test_printed_total_keeps_currency_and_does_not_take_cash_or_tax_table():
