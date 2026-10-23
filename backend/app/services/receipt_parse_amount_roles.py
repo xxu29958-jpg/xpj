@@ -6,7 +6,8 @@ import re
 from dataclasses import replace
 
 from app.services.receipt_parse_common import _AmountCandidate
-from app.services.receipt_parse_rules import _PRINTED_TOTAL, TRANSACTION_SUCCESS_KEYWORDS
+from app.services.receipt_parse_rules import _PRINTED_TOTAL, CURRENCY_AMOUNT_PATTERN, TRANSACTION_SUCCESS_KEYWORDS
+from app.services.receipt_parse_structure import promotion_start
 
 _LABELS = {
     "payment": ("实付金额", "支付金额", "付款金额", "交易金额", "实付", "实际支付", "实际付款"),
@@ -19,6 +20,8 @@ _LABELS = {
     "refund": ("退款金额", "退款", "退回"),
     "income": ("收款金额", "收款", "收入", "转入"),
     "fee": ("服务费", "包装费", "配送费", "税额", "找零"),
+    "original_price": ("商品原价", "商品总价", "原价"),
+    "period_summary": ("本月支出", "本月消费", "累计支出"),
 }
 _ROLE_BY_LABEL = {label: role for role, labels in _LABELS.items() for label in labels}
 _LABEL = re.compile("|".join(re.escape(label) for label in sorted(_ROLE_BY_LABEL, key=len, reverse=True)))
@@ -29,7 +32,7 @@ _UNFINISHED = re.compile(
 _EVENTS = {"repayment": re.compile(r"^(?:还款成功|已还款|还款完成|已还清|偿还成功)", re.M),
     "refund": re.compile(r"^(?:退款成功|已退款|退款完成|CREDIT\s+NOTE\b|REFUND\s+(?:COMPLETED|SUCCESSFUL)\b)", re.M | re.I),
     "income": re.compile(r"^(?:收款成功|收款到账|收入到账)", re.M),
-    "expense": re.compile(r"^(?:交易成功|支付成功|付款成功)", re.M)}
+    "expense": re.compile(r"^(?:交易成功|支付成功|付款成功|自动扣款成功|扣款成功)", re.M)}
 
 AMOUNT_ROLE_PRIORITY = {"rounded_total": 3, "payment": 2, "expense": 2, "final_total": 2, "total": 1, "unknown": 0}
 
@@ -69,16 +72,42 @@ def _unlabeled_review_reason(text: str, item: _AmountCandidate, *, has_total: bo
 
 def bind_amount_roles(text: str, candidates: list[_AmountCandidate]) -> list[_AmountCandidate]:
     reason = _transaction_review_reason(text)
+    promotion = promotion_start(text)
     has_total = any(_PRINTED_TOTAL.match(line) for line in text.splitlines())
     unresolved_rounding = bool(re.search(r"ROUNDING\s+ADJ", text, re.I)) and not any(
         item.role == "rounded_total" for item in candidates)
     if unresolved_rounding:
         reason = reason or "rounding_total_unresolved"
-    bound = []
-    for item in candidates:
-        role = item.role if item.role != "unknown" else _role(text, *item.normalized_span)
-        item_reason = reason
-        if role == "unknown":
-            item_reason = item_reason or _unlabeled_review_reason(text, item, has_total=has_total)
-        bound.append(replace(item, role=role, review_reason=item_reason))
-    return bound
+    return [_bind_amount_role(text, item, reason=reason, promotion=promotion, has_total=has_total) for item in candidates]
+
+
+def _bind_amount_role(text: str, item: _AmountCandidate, *, reason: str | None,
+        promotion: int | None, has_total: bool) -> _AmountCandidate:
+    role = item.role if item.role != "unknown" else _role(text, *item.normalized_span)
+    label_span = _total_remainder_label(text, item) if role == "unknown" else None
+    if label_span is not None:
+        role = "total"
+    if promotion is not None and item.normalized_span[0] >= promotion:
+        reason = reason or "promotion_amount"
+    if role == "unknown":
+        reason = reason or _unlabeled_review_reason(text, item, has_total=has_total)
+    return replace(item, role=role, review_reason=reason, label_span=label_span,
+        score=max(1, item.score) if role in AMOUNT_ROLE_PRIORITY and role != "unknown" else item.score)
+
+
+def _total_remainder_label(text: str, candidate: _AmountCandidate) -> tuple[int, int] | None:
+    """A total row may contain an explicitly labeled saving and one other price."""
+    start, end = candidate.normalized_span
+    row_start = text.rfind("\n", 0, start) + 1
+    row_end = text.find("\n", end)
+    row = text[row_start:row_end if row_end >= 0 else len(text)]
+    amounts = list(CURRENCY_AMOUNT_PATTERN.finditer(row))
+    if len(amounts) != 2 or not re.fullmatch(r"(?:已优惠|共减|优惠)\s*", row[:amounts[0].start()]):
+        return None
+    if not (start <= row_start + amounts[1].start() < end):
+        return None
+    previous_start = text.rfind("\n", 0, max(0, row_start - 1)) + 1
+    previous = text[previous_start:row_start].strip()
+    if re.fullmatch(r"(?:合计|总计)[\s①-⑳]*", previous):
+        return previous_start, previous_start + len(previous)
+    return None

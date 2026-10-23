@@ -35,6 +35,47 @@ def _seed(raw):
         return expense.id, fact_id
 
 
+@pytest.mark.parametrize("manual_amount", [None, 2200])
+def test_multi_transaction_image_keeps_event_identity_in_actual_review(client, web_client, identity, manual_amount):
+    raw = ("支付成功\n商户：蓝湾餐厅\n支付金额：12.60元\n支付时间：2025-12-20 12:30\n"
+        "支付成功\n商户：青松商店\n支付金额：12.60元\n支付时间：2025-12-21 08:20")
+    with SessionLocal() as db:
+        expense = Expense(tenant_id="owner", source="camera", status="pending", category="其他",
+            amount_cents=manual_amount, home_currency_code="CNY", original_currency_code="CNY")
+        db.add(expense)
+        db.flush()
+        apply_ocr_result_and_append_fact(db, expense=expense,
+            result=OcrResult(raw_text=raw, confidence=0.9, amount_cents=1260, merchant="蓝湾餐厅", category="餐饮"),
+            provider_name="manual_text")
+        db.commit()
+        expense_id, version = expense.id, expense.row_version
+        fact = db.query(OcrFact).filter_by(expense_id=expense_id).one()
+        frozen_evidence = fact.evidence_json
+        assert expense.amount_cents == manual_amount and expense.merchant is None
+        assert expense.expense_time is None and expense.category == "其他"
+        events = json.loads(frozen_evidence)["field_parse"]["events"]
+        assert len(events) == 2 and not set(events[0]["candidate_ids"]).intersection(events[1]["candidate_ids"])
+
+    response = client.get("/api/expenses/pending", headers=negotiated_headers(client, identity.app_headers))
+    assert response.status_code == 200, response.text
+    item = next(row for row in response.json() if row["id"] == expense_id)
+    assert item["amount_cents"] == manual_amount and item["recognition_time"]["status"] == "ambiguous"
+    assert item["recognition_notes"] == [
+        "原件包含多笔交易；请先确定本次记录哪一笔，再核对该笔的金额、商户与时间。",
+        "第1笔 · 支付金额：CNY 12.60", "第2笔 · 支付金额：CNY 12.60"]
+    candidates = item["recognition_time"]["candidates"]
+    assert [value["label"] for value in candidates] == ["图片 · 第1笔 · 支付时间", "图片 · 第2笔 · 支付时间"]
+    assert candidates[0]["original_text"] != candidates[1]["original_text"]
+    page = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+    assert page.status_code == 200, page.text
+    assert all(note in page.text for note in item["recognition_notes"])
+    assert all(value["label"] in page.text for value in candidates)
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense.amount_cents == manual_amount and expense.row_version == version
+        assert db.query(OcrFact).filter_by(expense_id=expense_id).one().evidence_json == frozen_evidence
+
+
 def test_api_date_only_choice_is_explicit_replayable_and_keeps_source_fact(client, identity):
     raw = "交易日期：2025-12-31\n打印时间：2026-01-01 12:30"
     expense_id, fact_id = _seed(raw)

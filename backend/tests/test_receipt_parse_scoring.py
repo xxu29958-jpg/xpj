@@ -21,6 +21,69 @@ def _parse_cny(raw_text: str, *, timezone_name: str | None = None, reference_tim
     )
 
 
+def test_material_amount_remains_available_beside_a_discount_and_advertisements():
+    parsed = _parse_cny("\n".join([
+        "支付成功", "城市出行-经济型", "再来一单", "开发票", "联系客服", "费用明细",
+        "12.6元", "优惠0.4元", "全程2公里", "活动专区", "10元", "无门槛打车券",
+    ]))
+    assert parsed.amount_cents == 1260
+    assert any(candidate.value == 1260 for candidate in parsed.candidates if candidate.field == "amount_cents")
+
+
+def test_material_total_keeps_its_role_next_to_a_discount_not_the_nearby_item_price():
+    parsed = _parse_cny("支付成功\n商品原价\n¥36\n包装费\n¥1\n合计\n已优惠¥8.5 ¥28.5")
+    assert parsed.amount_cents == 2850
+    selected = next(candidate for candidate in parsed.candidates
+        if candidate.id == next(decision.selected_id for decision in parsed.decisions if decision.field == "amount_cents"))
+    assert selected.role == "total"
+    assert "合计" in "".join("支付成功\n商品原价\n¥36\n包装费\n¥1\n合计\n已优惠¥8.5 ¥28.5"[start:end]
+        for start, end in selected.raw_spans)
+
+
+@pytest.mark.parametrize("order", [(0, 1, 2, 3), (2, 0, 3, 1)])
+def test_material_merchant_label_binds_value_on_its_row_with_original_provenance(order):
+    blocks = [
+        {"text": "商家名称", "box": [[0, 200], [80, 200], [80, 220], [0, 220]]},
+        {"text": "BlueBay", "box": [[180, 200], [320, 200], [320, 220], [180, 220]]},
+        {"text": "商品说明", "box": [[0, 300], [80, 300], [80, 320], [0, 320]]},
+        {"text": "会员续费", "box": [[180, 300], [320, 300], [320, 320], [180, 320]]},
+    ]
+    blocks = [blocks[index] for index in order]
+    text = "\n".join(block["text"] for block in blocks)
+    parsed = parse_receipt_text(text, currency_code="CNY", minor_unit_exponent=2, evidence_blocks=blocks)
+    assert parsed.merchant == "BlueBay"
+    selected = next(candidate for candidate in parsed.candidates
+        if candidate.id == next(decision.selected_id for decision in parsed.decisions if decision.field == "merchant"))
+    assert {blocks[index]["text"] for index in selected.block_indices} == {"商家名称", "BlueBay"}
+
+
+def test_material_merchant_is_the_scoped_store_not_the_payment_platform():
+    text = "账单详情\n淘宝闪购\n-28.50\n支付成功\n商品说明\n晨光茶饮(中央路店)外卖订单\n付款方式\n信用卡"
+    parsed = _parse_cny(text)
+    assert parsed.merchant == "晨光茶饮(中央路店)"
+    assert any(candidate.value == "淘宝闪购" for candidate in parsed.candidates if candidate.field == "merchant")
+
+
+def test_material_equal_amount_cards_do_not_form_one_cross_event_draft():
+    text = "支付成功\n支付金额：20.00元\n商家：晨光商店\n支付时间：2026-02-03 10:20:00\n" + \
+        "支付成功\n支付金额：20.00元\n商家：晴天商店\n支付时间：2026-02-04 10:20:00"
+    parsed = _parse_cny(text, timezone_name="Asia/Shanghai")
+    assert parsed.amount_cents is None and parsed.merchant is None and parsed.expense_time is None
+    assert all(decision.reason == "multiple_transaction_events" for decision in parsed.decisions)
+    assert len(parsed.events) == 2
+    for event in parsed.events:
+        candidates = [candidate for candidate in parsed.candidates if candidate.event_id == event["id"]]
+        assert len({candidate.value for candidate in candidates if candidate.field == "merchant"}) == 1
+
+
+def test_material_status_clock_is_not_a_merchant_and_auto_debit_is_a_paid_event():
+    parsed = _parse_cny("17:04 8…\n账单详情\n城市打车\n-13.20\n自动扣款成功\n付款方式\n信用卡")
+    assert parsed.amount_cents == 1320
+    assert parsed.merchant == "城市打车"
+    assert not any(candidate.field == "merchant" and str(candidate.value).startswith("17:04")
+        for candidate in parsed.candidates)
+
+
 def test_scoring_prefers_alipay_primary_amount_merchant_and_time() -> None:
     raw_text = "\n".join(
         [

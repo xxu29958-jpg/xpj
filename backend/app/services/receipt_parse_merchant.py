@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
+from dataclasses import replace
 
 from app.services.receipt_parse_common import (
     _line_index_for_offset,
@@ -26,15 +28,17 @@ from app.services.receipt_parse_rules import (
     is_primary_amount_line,
     iter_labeled_merchant_matches,
 )
+from app.services.receipt_parse_structure import related_value_index
 
 
-def _merchant_candidates(text: str) -> list[_MerchantCandidate]:
+def _merchant_candidates(text: str, blocks: Sequence[dict] | None = None) -> list[_MerchantCandidate]:
     lines = text.splitlines()
     return [
         *_success_merchant_candidates(text, lines),
         *_payment_method_merchant_candidates(text, lines),
         *_payment_sheet_merchant_candidates(text, lines),
-        *_labeled_merchant_candidates(text, lines),
+        *_labeled_merchant_candidates(text, lines, blocks),
+        *_store_context_candidates(text, lines, blocks),
         *_keyword_merchant_candidates(text),
         *_first_line_merchant_candidates(text, lines),
     ]
@@ -132,9 +136,9 @@ def _payment_sheet_merchant_candidates(text: str, lines: list[str]) -> list[_Mer
     return candidates
 
 
-def _labeled_merchant_candidates(text: str, lines: list[str]) -> list[_MerchantCandidate]:
+def _labeled_merchant_candidates(text: str, lines: list[str], blocks: Sequence[dict] | None) -> list[_MerchantCandidate]:
     candidates: list[_MerchantCandidate] = []
-    for match in iter_labeled_merchant_matches(lines):
+    for match in iter_labeled_merchant_matches(lines, blocks):
         cleaned = _clean_merchant(match.value)
         label = match.label
         index = match.line_index
@@ -148,7 +152,34 @@ def _labeled_merchant_candidates(text: str, lines: list[str]) -> list[_MerchantC
             require_no_digits=False,
         )
         if candidate:
-            candidates.append(candidate)
+            candidates.append(replace(candidate, normalized_span=match.value_span, label_span=match.label_span,
+                role="merchant" if label in {"商家名称", "商户名称", "商家", "店铺", "门店"} else "payee"))
+    return candidates
+
+
+def _store_context_candidates(text: str, lines: list[str], blocks: Sequence[dict] | None) -> list[_MerchantCandidate]:
+    candidates = []
+    for index, line in enumerate(lines):
+        value_index = None
+        if line.strip(" >〉") == "进店" and index:
+            value_index = index - 1
+        elif line == "商品说明":
+            value_index = related_value_index(lines, blocks, index)
+        if value_index is None:
+            continue
+        value = re.sub(r"^(?:自营|闪购)", "", lines[value_index]).strip(" >〉")
+        if line == "商品说明":
+            store = re.fullmatch(r"(.+[（(][^()（）]+店[）)])(?:外卖)?(?:订单)?", value)
+            if not store:
+                continue
+            value = store[1]
+        candidate = _score_merchant_candidate(text=text, value=value, base_score=96,
+            line_index=value_index, source="store_context", require_no_digits=False)
+        if candidate:
+            start = sum(len(item) + 1 for item in lines[:value_index]) + lines[value_index].find(value)
+            label_start = sum(len(item) + 1 for item in lines[:index])
+            candidates.append(replace(candidate, role="merchant", normalized_span=(start, start + len(value)),
+                label_span=(label_start, label_start + len(line))))
     return candidates
 
 
@@ -303,11 +334,9 @@ def _calibrate_one(candidate: _MerchantCandidate, context: _ReceiptContext) -> _
         noise=noise,
         evidence=tuple(evidence),
     )
-    return _MerchantCandidate(
-        value=candidate.value,
+    return replace(
+        candidate,
         score=dimensions.total,
-        line_index=candidate.line_index,
-        source=candidate.source,
         evidence=dimensions.evidence,
         dimensions=dimensions,
     )
@@ -435,6 +464,7 @@ def _is_title_merchant_candidate(value: str | None) -> bool:
     upper_value = value.upper()
     if (
         CLOCK_LINE_PATTERN.match(value)
+        or re.match(r"^\d{1,2}[:：]\d{2}(?:\D|$)", value)
         or "4G" in upper_value
         or "5G" in upper_value
         or "WIFI" in upper_value

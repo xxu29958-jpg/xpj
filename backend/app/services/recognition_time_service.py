@@ -40,7 +40,8 @@ def _time_explanation(item: dict, precision: str) -> str:
     return note
 
 
-def _candidate(item: dict, raw_text: str, *, public_id: str, source: str, version: str) -> RecognitionTimeCandidate:
+def _candidate(item: dict, raw_text: str, *, public_id: str, source: str, version: str,
+        event_prefix: str = "") -> RecognitionTimeCandidate:
     local = item.get("local_value") or ""
     precision = item.get("precision") or "unknown"
     reason = item.get("review_reason")
@@ -55,7 +56,7 @@ def _candidate(item: dict, raw_text: str, *, public_id: str, source: str, versio
     # IANA zone would change the printed clock or fail the kernel validation.
     zone = None if item.get("timezone_basis") == "printed_offset" else item.get("timezone_name")
     origin = "通知" if source == "notification" else "图片"
-    return RecognitionTimeCandidate(id=item["id"], label=f"{origin} · {_ROLES.get(role, _ROLES['unknown'])}",
+    return RecognitionTimeCandidate(id=item["id"], label=f"{origin} · {event_prefix}{_ROLES.get(role, _ROLES['unknown'])}",
         explanation=_time_explanation(item, precision), original_text=original, local_value=local, precision=precision,
         source_timezone=zone, source_utc_offset_seconds=item.get("utc_offset_seconds"),
         can_apply=valid and role in {"payment", "transaction", "consumption", "unknown"}
@@ -124,7 +125,9 @@ def _combined_time(image: RecognitionTimeResponse, notification: RecognitionTime
 
 
 def project_time_evidence(public_id: str, source: str, evidence: dict, raw_text: str) -> RecognitionTimeResponse | None:
-    candidates = [_candidate(item, raw_text, public_id=public_id, source=source, version=evidence["version"])
+    events = _event_prefixes(evidence)
+    candidates = [_candidate(item, raw_text, public_id=public_id, source=source, version=evidence["version"],
+        event_prefix=events.get(item.get("event_id"), ""))
         for item in evidence["candidates"]
         if item["field"] == "expense_time"]
     if not candidates:
@@ -141,10 +144,15 @@ _AMOUNT_NOTES = {
     "income_receipt": "原件显示收款或收入，请核对类型，不要当作消费。",
     "conflicting_transaction_kinds": "原件中出现了不同交易类型，请先核对。",
     "conflicting_transaction_amounts": "原件中的消费金额不一致，请对照原文填写。",
+    "multiple_transaction_events": "原件包含多笔交易；请先确定本次记录哪一笔，再核对该笔的金额、商户与时间。",
 }
 _AMOUNT_ROLES = {"payment": "支付金额", "expense": "支出", "total": "合计", "final_total": "结算合计", "rounded_total": "取整后合计", "order": "订单金额",
     "balance": "余额或额度", "discount": "优惠", "repayment": "还款", "refund": "退款",
-    "income": "收入", "fee": "费用或找零", "unknown": "金额"}
+    "income": "收入", "fee": "费用或找零", "unknown": "金额", "original_price": "原价", "period_summary": "期间汇总"}
+
+
+def _event_prefixes(evidence: dict) -> dict[str, str]:
+    return {event["id"]: f"第{number}笔 · " for number, event in enumerate(evidence.get("events", []), 1)}
 
 
 def recognition_amount_notes(fact: OcrFact | None) -> list[str]:
@@ -156,7 +164,9 @@ def recognition_amount_notes(fact: OcrFact | None) -> list[str]:
     decision = next((item for item in evidence["decisions"] if item["field"] == "amount_cents"), None)
     if decision is None or decision["status"] not in {"ambiguous", "needs_review"}:
         return []
-    values = dict.fromkeys((item["value"], item["currency_code"], item.get("role"))
+    events = _event_prefixes(evidence)
+    values = dict.fromkeys((item["value"], item["currency_code"], item.get("role"), item.get("event_id"))
         for item in evidence["candidates"] if item["field"] == "amount_cents")
     return [_AMOUNT_NOTES.get(decision["reason"], "原件金额尚不能确定为消费金额，请核对现有草稿。"),
-        *(f"{_AMOUNT_ROLES.get(role, '金额')}：{code} {minor_amount_value(value, code)}" for value, code, role in values)]
+        *(f"{events.get(event, '')}{_AMOUNT_ROLES.get(role, '金额')}：{code} {minor_amount_value(value, code)}"
+            for value, code, role, event in values)]

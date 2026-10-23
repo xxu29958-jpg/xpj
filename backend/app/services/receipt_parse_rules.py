@@ -4,6 +4,8 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from app.services.receipt_parse_structure import related_value_index
+
 
 @dataclass(frozen=True)
 class CategoryHintRule:
@@ -25,6 +27,8 @@ AMOUNT_LABELS = (
     "总计",
 )
 MERCHANT_LABELS = (
+    "商家名称",
+    "商户名称",
     "收款方全称",
     "交易对象",
     "收款方",
@@ -52,6 +56,8 @@ class LabeledMerchantMatch:
     line_index: int
     label: str
     value: str
+    value_span: tuple[int, int]
+    label_span: tuple[int, int]
 
 
 PRIMARY_AMOUNT_LINE_PATTERN = re.compile(
@@ -88,7 +94,7 @@ MERCHANT_LABEL_PATTERN = re.compile(
     r"\s*[:：]?\s*(?P<value>[^\n\r，,。；;]{2,60})"
 )
 
-TRANSACTION_SUCCESS_KEYWORDS = ("交易成功", "支付成功", "付款成功")
+TRANSACTION_SUCCESS_KEYWORDS = ("交易成功", "支付成功", "付款成功", "自动扣款成功", "扣款成功")
 DISCOUNT_AMOUNT_LABELS = ("优惠", "立减", "红包", "券", "奖励", "抵扣")
 MONEY_MARKERS = ("¥", "￥", "元", "人民币")
 UPPER_MONEY_MARKERS = ("RMB", "CNY", "RM")
@@ -112,6 +118,8 @@ INLINE_AMOUNT_PATTERNS = (
 )
 
 MERCHANT_LABEL_SCORES = {
+    "商家名称": 96,
+    "商户名称": 96,
     "商家": 88,
     "店铺": 84,
     "门店": 84,
@@ -250,7 +258,8 @@ def _following_total_amount(lines, index, kind, offset, tail) -> list[LabeledAmo
     return []
 
 
-def iter_labeled_merchant_matches(lines: tuple[str, ...] | list[str]) -> list[LabeledMerchantMatch]:
+def iter_labeled_merchant_matches(lines: tuple[str, ...] | list[str],
+        blocks: Sequence[dict] | None = None) -> list[LabeledMerchantMatch]:
     matches: list[LabeledMerchantMatch] = []
     for line_index, line in enumerate(lines):
         stripped = line.strip()
@@ -260,10 +269,19 @@ def iter_labeled_merchant_matches(lines: tuple[str, ...] | list[str]) -> list[La
             value = stripped[len(label) :].lstrip()
             if value.startswith((":", "：")):
                 value = value[1:].lstrip()
+            value_index = line_index
+            if not value:
+                value_index = related_value_index(lines, blocks, line_index)
+                if value_index is None:
+                    break
+                value = lines[value_index].strip()
             value = _merchant_label_value(value)
             if 2 <= len(value) <= 60:
+                start = sum(len(item) + 1 for item in lines[:value_index]) + lines[value_index].find(value)
+                label_start = sum(len(item) + 1 for item in lines[:line_index])
                 matches.append(
-                    LabeledMerchantMatch(line_index=line_index, label=label, value=value)
+                    LabeledMerchantMatch(line_index=line_index, label=label, value=value,
+                        value_span=(start, start + len(value)), label_span=(label_start, label_start + len(label)))
                 )
             break
     return matches

@@ -108,8 +108,6 @@ def _primary_line_amount_candidate(
 
     dimensions = _primary_amount_dimensions(lines, index, line_text, cents, minor_unit_exponent,
         has_money_marker=has_money_marker, has_nearby_success=has_nearby_success, has_sign=has_sign)
-    if dimensions.total <= 0:
-        return None
     start = sum(len(line) + 1 for line in lines[:index])
     return _AmountCandidate(
         amount_cents=cents, score=dimensions.total, line_index=index, source="line",
@@ -217,13 +215,12 @@ def _inline_amount_candidates(
                 evidence=tuple(evidence),
             )
             score = dimensions.total
-            if score > 0:
-                candidates.append(
-                    _AmountCandidate(
-                        cents, score, index, source, dimensions.evidence, dimensions,
-                        normalized_span=match.span(),
-                    )
+            candidates.append(
+                _AmountCandidate(
+                    cents, score, index, source, dimensions.evidence, dimensions,
+                    normalized_span=match.span(),
                 )
+            )
     return candidates
 
 
@@ -417,8 +414,10 @@ def _has_nearby_success(lines: list[str], index: int) -> bool:
 
 
 def _has_discount_context(lines: list[str], index: int) -> bool:
-    nearby = "\n".join(lines[max(0, index - 1) : min(len(lines), index + 2)])
-    return any(label in nearby for label in DISCOUNT_AMOUNT_LABELS)
+    # An adjacent discount is a different value, not evidence against this one.
+    if any(label in lines[index] for label in DISCOUNT_AMOUNT_LABELS):
+        return True
+    return index > 0 and lines[index - 1].strip(" :：") in DISCOUNT_AMOUNT_LABELS
 
 
 def _has_money_marker(value: str) -> bool:
