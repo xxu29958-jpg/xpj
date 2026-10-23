@@ -127,8 +127,8 @@ class FamilyInvitationNavigationTest {
         // Scroll only after that layout settles; waiting after an old-bounds scroll cannot reposition it.
         compose.waitForIdle()
         InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 3_000)
-        val revoked = compose.onNodeWithText("只读 · 已撤销").performScrollTo()
-        compose.waitUntil(5_000) { revoked.isDisplayed() }
+        val revoked = compose.onNodeWithText("只读 · 已撤销")
+        compose.waitUntil(5_000) { revoked.performScrollTo().isDisplayed() }
         revoked.assertIsDisplayed()
         compose.onNodeWithText("复制").assertDoesNotExist()
         assertEquals(listOf(original.publicId), revokes.toList())
