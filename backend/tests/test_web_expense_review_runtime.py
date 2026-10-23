@@ -53,8 +53,9 @@ first_original_web = original_tests.first_original_web
 
 
 @pytest.mark.real_db
+@pytest.mark.parametrize("entry", ["full", "drawer"])
 def test_browser_event_choice_preserves_one_transaction_and_replays_without_training_defaults(
-        review_browser, confirmation_store, monkeypatch, tmp_path):
+        review_browser, confirmation_store, monkeypatch, tmp_path, entry):
     from app.models import LedgerLearningEvent
     from app.routes import web_expense_edit
     from tests.test_recognition_event_drafts import seed_event_material
@@ -94,7 +95,8 @@ def test_browser_event_choice_preserves_one_transaction_and_replays_without_trai
         return value
 
     monkeypatch.setattr(cdp, "_evaluate_script", capture)
-    result = _run_review_page(client, tmp_path, "/web/expenses/42/edit?ledger_id=owner&return_to=pending")
+    path = "/web/pending?ledger_id=owner&filter=ready" if entry == "drawer" else "/web/expenses/42/edit?ledger_id=owner&return_to=pending"
+    result = _run_review_page(client, tmp_path, path, width=1440 if entry == "drawer" else 393)
     assert not result.get("error") and result["completed"], result
     assert len(result["requests"]) == 2 and result["requests"][0] == result["requests"][1]
     with confirmation_store() as db:

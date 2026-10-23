@@ -120,6 +120,8 @@ def _with_label_span(item: _AmountCandidate, label_span: tuple[int, int] | None)
 
 def _success_amount_label(text: str, candidate: _AmountCandidate) -> tuple[int, int] | None:
     """A standalone price directly next to a completion status names its payment."""
+    if any(item.startswith("discount_context:") for item in candidate.evidence):
+        return None
     lines = text.splitlines()
     index = candidate.line_index
     if not _explicit_primary_line(lines[index]):
@@ -141,12 +143,17 @@ def _bind_unique_payment(text: str, candidates: list[_AmountCandidate]) -> list[
         return candidates
     lines = text.splitlines()
     statuses = [match for match in re.finditer(r"[^\n]+", text) if match.group() in TRANSACTION_SUCCESS_KEYWORDS]
-    eligible = [item for item in candidates if item.role == "unknown" and not item.review_reason
-        and _explicit_primary_line(lines[item.line_index])]
-    if len(statuses) != 1 or len({item.amount_cents for item in eligible}) != 1:
+    unbound = _unbound_payment_amounts(candidates)
+    eligible = [item for item in unbound if _explicit_primary_line(lines[item.line_index])]
+    if len(statuses) != 1 or len({item.amount_cents for item in unbound}) != 1:
         return candidates
     return [replace(item, role="payment", label_span=statuses[0].span(), score=max(1, item.score))
         if item in eligible else item for item in candidates]
+
+
+def _unbound_payment_amounts(candidates: list[_AmountCandidate]) -> list[_AmountCandidate]:
+    return [item for item in candidates if item.role == "unknown" and not item.review_reason
+        and not any(evidence.startswith("discount_context:") for evidence in item.evidence)]
 
 
 def _total_remainder_label(text: str, candidate: _AmountCandidate) -> tuple[int, int] | None:

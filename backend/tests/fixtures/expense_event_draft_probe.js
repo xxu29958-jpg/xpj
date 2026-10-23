@@ -20,6 +20,7 @@
       assert(response.ok, "Event draft save was refused");
       state.stage = "unknown"; save(); throw Error("Committed acknowledgement lost");
     }
+    if (state.stage === "replay") { assert(response.ok, "Original event command replay was refused"); state.replayAccepted = true; save(); }
     return response;
   };
   async function chooseAndSave(form, field) {
@@ -48,7 +49,12 @@
     location.reload();
   }
   try {
-    const form = document.querySelector("form.edit-form"), field = name => form.elements.namedItem(name);
+    const drawer = location.pathname === "/web/pending";
+    if (drawer) {
+      if (!window.TicketboxWeb.drawerApi.isOpen()) document.querySelector('.exp-row[data-expense-id="42"] .exp-row-detail').click();
+      await wait(() => document.querySelector("#drawer [data-drawer-form]"));
+    }
+    const form = document.querySelector(drawer ? "#drawer [data-drawer-form]" : "form.edit-form"), field = name => form.elements.namedItem(name);
     const primary = form.querySelector("[data-expensereview-submit]");
     await wait(() => form.dataset.expensereviewDraftPhase && !primary.disabled);
     if (state.stage === "choose") {
@@ -57,6 +63,10 @@
       assert(form.dataset.expensereviewDraftPhase === "submitted", "Lost reply created a new intent");
       assert(field("recognition_field_choices").value === state.fieldChoices && field("recognition_time_choice").value === state.timeChoice, "Reload replaced original event identities");
       state.stage = "replay"; save(); form.requestSubmit(primary);
+      if (drawer) {
+        await wait(() => state.replayAccepted && !form.isConnected && document.querySelector("#drawer [data-drawer-form]"));
+        window.__expenseReviewResult = {...state, completed: true};
+      }
     } else if (state.stage === "replay") {
       window.__expenseReviewResult = {...state, completed: true};
     }

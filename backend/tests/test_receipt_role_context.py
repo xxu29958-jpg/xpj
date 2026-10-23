@@ -40,6 +40,13 @@ def test_success_does_not_turn_adjacent_balance_or_discount_into_payment():
     assert {c.role for c in result.candidates if c.field == 'amount_cents'} == {'balance', 'discount'}
 
 
+@pytest.mark.parametrize("label", ["券", "订单说明"])
+def test_standalone_price_does_not_override_a_competing_inline_amount(label):
+    result = parse(["支付成功", "青禾茶店", "金额：18.00元", label, "￥50.00"])
+    assert result.amount_cents == 1800
+    assert not any(c.value == 5000 and c.role == "payment" for c in result.candidates)
+
+
 def test_repeated_cards_keep_each_status_and_selected_payment_in_its_event():
     result = parse(["服务消息", "青禾超市", "08:20", "付款成功", "￥150.00", "查看详情",
         "青禾超市", "08:21", "付款成功", "￥160.00", "查看详情"])

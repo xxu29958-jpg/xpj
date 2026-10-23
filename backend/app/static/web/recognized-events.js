@@ -28,7 +28,9 @@
     }
     container.dataset.ready = "true";
   }
-  function initialize() { document.querySelectorAll("[data-recognized-events]").forEach(render); }
+  function initialize(root = document) { root.querySelectorAll("[data-recognized-events]").forEach(render); }
+  const app = window.TicketboxWeb = window.TicketboxWeb || {};
+  app.initRecognizedEvents = initialize;
   document.addEventListener("click", event => {
     const button = event.target.closest("[data-recognized-event]");
     if (!button || button.disabled || button.closest("fieldset")?.disabled) return;
@@ -39,9 +41,6 @@
       try { item.button.click(); } finally { delete item.button.dataset.eventDraftApply; }
     }
   });
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize, {once: true});
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => initialize(), {once: true});
   else initialize();
-  document.addEventListener("toggle", event => {
-    if (event.target.matches("[data-recognized-fields]")) initialize();
-  }, true);
 })();
