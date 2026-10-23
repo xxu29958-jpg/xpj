@@ -227,7 +227,9 @@ def test_apply_with_fact_updates_mirror_and_appends_snapshot(*, identity) -> Non
         assert rows[0].ocr_provider == "manual_text"
         evidence = json.loads(rows[0].evidence_json)
         candidate = next(item for item in evidence["field_parse"]["candidates"] if item["field"] == "expense_time")
-        assert candidate["local_value"] == "2024-12-31T23:59"
+        assert candidate["local_value"] == "12月31日23:59"
+        assert candidate["reference_time"] is None
+        assert candidate["review_reason"] == "reference_time_missing"
         assert candidate["inferred_components"] == ["year"]
         assert expense.expense_time is None and rows[0].parsed_expense_time is None
         assert "blocks" not in evidence  # Manual text must not acquire fabricated image boxes.

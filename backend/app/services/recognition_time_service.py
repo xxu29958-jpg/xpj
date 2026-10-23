@@ -1,7 +1,7 @@
 """Project saved recognition evidence into the existing explicit review."""
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.models import OcrFact
@@ -75,7 +75,7 @@ def recognition_time(fact: OcrFact | None, *,
     return notification or image
 
 
-def _evidence_timezone(item: RecognitionTimeCandidate):
+def _evidence_timezone(item: RecognitionTimeCandidate) -> tzinfo | None:
     if item.source_utc_offset_seconds is not None:
         return timezone(timedelta(seconds=item.source_utc_offset_seconds))
     try:
