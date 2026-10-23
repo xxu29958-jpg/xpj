@@ -1,14 +1,14 @@
 """Successful expense commands, not displayed defaults, supply field feedback."""
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import AlgorithmDecision, Expense, LedgerLearningEvent
+from app.models import AlgorithmDecision, Expense, LedgerLearningEvent, OcrFact
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.learning_service import OcrFactDraft, record_ocr_fact
 from app.services.ocr_service import OcrResult, ocr_fact_snapshot
@@ -74,10 +74,17 @@ def test_original_amount_and_merchant_choices_are_scoped_and_replayed_once(clien
 
 @pytest.mark.parametrize("source_change", ["amount", "ocr_fact"])
 def test_personal_field_case_reorders_a_new_source_and_stops_when_its_source_changes(client, identity, source_change):
+    from app.services.learning_service._cleanup import cleanup_expired_learning_tables
+
     headers = negotiated_headers(client, identity.app_headers)
     source_id = _seed()
     saved = _choose_amount(client, headers, source_id, 2500)
     next_id = _seed(paid=1900, total=2600)
+    with SessionLocal() as db:
+        fact = db.scalars(select(OcrFact).where(OcrFact.expense_id == source_id)).one()
+        fact.extracted_at = datetime.now(UTC) - timedelta(days=400)
+        db.commit()
+        cleanup_expired_learning_tables(db, tenant_id="owner")
     suggested = client.get(f"/api/expenses/{next_id}", headers=headers).json()
     amounts = [item for item in suggested["recognition_fields"] if item["field"] == "amount_cents"]
     assert amounts[0]["value"] == 2600 and "同类原件" in amounts[0]["explanation"]

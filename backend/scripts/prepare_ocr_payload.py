@@ -49,6 +49,9 @@ def acquire_models(recipe: dict, wheel_models: Path, destination: Path) -> None:
     sources = recipe["distribution"]
     entries = [(entry, sources["models"][role]) for role, entry in recipe["models"].items()]
     entries.append((recipe["dictionary"], sources["dictionary"]))
+    region = recipe.get("region_recognition")
+    if region:
+        entries.extend((region[key], region["distribution"][key]) for key in ("model", "dictionary"))
     for entry, source in entries:
         name = _filename(entry)
         data = _read_source(source, wheel_models)
@@ -69,6 +72,8 @@ def acquire_models(recipe: dict, wheel_models: Path, destination: Path) -> None:
 def prepare_payload(recipe_path: Path, model_root: Path, output: Path) -> dict:
     recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
     entries = [*recipe["models"].values(), recipe["dictionary"]]
+    if region := recipe.get("region_recognition"):
+        entries.extend([region["model"], region["dictionary"]])
     for entry in entries:
         source = model_root / _filename(entry)
         if source.parent.resolve() != model_root.resolve() or _sha256(source) != entry["sha256"]:

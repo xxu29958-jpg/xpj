@@ -34,7 +34,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import case, cast, func, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -178,7 +179,7 @@ def cleanup_expired_ocr_facts(
     now: datetime | None = None,
     batch_size: int = _DEFAULT_BATCH,
 ) -> int:
-    """Delete OCR facts past their retention. Anchors on
+    """Delete unreferenced OCR facts past their retention. Anchors on
     ``extracted_at`` because that's the user-visible "when did OCR run"
     timestamp; ``created_at`` is identical for normal paths but the
     distinction matters when a row is backfilled.
@@ -191,6 +192,7 @@ def cleanup_expired_ocr_facts(
     stmt = (
         select(OcrFact)
         .where(OcrFact.retention_days > 0)
+        .where(_unreferenced_ocr_fact())
         .order_by(OcrFact.extracted_at.asc())
         .limit(_clamp_batch(batch_size))
     )
@@ -206,6 +208,22 @@ def cleanup_expired_ocr_facts(
     if expired:
         db.commit()
     return len(expired)
+
+
+def _unreferenced_ocr_fact() -> ColumnElement[bool]:
+    """A retained choice keeps its source, including while training is paused."""
+    payload = cast(case(
+        (func.pg_input_is_valid(LedgerLearningEvent.after_payload, "jsonb"), LedgerLearningEvent.after_payload),
+        else_="{}",
+    ), JSONB)
+    return ~select(LedgerLearningEvent.id).where(
+        LedgerLearningEvent.tenant_id == OcrFact.tenant_id,
+        LedgerLearningEvent.subject_kind == "expense",
+        LedgerLearningEvent.subject_id == OcrFact.expense_id,
+        LedgerLearningEvent.signal_type.in_(("recognition_time_choice", "recognition_field_choice")),
+        payload["source"].astext == "image",
+        payload["evidence_public_id"].astext == OcrFact.public_id,
+    ).exists()
 
 
 def cleanup_expired_learning_tables(

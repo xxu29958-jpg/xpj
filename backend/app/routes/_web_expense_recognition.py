@@ -44,6 +44,8 @@ def recognition_page(request: Request, db: Session, options: list, selected: str
         "draft_scope": json.dumps(scope) if scope else "", **fields}
     if text:
         original.setdefault("raw_text", "")
+    else:
+        original.setdefault("ocr_region", "")
     origin = edit_context_params(**{name: fields.get(name, "") for name in ExpenseReturnContext().as_kwargs()})
     result = "prepared" if prepared else draft_refusal_result(error) if error else ""
     ctx.update(original_fields=original, recognition_text=text,

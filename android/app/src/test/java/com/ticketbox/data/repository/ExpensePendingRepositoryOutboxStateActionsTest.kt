@@ -34,6 +34,24 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         assertStateAdmission(PendingMutationType.RetryOcr)
     }
 
+    @Test
+    fun `region retry keeps source coordinates and identity in the original offline intent`() = runTest {
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val repo = buildRepository(ApiServiceStub(retryOcrResult = ApiResult.Success(successExpenseDto())),
+            testOutboxRepository(dao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val selection = com.ticketbox.domain.model.OcrRegionSelection("a".repeat(64), listOf(60, 25, 110, 50))
+        val accepted = repo.retryOcrAllowingOffline(binding, baseline, selection).getOrThrow()
+        val row = dao.rows.values.single()
+        val request = requireNotNull(moshi().adapter(ExpenseStateTokenRequest::class.java).fromJson(row.payload))
+        assertEquals(selection.imageSha256, request.region?.imageSha256)
+        assertEquals(selection.box, request.region?.box)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
+        assertEquals(baseline, accepted.expense)
+        assertNotNull(row.idempotencyKey)
+    }
+
     private suspend fun assertStateAdmission(type: PendingMutationType) {
         val baseline = successExpenseDto().copy(status = "pending", duplicateStatus = "suspected", duplicateOfId = 81L,
             duplicateCandidates = listOf(PendingDuplicateCandidateDto("displayed-pair-decision", 81L,

@@ -130,7 +130,7 @@ def _evidence_blocks(result, width: int, height: int) -> list[dict]:
 
 
 class RapidEngine:
-    def __init__(self, recipe_path: Path, model_root: Path) -> None:
+    def __init__(self, recipe_path: Path, model_root: Path, *, region_mode: bool = False) -> None:
         started = time.perf_counter()
         self.recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
         if self.recipe.get("schema") != 1:
@@ -140,6 +140,10 @@ class RapidEngine:
         for name, version in self.recipe["dependencies"].items():
             if importlib.metadata.version(name) != version:
                 raise OcrRuntimeError("ocr_runtime_version_mismatch")
+        if region_mode:
+            from ocr_runtime.region import region_recipe
+
+            self.recipe = region_recipe(self.recipe)
         models = {role: _model_file(model_root, entry) for role, entry in self.recipe["models"].items()}
         dictionary = _model_file(model_root, self.recipe["dictionary"])
         native = configure_native_runtime(self.recipe["native_runtime"]) if "native_runtime" in self.recipe else None
@@ -207,3 +211,17 @@ class RapidEngine:
                                "engine": (inferred - decoded) * 1000,
                                "postprocess": (time.perf_counter() - inferred) * 1000,
                                "stages": stages}}
+
+    def recognize_region(self, path: Path, digest: str, region: list[int]) -> dict:
+        from ocr_runtime.region import region_blocks, region_image, validate_region
+
+        started = time.perf_counter()
+        width, height = _admit_image(path, digest, self.recipe["input_limits"])
+        box = validate_region(region, width, height)
+        with region_image(path, box, (width, height), self.recipe.get("decode_limits")) as (crop, decoding):
+            result = self.engine(crop, use_det=False, use_cls=False, use_rec=True)
+        return {"schema": self.recipe["output_schema"], "blocks": region_blocks(result, box),
+                "width": width, "height": height, "region": list(box),
+                "coordinate_space": "exif-transposed-pixels", "decoding": decoding,
+                "input_sha256": digest, "identity": self.identity,
+                "timings_ms": {"inference": (time.perf_counter() - started) * 1000}}

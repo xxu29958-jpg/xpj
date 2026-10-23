@@ -10,6 +10,7 @@
   const fields = form => Object.fromEntries([...new FormData(form)].filter(([name]) => name !== "csrf_token")
     .map(([name, value]) => [name, name === "draft_scope" ? JSON.stringify(JSON.parse(value)) : value]));
   const input = (field, value) => { field.value = value; field.dispatchEvent(new Event("input", {bubbles: true})); };
+  const familyFor = kind => ["image", "region"].includes(kind) ? "expenseocr" : "expensetext";
   async function openTask() {
     const kind = new URL(location.href).searchParams.get("recognition_probe");
     if (!kind) return;
@@ -18,10 +19,10 @@
     await wait(() => !form.elements.merchant.readOnly, "financial lease");
     input(form.elements.merchant, "主核对未保存商家");
     keep({kind, phase: "open", financial: fields(form), requests: []});
-    const suffix = kind === "image" ? "ocr/retry" : "recognize-text";
+    const suffix = familyFor(kind) === "expenseocr" ? "ocr/retry" : "recognize-text";
     document.querySelector('a[href*="/42/' + suffix + '"]').click();
   }
-  function prepareOriginal(form, state) {
+  async function prepareOriginal(form, state) {
     if (state.phase !== "open") return false;
     if (state.kind === "text") {
       input(form.elements.raw_text, "便利店\n合计 JPY 2850\n原粘贴文字");
@@ -30,6 +31,33 @@
         form.elements.raw_text.dispatchEvent(event);
         if (event.defaultPrevented) throw Error("Recognition text triggered the bill confirmation shortcut");
       }
+    }
+    if (state.kind === "region") {
+      form.querySelector("[data-ocr-region] summary").click();
+      const image = form.querySelector("[data-ocr-region-image]");
+      await wait(() => image.complete && image.naturalWidth, "original image");
+      form.querySelector('[data-ocr-region-zoom="2"]').click();
+      const move = form.querySelector("[data-ocr-region-move]");
+      move.click();
+      if (!image.style.touchAction.includes("pan-y")) throw Error("Long source cannot be scrolled on touch");
+      image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, clientX: 1, clientY: 1}));
+      image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: 60, clientY: 60}));
+      if (form.elements.ocr_region.value) throw Error("Moving the source changed the crop");
+      move.click();
+      image.scrollIntoView({block: "center", behavior: "instant"});
+      const viewport = image.parentElement.parentElement;
+      viewport.scrollTo({left: image.getBoundingClientRect().width / 2 - 50, behavior: "instant"});
+      const bounds = image.getBoundingClientRect();
+      const visible = viewport.getBoundingClientRect();
+      const endpoint = bounds.left + 110 * bounds.width / image.naturalWidth;
+      if (endpoint < visible.left || endpoint > Math.min(visible.right, innerWidth)) throw Error("Crop gesture is outside the visible source");
+      const dispatch = (name, x, y) => image.dispatchEvent(new PointerEvent(name, {bubbles: true, pointerId: 1,
+        clientX: bounds.left + x * bounds.width / image.naturalWidth,
+        clientY: bounds.top + y * bounds.height / image.naturalHeight}));
+      dispatch("pointerdown", 60, 25); dispatch("pointermove", 110, 50); dispatch("pointerup", 110, 50);
+      const selected = JSON.parse(form.elements.ocr_region.value);
+      if (JSON.stringify(selected.box) !== "[60,25,110,50]") throw Error("Source crop coordinates changed: " + JSON.stringify({selected,
+        before: bounds.toJSON(), after: image.getBoundingClientRect().toJSON()}));
     }
     state.original = fields(form); state.phase = "send"; keep(state);
     if (state.kind === "text") { location.reload(); return true; }
@@ -42,13 +70,13 @@
       const form = await wait(() => document.querySelector("form[data-expensereview-draft-scope]"), "returned financial form");
       await wait(() => form.elements.merchant.value === "主核对未保存商家", "financial draft restore");
       const after = fields(form);
-      const prefix = "ticketbox:" + (state.kind === "text" ? "expensetext" : "expenseocr") + "-edit-draft:v1:";
+      const prefix = "ticketbox:" + familyFor(state.kind) + "-edit-draft:v1:";
       window.__expenseReviewResult = {...state,
         financial_retained: ["merchant", "idempotency_key", "expected_row_version", "draft_ref"].every(name => after[name] === state.financial[name]),
         recognition_removed: !Object.keys(localStorage).some(key => key.startsWith(prefix))};
       return;
     }
-    const family = state.kind === "image" ? "expenseocr" : "expensetext";
+    const family = familyFor(state.kind);
     const form = await wait(() => document.querySelector("form[data-recognition-form]"), "recognition form");
     await wait(() => form.expenseReviewContinuity, "recognition draft owner");
     const submit = form.querySelector("[data-recognition-submit]");
@@ -67,7 +95,7 @@
         warning: form.querySelector('[role="status"]').textContent};
       return;
     }
-    if (prepareOriginal(form, state)) return;
+    if (await prepareOriginal(form, state)) return;
     const restored = fields(form);
     if (!Object.keys(state.original).every(name => restored[name] === state.original[name])) throw Error("Original recognition changed after reload");
     state.restored = true; keep(state);

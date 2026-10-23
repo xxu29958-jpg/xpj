@@ -32,6 +32,21 @@ def test_offline_models_and_recipe_have_exact_published_identity(tmp_path):
     assert manifest["recipe_sha256"] == hashlib.sha256(recipe.read_bytes()).hexdigest()
 
 
+def test_selected_region_model_is_required_for_a_complete_bundle(tmp_path):
+    recipe_path, models, output = _fixture(tmp_path)
+    recipe = json.loads(recipe_path.read_text())
+    model = {"file": "region.onnx", "sha256": hashlib.sha256(b"regional").hexdigest()}
+    recipe["region_recognition"] = {"model": model, "dictionary": recipe["dictionary"]}
+    recipe_path.write_text(json.dumps(recipe))
+    with pytest.raises(FileNotFoundError):
+        prepare_payload(recipe_path, models, output)
+    assert not output.exists()
+    (models / model["file"]).write_bytes(b"regional")
+    manifest = prepare_payload(recipe_path, models, output)
+    assert (output / "models/region.onnx").read_bytes() == b"regional"
+    assert model in manifest["models"]
+
+
 @pytest.mark.parametrize("failure", ["corrupt", "missing"])
 def test_bad_model_cannot_publish_partial_payload(tmp_path, failure):
     recipe, models, output = _fixture(tmp_path)

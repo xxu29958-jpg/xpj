@@ -197,6 +197,18 @@ def test_ocr_facts_pruned_by_extracted_at(*, identity) -> None:
             now=NOW - timedelta(days=400),
         )
         old.retention_days = 365
+        unused = record_ocr_fact(db, OcrFactDraft(tenant_id="owner", expense_id=expense_id,
+            ocr_provider="local_llm", raw_text="unreferenced"), now=NOW - timedelta(days=350))
+        reference = record_event(db, EventDraft(tenant_id="owner", event_type="accept", subject_kind="expense",
+            subject_id=expense_id, signal_type="recognition_field_choice",
+            after_payload={"source": "image", "evidence_public_id": old.public_id}), now=NOW - timedelta(days=40))
+        reference.retention_days = 30
+        for tenant, payload in (("tester_1", {"source": "image", "evidence_public_id": unused.public_id}),
+                ("owner", {"source": "notification", "evidence_public_id": unused.public_id}), ("owner", None)):
+            noise = record_event(db, EventDraft(tenant_id=tenant, event_type="edit", subject_kind="expense",
+                subject_id=expense_id, signal_type="recognition_field_choice", after_payload=payload), now=NOW)
+            if payload is None:
+                noise.after_payload = "malformed historic payload"
         record_ocr_fact(
             db,
             OcrFactDraft(
@@ -208,8 +220,12 @@ def test_ocr_facts_pruned_by_extracted_at(*, identity) -> None:
             now=NOW - timedelta(days=30),
         )
         db.commit()
-        removed = cleanup_expired_ocr_facts(db, now=NOW)
+        removed = cleanup_expired_ocr_facts(db, now=NOW, batch_size=1)
         assert removed == 1
+        assert db.get(OcrFact, old.id) is not None, "A surviving feedback reference retains its exact source"
+        assert db.get(OcrFact, unused.id) is None, "A retained older source must not consume the cleanup batch"
+        report = cleanup_expired_learning_tables(db, now=NOW, batch_size=1)
+        assert report.ledger_learning_events == 1 and report.ocr_facts == 1
         rows = db.query(OcrFact).all()
         assert len(rows) == 1
         assert rows[0].raw_text == "recent"

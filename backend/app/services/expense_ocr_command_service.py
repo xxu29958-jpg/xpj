@@ -22,11 +22,12 @@ def submit_expense_ocr_retry(
     expected_row_version: int,
     request_expected_row_version: int,
     idempotency_key: str | None,
+    region: dict | None = None,
 ) -> Expense:
     accepted = submit_expense_ocr_task(db, expense_id=expense_id, tenant_id=tenant_id,
         initiator_account_id=initiator_account_id, initiator_device_id=initiator_device_id,
         expected_row_version=expected_row_version, request_expected_row_version=request_expected_row_version,
-        idempotency_key=idempotency_key, legacy=True)
+        idempotency_key=idempotency_key, legacy=True, region=region)
     return accepted if isinstance(accepted, Expense) else wait_legacy_ocr_result(db, accepted)
 
 

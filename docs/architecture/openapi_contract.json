@@ -7178,6 +7178,11 @@
             "title": "Ledger Id",
             "type": "string"
           },
+          "ocr_region": {
+            "default": "",
+            "title": "Ocr Region",
+            "type": "string"
+          },
           "raw_text": {
             "default": "",
             "title": "Raw Text",
@@ -17847,6 +17852,16 @@
           "expected_row_version": {
             "title": "Expected Row Version",
             "type": "integer"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OcrRegionRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -24851,6 +24866,31 @@
           "literal"
         ],
         "title": "NotificationTimeFragment",
+        "type": "object"
+      },
+      "OcrRegionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "box": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Box",
+            "type": "array"
+          },
+          "image_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Image Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image_sha256",
+          "box"
+        ],
+        "title": "OcrRegionRequest",
         "type": "object"
       },
       "OriginalCleanupObservation": {

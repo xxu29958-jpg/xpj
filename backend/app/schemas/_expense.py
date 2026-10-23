@@ -24,6 +24,7 @@ from app.schemas._money import (
     SignedMoneyMinor,
     expense_item_money_schema_extra,
 )
+from app.schemas._ocr_region import OcrRegionRequest
 from app.schemas._recognition_choice import RecognitionTimeChoice
 from app.schemas._recognition_fields import RecognitionFieldCandidate, RecognitionFieldChoice
 from app.schemas._recognition_time import RecognitionTimeResponse
@@ -257,6 +258,7 @@ class ExpenseOcrRetryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int
+    region: OcrRegionRequest | None = None
 
 
 class CategoryPreferenceTokenRequest(BaseModel):

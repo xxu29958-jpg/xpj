@@ -61,7 +61,10 @@ def ocr_runtime_available() -> bool:
         recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
         if recipe.get("schema") != 1:
             return False
-        for entry in [*recipe["models"].values(), recipe["dictionary"]]:
+        entries = [*recipe["models"].values(), recipe["dictionary"]]
+        if region := recipe.get("region_recognition"):
+            entries.extend([region["model"], region["dictionary"]])
+        for entry in entries:
             _model_file(model_root, entry)
         return True
     except (OSError, ValueError, KeyError, TypeError, OcrRuntimeError):
@@ -134,7 +137,7 @@ class OcrWorkerClient:
             with suppress(queue.Full):
                 messages.put_nowait(OcrRuntimeError("ocr_protocol_invalid"))
 
-    def recognize(self, path: Path, digest: str) -> dict:
+    def recognize(self, path: Path, digest: str, *, region: list[int] | None = None) -> dict:
         if not self._call_lock.acquire(timeout=self.timeout_seconds):
             raise OcrRuntimeError("ocr_busy")
         try:
@@ -144,22 +147,10 @@ class OcrWorkerClient:
                 self._start()
                 generation, messages = self._generation, self._messages
                 request_id = str(uuid4())
-                write_message(self._process.stdin, {"operation": "recognize", "generation": generation,
-                              "request_id": request_id, "path": str(path), "input_sha256": digest}, MAX_REQUEST_BYTES)
-            try:
-                response = messages.get(timeout=self.timeout_seconds)
-            except queue.Empty as exc:
-                raise OcrRuntimeError("ocr_timeout") from exc
-            if isinstance(response, Exception):
-                raise response
-            if response.get("generation") != generation or response.get("request_id") != request_id:
-                raise OcrRuntimeError("ocr_protocol_invalid")
-            if response.get("outcome") != "success":
-                raise OcrRuntimeError(response.get("error_code", "ocr_inference_failed"))
-            result = response["result"]
-            if result.get("input_sha256") != digest:
-                raise OcrRuntimeError("ocr_input_changed")
-            return result
+                write_message(self._process.stdin, {"operation": "recognize_region" if region is not None else "recognize",
+                              "generation": generation, "request_id": request_id, "path": str(path),
+                              "input_sha256": digest, **({"region": region} if region is not None else {})}, MAX_REQUEST_BYTES)
+            return self._receive_result(messages, generation, request_id, digest, region)
         except (OSError, ValueError, KeyError, OcrRuntimeError):
             with self._state_lock:
                 if not self._closed:
@@ -174,6 +165,24 @@ class OcrWorkerClient:
                 self._call_lock.release()
                 if self._process is not None and not self._closed:
                     self._arm_idle_timer(self.idle_seconds)
+
+    def _receive_result(self, messages, generation, request_id, digest, region) -> dict:
+        try:
+            response = messages.get(timeout=self.timeout_seconds)
+        except queue.Empty as exc:
+            raise OcrRuntimeError("ocr_timeout") from exc
+        if isinstance(response, Exception):
+            raise response
+        if response.get("generation") != generation or response.get("request_id") != request_id:
+            raise OcrRuntimeError("ocr_protocol_invalid")
+        if response.get("outcome") != "success":
+            raise OcrRuntimeError(response.get("error_code", "ocr_inference_failed"))
+        result = response["result"]
+        if result.get("input_sha256") != digest:
+            raise OcrRuntimeError("ocr_input_changed")
+        if region is not None and result.get("region") != region:
+            raise OcrRuntimeError("ocr_protocol_invalid")
+        return result
 
     def _arm_idle_timer(self, delay: float) -> None:
         if self._timer:
@@ -244,6 +253,10 @@ atexit.register(_CLIENT.close)
 
 def recognize_snapshot(path: Path, digest: str) -> dict:
     return _CLIENT.recognize(path, digest)
+
+
+def recognize_region_snapshot(path: Path, digest: str, region: list[int]) -> dict:
+    return _CLIENT.recognize(path, digest, region=region)
 
 
 def shutdown_ocr_worker() -> None:

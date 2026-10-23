@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import sys
 from pathlib import Path
 
@@ -25,18 +26,28 @@ def main() -> int:
     source, sink = sys.stdin.buffer, sys.stdout.buffer
     # The parent attaches its kill-on-close Job before granting the first request.
     engine = None
+    region_mode = False
     while request := read_message(source, MAX_REQUEST_BYTES):
         if request.get("operation") == "stop":
             return 0
         response = {"request_id": request.get("request_id"), "generation": request.get("generation")}
         try:
-            if request.get("operation") != "recognize":
+            if request.get("operation") not in {"recognize", "recognize_region"}:
                 raise OcrRuntimeError("ocr_protocol_invalid")
+            requested_region = request["operation"] == "recognize_region"
+            if requested_region != region_mode:
+                # Keep one model set inside the capacity-one worker and its Job.
+                engine = None
+                gc.collect()
+                region_mode = requested_region
             if engine is None:
                 from ocr_runtime.engine import RapidEngine
 
-                engine = RapidEngine(args.recipe, args.model_root)
-            result = engine.recognize(Path(request["path"]), request["input_sha256"])
+                engine = RapidEngine(args.recipe, args.model_root, region_mode=region_mode)
+            if region_mode:
+                result = engine.recognize_region(Path(request["path"]), request["input_sha256"], request.get("region"))
+            else:
+                result = engine.recognize(Path(request["path"]), request["input_sha256"])
             response.update(outcome="success", result=result)
         except OcrRuntimeError as exc:
             response.update(outcome="error", error_code=exc.code)

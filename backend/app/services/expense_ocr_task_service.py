@@ -56,7 +56,7 @@ def _existing_task(db: Session, claim, *, legacy: bool) -> BackgroundTask | Expe
 
 def _prepare_retry(db: Session, claim: ApiIdempotencyKey, *, expense_id: int, tenant_id: str,
                    initiator_account_id: int, initiator_device_id: int | None,
-                   expected_row_version: int, legacy: bool) -> background_task_service.PreparedBackgroundTask:
+                   expected_row_version: int, legacy: bool, region: dict | None = None) -> background_task_service.PreparedBackgroundTask:
     resolve_write_capability(db)
     expense = get_expense(db, expense_id, tenant_id)
     db.refresh(expense)
@@ -68,6 +68,10 @@ def _prepare_retry(db: Session, claim: ApiIdempotencyKey, *, expense_id: int, te
         raise AppError("ocr_not_configured", status_code=503)
     payload = {"expense_id": expense_id, "tenant_id": tenant_id, "timezone_name": None,
                "expected_row_version": expected_row_version, "legacy": legacy, "command_id": claim.id}
+    if region is not None:
+        from app.services.ocr_region_service import prepare_region
+
+        payload["region"] = prepare_region(db, expense, region)
     prepared = background_task_service.prepare_enqueue(db, task_type=OCR_RETRY_TASK_TYPE,
         initiator_account_id=initiator_account_id, initiator_device_id=initiator_device_id,
         ledger_id=tenant_id, payload=payload, progress_total=1)
@@ -98,6 +102,7 @@ def submit_expense_ocr_task(
     db: Session, *, expense_id: int, tenant_id: str, initiator_account_id: int,
     initiator_device_id: int | None, expected_row_version: int,
     request_expected_row_version: int, idempotency_key: str | None, legacy: bool = False,
+    region: dict | None = None,
 ) -> BackgroundTask | Expense:
     """Commit one locator before dispatch; replay the original accepted intent."""
     operation = "retry_ocr" if legacy else "retry_ocr_async"
@@ -109,7 +114,7 @@ def submit_expense_ocr_task(
             idempotency_key=idempotency_key, operation=operation,
             target_type="expense", target_id=str(expense_id),
             request_fingerprint=fingerprint_request(operation=operation, target_id=str(expense_id),
-                body={}, expected_row_version=request_expected_row_version))
+                body={"region": region} if region is not None else {}, expected_row_version=request_expected_row_version))
         existing = _existing_task(db, claim, legacy=legacy)
         if isinstance(existing, Expense):
             return existing
@@ -119,7 +124,7 @@ def submit_expense_ocr_task(
             return _resume_retry(db, existing)
         prepared = _prepare_retry(db, claim.row, expense_id=expense_id, tenant_id=tenant_id,
             initiator_account_id=initiator_account_id, initiator_device_id=initiator_device_id,
-            expected_row_version=expected_row_version, legacy=legacy)
+            expected_row_version=expected_row_version, legacy=legacy, region=region)
         db.commit()
         with suppress(background_task_service.BackgroundTaskSubmissionError):
             background_task_service.submit_committed(db, prepared)

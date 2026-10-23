@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import AlgorithmDecision, Expense, LedgerLearningEvent
+from app.models import AlgorithmDecision, Expense, LedgerLearningEvent, OcrFact
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
 from app.services.ocr_service import OcrResult
@@ -50,7 +50,7 @@ def _choose(client, identity, expense_id, *, choice=None, day=None, stale=False,
 
 
 def test_choice_survives_replay_and_reorders_a_new_case_then_withdraws(client, identity):
-    from app.services.learning_service._cleanup import cleanup_expired_learning_events
+    from app.services.learning_service._cleanup import cleanup_expired_learning_events, cleanup_expired_learning_tables
     from app.services.learning_service._withdrawal import withdraw_feedback
     from app.services.time_service import now_utc
 
@@ -66,6 +66,10 @@ def test_choice_survives_replay_and_reorders_a_new_case_then_withdraws(client, i
         assert event.event_type == "accept" and event.retention_days == 0
         assert data["modified_components"] == [] and data["candidate_id"] == chosen["id"]
         assert data["_learning_qualified"]
+        fact = db.scalars(select(OcrFact).where(OcrFact.expense_id == first)).one()
+        fact.extracted_at = now_utc() - timedelta(days=400)
+        db.commit()
+        cleanup_expired_learning_tables(db, tenant_id="owner")
     later = client.get(f"/api/expenses/{second}", headers=identity.app_headers).json()
     assert later["recognition_time"]["candidates"][0]["role"] == "consumption"
     assert "明确选择" in later["recognition_time"]["candidates"][0]["explanation"]

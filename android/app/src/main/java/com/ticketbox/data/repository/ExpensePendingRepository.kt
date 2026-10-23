@@ -99,7 +99,16 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
 
     suspend fun retryOcrAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
-    ): Result<ExpenseCommandAcceptance> = acceptState(expectedBinding, expense, PendingMutationType.RetryOcr)
+        region: com.ticketbox.domain.model.OcrRegionSelection? = null,
+    ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
+        requireBaseline(expense)
+        val payload = ExpenseStateTokenRequest(0L, region = region?.let {
+            com.ticketbox.data.remote.dto.OcrRegionRequestDto(it.imageSha256, it.box)
+        })
+        val intent = PendingMutationIntent(PendingMutationType.RetryOcr, expenseOutboxTargetId(expense),
+            core.offlineMutations.expenseStateTokenAdapter.toJson(payload), expense.rowVersion, UUID.randomUUID().toString())
+        ExpenseCommandAcceptance(expense, admit(expectedBinding, listOf(intent)))
+    }
 
     suspend fun recognizeTextAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense, rawText: String,
