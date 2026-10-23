@@ -2,6 +2,7 @@
 
 import re
 
+from app.services.receipt_parse_amount_roles import _role
 from app.services.receipt_parse_merchant import _is_title_merchant_candidate
 from app.services.receipt_parse_rules import (
     INLINE_AMOUNT_PATTERNS,
@@ -26,14 +27,14 @@ def _amount_prefix_start(lines: list[tuple[int, int, str]], index: int, lower: i
 
 
 def _merchant_prefix_start(lines: list[tuple[int, int, str]], index: int, lower: int) -> int:
-    first = max(lower, index - 2)
-    texts = [line[2] for line in lines[first:index]]
+    texts = [line[2] for line in lines[lower:index]]
     if not texts:
         return index
-    last_line = sum(len(text) + 1 for text in texts[:-1])
-    matches = [match for match in iter_labeled_merchant_matches(texts) if match.value_span[0] >= last_line]
+    # Metadata between the merchant and amount belongs to this same prefix.
+    # Inspect only this anchor interval; the nearest explicit merchant owns it.
+    matches = iter_labeled_merchant_matches(texts)
     if matches:
-        return first + min(match.line_index for match in matches)
+        return lower + max(match.line_index for match in matches)
     return index - 1 if _is_title_merchant_candidate(texts[-1]) else index
 
 
@@ -50,10 +51,18 @@ def _card_start(lines: list[tuple[int, int, str]], index: int, lower: int, messa
 
 
 def _card_has_amount(card: str) -> bool:
-
     lines = card.splitlines()
-    return (any(is_primary_amount_line(line) for line in lines) or bool(iter_labeled_amount_matches(lines))
-        or any(pattern.search(card) for pattern, _, _ in INLINE_AMOUNT_PATTERNS))
+    text = "\n".join(lines)
+    spans = [match.normalized_span for match in iter_labeled_amount_matches(lines)]
+    spans.extend(match.span() for pattern, _, _ in INLINE_AMOUNT_PATTERNS for match in pattern.finditer(text))
+    offset = 0
+    for line in lines:
+        if is_primary_amount_line(line):
+            spans.append((offset, offset + len(line)))
+        offset += len(line) + 1
+    # Share the field parser's semantic roles, not just its monetary vocabulary.
+    return any(_role(text, start, end) in {"unknown", "payment", "expense", "total", "order",
+        "repayment", "refund", "income"} for start, end in spans)
 
 
 def _card_anchors(lines: list[tuple[int, int, str]]) -> list[int]:

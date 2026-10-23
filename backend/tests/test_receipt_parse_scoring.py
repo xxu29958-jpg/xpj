@@ -162,6 +162,27 @@ def test_material_status_detail_row_does_not_invent_another_transaction():
     assert all(item.reason != "multiple_transaction_events" for item in parsed.decisions)
 
 
+@pytest.mark.parametrize("merchant_label", ["商家：", "商家名称\n"])
+def test_material_prefix_metadata_keeps_merchant_and_time_in_its_card(merchant_label):
+    cards = [f"{merchant_label}{merchant}\n支付时间：2026-10-{day} 12:00\n支付金额：17.89元\n交易成功"
+        for merchant, day in [("松针小笼包", 18), ("罗森便利店", 19)]]
+    raw = "\n".join(cards)
+    parsed = _parse_cny(raw)
+    assert len(parsed.events) == 2 and parsed.amount_cents is None
+    for event, card, merchant in zip(parsed.events, cards, ["松针小笼包", "罗森便利店"], strict=True):
+        assert "".join(raw[start:end] for start, end in event["raw_spans"]).strip() == card
+        assert {item.value for item in parsed.candidates if item.event_id == event["id"]
+            and item.field == "merchant"} == {merchant}
+
+
+@pytest.mark.parametrize("secondary", ["账户余额100元", "优惠5元", "服务费2元", "商品原价20元", "本月支出100元"])
+def test_material_non_transaction_money_does_not_create_another_event(secondary):
+    raw = f"支付成功\n商家：罗森便利店\n支付金额：17.89元\n交易提醒\n{secondary}"
+    parsed = _parse_cny(raw)
+    assert parsed.amount_cents == 1789 and parsed.merchant == "罗森便利店"
+    assert not parsed.events
+
+
 @pytest.mark.parametrize("merchant", ["城市打车", "7:11便利店", "8:30咖啡", "7:11 24小时便利店"])
 def test_material_status_clock_is_not_a_merchant_and_auto_debit_is_a_paid_event(merchant):
     parsed = _parse_cny(f"17:04 8…\n账单详情\n{merchant}\n-13.20\n自动扣款成功\n付款方式\n信用卡")
