@@ -248,6 +248,8 @@ fun ExpenseEditScreen(
     var category by rememberSaveable(formIdentity) {
         mutableStateOf(initialFormValues.category)
     }
+    var categoryChoice by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
+    var categoryDecisionPublicId by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
     var note by rememberSaveable(formIdentity) { mutableStateOf(initialFormValues.note) }
     val (timeForm, setTimeForm) = com.ticketbox.ui.screens.expense.rememberExpenseTimeForm(
         formIdentity,
@@ -304,6 +306,7 @@ fun ExpenseEditScreen(
     val foreignCurrency = currency.storageKey != homeCurrencyCode
     val formValues = ExpenseEditFormValues(
         currency, amountText, manualExchangeRateText, merchant, category, note, expenseTime, tags, valueScoreText, regretScoreText,
+        categoryChoice, categoryDecisionPublicId,
     )
     val fxIdentityChanged = formValues.changesFxIdentity(currentExpense)
     val manualExchangeRateVisible = manualExchangeRateEditorVisible(
@@ -396,6 +399,8 @@ fun ExpenseEditScreen(
             // keeps that fact instead of being silently recategorized to the
             // display fallback on any unrelated edit (PR #230 round 12).
             category = category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) },
+            categoryChoice = categoryChoice,
+            categoryDecisionPublicId = categoryDecisionPublicId,
             note = note,
             expenseTime = expenseTime.ifBlank { null },
             timeInput = time.input,
@@ -512,7 +517,12 @@ fun ExpenseEditScreen(
                 },
             ),
             actions = ExpenseEditCategorySelectorActions(
-                onCategoryChange = { category = it },
+                onCategoryChange = { category = it; categoryChoice = "manual"; categoryDecisionPublicId = null },
+                onUseSuggestion = { suggestion ->
+                    category = suggestion.category
+                    categoryChoice = "suggestion"
+                    categoryDecisionPublicId = suggestion.decisionPublicId
+                },
                 onOpenSheet = { categorySheetOpen = true },
                 onDismissSheet = { categorySheetOpen = false },
             ),

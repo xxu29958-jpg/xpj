@@ -2,8 +2,8 @@
 (function (window, document) {
   "use strict";
   const fields = ["ledger_id", "expense_id", "expected_row_version", "idempotency_key", "keep_idempotency_key", "reject_idempotency_key", "draft_ref", "save_before_confirm", "command_action",
-    "amount_yuan", "original_currency", "manual_exchange_rate", "merchant", "category", "note", "tags", "expense_time", "funding_json",
-    "time_precision", "calendar_revision", "user_local_date", "source_timezone", "source_utc_offset_seconds", "accounting_date", "value_score", "regret_score"];
+    "amount_yuan", "original_currency", "manual_exchange_rate", "merchant", "category", "category_choice", "category_decision_public_id", "note", "tags", "expense_time", "funding_json",
+    "time_precision", "calendar_revision", "user_local_date", "source_timezone", "source_utc_offset_seconds", "accounting_date", "value_score", "regret_score", "duplicate_decision_public_id"];
   const names = [...fields, "return_context", "present_fields", "reject_row_version", "undo_idempotency_key"];
   document.addEventListener("click", event => {
     const button = event.target.closest("[data-category-suggestion]");
@@ -12,9 +12,15 @@
     const phase = form?.dataset.expensereviewDraftPhase;
     if (!input || input.disabled || (phase && phase !== "editing")) return;
     put(form, "category", button.dataset.categorySuggestion);
+    put(form, "category_choice", "suggestion");
+    put(form, "category_decision_public_id", button.dataset.categoryDecision);
     input.focus();
   });
   document.addEventListener("input", event => {
+    if (event.target.name === "category" && event.isTrusted) {
+      put(event.target.form, "category_choice", "manual");
+      put(event.target.form, "category_decision_public_id", "");
+    }
     if (event.target.name !== "merchant") return;
     event.target.form?.querySelectorAll("[data-learning-suggestion]").forEach(hint => {
       hint.hidden = event.target.value !== hint.dataset.categoryMerchant;
@@ -27,7 +33,7 @@
           case "keep": return {...saved, command_action: "confirm"};
           case "save":
             if (saved.funding_json && saved.funding_json !== "[]") {
-              return {...saved, command_action: "confirm", idempotency_key: window.crypto.randomUUID()};
+              return {...saved, category_choice: "", category_decision_public_id: "", command_action: "confirm", idempotency_key: window.crypto.randomUUID()};
             }
         }
       }
@@ -133,6 +139,9 @@
       read, href, present: () => {},
       restore(current, values, originalPhase) {
         const present = JSON.parse(values.present_fields);
+        for (const name of ["category_choice", "category_decision_public_id", "duplicate_decision_public_id"]) {
+          if (!present.includes(name)) current.elements.namedItem(name)?.remove();
+        }
         for (const name of present) put(current, name, values[name]);
         restoreScoreAvailability(current, present, originalPhase);
         put(current, "command_action", values.command_action || "");
@@ -145,7 +154,9 @@
         for (const [name, value] of Object.entries(JSON.parse(values.return_context))) put(current, name, value);
       },
       body(body, values) {
-        if (!JSON.parse(values.present_fields).includes("funding_json")) body.delete("funding_json");
+        for (const name of ["funding_json", "category_choice", "category_decision_public_id", "duplicate_decision_public_id"]) {
+          if (!JSON.parse(values.present_fields).includes(name)) body.delete(name);
+        }
         for (const name of JSON.parse(values.present_fields)) body.set(name, values[name]);
         for (const [name, value] of Object.entries(JSON.parse(values.return_context))) body.set(name, value);
       },

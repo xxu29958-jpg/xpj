@@ -80,6 +80,85 @@ def test_adopt_suggestion_two_step(client, identity):
         assert json.loads(events[0].after_payload)["_source_context"]["category"] == "餐饮"
 
 
+def test_old_feedback_retry_cannot_undo_a_later_correction(client, identity) -> None:
+    expense_id = _seed_pending_expense()
+    decision_id = _suggestion(client, identity, expense_id)
+    prefix = f"/api/expenses/{expense_id}/suggestions/{decision_id}"
+    first_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    correction_headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    assert client.post(prefix + "/accept", headers=first_headers).status_code == 200
+    assert client.post(prefix + "/reject", headers=correction_headers).status_code == 200
+    assert client.post(prefix + "/accept", headers=first_headers).status_code == 200
+    assert client.post(prefix + "/reject", headers=first_headers).status_code == 409
+    with SessionLocal() as db:
+        decision = db.query(AlgorithmDecision).filter_by(public_id=decision_id).one()
+        events = db.query(LedgerLearningEvent).filter_by(decision_id=decision.id).order_by(LedgerLearningEvent.id).all()
+        assert [row.event_type for row in events] == ["accept", "reject"]
+        assert decision.status == "dismissed"
+        source = db.get(Expense, expense_id)
+        assert source.category == "其他" and source.amount_cents == 1000 and source.status == "pending"
+
+
+def test_explicit_same_category_is_feedback_but_untouched_saves_are_not(client, identity) -> None:
+    expense_id = _seed_pending_expense(category="交通", merchant="没有历史的商家")
+    for fields in ({"note": "只改备注"}, {"category": "交通"}):
+        response = patch_expense(client, expense_id, headers=identity.app_headers, fields=fields)
+        assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        assert db.query(LedgerLearningEvent).filter_by(subject_id=expense_id).count() == 0
+
+    snapshot = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    original = {"expected_row_version": snapshot["row_version"], "category": "交通", "category_choice": "manual"}
+    for _ in range(2):
+        response = client.patch(f"/api/expenses/{expense_id}", headers=headers, json=original)
+        assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        event = db.query(LedgerLearningEvent).filter_by(subject_id=expense_id).one()
+        assert event.event_type == "manual_override" and event.actor_account_id is not None
+        assert json.loads(event.after_payload)["_selected_category"] == "交通"
+        expense = db.get(Expense, expense_id)
+        assert (expense.amount_cents, expense.status, expense.note) == (1000, "pending", "只改备注")
+
+
+def test_same_value_suggestion_selection_keeps_original_decision(client, identity) -> None:
+    expense_id = _seed_pending_expense(category="餐饮")
+    decision_id = _suggestion(client, identity, expense_id)
+    response = patch_expense(client, expense_id, headers=identity.app_headers, fields={
+        "category": "餐饮", "category_choice": "suggestion", "category_decision_public_id": decision_id})
+    assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        event = db.query(LedgerLearningEvent).filter_by(subject_id=expense_id).one()
+        decision = db.get(AlgorithmDecision, event.decision_id)
+        assert decision.public_id == decision_id and event.event_type == "accept"
+        assert json.loads(event.after_payload)["_selected_category"] == "餐饮"
+
+
+def test_manual_choice_after_an_intervening_edit_does_not_label_old_advice(client, identity) -> None:
+    expense_id = _seed_pending_expense()
+    decision_id = _suggestion(client, identity, expense_id)
+    # Another edit invalidates the shown version without silently changing its old payload.
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        expense.note = "另一次编辑"
+        expense.row_version += 1
+        db.commit()
+        version = expense.row_version
+    # Do not GET the editor first: that legitimately generates newer advice.
+    response = client.patch(f"/api/expenses/{expense_id}",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": version, "category": "交通", "category_choice": "manual"})
+    assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        event = db.query(LedgerLearningEvent).filter_by(subject_id=expense_id).one()
+        assert event.event_type == "manual_override" and event.decision_id is None
+        assert json.loads(event.after_payload)["_selected_category"] == "交通"
+        decision = db.query(AlgorithmDecision).filter_by(public_id=decision_id).one()
+        assert decision.status != "accepted" and decision.status != "dismissed"
+        expense = db.get(Expense, expense_id)
+        assert (expense.category, expense.amount_cents, expense.note) == ("交通", 1000, "另一次编辑")
+
+
 def test_confirm_closes_remaining_active_subject_decisions(
     client: TestClient, *, identity,
 ) -> None:

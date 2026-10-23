@@ -132,9 +132,9 @@ class AlgorithmType:
 
 CATEGORY_SUGGESTION = AlgorithmType(
     decision_type="category_suggestion",
-    current_version="category-history-v1",
+    current_version="category-history-v2",
     display_label="分类建议",
-    description="参考同一商家近 180 天至少 3 笔已入账记录。90 天内两次不采用相同分类后，暂停该商家的这一分类建议。",
+    description="参考同一商家近 180 天已入账记录；最高分类至少有 3 笔支持且没有平票时才建议。90 天内两次有效的不采用反馈会暂停该分类建议。",
     subject_kinds=("expense",),
     default_retention_days=180,
     marker_keys=("category",),

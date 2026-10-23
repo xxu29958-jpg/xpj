@@ -991,6 +991,56 @@ def test_actual_review_browser_resolves_original_action_before_starting_next_com
 
 
 @pytest.mark.real_db
+def test_browser_explicit_same_category_replays_original_advice_once(review_browser, confirmation_store, monkeypatch, tmp_path):
+    from app.models import AlgorithmDecision, LedgerLearningEvent
+    from app.routes import web_expense_edit
+    from app.services.expense_accounting_time_service import refresh_legacy_expense_time
+
+    client, _ = review_browser
+    with confirmation_store() as db:
+        actor = confirmation_actor(db)
+        original = db.get(Expense, 42)
+        financial = (original.amount_cents, original.original_amount_minor, original.original_currency_code, original.status)
+    monkeypatch.setattr(web_expense_edit, "resolve_web_actor", lambda *args: (actor.account_id, actor.device_id))
+    with confirmation_store() as db:
+        resolve_write_capability(db)
+        for _ in range(3):
+            previous = Expense(tenant_id="owner", merchant="首次便利店", category="购物", amount_cents=1000,
+                original_amount_minor=1000, original_currency_code="CNY", home_currency_code="CNY",
+                source="pytest", raw_text="", status="confirmed", confirmed_at=now_utc()-timedelta(days=1),
+                expense_time=now_utc()-timedelta(days=1))
+            refresh_legacy_expense_time(db, previous)
+            db.add(previous)
+        db.commit()
+    client.app.state.expense_review_probe = "learning-choice-probe.js"
+
+    @client.app.get("/learning-choice-probe.js")
+    def learning_probe():
+        return FileResponse(Path(__file__).parent / "fixtures/expense_learning_choice_probe.js", media_type="text/javascript")
+
+    cdp = browser_runtime._edge_cdp()
+    evaluate = cdp._evaluate_script
+
+    def capture(page, expression):
+        value = evaluate(page, expression)
+        if value.get("type") != "undefined":
+            page.request("Runtime.evaluate", {"expression": "document.querySelector('[data-learning-suggestion]')?.scrollIntoView({block:'center'})"})
+            (tmp_path / "learning-choice.png").write_bytes(base64.b64decode(page.request("Page.captureScreenshot", {"format": "png"})["data"]))
+        return value
+
+    monkeypatch.setattr(cdp, "_evaluate_script", capture)
+    result = _run_review_page(client, tmp_path, "/web/expenses/42/edit?ledger_id=owner&return_to=pending")
+    assert not result.get("error") and result["completed"], result
+    assert len(result["requests"]) == 2 and result["requests"][0] == result["requests"][1]
+    with confirmation_store() as db:
+        current = db.get(Expense, 42)
+        assert (current.amount_cents, current.original_amount_minor, current.original_currency_code, current.status) == financial
+        event = db.query(LedgerLearningEvent).filter_by(subject_id=42).one()
+        assert event.event_type == "accept" and event.actor_account_id == actor.account_id
+        assert db.get(AlgorithmDecision, event.decision_id).public_id == result["decision"]
+
+
+@pytest.mark.real_db
 @pytest.mark.parametrize("drawer", [False, True])
 def test_explicit_latest_bill_load_uses_current_fields_while_retaining_original_task(
     review_browser, confirmation_store, monkeypatch, tmp_path, drawer,

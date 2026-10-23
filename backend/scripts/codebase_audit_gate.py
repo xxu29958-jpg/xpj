@@ -140,9 +140,9 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 159,  # Includes the async OCR retry's original expense OCC token.
-    "mutate_token_exempted": 154,  # Adds new account creation; adoption still checks the original Debt OCC.
-    "mutate_token_reason_admin_single_writer": 16,
-    "mutate_token_reason_append_only_fact": 3,
+    "mutate_token_exempted": 156,  # Adds Owner learning policy and append-only feedback withdrawal.
+    "mutate_token_reason_admin_single_writer": 17,
+    "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
     "mutate_token_reason_create_row": 44,  # Funds account creation has no predecessor account version.
     "mutate_token_reason_enqueue_task": 2,
@@ -179,6 +179,13 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # ADR-0038 admin_single_writer / append_only_fact: two new Local Owner
+    # learning routes. Policy upserts one ledger/type/version/axis key;
+    # withdrawal locks the original event and appends once on retry. Neither
+    # changes financial facts or retires any of the 159 existing OCC carriers.
+    # test_owner_console exercises ledger scope, policy axes and withdrawal.
+    # Admit only this exact base/count edge; later exemption growth still fails.
+    ("ac1aa49e3af0ce7571cfd148e6ebcaef501535af", 154, 156),
     # ADR-0038 create_row, TICKETBOX_CREDIT_PAYMENT_CONTINUITY_CONTRACT §4:
     # POST /api/funds/accounts creates a new identity, protected by the existing
     # actor lock and idempotent receipt. An adopted Debt still requires its OCC

@@ -15,8 +15,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app.database import SessionLocal
-from app.models import Expense
+from app.models import Account, Expense, LedgerMember
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.learning_service import (
     EventDraft,
@@ -53,12 +55,16 @@ def _make_confirmed(
         return expense.id
 
 
-def test_suggests_majority_category_for_merchant(*, identity) -> None:
-    for _ in range(3):
-        _make_confirmed("owner", "麦当劳", "餐饮")
-    _make_confirmed("owner", "麦当劳", "购物")
+@pytest.mark.parametrize("legacy_confirmation", [False, True])
+def test_suggests_majority_category_for_merchant(legacy_confirmation: bool, *, identity) -> None:
+    expense_ids = [_make_confirmed("owner", "麦当劳", "餐饮") for _ in range(3)]
+    expense_ids.append(_make_confirmed("owner", "麦当劳", "购物"))
 
     with SessionLocal() as db:
+        if legacy_confirmation:
+            for expense_id in expense_ids:
+                db.get(Expense, expense_id).confirmed_at = None
+            db.flush()
         result = compute_category_suggestion(
             db,
             tenant_id="owner",
@@ -69,7 +75,7 @@ def test_suggests_majority_category_for_merchant(*, identity) -> None:
         assert result.category == "餐饮"
         assert result.sample_size == 4
         assert result.score == 0.75
-        assert result.algorithm_version == "category-history-v1"
+        assert result.algorithm_version == "category-history-v2"
 
 
 def test_no_suggestion_when_under_sample_threshold(*, identity) -> None:
@@ -83,6 +89,33 @@ def test_no_suggestion_when_under_sample_threshold(*, identity) -> None:
             actor_account_id=seeded_owner_account_id(),
         )
         assert result is None
+
+@pytest.mark.parametrize("categories", [
+    ("餐饮", "购物", "交通"),
+    ("餐饮", "餐饮", "购物"),
+    ("餐饮", "餐饮", "餐饮", "购物", "购物", "购物"),
+])
+def test_sparse_or_tied_history_does_not_choose_a_category(categories: tuple[str, ...], *, identity) -> None:
+    for category in categories:
+        _make_confirmed("owner", "Ambiguous shop", category)
+    with SessionLocal() as db:
+        assert compute_category_suggestion(db, tenant_id="owner", merchant="Ambiguous shop",
+            actor_account_id=seeded_owner_account_id()) is None
+
+
+@pytest.mark.parametrize("future_component", ["accounting_date", "confirmed_at"])
+def test_future_history_cannot_support_a_current_suggestion(future_component: str, *, identity) -> None:
+    expense_ids = [_make_confirmed("owner", "Future shop", "餐饮", days_ago=-1) for _ in range(3)]
+    with SessionLocal() as db:
+        for expense_id in expense_ids:
+            expense = db.get(Expense, expense_id)
+            if future_component == "accounting_date":
+                expense.confirmed_at = None
+            else:
+                expense.accounting_date -= timedelta(days=2)
+        db.flush()
+        assert compute_category_suggestion(db, tenant_id="owner", merchant="Future shop",
+            actor_account_id=seeded_owner_account_id()) is None
 
 
 def test_no_suggestion_when_merchant_empty(*, identity) -> None:
@@ -133,6 +166,13 @@ def test_suppressed_when_recently_rejected(*, identity) -> None:
             actor_account_id=seeded_owner_account_id(),
         )
         assert result is None
+        other = Account(display_name="同账本另一个成员")
+        db.add(other)
+        db.flush()
+        db.add(LedgerMember(ledger_id="owner", account_id=other.id, role="member"))
+        db.flush()
+        other_view = compute_category_suggestion(db, tenant_id="owner", merchant="Costa", actor_account_id=other.id)
+        assert other_view is not None and other_view.category == "餐饮"
 
 
 def test_reject_suppression_is_merchant_scoped(*, identity) -> None:
@@ -230,7 +270,7 @@ def test_exclude_self_when_expense_id_provided(*, identity) -> None:
 
 
 def test_look_back_window_filters_old_rows(*, identity) -> None:
-    # 4 confirmed rows but all more than 1000 days ago. With the
+    # 4 confirmed rows but all more than 180 days ago. With the
     # default 180-day window they're invisible.
     for _ in range(4):
         _make_confirmed("owner", "OldShop", "购物", days_ago=400)
@@ -252,3 +292,8 @@ def test_look_back_window_filters_old_rows(*, identity) -> None:
         )
         assert result is not None
         assert result.category == "购物"
+    for _ in range(3):
+        _make_confirmed("owner", "OldShop", "交通", days_ago=1)
+    with SessionLocal() as db:
+        recent = compute_category_suggestion(db, tenant_id="owner", merchant="OldShop", actor_account_id=seeded_owner_account_id())
+        assert recent is not None and recent.category == "交通", "Old majority must not hide the recent changed use"

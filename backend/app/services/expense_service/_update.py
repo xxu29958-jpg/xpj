@@ -125,7 +125,8 @@ def update_expense(
     if expense.amount_cents != amount_before:
         validate_current_expense_split_allocation(db, expense=expense)
     if payload.category is not None:
-        record_category_choice(db, expense=expense, previous_category=category_before, previous_merchant=merchant_before, actor_account_id=actor_account_id)
+        record_category_choice(db, expense=expense, previous_category=category_before, previous_merchant=merchant_before,
+            actor_account_id=actor_account_id, choice=payload.category_choice, decision_public_id=payload.category_decision_public_id)
 
     if commit:
         db.commit()

@@ -14,6 +14,7 @@
   <input type="hidden" name="keep_idempotency_key" value="{{ command_key }}">
   <input type="hidden" name="draft_ref" value="{{ duplicate_task_ref or command_key }}">
   <input type="hidden" name="expected_row_version" value="{{ cur.row_version if cur else '' }}">
+  <input type="hidden" name="duplicate_decision_public_id" value="{{ pair.decision_public_id or '' }}">
   <input type="hidden" name="original_expense_id" value="{{ orig.id if orig else '' }}">
   <input type="hidden" name="expected_original_row_version" value="{{ orig.row_version if orig else '' }}">
   <input type="hidden" name="draft_scope" value="{{ duplicate_draft_scope }}">

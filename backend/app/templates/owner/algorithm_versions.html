@@ -10,11 +10,11 @@
 <div class="workspace-learning">
   {{ ledger_filter(ledger_choices, selected_ledger, '/owner/algorithm-versions') }}
   {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
-  <p class="workspace-note">以下能力内置运行，无需 Key 或单独开启。填入只改草稿，保存保留选择，确认后才入账；它们不会训练或更新小票识别模型。</p>
+  <p class="workspace-note">以下能力在本地运行，无需 Key。填入只改草稿，保存保留选择，确认后才入账；它们不会训练或更新小票识别模型。可分别暂停新建议、撤回待采纳建议或隔离反馈。</p>
   <section class="workspace-section" aria-label="自动建议能做什么">
     {% for kind, title, benefit, location, href, tone in [
       ('category_suggestion', '少重复选分类', '记住同一家店通常归到哪类，下次核对时可一键填入。', '收件 → 打开小票 → 分类', '/web/pending', 'green'),
-      ('duplicate_candidate', '让重复核对更有依据', '结合图片、金额、商家和时间提醒相似账单；你的保留决定会参与后续评分。', '收件 → 相似账单', '/web/duplicates', 'apricot'),
+      ('duplicate_candidate', '让重复核对更有依据', '结合图片、金额、商家和时间提醒相似账单；你的决定只绑定当时核对的两笔。', '收件 → 相似账单', '/web/duplicates', 'apricot'),
       ('budget_suggestion', '看懂支出是否偏高', '用自己的历史支出作比较，帮助判断本月各类花费。', '洞察 → 报表 → 月报摘要与预算对照', '/web/reports', 'lilac')
     ] %}
     {% set entry = algorithm_types[kind] %}
@@ -23,8 +23,8 @@
       <summary><span class="workspace-task__icon workspace-tone-{{ tone }}">{{ icon('sparkles' if loop.first else 'copy' if kind == 'duplicate_candidate' else 'chart-no-axes-combined') }}</span><span class="workspace-task__text"><strong>{{ title }}</strong><span>{{ benefit }}</span></span>{{ icon('chevron-right') }}</summary>
       <div class="workspace-disclosure__body">
         <p>{{ entry.description }}</p>
-        {% if kind == 'category_suggestion' %}<p class="workspace-note">填入建议只是修改草稿。改成建议分类并保存会记为采用，改成其他分类会记为纠正；直接确认小票时也会记住最终选择。同一条已处理的建议不会因刷新再次出现。记录不足时可照常手动选择。</p>
-        {% elif kind == 'duplicate_candidate' %}<p class="workspace-note">“不是重复，保留两条”会记住这对账单。降低评分不等于取消所有提醒，新小票仍需核对；不会自动删除记录。</p>
+        {% if kind == 'category_suggestion' %}<p class="workspace-note">填入建议只是修改草稿。明确选分类并保存才记录选择；未触碰分类的保存或确认不算反馈。同一条已处理的建议不会因刷新再次出现。账本历史作为参考，个人反馈只用于本人；记录不足或最高类别并列时可照常手动选择。</p>
+        {% elif kind == 'duplicate_candidate' %}<p class="workspace-note">“不是重复，保留两条”记录不同交易；保留其中一笔记录同一交易及保留对象。判断限定当时两侧证据，任一侧后来变化会重新核对；不会自动删除其他记录。</p>
         {% else %}<p class="workspace-note">这是随账目计算的历史参考，不会根据赞成或反对训练模型。缺少历史、日期或汇率时，洞察会说明原因。需要模型分析时，另用 <a href="/owner/ai-advisor">AI 预算顾问</a>。</p>{% endif %}
         {% if selected_ledger %}
         <p class="workspace-note"><strong>{{ selected_ledger.name }}</strong> · {% if kind == 'budget_suggestion' %}进入洞察时按实际账目计算，不生成待采纳学习记录。{% elif usage %}保留 {{ usage.count }} 条生成记录，最近一次 {{ usage.last_at|owner_datetime }}。记录数不代表准确率。{% else %}尚无生成记录。可到下方入口使用；没有记录不等于功能关闭。{% endif %}</p>
@@ -41,11 +41,18 @@
       {% for row in activity.feedback %}
       <div class="workspace-learning-record">
         <h3>{{ row.expense.merchant or '未填写商家' }} · {{ '分类建议' if row.event.signal_type == 'category_suggestion' else '重复核对' }}</h3>
-        <p>{{ '已采用这次建议' if row.event.event_type == 'accept' else '未采用这次建议' }} · {{ row.event.created_at|owner_datetime }}</p>
-        <p class="workspace-note">{% if row.event.signal_type == 'category_suggestion' %}当前分类：{{ row.expense.category }}。这次选择已进入本账本的反馈记录；是否影响新建议，按上方条件判断。{% else %}相同商家和金额的后续重复评分会参考近 90 天的这次反馈。{% endif %}</p>
+        <p>{{ {'accept': '已采用这次建议', 'reject': '未采用这次建议', 'manual_override': '明确选择了分类', 'edit': '已更正选择', 'withdraw': '已撤回这次反馈'}.get(row.event.event_type, '未确认选择结果') }} · {{ row.event.created_at|owner_datetime }}</p>
+        <p class="workspace-note">{{ row.reason }}。{% if row.payload.get('_selected_category') %}当时选择：{{ row.payload._selected_category }}。{% endif %}{% if row.event.signal_type == 'duplicate_candidate' %}这次关系：{{ '同一交易' if row.payload.get('_relation') == 'same' else '不同交易' if row.payload.get('_relation') == 'distinct' else '证据不足' }}；不套用到其它同商家、同金额账单。{% endif %}</p>
+        {% if row.eligibility in ['valid', 'quarantined'] %}
+        <form method="post" action="/owner/algorithm-versions/withdraw-feedback">
+          <input type="hidden" name="ledger_id" value="{{ selected_ledger.ledger_id }}">
+          <input type="hidden" name="event_public_id" value="{{ row.event.public_id }}">
+          <button type="submit" class="btn btn-secondary">不再参考这次选择</button>
+        </form>
+        {% endif %}
         {% if row.expense.status in ['pending', 'confirmed'] %}<a href="/web/expenses/{{ row.expense.id }}/edit?ledger_id={{ selected_ledger.ledger_id|urlencode }}">查看这笔账目</a>{% else %}<p class="workspace-note">原小票已移出当前账目，保留这次选择记录。</p>{% endif %}
       </div>
-      {% else %}<p>还没有保存采用或纠正记录。</p><p class="workspace-note">遇到分类建议后，修改并保存分类或确认小票；在相似账单中选择“不是重复”，也会保存反馈。单纯查看页面或清理记录不算学习。</p>{% endfor %}
+      {% else %}<p>还没有保存采用或纠正记录。</p><p class="workspace-note">明确选择并保存分类，或核对两笔账单后作出保留决定，会保存反馈。单纯查看、未触碰分类的确认或清理记录不算学习。</p>{% endfor %}
     </div>
   </details>
   {% endif %}
@@ -71,7 +78,24 @@
             <div><dt>已被新建议替代</dt><dd>{{ row.superseded_count }}</dd></div>
             <div><dt>已撤回</dt><dd>{{ row.withdrawn_count }}</dd></div>
             <div><dt>已采纳 / 已关闭</dt><dd>{{ row.accepted_count }} / {{ row.dismissed_count }}</dd></div>
+            <div><dt>明确采用 / 明确拒绝事件</dt><dd>{{ row.explicit_accept_count }} / {{ row.explicit_reject_count }}</dd></div>
+            <div><dt>人工分类 / 未知结果事件</dt><dd>{{ row.manual_choice_count }} / {{ row.unknown_feedback_count }}</dd></div>
+            <div><dt>关闭但未作选择</dt><dd>{{ row.closed_without_feedback_count }}</dd></div>
           </dl>
+          <p class="workspace-note">操作事件保留改判历史；已关闭不等于明确拒绝，数量不能作为准确率。</p>
+          {% if row.decision_type in ['category_suggestion', 'duplicate_candidate'] %}
+          {% for axis, enabled, label, stop, resume in [('new_suggestions', row.new_suggestions_enabled, '新建议', '停止生成新建议', '恢复生成新建议'), ('training', row.training_enabled, '此版本反馈', '隔离此版本反馈', '恢复此版本反馈资格')] %}
+          {% if axis == 'training' or (entry and row.algorithm_version == entry.current_version) %}
+          <form method="post" action="/owner/algorithm-versions/policy">
+            <input type="hidden" name="ledger_id" value="{{ selected_ledger.ledger_id }}">
+            <input type="hidden" name="decision_type" value="{{ row.decision_type }}">
+            <input type="hidden" name="algorithm_version" value="{{ row.algorithm_version }}">
+            <input type="hidden" name="axis" value="{{ axis }}"><input type="hidden" name="enabled" value="{{ 'false' if enabled else 'true' }}">
+            <p class="workspace-note">{{ label }}：{{ '启用' if enabled else '已停止' if axis == 'new_suggestions' else '已隔离' }}。{{ '已生成的建议仍可核对；基础重复标记和人工对照保留。' if axis == 'new_suggestions' else '恢复后仍需通过来源、操作人和版本资格检查。' }}</p>
+            <button type="submit" class="btn btn-secondary">{{ stop if enabled else resume }}</button>
+          </form>
+          {% endif %}{% endfor %}
+          {% endif %}
           {% if row.active_count > 0 %}
           <form method="post" action="/owner/algorithm-versions/withdraw" data-confirm="撤回所选账本中这个版本尚未采纳的建议？这不会更改账单，也不会停用算法。">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger.ledger_id }}">

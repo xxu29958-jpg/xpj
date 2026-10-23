@@ -92,7 +92,7 @@ fun PendingViewModel.saveQuickCategory(expense: Expense, category: String) {
     patchExpense(
         expense = expense,
         field = ReviewField.CATEGORY,
-        draft = blankDraft().copy(category = category.trim()),
+        draft = blankDraft().copy(category = category.trim(), categoryChoice = "manual"),
         failureMessageFallback = R.string.pending_review_category_save_failed,
     )
 }

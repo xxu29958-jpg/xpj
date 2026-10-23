@@ -15,7 +15,7 @@
   <section class="workspace-section" aria-label="学习记录维护详情">
     {% if selected_ledger %}
     {% if feedback_impact %}<section class="workspace-learning-record"><h2>反馈来源核对</h2>
-      <p>当前有效 {{ feedback_impact.valid }} 条；来源已撤销 {{ feedback_impact.invalid }} 条；字段已更正 {{ feedback_impact.superseded }} 条；缺少证据待核对 {{ feedback_impact.needs_review }} 条。</p>
+      <p>当前有效 {{ feedback_impact.valid }} 条；已撤回或来源失效 {{ feedback_impact.invalid }} 条；已被更正替代 {{ feedback_impact.superseded }} 条；缺少证据待核对 {{ feedback_impact.needs_review }} 条；已隔离 {{ feedback_impact.quarantined }} 条。</p>
       <p class="workspace-note">这是只读影响预览。后三类不参与后续建议；原反馈和未受影响字段保留。待核对不表示原记录一定错误，可在原小票重新明确核对相关字段。</p>
     </section>{% endif %}
     <details id="learning-volume" class="workspace-disclosure workspace-task-group"{% if active_section == 'volume' %} open{% endif %}>

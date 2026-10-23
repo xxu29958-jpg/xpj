@@ -145,6 +145,10 @@ data class ExpenseDto(
 
 @JsonClass(generateAdapter = true)
 data class ExpenseUpdateRequest(
+    @param:Json(name = "category_choice")
+    val categoryChoice: String? = null,
+    @param:Json(name = "category_decision_public_id")
+    val categoryDecisionPublicId: String? = null,
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long? = null,
     @param:Json(name = "original_currency")
@@ -222,6 +226,8 @@ data class ExpenseStateTokenRequest(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
     val funding: List<ExpenseFundingPartDto>? = null,
+    @param:Json(name = "duplicate_decision_public_id")
+    val duplicateDecisionPublicId: String? = null,
 )
 
 /**

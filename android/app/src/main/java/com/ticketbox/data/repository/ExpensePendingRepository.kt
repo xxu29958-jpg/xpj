@@ -116,7 +116,12 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
         binding: LogicalSessionBinding, expense: Expense, type: PendingMutationType,
         originalInput: ExpenseFactOriginalInput? = null,
     ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
-        ExpenseCommandAcceptance(expense, admit(binding, listOf(stateIntent(type, expense)), originalInput))
+        val pairDecision = expense.duplicateDecisionPublicId.takeIf {
+            type in setOf(PendingMutationType.MarkNotDuplicate, PendingMutationType.RejectExpense) ||
+                originalInput?.formKey == "pending_duplicate"
+        }
+        ExpenseCommandAcceptance(expense, admit(binding, listOf(stateIntent(type, expense,
+            duplicateDecisionPublicId = pairDecision)), originalInput))
     }
 
     private suspend fun admit(binding: LogicalSessionBinding, intents: List<PendingMutationIntent>,
@@ -146,13 +151,14 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
     }
 
     private fun stateIntent(type: PendingMutationType, expense: Expense,
-        funding: List<com.ticketbox.domain.model.ExpenseFunding> = emptyList()): PendingMutationIntent {
+        funding: List<com.ticketbox.domain.model.ExpenseFunding> = emptyList(),
+        duplicateDecisionPublicId: String? = null): PendingMutationIntent {
         requireBaseline(expense)
         return PendingMutationIntent(type, expenseOutboxTargetId(expense),
             core.offlineMutations.expenseStateTokenAdapter.toJson(ExpenseStateTokenRequest(0L,
                 funding.takeIf { it.isNotEmpty() }?.map { com.ticketbox.data.remote.dto.ExpenseFundingPartDto(
                     it.componentId, it.accountPublicId, it.accountRowVersion, it.expenseAmountMinor, it.accountAmountMinor,
-                    it.includedInOpening, it.expenseCurrencyCode, it.accountCurrencyCode) })),
+                    it.includedInOpening, it.expenseCurrencyCode, it.accountCurrencyCode) }, duplicateDecisionPublicId)),
             expense.rowVersion, UUID.randomUUID().toString())
     }
 

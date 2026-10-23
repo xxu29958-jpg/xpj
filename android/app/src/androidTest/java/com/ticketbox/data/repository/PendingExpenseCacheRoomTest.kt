@@ -10,6 +10,7 @@ import com.ticketbox.data.remote.dto.BackgroundTaskDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
+import com.ticketbox.data.remote.dto.PendingDuplicateCandidateDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.ui.screens.expense.expenseFxTaskStatusRes
@@ -108,8 +109,16 @@ class PendingExpenseCacheRoomTest {
     }
 
     @Test fun rejectionSurvivesAnOlderListAndReopenUntilAnExplicitUndoReturnsPending() = runBlocking {
-        val repository = start()
-        val original = repository.fetchExpense(42).getOrThrow()
+        var repository = start()
+        current = current.copy(duplicateStatus = "suspected", duplicateOfId = 81L,
+            duplicateCandidates = listOf(PendingDuplicateCandidateDto("displayed-pair", 81L,
+                score = 0.8, algorithmVersion = "duplicate-candidate-v2")))
+        assertEquals("displayed-pair", repository.syncPending().getOrThrow().single().duplicateDecisionPublicId)
+        offline = true
+        repository = fixture.reopen().expenseRepository
+        val original = repository.getCachedPending().getOrThrow().single()
+        assertEquals("displayed-pair", original.duplicateDecisionPublicId)
+        offline = false
         val before = current
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
@@ -134,6 +143,7 @@ class PendingExpenseCacheRoomTest {
         assertEquals(3L, restored.rowVersion)
         assertEquals(listOf("42", "42"), calls.map { it.first })
         assertEquals(listOf(1L, 2L), calls.map { (it.second as ExpenseStateTokenRequest).expectedRowVersion })
+        assertEquals(listOf("displayed-pair", null), calls.map { (it.second as ExpenseStateTokenRequest).duplicateDecisionPublicId })
         assertEquals(fixture.stored().map { it["idempotencyKey"] }, calls.map { it.third })
         assertEquals(restored, reopened.fetchExpenseFromLocalCache(42).getOrThrow())
         assertEquals(restored, reopened.getCachedPending().getOrThrow().single())
@@ -141,7 +151,9 @@ class PendingExpenseCacheRoomTest {
 
     @Test fun delayedPendingListCannotEraseNewerDetailOrANewlyObservedBillInTheSameLedger() = runBlocking {
         val repository = start()
-        current = current.copy(fxTask = fxTask("failed"))
+        current = current.copy(fxTask = fxTask("failed"), duplicateOfId = 81L,
+            duplicateCandidates = listOf(PendingDuplicateCandidateDto("old-pair", 81L,
+                score = 0.8, algorithmVersion = "duplicate-candidate-v2")))
         repository.fetchExpense(42).getOrThrow()
         fixture.expenseDao.insert(current.copy(id = 45, publicId = "stale-45").toEntity("correction-ledger"))
         fixture.expenseDao.insert(current.copy(publicId = "other-ledger-expense-42").toEntity("other-ledger"))
@@ -152,7 +164,7 @@ class PendingExpenseCacheRoomTest {
         val staleRead = async { repository.syncPending().getOrThrow() }
         withTimeout(5_000) { started.await() }
         try {
-            current = current.copy(merchant = "Fresh review", rowVersion = 2)
+            current = current.copy(merchant = "Fresh review", rowVersion = 2, duplicateOfId = null, duplicateCandidates = emptyList())
             repository.fetchExpense(42).getOrThrow()
             repository.fetchExpense(43).getOrThrow()
         } finally { release.complete(Unit) }
@@ -161,6 +173,7 @@ class PendingExpenseCacheRoomTest {
         assertEquals(setOf(42L, 43L), observed.keys)
         assertEquals(2L, observed.getValue(42).rowVersion)
         assertEquals("Fresh review", observed.getValue(42).merchant)
+        assertEquals(null, observed.getValue(42).duplicateDecisionPublicId)
         assertEquals(null, observed.getValue(42).fxTask)
         assertEquals(null, observed.getValue(43).fxTask)
         assertEquals(observed, repository.getCachedPending().getOrThrow().associateBy { it.id })

@@ -41,6 +41,7 @@ internal data class ExpenseEditCategorySelectorActions(
     val onCategoryChange: (String) -> Unit,
     val onOpenSheet: () -> Unit,
     val onDismissSheet: () -> Unit,
+    val onUseSuggestion: (com.ticketbox.domain.model.ExpenseCategorySuggestion) -> Unit = { onCategoryChange(it.category) },
 )
 
 /**
@@ -67,8 +68,8 @@ internal fun ExpenseEditCategorySelector(
             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
         )
         androidx.compose.material3.TextButton(
-            enabled = state.enabled && state.category != suggestion.category,
-            onClick = { actions.onCategoryChange(suggestion.category) },
+            enabled = state.enabled,
+            onClick = { actions.onUseSuggestion(suggestion) },
             modifier = Modifier.testTag("expense-use-category-suggestion"),
         ) { androidx.compose.material3.Text(stringResource(R.string.expense_learning_category_use)) }
     }

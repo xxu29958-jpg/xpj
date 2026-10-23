@@ -22,12 +22,16 @@ Rollback semantics:
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.models import AlgorithmDecision
+from app.models import AlgorithmDecision, LedgerLearningEvent
+from app.services.learning_service._algorithm_registry import CATEGORY_SUGGESTION, DUPLICATE_CANDIDATE
+from app.services.learning_service._policy import policy_enabled
+from app.services.learning_service._source_eligibility import _event_payload
 
 
 @dataclass(frozen=True)
@@ -36,8 +40,7 @@ class AlgorithmVersionStats:
 
     Owner Console reads ``withdrawn_count`` to find algorithm versions
     the owner rolled back; ``accepted_count`` and ``dismissed_count``
-    show the per-version user-feedback split (high accept rate = the
-    algorithm is on the right track for this user)."""
+    describe decision lifecycle, separately from explicit feedback events."""
 
     decision_type: str
     algorithm_version: str
@@ -46,6 +49,33 @@ class AlgorithmVersionStats:
     withdrawn_count: int
     accepted_count: int = 0
     dismissed_count: int = 0
+    explicit_accept_count: int = 0
+    explicit_reject_count: int = 0
+    manual_choice_count: int = 0
+    unknown_feedback_count: int = 0
+    closed_without_feedback_count: int = 0
+    new_suggestions_enabled: bool = True
+    training_enabled: bool = True
+
+
+def _feedback_inventory(db: Session, *, tenant_id: str) -> dict:
+    counts = {}
+    rows = db.execute(select(LedgerLearningEvent, AlgorithmDecision.algorithm_version)
+        .outerjoin(AlgorithmDecision, AlgorithmDecision.id == LedgerLearningEvent.decision_id)
+        .where(LedgerLearningEvent.tenant_id == tenant_id)).all()
+    explicit_decisions = set()
+    for event, decision_version in rows:
+        version = _event_payload(event).get("_algorithm_version") or decision_version or "unversioned"
+        bucket = counts.setdefault((event.signal_type, version), Counter())
+        bucket[event.event_type] += 1
+        if event.event_type in {"accept", "reject", "edit", "manual_override"}:
+            explicit_decisions.add(event.decision_id)
+    closed = db.scalars(select(AlgorithmDecision).where(AlgorithmDecision.tenant_id == tenant_id,
+        AlgorithmDecision.status == "dismissed"))
+    for decision in closed:
+        if decision.id not in explicit_decisions:
+            counts.setdefault((decision.decision_type, decision.algorithm_version), Counter())["closed"] += 1
+    return counts
 
 
 _STATUS_BUCKETS = (
@@ -85,6 +115,12 @@ def list_algorithm_versions(
         grouped.setdefault(key, dict.fromkeys(_STATUS_BUCKETS, 0))
         if status in grouped[key]:
             grouped[key][status] = int(n)
+    feedback = _feedback_inventory(db, tenant_id=tenant_id)
+    for entry in (CATEGORY_SUGGESTION, DUPLICATE_CANDIDATE):
+        grouped.setdefault((entry.decision_type, entry.current_version), {})
+    for key in feedback:
+        if key[0] in {CATEGORY_SUGGESTION.decision_type, DUPLICATE_CANDIDATE.decision_type}:
+            grouped.setdefault(key, {})
 
     results = [
         AlgorithmVersionStats(
@@ -95,6 +131,16 @@ def list_algorithm_versions(
             withdrawn_count=counts.get("withdrawn", 0),
             accepted_count=counts.get("accepted", 0),
             dismissed_count=counts.get("dismissed", 0),
+            explicit_accept_count=feedback.get((decision_type, algorithm_version), {}).get("accept", 0),
+            explicit_reject_count=feedback.get((decision_type, algorithm_version), {}).get("reject", 0),
+            manual_choice_count=feedback.get((decision_type, algorithm_version), {}).get("manual_override", 0),
+            unknown_feedback_count=sum(n for kind, n in feedback.get((decision_type, algorithm_version), {}).items()
+                if kind not in {"accept", "reject", "manual_override", "edit", "withdraw", "closed"}),
+            closed_without_feedback_count=feedback.get((decision_type, algorithm_version), {}).get("closed", 0),
+            new_suggestions_enabled=policy_enabled(db, tenant_id=tenant_id, decision_type=decision_type,
+                version=algorithm_version, axis="new_suggestions"),
+            training_enabled=policy_enabled(db, tenant_id=tenant_id, decision_type=decision_type,
+                version=algorithm_version, axis="training"),
         )
         for (decision_type, algorithm_version), counts in grouped.items()
     ]

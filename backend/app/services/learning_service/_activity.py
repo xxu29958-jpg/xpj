@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AlgorithmDecision, Expense, LedgerLearningEvent
+from app.services.learning_service._source_eligibility import _event_payload, feedback_assessments
 
 
 def learning_activity(db: Session, *, tenant_id: str) -> dict:
@@ -17,7 +18,9 @@ def learning_activity(db: Session, *, tenant_id: str) -> dict:
             LedgerLearningEvent.subject_kind == "expense",
             LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate")))
         .order_by(LedgerLearningEvent.created_at.desc(), LedgerLearningEvent.id.desc()).limit(10)).all()
+    assessments = feedback_assessments(db, tenant_id=tenant_id, events=[event for event, _ in feedback])
     return {
         "usage": {kind: {"count": count, "last_at": last_at} for kind, count, last_at in counts},
-        "feedback": [{"event": event, "expense": expense} for event, expense in feedback],
+        "feedback": [{"event": event, "expense": expense, "eligibility": assessments[event.id][0],
+            "reason": assessments[event.id][1], "payload": _event_payload(event)} for event, expense in feedback],
     }

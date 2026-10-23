@@ -84,10 +84,11 @@ fun ExpenseDto.toDomain(): Expense {
         serverCategory = category,
         category = normalizeExpenseCategory(category),
         categorySuggestion = categorySuggestion?.let {
-            com.ticketbox.domain.model.ExpenseCategorySuggestion(it.category, it.sampleSize)
+            com.ticketbox.domain.model.ExpenseCategorySuggestion(it.category, it.sampleSize, it.decisionPublicId)
         },
         duplicateSuggestionReasons = duplicateCandidates.firstOrNull()?.reasons.orEmpty(),
         duplicateCandidateIds = duplicateCandidates.map { it.candidateId },
+        duplicateDecisionPublicId = duplicateCandidates.firstOrNull { it.candidateId == duplicateOfId }?.decisionPublicId,
         note = note,
         source = source,
         imagePath = imagePath.takeIf { imageAvailable },
@@ -153,6 +154,7 @@ fun ExpenseDto.toEntity(ledgerId: String): ExpenseEntity = ExpenseEntity(
     duplicateStatus = duplicateStatus,
     duplicateOfId = duplicateOfId,
     duplicateReason = duplicateReason,
+    duplicateDecisionPublicId = duplicateCandidates.firstOrNull { it.candidateId == duplicateOfId }?.decisionPublicId,
     tags = tags,
     valueScore = valueScore,
     regretScore = regretScore,
@@ -231,6 +233,7 @@ fun ExpenseEntity.toDomain(): Expense {
         duplicateStatus = duplicateStatus,
         duplicateOfId = duplicateOfId,
         duplicateReason = duplicateReason,
+        duplicateDecisionPublicId = duplicateDecisionPublicId,
         tags = tags,
         valueScore = valueScore,
         regretScore = regretScore,
@@ -362,6 +365,8 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
     val legacyTime = expenseTime.takeIf { timeInput == null && (isCreate || timeChanged) }
 
     return ExpenseUpdateRequest(
+        categoryChoice = categoryChoice,
+        categoryDecisionPublicId = categoryDecisionPublicId,
         timeInput = changedTimeInput?.toRequest(),
         // ADR-0041: PATCH 必须携带 baseline.rowVersion 作为乐观锁 token。
         // manual create 已拆到 toManualCreateRequest()（专用 DTO 无 token 字段）；

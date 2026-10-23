@@ -50,7 +50,10 @@ internal class RejectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
     fun `accepted reject retains its receipt when cache publication fails`() = runTest {
         val response = successExpenseDto().copy(status = "rejected")
         val stub = ApiServiceStub(rejectExpenseResult = ApiResult.Success(response))
-        val row = rejectRow(idempotencyKey = "cache-failure-key")
+        val row = rejectRow(idempotencyKey = "cache-failure-key").copy(
+            payloadJson = moshi().adapter(ExpenseStateTokenRequest::class.java).toJson(
+                ExpenseStateTokenRequest(0L, duplicateDecisionPublicId = "original-pair-decision")),
+        )
         val api = object : ApiService by stub {
             override suspend fun rejectExpense(
                 id: String,
@@ -58,7 +61,8 @@ internal class RejectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
                 idempotencyKey: String?,
             ): ExpenseDto {
                 assertEquals("42", id)
-                assertEquals(ExpenseStateTokenRequest(expectedRowVersion = row.expectedRowVersion), request)
+                assertEquals(ExpenseStateTokenRequest(expectedRowVersion = row.expectedRowVersion,
+                    duplicateDecisionPublicId = "original-pair-decision"), request)
                 return stub.rejectExpense(id, request, idempotencyKey)
             }
         }

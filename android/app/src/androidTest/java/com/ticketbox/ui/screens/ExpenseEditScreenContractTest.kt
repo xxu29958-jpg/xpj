@@ -208,7 +208,8 @@ class ExpenseEditScreenContractTest {
             amountCents = 12_345L, homeAmountCents = 12_345L,
             homeCurrency = CurrencyCode.KWD, originalCurrency = CurrencyCode.KWD,
             originalCurrencyCode = CurrencyCode.KWD, originalAmountMinor = 12_345L,
-            categorySuggestion = com.ticketbox.domain.model.ExpenseCategorySuggestion("日用品", 3),
+            category = "日用品", serverCategory = "日用品",
+            categorySuggestion = com.ticketbox.domain.model.ExpenseCategorySuggestion("日用品", 3, "shown-category-decision"),
         )
 
         composeRule.setContent {
@@ -233,6 +234,11 @@ class ExpenseEditScreenContractTest {
         }
 
         composeRule.onNode(hasSetTextAction() and hasText("12.345")).assertIsDisplayed()
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle {
+            assertEquals(null, requireNotNull(savedDraft).toRequest(recorded).categoryChoice)
+            savedDraft = null
+        }
         composeRule.onNodeWithTag("expense-use-category-suggestion").performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(null, savedDraft) } // Filling advice alone cannot publish.
         capture("review-learning-category-filled")
@@ -245,6 +251,8 @@ class ExpenseEditScreenContractTest {
             val request = requireNotNull(savedDraft).toRequest(recorded)
             assertEquals("仅改备注", request.note)
             assertEquals("日用品", request.category)
+            assertEquals("suggestion", request.categoryChoice)
+            assertEquals("shown-category-decision", request.categoryDecisionPublicId)
             assertEquals(null, request.originalAmount)
             assertEquals(recorded.rowVersion, request.expectedRowVersion)
         }

@@ -1124,6 +1124,96 @@ def test_owner_current_algorithm_version_comes_from_runtime_registry(
         assert "分类建议" in page.text
 
 
+def test_paused_pair_generation_preserves_shown_advice_and_manual_review(local_client, identity):
+    from app.database import SessionLocal
+    from app.models import AlgorithmDecision
+    from app.services.learning_service import DUPLICATE_CANDIDATE
+    from tests.test_pending_suggestions import _pending_notification
+
+    client = local_client
+    _pending_notification(client, identity=identity, merchant="暂停配对验证店")
+    subject = _pending_notification(client, identity=identity, merchant="暂停配对验证店")
+    detail = client.get(f"/api/expenses/{subject}", headers=identity.app_headers).json()
+    assert detail["duplicate_candidates"]
+    policy = {"ledger_id": "owner", "decision_type": "duplicate_candidate", "algorithm_version": DUPLICATE_CANDIDATE.current_version}
+    response = client.post("/owner/algorithm-versions/policy", data={**policy, "axis": "new_suggestions", "enabled": "false"})
+    assert response.status_code == 200
+    with SessionLocal() as db:
+        original_count = db.query(AlgorithmDecision).count()
+    retained = client.get(f"/api/expenses/{subject}", headers=identity.app_headers).json()
+    assert retained["duplicate_candidates"] == detail["duplicate_candidates"]
+    newer = _pending_notification(client, identity=identity, merchant="暂停配对验证店")
+    assert client.get(f"/api/expenses/{newer}", headers=identity.app_headers).json()["duplicate_candidates"] == []
+    with SessionLocal() as db:
+        assert db.query(AlgorithmDecision).count() == original_count
+    assert client.post("/owner/algorithm-versions/withdraw", data=policy).status_code == 200
+    withdrawn = client.get(f"/api/expenses/{subject}", headers=identity.app_headers).json()
+    assert withdrawn["duplicate_candidates"] == []
+    assert (withdrawn["duplicate_of_id"], withdrawn["amount_cents"], withdrawn["status"]) == (
+        detail["duplicate_of_id"], detail["amount_cents"], "pending")
+
+
+def test_learning_controls_stop_new_work_preserve_existing_advice_and_isolate_feedback(local_client, identity):
+    from app.database import SessionLocal
+    from app.models import Expense, LedgerLearningEvent
+    from app.services.learning_service import CATEGORY_SUGGESTION, compute_category_suggestion
+    from app.services.learning_service._source_eligibility import feedback_impact_preview
+    from tests.test_pending_suggestions import _confirmed, _pending_notification
+
+    client = local_client
+    merchant = "独立开关核对店"
+    for day in (1, 2, 3):
+        _confirmed(client, identity=identity, merchant=merchant, category="餐饮", day=day)
+    rejected_ids = []
+    for _ in range(2):
+        expense_id = _pending_notification(client, identity=identity, merchant=merchant)
+        detail = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()
+        decision_id = detail["category_suggestion"]["decision_public_id"]
+        response = client.post(f"/api/expenses/{expense_id}/suggestions/{decision_id}/reject", headers=identity.app_headers)
+        assert response.status_code == 200, response.text
+        rejected_ids.append(expense_id)
+    third = _pending_notification(client, identity=identity, merchant=merchant)
+    assert client.get(f"/api/expenses/{third}", headers=identity.app_headers).json()["category_suggestion"] is None
+    policy = {"ledger_id": "owner", "decision_type": "category_suggestion", "algorithm_version": CATEGORY_SUGGESTION.current_version}
+    with SessionLocal() as db:
+        facts = [(row.id, row.category, row.amount_cents, row.status, row.row_version) for row in db.query(Expense).order_by(Expense.id)]
+        original = db.query(LedgerLearningEvent).filter_by(subject_id=rejected_ids[0]).one()
+        event_id, original_payload = original.public_id, original.after_payload
+    response = client.post("/owner/algorithm-versions/policy", data={**policy, "axis": "training", "enabled": "false"})
+    assert response.status_code == 200 and "已隔离" in response.text
+    with SessionLocal() as db:
+        assert feedback_impact_preview(db, tenant_id="owner")["quarantined"] == 2
+    third_advice = client.get(f"/api/expenses/{third}", headers=identity.app_headers).json()["category_suggestion"]
+    assert third_advice is not None
+    response = client.post("/owner/algorithm-versions/policy", data={**policy, "axis": "new_suggestions", "enabled": "false"})
+    assert response.status_code == 200
+    # Pausing computation does not silently withdraw already displayed advice.
+    assert client.get(f"/api/expenses/{third}", headers=identity.app_headers).json()["category_suggestion"] == third_advice
+    with SessionLocal() as db:
+        assert compute_category_suggestion(db, tenant_id="owner", merchant=merchant) is None
+        assert [(row.id, row.category, row.amount_cents, row.status, row.row_version) for row in db.query(Expense).order_by(Expense.id)] == facts
+    response = client.post("/owner/algorithm-versions/withdraw", data=policy)
+    assert response.status_code == 200
+    assert client.get(f"/api/expenses/{third}", headers=identity.app_headers).json()["category_suggestion"] is None
+    response = client.post("/owner/algorithm-versions/policy", data={**policy, "axis": "training", "enabled": "true"})
+    assert response.status_code == 200
+    for _ in range(2):
+        response = client.post("/owner/algorithm-versions/withdraw-feedback", data={"ledger_id": "owner", "event_public_id": event_id})
+        assert response.status_code == 200, response.text
+    response = client.post("/owner/algorithm-versions/policy", data={**policy, "axis": "new_suggestions", "enabled": "true"})
+    assert response.status_code == 200
+    fourth = _pending_notification(client, identity=identity, merchant=merchant)
+    assert client.get(f"/api/expenses/{fourth}", headers=identity.app_headers).json()["category_suggestion"] is not None
+    with SessionLocal() as db:
+        original = db.query(LedgerLearningEvent).filter_by(public_id=event_id).one()
+        assert original.after_payload == original_payload
+        withdrawal = db.query(LedgerLearningEvent).filter_by(event_type="withdraw").one()
+        assert withdrawal.actor_account_id is None  # The local Owner did not impersonate the original member.
+        assert json.loads(withdrawal.after_payload)["_withdraws_event_public_id"] == event_id
+        retained = [(row.id, row.category, row.amount_cents, row.status, row.row_version) for row in db.query(Expense).filter(Expense.id != fourth).order_by(Expense.id)]
+        assert retained == facts
+
+
 def test_owner_settings_subpages_open(local_client: TestClient) -> None:
     for slug in ("recognition", "public-base-url", "security", "api", "about"):
         resp = local_client.get(f"/owner/settings/{slug}")

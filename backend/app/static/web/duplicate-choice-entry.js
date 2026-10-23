@@ -2,7 +2,7 @@
 (function (window, document) {
   "use strict";
   const names = ["ledger_id", "expense_id", "task_id", "action", "label", "idempotency_key", "draft_ref",
-    "expected_row_version", "original_expense_id", "expected_original_row_version", "return_duplicate_expense_id"];
+    "expected_row_version", "original_expense_id", "expected_original_row_version", "return_duplicate_expense_id", "duplicate_decision_public_id"];
   const prefix = "ticketbox:duplicatechoice-edit-draft:v1:";
   function read(form) { return Object.fromEntries(names.map(name => [name, form.elements.namedItem(name).value])); }
   function href(record, scope) {
@@ -12,7 +12,7 @@
       action: saved.action, original_expense_id: saved.original_expense_id}) + "#duplicatechoice-edit-" + record.clientRef, window.location.href).href;
   }
   function body(data, saved) {
-    names.forEach(name => data.set(name, saved[name]));
+    names.forEach(name => data.set(name, saved[name] || ""));
     data.set("keep_idempotency_key", saved.idempotency_key); data.set("return_to", "duplicates");
   }
   function present(form, state, confirmation) {

@@ -106,6 +106,12 @@ def expense_edit_form_values(form: WebExpenseEditForm) -> dict[str, str]:
         merchant=form.merchant, category=form.category, note=form.note, tags=form.tags, expense_time=form.expense_time)
     if form.funding_json is not None:
         values["funding_json"] = form.funding_json
+    if form.category_choice:
+        values["category_choice"] = form.category_choice
+    if form.category_decision_public_id:
+        values["category_decision_public_id"] = form.category_decision_public_id
+    if form.duplicate_decision_public_id:
+        values["duplicate_decision_public_id"] = form.duplicate_decision_public_id
     return {**values, **(form.time_fields or {}), **(form.score_fields or {})}
 
 
@@ -340,6 +346,10 @@ def _validated_update_request(
         # PATCH as amount/date edits so the server derives home amount,
         # provenance and effective rate date atomically.
         payload_args["manual_exchange_rate"] = manual_exchange_rate.strip()
+    if form_values.get("category_choice"):
+        payload_args.update(category=category, category_choice=form_values["category_choice"])
+    if form_values.get("category_decision_public_id"):
+        payload_args["category_decision_public_id"] = form_values["category_decision_public_id"]
     for name in ("value_score", "regret_score"):
         if name not in form_values:
             continue
@@ -385,6 +395,7 @@ def apply_web_expense_form(
             manual_exchange_rate=form.manual_exchange_rate, merchant=form.merchant, category=form.category,
             note=form.note, tags=form.tags, expense_time=form.expense_time, time_fields=form.time_fields,
             score_fields=form.score_fields, funding_json=form.funding_json,
+            category_choice=form.category_choice, category_decision_public_id=form.category_decision_public_id,
         )
         if payload is None:
             return prepared
@@ -450,6 +461,8 @@ def prepare_web_expense_form(
     time_fields: dict[str, str] | None = None,
     score_fields: dict[str, str] | None = None,
     funding_json: str | None = None,
+    category_choice: str | None = None,
+    category_decision_public_id: str | None = None,
 ) -> tuple[ExpenseUpdateRequest | None, WebExpenseSaveOutcome]:
     """Parse one browser snapshot without owning its write transaction."""
 
@@ -470,6 +483,10 @@ def prepare_web_expense_form(
     form_values.update(score_fields or {})
     if funding_json is not None:
         form_values["funding_json"] = funding_json
+    if category_choice:
+        form_values["category_choice"] = category_choice
+    if category_decision_public_id:
+        form_values["category_decision_public_id"] = category_decision_public_id
     try:
         expense = get_expense(db, expense_id, selected_ledger_id)
         time_input = None
