@@ -458,6 +458,13 @@ fun ExpenseEditScreen(
     }
 
     val hasDraftChanges = formValues != initialFormValues || timeForm.changed
+    fun chooseCategory(selected: String, intent: String, decisionId: String? = null) {
+        category = selected
+        categoryDecisionPublicId = null
+        if (categoryChoice == "one_off") return
+        categoryChoice = intent
+        categoryDecisionPublicId = decisionId
+    }
     val formSections: @Composable () -> Unit = {
         if (currentExpense.status == "pending") currentExpense.recognitionNotes.forEach { note ->
             androidx.compose.material3.Text(note, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
@@ -513,17 +520,15 @@ fun ExpenseEditScreen(
                 categories = state.categories,
                 enabled = !readOnly,
                 sheetOpen = categorySheetOpen,
+                singleUse = categoryChoice == "one_off",
                 suggestion = currentExpense.categorySuggestion?.takeIf {
                     merchant == (currentExpense.merchant ?: "") && currentExpense.status == "pending"
                 },
             ),
             actions = ExpenseEditCategorySelectorActions(
-                onCategoryChange = { category = it; categoryChoice = "manual"; categoryDecisionPublicId = null },
-                onUseSuggestion = { suggestion ->
-                    category = suggestion.category
-                    categoryChoice = "suggestion"
-                    categoryDecisionPublicId = suggestion.decisionPublicId
-                },
+                onCategoryChange = { chooseCategory(it, "manual") },
+                onUseSuggestion = { suggestion -> chooseCategory(suggestion.category, "suggestion", suggestion.decisionPublicId) },
+                onSingleUseChange = { categoryChoice = if (it) "one_off" else "manual"; categoryDecisionPublicId = null },
                 onOpenSheet = { categorySheetOpen = true },
                 onDismissSheet = { categorySheetOpen = false },
             ),

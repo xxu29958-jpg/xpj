@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -68,6 +69,7 @@ data class ManualExpenseSheetInitials(
     val expenseTime: String? = null,
     val timeFormJson: String? = null,
     val fundingJson: String = "[]",
+    val categoryChoice: String? = null,
 )
 
 data class ManualExpenseSheetDraft(
@@ -79,6 +81,7 @@ data class ManualExpenseSheetDraft(
     val expenseTime: String,
     val timeFormJson: String? = null,
     val fundingJson: String = "[]",
+    val categoryChoice: String? = null,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,6 +102,7 @@ fun ManualExpenseSheet(
         mutableStateOf(initials.category.ifBlank { DEFAULT_EXPENSE_CATEGORIES.first() })
     }
     var note by rememberSaveable { mutableStateOf(initials.note) }
+    var categoryChoice by rememberSaveable { mutableStateOf(initials.categoryChoice) }
     var fundingJson by rememberSaveable { mutableStateOf(initials.fundingJson) }
     val (timeForm, setTimeForm) = com.ticketbox.ui.screens.expense.rememberExpenseTimeForm(
         "manual", initials.expenseTime ?: nowUtcIso(), saved = initials.timeFormJson,
@@ -108,7 +112,7 @@ fun ManualExpenseSheet(
     var message by rememberSaveable { mutableStateOf<String?>(null) }
     val invalidAmountMessage = stringResource(R.string.ledger_manual_amount_invalid)
     val timeErrorMessage = time.error?.let { stringResource(it) }
-    LaunchedEffect(amountText, currency, merchant, category, note, timeForm, fundingJson) {
+    LaunchedEffect(amountText, currency, merchant, category, note, timeForm, fundingJson, categoryChoice) {
         onDraftChange?.invoke(
             ManualExpenseSheetDraft(
                 amountText = amountText,
@@ -119,6 +123,7 @@ fun ManualExpenseSheet(
                 expenseTime = expenseTime,
                 timeFormJson = timeForm.toSavedJson(),
                 fundingJson = fundingJson,
+                categoryChoice = categoryChoice,
             ),
         )
     }
@@ -140,6 +145,7 @@ fun ManualExpenseSheet(
             originalAmountMinor = originalMinor,
             merchant = merchant.ifBlank { null },
             category = normalizeExpenseCategory(category),
+            categoryChoice = categoryChoice,
             note = note,
             expenseTime = time.instant,
             timeInput = time.input,
@@ -206,6 +212,7 @@ fun ManualExpenseSheet(
                 onPick = { picked ->
                     merchant = picked.merchant
                     category = picked.category
+                    categoryChoice = categoryChoice.takeIf { it == "one_off" }
                 },
             )
             ExpenseFundingFields(fundingJson, currency, fieldsEnabled) { fundingJson = it }
@@ -215,15 +222,25 @@ fun ManualExpenseSheet(
                     value = category,
                     enabled = fieldsEnabled,
                 ),
-                onValueChange = { category = it },
+                onValueChange = { category = it; if (categoryChoice != "one_off") categoryChoice = "manual" },
                 modifier = Modifier.fillMaxWidth(),
             )
             ManualCategoryChoices(
                 categories = state.categories,
                 selectedCategory = category,
                 enabled = fieldsEnabled,
-                onCategoryChange = { category = it },
+                onCategoryChange = { category = it; if (categoryChoice != "one_off") categoryChoice = "manual" },
             )
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text(stringResource(R.string.category_single_use), modifier = Modifier.weight(1f))
+                com.ticketbox.ui.components.AppSwitch(
+                    checked = categoryChoice == "one_off",
+                    onCheckedChange = { categoryChoice = if (it) "one_off" else "manual" },
+                    enabled = fieldsEnabled,
+                    contentDescription = stringResource(R.string.category_single_use),
+                    modifier = Modifier.testTag("manual-category-single-use"),
+                )
+            }
             ExpenseEditTextField(
                 state = ExpenseEditTextFieldState(
                     label = stringResource(R.string.ledger_manual_note_label),

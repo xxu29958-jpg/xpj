@@ -51,19 +51,24 @@
       assert(JSON.parse(state.timeChoice).candidate_id === JSON.parse(time.dataset.recognizedTime).id,
         "Explicit time choice lost its original evidence identity");
   }
-  try {
-    const form = document.querySelector("form.edit-form"), field = name => form.elements.namedItem(name);
-    const primary = form.querySelector("[data-expensereview-submit]");
-    await wait(() => form.dataset.expensereviewDraftPhase && !primary.disabled);
-    if (state.stage === "choose") {
+  function chooseCategory(form, field) {
       assert(!field("category_choice")?.value, "Untouched category became feedback");
       const suggestion = form.querySelector("[data-category-suggestion]");
       assert(suggestion && !suggestion.disabled, "Original category advice is not actionable");
       state.decision = suggestion.dataset.categoryDecision;
       state.category = field("category").value;
+      state.categoryChoice = window.__categorySingleUse ? "one_off" : "suggestion";
+      if (window.__categorySingleUse) form.querySelector("[data-category-one-off]").click();
       suggestion.click();
       assert(field("category").value === state.category, "This case must exercise a same-value choice");
-      assert(field("category_choice").value === "suggestion", "Choice was not preserved");
+      assert(field("category_choice").value === state.categoryChoice, "Choice was not preserved");
+  }
+  try {
+    const form = document.querySelector("form.edit-form"), field = name => form.elements.namedItem(name);
+    const primary = form.querySelector("[data-expensereview-submit]");
+    await wait(() => form.dataset.expensereviewDraftPhase && !primary.disabled);
+    if (state.stage === "choose") {
+      chooseCategory(form, field);
       chooseSourceTime(form, field);
       state.stage = "sent"; save();
       form.requestSubmit([...form.querySelectorAll("button")].find(button => button.textContent === "保存草稿"));
@@ -71,8 +76,8 @@
       location.reload();
     } else if (state.stage === "unknown") {
       assert(form.dataset.expensereviewDraftPhase === "submitted", "Unknown save became a new editable command");
-      assert(field("category_decision_public_id").value === state.decision, "Reload borrowed a newer advice identity");
-      assert(field("category_choice").value === "suggestion", "Reload lost explicit choice");
+      assert(field("category_decision_public_id").value === (window.__categorySingleUse ? "" : state.decision), "Reload borrowed a newer advice identity");
+      assert(field("category_choice").value === state.categoryChoice, "Reload lost explicit choice");
       assert(field("recognition_time_choice").value === state.timeChoice, "Reload borrowed a newer time candidate");
       state.stage = "replay"; save(); form.requestSubmit(primary);
     } else if (state.stage === "replay") {

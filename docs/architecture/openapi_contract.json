@@ -3521,6 +3521,17 @@
             "title": "Category",
             "type": "string"
           },
+          "category_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Choice"
+          },
           "draft_client_ref": {
             "default": "",
             "title": "Draft Client Ref",
@@ -4481,6 +4492,17 @@
             "default": "",
             "title": "Category",
             "type": "string"
+          },
+          "category_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Choice"
           },
           "draft_client_ref": {
             "default": "",
@@ -16634,6 +16656,35 @@
             ],
             "title": "Category"
           },
+          "category_choice": {
+            "anyOf": [
+              {
+                "enum": [
+                  "manual",
+                  "suggestion",
+                  "one_off"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Choice"
+          },
+          "category_decision_public_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Decision Public Id"
+          },
           "expected_row_version": {
             "title": "Expected Row Version",
             "type": "integer"
@@ -17473,6 +17524,21 @@
               }
             ],
             "title": "Category"
+          },
+          "category_choice": {
+            "anyOf": [
+              {
+                "enum": [
+                  "manual",
+                  "one_off"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Choice"
           },
           "client_ref": {
             "maxLength": 64,
@@ -19134,7 +19200,8 @@
               {
                 "enum": [
                   "manual",
-                  "suggestion"
+                  "suggestion",
+                  "one_off"
                 ],
                 "type": "string"
               },

@@ -128,7 +128,7 @@ internal fun computeScalarChanges(
     val merchant = form.merchant.trim().takeIf { it != expense.merchant.orEmpty() }
     val categoryInput = form.category.trim()
     val category = categoryInput.takeIf {
-        it.isNotEmpty() && normalizeExpenseCategory(it) != normalizeExpenseCategory(expense.category)
+        it.isNotEmpty() && (form.categoryChoice != null || normalizeExpenseCategory(it) != normalizeExpenseCategory(expense.category))
     }?.let { normalizeExpenseCategory(it) }
     val note = form.note.takeIf { it != expense.note.orEmpty() }
     val tags = form.tags.trim().takeIf { it != expense.tags.orEmpty() }

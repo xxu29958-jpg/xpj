@@ -13,6 +13,8 @@
   const shelf = document.querySelector("[data-manual-draft-shelf]");
   const controls = drafts.fields.map(name => form.elements.namedItem(name)).filter(Boolean);
   const omitted = new Set();
+  const categoryIntent = form.elements.namedItem("category_choice");
+  const categoryOneOff = form.querySelector("[data-category-one-off]");
   const refInput = form.elements.namedItem("client_ref");
   const nativeRef = refInput.value;
   let nativeResult = form.dataset.manualDraftResult;
@@ -38,7 +40,8 @@
   }
 
   function values() {
-    return Object.fromEntries(controls.filter(control => !omitted.has(control.name))
+    return Object.fromEntries(controls.filter(control => !omitted.has(control.name) &&
+      (control.name !== "category_choice" || control.value))
       .map(control => [control.name, control.value]));
   }
 
@@ -66,11 +69,13 @@
       control.disabled = absent;
     });
     if (saved.note) options.open = true;
+    if (categoryOneOff) categoryOneOff.checked = saved.category_choice === "one_off";
     showSummaries();
     form.dispatchEvent(new CustomEvent("ticketbox:manual-restored"));
   }
 
   function readOnly(value) {
+    if (categoryOneOff) categoryOneOff.disabled = value;
     form.querySelectorAll("[data-funding-editor] button, [data-funding-editor] select, [data-funding-editor] input:not([name])")
       .forEach(input => { input.disabled = value; });
     controls.forEach(control => {
@@ -328,7 +333,13 @@
     return;
   }
 
-  form.addEventListener("input", function () {
+  form.addEventListener("input", function (event) {
+    if (event.isTrusted && phase === "editing" && categoryIntent &&
+        (event.target.name === "category" || event.target === categoryOneOff)) {
+      categoryIntent.value = categoryOneOff?.checked ? "one_off" : "manual";
+      categoryIntent.disabled = false;
+      omitted.delete("category_choice");
+    }
     showSummaries();
     if (!held || phase !== "editing" || selecting || selectionFailed) return;
     try {

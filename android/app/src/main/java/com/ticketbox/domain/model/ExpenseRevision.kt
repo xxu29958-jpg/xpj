@@ -35,6 +35,7 @@ data class ExpenseCorrectionDraft(
     val originalAmountMinor: Long? = null,
     val merchant: String? = null,
     val category: String? = null,
+    val categoryChoice: String? = null,
     val note: String? = null,
     val expenseTime: String? = null,
     /** Distinguishes an omitted time from an explicit clear (`null`). */

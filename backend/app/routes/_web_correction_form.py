@@ -96,6 +96,7 @@ class CorrectionFormData:
     draft_scope: str = ""
     fact_basis: str = ""
     draft_client_ref: str = ""
+    category_choice: str | None = None
 
 
 @dataclass
@@ -147,6 +148,7 @@ def correction_form_data(
     original_currency: str = Form(default=""),
     merchant: str | None = Form(default=None),
     category: str = Form(default=""),
+    category_choice: str | None = Form(default=None),
     note: str = Form(default=""),
     expense_time: str | None = Form(default=None),
     tags: str = Form(default=""),
@@ -180,6 +182,7 @@ def correction_form_data(
         original_currency=original_currency,
         merchant=merchant,
         category=category,
+        category_choice=category_choice or None,
         note=note,
         expense_time=expense_time,
         expense_time_present="expense_time" in submitted_fields,
@@ -280,6 +283,7 @@ def _form_values_from(form: CorrectionFormData) -> dict[str, str]:
         "original_currency": form.original_currency,
         "merchant": form.merchant,
         "category": form.category,
+        "category_choice": form.category_choice,
         "note": form.note,
         "tags": form.tags,
         "expense_time": (form.expense_time or "") if form.expense_time_present else None,
@@ -347,6 +351,7 @@ def _scalar_changes(
         original_currency=form.original_currency,
         merchant=form.merchant,
         category=form.category,
+        category_choice=form.category_choice,
         note=form.note,
         tags=form.tags,
         expense_time=form.expense_time,

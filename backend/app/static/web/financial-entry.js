@@ -2,7 +2,7 @@
 (function (window, document) {
   "use strict";
   const scalars = ["ledger_id", "expense_id", "expected_row_version", "fact_basis", "idempotency_key", "draft_client_ref", "reason", "amount_yuan",
-    "original_currency", "merchant", "category", "note", "tags", "expense_time", "value_score", "regret_score",
+    "original_currency", "merchant", "category", "category_choice", "note", "tags", "expense_time", "value_score", "regret_score",
     "time_precision", "calendar_revision", "user_local_date", "source_timezone", "source_utc_offset_seconds", "accounting_date",
     "return_to", "return_month", "return_filter", "return_page", "return_tag", "return_query", "return_category", "return_home_currency_code",
     "return_granularity", "return_ranking_metric", "return_merchant_category", "return_recurring_public_id",
@@ -42,12 +42,21 @@
     }
   });
   document.querySelectorAll("[data-correction-draft-scope]").forEach(form => {
-    let present = [...new FormData(form).keys()].filter(name => scalars.includes(name));
+    let present = [...new FormData(form).keys()].filter(name => scalars.includes(name) &&
+      (name !== "category_choice" || form.elements.namedItem(name)?.value));
     const currentVersion = form.dataset.correctionCurrentVersion;
     const field = name => form.elements.namedItem(name);
+    const oneOff = form.querySelector("[data-category-one-off]");
+    form.addEventListener("input", event => {
+      if (!event.isTrusted || form.dataset.correctionDraftPhase !== "editing" || field("category").readOnly) return;
+      if (event.target.name !== "category" && event.target !== oneOff) return;
+      field("category_choice").value = oneOff?.checked ? "one_off" : "manual";
+      if (!present.includes("category_choice")) present.push("category_choice");
+    });
     window.TicketboxPlanEntry.mount(form, {family: "correction", label: "账单更正", list: "/web/confirmed",
       idField: "expense_id", titleField: "merchant", amount: "amount_yuan", create: names, edit: names,
-      legacyMissing: ["return_receipt_key", "return_receipt_expense_id", "return_review_ref", "return_review_expense_id", "return_review_family", "return_duplicate_expense_id", "return_payment_month"],
+      legacyMissing: ["category_choice", "return_receipt_key", "return_receipt_expense_id", "return_review_ref", "return_review_expense_id", "return_review_family", "return_duplicate_expense_id", "return_payment_month"],
+      updatePresentation: (_, state) => { if (oneOff) oneOff.disabled = !state.editable; },
       draftRefField: "draft_client_ref", commandKeyField: "idempotency_key",
       repeated: [...itemNames, ...splitNames], reviewName: "review_latest", reviewRequiresRejection: true,
       reviewWhileEditing: true, submitSelector: "[data-correction-submit]",
@@ -72,6 +81,7 @@
       restore: (current, saved) => {
         present = JSON.parse(saved.present_fields);
         scalars.forEach(name => { const input = field(name); if (input) put(input, saved[name] ?? ""); });
+        if (oneOff) oneOff.checked = saved.category_choice === "one_off";
         restoreRows(current, itemNames, saved.item_rows); restoreRows(current, splitNames, saved.split_rows);
         renderCorrectionComparison(current);
       },

@@ -35,6 +35,7 @@ internal data class ExpenseEditCategorySelectorState(
     val enabled: Boolean,
     val sheetOpen: Boolean,
     val suggestion: com.ticketbox.domain.model.ExpenseCategorySuggestion? = null,
+    val singleUse: Boolean = false,
 )
 
 internal data class ExpenseEditCategorySelectorActions(
@@ -42,6 +43,7 @@ internal data class ExpenseEditCategorySelectorActions(
     val onOpenSheet: () -> Unit,
     val onDismissSheet: () -> Unit,
     val onUseSuggestion: (com.ticketbox.domain.model.ExpenseCategorySuggestion) -> Unit = { onCategoryChange(it.category) },
+    val onSingleUseChange: (Boolean) -> Unit = {},
 )
 
 /**
@@ -112,6 +114,20 @@ private fun ExpenseEditCategorySheet(
                 )
             },
         ) {
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                androidx.compose.material3.Text(stringResource(R.string.category_single_use))
+                com.ticketbox.ui.components.AppSwitch(
+                    checked = state.singleUse,
+                    onCheckedChange = actions.onSingleUseChange,
+                    enabled = state.enabled,
+                    contentDescription = stringResource(R.string.category_single_use),
+                    modifier = Modifier.testTag("expense-category-single-use"),
+                )
+            }
             if (state.categories.isNotEmpty()) {
                 AppCompactChips {
                     FlowRow(

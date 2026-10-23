@@ -28,6 +28,7 @@ def _confirmed(
             "home_currency_code": "CNY", "amount_cents": 1200 + day,
             "merchant": merchant,
             "category": category,
+            "category_choice": "manual",
             "spent_at": (datetime.now(UTC) - timedelta(days=day)).isoformat(),
         },
     )
@@ -291,7 +292,7 @@ def test_feedback_changes_the_next_real_review_without_changing_money(client, we
         assert db.get(Expense, replaced_id).merchant == "新商家"
         assert db.get(Expense, replaced_id).amount_cents == 1888
 
-    intervening = patch_expense(client, pending_id, headers=identity.app_headers, fields={"note": "另一端刚保存"})
+    intervening = patch_expense(client, pending_id, headers=identity.app_headers, fields={"value_score": 3})
     assert intervening.status_code == 200
     stale = client.patch(f"/api/expenses/{pending_id}",
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
@@ -300,7 +301,7 @@ def test_feedback_changes_the_next_real_review_without_changing_money(client, we
     with SessionLocal() as db:
         assert db.query(LedgerLearningEvent).filter(LedgerLearningEvent.subject_id == pending_id).count() == 0
 
-    changed = patch_expense(client, pending_id, headers=identity.app_headers, fields={"category": "购物"})
+    changed = patch_expense(client, pending_id, headers=identity.app_headers, fields={"category": "购物", "category_choice": "manual"})
     assert changed.status_code == 200, changed.text
     # A stored feedback row alone is not the outcome: reopening must honour it.
     reopened = client.get(f"/api/expenses/{pending_id}", headers=identity.app_headers).json()

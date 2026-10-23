@@ -48,6 +48,7 @@ fun ExpenseCorrectionDraft.toRequest(expectedRowVersion: Long): ExpenseCorrectio
         originalAmountMinor = originalAmountMinor,
         merchant = merchant,
         category = category,
+        categoryChoice = categoryChoice,
         note = note,
         expenseTime = if (expenseTimeChanged) {
             CorrectionOptionalString.changed(expenseTime)

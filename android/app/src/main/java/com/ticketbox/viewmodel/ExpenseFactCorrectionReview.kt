@@ -74,6 +74,8 @@ internal fun reviewedCorrectionScalars(old: Expense, current: Expense, form: Cor
     return form.copy(
         merchant = adoptUntouched(form.merchant, before.merchant, now.merchant, choices[CorrectionReviewField.Merchant]),
         category = adoptUntouched(form.category, before.category, now.category, choices[CorrectionReviewField.Category]),
+        categoryChoice = form.categoryChoice.takeIf { choices[CorrectionReviewField.Category] != false &&
+            (form.category != before.category || form.category == now.category) },
         tags = adoptUntouched(form.tags, before.tags, now.tags, choices[CorrectionReviewField.Tags]),
         note = adoptUntouched(form.note, before.note, now.note, choices[CorrectionReviewField.Note]),
         valueScore = adoptUntouched(form.valueScore, before.valueScore, now.valueScore, choices[CorrectionReviewField.ValueScore]),

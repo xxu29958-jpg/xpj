@@ -137,11 +137,32 @@ internal class ExpenseFactViewModelCorrectionTest : ExpenseFactViewModelTestBase
         assertEquals("青禾小馆·静安店", draft.merchant)
         assertNull(draft.originalAmountMinor)
         assertNull(draft.category)
+        assertNull(draft.categoryChoice)
         assertNull(draft.note)
         assertNull(draft.tags)
         assertNull(draft.expenseTime)
         assertNull(draft.items)
         assertNull(draft.splits)
+    }
+
+    @Test
+    fun `single use category remains single use after closing and reopening correction`() = edit { fake ->
+        val vm = viewModel(fake)
+        vm.openCorrectionSheet()
+        vm.updateCorrectionField(CorrectionScalarField.Reason, "这次是个人用途")
+        vm.updateCorrectionField(CorrectionScalarField.CategoryChoice, "one_off")
+        vm.updateCorrectionField(CorrectionScalarField.Category, "购物")
+        advanceUntilIdle()
+        vm.closeCorrectionSheet()
+        vm.openCorrectionSheet()
+        advanceUntilIdle()
+        assertEquals("one_off", vm.uiState.value.correction.categoryChoice)
+        vm.submitCorrection()
+        advanceUntilIdle()
+        val draft = assertNotNull(fake.lastCorrectionDraft)
+        assertEquals("购物", draft.category)
+        assertEquals("one_off", draft.categoryChoice)
+        assertNull(draft.originalAmountMinor)
     }
 
     @Test

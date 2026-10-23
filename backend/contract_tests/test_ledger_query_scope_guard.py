@@ -186,20 +186,6 @@ EXEMPTIONS: tuple[ScopeExemption, ...] = (
             "group purge above), not a per-ledger query."
         ),
     ),
-    ScopeExemption(
-        path="services/learning_service/_category_suggestion.py",
-        function="compute_category_suggestion",
-        model="Expense",
-        occurrences=1,
-        reason=(
-            "False positive of the per-statement AST walk, NOT a global query: the "
-            "Expense select IS tenant-scoped, but via `Expense.tenant_id == "
-            "tenant_id` appended to a `conditions` list one statement earlier and "
-            "applied with `.where(and_(*conditions))`. The guard only inspects the "
-            "single `db.execute(select(...))` statement, so it can't see the "
-            "predicate built in the preceding assignment. Verified scoped."
-        ),
-    ),
 )
 
 

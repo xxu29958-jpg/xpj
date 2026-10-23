@@ -47,6 +47,7 @@ internal data class RecurringPaymentDraft(
     val expenseTime: String,
     val timeFormJson: String? = null,
     val fundingJson: String = "[]",
+    val categoryChoice: String? = null,
 )
 
 private val recurringPaymentTaskAdapter = Moshi.Builder().build().adapter(RecurringPaymentTask::class.java)

@@ -63,8 +63,8 @@ def test_accounting_time_subseconds_survive_the_actual_browser_control(tmp_path:
         assert values["source_utc_offset_seconds"] == "-18000" and values["calendar_revision"] == "1"
 
 
-@pytest.mark.parametrize("raw", ["2026-11-01T01:30:15.123456", "2026-11-01 01:30:15"])
-def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, raw: str) -> None:
+@pytest.mark.parametrize("raw,category_choice", [("2026-11-01T01:30:15.123456", "one_off"), ("2026-11-01 01:30:15", None)])
+def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, raw: str, category_choice: str | None) -> None:
     edge = _discover_edge()
     scope = {"datasetId": "dataset", "clientGeneration": "generation", "accountId": "account", "ledgerId": "ledger", "deviceId": "device"}
     time_values = {"time_precision": "instant", "calendar_revision": "1", "user_local_date": "2026-11-01",
@@ -72,6 +72,8 @@ def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, ra
     original = dict(amount_major="100.00", currency_code="CNY", home_currency_code="CNY", merchant="原提交商家",
         category="其他", spent_at=raw, note="原填写", return_to="recurring_occurrence", return_month="2026-11", return_recurring_public_id="11111111-1111-4111-8111-111111111111",
         return_payment_expense_id="", **time_values)
+    if category_choice is not None:
+        original["category_choice"] = category_choice
     ref = "a" * 32
     record = {"version": 1, "scope": scope, "clientRef": ref, "phase": "submitted", "values": original, "updatedAt": 1}
     seed = '<script>localStorage.setItem(' + json.dumps("ticketbox:manual-draft:v1:" + ref) + ',' + \
@@ -89,6 +91,8 @@ def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, ra
     body += '<script>const timer=setInterval(()=>{const form=document.querySelector("[data-manual-draft-scope]");' + \
         'if(form.dataset.manualDraftState==="submitted"){clearInterval(timer);window.__webConsumerProbe={' + \
         'resultHref:form.querySelector("[data-manual-result]").getAttribute("href"),' + \
+        'categorySingleUse:form.querySelector("[data-category-one-off]").checked,' + \
+        'categoryLocked:form.querySelector("[data-category-one-off]").disabled,' + \
         'values:Object.fromEntries(new FormData(form).entries()),record:JSON.parse(localStorage.getItem(' + \
         json.dumps("ticketbox:manual-draft:v1:" + ref) + '))};}},25);</script>'
     class Handler(BaseHTTPRequestHandler):
@@ -125,6 +129,8 @@ def test_manual_original_time_survives_real_draft_restoration(tmp_path: Path, ra
         thread.join(timeout=5)
     assert probe["values"]["spent_at"] == raw, "Reopening changed the original command's known instant"
     assert probe["values"]["client_ref"] == ref and probe["record"] == record
+    assert probe["values"].get("category_choice") == category_choice
+    assert probe["categorySingleUse"] == (category_choice == "one_off") and probe["categoryLocked"]
     result_url = urlsplit(probe["resultHref"])
     result_query = parse_qs(result_url.query)
     assert result_url.path == "/web/expenses/new/result" and not result_url.fragment

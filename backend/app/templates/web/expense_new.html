@@ -67,6 +67,8 @@
         <datalist id="manual-expense-categories">
           {% for category in category_options %}<option value="{{ category }}">{% endfor %}
         </datalist>
+        <input type="hidden" name="category_choice" value="{{ values.category_choice or '' }}">
+        <label><input type="checkbox" data-category-one-off {% if values.category_choice == 'one_off' %}checked{% endif %}> 此分类只用于这笔</label>
       </div>
       <details class="manual-expense-options product-options" open data-manual-time data-start-expanded="{{ 'true' if form_error else 'false' }}">
       <summary>发生时间 <span data-manual-date-value>{{ spent_at }}</span></summary>

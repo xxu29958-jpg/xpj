@@ -53,7 +53,7 @@ fun ExpenseFactViewModel.closeCorrectionSheet() {
 }
 
 /** 标量字段单一更新入口（屏幕七个动作共用；detekt 函数数门下的合并）。 */
-enum class CorrectionScalarField { Reason, Merchant, Category, Tags, Note, Amount, ExpenseTime, TimeForm }
+enum class CorrectionScalarField { Reason, Merchant, Category, CategoryChoice, Tags, Note, Amount, ExpenseTime, TimeForm }
 
 enum class CorrectionScoreField { Value, Regret }
 
@@ -62,7 +62,9 @@ fun ExpenseFactViewModel.updateCorrectionField(field: CorrectionScalarField, val
         when (field) {
             CorrectionScalarField.Reason -> it.copy(reason = value)
             CorrectionScalarField.Merchant -> it.copy(merchant = value)
-            CorrectionScalarField.Category -> it.copy(category = value)
+            CorrectionScalarField.Category -> it.copy(category = value,
+                categoryChoice = if (it.categoryChoice == "one_off") "one_off" else "manual")
+            CorrectionScalarField.CategoryChoice -> it.copy(categoryChoice = value)
             CorrectionScalarField.Tags -> it.copy(tags = value)
             CorrectionScalarField.Note -> it.copy(note = value)
             CorrectionScalarField.Amount -> it.copy(amountText = value, amountError = null)
@@ -148,6 +150,7 @@ internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrec
         originalAmountMinor = scalar.originalAmountMinor,
         merchant = scalar.merchant,
         category = scalar.category,
+        categoryChoice = form.categoryChoice.takeIf { scalar.category != null },
         note = scalar.note,
         expenseTime = scalar.expenseTime,
         expenseTimeChanged = scalar.expenseTimeChanged,

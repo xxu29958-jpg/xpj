@@ -107,6 +107,19 @@ def _find_manual_expense_by_key(db: Session, tenant_id: str, key: str) -> Expens
     return db.scalar(ledger_scoped_select(Expense, tenant_id).where(Expense.draft_idempotency_key == key))
 
 
+def _manual_home_currency(db: Session, payload: ExpenseManualCreateRequest) -> str:
+    if payload.home_currency_code is not None:
+        return payload.home_currency_code
+    has_original_money = (payload.original_currency is not None or payload.original_currency_code is not None) and (
+        payload.original_amount is not None or payload.original_amount_minor is not None
+    )
+    if not has_original_money:
+        raise AppError("manual_currency_context_required", "这笔旧草稿缺少币种依据，尚未保存。请先核对输入与已有流水。", status_code=422)
+    # The legacy wire promised original payment money only. Its first accepted
+    # home projection remains unchanged; new producers capture both currencies.
+    return require_runtime_home_currency_code(db)
+
+
 def _insert_manual_expense(
     db: Session,
     payload: ExpenseManualCreateRequest,
@@ -119,16 +132,7 @@ def _insert_manual_expense(
     credit_fee: CreditFeeObligation | None = None,
 ) -> Expense:
     resolve_write_capability(db)
-    home = payload.home_currency_code
-    if home is None:
-        has_original_money = (payload.original_currency is not None or payload.original_currency_code is not None) and (
-            payload.original_amount is not None or payload.original_amount_minor is not None
-        )
-        if not has_original_money:
-            raise AppError("manual_currency_context_required", "这笔旧草稿缺少币种依据，尚未保存。请先核对输入与已有流水。", status_code=422)
-        # The legacy wire promised original payment money only. Its first accepted
-        # home projection remains unchanged; new producers capture both currencies.
-        home = require_runtime_home_currency_code(db)
+    home = _manual_home_currency(db, payload)
     now = now_utc()
     expense = Expense(
         tenant_id=tenant_id,
@@ -167,7 +171,7 @@ def _insert_manual_expense(
     if _expense_has_pending_fx(expense):
         expense.status = "pending"
         expense.confirmed_at = None
-    if expense.category == "其他":
+    if expense.category == "其他" and payload.category_choice is None:
         classify_expense(db, expense)
     _materialize_category_preference(db, expense)
     db.add(expense)
@@ -186,6 +190,11 @@ def _insert_manual_expense(
             actor_account_id=actor_account_id,
             actor_device_id=actor_device_id,
         )
+    if payload.category_choice is not None:
+        from app.services.pending_suggestion_service import record_category_choice
+        record_category_choice(db, expense=expense, previous_category="其他",
+            previous_merchant=expense.merchant, actor_account_id=actor_account_id,
+            choice=payload.category_choice)
     db.flush()
     db.refresh(expense)
     return expense

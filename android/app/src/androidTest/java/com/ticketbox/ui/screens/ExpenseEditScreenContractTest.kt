@@ -301,6 +301,17 @@ class ExpenseEditScreenContractTest {
             assertEquals(null, request.originalAmount)
             assertEquals(recorded.rowVersion, request.expectedRowVersion)
         }
+        composeRule.onNodeWithTag("expense-edit-category-row").performScrollTo().performClick()
+        composeRule.onNodeWithTag("expense-category-single-use").performClick()
+        composeRule.onNodeWithText("餐饮").performClick()
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle {
+            val request = requireNotNull(savedDraft).toRequest(recorded)
+            assertEquals("餐饮", request.category)
+            assertEquals("one_off", request.categoryChoice)
+            assertEquals(null, request.categoryDecisionPublicId)
+            assertEquals(null, request.originalAmount)
+        }
         composeRule.onNode(hasSetTextAction() and hasText("12.345"))
             .performScrollTo().performTextReplacement("12.346")
         closeSoftKeyboard()

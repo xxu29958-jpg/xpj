@@ -991,13 +991,14 @@ def test_actual_review_browser_resolves_original_action_before_starting_next_com
 
 
 @pytest.mark.real_db
-@pytest.mark.parametrize("year_completion", [False, True])
-def test_browser_explicit_same_category_replays_original_advice_once(review_browser, confirmation_store, monkeypatch, tmp_path, year_completion):
+@pytest.mark.parametrize("year_completion,single_use", [(False, False), (True, False), (False, True)])
+def test_browser_explicit_same_category_replays_original_advice_once(review_browser, confirmation_store, monkeypatch, tmp_path, year_completion, single_use):
     from app.models import AlgorithmDecision, LedgerLearningEvent
     from app.routes import web_expense_edit
     from app.services.expense_accounting_time_service import refresh_legacy_expense_time
     from app.services.expense_service._ocr_facts import append_ocr_fact
     from app.services.ocr_service import OcrResult
+    from app.services.pending_suggestion_service import record_category_choice
 
     client, _ = review_browser
     with confirmation_store() as db:
@@ -1011,17 +1012,22 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
             result=OcrResult(raw_text="支付时间：02月29日23:04:05 +07:00" if year_completion else "支付时间：2026-10-18 12:20", confidence=0.9))
         for _ in range(3):
             previous = Expense(tenant_id="owner", merchant="首次便利店", category="购物", amount_cents=1000,
-                original_amount_minor=1000, original_currency_code="CNY", home_currency_code="CNY",
+                original_amount_minor=1000, original_currency_code=original.original_currency_code,
+                home_currency_code=original.home_currency_code, note=original.note, tags=original.tags,
                 source="pytest", raw_text="", status="confirmed", confirmed_at=now_utc()-timedelta(days=1),
                 expense_time=now_utc()-timedelta(days=1))
             refresh_legacy_expense_time(db, previous)
             db.add(previous)
+            db.flush()
+            record_category_choice(db, expense=previous, previous_category="其他",
+                previous_merchant=previous.merchant, actor_account_id=actor.account_id, choice="manual")
         db.commit()
     client.app.state.expense_review_probe = "learning-choice-probe.js"
 
     @client.app.get("/learning-choice-probe.js")
     def learning_probe():
-        return FileResponse(Path(__file__).parent / "fixtures/expense_learning_choice_probe.js", media_type="text/javascript")
+        probe = (Path(__file__).parent / "fixtures/expense_learning_choice_probe.js").read_text(encoding="utf-8")
+        return Response("window.__categorySingleUse=" + json.dumps(single_use) + ";" + probe, media_type="text/javascript")
 
     cdp = browser_runtime._edge_cdp()
     evaluate = cdp._evaluate_script
@@ -1051,6 +1057,7 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
         assert len(events) == 2
         event = next(row for row in events if row.signal_type == "category_suggestion")
         assert event.event_type == "accept" and event.actor_account_id == actor.account_id
+        assert json.loads(event.after_payload)["_category_intent"] == ("one_off" if single_use else "suggestion")
         assert db.get(AlgorithmDecision, event.decision_id).public_id == result["decision"]
         time_event = next(row for row in events if row.signal_type == "recognition_time_choice")
         assert time_event.event_type == ("edit" if year_completion else "accept") and time_event.actor_account_id == actor.account_id

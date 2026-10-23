@@ -18,6 +18,9 @@ def _seed_pending_expense(category: str = "其他", merchant: str = "Cafe") -> i
         expense = Expense(
             tenant_id="owner",
             amount_cents=1000,
+            home_currency_code="CNY",
+            original_currency_code="CNY",
+            original_amount_minor=1000,
             merchant=merchant,
             category=category,
             source="pytest",
@@ -33,7 +36,7 @@ def _seed_pending_expense(category: str = "其他", merchant: str = "Cafe") -> i
 def _suggestion(client, identity, expense_id):
     for _ in range(3):
         saved = client.post("/api/expenses/manual", headers=identity.app_headers, json={"client_ref": str(uuid4()),
-            "amount_cents": 1000, "home_currency_code": "CNY", "merchant": "Cafe", "category": "餐饮"})
+            "amount_cents": 1000, "home_currency_code": "CNY", "merchant": "Cafe", "category": "餐饮", "category_choice": "manual"})
         assert saved.status_code == 200, saved.text
     response = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers)
     assert response.status_code == 200, response.text

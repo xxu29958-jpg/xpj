@@ -121,19 +121,28 @@ def _event_qualification(event: LedgerLearningEvent, latest_ids: set[int] | None
     return None
 
 
+def _choice_qualification(event: LedgerLearningEvent, payload: dict):
+    if event.signal_type == "category_suggestion" and (
+            payload.get("_category_intent") == "one_off"
+            or (event.event_type == "manual_override" and payload.get("_category_intent") != "manual")):
+        return "needs_review", "保留单笔分类或未注明用途的历史修改；不当作个人偏好样本", {}
+    if event.signal_type == "recognition_time_choice" and not payload.get("_learning_qualified"):
+        return "needs_review", "保留原件纠正或记账意图；没有把普通修改当作候选选择标签", {}
+    if event.signal_type == "duplicate_candidate" and (
+            payload.get("_relation") not in {"same", "distinct"} or payload.get("_action_outcome") != "committed"):
+        return "needs_review", "未记录明确配对关系及成功结果，未用于学习", {}
+    return None
+
+
 def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, reversed_ids: set[int],
         candidate: Expense | None = None, latest_ids: set[int] | None = None) -> tuple[str, str, dict[str, str]]:
     """Both sides use the same source test; originals are never rewritten."""
-    event_result = _event_qualification(event, latest_ids)
+    payload = _event_payload(event)
+    event_result = _event_qualification(event, latest_ids) or _choice_qualification(event, payload)
     if event_result is not None:
         return event_result
-    payload = _event_payload(event)
-    if event.signal_type == "recognition_time_choice" and not payload.get("_learning_qualified"):
-        return "needs_review", "保留原件纠正或记账意图；没有把普通修改当作候选选择标签", {}
     paired = event.signal_type == "duplicate_candidate"
     resolution = payload.get("_resolution") if paired and payload.get("_relation") == "same" else None
-    if paired and (payload.get("_relation") not in {"same", "distinct"} or payload.get("_action_outcome") != "committed"):
-        return "needs_review", "未记录明确配对关系及成功结果，未用于学习", {}
     required = ("merchant", "category") if event.signal_type == "category_suggestion" else (
         "merchant", "amount_cents", "original_currency_code", "original_amount_minor", "expense_time", "image_hash",
         "accounting_date", "time_precision", "source_timezone")
@@ -193,6 +202,28 @@ def _image_choice_replaced(event: LedgerLearningEvent, payload: dict, facts: dic
     return fact is None or fact.public_id != payload.get("evidence_public_id")
 
 
+def _current_category_contexts(db, tenant_id, events, sources):
+    from app.services.learning_service._category_context import category_contexts
+    category_ids = {row.subject_id for row in events if row.signal_type == "category_suggestion"
+        and "_category_context" in _event_payload(row)}
+    return category_contexts(db, tenant_id=tenant_id,
+        expenses=[row for key, row in sources.items() if key in category_ids])
+
+
+def _category_context_replaced(event, payload, contexts):
+    return (event.signal_type == "category_suggestion" and "_category_context" in payload
+        and payload["_category_context"] != contexts.get(event.subject_id))
+
+
+def _apply_feedback_controls(public_id, assessment, *, withdrawn, training_enabled):
+    status, reason, fields = assessment
+    if public_id in withdrawn:
+        return "invalid", "这次选择已明确撤回；原记录仍保留", fields
+    if status == "valid" and not training_enabled:
+        return "quarantined", "此版本反馈已隔离，不参与新建议", fields
+    return status, reason, fields
+
+
 def feedback_assessments(db: Session, *, tenant_id: str,
         events: list[LedgerLearningEvent]) -> dict[int, tuple[str, str, dict[str, str]]]:
     from app.services.learning_service._repayment_sources import repayment_source_assessments
@@ -200,6 +231,7 @@ def feedback_assessments(db: Session, *, tenant_id: str,
     sources, reversed_ids = feedback_sources(db, tenant_id=tenant_id, events=events)
     repayments = repayment_source_assessments(db, tenant_id=tenant_id, events=events)
     image_facts = _current_time_facts(db, tenant_id, events, sources)
+    category_sources = _current_category_contexts(db, tenant_id, events, sources)
     latest = _latest_feedback_ids(db, tenant_id=tenant_id, events=events)
     decisions = {row.id: row.algorithm_version for row in db.scalars(select(AlgorithmDecision).where(
         AlgorithmDecision.tenant_id == tenant_id, AlgorithmDecision.id.in_({row.decision_id for row in events})))}
@@ -220,11 +252,10 @@ def feedback_assessments(db: Session, *, tenant_id: str,
                 sources.get(payload.get("candidate_id")), latest)
         if status == "valid" and _image_choice_replaced(row, payload, image_facts):
             status, reason = "superseded", "原件识别证据已有更新；保留当时选择，不再用于新建议"
-        if row.public_id in withdrawn:
-            status, reason = "invalid", "这次选择已明确撤回；原记录仍保留"
-        elif status == "valid" and not policies[key]:
-            status, reason = "quarantined", "此版本反馈已隔离，不参与新建议"
-        results[row.id] = (status, reason, fields)
+        if status == "valid" and _category_context_replaced(row, payload, category_sources):
+            status, reason = "superseded", "分类所依据的用途、商品或账户已有变化，保留原选择但不再用于新建议"
+        results[row.id] = _apply_feedback_controls(row.public_id, (status, reason, fields),
+            withdrawn=withdrawn, training_enabled=policies[key])
     return results
 
 

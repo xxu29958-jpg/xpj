@@ -100,8 +100,8 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         val binding = requireNotNull(repo.captureDeferredLedgerBinding())
         val ref = "period-payment-ref"
 
-        repo.manualCreation.create(draft, binding, ref).getOrThrow()
-        repo.manualCreation.create(draft.copy(merchant = "第二次不应入队"), binding, ref).getOrThrow()
+        repo.manualCreation.create(draft.copy(categoryChoice = "one_off"), binding, ref).getOrThrow()
+        repo.manualCreation.create(draft.copy(merchant = "第二次不应入队", categoryChoice = "manual"), binding, ref).getOrThrow()
 
         assertEquals(1, pendingDao.rows.size)
         val original = pendingDao.rows.values.single()
@@ -110,6 +110,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         val seen = repo.manualCreation.observe(binding, ref).first()
         assertNotNull(seen)
         assertEquals(ref, seen.request?.clientRef)
+        assertEquals("one_off", seen.request?.categoryChoice)
         assertNull(seen.acceptedExpenseId)
     }
 
@@ -143,6 +144,7 @@ internal class ExpenseManualCreateOfflineTest : ExpensePendingRepositoryOutboxTe
         assertTrue("\"client_ref\"" in row.payload, "payload must carry client_ref: ${row.payload}")
         val original = requireNotNull(moshi().adapter(ExpenseManualCreateRequestDto::class.java).fromJson(row.payload))
         assertEquals("CNY", original.homeCurrencyCode)
+        assertNull(original.categoryChoice, "A legacy or untouched category is not an explicit preference")
         assertEquals("CNY", original.originalCurrency)
         assertEquals("123.45", original.originalAmount)
         assertEquals("CNY", cached.homeCurrencyCode)

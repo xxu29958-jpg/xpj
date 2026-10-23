@@ -136,6 +136,7 @@ data class CorrectionFormState(
     val reason: String = "",
     val merchant: String = "",
     val category: String = "",
+    val categoryChoice: String? = null,
     val tags: String = "",
     val note: String = "",
     val amountText: String = "",

@@ -72,6 +72,8 @@ def _review_scalars(original: dict[str, str], basis: dict | None, current: dict[
             required.add(row.key)
         if row.changed and (not row.conflict or selected != "current"):
             result.update({name: original[name] for name in row.fields if name in original})
+        elif row.key == "category" and original.get("category") != current.get("category"):
+            result.pop("category_choice", None)
     return result, required
 
 

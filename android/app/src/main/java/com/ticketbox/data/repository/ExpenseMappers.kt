@@ -272,6 +272,7 @@ fun ExpenseDraft.toManualCreateRequest(clientRef: String? = null): ExpenseManual
         spentAt = expenseTime.takeIf { timeInput == null },
         merchant = merchant,
         category = normalizeExpenseCategory(category),
+        categoryChoice = categoryChoice,
         note = note,
         expenseTime = expenseTime.takeIf { timeInput == null },
         tags = tags,

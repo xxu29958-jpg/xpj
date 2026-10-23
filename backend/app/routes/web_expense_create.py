@@ -244,6 +244,7 @@ def _manual_expense_payload(
     client_ref: str,
     home_currency: str,
     time_fields: dict[str, str] | None = None,
+    category_choice: str | None = None,
 ) -> ExpenseManualCreateRequest:
     if not home_currency:
         raise AppError("manual_currency_context_required", "这份旧草稿缺少记账币种，输入仍保留。请先核对已有流水，再用新表单确认这笔支出。", status_code=409)
@@ -273,6 +274,8 @@ def _manual_expense_payload(
         "client_ref": clean_ref,
         "home_currency_code": home_currency,
     }
+    if category_choice:
+        common["category_choice"] = category_choice
     if code == home_currency:
         return ExpenseManualCreateRequest(
             amount_cents=amount_minor,
@@ -368,6 +371,7 @@ def web_manual_expense_create(
     home_currency_code: str = Form(default=""),
     merchant: str = Form(default=""),
     category: str = Form(default=""),
+    category_choice: str | None = Form(default=None),
     spent_at: str = Form(default=""),
     note: str = Form(default=""),
     funding_json: str = Form(default="[]"),
@@ -397,6 +401,8 @@ def web_manual_expense_create(
     }
     if time_fields is not None:
         values.update(time_fields)
+    if category_choice:
+        values["category_choice"] = category_choice
     if not currency_code.strip():
         values["currency_unspecified"] = "1"
     try:
@@ -416,6 +422,7 @@ def web_manual_expense_create(
             client_ref=client_ref,
             home_currency=home_currency_code,
             time_fields=time_fields,
+            category_choice=category_choice,
         )
         payload.funding = parse_funding(db, ledger_id=auth.ledger_id, actor_account_id=auth.account_id,
             raw=funding_json, currency_code=currency_code)
