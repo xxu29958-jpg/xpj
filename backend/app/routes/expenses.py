@@ -572,7 +572,7 @@ def post_reject_expense(
     return submit_expense_rejection(db, operation="reject_expense", expense_id=expense_pk,
         tenant_id=auth.tenant_id, expected_row_version=effective_row_version,
         request_expected_row_version=payload.expected_row_version, idempotency_key=idempotency_key,
-        actor_account_id=auth.account_id)
+        actor_account_id=auth.account_id, duplicate_decision_public_id=payload.duplicate_decision_public_id)
 
 
 @router.post("/{expense_id}/undo", response_model=ExpenseResponse)
@@ -676,6 +676,7 @@ def post_recognize_text(
 def post_accept_pending_suggestion(
     expense_id: int,
     decision_public_id: str,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", min_length=1, max_length=128),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> StatusResponse:
@@ -688,6 +689,7 @@ def post_accept_pending_suggestion(
             decision_public_id=decision_public_id,
             event_type="accept",
             actor_account_id=auth.account_id,
+            operation_key=idempotency_key,
         )
     except ValueError as exc:
         raise AppError("not_found", status_code=404) from exc
@@ -702,6 +704,7 @@ def post_accept_pending_suggestion(
 def post_reject_pending_suggestion(
     expense_id: int,
     decision_public_id: str,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", min_length=1, max_length=128),
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> StatusResponse:
@@ -714,6 +717,7 @@ def post_reject_pending_suggestion(
             decision_public_id=decision_public_id,
             event_type="reject",
             actor_account_id=auth.account_id,
+            operation_key=idempotency_key,
         )
     except ValueError as exc:
         raise AppError("not_found", status_code=404) from exc
@@ -738,7 +742,8 @@ def post_mark_not_duplicate(
     )
     expense = submit_expense_duplicate_decision(db, tenant_id=auth.tenant_id, expense_id=expense_pk,
         idempotency_key=idempotency_key, expected_row_version=effective_row_version,
-        request_expected_row_version=payload.expected_row_version, actor_account_id=auth.account_id)
+        request_expected_row_version=payload.expected_row_version, actor_account_id=auth.account_id,
+        duplicate_decision_public_id=payload.duplicate_decision_public_id)
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 
 

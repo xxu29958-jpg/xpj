@@ -6,7 +6,7 @@ The suggestion is recorded in ``algorithm_decisions`` (via
 :func:`learning_service.record_decision`) and surfaced in the pending
 review UI — it never auto-mutates the expense row.
 
-Algorithm v1 (``algorithm_version='category-history-v1'``):
+Algorithm v2 (``algorithm_version='category-history-v2'``):
 
 * Find confirmed expenses in the same tenant with the same merchant
   (case-insensitive exact match after stripping). Limit to the last
@@ -39,6 +39,7 @@ from app.services.learning_service._algorithm_registry import (
     CATEGORY_SUGGESTION,
     canonical_marker_hash,
 )
+from app.services.learning_service._policy import policy_enabled
 from app.services.learning_service._source_eligibility import effective_expense_predicate, eligible_feedback
 from app.services.ledger_calendar_service import current_calendar
 from app.services.time_service import now_utc, strict_zone
@@ -109,7 +110,8 @@ def _count_recent_rejects(
         .where(LedgerLearningEvent.signal_hash == indexed_hash)
         .where(func.lower(func.trim(Expense.merchant)) == merchant)
     ))
-    return len(eligible_feedback(db, tenant_id=tenant_id, events=events, actor_account_id=actor_account_id))
+    return len({event.subject_id for event in eligible_feedback(db, tenant_id=tenant_id,
+        events=events, actor_account_id=actor_account_id)})
 
 
 def compute_category_suggestion(
@@ -132,16 +134,21 @@ def compute_category_suggestion(
     """
 
     normalised = _normalised_merchant(merchant)
-    if not normalised:
+    if not normalised or not policy_enabled(db, tenant_id=tenant_id, decision_type=CATEGORY_SUGGESTION.decision_type,
+            version=ALGORITHM_VERSION, axis="new_suggestions"):
         return None
 
     zone = strict_zone(current_calendar(db, ledger_id=tenant_id).timezone_name)
-    cutoff = now_utc().astimezone(zone).date() - timedelta(days=max(look_back_days, 0))
+    observed_at = now_utc()
+    current_date = observed_at.astimezone(zone).date()
+    cutoff = current_date - timedelta(days=max(look_back_days, 0))
     conditions = [
         Expense.tenant_id == tenant_id,
         Expense.status == "confirmed",
         effective_expense_predicate(),
         Expense.accounting_date >= cutoff,
+        Expense.accounting_date <= current_date,
+        Expense.confirmed_at <= observed_at,
         func.lower(func.trim(Expense.merchant)) == normalised,
     ]
     if expense_id is not None:
@@ -157,10 +164,10 @@ def compute_category_suggestion(
     if not rows:
         return None
     total = sum(count for _, count in rows)
-    if total < max(min_samples, 1):
-        return None
     top_category, top_count = rows[0]
-    if not top_category:
+    if not top_category or top_count < max(min_samples, 1):
+        return None
+    if len(rows) > 1 and rows[1][1] == top_count:
         return None
 
     rejects = _count_recent_rejects(

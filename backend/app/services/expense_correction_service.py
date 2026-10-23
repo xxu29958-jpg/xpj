@@ -33,6 +33,7 @@ from app.services.expense_split_service import (
 )
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.optimistic_concurrency import claim_row_with_token
+from app.services.pending_suggestion_service import record_category_choice
 from app.services.receipt_item_service import apply_expense_items_to_claimed_row
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import now_utc
@@ -382,6 +383,7 @@ def _apply_correction_sections(
     from app.services.expense_funding_service import apply_funding_correction, funding_money_identity
     amount_before = expense.amount_cents
     before_money = funding_money_identity(expense)
+    category_before, merchant_before = expense.category, expense.merchant
     scalar_payload = _scalar_payload(payload)
     if scalar_payload is not None:
         apply_expense_fields_to_claimed_row(
@@ -390,6 +392,9 @@ def _apply_correction_sections(
             tenant_id=tenant_id,
             payload=scalar_payload,
         )
+        if scalar_payload.category is not None:
+            record_category_choice(db, expense=expense, previous_category=category_before,
+                previous_merchant=merchant_before, actor_account_id=actor_account_id)
     if payload.items is not None:
         apply_expense_items_to_claimed_row(
             db,

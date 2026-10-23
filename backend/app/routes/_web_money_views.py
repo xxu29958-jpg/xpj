@@ -284,6 +284,7 @@ def _expense_view(
         "has_image": has_image,
         "image_state": image_state,
         "duplicate_status": expense.duplicate_status,
+        "duplicate_of_id": getattr(expense, "duplicate_of_id", None),
         "is_duplicate": is_duplicate,
         "needs_amount": needs_amount,
         "needs_merchant": needs_merchant,

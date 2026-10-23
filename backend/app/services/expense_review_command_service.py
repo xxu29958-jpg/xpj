@@ -19,6 +19,7 @@ from app.models import ApiIdempotencyKey, Expense
 from app.schemas import ExpenseResponse, ExpenseUpdateRequest
 from app.schemas.funds import FundingPart
 from app.services.cleanup_service import cleanup_after_confirm
+from app.services.expense_duplicate_feedback_service import prepare_duplicate_feedback, record_duplicate_resolution
 from app.services.expense_response_service import expense_to_response
 from app.services.expense_service import (
     confirm_expense,
@@ -44,16 +45,22 @@ def submit_expense_duplicate_decision(
     db: Session, *, tenant_id: str, expense_id: int, expected_row_version: int,
     request_expected_row_version: int | None, idempotency_key: str | None,
     actor_account_id: int | None = None,
+    duplicate_decision_public_id: str | None = None,
 ) -> Expense:
     """Accept one non-duplicate decision; replay reads current state without rewriting it."""
     try:
         claim = claim_idempotent_request(db, idempotency_key=idempotency_key, tenant_id=tenant_id,
-            operation="mark_not_duplicate", target_id=str(expense_id), body={},
+            operation="mark_not_duplicate", target_id=str(expense_id),
+            body={"duplicate_decision_public_id": duplicate_decision_public_id, "actor_account_id": actor_account_id} if duplicate_decision_public_id else {},
             expected_row_version=request_expected_row_version)
         if claim is None:
             return get_expense(db, expense_id, tenant_id)
+        decision = prepare_duplicate_feedback(db, tenant_id=tenant_id, expense_id=expense_id,
+            decision_public_id=duplicate_decision_public_id, actor_account_id=actor_account_id)
         expense = mark_expense_not_duplicate(db, expense_id, tenant_id,
             expected_row_version=expected_row_version, commit=False, actor_account_id=actor_account_id)
+        record_duplicate_resolution(db, decision=decision, actor_account_id=actor_account_id,
+            operation_key=idempotency_key, resolution="keep_both")
         mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_id))
         db.commit()
         db.refresh(expense)
@@ -114,6 +121,7 @@ def submit_expense_rejection(
     request_expected_row_version: int,
     idempotency_key: str | None,
     actor_account_id: int | None,
+    duplicate_decision_public_id: str | None = None,
 ) -> ExpenseResponse:
     """Accept one reviewed rejection/Undo and its original response in one transaction."""
     try:
@@ -124,13 +132,18 @@ def submit_expense_rejection(
         claim = claim_idempotency_key(db, tenant_id=tenant_id, idempotency_key=idempotency_key,
             operation=operation, target_type="expense", target_id=str(expense_id),
             request_fingerprint=fingerprint_request(operation=operation, target_id=str(expense_id),
-                body={}, expected_row_version=request_expected_row_version))
+                body={"duplicate_decision_public_id": duplicate_decision_public_id, "actor_account_id": actor_account_id} if duplicate_decision_public_id else {},
+                expected_row_version=request_expected_row_version))
         replayed = _replayed_expense_state_receipt(claim)
         if replayed is not None:
             return replayed
         if operation == "reject_expense":
+            decision = prepare_duplicate_feedback(db, tenant_id=tenant_id, expense_id=expense_id,
+                decision_public_id=duplicate_decision_public_id, actor_account_id=actor_account_id)
             expense = reject_expense(db, expense_id, tenant_id,
                 expected_row_version=expected_row_version, commit=False)
+            record_duplicate_resolution(db, decision=decision, actor_account_id=actor_account_id,
+                operation_key=idempotency_key, resolution="keep_candidate")
         else:
             expense = undo_reject_expense(db, expense_id, tenant_id, expected_row_version,
                 actor_account_id=actor_account_id)
@@ -279,16 +292,21 @@ def reject_duplicate_original_keep_current(
     expected_row_version: int,
     expected_original_row_version: int,
     idempotency_key: str,
+    actor_account_id: int | None = None,
+    duplicate_decision_public_id: str | None = None,
 ) -> None:
     """Accept the original two-snapshot decision and its receipt atomically."""
 
     try:
         claim = claim_idempotent_request(db, tenant_id=tenant_id, idempotency_key=idempotency_key,
             operation="reject_duplicate_original", target_id=str(current_expense_id),
-            body={"original_expense_id": original_expense_id, "expected_original_row_version": expected_original_row_version},
+            body={"original_expense_id": original_expense_id, "expected_original_row_version": expected_original_row_version,
+                **({"duplicate_decision_public_id": duplicate_decision_public_id, "actor_account_id": actor_account_id} if duplicate_decision_public_id else {})},
             expected_row_version=expected_row_version)
         if claim is None:
             return
+        decision = prepare_duplicate_feedback(db, tenant_id=tenant_id, expense_id=current_expense_id,
+            decision_public_id=duplicate_decision_public_id, actor_account_id=actor_account_id)
         rows = list(
             db.scalars(
                 select(Expense)
@@ -331,6 +349,8 @@ def reject_duplicate_original_keep_current(
             expected_row_version=expected_original_row_version,
             commit=False,
         )
+        record_duplicate_resolution(db, decision=decision, actor_account_id=actor_account_id,
+            operation_key=idempotency_key, resolution="keep_subject")
         mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(current_expense_id),
             response_body={"operation": "reject_duplicate_original", "expense_id": current_expense_id,
                 "original_expense_id": original_expense_id, "accepted": True, "decision_key": idempotency_key})

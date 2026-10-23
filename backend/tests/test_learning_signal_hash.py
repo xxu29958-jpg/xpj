@@ -140,7 +140,7 @@ def test_category_reject_via_signal_hash_suppresses_suggestion(
         assert result is None
 
 
-def test_duplicate_reject_via_signal_hash(*, identity) -> None:
+def test_unpaired_legacy_reject_is_not_current_pair_evidence(*, identity) -> None:
     source_id = _seed_confirmed("餐饮", merchant="Cafe")
     marker = build_feedback_marker(
         DUPLICATE_CANDIDATE.decision_type,
@@ -163,9 +163,12 @@ def test_duplicate_reject_via_signal_hash(*, identity) -> None:
 
         source = db.get(Expense, source_id)
         assert duplicate_feedback_expense_ids(db, tenant_id="owner", expenses=[source],
-            actor_account_id=seeded_owner_account_id()) == {source_id}
+            actor_account_id=seeded_owner_account_id()) == set()
         assert duplicate_feedback_expense_ids(db, tenant_id="owner", expenses=[source],
             actor_account_id=None) == set()
+        from app.services.learning_service._source_eligibility import feedback_impact_preview
+        assert feedback_impact_preview(db, tenant_id="owner")["needs_review"] == 1
+        assert source.amount_cents == 1000 and source.status == "confirmed"
 
 
 

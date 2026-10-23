@@ -53,7 +53,10 @@ internal class MarkNotDuplicateDispatcherTest : ExpensePendingRepositoryOutboxTe
     fun `accepted mark not duplicate retains its receipt when cache publication fails`() = runTest {
         val response = successExpenseDto()
         val stub = ApiServiceStub(markNotDuplicateResult = ApiResult.Success(response))
-        val row = markRow(idempotencyKey = "cache-failure-key")
+        val row = markRow(idempotencyKey = "cache-failure-key").copy(
+            payloadJson = moshi().adapter(ExpenseStateTokenRequest::class.java).toJson(
+                ExpenseStateTokenRequest(0L, duplicateDecisionPublicId = "original-pair-decision")),
+        )
         val api = object : ApiService by stub {
             override suspend fun markNotDuplicate(
                 id: String,
@@ -61,7 +64,8 @@ internal class MarkNotDuplicateDispatcherTest : ExpensePendingRepositoryOutboxTe
                 idempotencyKey: String?,
             ): ExpenseDto {
                 assertEquals("42", id)
-                assertEquals(ExpenseStateTokenRequest(expectedRowVersion = row.expectedRowVersion), request)
+                assertEquals(ExpenseStateTokenRequest(expectedRowVersion = row.expectedRowVersion,
+                    duplicateDecisionPublicId = "original-pair-decision"), request)
                 return stub.markNotDuplicate(id, request, idempotencyKey)
             }
         }

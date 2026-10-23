@@ -167,10 +167,20 @@ class ExpenseFieldChanges(BaseModel):
 
 
 class ExpenseUpdateRequest(ExpenseFieldChanges):
+    category_choice: Literal["manual", "suggestion"] | None = None
+    category_decision_public_id: str | None = Field(default=None, min_length=1, max_length=36)
     manual_exchange_rate: NonNegativeCanonicalDecimalInput | None = Field(
         default=None,
         description="Pending bill only: one original-currency major unit in home-currency major units. Applies only to this bill.",
     )
+
+    @model_validator(mode="after")
+    def explicit_category_requires_value(self):
+        if self.category_choice is not None and not (self.category or "").strip():
+            raise ValueError("explicit category choice requires a category")
+        if (self.category_choice == "suggestion") != (self.category_decision_public_id is not None):
+            raise ValueError("suggestion choice requires its original decision")
+        return self
 
 
 class ExpenseConfirmRequest(BaseModel):
@@ -195,6 +205,7 @@ class ExpenseRejectRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int
+    duplicate_decision_public_id: str | None = Field(default=None, min_length=1, max_length=36)
 
 
 class ExpenseRepaymentDraftCreateRequest(BaseModel):
@@ -211,6 +222,7 @@ class ExpenseMarkNotDuplicateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int
+    duplicate_decision_public_id: str | None = Field(default=None, min_length=1, max_length=36)
 
 
 class ExpenseUndoRequest(BaseModel):

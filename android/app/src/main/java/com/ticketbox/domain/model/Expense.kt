@@ -36,6 +36,7 @@ data class Expense(
     val categorySuggestion: ExpenseCategorySuggestion? = null,
     val duplicateSuggestionReasons: List<String> = emptyList(),
     val duplicateCandidateIds: List<Long> = emptyList(),
+    val duplicateDecisionPublicId: String? = null,
     val note: String?,
     val source: String,
     val imagePath: String?,
@@ -90,7 +91,7 @@ data class Expense(
     val hasUndeletedImage: Boolean get() = hasImage && imageDeletedAt == null
 }
 
-data class ExpenseCategorySuggestion(val category: String, val sampleSize: Int)
+data class ExpenseCategorySuggestion(val category: String, val sampleSize: Int, val decisionPublicId: String = "")
 
 /**
  * UI/UX 第三波 批 13：本票是否可发起跨账本拆账邀请（ADR-0029）。
@@ -154,6 +155,8 @@ data class ExpenseDraft(
     val clientRef: String? = null,
     val timeInput: ExpenseTimeInput? = null,
     val funding: List<ExpenseFunding> = emptyList(),
+    val categoryChoice: String? = null,
+    val categoryDecisionPublicId: String? = null,
 )
 
 data class ExpenseItem(

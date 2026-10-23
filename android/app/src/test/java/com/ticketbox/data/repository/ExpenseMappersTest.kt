@@ -30,6 +30,7 @@ class ExpenseMappersTest {
         val online = dto.toDomain()
         val cached = dto.toEntity(ledgerId = "owner").toDomain()
         assertEquals("日用品", online.categorySuggestion?.category)
+        assertEquals("advice-1", online.categorySuggestion?.decisionPublicId)
         assertEquals(cached.category, online.category) // A hint cannot overwrite the financial fact.
         assertEquals(null, cached.categorySuggestion) // Offline cache cannot revive processed advice.
         for (expense in listOf(online, cached)) {

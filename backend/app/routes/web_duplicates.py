@@ -73,6 +73,7 @@ from app.services.expense_service import (
     list_expenses_by_ids,
 )
 from app.services.learning_service import duplicate_feedback_expense_ids
+from app.services.pending_suggestion_service import duplicate_candidates_for_pending_expense
 
 if TYPE_CHECKING:
     from app.models import Expense
@@ -191,20 +192,20 @@ def web_duplicates(
         for row in rows]
     feedback_ids = duplicate_feedback_expense_ids(db, tenant_id=selected_id, expenses=rows,
         actor_account_id=resolve_web_actor(db, request, selected_id)[0])
+    ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id,
+        page_title="疑似重复", sidebar_counts=_sidebar_counts(db, selected_id))
+    actor = resolve_web_actor(db, request, selected_id)[0]
     for row, pair in zip(rows, pairs, strict=True):
+        matches = duplicate_candidates_for_pending_expense(db, tenant_id=selected_id, expense=row,
+            actor_account_id=actor) if ctx["can_write"] and actor is not None else find_duplicate_candidates(db, row)
+        pair["decision_public_id"] = next((getattr(match, "decision_public_id", None) for match in matches
+            if match.candidate_id == row.duplicate_of_id), None)
         pair["feedback_applied"] = row.id in feedback_ids
         pair["other_candidates"] = [{"id": match.candidate_id,
             "href": flow_href(f"/web/expenses/{match.candidate_id}/edit", ledger_id=selected_id,
                 return_to="duplicates", return_duplicate_expense_id=str(row.id))}
-            for match in find_duplicate_candidates(db, row) if match.candidate_id != row.duplicate_of_id]
-    ctx = _base_ctx(
-        request,
-        db=db,
-        options=options,
-        selected_ledger_id=selected_id,
-        page_title="疑似重复",
-        sidebar_counts=_sidebar_counts(db, selected_id),
-    )
+            for match in matches if match.candidate_id != row.duplicate_of_id]
+    db.commit()
     ctx["duplicate_pairs"] = pairs
     ctx["duplicate_focus"] = parse_form_row_version_token(focus)
     scope = browser_draft_scope(db, request)
@@ -237,6 +238,12 @@ def _render_duplicate_task(request, db, *, options, selected_id, expense_id, act
         "diff_fields": [], "reason_label": "原记录暂不可用", "evidence_label": "原决定待核实", "evidence_tone": ""}
     scope = browser_draft_scope(db, request)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="相似账单决定")
+    actor = resolve_web_actor(db, request, selected_id)[0]
+    if current and ctx["can_write"] and actor is not None:
+        matches = duplicate_candidates_for_pending_expense(db, tenant_id=selected_id, expense=current, actor_account_id=actor)
+        pair["decision_public_id"] = next((match.decision_public_id for match in matches
+            if original and match.candidate_id == original.id), None)
+        db.commit()
     ctx.update(duplicate_pairs=[pair], duplicate_task_action=action, duplicate_task_expense_id=expense_id,
         duplicate_task_key=str(uuid4()), duplicate_task_ref=draft_ref, duplicate_task_next=next_id,
         duplicate_task_result="prepared" if prepared else "", duplicate_draft_scope=json.dumps(scope) if scope else "",
@@ -328,7 +335,8 @@ def web_duplicate_keep(
             raise AppError("state_conflict", _STALE_DUPLICATE_MSG, status_code=422)
         submit_expense_duplicate_decision(db, tenant_id=selected_id, expense_id=expense_id,
             expected_row_version=parsed, request_expected_row_version=parsed, idempotency_key=form.keep_idempotency_key,
-            actor_account_id=resolve_web_actor(db, request, selected_id)[0])
+            actor_account_id=resolve_web_actor(db, request, selected_id)[0],
+            duplicate_decision_public_id=form.duplicate_decision_public_id)
     except AppError as exc:
         db.rollback()
         if response := draft_error_response(request, exc):
@@ -376,6 +384,7 @@ def web_duplicate_reject_current(
     ledger_id: str = Form(""),
     expected_row_version: str = Form(""),
     idempotency_key: str = Form(""),
+    duplicate_decision_public_id: str | None = Form(None),
     draft_scope: str = Form(""),
     return_duplicate_expense_id: str = Form(""),
     _local: None = LocalOnly,
@@ -385,7 +394,7 @@ def web_duplicate_reject_current(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     fields = {"ledger_id": ledger_id, "expense_id": str(expense_id), "expected_row_version": expected_row_version,
         "idempotency_key": idempotency_key, "draft_scope": draft_scope,
-        "return_duplicate_expense_id": return_duplicate_expense_id}
+        "return_duplicate_expense_id": return_duplicate_expense_id, "duplicate_decision_public_id": duplicate_decision_public_id or ""}
     if "application/json" not in request.headers.get("accept", ""):
         retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
             fields=fields, task="继续原相似账单判定")
@@ -412,7 +421,8 @@ def web_duplicate_reject_current(
             expected_row_version=parsed,
             request_expected_row_version=parsed,
             idempotency_key=idempotency_key,
-            actor_account_id=None,
+            actor_account_id=resolve_web_actor(db, request, selected_id)[0],
+            duplicate_decision_public_id=duplicate_decision_public_id,
         )
     except AppError as exc:
         db.rollback()
@@ -436,6 +446,7 @@ def web_duplicate_reject_original(
     original_expense_id: str = Form(""),
     expected_original_row_version: str = Form(""),
     idempotency_key: str = Form(""),
+    duplicate_decision_public_id: str | None = Form(None),
     draft_scope: str = Form(""),
     return_duplicate_expense_id: str = Form(""),
     _local: None = LocalOnly,
@@ -445,7 +456,8 @@ def web_duplicate_reject_original(
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
     fields = {"ledger_id": ledger_id, "expense_id": str(expense_id), "expected_row_version": expected_row_version,
         "original_expense_id": original_expense_id, "expected_original_row_version": expected_original_row_version,
-        "draft_scope": draft_scope, "idempotency_key": idempotency_key, "return_duplicate_expense_id": return_duplicate_expense_id}
+        "draft_scope": draft_scope, "idempotency_key": idempotency_key, "return_duplicate_expense_id": return_duplicate_expense_id,
+        "duplicate_decision_public_id": duplicate_decision_public_id or ""}
     if "application/json" not in request.headers.get("accept", ""):
         retained = preserve_original_ledger_form(request, db, options=options, selected=selected_id,
             fields=fields, task="继续原两笔账单的判定")
@@ -474,6 +486,8 @@ def web_duplicate_reject_original(
             expected_row_version=parsed,
             expected_original_row_version=parsed_original_version,
             idempotency_key=idempotency_key,
+            actor_account_id=resolve_web_actor(db, request, selected_id)[0],
+            duplicate_decision_public_id=duplicate_decision_public_id,
         )
     except AppError as exc:
         db.rollback()

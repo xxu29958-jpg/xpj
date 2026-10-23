@@ -2669,6 +2669,43 @@
         "title": "Body_owner_ai_advisor_settings_post_owner_ai_advisor_settings_post",
         "type": "object"
       },
+      "Body_owner_algorithm_policy_post_owner_algorithm_versions_policy_post": {
+        "properties": {
+          "algorithm_version": {
+            "title": "Algorithm Version",
+            "type": "string"
+          },
+          "axis": {
+            "enum": [
+              "new_suggestions",
+              "training"
+            ],
+            "title": "Axis",
+            "type": "string"
+          },
+          "decision_type": {
+            "title": "Decision Type",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "decision_type",
+          "algorithm_version",
+          "axis",
+          "enabled"
+        ],
+        "title": "Body_owner_algorithm_policy_post_owner_algorithm_versions_policy_post",
+        "type": "object"
+      },
       "Body_owner_algorithm_versions_withdraw_post_owner_algorithm_versions_withdraw_post": {
         "properties": {
           "algorithm_version": {
@@ -2747,6 +2784,24 @@
           "task"
         ],
         "title": "Body_owner_cleanup_run_owner_settings_maintenance_run_post",
+        "type": "object"
+      },
+      "Body_owner_feedback_withdraw_post_owner_algorithm_versions_withdraw_feedback_post": {
+        "properties": {
+          "event_public_id": {
+            "title": "Event Public Id",
+            "type": "string"
+          },
+          "ledger_id": {
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "event_public_id"
+        ],
+        "title": "Body_owner_feedback_withdraw_post_owner_algorithm_versions_withdraw_feedback_post",
         "type": "object"
       },
       "Body_owner_fx_settings_post_owner_fx_settings_post": {
@@ -4002,6 +4057,28 @@
             "title": "Category",
             "type": "string"
           },
+          "category_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Choice"
+          },
+          "category_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Decision Public Id"
+          },
           "command_action": {
             "default": "confirm",
             "title": "Command Action",
@@ -4016,6 +4093,17 @@
             "default": "",
             "title": "Draft Scope",
             "type": "string"
+          },
+          "duplicate_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Decision Public Id"
           },
           "expected_row_version": {
             "default": "",
@@ -5362,6 +5450,28 @@
             "title": "Category",
             "type": "string"
           },
+          "category_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Choice"
+          },
+          "category_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Decision Public Id"
+          },
           "command_action": {
             "default": "confirm",
             "title": "Command Action",
@@ -5376,6 +5486,17 @@
             "default": "",
             "title": "Draft Scope",
             "type": "string"
+          },
+          "duplicate_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Decision Public Id"
           },
           "expected_row_version": {
             "default": "",
@@ -5633,6 +5754,17 @@
             "title": "Draft Scope",
             "type": "string"
           },
+          "duplicate_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Decision Public Id"
+          },
           "expected_row_version": {
             "default": "",
             "title": "Expected Row Version",
@@ -5663,6 +5795,17 @@
             "default": "",
             "title": "Draft Scope",
             "type": "string"
+          },
+          "duplicate_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Decision Public Id"
           },
           "expected_original_row_version": {
             "default": "",
@@ -7477,6 +7620,28 @@
             "title": "Category",
             "type": "string"
           },
+          "category_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Choice"
+          },
+          "category_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Decision Public Id"
+          },
           "command_action": {
             "default": "confirm",
             "title": "Command Action",
@@ -7491,6 +7656,17 @@
             "default": "",
             "title": "Draft Scope",
             "type": "string"
+          },
+          "duplicate_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Decision Public Id"
           },
           "expected_row_version": {
             "default": "",
@@ -7780,6 +7956,28 @@
             "title": "Category",
             "type": "string"
           },
+          "category_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Choice"
+          },
+          "category_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Decision Public Id"
+          },
           "command_action": {
             "default": "confirm",
             "title": "Command Action",
@@ -7794,6 +7992,17 @@
             "default": "",
             "title": "Draft Scope",
             "type": "string"
+          },
+          "duplicate_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Decision Public Id"
           },
           "expected_row_version": {
             "default": "",
@@ -8062,6 +8271,28 @@
             "title": "Category",
             "type": "string"
           },
+          "category_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Choice"
+          },
+          "category_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Decision Public Id"
+          },
           "command_action": {
             "default": "confirm",
             "title": "Command Action",
@@ -8076,6 +8307,17 @@
             "default": "",
             "title": "Draft Scope",
             "type": "string"
+          },
+          "duplicate_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Decision Public Id"
           },
           "expected_row_version": {
             "default": "",
@@ -8499,6 +8741,28 @@
             "title": "Category",
             "type": "string"
           },
+          "category_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Choice"
+          },
+          "category_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Decision Public Id"
+          },
           "command_action": {
             "default": "confirm",
             "title": "Command Action",
@@ -8513,6 +8777,17 @@
             "default": "",
             "title": "Draft Scope",
             "type": "string"
+          },
+          "duplicate_decision_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Decision Public Id"
           },
           "expected_row_version": {
             "default": "",
@@ -17317,6 +17592,19 @@
         "additionalProperties": false,
         "description": "ADR-0038 PR-2b: ``POST /api/expenses/{id}/mark-not-duplicate``.",
         "properties": {
+          "duplicate_decision_public_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Decision Public Id"
+          },
           "expected_row_version": {
             "title": "Expected Row Version",
             "type": "integer"
@@ -17811,6 +18099,19 @@
         "additionalProperties": false,
         "description": "Review token for rejecting a pending bill; original-key replay owns its receipt.",
         "properties": {
+          "duplicate_decision_public_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Decision Public Id"
+          },
           "expected_row_version": {
             "title": "Expected Row Version",
             "type": "integer"
@@ -18750,6 +19051,34 @@
               }
             ],
             "title": "Category"
+          },
+          "category_choice": {
+            "anyOf": [
+              {
+                "enum": [
+                  "manual",
+                  "suggestion"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Choice"
+          },
+          "category_decision_public_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Decision Public Id"
           },
           "expected_row_version": {
             "title": "Expected Row Version",
@@ -42785,6 +43114,24 @@
           },
           {
             "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -42880,6 +43227,24 @@
             "schema": {
               "title": "Decision Public Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
@@ -57291,6 +57656,47 @@
         ]
       }
     },
+    "/owner/algorithm-versions/policy": {
+      "post": {
+        "operationId": "owner_algorithm_policy_post_owner_algorithm_versions_policy_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_algorithm_policy_post_owner_algorithm_versions_policy_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Algorithm Policy Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
     "/owner/algorithm-versions/withdraw": {
       "post": {
         "operationId": "owner_algorithm_versions_withdraw_post_owner_algorithm_versions_withdraw_post",
@@ -57327,6 +57733,47 @@
           }
         },
         "summary": "Owner Algorithm Versions Withdraw Post",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
+    "/owner/algorithm-versions/withdraw-feedback": {
+      "post": {
+        "operationId": "owner_feedback_withdraw_post_owner_algorithm_versions_withdraw_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_owner_feedback_withdraw_post_owner_algorithm_versions_withdraw_feedback_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Feedback Withdraw Post",
         "tags": [
           "owner-console"
         ]
