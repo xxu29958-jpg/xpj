@@ -2,6 +2,7 @@
 
 import json
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.models import OcrFact
 from app.schemas._recognition_time import RecognitionTimeCandidate, RecognitionTimeResponse
@@ -74,9 +75,30 @@ def recognition_time(fact: OcrFact | None, *,
     return notification or image
 
 
+def _evidence_timezone(item: RecognitionTimeCandidate):
+    if item.source_utc_offset_seconds is not None:
+        return timezone(timedelta(seconds=item.source_utc_offset_seconds))
+    try:
+        return ZoneInfo(item.source_timezone) if item.source_timezone else None
+    except (ZoneInfoNotFoundError, ValueError):
+        return None
+
+
+def _date_matches_instant(day: RecognitionTimeCandidate, instant: RecognitionTimeCandidate) -> bool:
+    value = datetime.fromisoformat(instant.local_value)
+    day_zone, instant_zone = _evidence_timezone(day), _evidence_timezone(instant)
+    if day_zone is not None and instant_zone is not None:
+        value = value.replace(tzinfo=instant_zone).astimezone(day_zone)
+    return date.fromisoformat(day.local_value) == value.date()
+
+
 def _compatible_candidates(left: RecognitionTimeCandidate, right: RecognitionTimeCandidate) -> bool:
-    if "date_only" in {left.precision, right.precision}:
-        return left.local_value[:10] == right.local_value[:10]
+    if left.precision == right.precision == "date_only":
+        return left.local_value == right.local_value
+    if left.precision == "date_only":
+        return _date_matches_instant(left, right)
+    if right.precision == "date_only":
+        return _date_matches_instant(right, left)
     values = [datetime.fromisoformat(item.local_value) for item in (left, right)]
     if left.source_utc_offset_seconds is not None and right.source_utc_offset_seconds is not None:
         values = [value.replace(tzinfo=timezone(timedelta(seconds=item.source_utc_offset_seconds)))
@@ -90,10 +112,12 @@ def _combined_time(image: RecognitionTimeResponse, notification: RecognitionTime
     # Both sources are already attached to this expense by the business owner.
     # Showing them together is not proof of the attachment or an automatic vote.
     conflicts = any(not _compatible_candidates(left, right)
-        for left in image.candidates if left.can_apply
-        for right in notification.candidates if right.can_apply)
+        for left in image.candidates[:1] if left.can_apply
+        for right in notification.candidates[:1] if right.can_apply)
     states = {image.status, notification.status}
-    status = "ambiguous" if conflicts or "ambiguous" in states else "incomplete" if "incomplete" in states else "needs_review"
+    # Candidates retain resolver order. Equal-rank conflicts already set the
+    # source status; a lower-ranked alternative cannot overrule that resolution.
+    status = "incomplete" if "incomplete" in states else "ambiguous" if conflicts or "ambiguous" in states else "needs_review"
     return RecognitionTimeResponse(evidence_public_id=image.evidence_public_id, source="multiple",
         parser_version=image.parser_version if image.parser_version == notification.parser_version else "mixed",
         status=status, candidates=image.candidates + notification.candidates)

@@ -96,25 +96,37 @@ def _same_time_row(left_box: Sequence, right_box: Sequence) -> bool:
     return height > 0 and min(left_bottom, right_bottom) - max(left_top, right_top) >= height / 4
 
 
+def _label_distance(label_box: Sequence, value_box: Sequence) -> tuple[int, float] | None:
+    left, right = min(p[0] for p in value_box), max(p[0] for p in value_box)
+    label_left, label_right = min(p[0] for p in label_box), max(p[0] for p in label_box)
+    if label_right <= left and _same_time_row(label_box, value_box):
+        return 0, left - label_right
+    top = min(p[1] for p in value_box)
+    bottom = max(p[1] for p in label_box)
+    height = min(max(p[1] for p in value_box) - top, bottom - min(p[1] for p in label_box))
+    overlap = min(right, label_right) - max(left, label_left)
+    if height > 0 and 0 <= top - bottom <= height * 2 and overlap >= min(right - left, label_right - label_left) / 2:
+        return 1, top - bottom
+    return None
+
+
 def _spatial_role(text: str, start: int, blocks: Sequence[dict]) -> tuple[str, int, str | None]:
-    """Use the nearest label to the left on this row, independent of OCR order."""
+    """Prefer same-row labels, then a nearby label above in the same column."""
     lines = text.splitlines()
     index = text.count("\n", 0, start)
     box = blocks[index]["box"]
-    left = min(point[0] for point in box)
     hits = []
     offset = 0
     for line, block in zip(lines, blocks, strict=True):
         label = line.strip(" :：")
         role = _time_label_role(label)
-        label_box = block["box"]
-        right = max(point[0] for point in label_box)
-        if role is not None and right <= left and _same_time_row(label_box, box):
-            hits.append((right, role, offset + line.index(label), label))
+        distance = _label_distance(block["box"], box)
+        if role is not None and distance is not None:
+            hits.append((distance, role, offset + line.index(label), label))
         offset += len(line) + 1
     if not hits:
         return "unknown", start, None
-    nearest = max(item[0] for item in hits)
+    nearest = min(item[0] for item in hits)
     winners = [item for item in hits if item[0] == nearest]
     if len({item[1] for item in winners}) != 1:
         return "unknown", start, None

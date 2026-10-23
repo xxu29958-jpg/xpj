@@ -86,17 +86,30 @@ def test_identity_backfill_keeps_new_time_evidence_and_original_delivery(client,
         assert len(list(db.scalars(select(PaymentCapture)))) == 1
 
 
-@pytest.mark.parametrize("raw,conflicts", [
-    ("打印时间：2026-01-01 09:00", False),
-    ("支付时间：2025-12-31 22:00", True),
-    ("支付时间：2025-12-31 23:59", False),
+@pytest.mark.parametrize("raw,conflicts,truncated,image_zone,literal", [
+    ("打印时间：2026-01-01 09:00", False, False, "Asia/Shanghai", "12月31日23:59"),
+    ("支付时间：2025-12-31 22:00", True, False, "Asia/Shanghai", "12月31日23:59"),
+    ("支付时间：2025-12-31 23:59", False, False, "Asia/Shanghai", "12月31日23:59"),
+    ("支付时间：2025-12-31 23:59\n2026-01-01 08:00", False, False, "Asia/Shanghai", "12月31日23:59"),
+    ("支付时间：2025-12-31 22:00", True, True, "Asia/Shanghai", "12月31日23:59"),
+    ("支付日期：2025-12-31", False, False, "America/New_York", "2026-01-01 02:00"),
+    ("支付日期：2026-01-01", True, False, "America/New_York", "2026-01-01 02:00"),
 ])
-def test_image_and_notification_times_keep_both_origins_on_real_reads(web_client, identity, raw, conflicts):
+def test_image_and_notification_times_keep_both_origins_on_real_reads(web_client, identity, monkeypatch,
+        raw, conflicts, truncated, image_zone, literal):
+    from dataclasses import replace
+
     from fastapi.testclient import TestClient
 
+    from app.config import get_settings
     from app.routes.web_auth import PAIRING_ATTEMPT_COOKIE_NAME, SESSION_COOKIE_NAME
 
-    created = web_client.post("/api/payment-captures", headers=identity.app_headers, json=_capture()).json()
+    configured = replace(get_settings(), ocr_default_timezone=image_zone)
+    monkeypatch.setattr("app.services.receipt_parse_time.get_settings", lambda: configured)
+    payload = _capture()
+    payload["time_evidence"]["truncated"] = truncated
+    payload["time_evidence"]["fragments"][0]["literal"] = literal
+    created = web_client.post("/api/payment-captures", headers=identity.app_headers, json=payload).json()
     url = f"/api/expenses/{created['expense_id']}"
     before = web_client.get(url, headers=identity.app_headers).json()
     headers = negotiated_headers(web_client, {**identity.app_headers, "Idempotency-Key": str(uuid4())})
@@ -106,7 +119,7 @@ def test_image_and_notification_times_keep_both_origins_on_real_reads(web_client
     current = web_client.get(url, headers=identity.app_headers).json()
     combined = current["recognition_time"]
     assert combined["source"] == "multiple"
-    assert combined["status"] == ("ambiguous" if conflicts else "needs_review")
+    assert combined["status"] == ("incomplete" if truncated else "ambiguous" if conflicts else "needs_review")
     notice = [item for item in combined["candidates"] if item["source"] == "notification"]
     assert notice == created["recognition_time"]["candidates"]
     assert all(item["evidence_public_id"] == created["public_id"] for item in notice)
@@ -124,9 +137,10 @@ def test_image_and_notification_times_keep_both_origins_on_real_reads(web_client
         page = browser.get(f"/web/expenses/{created['expense_id']}/edit?ledger_id=owner",
             headers={"Cookie": f"{SESSION_COOKIE_NAME}={connected.cookies[SESSION_COOKIE_NAME]}"})
     assert page.status_code == 200
-    assert "2025-12-31T23:59" in page.text and f'data-fact-id="{combined["evidence_public_id"]}"' in page.text
+    assert notice[0]["local_value"] in page.text and f'data-fact-id="{combined["evidence_public_id"]}"' in page.text
     assert "图片 · " in page.text and "通知 · 交易时间" in page.text
-    assert ("原件有不同的时间" in page.text) == conflicts
+    assert ("原件有不同的时间" in page.text) == (conflicts and not truncated)
+    assert ("通知中还有未列出的时间" in page.text) == truncated
 
 
 def test_repayment_date_review_and_replay_preserve_delivery_and_original_time_evidence(client, identity):
