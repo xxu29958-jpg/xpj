@@ -170,14 +170,14 @@ def set_decision_status(
 
 def _stale_active_ids(tenant_id: str | None) -> Select:
     expense = ((AlgorithmDecision.subject_kind == "expense") &
-        (Expense.id.is_(None) | (Expense.tenant_id != AlgorithmDecision.tenant_id) |
-            Expense.status.in_(tuple(TERMINAL_EXPENSE_STATUSES))))
+        (Expense.id.is_(None) | Expense.status.in_(tuple(TERMINAL_EXPENSE_STATUSES))))
     repayment = ((AlgorithmDecision.subject_kind == "repayment_draft") &
-        (RepaymentDraft.id.is_(None) | (RepaymentDraft.tenant_id != AlgorithmDecision.tenant_id) |
-            (RepaymentDraft.status != "pending")))
+        (RepaymentDraft.id.is_(None) | (RepaymentDraft.status != "pending")))
     query = (select(AlgorithmDecision.id).select_from(AlgorithmDecision)
-        .outerjoin(Expense, (AlgorithmDecision.subject_kind == "expense") & (Expense.id == AlgorithmDecision.subject_id))
-        .outerjoin(RepaymentDraft, (AlgorithmDecision.subject_kind == "repayment_draft") & (RepaymentDraft.id == AlgorithmDecision.subject_id))
+        .outerjoin(Expense, (AlgorithmDecision.subject_kind == "expense") & (Expense.id == AlgorithmDecision.subject_id)
+            & (Expense.tenant_id == AlgorithmDecision.tenant_id))
+        .outerjoin(RepaymentDraft, (AlgorithmDecision.subject_kind == "repayment_draft") & (RepaymentDraft.id == AlgorithmDecision.subject_id)
+            & (RepaymentDraft.tenant_id == AlgorithmDecision.tenant_id))
         .where(AlgorithmDecision.status == "active", AlgorithmDecision.subject_id.is_not(None), expense | repayment))
     return query.where(AlgorithmDecision.tenant_id == tenant_id) if tenant_id is not None else query
 

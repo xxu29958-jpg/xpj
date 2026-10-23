@@ -154,7 +154,8 @@ def test_human_review_date_drives_the_repayment_and_fx_without_rewriting_capture
     monkeypatch.setattr(_money, "resolve_payload_rate", rate)
     confirm.confirm_repayment_draft(db, tenant_id="original-ledger", actor_account_id=2,
         public_id=draft.public_id, idempotency_key="original-review", time_input=request.time_input,
-        **request.model_dump(exclude={"time_input"}))
+        target_debt_public_id=request.target_debt_public_id, expected_row_version=request.expected_row_version,
+        original_currency=request.original_currency, original_amount=request.original_amount)
     payment = db.add.call_args.args[0]
     assert payment.paid_at is None and payment.amount_cents == 7000
     assert payment.accounting_time_snapshot["user_local_date"] == "2026-04-30"
