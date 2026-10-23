@@ -33,29 +33,3 @@ def related_value_index(lines: Sequence[str], blocks: Sequence[dict] | None, ind
 def promotion_start(text: str) -> int | None:
     match = re.search(r"^(?:活动专区|福利中心|推荐服务|支付奖励|猜你喜欢)\s*$", text, re.M)
     return match.start() if match else None
-
-
-def transaction_event_spans(raw_text: str) -> tuple[tuple[int, int], ...]:
-    """Repeated transaction-card headings require separate interpretations."""
-    lines = [(match.start(), match.end(), match.group().strip())
-             for match in re.finditer(r"[^\r\n]+", raw_text)]
-    headings = {"交易提醒", "付款成功", "支付成功", "交易成功", "自动扣款成功"}
-    anchors = [index for index, (_, _, text) in enumerate(lines) if text in headings]
-    if len(anchors) < 2:
-        return ()
-    # Separate success toasts alone are not sufficient: each card needs money.
-    spans = []
-    message_list = "服务消息" in raw_text or "支付消息" in raw_text
-    starts = []
-    for index in anchors[:20]:
-        start = index
-        if message_list:
-            while start > max(0, index - 3) and not re.search(r"联系收款方|查看详情|付款方式", lines[start - 1][2]):
-                start -= 1
-        starts.append(lines[start][0])
-    for number, start in enumerate(starts):
-        end = starts[number + 1] if number + 1 < len(starts) else len(raw_text)
-        card = raw_text[start:end]
-        if re.search(r"(?:[¥￥]\s*\d|\d(?:[.,]\d+)?\s*元|(?:支付|交易|付款)金额[:：\s]*\d)", card):
-            spans.append((start, end))
-    return tuple(spans) if len(spans) > 1 else ()

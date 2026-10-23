@@ -76,6 +76,45 @@ def test_material_equal_amount_cards_do_not_form_one_cross_event_draft():
         assert len({candidate.value for candidate in candidates if candidate.field == "merchant"}) == 1
 
 
+@pytest.mark.parametrize("heading,amounts,prefix", [
+    ("交易成功", ("¥17.89", "¥29.20"), True),
+    ("交易成功", ("-17.89", "-17.89"), True),
+    ("支付成功", ("-17.89", "-29.20"), False),
+    ("扣款成功", ("支付金额17.89", "支付金额29.20"), False),
+])
+def test_material_card_evidence_keeps_prefix_fields_with_its_own_success(heading, amounts, prefix):
+    cards = ["\n".join([merchant, amount, heading, f"支付时间2026-10-{18 + index} 12:00", "查看详情"]
+        if prefix else [heading, "商家：" + merchant, amount, f"支付时间2026-10-{18 + index} 12:00", "查看详情"])
+        for index, (merchant, amount) in enumerate(zip(("松针小笼包", "罗森便利店"), amounts, strict=True))]
+    raw = "\n".join(cards)
+    parsed = _parse_cny(raw)
+    assert len(parsed.events) == 2
+    assert parsed.amount_cents is None and parsed.merchant is None
+    for event, card, merchant in zip(parsed.events, cards, ("松针小笼包", "罗森便利店"), strict=True):
+        evidence = "".join(raw[start:end] for start, end in event["raw_spans"])
+        assert evidence.strip() == card
+        candidates = [item for item in parsed.candidates if item.event_id == event["id"]]
+        assert {item.value for item in candidates if item.field == "merchant"} == {merchant}
+        assert any(item.field == "amount_cents" for item in candidates)
+
+
+def test_material_ui_prefix_is_not_a_merchant_label_but_delimited_store_still_is():
+    raw = "罗森便利店\n-17.89\n交易成功\n商家服务：联系客服\n支付时间2026-10-18 12:00"
+    parsed = _parse_cny(raw)
+    assert parsed.merchant == "罗森便利店"
+    assert not any(item.field == "merchant" and item.value == "服务：联系客服" for item in parsed.candidates)
+    assert _parse_cny("支付成功\n商家：罗森便利店\n支付金额17.89").merchant == "罗森便利店"
+
+
+def test_material_card_limit_leaves_the_unparsed_tail_outside_the_last_event():
+    cards = [f"门店{index}号\n-17.89\n交易成功\n查看详情" for index in range(21)]
+    text = "\n".join(cards)
+    parsed = _parse_cny(text)
+    assert len(parsed.events) == 20
+    assert parsed.events[-1]["raw_spans"][-1][1] <= text.index(cards[-1])
+    assert not any(candidate.field == "merchant" and candidate.value == "门店20号" for candidate in parsed.candidates)
+
+
 def test_material_status_clock_is_not_a_merchant_and_auto_debit_is_a_paid_event():
     parsed = _parse_cny("17:04 8…\n账单详情\n城市打车\n-13.20\n自动扣款成功\n付款方式\n信用卡")
     assert parsed.amount_cents == 1320

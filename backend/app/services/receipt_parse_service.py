@@ -39,12 +39,12 @@ from app.services.receipt_parse_common import (
     _score_ratio,
     _TimeCandidate,
 )
+from app.services.receipt_parse_events import transaction_event_spans
 from app.services.receipt_parse_merchant import (
     _calibrate_merchant_candidates,
     _merchant_candidates,
 )
 from app.services.receipt_parse_rules import CATEGORY_HINT_RULES
-from app.services.receipt_parse_structure import transaction_event_spans
 from app.services.receipt_parse_time import _time_candidates
 
 ITEM_LINE_PATTERN = re.compile(

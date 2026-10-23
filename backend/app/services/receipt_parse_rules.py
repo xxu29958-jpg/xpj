@@ -268,7 +268,10 @@ def iter_labeled_merchant_matches(lines: tuple[str, ...] | list[str],
         for label in sorted(MERCHANT_LABELS, key=len, reverse=True):
             if not stripped.startswith(label):
                 continue
-            value = stripped[len(label) :].lstrip()
+            tail = stripped[len(label) :]
+            if tail and not (tail[0].isspace() or tail[0] in ":："):
+                break
+            value = tail.lstrip()
             if value.startswith((":", "：")):
                 value = value[1:].lstrip()
             value_index = line_index
@@ -424,11 +427,10 @@ MERCHANT_IGNORED_LINES = {
     "账单详情",
     "账单详情>",
     "全部账单",
-    "交易成功",
-    "支付成功",
-    "付款成功",
+    *TRANSACTION_SUCCESS_KEYWORDS,
     "交易状态",
     "查看账单详情",
+    "查看详情",
     "返回商家",
     "商家名片",
     "我的账单",
