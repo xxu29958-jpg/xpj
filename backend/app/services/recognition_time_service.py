@@ -118,6 +118,14 @@ def _compatible_candidates(left: RecognitionTimeCandidate, right: RecognitionTim
     return values[0] == values[1]
 
 
+def rank_time_origin(response: RecognitionTimeResponse, chosen: RecognitionTimeCandidate) -> RecognitionTimeResponse:
+    origin = (chosen.source, chosen.evidence_public_id)
+    same_source = [item for item in response.candidates if (item.source, item.evidence_public_id) == origin]
+    ordered = iter([chosen] + [item for item in same_source if item.id != chosen.id])
+    return response.model_copy(update={"candidates": [next(ordered)
+        if (item.source, item.evidence_public_id) == origin else item for item in response.candidates]})
+
+
 def _combined_time(image: RecognitionTimeResponse, notification: RecognitionTimeResponse) -> RecognitionTimeResponse:
     # Both sources are already attached to this expense by the business owner.
     # Showing them together is not proof of the attachment or an automatic vote.

@@ -47,6 +47,7 @@ class NotificationCaptureRepositoryTest {
         assertEquals("2026-09-29 23:59", captured.timeEvidence?.fragments?.single()?.literal)
         assertEquals("Asia/Shanghai", captured.timeEvidence?.sourceTimezone)
         assertEquals("2026-09-30T08:00:00Z", captured.capturedAt)
+        assertEquals("商户：星巴克", captured.fieldEvidence?.fragments?.single()?.literal)
     }
 
     @Test fun concurrentRedeliveryAndRepositoryRecreationKeepOneOriginalWhileNewPostRemainsSeparate() = runTest {
@@ -70,7 +71,7 @@ class NotificationCaptureRepositoryTest {
         // It must use the same unified identity endpoint without rewriting that intent.
         val legacy = f.dao.rows.values.first()
         val oldPayload = requireNotNull(NotificationCaptureWire.payload.fromJson(legacy.payload)).copy(
-            revision = 1, parserVersion = "legacy", candidates = emptyList(), timeEvidence = null)
+            revision = 1, parserVersion = "legacy", candidates = emptyList(), timeEvidence = null, fieldEvidence = null)
         f.dao.rows[legacy.id] = legacy.copy(payload = NotificationCaptureWire.payload.toJson(oldPayload)
             .replace(",\"parserVersion\":\"legacy\"", "").replace(",\"candidates\":[]", ""))
         f.dao.runnableBatches += f.dao.rows.keys.toList()
@@ -168,7 +169,9 @@ private class CaptureFixture {
     val repository = NotificationCaptureRepository(provider, outbox)
     val expense = PaymentNotificationResult.Expense(NotificationDraft(NotificationDraftSource.WeChat, 2680, "星巴克", "餐饮", "2026-09-30T08:00:00Z"),
         timeEvidence = com.ticketbox.notification.NotificationTimeEvidence("Asia/Shanghai", listOf(
-            com.ticketbox.notification.NotificationTimeFragment("text", "2026-09-29 23:59", "支付时间")), false))
+            com.ticketbox.notification.NotificationTimeFragment("text", "2026-09-29 23:59", "支付时间")), false),
+        fieldEvidence = com.ticketbox.notification.NotificationFieldEvidence(listOf(
+            com.ticketbox.notification.NotificationFieldFragment("text", "商户：星巴克"))))
     val repayment = PaymentNotificationResult.Repayment(RepaymentNotificationDraft(RepaymentDraftSource.Alipay, 2680, "花呗", "2026-09-30T08:00:00Z"))
     suspend fun accept() = repository.accept(expense, binding, "same-delivery")
     fun newOutbox(at: Clock = clock) = OutboxRepository(dao, at, onRowsDeleted = {},

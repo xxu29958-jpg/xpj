@@ -16,6 +16,7 @@ data class PaymentCaptureCreateDto(
     @Json(name = "suggested_kind") val suggestedKind: String,
     @Json(name = "parser_version") val parserVersion: String, val candidates: List<PaymentCandidateDto>,
     @Json(name = "time_evidence") val timeEvidence: NotificationTimeEvidenceDto? = null,
+    @Json(name = "field_evidence") val fieldEvidence: NotificationFieldEvidenceDto? = null,
 )
 
 @JsonClass(generateAdapter = true)

@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_valid
 
 from app.schemas._money import PositiveMoneyMinor
 from app.schemas._recognition_time import RecognitionTimeResponse
+from app.schemas.notification_fields import NotificationFieldEvidence
 from app.schemas.notification_time import NotificationTimeEvidence
 
 
@@ -30,6 +31,7 @@ class PaymentCaptureCreate(BaseModel):
     parser_version: str = Field(min_length=1, max_length=64)
     candidates: list[PaymentCandidate] = Field(default_factory=list, max_length=24)
     time_evidence: NotificationTimeEvidence | None = None
+    field_evidence: NotificationFieldEvidence | None = None
 
     @model_validator(mode="after")
     def aware_capture_time(self):

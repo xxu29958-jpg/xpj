@@ -9,6 +9,7 @@ from app.schemas import NotificationDraftCreateRequest, RepaymentDraftCreateRequ
 from app.schemas.payment_capture import PaymentCaptureCreate, PaymentCaptureResponse
 from app.services.currency_common import minor_amount_value, normalize_currency_code
 from app.services.exchange_rate_service import amount_major_to_minor
+from app.services.notification_field_service import freeze_notification_fields
 from app.services.notification_time_service import freeze_notification_time
 from app.services.payment_capture_identity import capture_response, link_capture, reserve_capture
 from app.services.time_service import ensure_utc, now_utc
@@ -111,6 +112,7 @@ def capture_notification(db: Session, *, auth: AuthContext, payload: PaymentCapt
         original_currency=currency, original_amount_minor=payload.original_amount_minor, merchant=payload.merchant,
         parser_version=payload.parser_version, candidates=[item.model_dump() for item in payload.candidates],
         time_evidence=freeze_notification_time(payload.time_evidence, ensure_utc(payload.captured_at)),
+        field_evidence=freeze_notification_fields(payload.field_evidence, currency),
         kind=payload.suggested_kind)
     fx_task = None
     if fresh and capture.kind != "review":

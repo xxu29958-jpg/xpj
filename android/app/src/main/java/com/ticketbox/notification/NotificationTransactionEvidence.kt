@@ -10,7 +10,7 @@ internal object NotificationTransactionEvidence {
         RegexOption.IGNORE_CASE,
     )
     // Decimal points and thousands separators belong to the amount, not a clause boundary.
-    private val boundary = Regex("""[，。；;\n]|(?<!\d)[,.]|[,.](?!\d)""")
+    private val boundary = Regex("""[，。；;]|(?<!\d)[,.]|[,.](?!\d)""")
     private val label = Regex(
         """实付|实际支付|实际付款|支付金额|付款金额|消费金额|还款成功|已还款|还款完成|已还清|偿还成功|还款入账|自动还款|主动还款|代扣还款|还款|偿还|还入|归还欠款|付款成功|成功付款|已成功付款|支付成功|已支付|消费|支出|扣款|交易成功|退款|退回|余额|额度|红包|优惠|订单金额|账单|应还|收款(?!方)|收入|转入""",
     )
@@ -23,10 +23,21 @@ internal object NotificationTransactionEvidence {
     private data class Anchor(val match: MatchResult, val kind: String)
     private data class Clause(val text: String, val anchors: List<Anchor>, val money: List<MatchResult>)
 
-    fun read(field: String, text: String): List<NotificationEvidence> {
-        val clauses = boundary.split(text).filter { it.isNotBlank() }.map { value ->
+    private fun clauses(text: String) = boundary.split(text).filter { it.isNotBlank() }.map { value ->
             Clause(value, label.findAll(value).map { Anchor(it, kind(value, it)) }.toList(), amount.findAll(value).toList())
         }
+
+    fun fieldFragments(field: String, text: String): List<NotificationFieldFragment> = clauses(text).flatMap { clause ->
+        clause.money.map { money ->
+            val anchor = bind(clause, money)?.match
+            val first = minOf(money.range.first, anchor?.range?.first ?: money.range.first)
+            val last = maxOf(money.range.last, anchor?.range?.last ?: money.range.last)
+            NotificationFieldFragment(field, clause.text.substring(first, last + 1))
+        }
+    }
+
+    fun read(field: String, text: String): List<NotificationEvidence> {
+        val clauses = clauses(text)
         val result = clauses.flatMap { clause ->
             clause.money.mapNotNull { money -> bind(clause, money)?.let { anchor ->
                 NotificationEvidence(anchor.kind, minor(money), field, "amount_bound_${anchor.kind}")
@@ -66,7 +77,9 @@ internal object NotificationTransactionEvidence {
     private fun kind(text: String, match: MatchResult): String {
         if (auxiliary.matches(match.value)) return "auxiliary"
         if (match.value in setOf("退款", "退回")) return "refund"
-        val before = text.substring(0, match.range.first)
+        // Labels can wrap before their amount, but a reminder on a previous line
+        // does not qualify this line's independently stated transaction.
+        val before = text.substring(0, match.range.first).substringAfterLast('\n').substringAfterLast('\r')
         val tail = text.substring(match.range.last + 1)
         if (reminder.containsMatchIn(before.takeLast(18)) || tail.startsWith("日") ||
             tail.startsWith("失败") || tail.startsWith("提醒")) return "auxiliary"

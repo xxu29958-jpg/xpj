@@ -134,6 +134,21 @@ def _choice_qualification(event: LedgerLearningEvent, payload: dict) -> tuple[st
     return None
 
 
+def _required_source_fields(event: LedgerLearningEvent, payload: dict) -> tuple[str, ...]:
+    if event.signal_type == "category_suggestion":
+        return ("merchant", "category")
+    if event.signal_type == "recognition_time_choice":
+        required = ("expense_time", "time_precision", "source_timezone", "accounting_date",
+            "source_utc_offset_seconds", "user_local_date")
+    elif event.signal_type == "recognition_field_choice":
+        required = (("merchant",) if payload.get("field") == "merchant" else
+            ("amount_cents", "original_currency_code", "original_amount_minor"))
+    else:
+        return ("merchant", "amount_cents", "original_currency_code", "original_amount_minor", "expense_time", "image_hash",
+            "accounting_date", "time_precision", "source_timezone")
+    return required if payload.get("source") == "notification" else (*required, "image_hash")
+
+
 def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, reversed_ids: set[int],
         candidate: Expense | None = None, latest_ids: set[int] | None = None) -> tuple[str, str, dict[str, str]]:
     """Both sides use the same source test; originals are never rewritten."""
@@ -143,15 +158,7 @@ def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, re
         return event_result
     paired = event.signal_type == "duplicate_candidate"
     resolution = payload.get("_resolution") if paired and payload.get("_relation") == "same" else None
-    required = ("merchant", "category") if event.signal_type == "category_suggestion" else (
-        "merchant", "amount_cents", "original_currency_code", "original_amount_minor", "expense_time", "image_hash",
-        "accounting_date", "time_precision", "source_timezone")
-    if event.signal_type == "recognition_time_choice":
-        required = ("expense_time", "image_hash", "time_precision", "source_timezone", "accounting_date",
-            "source_utc_offset_seconds", "user_local_date")
-    if event.signal_type == "recognition_field_choice":
-        required = (("merchant", "image_hash") if payload.get("field") == "merchant" else
-            ("amount_cents", "original_currency_code", "original_amount_minor", "image_hash"))
+    required = _required_source_fields(event, payload)
     result = _source_qualification(expense, payload.get("_source_context"), tenant_id=event.tenant_id,
         reversed_ids=reversed_ids, required=required, deliberately_discarded=resolution == "keep_candidate")
     if result[0] != "valid" or event.signal_type != "duplicate_candidate":
@@ -229,13 +236,30 @@ def _apply_feedback_controls(public_id, assessment, *, withdrawn, training_enabl
     return status, reason, fields
 
 
+def _changed_feedback_source(event, payload, image_facts, category_sources, captures, time_captures) -> str | None:
+    if _image_choice_replaced(event, payload, image_facts):
+        return "原件识别证据已有更新；保留当时选择，不再用于新建议"
+    if _category_context_replaced(event, payload, category_sources):
+        return "分类所依据的用途、商品或账户已有变化，保留原选择但不再用于新建议"
+    if event.signal_type == "recognition_field_choice" and payload.get("source") == "notification" and (
+            not payload.get("_capture_context") or payload["_capture_context"] != captures.get(payload.get("evidence_public_id"))):
+        return "通知来源或核对版本已变化；保留当时选择，不再用于新建议"
+    if event.signal_type == "recognition_time_choice" and payload.get("source") == "notification" and (
+            not payload.get("_capture_context") or payload["_capture_context"] != time_captures.get(payload.get("evidence_public_id"))):
+        return "通知时间来源或核对版本已变化；保留当时选择，不再用于新建议"
+    return None
+
+
 def feedback_assessments(db: Session, *, tenant_id: str,
         events: list[LedgerLearningEvent]) -> dict[int, tuple[str, str, dict[str, str]]]:
     from app.services.learning_service._repayment_sources import repayment_source_assessments
+    from app.services.recognition_evidence_context import notification_evidence_contexts
 
     sources, reversed_ids = feedback_sources(db, tenant_id=tenant_id, events=events)
     repayments = repayment_source_assessments(db, tenant_id=tenant_id, events=events)
     image_facts = _current_time_facts(db, tenant_id, events, sources)
+    captures, time_captures = notification_evidence_contexts(db, tenant_id=tenant_id,
+        payloads=[_event_payload(row) for row in events])
     category_sources = _current_category_contexts(db, tenant_id, events, sources)
     latest = _latest_feedback_ids(db, tenant_id=tenant_id, events=events)
     decisions = {row.id: row.algorithm_version for row in db.scalars(select(AlgorithmDecision).where(
@@ -255,10 +279,8 @@ def feedback_assessments(db: Session, *, tenant_id: str,
         else:
             status, reason, fields = feedback_eligibility(row, sources.get(row.subject_id), reversed_ids,
                 sources.get(payload.get("candidate_id")), latest)
-        if status == "valid" and _image_choice_replaced(row, payload, image_facts):
-            status, reason = "superseded", "原件识别证据已有更新；保留当时选择，不再用于新建议"
-        if status == "valid" and _category_context_replaced(row, payload, category_sources):
-            status, reason = "superseded", "分类所依据的用途、商品或账户已有变化，保留原选择但不再用于新建议"
+        if status == "valid" and (changed := _changed_feedback_source(row, payload, image_facts, category_sources, captures, time_captures)):
+            status, reason = "superseded", changed
         results[row.id] = _apply_feedback_controls(row.public_id, (status, reason, fields),
             withdrawn=withdrawn, training_enabled=policies[key])
     return results

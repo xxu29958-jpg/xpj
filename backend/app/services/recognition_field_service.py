@@ -8,7 +8,8 @@ from app.schemas._recognition_fields import RecognitionFieldCandidate
 from app.services.learning_service import EventDraft, read_ocr_facts, record_event
 from app.services.learning_service._algorithm_registry import RECOGNITION_FIELD_CHOICE
 from app.services.learning_service._source_eligibility import _event_payload
-from app.services.recognition_memory_service import time_candidate_key, time_case_key
+from app.services.notification_field_service import field_case_key, notification_field_sources
+from app.services.recognition_memory_service import time_candidate_key
 from app.services.recognition_time_service import _AMOUNT_ROLES, _event_prefixes
 
 
@@ -32,12 +33,16 @@ def _field_candidate(fact, item, events, version):
     can_apply = role in {"payment", "expense", "total", "final_total", "rounded_total", "unknown", "merchant"}
     if field == "amount_cents":
         can_apply = can_apply and bool(item.get("currency_code"))
+    source = getattr(fact, "source", "image")
+    if source == "notification":
+        can_apply = can_apply and not json.loads(fact.evidence_json)["input"]["truncated"]
+        label = "通知 · " + label
     return RecognitionFieldCandidate(field=field, id=item["id"], value=item["value"], role=role,
         label=events.get(item.get("event_id"), "") + label, event_id=item.get("event_id"),
         original_text="\n".join(fact.raw_text[start:end] for start, end in item["raw_spans"]),
         explanation="取自原件中这一处；请核对属于本次交易。", can_apply=can_apply,
         currency_code=item.get("currency_code"), minor_unit_exponent=item.get("minor_unit_exponent"),
-        evidence_public_id=fact.public_id, parser_version=version)
+        evidence_public_id=fact.public_id, parser_version=version, source=source)
 
 
 def field_value(expense, field, currency_code):
@@ -62,13 +67,16 @@ def record_field_choices(db, *, expense, choices, actor_account_id):
     if not choices or actor_account_id is None:
         return
     fact = read_ocr_facts(db, tenant_id=expense.tenant_id, expenses=[expense]).get(expense.id)
-    candidates = recognition_fields(fact)
+    notification = notification_field_sources(db, tenant_id=expense.tenant_id,
+        actor_account_id=actor_account_id, expense_ids=[expense.id]).get(expense.id)
     for choice in choices:
+        origin = notification if choice.source == "notification" else fact
+        candidates = recognition_fields(origin)
         candidate = next((item for item in candidates if item.id == choice.candidate_id
             and item.field == choice.field and item.evidence_public_id == choice.evidence_public_id
-            and item.parser_version == choice.parser_version), None)
+            and item.parser_version == choice.parser_version and item.source == choice.source), None)
         if candidate is not None:
-            _record_field_choice(db, expense, choice, candidate, fact, actor_account_id)
+            _record_field_choice(db, expense, choice, candidate, origin, actor_account_id)
 
 
 def _record_field_choice(db, expense, choice, candidate, fact, actor):
@@ -82,7 +90,8 @@ def _record_field_choice(db, expense, choice, candidate, fact, actor):
     payload = {**choice.model_dump(), **_field_learning(choice, candidate, final),
         "selected": candidate.model_dump(), "final_value": final,
         "_algorithm_version": RECOGNITION_FIELD_CHOICE.current_version, "_action_outcome": "committed",
-        "_case_key": time_case_key(fact), "_candidate_key": time_candidate_key(fact.raw_text, raw_candidate),
+        "_case_key": field_case_key(fact), "_candidate_key": time_candidate_key(fact.raw_text, raw_candidate),
+        "_capture_context": getattr(fact, "capture_context", None),
         "_feedback_revision": int(_event_payload(prior).get("_feedback_revision", 1)) + 1 if prior else 1,
         "_supersedes_event_public_id": prior.public_id if prior else None}
     event = record_event(db, EventDraft(tenant_id=expense.tenant_id, subject_kind="expense", subject_id=expense.id,

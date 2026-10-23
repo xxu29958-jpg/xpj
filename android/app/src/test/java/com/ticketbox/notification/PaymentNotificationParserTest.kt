@@ -13,6 +13,26 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PaymentNotificationParserTest {
+    @Test fun wrappedBalanceKeepsItsLabelAndNeverBecomesThePayment() {
+        val result = requireNotNull(PaymentNotificationParser.parse(snapshot(
+            "com.tencent.mm", "微信支付", "商户：海棠咖啡，支付成功18元。余额\n1000元",
+        )))
+        assertEquals(1800L, expenseOf(result)?.amountCents)
+        val fragments = requireNotNull(result.fieldEvidence).fragments
+        assertTrue(fragments.any { it.literal == "余额\n1000元" })
+        assertFalse(fragments.any { it.literal == "1000元" })
+    }
+
+    @Test fun fieldProofKeepsOriginalSpanAndOriginWithoutCopyingTheWholeNotification() {
+        val body = "商户：海棠咖啡，支付成功18.00元。" + "后续活动介绍".repeat(30)
+        val result = requireNotNull(PaymentNotificationParser.parse(snapshot("com.tencent.mm", "微信支付", body)))
+        val evidence = requireNotNull(result.fieldEvidence)
+        assertTrue(evidence.fragments.any { it.field == "text" && it.literal == "商户：海棠咖啡" })
+        assertTrue(evidence.fragments.any { "18.00" in it.literal })
+        assertTrue(evidence.fragments.all { it.literal.length <= 96 && it.literal != body })
+        assertFalse(evidence.truncated)
+    }
+
     @Test
     fun parsesWechatPaymentNotification() {
         val draft = expenseOf(
@@ -314,6 +334,23 @@ class PaymentNotificationParserTest {
         )) {
             assertNull(PaymentNotificationParser.parse(snapshot("com.eg.android.AlipayGphone", "支付宝", text)), text)
         }
+    }
+
+    @Test
+    fun precedingReminderDoesNotSuppressASeparateCompletedPurchase() {
+        for (text in listOf("本期应还1000元\n消费18元", "请及时还款1000元\r\n支付成功18元")) {
+            assertEquals(1800L, expenseOf(snapshot("com.eg.android.AlipayGphone", "交易提醒", text))?.amountCents, text)
+        }
+    }
+
+    @Test
+    fun merchantTitleKeepsItsPositionAheadOfThePaymentBody() {
+        val parsed = PaymentNotificationParser.parse(snapshot("com.eg.android.AlipayGphone", "晴川书屋", "支付成功18元"))
+        assertTrue(parsed is PaymentNotificationResult.Expense)
+        assertEquals("晴川书屋", parsed.draft.merchant)
+        val fragments = assertNotNull(parsed.fieldEvidence).fragments
+        assertEquals(listOf("title", "text"), fragments.map { it.field })
+        assertEquals(listOf("晴川书屋", "支付成功18元"), fragments.map { it.literal })
     }
 
     @Test

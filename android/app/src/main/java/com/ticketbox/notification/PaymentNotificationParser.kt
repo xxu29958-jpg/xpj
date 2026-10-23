@@ -21,20 +21,24 @@ data class NotificationEvidence(val kind: String, val amountMinor: Long?, val fi
 sealed interface PaymentNotificationResult {
     val candidates: List<NotificationEvidence>
     val timeEvidence: NotificationTimeEvidence?
+    val fieldEvidence: NotificationFieldEvidence?
     data class Expense(val draft: NotificationDraft,
         override val candidates: List<NotificationEvidence> = emptyList(),
         override val timeEvidence: NotificationTimeEvidence? = null,
-        val capturedAt: String? = draft.expenseTime) : PaymentNotificationResult
+        val capturedAt: String? = draft.expenseTime,
+        override val fieldEvidence: NotificationFieldEvidence? = null) : PaymentNotificationResult
     data class Repayment(val draft: RepaymentNotificationDraft,
         override val candidates: List<NotificationEvidence> = emptyList(),
-        override val timeEvidence: NotificationTimeEvidence? = null) : PaymentNotificationResult
+        override val timeEvidence: NotificationTimeEvidence? = null,
+        override val fieldEvidence: NotificationFieldEvidence? = null) : PaymentNotificationResult
     data class Review(val source: String, val capturedAt: String, val merchant: String?,
         override val candidates: List<NotificationEvidence>,
-        override val timeEvidence: NotificationTimeEvidence? = null) : PaymentNotificationResult
+        override val timeEvidence: NotificationTimeEvidence? = null,
+        override val fieldEvidence: NotificationFieldEvidence? = null) : PaymentNotificationResult
 }
 
 object PaymentNotificationParser {
-    const val VERSION = "transaction-evidence-v3"
+    const val VERSION = "transaction-evidence-v4"
     private val bankContext = Regex("""(银行|信用卡|储蓄账户|尾号|动账|交易|支出人民币|消费人民币)""")
     private val sources = mapOf("com.tencent.mm" to "wechat", "com.eg.android.alipaygphone" to "alipay",
         "com.jingdong.app.mall" to "jd", "com.jd.jrapp" to "jd", "com.sankuai.meituan" to "meituan")
@@ -62,16 +66,17 @@ object PaymentNotificationParser {
             financial.any { it.kind != amounts.singleOrNull()?.kind }
         val time = Instant.ofEpochMilli(snapshot.postTimeMillis).toString()
         val timeEvidence = NotificationTimeExtractor.read(fields)
+        val fieldEvidence = PaymentNotificationFields.fieldEvidence(fields)
         if (conflict) return PaymentNotificationResult.Review(source, time,
-            PaymentNotificationFields.parseMerchant(snapshot, joined), candidates, timeEvidence)
+            PaymentNotificationFields.parseMerchant(snapshot, joined), candidates, timeEvidence, fieldEvidence)
         val chosen = amounts.single()
         return if (chosen.kind == "repayment") PaymentNotificationResult.Repayment(
             RepaymentNotificationDraft(RepaymentDraftSource.entries.single { it.apiValue == source },
-                requireNotNull(chosen.amountMinor), PaymentNotificationFields.parseRepaymentLabel(joined), time), candidates, timeEvidence)
+                requireNotNull(chosen.amountMinor), PaymentNotificationFields.parseRepaymentLabel(joined), time), candidates, timeEvidence, fieldEvidence)
         else PaymentNotificationResult.Expense(
             NotificationDraft(NotificationDraftSource.entries.single { it.apiValue == source },
                 requireNotNull(chosen.amountMinor), PaymentNotificationFields.parseMerchant(snapshot, joined), null, null),
-            candidates, timeEvidence, capturedAt = time)
+            candidates, timeEvidence, capturedAt = time, fieldEvidence = fieldEvidence)
     }
 }
 
@@ -99,6 +104,21 @@ private object PaymentNotificationFields {
         }
         return cleanMerchant(snapshot.title)
             ?.takeUnless { genericTitleWords.containsMatchIn(it) }
+    }
+
+    fun fieldEvidence(fields: List<Pair<String, String>>): NotificationFieldEvidence {
+        val fragments = fields.flatMap { (field, text) ->
+            val snippets = NotificationTransactionEvidence.fieldFragments(field, text).toMutableList()
+            val matches = merchantPatterns.flatMap { it.findAll(text).toList() }
+            snippets += matches.map { NotificationFieldFragment(field, it.value) }
+            if (matches.isEmpty() && field == "title" && cleanMerchant(text) != null && !genericTitleWords.containsMatchIn(text)) {
+                snippets += NotificationFieldFragment(field, text)
+            }
+            snippets.sortedBy { text.indexOf(it.literal) }
+        }
+        val distinct = fragments.distinct()
+        return NotificationFieldEvidence(distinct.filter { it.literal.length <= 96 }.take(24),
+            truncated = distinct.size > 24 || distinct.any { it.literal.length > 96 })
     }
 
     /** 还款标签:优先卡尾号(尾号1234),否则平台名(花呗 / 借呗 / 白条 / 美团月付 / 信用卡);都没有则 null。 */
