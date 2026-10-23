@@ -10,7 +10,11 @@ from app.schemas._recognition_time import RecognitionTimeCandidate
 from app.services.learning_service._algorithm_registry import RECOGNITION_TIME_CHOICE
 from app.services.learning_service._source_eligibility import _event_payload
 from app.services.recognition_decision_service import reconcile_image_decision
-from app.services.recognition_evidence_context import capture_evidence_context, time_candidate_key
+from app.services.recognition_evidence_context import (
+    capture_evidence_complete,
+    capture_evidence_context,
+    time_candidate_key,
+)
 from app.services.recognition_time_service import rank_time_origin
 
 
@@ -36,10 +40,13 @@ def notification_time_choice_context(capture, candidate_id):
     frozen = capture.time_evidence
     original = next(item for item in frozen["field_parse"]["candidates"] if item["id"] == candidate_id)
     return {"_case_key": _case_key(capture), "_candidate_key": time_candidate_key(frozen["raw_text"], original),
-        "_capture_context": capture_evidence_context(capture, kind="time")}
+        "_capture_context": capture_evidence_context(capture, kind="time"),
+        **({"_learning_qualified": False} if not capture_evidence_complete(capture, kind="time") else {})}
 
 
 def _agreed_time(capture, response, matches) -> RecognitionTimeCandidate | None:
+    if not capture_evidence_complete(capture, kind="time"):
+        return None
     keys = {json.dumps(_event_payload(row).get("_candidate_key")) for row in matches}
     candidates = [item for item in response.candidates if item.source == "notification"
         and item.evidence_public_id == capture.public_id] if response else []

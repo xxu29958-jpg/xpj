@@ -16,12 +16,19 @@ def capture_evidence_context(capture: PaymentCapture, *, kind: Literal["field", 
         "evidence_sha256": hashlib.sha256(json.dumps(getattr(capture, kind + "_evidence"), sort_keys=True).encode()).hexdigest()}
 
 
+def capture_evidence_complete(capture: PaymentCapture, *, kind: Literal["field", "time"]) -> bool:
+    frozen = getattr(capture, kind + "_evidence") or {}
+    return frozen.get("input", {}).get("truncated") is False
+
+
 def notification_evidence_contexts(db, *, tenant_id, payloads) -> tuple[dict, dict]:
     identifiers = {data.get("evidence_public_id") for data in payloads if data.get("source") == "notification"}
     rows = list(db.scalars(select(PaymentCapture).where(PaymentCapture.tenant_id == tenant_id,
         PaymentCapture.public_id.in_(identifiers)))) if identifiers else []
-    return ({row.public_id: capture_evidence_context(row, kind="field") for row in rows},
-        {row.public_id: capture_evidence_context(row, kind="time") for row in rows})
+    return ({row.public_id: capture_evidence_context(row, kind="field") for row in rows
+        if capture_evidence_complete(row, kind="field")},
+        {row.public_id: capture_evidence_context(row, kind="time") for row in rows
+        if capture_evidence_complete(row, kind="time")})
 
 
 def time_case_key(fact: OcrFact) -> str:

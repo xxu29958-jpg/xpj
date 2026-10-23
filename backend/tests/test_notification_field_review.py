@@ -38,6 +38,28 @@ def _save(client, headers, expense, choice, value, intent):
     assert client.patch(f"/api/expenses/{expense}", headers=command, json=payload).json() == saved.json()
 
 
+@pytest.mark.parametrize("title_first", [False, True])
+def test_original_notification_title_reaches_merchant_choice_from_either_client_order(client, identity, title_first):
+    fragments = [{'field': 'title', 'literal': '晴川书屋'}, {'field': 'text', 'literal': '支付成功18元'}]
+    if not title_first:
+        fragments.reverse()
+    response = client.post('/api/payment-captures', headers=identity.app_headers, json={
+        'notification_key': str(uuid4()), 'source': 'alipay', 'captured_at': '2026-10-23T04:00:00Z',
+        'original_currency': 'CNY', 'original_amount_minor': 1800, 'merchant': '晴川书屋',
+        'suggested_kind': 'expense', 'parser_version': 'transaction-evidence-v4', 'candidates': [],
+        'field_evidence': {'fragments': fragments, 'truncated': False}})
+    assert response.status_code == 201, response.text
+    capture = response.json()
+    current = client.get(f"/api/expenses/{capture['expense_id']}", headers=identity.app_headers).json()
+    chosen = next((c for c in current['recognition_fields'] if c['field'] == 'merchant' and c['value'] == '晴川书屋'), None)
+    assert chosen is not None and chosen['can_apply']
+    assert chosen['original_text'] == '晴川书屋'
+    with SessionLocal() as db:
+        source = db.scalar(select(PaymentCapture).where(PaymentCapture.public_id == capture['public_id']))
+        assert source.field_evidence['input']['fragments'] == fragments
+    _save(client, negotiated_headers(client, identity.app_headers), capture['expense_id'], chosen, '晴川书屋', 'candidate')
+
+
 @pytest.mark.parametrize("field,corrected,stop", [("amount_cents", 180, "withdraw"), ("merchant", "海棠咖啡", "capture_revision")])
 def test_notification_source_correction_reaches_consumer_without_self_training(client, identity, field, corrected, stop):
     headers = negotiated_headers(client, identity.app_headers)

@@ -344,6 +344,16 @@ class PaymentNotificationParserTest {
     }
 
     @Test
+    fun merchantTitleKeepsItsPositionAheadOfThePaymentBody() {
+        val parsed = PaymentNotificationParser.parse(snapshot("com.eg.android.AlipayGphone", "晴川书屋", "支付成功18元"))
+        assertTrue(parsed is PaymentNotificationResult.Expense)
+        assertEquals("晴川书屋", parsed.draft.merchant)
+        val fragments = assertNotNull(parsed.fieldEvidence).fragments
+        assertEquals(listOf("title", "text"), fragments.map { it.field })
+        assertEquals(listOf("晴川书屋", "支付成功18元"), fragments.map { it.literal })
+    }
+
+    @Test
     fun capturesJdAndMeituanPurchasesWithoutInventingRepayments() {
         for (pkg in listOf("com.jingdong.app.mall", "com.sankuai.meituan")) {
             assertEquals(9900L, expenseOf(snapshot(pkg, "交易提醒", "下单成功，付款成功 ¥99.00"))?.amountCents)

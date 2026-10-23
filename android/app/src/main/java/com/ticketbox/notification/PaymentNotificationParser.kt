@@ -107,13 +107,14 @@ private object PaymentNotificationFields {
     }
 
     fun fieldEvidence(fields: List<Pair<String, String>>): NotificationFieldEvidence {
-        val fragments = fields.flatMap { (field, text) -> NotificationTransactionEvidence.fieldFragments(field, text) }.toMutableList()
-        for ((field, text) in fields) {
+        val fragments = fields.flatMap { (field, text) ->
+            val snippets = NotificationTransactionEvidence.fieldFragments(field, text).toMutableList()
             val matches = merchantPatterns.flatMap { it.findAll(text).toList() }
-            fragments += matches.map { NotificationFieldFragment(field, it.value) }
+            snippets += matches.map { NotificationFieldFragment(field, it.value) }
             if (matches.isEmpty() && field == "title" && cleanMerchant(text) != null && !genericTitleWords.containsMatchIn(text)) {
-                fragments += NotificationFieldFragment(field, text)
+                snippets += NotificationFieldFragment(field, text)
             }
+            snippets.sortedBy { text.indexOf(it.literal) }
         }
         val distinct = fragments.distinct()
         return NotificationFieldEvidence(distinct.filter { it.literal.length <= 96 }.take(24),

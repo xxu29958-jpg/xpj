@@ -15,7 +15,9 @@ from app.services.recognition_evidence_context import capture_evidence_context, 
 def freeze_notification_fields(evidence, currency) -> dict | None:
     if evidence is None:
         return None
-    raw = "\n".join(item.literal for item in evidence.fragments)
+    # Older senders assembled amounts before merchant titles. The field tag
+    # preserves the title semantics while the original input remains immutable.
+    raw = "\n".join(item.literal for item in sorted(evidence.fragments, key=lambda item: item.field != "title"))
     parsed = parse_receipt_text(raw, timezone_name="Etc/Unknown", currency_code=currency,
         minor_unit_exponent=minor_unit_digits(currency))
     return {"schema": "notification-fields/v1", "input": evidence.model_dump(), "raw_text": raw,
