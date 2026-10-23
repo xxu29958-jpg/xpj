@@ -89,6 +89,7 @@ from app.services.pending_suggestion_service import (
     suggestions_for_pending_expense,
 )
 from app.services.receipt_item_service import list_expense_items
+from app.services.recognition_memory_service import recall_time_choice
 from app.services.reference_creation_service import create_reference
 from app.services.spending_contract_service import count_undated_expenses
 from app.services.stats_service import export_confirmed_csv, list_categories, list_months
@@ -761,6 +762,8 @@ def _expense_response_with_suggestions(
         notification_times_by_id = notification_times_for_expenses(db, tenant_id=tenant_id,
             actor_account_id=actor_account_id, expense_public_ids=[expense.public_id])
     suggestions = suggestions_for_pending_expense(db, tenant_id=tenant_id, expense=expense, actor_account_id=actor_account_id)
+    if ocr_facts_by_id is None:
+        ocr_facts_by_id = expense_ocr_facts_by_id(db, tenant_id=tenant_id, expenses=[expense])
     dto = expense_to_response(
         db,
         tenant_id=tenant_id,
@@ -769,6 +772,8 @@ def _expense_response_with_suggestions(
         notification_times_by_id=notification_times_by_id,
         fx_tasks_by_id=fx_tasks_by_id,
     )
+    dto.recognition_time = recall_time_choice(db, expense=expense, actor_account_id=actor_account_id,
+        fact=ocr_facts_by_id.get(expense.id), response=dto.recognition_time)
     if suggestions.category_suggestion is not None:
         dto.category_suggestion = PendingCategorySuggestionResponse(
             decision_public_id=suggestions.category_suggestion.decision_public_id,

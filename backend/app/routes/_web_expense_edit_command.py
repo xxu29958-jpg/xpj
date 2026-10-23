@@ -108,6 +108,8 @@ def expense_edit_form_values(form: WebExpenseEditForm) -> dict[str, str]:
         values["funding_json"] = form.funding_json
     if form.category_choice:
         values["category_choice"] = form.category_choice
+    if form.recognition_time_choice:
+        values["recognition_time_choice"] = form.recognition_time_choice
     if form.category_decision_public_id:
         values["category_decision_public_id"] = form.category_decision_public_id
     if form.duplicate_decision_public_id:
@@ -346,10 +348,6 @@ def _validated_update_request(
         # PATCH as amount/date edits so the server derives home amount,
         # provenance and effective rate date atomically.
         payload_args["manual_exchange_rate"] = manual_exchange_rate.strip()
-    if form_values.get("category_choice"):
-        payload_args.update(category=category, category_choice=form_values["category_choice"])
-    if form_values.get("category_decision_public_id"):
-        payload_args["category_decision_public_id"] = form_values["category_decision_public_id"]
     for name in ("value_score", "regret_score"):
         if name not in form_values:
             continue
@@ -359,6 +357,7 @@ def _validated_update_request(
         if changed:
             payload_args[name] = value
     try:
+        payload_args.update(_explicit_choice_fields(form_values, category))
         payload = ExpenseUpdateRequest(**payload_args)
     except ValidationError as exc:
         message, field_errors = _schema_error(exc, form_values=form_values)
@@ -368,6 +367,19 @@ def _validated_update_request(
             field_errors=field_errors,
         )
     return payload, None
+
+
+def _explicit_choice_fields(form_values: dict[str, str], category: str) -> dict[str, object]:
+    from app.schemas._recognition_choice import RecognitionTimeChoice
+
+    fields = {}
+    if form_values.get("category_choice"):
+        fields.update(category=category, category_choice=form_values["category_choice"])
+    if form_values.get("category_decision_public_id"):
+        fields["category_decision_public_id"] = form_values["category_decision_public_id"]
+    if form_values.get("recognition_time_choice"):
+        fields["recognition_time_choice"] = RecognitionTimeChoice.model_validate_json(form_values["recognition_time_choice"])
+    return fields
 
 
 def apply_web_expense_form(
@@ -396,6 +408,7 @@ def apply_web_expense_form(
             note=form.note, tags=form.tags, expense_time=form.expense_time, time_fields=form.time_fields,
             score_fields=form.score_fields, funding_json=form.funding_json,
             category_choice=form.category_choice, category_decision_public_id=form.category_decision_public_id,
+            recognition_time_choice=form.recognition_time_choice,
         )
         if payload is None:
             return prepared
@@ -463,6 +476,7 @@ def prepare_web_expense_form(
     funding_json: str | None = None,
     category_choice: str | None = None,
     category_decision_public_id: str | None = None,
+    recognition_time_choice: str | None = None,
 ) -> tuple[ExpenseUpdateRequest | None, WebExpenseSaveOutcome]:
     """Parse one browser snapshot without owning its write transaction."""
 
@@ -487,6 +501,8 @@ def prepare_web_expense_form(
         form_values["category_choice"] = category_choice
     if category_decision_public_id:
         form_values["category_decision_public_id"] = category_decision_public_id
+    if recognition_time_choice:
+        form_values["recognition_time_choice"] = recognition_time_choice
     try:
         expense = get_expense(db, expense_id, selected_ledger_id)
         time_input = None

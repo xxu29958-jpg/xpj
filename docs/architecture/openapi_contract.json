@@ -4178,6 +4178,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "recognition_time_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Time Choice"
+          },
           "regret_score": {
             "anyOf": [
               {
@@ -5570,6 +5581,17 @@
             "default": "",
             "title": "Original Currency",
             "type": "string"
+          },
+          "recognition_time_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Time Choice"
           },
           "regret_score": {
             "anyOf": [
@@ -7741,6 +7763,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "recognition_time_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Time Choice"
+          },
           "regret_score": {
             "anyOf": [
               {
@@ -8077,6 +8110,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "recognition_time_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Time Choice"
+          },
           "regret_score": {
             "anyOf": [
               {
@@ -8391,6 +8435,17 @@
             "default": "",
             "title": "Original Currency",
             "type": "string"
+          },
+          "recognition_time_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Time Choice"
           },
           "regret_score": {
             "anyOf": [
@@ -8861,6 +8916,17 @@
             "default": "",
             "title": "Original Currency",
             "type": "string"
+          },
+          "recognition_time_choice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Time Choice"
           },
           "regret_score": {
             "anyOf": [
@@ -19202,6 +19268,16 @@
             ],
             "title": "Original Currency Code"
           },
+          "recognition_time_choice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecognitionTimeChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "regret_score": {
             "anyOf": [
               {
@@ -25790,6 +25866,55 @@
           "can_apply"
         ],
         "title": "RecognitionTimeCandidate",
+        "type": "object"
+      },
+      "RecognitionTimeChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "evidence_public_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Evidence Public Id",
+            "type": "string"
+          },
+          "intent": {
+            "default": "candidate",
+            "enum": [
+              "candidate",
+              "original_correction",
+              "bookkeeping"
+            ],
+            "title": "Intent",
+            "type": "string"
+          },
+          "parser_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "image",
+              "notification"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_public_id",
+          "candidate_id",
+          "parser_version",
+          "source"
+        ],
+        "title": "RecognitionTimeChoice",
         "type": "object"
       },
       "RecognitionTimeResponse": {

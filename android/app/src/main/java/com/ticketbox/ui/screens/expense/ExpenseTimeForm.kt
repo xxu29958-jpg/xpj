@@ -25,6 +25,7 @@ data class ExpenseTimeForm(
     val calendarRevision: Long?,
     val calendarZone: String?,
     val changed: Boolean = false,
+    val recognitionChoice: com.ticketbox.domain.model.RecognitionTimeChoice? = null,
 ) {
     fun validOffsets(): List<ZoneOffset> = runCatching {
         ZoneId.of(sourceZone).rules.getValidOffsets(LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(time)))

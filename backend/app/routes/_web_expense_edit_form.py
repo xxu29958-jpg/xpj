@@ -42,6 +42,7 @@ class WebExpenseEditForm:
     category_choice: str | None = None
     category_decision_public_id: str | None = None
     duplicate_decision_public_id: str | None = None
+    recognition_time_choice: str | None = None
 
 
 def web_expense_edit_form(
@@ -71,6 +72,7 @@ def web_expense_edit_form(
     category_choice: str | None = Form(default=None),
     category_decision_public_id: str | None = Form(default=None),
     duplicate_decision_public_id: str | None = Form(default=None),
+    recognition_time_choice: str | None = Form(default=None),
 ) -> WebExpenseEditForm:
     """Bind one raw browser intent without giving the HTTP handler ownership."""
 
@@ -101,4 +103,5 @@ def web_expense_edit_form(
         category_choice=category_choice,
         category_decision_public_id=category_decision_public_id,
         duplicate_decision_public_id=duplicate_decision_public_id,
+        recognition_time_choice=recognition_time_choice,
     )

@@ -42,8 +42,12 @@ class ExpenseMappersTest {
             originalAmountMinor = 12_345L, ledgerHomeCurrency = CurrencyCode.KWD,
             merchant = "Kuwait", category = "交通", note = "原备注",
             expenseTime = cached.expenseTime, tags = null, valueScore = null, regretScore = null,
+            recognitionTimeChoice = com.ticketbox.domain.model.RecognitionTimeChoice("fact", "candidate", "receipt-fields-v3", "image"),
         )
         assertEquals("12.345", draft.toManualCreateRequest("kwd-original").originalAmount)
+        val wire = draft.toRequest(cached)
+        val adapter = com.squareup.moshi.Moshi.Builder().build().adapter(com.ticketbox.data.remote.dto.ExpenseUpdateRequest::class.java)
+        assertEquals(draft.recognitionTimeChoice, adapter.fromJson(adapter.toJson(wire))?.recognitionTimeChoice)
     }
 
     @Test

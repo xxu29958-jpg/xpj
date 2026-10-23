@@ -24,6 +24,7 @@ from app.schemas._money import (
     SignedMoneyMinor,
     expense_item_money_schema_extra,
 )
+from app.schemas._recognition_choice import RecognitionTimeChoice
 from app.schemas._recognition_time import RecognitionTimeResponse
 from app.schemas.funds import FundingPart
 from app.services.time_service import to_iso
@@ -167,6 +168,7 @@ class ExpenseFieldChanges(BaseModel):
 
 
 class ExpenseUpdateRequest(ExpenseFieldChanges):
+    recognition_time_choice: RecognitionTimeChoice | None = None
     category_choice: Literal["manual", "suggestion"] | None = None
     category_decision_public_id: str | None = Field(default=None, min_length=1, max_length=36)
     manual_exchange_rate: NonNegativeCanonicalDecimalInput | None = Field(

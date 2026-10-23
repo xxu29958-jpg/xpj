@@ -27,6 +27,7 @@ from app.services.expense_service._query import get_expense, resolve_expense
 from app.services.expense_split_service import validate_current_expense_split_allocation
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.pending_suggestion_service import record_category_choice
+from app.services.recognition_choice_service import record_time_choice
 from app.services.resource_audit import record_resource_action
 from app.services.soft_delete_policy import SOFT_DELETE_RETENTION
 from app.services.tag_service import sync_expense_tags
@@ -127,6 +128,7 @@ def update_expense(
     if payload.category is not None:
         record_category_choice(db, expense=expense, previous_category=category_before, previous_merchant=merchant_before,
             actor_account_id=actor_account_id, choice=payload.category_choice, decision_public_id=payload.category_decision_public_id)
+    record_time_choice(db, expense=expense, choice=payload.recognition_time_choice, actor_account_id=actor_account_id)
 
     if commit:
         db.commit()

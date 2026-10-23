@@ -27,7 +27,9 @@ def source_context(expense):
         "expense_time": ensure_utc(expense.expense_time).isoformat() if expense.expense_time else None,
         "image_hash": expense.image_hash,
         "accounting_date": expense.accounting_date.isoformat() if expense.accounting_date else None,
-        "time_precision": expense.time_precision, "source_timezone": expense.source_timezone}
+        "time_precision": expense.time_precision, "source_timezone": expense.source_timezone,
+        "source_utc_offset_seconds": expense.source_utc_offset_seconds,
+        "user_local_date": expense.user_local_date.isoformat() if expense.user_local_date else None}
 
 
 def decision_context(expense, decision_type, actor_account_id):
@@ -91,7 +93,8 @@ def _source_qualification(expense: Expense | None, context: object, *, tenant_id
     current = source_context(expense)
     fields = {name: ("valid" if context.get(name) == current[name] else "superseded")
         for name in ("merchant", "category", "amount_cents", "original_currency_code",
-            "original_amount_minor", "expense_time", "image_hash", "accounting_date", "time_precision", "source_timezone")}
+            "original_amount_minor", "expense_time", "image_hash", "accounting_date", "time_precision", "source_timezone",
+            "source_utc_offset_seconds", "user_local_date")}
     if expense.id in reversed_ids or (expense.status == "rejected" and not deliberately_discarded):
         return "invalid", "消费已撤销或已冲正；商家等未变字段仍保留原反馈证据", fields
     if deliberately_discarded and _discarded_source_changed(expense, context):
@@ -125,6 +128,8 @@ def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, re
     if event_result is not None:
         return event_result
     payload = _event_payload(event)
+    if event.signal_type == "recognition_time_choice" and not payload.get("_learning_qualified"):
+        return "needs_review", "保留原件纠正或记账意图；没有把普通修改当作候选选择标签", {}
     paired = event.signal_type == "duplicate_candidate"
     resolution = payload.get("_resolution") if paired and payload.get("_relation") == "same" else None
     if paired and (payload.get("_relation") not in {"same", "distinct"} or payload.get("_action_outcome") != "committed"):
@@ -132,6 +137,9 @@ def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, re
     required = ("merchant", "category") if event.signal_type == "category_suggestion" else (
         "merchant", "amount_cents", "original_currency_code", "original_amount_minor", "expense_time", "image_hash",
         "accounting_date", "time_precision", "source_timezone")
+    if event.signal_type == "recognition_time_choice":
+        required = ("expense_time", "image_hash", "time_precision", "source_timezone", "accounting_date",
+            "source_utc_offset_seconds", "user_local_date")
     result = _source_qualification(expense, payload.get("_source_context"), tenant_id=event.tenant_id,
         reversed_ids=reversed_ids, required=required, deliberately_discarded=resolution == "keep_candidate")
     if result[0] != "valid" or event.signal_type != "duplicate_candidate":
@@ -151,7 +159,7 @@ def _latest_feedback_ids(db, *, tenant_id: str, events: list[LedgerLearningEvent
         return set()
     rows = db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == tenant_id,
         LedgerLearningEvent.subject_kind == "expense", LedgerLearningEvent.subject_id.in_(identifiers),
-        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate")),
+        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice")),
         LedgerLearningEvent.event_type.in_(("accept", "reject", "edit", "manual_override", "withdraw")),
         LedgerLearningEvent.created_at <= now_utc()).order_by(LedgerLearningEvent.id.desc()))
     current = {}
@@ -169,9 +177,26 @@ def eligible_feedback(db, *, tenant_id, events, actor_account_id):
     return [row for row in events if assessments[row.id][0] == "valid"]
 
 
+def _current_time_facts(db: Session, tenant_id: str, events: list[LedgerLearningEvent], sources: dict) -> dict:
+    from app.services.learning_service import read_ocr_facts
+
+    image_subjects = {row.subject_id for row in events if row.signal_type == "recognition_time_choice"
+        and _event_payload(row).get("source") == "image"}
+    return read_ocr_facts(db, tenant_id=tenant_id,
+        expenses=[row for key, row in sources.items() if key in image_subjects])
+
+
+def _image_choice_replaced(event: LedgerLearningEvent, payload: dict, facts: dict) -> bool:
+    if event.signal_type != "recognition_time_choice" or payload.get("source") != "image":
+        return False
+    fact = facts.get(event.subject_id)
+    return fact is None or fact.public_id != payload.get("evidence_public_id")
+
+
 def feedback_assessments(db: Session, *, tenant_id: str,
         events: list[LedgerLearningEvent]) -> dict[int, tuple[str, str, dict[str, str]]]:
     sources, reversed_ids = feedback_sources(db, tenant_id=tenant_id, events=events)
+    image_facts = _current_time_facts(db, tenant_id, events, sources)
     latest = _latest_feedback_ids(db, tenant_id=tenant_id, events=events)
     decisions = {row.id: row.algorithm_version for row in db.scalars(select(AlgorithmDecision).where(
         AlgorithmDecision.tenant_id == tenant_id, AlgorithmDecision.id.in_({row.decision_id for row in events})))}
@@ -187,6 +212,8 @@ def feedback_assessments(db: Session, *, tenant_id: str,
             policies[key] = policy_enabled(db, tenant_id=tenant_id, decision_type=key[0], version=key[1], axis="training")
         status, reason, fields = feedback_eligibility(row, sources.get(row.subject_id), reversed_ids,
             sources.get(payload.get("candidate_id")), latest)
+        if status == "valid" and _image_choice_replaced(row, payload, image_facts):
+            status, reason = "superseded", "原件识别证据已有更新；保留当时选择，不再用于新建议"
         if row.public_id in withdrawn:
             status, reason = "invalid", "这次选择已明确撤回；原记录仍保留"
         elif status == "valid" and not policies[key]:
@@ -200,6 +227,6 @@ def feedback_impact_preview(db, *, tenant_id):
     # sees counts; original individual feedback stays in its existing history.
     events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == tenant_id,
         LedgerLearningEvent.subject_kind == "expense",
-        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate")))))
+        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice")))))
     counts = Counter(result[0] for result in feedback_assessments(db, tenant_id=tenant_id, events=events).values())
     return {name: counts[name] for name in ("valid", "invalid", "superseded", "needs_review", "quarantined")}

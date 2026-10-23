@@ -365,6 +365,7 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
     val legacyTime = expenseTime.takeIf { timeInput == null && (isCreate || timeChanged) }
 
     return ExpenseUpdateRequest(
+        recognitionTimeChoice = recognitionTimeChoice,
         categoryChoice = categoryChoice,
         categoryDecisionPublicId = categoryDecisionPublicId,
         timeInput = changedTimeInput?.toRequest(),

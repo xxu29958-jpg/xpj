@@ -995,6 +995,8 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
     from app.models import AlgorithmDecision, LedgerLearningEvent
     from app.routes import web_expense_edit
     from app.services.expense_accounting_time_service import refresh_legacy_expense_time
+    from app.services.expense_service._ocr_facts import append_ocr_fact
+    from app.services.ocr_service import OcrResult
 
     client, _ = review_browser
     with confirmation_store() as db:
@@ -1004,6 +1006,8 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
     monkeypatch.setattr(web_expense_edit, "resolve_web_actor", lambda *args: (actor.account_id, actor.device_id))
     with confirmation_store() as db:
         resolve_write_capability(db)
+        append_ocr_fact(db, expense=db.get(Expense, 42), provider_name="mock", timezone_name="Asia/Shanghai",
+            result=OcrResult(raw_text="支付时间：2026-10-18 12:20", confidence=0.9))
         for _ in range(3):
             previous = Expense(tenant_id="owner", merchant="首次便利店", category="购物", amount_cents=1000,
                 original_amount_minor=1000, original_currency_code="CNY", home_currency_code="CNY",
@@ -1035,9 +1039,14 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
     with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert (current.amount_cents, current.original_amount_minor, current.original_currency_code, current.status) == financial
-        event = db.query(LedgerLearningEvent).filter_by(subject_id=42).one()
+        events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == 42)))
+        assert len(events) == 2
+        event = next(row for row in events if row.signal_type == "category_suggestion")
         assert event.event_type == "accept" and event.actor_account_id == actor.account_id
         assert db.get(AlgorithmDecision, event.decision_id).public_id == result["decision"]
+        time_event = next(row for row in events if row.signal_type == "recognition_time_choice")
+        assert time_event.event_type == "accept" and time_event.actor_account_id == actor.account_id
+        assert json.loads(time_event.after_payload)["candidate_id"] == json.loads(result["timeChoice"])["candidate_id"]
 
 
 @pytest.mark.real_db

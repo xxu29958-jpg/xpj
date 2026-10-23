@@ -2,7 +2,7 @@
 (function (window, document) {
   "use strict";
   const fields = ["ledger_id", "expense_id", "expected_row_version", "idempotency_key", "keep_idempotency_key", "reject_idempotency_key", "draft_ref", "save_before_confirm", "command_action",
-    "amount_yuan", "original_currency", "manual_exchange_rate", "merchant", "category", "category_choice", "category_decision_public_id", "note", "tags", "expense_time", "funding_json",
+    "amount_yuan", "original_currency", "manual_exchange_rate", "merchant", "category", "category_choice", "category_decision_public_id", "recognition_time_choice", "note", "tags", "expense_time", "funding_json",
     "time_precision", "calendar_revision", "user_local_date", "source_timezone", "source_utc_offset_seconds", "accounting_date", "value_score", "regret_score", "duplicate_decision_public_id"];
   const names = [...fields, "return_context", "present_fields", "reject_row_version", "undo_idempotency_key"];
   document.addEventListener("click", event => {
@@ -33,7 +33,7 @@
           case "keep": return {...saved, command_action: "confirm"};
           case "save":
             if (saved.funding_json && saved.funding_json !== "[]") {
-              return {...saved, category_choice: "", category_decision_public_id: "", command_action: "confirm", idempotency_key: window.crypto.randomUUID()};
+              return {...saved, category_choice: "", category_decision_public_id: "", recognition_time_choice: "", command_action: "confirm", idempotency_key: window.crypto.randomUUID()};
             }
         }
       }
@@ -139,7 +139,7 @@
       read, href, present: () => {},
       restore(current, values, originalPhase) {
         const present = JSON.parse(values.present_fields);
-        for (const name of ["category_choice", "category_decision_public_id", "duplicate_decision_public_id"]) {
+        for (const name of ["category_choice", "category_decision_public_id", "duplicate_decision_public_id", "recognition_time_choice"]) {
           if (!present.includes(name)) current.elements.namedItem(name)?.remove();
         }
         for (const name of present) put(current, name, values[name]);
@@ -154,7 +154,7 @@
         for (const [name, value] of Object.entries(JSON.parse(values.return_context))) put(current, name, value);
       },
       body(body, values) {
-        for (const name of ["funding_json", "category_choice", "category_decision_public_id", "duplicate_decision_public_id"]) {
+        for (const name of ["funding_json", "category_choice", "category_decision_public_id", "duplicate_decision_public_id", "recognition_time_choice"]) {
           if (!JSON.parse(values.present_fields).includes(name)) body.delete(name);
         }
         for (const name of JSON.parse(values.present_fields)) body.set(name, values[name]);

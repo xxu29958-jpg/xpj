@@ -198,6 +198,8 @@ class ExpenseEditScreenContractTest {
             assertEquals("2025-12-31", saved?.timeInput?.userLocalDate)
             assertEquals("America/New_York", saved?.timeInput?.sourceTimezone)
             assertEquals(null, saved?.expenseTime)
+            assertEquals(com.ticketbox.domain.model.RecognitionTimeChoice("fact", "day", "receipt-fields-v3", "image"),
+                saved?.toRequest(recorded)?.recognitionTimeChoice)
         }
         composeRule.onNodeWithText("确认入账").performClick()
         composeRule.runOnIdle { assertEquals(requireNotNull(saved), confirmed) }

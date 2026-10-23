@@ -19,7 +19,7 @@ def withdraw_feedback(db: Session, *, tenant_id: str, public_id: str) -> None:
     if any(_event_payload(row).get("_withdraws_event_public_id") == public_id for row in prior):
         return
     source = _event_payload(original)
-    record_event(db, EventDraft(tenant_id=tenant_id, decision_id=original.decision_id,
+    withdrawal = record_event(db, EventDraft(tenant_id=tenant_id, decision_id=original.decision_id,
         subject_kind=original.subject_kind, subject_id=original.subject_id, actor_account_id=None,
         event_type="withdraw", before_payload={"event_public_id": public_id},
         after_payload={"_withdraws_event_public_id": public_id, "_supersedes_event_public_id": public_id,
@@ -27,3 +27,5 @@ def withdraw_feedback(db: Session, *, tenant_id: str, public_id: str) -> None:
             "_withdrawal_authority": "local_owner", "_action_outcome": "committed",
             "candidate_id": source.get("candidate_id"), "_algorithm_version": source.get("_algorithm_version")},
         signal_type=original.signal_type, signal_marker=None))
+    if original.retention_days == 0:
+        withdrawal.retention_days = 0  # A retained case must not revive when its tombstone expires.
