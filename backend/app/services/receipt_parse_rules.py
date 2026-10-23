@@ -263,6 +263,8 @@ def iter_labeled_merchant_matches(lines: tuple[str, ...] | list[str],
     matches: list[LabeledMerchantMatch] = []
     for line_index, line in enumerate(lines):
         stripped = line.strip()
+        if stripped in MERCHANT_IGNORED_LINES:
+            continue
         for label in sorted(MERCHANT_LABELS, key=len, reverse=True):
             if not stripped.startswith(label):
                 continue
