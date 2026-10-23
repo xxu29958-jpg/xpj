@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from io import BytesIO
 
@@ -57,6 +58,22 @@ def test_upload_receipt_key_is_optional_without_weakening_outbox_command_headers
     assert all(parameter["required"] for parameter in key_headers.values())
 
 
+@pytest.mark.parametrize("change", ["different_image", "private_field", "invalid_time"])
+def test_upload_context_refuses_unbound_or_nonallowlisted_claims_before_writing(client, identity, change):
+    context = {"upload_sha256": hashlib.sha256(PNG_BYTES).hexdigest()}
+    if change == "different_image":
+        context["upload_sha256"] = "0" * 64
+    elif change == "private_field":
+        context["gps"] = "not permitted"
+    else:
+        context["times"] = [{"origin": "exif_original", "value": "not a date"}]
+    before = _ledger_upload_row_counts("owner"), _stored_upload_files()
+    response = client.post("/api/app/upload-screenshot", headers=identity.app_headers,
+        files={"file": ("image.png", PNG_BYTES, "image/png", {"X-Ticketbox-Image-Context": json.dumps(context)})})
+    assert response.status_code == 422 and response.json()["error"] == "invalid_request"
+    assert (_ledger_upload_row_counts("owner"), _stored_upload_files()) == before
+
+
 @pytest.mark.real_db
 def test_android_upload_same_intent_returns_the_original_receipt_without_another_expense_or_task(
     client: TestClient,
@@ -72,7 +89,11 @@ def test_android_upload_same_intent_returns_the_original_receipt_without_another
         "Idempotency-Key": "70000000-0000-4000-8000-000000000010",
         "X-Timezone": "America/Los_Angeles",
     }
-    files = {"file": ("original-receipt.png", PNG_BYTES, "image/png")}
+    context = {"schema_version": 1, "upload_sha256": hashlib.sha256(PNG_BYTES).hexdigest(),
+        "original_sha256": "c" * 64, "transforms": ["transcoded"], "times": [
+            {"origin": "exif_original", "value": "2025-12-31T23:59:00", "precision": "second"}]}
+    files = {"file": ("original-receipt.png", PNG_BYTES, "image/png",
+        {"X-Ticketbox-Image-Context": json.dumps(context)})}
     first = client.post("/api/app/upload-screenshot", headers=headers, files=files)
     assert first.status_code == 200, first.text
     receipt = first.json()
@@ -81,6 +102,13 @@ def test_android_upload_same_intent_returns_the_original_receipt_without_another
     assert first_rows == (before_rows[0] + 1, before_rows[1] + 1)
     assert first_files > before_files
     assert len(submissions) == 1
+
+    with SessionLocal() as db:
+        source = db.get(Expense, receipt["id"]).image_evidence
+        assert source["client"]["original_sha256"] == "c" * 64
+        assert source["client"]["times"][0]["value"] == "2025-12-31T23:59:00"
+        assert source["client"]["times"][0]["role"] == "generated"
+        assert source["automatic_transaction_anchor"] is False
     assert submissions[0][1]["timezone_name"] == "America/Los_Angeles"
     assert submissions[0][1]["expense_id"] == receipt["id"]
 
@@ -92,6 +120,9 @@ def test_android_upload_same_intent_returns_the_original_receipt_without_another
     assert _ledger_upload_row_counts("owner") == first_rows
     assert set(_stored_upload_files()) == first_files
     assert len(submissions) == 1
+
+    with SessionLocal() as db:
+        assert db.get(Expense, receipt["id"]).image_evidence == source
 
     # A separate intent may deliberately upload the same image; duplicate review still owns that decision.
     distinct = client.post("/api/app/upload-screenshot",
@@ -112,7 +143,7 @@ def test_android_upload_same_intent_returns_the_original_receipt_without_another
 
 
 @pytest.mark.real_db
-@pytest.mark.parametrize("changed", ["raw_metadata", "timezone", "filename", "content_type"])
+@pytest.mark.parametrize("changed", ["raw_metadata", "timezone", "filename", "content_type", "source_context"])
 def test_android_upload_key_rejects_changed_original_input_before_saving_again(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, *, identity, changed: str,
 ) -> None:
@@ -129,6 +160,7 @@ def test_android_upload_key_rejects_changed_original_input_before_saving_again(
     original_rows = _ledger_upload_row_counts("owner")
     original_files = _stored_upload_files()
     data, filename, media_type = PNG_BYTES, "original.png", "image/png"
+    part_headers = {}
     if changed == "raw_metadata":
         output = BytesIO()
         metadata = PngImagePlugin.PngInfo()
@@ -141,14 +173,18 @@ def test_android_upload_key_rejects_changed_original_input_before_saving_again(
         headers["X-Timezone"] = "Asia/Shanghai"
     elif changed == "filename":
         filename = "another.png"
-    else:
+    elif changed == "content_type":
         media_type = "application/octet-stream"
+    else:
+        part_headers["X-Ticketbox-Image-Context"] = json.dumps({"schema_version": 1,
+            "upload_sha256": hashlib.sha256(data).hexdigest(), "times": [
+                {"origin": "media_store_modified", "value": "2026-01-01T00:00:00Z"}]})
 
     def must_not_save(*_args, **_kwargs):
         raise AssertionError("A reused key must be rejected before persistent file creation")
 
     monkeypatch.setattr(_upload_request, "save_upload_bytes", must_not_save)
-    replay = client.post("/api/app/upload-screenshot", headers=headers, files={"file": (filename, data, media_type)})
+    replay = client.post("/api/app/upload-screenshot", headers=headers, files={"file": (filename, data, media_type, part_headers)})
     assert replay.status_code == 422
     assert replay.json()["error"] == "idempotency_key_reused"
     assert _ledger_upload_row_counts("owner") == original_rows

@@ -18,6 +18,7 @@ from starlette.formparsers import MultiPartException
 from app.config import get_settings
 from app.errors import AppError
 from app.schemas import UploadResponse
+from app.schemas.image_source import ImageSourceContext
 from app.services.attachment_publication_lock import retain_publication
 from app.services.expense_service import stage_pending_expense
 from app.services.file_service import (
@@ -32,6 +33,7 @@ from app.services.idempotency import (
     fingerprint_request,
     mark_idempotency_succeeded,
 )
+from app.services.image_source_evidence import IMAGE_CONTEXT_HEADER, read_image_context
 from app.services.pending_enrichment_task_service import (
     prepare_pending_expense_enrichment,
     resume_pending_expense_enrichment,
@@ -53,6 +55,7 @@ class UploadContent:
     data: bytes
     filename: str | None
     content_type: str | None
+    source_context: ImageSourceContext | None = None
 
 
 @dataclass(frozen=True)
@@ -155,7 +158,8 @@ async def read_request_upload(
                     read_started_at = perf_counter()
                     data = await read_upload_bytes(upload_file, max_size_bytes=limit)
                     timing_ms["body_read_ms"] = elapsed_ms(read_started_at)
-                    return UploadContent(data, upload_file.filename, upload_file.content_type), timing_ms
+                    context = read_image_context(upload_file.headers.get(IMAGE_CONTEXT_HEADER), data)
+                    return UploadContent(data, upload_file.filename, upload_file.content_type, context), timing_ms
         except StarletteHTTPException as exc:
             detail = str(exc.detail).lower()
             if "maximum size" in detail or "too large" in detail:
@@ -172,7 +176,8 @@ async def read_request_upload(
     if not body:
         raise AppError("invalid_request", status_code=422)
 
-    return UploadContent(body, request.headers.get("X-Upload-Filename"), content_type), timing_ms
+    context = read_image_context(request.headers.get(IMAGE_CONTEXT_HEADER), body)
+    return UploadContent(body, request.headers.get("X-Upload-Filename"), content_type, context), timing_ms
 
 
 def _save_content(
@@ -184,7 +189,8 @@ def _save_content(
 ) -> SavedUpload:
     started_at = perf_counter()
     saved = save_upload_bytes(content.data, tenant_id=tenant_id, filename=content.filename,
-        content_type=content.content_type, max_size_bytes=max_size_bytes, before_publish=before_publish)
+        content_type=content.content_type, max_size_bytes=max_size_bytes, before_publish=before_publish,
+        source_context=content.source_context)
     timing_ms["file_save_ms"] = elapsed_ms(started_at)
     return saved
 
@@ -211,6 +217,7 @@ def _upload_fingerprint(content: UploadContent, intent: _UploadIntent) -> str:
             "timezone_name": intent.timezone_name,
             "account_id": intent.account_id,
             "device_id": intent.device_id,
+            **({"source_context": content.source_context.model_dump(mode="json")} if content.source_context else {}),
         },
     )
 

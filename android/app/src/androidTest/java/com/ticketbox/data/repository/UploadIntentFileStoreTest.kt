@@ -2,9 +2,13 @@ package com.ticketbox.data.repository
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
 import androidx.test.platform.app.InstrumentationRegistry
 import com.squareup.moshi.Moshi
 import com.ticketbox.upload.PreparedUploadImage
+import com.ticketbox.upload.prepareScreenshotUpload
 import java.io.Closeable
 import java.io.File
 import java.io.IOException
@@ -25,6 +29,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONObject
+import okio.ByteString.Companion.toByteString
 
 /** Real Android files and AtomicFile; only the available-space number has a test seam. */
 class UploadIntentFileStoreTest {
@@ -34,7 +40,7 @@ class UploadIntentFileStoreTest {
             val store = UploadIntentFileStore(fixture.context)
             val firstKey = UUID.randomUUID().toString()
             val secondKey = UUID.randomUUID().toString()
-            val prepared = fixture.image()
+            val prepared = fixture.image().copy(sourceContext = """{"schema_version":1,"times":[]}""")
             val events = mutableListOf<String>()
             val sources = listOf(
                 UploadIntentFileSource(firstKey) { events += "first"; prepared },
@@ -54,7 +60,7 @@ class UploadIntentFileStoreTest {
             val first = requireNotNull(descriptors[0])
             val second = requireNotNull(descriptors[2])
             assertEquals(listOf(firstKey, null, secondKey), descriptors.map { it?.key })
-            assertEquals(UploadIntentFileMetadata("original.png", "image/png", 17L, 123L), first.metadata)
+            assertEquals(UploadIntentFileMetadata("original.png", "image/png", 17L, 123L, prepared.sourceContext), first.metadata)
             assertEquals(first.sha256, second.sha256)
             val adapter = Moshi.Builder().build().adapter(UploadIntentFileDescriptor::class.java).serializeNulls()
             assertEquals(first, adapter.fromJson(adapter.toJson(first)))
@@ -65,6 +71,38 @@ class UploadIntentFileStoreTest {
             assertEquals(first, reused)
             assertArrayEquals(prepared.bytes, reopened.read(first))
             assertEquals(listOf("first", "unreadable", "second", "commit"), events)
+        }
+    }
+
+    @Test
+    fun preparationPreservesAllowedOriginalContextBeforeRotationAndCompression() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File.createTempFile("source-context-", ".jpg", context.cacheDir)
+        try {
+            val bitmap = Bitmap.createBitmap(2000, 1000, Bitmap.Config.ARGB_8888)
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+            bitmap.recycle()
+            ExifInterface(file).apply {
+                setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, "2025:12:31 23:59:00")
+                setAttribute(ExifInterface.TAG_OFFSET_TIME_ORIGINAL, "+08:00")
+                setAttribute(ExifInterface.TAG_ORIENTATION, "6")
+                setAttribute(ExifInterface.TAG_MAKE, "Private camera")
+                saveAttributes()
+            }
+            val originalHash = file.readBytes().toByteString().sha256().hex()
+            val prepared = requireNotNull(context.prepareScreenshotUpload(Uri.fromFile(file)))
+            val source = JSONObject(requireNotNull(prepared.sourceContext))
+            assertEquals(originalHash, source.getString("original_sha256"))
+            assertEquals(prepared.bytes.toByteString().sha256().hex(), source.getString("upload_sha256"))
+            assertEquals(2000, source.getInt("original_width"))
+            assertEquals(1000, source.getInt("original_height"))
+            assertEquals("2025-12-31T23:59+08:00", source.getJSONArray("times").getJSONObject(0).getString("value"))
+            assertEquals(setOf("transcoded", "resized", "orientation_applied"),
+                source.getJSONArray("transforms").let { values -> (0 until values.length()).map { values.getString(it) }.toSet() })
+            assertFalse(prepared.sourceContext!!.contains("Private camera"))
+            assertNull(ExifInterface(prepared.bytes.inputStream()).getAttribute(ExifInterface.TAG_MAKE))
+        } finally {
+            check(file.delete())
         }
     }
 

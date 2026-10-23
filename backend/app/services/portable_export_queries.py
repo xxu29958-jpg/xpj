@@ -33,7 +33,7 @@ from app.tenants import AuthContext
 _LEDGER_RECORDS = (
     (m.Expense, "id tenant_id public_id amount_cents home_currency_code original_currency_code "
         "original_amount_minor exchange_rate_to_cny exchange_rate_date exchange_rate_source fx_status "
-        "merchant category note source image_path thumbnail_path image_hash image_perceptual_hash raw_text "
+        "merchant category note source image_path thumbnail_path image_hash image_perceptual_hash image_evidence raw_text "
         "confidence ocr_draft_fields draft_idempotency_key draft_request_fingerprint duplicate_status "
         "duplicate_of_id duplicate_reason tags value_score regret_score status expense_time accounting_date "
         "calendar_revision user_local_date time_precision source_timezone source_utc_offset_seconds "

@@ -111,6 +111,7 @@ def attach_original(db: Session, *, expense_id: int, auth: AuthContext,
         saved = save_upload_bytes(data, tenant_id=auth.tenant_id, filename=filename, content_type=content_type,
             before_publish=lambda reference: retain_publication(db, reference))
         expense.image_path, expense.image_hash = saved.relative_path, saved.image_hash
+        expense.image_evidence = saved.image_evidence
         expense.image_perceptual_hash = saved.image_perceptual_hash
         expense.image_replenished_at = now_utc()
         receipt = _record_original_command(db, claim, auth=auth, operation="attach_original",

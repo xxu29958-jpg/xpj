@@ -147,6 +147,7 @@ class Expense(Base):
     image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     thumbnail_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     image_hash: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    image_evidence: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     image_perceptual_hash: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
     raw_text: Mapped[str | None] = mapped_column(Text, default="", nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)

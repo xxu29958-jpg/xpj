@@ -94,10 +94,14 @@ def test_all_projections_execute_as_mapping_reads_and_identity_refs_stay_authori
 def test_ocr_export_preserves_image_evidence_only_in_the_selected_ledger(records):
     evidence = '{"schema":"text-blocks/v1","blocks":[{"text":"visible shop"}],"identity":{"recipe_sha256":"pinned"}}'
     for id_, ledger in ((1, "selected"), (2, "other")):
+        _seed(records, m.Expense, id=id_, public_id=f"expense-{id_}", tenant_id=ledger,
+              image_evidence='{"schema":"image-source/v1","client":null}')
         _seed(records, m.OcrFact, id=id_, public_id=f"fact-{id_}", tenant_id=ledger,
               expense_id=id_, ocr_provider="rapidocr", evidence_json=evidence)
     rows = _rows(records, "ocr_facts")
     assert len(rows) == 1 and rows[0]["evidence_json"] == evidence
+    originals = _rows(records, "expenses")
+    assert len(originals) == 1 and originals[0]["image_evidence"]["schema"] == "image-source/v1"
 
 
 def test_budget_history_export_keeps_saved_snapshots_and_excludes_another_ledger(records):

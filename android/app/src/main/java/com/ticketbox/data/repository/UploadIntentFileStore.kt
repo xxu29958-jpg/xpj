@@ -102,6 +102,7 @@ class UploadIntentFileStore internal constructor(
             sha256 = prepared.bytes.toByteString().sha256().hex(),
             metadata = UploadIntentFileMetadata(
                 prepared.fileName, prepared.contentType, prepared.preparationDurationMs, prepared.sourceSizeBytes,
+                prepared.sourceContext,
             ),
         )
         writeOriginal(directory, descriptor, prepared)

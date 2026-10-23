@@ -32,7 +32,11 @@ class UploadScreenshotDispatcher(
             return DispatchResult.Failure("upload_original_unavailable", blocksFollowing = false)
         }
         val body = bytes.toRequestBody(file.metadata.contentType?.toMediaTypeOrNull())
-        val part = MultipartBody.Part.createFormData("file", file.metadata.fileName, body)
+        val original = MultipartBody.Part.createFormData("file", file.metadata.fileName, body)
+        val part = file.metadata.sourceContext?.let { context ->
+            MultipartBody.Part.create(requireNotNull(original.headers).newBuilder()
+                .add("X-Ticketbox-Image-Context", context).build(), body)
+        } ?: original
         return sendOriginal(row, payload, part)
     }
 

@@ -19,6 +19,8 @@ data class PreparedUploadImage(
     val bytes: ByteArray,
     val sourceSizeBytes: Long,
     val preparationDurationMs: Long = 0L,
+    val sourceContext: String? = null,
+    val sourceTransforms: List<String> = emptyList(),
 )
 
 private const val MAX_UPLOAD_LONG_SIDE = 1600
@@ -28,8 +30,9 @@ internal const val MAX_ORIGINAL_FALLBACK_BYTES = 10L * 1024L * 1024L
 
 fun Context.prepareScreenshotUpload(uri: Uri): PreparedUploadImage? {
     val startedAt = SystemClock.elapsedRealtime()
+    val context = readImageSourceContext(uri)
     return prepareScreenshotUploadImage(uri)?.let { prepared ->
-        prepared.copy(preparationDurationMs = SystemClock.elapsedRealtime() - startedAt)
+        prepared.withSourceContext(context).copy(preparationDurationMs = SystemClock.elapsedRealtime() - startedAt)
     }
 }
 
@@ -56,6 +59,7 @@ private fun Context.prepareScreenshotUploadImage(uri: Uri): PreparedUploadImage?
     }
 
     val output = ByteArrayOutputStream()
+    val resized = max(normalized.width, normalized.height) != longSide
     normalized.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)
     normalized.recycle()
     val bytes = output.toByteArray()
@@ -68,6 +72,7 @@ private fun Context.prepareScreenshotUploadImage(uri: Uri): PreparedUploadImage?
         contentType = "image/jpeg",
         bytes = bytes,
         sourceSizeBytes = metadata.sizeBytes,
+        sourceTransforms = listOf("transcoded") + if (resized) listOf("resized") else emptyList(),
     )
 }
 
