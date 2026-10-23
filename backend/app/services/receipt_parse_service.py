@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
@@ -27,6 +29,7 @@ from app.services.receipt_parse_category import (
 from app.services.receipt_parse_common import (
     ParsedReceipt,
     ParsedReceiptItem,
+    ReceiptFieldDecision,
     _AmountCandidate,
     _build_receipt_context,
     _CategoryCandidate,
@@ -36,6 +39,7 @@ from app.services.receipt_parse_common import (
     _score_ratio,
     _TimeCandidate,
 )
+from app.services.receipt_parse_events import transaction_event_spans
 from app.services.receipt_parse_merchant import (
     _calibrate_merchant_candidates,
     _merchant_candidates,
@@ -377,6 +381,46 @@ def parse_receipt_text(
     evidence_blocks: Sequence[dict] | None = None,
     reference_time: datetime | None = None,
 ) -> ParsedReceipt:
+    options = {"timezone_name": timezone_name, "currency_code": currency_code,
+        "minor_unit_exponent": minor_unit_exponent, "reference_time": reference_time}
+    events = transaction_event_spans(raw_text)
+    if events:
+        return _parse_multiple_events(raw_text, evidence_blocks, events, options)
+    return _parse_single_receipt(raw_text, evidence_blocks=evidence_blocks, **options)
+
+
+def _parse_multiple_events(raw_text: str, evidence_blocks: Sequence[dict] | None,
+        spans: tuple[tuple[int, int], ...], options: dict) -> ParsedReceipt:
+    blocks = evidence_block_spans(raw_text, evidence_blocks)
+    candidates, events = [], []
+    for start, end in spans:
+        card = raw_text[start:end].rstrip("\r\n")
+        end = start + len(card)
+        indices = [index for index, left, right in blocks if start <= left and right <= end]
+        event_blocks = [evidence_blocks[index] for index in indices] if evidence_blocks else None
+        event_id = hashlib.sha256(f"{start}:{end}:{card}".encode()).hexdigest()
+        parsed = _parse_single_receipt(card, evidence_blocks=event_blocks, **options)
+        for candidate in parsed.candidates:
+            candidates.append(replace(candidate,
+                id=hashlib.sha256(f"{event_id}:{candidate.id}".encode()).hexdigest(), event_id=event_id,
+                raw_spans=tuple((start + left, start + right) for left, right in candidate.raw_spans),
+                block_indices=tuple(indices[index] for index in candidate.block_indices)))
+        events.append({"id": event_id, "raw_spans": [[start, end]], "block_indices": indices,
+            "candidate_ids": [candidate.id for candidate in candidates if candidate.event_id == event_id]})
+    return ParsedReceipt(candidates=tuple(candidates), events=tuple(events), decisions=tuple(
+        ReceiptFieldDecision(field, "ambiguous", None, "multiple_transaction_events")
+        for field in ("amount_cents", "merchant", "expense_time", "category")))
+
+
+def _parse_single_receipt(
+    raw_text: str,
+    timezone_name: str | None = None,
+    *,
+    currency_code: str | None = None,
+    minor_unit_exponent: int | None = None,
+    evidence_blocks: Sequence[dict] | None = None,
+    reference_time: datetime | None = None,
+) -> ParsedReceipt:
     text = _normalize_text(raw_text)
     if not text:
         return ParsedReceipt()
@@ -403,7 +447,7 @@ def parse_receipt_text(
     )
     merchant_candidate, merchants, merchant_decision = resolve_field(
         raw_text, "merchant",
-        _calibrate_merchant_candidates(_merchant_candidates(text), context),
+        _calibrate_merchant_candidates(_merchant_candidates(text, amount_blocks), context),
         block_spans=blocks,
     )
     time_candidate, times, time_decision = resolve_field(

@@ -25,7 +25,7 @@ from app.services.receipt_parse_rules import (
     iter_labeled_merchant_matches,
 )
 
-FIELD_PARSE_VERSION = "receipt-fields-v3"
+FIELD_PARSE_VERSION = "receipt-fields-v4"
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,7 @@ class ReceiptFieldCandidate:
     inferred_components: tuple[str, ...] = ()
     reference_time: str | None = None
     review_reason: str | None = None
+    event_id: str | None = None
     rule_version: str = FIELD_PARSE_VERSION
 
 
@@ -85,6 +86,7 @@ class ParsedReceipt:
     items: tuple[ParsedReceiptItem, ...] = ()
     candidates: tuple[ReceiptFieldCandidate, ...] = ()
     decisions: tuple[ReceiptFieldDecision, ...] = ()
+    events: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -157,6 +159,7 @@ class _AmountCandidate:
     normalized_span: tuple[int, int] | None = None
     role: str = "unknown"
     review_reason: str | None = None
+    label_span: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -167,6 +170,9 @@ class _MerchantCandidate:
     source: str
     evidence: tuple[str, ...] = ()
     dimensions: _ScoreDimensions | None = None
+    normalized_span: tuple[int, int] | None = None
+    label_span: tuple[int, int] | None = None
+    role: str = "unknown"
 
 
 @dataclass(frozen=True)

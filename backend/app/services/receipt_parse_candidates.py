@@ -15,6 +15,7 @@ from app.services.receipt_parse_common import (
     ReceiptFieldDecision,
     _AmountCandidate,
     _CandidateT,
+    _MerchantCandidate,
     _TimeCandidate,
 )
 from app.services.receipt_parse_time import NON_TRANSACTION_TIME_ROLES, compatible_times
@@ -58,7 +59,7 @@ def _candidate_spans(raw_text: str, field: str, candidate) -> tuple[tuple[int, i
         terms = [item.partition(":")[2] for item in candidate.evidence if item.startswith(("text:", "merchant:"))]
         return tuple(sorted({match.span() for term in terms for match in re.finditer(re.escape(term), raw_text, re.I)}))
     lines = raw_line_spans(raw_text)
-    if isinstance(candidate, (_TimeCandidate, _AmountCandidate)) and candidate.normalized_span is not None:
+    if isinstance(candidate, (_TimeCandidate, _AmountCandidate, _MerchantCandidate)) and candidate.normalized_span is not None:
         # The parser normalizes blank lines/CRLF, but published offsets always
         # address the immutable original text (including all original whitespace).
         start, end = candidate.normalized_span
@@ -94,6 +95,8 @@ def _public_candidate(raw_text: str, field: str, candidate: _CandidateT,
     )} if isinstance(candidate, _TimeCandidate) else {}
     if isinstance(candidate, _AmountCandidate):
         semantic_fields = {"role": candidate.role, "review_reason": candidate.review_reason}
+    if isinstance(candidate, _MerchantCandidate):
+        semantic_fields = {"role": candidate.role}
     identity = json.dumps([FIELD_PARSE_VERSION, field, value, candidate.source, spans,
         currency_code, minor_unit_exponent, semantic_fields], ensure_ascii=False, separators=(",", ":"))
     return ReceiptFieldCandidate(
@@ -116,6 +119,7 @@ def resolve_field(
 ) -> tuple[_CandidateT | None, tuple[ReceiptFieldCandidate, ...], ReceiptFieldDecision]:
     precision_order = {"second": 0, "minute": 1, "date_only": 2}
     ordered = sorted(candidates, key=lambda item: (
+        -int(field == "merchant" and getattr(item, "role", "") == "merchant"),
         -item.score, precision_order.get(getattr(item, "precision", ""), 0), item.line_index,
     ))
     public = tuple(_public_candidate(raw_text, field, item, block_spans, currency_code, minor_unit_exponent)
@@ -126,18 +130,25 @@ def resolve_field(
         selected, decision = _resolve_amount(ordered, public)
         return selected, public, decision
     if field == "expense_time":
-        top = [item for item in ordered if item.score == ordered[0].score]
-        if top[0].role in NON_TRANSACTION_TIME_ROLES:
-            return None, public, ReceiptFieldDecision(field, "needs_review", None, "non_transaction_time")
-        if any(not compatible_times(left, right) for index, left in enumerate(top) for right in top[index + 1:]):
-            return None, public, ReceiptFieldDecision(field, "ambiguous", None, "conflicting_transaction_times")
-        if top[0].review_reason:
-            return None, public, ReceiptFieldDecision(field, "needs_review", None, top[0].review_reason)
-        return top[0], public, ReceiptFieldDecision(field, "selected", public[0].id, "compatible_transaction_time")
-    top_values = {item.value for item in public if item.rank_score == public[0].rank_score}
+        selected, decision = _resolve_time(ordered, public)
+        return selected, public, decision
+    top_values = {item.value for item in public if item.rank_score == public[0].rank_score
+        and (field != "merchant" or item.role == public[0].role)}
     if len(top_values) != 1:
         return None, public, ReceiptFieldDecision(field, "ambiguous", None, "conflicting_top_values")
     return ordered[0], public, ReceiptFieldDecision(field, "selected", public[0].id, "unique_top_value")
+
+
+def _resolve_time(candidates: list[_CandidateT], public: tuple[ReceiptFieldCandidate, ...]
+        ) -> tuple[_CandidateT | None, ReceiptFieldDecision]:
+    top = [item for item in candidates if item.score == candidates[0].score]
+    if top[0].role in NON_TRANSACTION_TIME_ROLES:
+        return None, ReceiptFieldDecision("expense_time", "needs_review", None, "non_transaction_time")
+    if any(not compatible_times(left, right) for index, left in enumerate(top) for right in top[index + 1:]):
+        return None, ReceiptFieldDecision("expense_time", "ambiguous", None, "conflicting_transaction_times")
+    if top[0].review_reason:
+        return None, ReceiptFieldDecision("expense_time", "needs_review", None, top[0].review_reason)
+    return top[0], ReceiptFieldDecision("expense_time", "selected", public[0].id, "compatible_transaction_time")
 
 
 def _resolve_amount(candidates: list[_CandidateT], public: tuple[ReceiptFieldCandidate, ...]

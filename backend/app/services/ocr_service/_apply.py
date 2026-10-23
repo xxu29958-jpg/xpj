@@ -118,7 +118,7 @@ def _merge_result_with_explicit_parse(
         # A provider's guessed date cannot bypass deterministic abstention or
         # turn a print/capture/order timestamp into the transaction instant.
         expense_time=parsed.expense_time,
-        category=_safe_category(result.category) or _safe_category(parsed.category),
+        category=None if parsed.events else _safe_category(result.category) or _safe_category(parsed.category),
         evidence=result.evidence,
     )
 
@@ -475,6 +475,7 @@ def ocr_fact_snapshot(
             "reference_time": None,
             "candidates": [asdict(item) for item in parsed.candidates],
             "decisions": [asdict(item) for item in parsed.decisions],
+            "events": list(parsed.events),
         }},
     )
 
