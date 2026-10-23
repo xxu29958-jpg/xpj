@@ -65,6 +65,7 @@ class ExpenseEditScreenContractTest {
             "2026-10-21 09:20", "2026-10-21T09:20", "minute", "Asia/Shanghai", 28800, true,
             "fact", "image", "receipt-fields-v6", eventId = "second", eventSelected = true)
         val recorded = expense().copy(
+            accountingTime = com.ticketbox.domain.model.ExpenseAccountingTime("instant", calendarRevision = 1L),
             recognitionFields = listOf(amount, merchant),
             recognitionTime = com.ticketbox.domain.model.RecognitionTime("fact", "receipt-fields-v6", "ambiguous", listOf(time)),
         )
@@ -83,6 +84,7 @@ class ExpenseEditScreenContractTest {
             assertEquals(2800L, saved?.originalAmountMinor)
             assertEquals("青禾超市", saved?.merchant)
             assertEquals("2026-10-21", saved?.timeInput?.userLocalDate)
+            assertEquals("2026-10-21T01:20:00Z", saved?.expenseTime)
             assertEquals(listOf(amount.choice().copy(intent = "bookkeeping"), merchant.choice().copy(intent = "bookkeeping")),
                 saved?.toRequest(recorded)?.recognitionFieldChoices)
             assertEquals("bookkeeping", saved?.toRequest(recorded)?.recognitionTimeChoice?.intent)
