@@ -45,8 +45,10 @@ def record_duplicate_resolution(db: Session, *, decision: AlgorithmDecision | No
     if decision is None:
         return
     payload = json.loads(decision.output_payload)
-    current = db.get(Expense, decision.subject_id)
-    candidate = db.get(Expense, payload["candidate_id"])
+    current = db.scalar(select(Expense).where(Expense.tenant_id == decision.tenant_id,
+        Expense.id == decision.subject_id))
+    candidate = db.scalar(select(Expense).where(Expense.tenant_id == decision.tenant_id,
+        Expense.id == payload["candidate_id"]))
     db.flush()
     db.refresh(current)
     db.refresh(candidate)

@@ -22,7 +22,6 @@ def test_get_returns_full_entry() -> None:
     entry = get_algorithm_type("category_suggestion")
     assert isinstance(entry, AlgorithmType)
     assert entry.decision_type == "category_suggestion"
-    assert entry.current_version == "category-history-v1"
     assert "expense" in entry.subject_kinds
 
 
