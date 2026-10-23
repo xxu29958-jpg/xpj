@@ -39,6 +39,7 @@ def _field_candidate(fact, item, events, version):
         label = "通知 · " + label
     return RecognitionFieldCandidate(field=field, id=item["id"], value=item["value"], role=role,
         label=events.get(item.get("event_id"), "") + label, event_id=item.get("event_id"),
+        event_selected=bool(item.get("event_selected")) and can_apply,
         original_text="\n".join(fact.raw_text[start:end] for start, end in item["raw_spans"]),
         explanation="取自原件中这一处；请核对属于本次交易。", can_apply=can_apply,
         currency_code=item.get("currency_code"), minor_unit_exponent=item.get("minor_unit_exponent"),

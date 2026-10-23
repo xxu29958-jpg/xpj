@@ -9,6 +9,20 @@ def parse(text, **kwargs):
     return parse_receipt_text(text, currency_code="CNY", minor_unit_exponent=2, **kwargs)
 
 
+@pytest.mark.parametrize("raw,merchant", [
+    ("11:45 支.…\n回首页\n支付成功\n¥23.00\n青禾通信\n付款方式\n储蓄卡", "青禾通信"),
+    ("21:36.…\n<账单详情\n全部账单\n联系商家\n晨光打车\n-12.09\n自动扣款成功", "晨光打车"),
+    ("商家：11:45 书店\n实付金额：23.00", "11:45 书店"),
+    ("支付成功\n¥23.00\n青禾通信\n付款方式\n储蓄卡\n支付有礼\n领取打车红包", "青禾通信"),
+])
+def test_status_clock_and_contact_action_do_not_replace_the_transaction_merchant(raw, merchant):
+    result = parse(raw)
+    assert result.merchant == merchant
+    chosen = next(item.selected_id for item in result.decisions if item.field == "merchant")
+    candidate = next(item for item in result.candidates if item.id == chosen)
+    assert merchant in "".join(raw[start:end] for start, end in candidate.raw_spans)
+
+
 def test_conflicting_paid_amounts_abstain_but_repeated_same_value_keeps_evidence():
     conflict = parse("商家：便利店\n实付金额：20.00\n实付金额：30.00")
     assert conflict.amount_cents is None

@@ -1,0 +1,6 @@
+<resources>
+    <string name="recognition_event_use">填入%1$s的%2$s</string>
+    <string name="recognition_event_amount">金额</string>
+    <string name="recognition_event_merchant">商户</string>
+    <string name="recognition_event_time">时间</string>
+</resources>

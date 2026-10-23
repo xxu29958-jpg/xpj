@@ -75,6 +75,11 @@ internal fun RecognitionTimeCandidate.withYear(year: String): RecognitionTimeCan
     }.getOrNull()
 }
 
+internal fun ExpenseTimeForm.withEventTime(candidate: RecognitionTimeCandidate): ExpenseTimeForm {
+    val chosen = withRecognizedTime(candidate)
+    return chosen.copy(recognitionChoice = chosen.recognitionChoice?.copy(intent = "bookkeeping"))
+}
+
 internal fun ExpenseTimeForm.withRecognizedTime(candidate: RecognitionTimeCandidate): ExpenseTimeForm = copy(
     precision = if (candidate.precision == "date_only") "date_only" else "instant",
     date = candidate.localValue.substringBefore('T'),

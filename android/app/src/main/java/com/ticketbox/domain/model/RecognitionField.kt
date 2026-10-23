@@ -31,6 +31,7 @@ data class RecognitionFieldCandidate(
     @param:Json(name = "event_id") val eventId: String? = null,
     val source: String = "image",
     @param:Json(name = "selection_intent") val selectionIntent: String = "candidate",
+    @param:Json(name = "event_selected") val eventSelected: Boolean = false,
 ) {
     fun choice() = RecognitionFieldChoice(field, id, evidencePublicId, parserVersion, source, selectionIntent)
 }

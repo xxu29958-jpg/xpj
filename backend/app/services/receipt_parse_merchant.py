@@ -63,6 +63,8 @@ def _nearby_success_title_candidates(
     candidates: list[_MerchantCandidate] = []
     for candidate_index in range(success_index - 1, max(-1, success_index - 6), -1):
         cleaned = _clean_merchant(lines[candidate_index])
+        if candidate_index == 0 and re.match(r"^\d{1,2}[:：]\d{2}(?:\s|[.…])", cleaned or ""):
+            continue  # A status-bar clock and icons are not the transaction title.
         distance = success_index - candidate_index
         candidate = _score_merchant_candidate(
             text=text,
@@ -73,7 +75,7 @@ def _nearby_success_title_candidates(
             require_no_digits=False,
         )
         if candidate:
-            candidates.append(candidate)
+            candidates.append(_success_merchant_evidence(lines, candidate, success_index))
     return candidates
 
 
@@ -82,6 +84,8 @@ def _nearby_success_body_candidates(
 ) -> list[_MerchantCandidate]:
     candidates: list[_MerchantCandidate] = []
     for candidate_index in range(success_index + 1, min(len(lines), success_index + 10)):
+        if lines[candidate_index].strip() in {"付款方式", "支付方式"}:
+            break  # The following account belongs to payment details, not the merchant.
         cleaned = _clean_merchant(lines[candidate_index])
         distance = candidate_index - success_index
         candidate = _score_merchant_candidate(
@@ -93,8 +97,20 @@ def _nearby_success_body_candidates(
             require_no_digits=True,
         )
         if candidate:
-            candidates.append(candidate)
+            candidates.append(_success_merchant_evidence(lines, candidate, success_index))
     return candidates
+
+
+def _success_merchant_evidence(lines: list[str], candidate: _MerchantCandidate,
+        success_index: int) -> _MerchantCandidate:
+    """Keep the completion status behind a title/body merchant hypothesis."""
+    position = lines[candidate.line_index].find(candidate.value)
+    if position < 0:
+        return candidate
+    start = sum(len(line) + 1 for line in lines[:candidate.line_index]) + position
+    status = sum(len(line) + 1 for line in lines[:success_index])
+    return replace(candidate, role="merchant", normalized_span=(start, start + len(candidate.value)),
+        label_span=(status, status + len(lines[success_index])))
 
 
 def _payment_method_merchant_candidates(text: str, lines: list[str]) -> list[_MerchantCandidate]:
@@ -455,7 +471,7 @@ def _merchant_consistency_score(text: str, value: str, source: str) -> int:
 def _is_title_merchant_candidate(value: str | None) -> bool:
     if not value:
         return False
-    if value in MERCHANT_IGNORED_LINES:
+    if value.strip(" <>〈〉←→") in MERCHANT_IGNORED_LINES:
         return False
     if is_primary_amount_line(value):
         return False

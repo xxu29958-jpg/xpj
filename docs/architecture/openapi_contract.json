@@ -26031,6 +26031,11 @@
             ],
             "title": "Event Id"
           },
+          "event_selected": {
+            "default": false,
+            "title": "Event Selected",
+            "type": "boolean"
+          },
           "evidence_public_id": {
             "title": "Evidence Public Id",
             "type": "string"
@@ -26193,6 +26198,22 @@
             },
             "title": "Components",
             "type": "object"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "event_selected": {
+            "default": false,
+            "title": "Event Selected",
+            "type": "boolean"
           },
           "evidence_public_id": {
             "anyOf": [

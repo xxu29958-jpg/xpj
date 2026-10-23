@@ -33,8 +33,10 @@ data class RecognitionTimeCandidateDto(
     val role: String = "unknown",
     val components: Map<String, Int> = emptyMap(),
     @param:Json(name = "requires_year") val requiresYear: Boolean = false,
+    @param:Json(name = "event_id") val eventId: String? = null,
+    @param:Json(name = "event_selected") val eventSelected: Boolean = false,
 ) {
     fun toDomain() = RecognitionTimeCandidate(id, label, explanation, originalText, localValue,
         precision, sourceTimezone, sourceUtcOffsetSeconds, canApply, evidencePublicId, source, parserVersion, role,
-        components, requiresYear)
+        components, requiresYear, eventId, eventSelected)
 }

@@ -75,6 +75,9 @@
   </div>
   {% endif %}
 
+  {% if e.status == 'pending' and recognition_fields is defined and recognition_fields %}
+  <div class="product-field" data-recognized-events></div>
+  {% endif %}
   {% if core_fields_compact|default(false) %}
   {% if e.status == 'pending' and recognition_notes | default([]) %}
   <div class="product-feedback" role="note" data-recognition-amount-notes>

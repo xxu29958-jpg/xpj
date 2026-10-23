@@ -52,6 +52,60 @@ from tests.web_expense_fact_test_support import confirmation_web as confirmation
 first_original_web = original_tests.first_original_web
 
 
+@pytest.mark.real_db
+def test_browser_event_choice_preserves_one_transaction_and_replays_without_training_defaults(
+        review_browser, confirmation_store, monkeypatch, tmp_path):
+    from app.models import LedgerLearningEvent
+    from app.routes import web_expense_edit
+    from tests.test_recognition_event_drafts import seed_event_material
+
+    client, _ = review_browser
+    with confirmation_store() as db:
+        resolve_write_capability(db)
+        actor = confirmation_actor(db)
+        row = db.get(Expense, 42)
+        row.original_currency_code = "CNY"
+        row.original_amount_minor = row.amount_cents = 1500
+        row.image_hash = str(uuid4())
+        seed_event_material(db, row)
+        db.commit()
+    monkeypatch.setattr(web_expense_edit, "resolve_web_actor", lambda *args: (actor.account_id, actor.device_id))
+    client.app.state.expense_review_probe = "event-draft-probe.js"
+
+    @client.app.get("/event-draft-probe.js")
+    def event_probe():
+        return FileResponse(Path(__file__).parent / "fixtures/expense_event_draft_probe.js", media_type="text/javascript")
+
+    cdp = browser_runtime._edge_cdp()
+    evaluate = cdp._evaluate_script
+
+    def capture(page, expression):
+        value = evaluate(page, expression)
+        preview = page.request("Runtime.evaluate", {"expression": "window.__eventDraftPreviewReady && !window.__eventDraftPreviewCaptured", "returnByValue": True})
+        if preview.get("result", {}).get("value"):
+            page.request("Runtime.evaluate", {"expression": """(() => {
+                const section = document.querySelector('[data-recognized-fields]');
+                if (section) { section.open = true; section.scrollIntoView({block:'start'}); }
+            })()"""})
+            bounds = page.request("Page.getLayoutMetrics")["cssContentSize"]
+            (tmp_path / "event-draft.png").write_bytes(base64.b64decode(page.request("Page.captureScreenshot",
+                {"format": "png", "captureBeyondViewport": True, "clip": {**bounds, "scale": 1}})["data"]))
+            page.request("Runtime.evaluate", {"expression": "window.__eventDraftPreviewCaptured = true"})
+        return value
+
+    monkeypatch.setattr(cdp, "_evaluate_script", capture)
+    result = _run_review_page(client, tmp_path, "/web/expenses/42/edit?ledger_id=owner&return_to=pending")
+    assert not result.get("error") and result["completed"], result
+    assert len(result["requests"]) == 2 and result["requests"][0] == result["requests"][1]
+    with confirmation_store() as db:
+        row = db.get(Expense, 42)
+        assert (row.merchant, row.original_amount_minor, row.status) == ("青禾超市", 2800, "pending")
+        events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == 42,
+            LedgerLearningEvent.signal_type.in_(["recognition_field_choice", "recognition_time_choice"]))))
+        assert len(events) == 3
+        assert all(not json.loads(event.after_payload)["_learning_qualified"] for event in events)
+
+
 @pytest.fixture
 def slow_confirmation_script(monkeypatch):
     browser_runtime._discover_database_browser()

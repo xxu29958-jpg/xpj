@@ -389,7 +389,7 @@ SUCCESS_PAGE_SKIP_LINES = {
     "完成",
     "回首页",
 }
-SUCCESS_PAGE_AD_KEYWORDS = ("评价", "红包", "扫街榜", "限时", "打车", "高德", "领取", "优惠", "奖励")
+SUCCESS_PAGE_AD_KEYWORDS = ("评价", "红包", "扫街榜", "限时", "领取", "优惠", "奖励")
 
 MERCHANT_KEYWORDS = (
     "中国建设银行",
@@ -443,6 +443,7 @@ MERCHANT_IGNORED_LINES = {
     "查看账单详情",
     "查看详情",
     "返回商家",
+    "联系商家",
     "商家名片",
     "我的账单",
     "支付服务",
