@@ -43,8 +43,12 @@ class OriginalAttachmentDispatcher(private val apiProvider: (OutboxRow) -> ApiSe
                 OriginalVerificationRequestDto(payload.expectedRowVersion, requireNotNull(payload.sha256)), key)
             "attach_original", "replenish_original" -> {
                 val file = requireNotNull(payload.file)
-                val part = MultipartBody.Part.createFormData("file", file.metadata.fileName,
-                    readFile(file).toRequestBody(file.metadata.contentType?.toMediaTypeOrNull()))
+                val body = readFile(file).toRequestBody(file.metadata.contentType?.toMediaTypeOrNull())
+                val original = MultipartBody.Part.createFormData("file", file.metadata.fileName, body)
+                val part = file.metadata.sourceContext?.let { context ->
+                    MultipartBody.Part.create(requireNotNull(original.headers).newBuilder()
+                        .add("X-Ticketbox-Image-Context", context).build(), body)
+                } ?: original
                 if (payload.operation == "attach_original") api.attachOriginal(payload.expenseId, part, payload.expectedRowVersion, key)
                 else api.replenishOriginal(payload.expenseId, part, payload.expectedRowVersion, requireNotNull(payload.sha256), key)
             }

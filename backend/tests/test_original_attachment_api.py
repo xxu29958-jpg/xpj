@@ -26,6 +26,7 @@ pytestmark = pytest.mark.real_db
 
 def test_manual_bill_accepts_first_original_without_another_fact_and_replays_its_receipt(client, identity, monkeypatch):
     import hashlib
+    import json
 
     created = client.post("/api/expenses/manual", headers=identity.app_headers, json={
         "client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 1234,
@@ -42,7 +43,11 @@ def test_manual_bill_accepts_first_original_without_another_fact_and_replays_its
     assert health["state"] == "none"
     headers = {**identity.app_headers, "Idempotency-Key": "first-original"}
     query = {"expected_row_version": health["row_version"]}
-    files = {"file": ("receipt.png", PNG_BYTES, "image/png")}
+    context = {"schema_version": 1, "upload_sha256": hashlib.sha256(PNG_BYTES).hexdigest(),
+        "original_sha256": "c" * 64, "original_width": 2000, "original_height": 1000,
+        "transforms": ["transcoded", "resized"], "times": [
+            {"origin": "exif_original", "value": "2025-12-31T23:59:00+08:00", "precision": "second"}]}
+    files = {"file": ("receipt.png", PNG_BYTES, "image/png", {"X-Ticketbox-Image-Context": json.dumps(context)})}
     accepted = client.post(f"{path}/attach", headers=headers, params=query, files=files)
     assert accepted.status_code == 200, accepted.text
     receipt = accepted.json()
@@ -52,6 +57,14 @@ def test_manual_bill_accepts_first_original_without_another_fact_and_replays_its
     assert hashlib.sha256(original.content).hexdigest() == receipt["sha256"]
     assert _financial_snapshot(expense_id) == before
     assert client.post(f"{path}/attach", headers=headers, params=query, files=files).json() == receipt
+    with SessionLocal() as db:
+        evidence = db.get(Expense, expense_id).image_evidence
+        assert evidence["client"]["original_sha256"] == context["original_sha256"]
+        assert evidence["client"]["times"][0]["value"] == "2025-12-31T23:59:00+08:00"
+    changed = {**context, "original_sha256": "d" * 64}
+    refused_context = client.post(f"{path}/attach", headers=headers, params=query,
+        files={"file": ("receipt.png", PNG_BYTES, "image/png", {"X-Ticketbox-Image-Context": json.dumps(changed)})})
+    assert refused_context.status_code == 422 and refused_context.json()["error"] == "idempotency_key_reused"
     fresh = client.get(path, headers=identity.app_headers).json()
     assert fresh["state"] == "verified" and fresh["row_version"] == health["row_version"] + 1
     refused = client.post(f"{path}/attach", headers={**headers, "Idempotency-Key": "another-first-original"},

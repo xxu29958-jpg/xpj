@@ -70,6 +70,7 @@ class OriginalAttachmentDispatcherTest {
                 assertEquals(8L, id)
                 assertEquals(4L, expectedRowVersion)
                 assertEquals("admitted original", Buffer().also { file.body.writeTo(it) }.readUtf8())
+                assertEquals(payload.file!!.metadata.sourceContext, file.headers?.get("X-Ticketbox-Image-Context"))
                 sends += idempotencyKey
                 if (sends.size == 1) throw IOException("accepted response lost")
                 return receipt().copy(operation = operation)
@@ -108,7 +109,8 @@ class OriginalAttachmentDispatcherTest {
         val binding = testOutboxBinding()
         val bytes = "admitted original".encodeToByteArray()
         val file = UploadIntentFileDescriptor("dddddddd-dddd-4ddd-8ddd-dddddddddddd", bytes.size.toLong(),
-            bytes.toByteString().sha256().hex(), UploadIntentFileMetadata("original.png", "image/png", 0, bytes.size.toLong()))
+            bytes.toByteString().sha256().hex(), UploadIntentFileMetadata("original.png", "image/png", 0, bytes.size.toLong(),
+                """{"schema_version":1,"upload_sha256":"${bytes.toByteString().sha256().hex()}","times":[]}"""))
         return OriginalAttachmentPayload(operation = "replenish_original", expenseId = 8, publicId = "expense-8",
             expectedRowVersion = 4, origin = LogicalSessionBinding(binding.serverUrl, binding.ledgerId,
                 binding.ownerStorageKey, "session", "binding"), sha256 = file.sha256, file = file)

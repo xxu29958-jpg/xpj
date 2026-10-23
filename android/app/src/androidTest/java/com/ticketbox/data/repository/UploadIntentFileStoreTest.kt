@@ -2,13 +2,24 @@ package com.ticketbox.data.repository
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.ContentProvider
+import android.content.ContentResolver
+import android.content.ContentValues
+import android.content.pm.ProviderInfo
+import android.database.MatrixCursor
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import androidx.exifinterface.media.ExifInterface
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.filters.SdkSuppress
 import com.squareup.moshi.Moshi
 import com.ticketbox.upload.PreparedUploadImage
 import com.ticketbox.upload.prepareScreenshotUpload
+import com.ticketbox.upload.orientScreenshotBitmap
+import com.ticketbox.upload.withSourceContext
 import java.io.Closeable
 import java.io.File
 import java.io.IOException
@@ -103,6 +114,66 @@ class UploadIntentFileStoreTest {
             assertNull(ExifInterface(prepared.bytes.inputStream()).getAttribute(ExifInterface.TAG_MAKE))
         } finally {
             check(file.delete())
+        }
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = 29)
+    fun preparationUsesOneProviderRevisionEvenForALargeSource() {
+        val base = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = Files.createTempDirectory(base.cacheDir.toPath(), "source-snapshot-test-").toFile()
+        val first = File.createTempFile("source-first-", ".jpg", directory)
+        val second = File.createTempFile("source-second-", ".jpg", directory)
+        val cacheBefore = directory.listFiles()!!.map { it.name }.toSet()
+        try {
+            listOf(first to 2000, second to 600).forEach { (file, width) ->
+                val bitmap = Bitmap.createBitmap(width, 1000, Bitmap.Config.ARGB_8888)
+                file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+                bitmap.recycle()
+            }
+            ExifInterface(first).apply { setAttribute(ExifInterface.TAG_ORIENTATION, "6"); saveAttributes() }
+            // Valid JPEG pixels with trailing data still require a transcode, not the 10 MiB fallback.
+            first.appendBytes(ByteArray(10 * 1024 * 1024))
+            val provider = ChangingImageProvider(first, second)
+            provider.attachInfo(base, ProviderInfo().apply { authority = "image-revision-test"; exported = false })
+            val resolver = ContentResolver.wrap(provider)
+            val context = object : ContextWrapper(base) {
+                override fun getContentResolver() = resolver
+                override fun getCacheDir() = directory
+            }
+            val prepared = requireNotNull(context.prepareScreenshotUpload(Uri.parse("content://image-revision-test/photo")))
+            val evidence = JSONObject(requireNotNull(prepared.sourceContext))
+            assertEquals(1, provider.opens)
+            assertEquals(first.length(), prepared.sourceSizeBytes)
+            assertEquals(first.readBytes().toByteString().sha256().hex(), evidence.getString("original_sha256"))
+            assertEquals(2000, evidence.getInt("original_width"))
+            assertEquals(6, evidence.getInt("orientation"))
+            val image = BitmapFactory.decodeByteArray(prepared.bytes, 0, prepared.bytes.size)
+            assertEquals(800, image.width)
+            assertEquals(1600, image.height)
+            image.recycle()
+            assertEquals(cacheBefore, directory.listFiles()!!.map { it.name }.toSet())
+        } finally {
+            first.delete()
+            second.delete()
+            check(directory.delete())
+        }
+    }
+
+    @Test
+    fun failedRotationDoesNotClaimAnAppliedTransform() {
+        val bitmap = Bitmap.createBitmap(20, 10, Bitmap.Config.ARGB_8888)
+        try {
+            val decoded = orientScreenshotBitmap(bitmap, 6) { _, _ -> throw OutOfMemoryError("rotation allocation") }
+            assertTrue(decoded.bitmap === bitmap)
+            assertFalse(decoded.orientationApplied)
+            assertFalse(bitmap.isRecycled)
+            val prepared = PreparedUploadImage("source.jpg", "image/jpeg", byteArrayOf(1), 1,
+                sourceTransforms = listOf("transcoded"))
+                .withSourceContext(JSONObject().put("orientation", 6))
+            assertEquals("[\"transcoded\"]", JSONObject(prepared.sourceContext!!).getJSONArray("transforms").toString())
+        } finally {
+            bitmap.recycle()
         }
     }
 
@@ -329,6 +400,27 @@ class UploadIntentFileStoreTest {
 }
 
 /** Its entire directory is unique test storage, never the application's real upload root. */
+private class ChangingImageProvider(private val first: File, private val second: File) : ContentProvider() {
+    var opens = 0
+        private set
+    override fun onCreate() = true
+    override fun getType(uri: Uri) = "image/jpeg"
+    override fun query(uri: Uri, projection: Array<out String>?, selection: String?,
+        selectionArgs: Array<out String>?, sortOrder: String?) =
+        MatrixCursor(arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)).apply {
+            addRow(arrayOf<Any>("camera.jpg", first.length()))
+        }
+    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+        val file = if (uri.scheme == "file") File(requireNotNull(uri.path))
+            else if (opens++ == 0) first else second
+        return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+    }
+    override fun insert(uri: Uri, values: ContentValues?): Uri? = error("Read-only fixture")
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?) = error("Read-only fixture")
+    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?) =
+        error("Read-only fixture")
+}
+
 private class UploadFileFixture : Closeable {
     private val base = InstrumentationRegistry.getInstrumentation().targetContext
     private val directory = Files.createTempDirectory(base.cacheDir.toPath(), "upload-file-test-").toFile()

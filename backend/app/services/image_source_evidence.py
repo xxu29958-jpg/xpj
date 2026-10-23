@@ -45,7 +45,11 @@ def _exif_time(value, offset, origin: str) -> dict | None:
 def original_image_context(data: bytes) -> dict:
     with Image.open(BytesIO(data)) as image:
         exif = image.getexif()
-        nested = exif.get_ifd(0x8769) if 0x8769 in exif else {}
+        try:
+            nested = exif.get_ifd(0x8769) if 0x8769 in exif else {}
+        except (OSError, ValueError, SyntaxError):
+            # Optional EXIF pointers may be corrupt while the admitted pixels remain usable.
+            nested = {}
         values = {**dict(exif), **nested}
         times = [_exif_time(values.get(tag), values.get(offset), origin) for tag, offset, origin in (
             (0x9003, 0x9011, "exif_original"), (0x9004, 0x9012, "exif_digitized"),

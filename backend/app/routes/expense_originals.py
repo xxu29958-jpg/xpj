@@ -54,7 +54,8 @@ async def post_original_attachment(request: Request, expense_id: int,
     content, _timing = await read_request_upload(request)
     return attach_original(db, expense_id=expense_id, auth=auth,
         payload=OriginalAttachmentRequest(expected_row_version=expected_row_version),
-        data=content.data, filename=content.filename, content_type=content.content_type, idempotency_key=idempotency_key)
+        data=content.data, filename=content.filename, content_type=content.content_type,
+        source_context=content.source_context, idempotency_key=idempotency_key)
 
 
 @router.post("/{expense_id}/original/replenish", response_model=OriginalCommandReceipt,

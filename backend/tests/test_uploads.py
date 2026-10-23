@@ -466,6 +466,27 @@ def test_saved_upload_strips_exif_metadata(original_time, expected) -> None:
         stored_path.unlink(missing_ok=True)
 
 
+def test_valid_pixels_with_corrupt_nested_exif_keep_unknown_metadata() -> None:
+    import struct
+
+    from PIL import Image
+
+    # A signed negative IFD pointer is corrupt metadata, but the JPEG pixels are valid.
+    exif = b"Exif\0\0II*\0" + struct.pack("<IH", 8, 1) + struct.pack("<HHIiI", 0x8769, 9, 1, -1, 0)
+    buffer = BytesIO()
+    Image.new("RGB", (12, 8), color=(20, 40, 60)).save(buffer, format="JPEG", exif=exif)
+    saved = save_upload_bytes(buffer.getvalue(), tenant_id="owner", filename="receipt.jpg", content_type="image/jpeg")
+    path, _ = resolve_protected_image(saved.relative_path, "owner")
+    try:
+        assert saved.image_evidence["uploaded"]["times"] == []
+        assert saved.image_evidence["uploaded"]["orientation"] is None
+        with Image.open(path) as stored:
+            stored.load()
+            assert stored.size == (12, 8) and not stored.getexif()
+    finally:
+        path.unlink(missing_ok=True)
+
+
 def test_upload_rejects_fake_heic_brand_without_decodable_image(
     client: TestClient,
     *,
