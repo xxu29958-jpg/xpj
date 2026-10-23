@@ -310,6 +310,7 @@ def test_drawer_fx_status_and_retry_keep_draft_until_explicit_load_in_real_edge(
     fixture = _REPO_ROOT / "backend/tests/fixtures/drawer_fx_original_form_contract.html"
     page = _write_fixture(tmp_path, fixture.name, fixture.read_text(encoding="utf-8").replace(
         "__DRAWER_URI__", html.escape(_DRAWER_JS.as_uri(), quote=True)).replace(
+        "__RECOGNIZED_EVENTS_URI__", html.escape(_DRAWER_JS.parent.parent.joinpath("recognized-events.js").as_uri(), quote=True)).replace(
         "__CORE_URI__", html.escape(_DRAWER_JS.with_name("core.js").as_uri(), quote=True)))
     value = _evaluate_fixture(tmp_path, page=page, width=1024, height=768, profile_name="edge-drawer-fx-form")
     assert value == {
