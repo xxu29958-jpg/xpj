@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 
 from app.models import AlgorithmDecision, LedgerLearningEvent
+from app.schemas._recognition_fields import RecognitionFieldCandidate
 from app.services.currency_common import minor_amount_label
 from app.services.learning_service._algorithm_registry import RECOGNITION_FIELD_CHOICE
 from app.services.learning_service._policy import policy_enabled
@@ -41,7 +42,7 @@ def load_field_memory(db, *, tenant_id, actor_account_id, expense_ids):
     return memory
 
 
-def _agreed_field(matches, fact, field_name, candidates):
+def _agreed_field(matches, fact, field_name, candidates) -> RecognitionFieldCandidate | None:
     keys = {json.dumps(_event_payload(row).get("_candidate_key")) for row in matches}
     if len(keys) != 1:
         return None
@@ -54,7 +55,7 @@ def _agreed_field(matches, fact, field_name, candidates):
     return _corrected_field(matches, chosen) if chosen is not None else None
 
 
-def _corrected_field(matches, chosen):
+def _corrected_field(matches, chosen: RecognitionFieldCandidate) -> RecognitionFieldCandidate | None:
     payloads = [_event_payload(row) for row in matches]
     corrections = [data for data in payloads if data.get("_learning_target") == "source_correction"]
     if not corrections:

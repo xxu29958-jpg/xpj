@@ -54,8 +54,6 @@ import java.math.BigDecimal
 import java.time.Instant
 
 fun ExpenseDto.toDomain(): Expense {
-    val imageAvailable = isImageAvailable
-    val thumbnailAvailable = isThumbnailAvailable
     return Expense(
         recognitionTime = recognitionTime?.toDomain(),
         recognitionNotes = recognitionNotes,
@@ -92,8 +90,8 @@ fun ExpenseDto.toDomain(): Expense {
         duplicateDecisionPublicId = duplicateCandidates.firstOrNull { it.candidateId == duplicateOfId }?.decisionPublicId,
         note = note,
         source = source,
-        imagePath = imagePath.takeIf { imageAvailable },
-        thumbnailPath = thumbnailPath.takeIf { thumbnailAvailable },
+        imagePath = imagePath.takeIf { isImageAvailable },
+        thumbnailPath = thumbnailPath.takeIf { isThumbnailAvailable },
         imageDeletedAt = imageDeletedAt,
         thumbnailDeletedAt = thumbnailDeletedAt,
         imageHash = imageHash,

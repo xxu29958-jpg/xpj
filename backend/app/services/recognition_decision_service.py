@@ -22,7 +22,7 @@ def _retain_current_decision(owned, payload, entry):
     return matching
 
 
-def reconcile_image_decision(db, *, expense, actor, entry, slot, payload, previous, enabled):
+def reconcile_image_decision(db, *, expense, actor, entry, slot, payload, previous, enabled) -> bool:
     if payload is None and not any(row.status == "active" and _owned_slot(row, actor, slot) for row in previous):
         return False
     # Refresh after this source-row lock: concurrent Web/Android readers may
