@@ -77,7 +77,9 @@ internal object NotificationTransactionEvidence {
     private fun kind(text: String, match: MatchResult): String {
         if (auxiliary.matches(match.value)) return "auxiliary"
         if (match.value in setOf("退款", "退回")) return "refund"
-        val before = text.substring(0, match.range.first)
+        // Labels can wrap before their amount, but a reminder on a previous line
+        // does not qualify this line's independently stated transaction.
+        val before = text.substring(0, match.range.first).substringAfterLast('\n').substringAfterLast('\r')
         val tail = text.substring(match.range.last + 1)
         if (reminder.containsMatchIn(before.takeLast(18)) || tail.startsWith("日") ||
             tail.startsWith("失败") || tail.startsWith("提醒")) return "auxiliary"

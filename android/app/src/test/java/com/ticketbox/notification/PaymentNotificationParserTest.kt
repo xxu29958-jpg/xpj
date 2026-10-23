@@ -337,6 +337,13 @@ class PaymentNotificationParserTest {
     }
 
     @Test
+    fun precedingReminderDoesNotSuppressASeparateCompletedPurchase() {
+        for (text in listOf("本期应还1000元\n消费18元", "请及时还款1000元\r\n支付成功18元")) {
+            assertEquals(1800L, expenseOf(snapshot("com.eg.android.AlipayGphone", "交易提醒", text))?.amountCents, text)
+        }
+    }
+
+    @Test
     fun capturesJdAndMeituanPurchasesWithoutInventingRepayments() {
         for (pkg in listOf("com.jingdong.app.mall", "com.sankuai.meituan")) {
             assertEquals(9900L, expenseOf(snapshot(pkg, "交易提醒", "下单成功，付款成功 ¥99.00"))?.amountCents)
