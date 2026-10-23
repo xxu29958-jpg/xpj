@@ -5,6 +5,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense, PaymentCapture, RepaymentDraft
 from app.schemas import ExpenseOffsetCreateRequest
+from app.services.learning_service._lifecycle import close_active_decisions_for_subject
 from app.services.payment_capture_identity import append_decision, capture_query
 from app.services.time_service import now_utc
 
@@ -52,6 +53,7 @@ def resolve_repayment_draft(db: Session, draft: RepaymentDraft, *, actor_account
     draft.committed_repayment_public_id = repayment_public_id
     draft.resolved_at = now_utc()
     draft.resolved_by_account_id = actor_account_id
+    close_active_decisions_for_subject(db, tenant_id=draft.tenant_id, subject_kind="repayment_draft", subject_id=draft.id)
     if draft.source_expense_public_id:
         capture = db.scalar(capture_query(draft.tenant_id, actor_account_id).where(
             PaymentCapture.expense_public_id == draft.source_expense_public_id).with_for_update())

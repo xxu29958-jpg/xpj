@@ -61,7 +61,7 @@ REVIEW_FIELDS = (
     "draft_public_id", "ledger_id", "origin_binding", "review_action",
     "target_with_expected_row_version", "original_currency", "original_amount",
 )
-REVIEW_TIME_FIELDS = ("payment_date", "calendar_revision", "reason", "correction_versions")
+REVIEW_TIME_FIELDS = ("payment_date", "calendar_revision", "reason", "correction_versions", "target_choice_explicit")
 
 
 def _initial_review_values(scope, selected_id, public_id, row, can_create, calendar=None, values=None) -> dict[str, str]:
@@ -73,6 +73,7 @@ def _initial_review_values(scope, selected_id, public_id, row, can_create, calen
         "idempotency_key": str(uuid4()) if can_create else "",
         "payment_date": "", "calendar_revision": str(calendar.revision) if calendar else "",
         "reason": "",
+        "target_choice_explicit": "",
         "correction_versions": "",
     }
     if row is not None:
@@ -143,6 +144,8 @@ def review_confirmation(values, captured):
         "time_precision": "date_only", "user_local_date": values["payment_date"],
         "calendar_revision": values.get("calendar_revision", ""),
     })} if values.get("payment_date") else {}
+    if values.get("target_choice_explicit") == "true":
+        reviewed_time["target_choice_explicit"] = True
     if code == captured.original_currency_code and minor == captured.original_amount_minor:
         # An unchanged Expense bridge can already have frozen home money. Omitting
         # the override preserves that fact; reviewing different money is explicit.

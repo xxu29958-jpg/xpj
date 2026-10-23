@@ -154,6 +154,9 @@ def repayment_as_expense(db, *, auth, public_id, payload, idempotency_key) -> Pa
         capture, fx_task = stage_capture_target(db, capture, auth=auth, kind="expense",
             currency=capture.original_currency, amount=capture.original_amount_minor, merchant=capture.merchant)
     draft.status = "dismissed"
+    from app.services.learning_service._lifecycle import close_active_decisions_for_subject
+
+    close_active_decisions_for_subject(db, tenant_id=draft.tenant_id, subject_kind="repayment_draft", subject_id=draft.id)
     draft.resolved_at = now_utc()
     draft.resolved_by_account_id = auth.account_id
     append_decision(capture, kind="expense", reason=payload.reason.strip(), actor_account_id=auth.account_id)

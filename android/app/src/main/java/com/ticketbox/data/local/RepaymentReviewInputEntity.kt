@@ -1,6 +1,7 @@
 package com.ticketbox.data.local
 
 import androidx.room.Dao
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -26,6 +27,7 @@ data class RepaymentReviewInputEntity(
     val submittedAction: String? = null,
     val paymentDate: String? = null,
     val calendarRevision: Long? = null,
+    @ColumnInfo(defaultValue = "0") val targetChoiceExplicit: Boolean = false,
 )
 
 @Dao

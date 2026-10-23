@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database import SessionLocal
 from app.errors import AppError
 from app.middleware.csrf import CSRF_COOKIE_NAME
-from app.models import Debt, Repayment, RepaymentDraft
+from app.models import AlgorithmDecision, Debt, LedgerLearningEvent, Repayment, RepaymentDraft
 from app.routes import _web_repayment_review as review
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.schemas import RepaymentDraftCreateRequest
@@ -60,6 +60,8 @@ def test_installed_wrong_repayment_returns_one_pending_expense_and_retains_origi
     first = installed_web.browser.post(action, data=values, headers=headers)
     assert first.status_code == 200, first.text
     assert "已改为消费" in first.text
+    ack = json.loads(html.unescape(re.search(r'data-repayment-ack="([^"]+)"', first.text)[1]))
+    assert ack["values"]["target_choice_explicit"] == values["target_choice_explicit"] == ""
     repeated = installed_web.browser.post(action, data=values, headers=headers)
     assert repeated.status_code == 200, repeated.text
     with SessionLocal() as db:
@@ -72,6 +74,41 @@ def test_installed_wrong_repayment_returns_one_pending_expense_and_retains_origi
         assert correction.decisions[0]["reason"] == values["reason"]
     reopened = installed_web.browser.get(url, headers=headers)
     assert reopened.status_code == 200 and "打开更正后的消费" in reopened.text
+
+
+def test_error_review_persists_the_newly_displayed_repayment_suggestion(installed_web):
+    from app.schemas import RepaymentDraftConfirmRequest
+    from app.services.repayment_draft_command_service import confirm_repayment_draft_idempotently
+
+    debt_id = _seed_external_debt(installed_web)
+    with SessionLocal() as db:
+        drafts = [create_repayment_draft(db, tenant_id=installed_web.shared_ledger_id,
+            actor_account_id=installed_web.installation_account_id,
+            payload=RepaymentDraftCreateRequest(source="alipay", original_currency="CNY", original_amount="1.00",
+                merchant_label="无直接匹配的还款收据", notification_key=key)) for key in ("error-prior", "error-next")]
+        prior, pending = (draft.public_id for draft in drafts)
+        db.commit()
+    url = f"/web/repayment-drafts/{pending}?ledger_id={installed_web.shared_ledger_id}"
+    action = f"/web/repayment-drafts/{pending}/review"
+    token = _connect_local_session(installed_web, next_url=url)
+    cookie = f"{SESSION_COOKIE_NAME}={token}"
+    page = installed_web.browser.get(url, headers={"Cookie": cookie})
+    values = _form(page.text, action)
+    headers = {"Cookie": f"{cookie}; {CSRF_COOKIE_NAME}={page.cookies.get(CSRF_COOKIE_NAME)}", "Origin": "http://127.0.0.1:8000"}
+    with SessionLocal() as db:
+        debt = db.scalar(select(Debt).where(Debt.public_id == debt_id))
+        confirm_repayment_draft_idempotently(db, tenant_id=installed_web.shared_ledger_id,
+            actor_account_id=installed_web.installation_account_id, public_id=prior, idempotency_key=str(uuid4()),
+            payload=RepaymentDraftConfirmRequest(target_debt_public_id=debt_id,
+                expected_row_version=debt.row_version, target_choice_explicit=True))
+        assert db.scalar(select(AlgorithmDecision)) is None
+    refused = installed_web.browser.post(action, data={**values, "target_with_expected_row_version": "invalid"}, headers=headers)
+    assert refused.status_code == 422 and "系统猜测对应:" in refused.text
+    with SessionLocal() as db:
+        decision = db.scalar(select(AlgorithmDecision).where(AlgorithmDecision.decision_type == "repayment_choice"))
+        assert decision is not None and decision.status == "active"
+        assert json.loads(decision.output_payload)["source_public_id"] == pending
+        assert len(list(db.scalars(select(Repayment)))) == 1
 
 
 def test_installed_capture_review_retains_binding_money_and_version_through_lost_ack(installed_web, monkeypatch):
@@ -95,7 +132,7 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
     headers = {"Cookie": f"{cookie}; {CSRF_COOKIE_NAME}={page.cookies.get(CSRF_COOKIE_NAME)}",
         "Origin": "http://127.0.0.1:8000"}
     original = {**_form(page.text, action), "original_amount": "90.00", "payment_date": "2026-08-31",
-        "target_with_expected_row_version": f"{debt_id}:{version}"}
+        "target_with_expected_row_version": f"{debt_id}:{version}", "target_choice_explicit": "true"}
     assert original["calendar_revision"]
     scope = _installed_scope(installed_web, token)
     assert json.loads(original["origin_binding"]) == scope
@@ -137,7 +174,11 @@ def test_installed_capture_review_retains_binding_money_and_version_through_lost
         assert ack["clientRef"] == original["idempotency_key"] and ack["scope"] == scope
         assert ack["resultPublicId"] == public_id and ack["status"] == "confirmed"
         assert ack["values"]["payment_date"] == "2026-08-31"
+        assert ack["values"]["target_choice_explicit"] == "true"
         with SessionLocal() as db:
+            choices = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.signal_type == "repayment_choice")))
+            assert len(choices) == 1 and choices[0].actor_account_id == installed_web.installation_account_id
+            assert json.loads(choices[0].after_payload)["_repayment_target"]["public_id"] == debt_id
             facts = list(db.scalars(select(Repayment)))
             assert len(facts) == 1
             assert facts[0].amount_cents == 9000 and facts[0].idempotency_key == original["idempotency_key"]

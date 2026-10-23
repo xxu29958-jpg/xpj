@@ -19,6 +19,10 @@ class RepaymentReviewCommandTest {
         assertEquals(null, oldMoney.originalCurrency)
         assertEquals(null, oldMoney.originalAmount)
         assertEquals(null, oldMoney.timeInput, "legacy input keeps captured time; no new date is fabricated")
+        assertEquals(null, oldMoney.targetChoiceExplicit, "a displayed default is not an explicit choice")
+        val explicit = assertNotNull(adapters.repaymentReviewAdapter.fromJson(
+            input.copy(targetChoiceExplicit = true).command(binding, original, false, adapters).payloadJson)).request
+        assertEquals(true, explicit.targetChoiceExplicit)
         val changed = assertNotNull(adapters.repaymentReviewAdapter.fromJson(input.command(binding, original, false, adapters).payloadJson)).request
         assertEquals("90.00", changed.originalAmount)
         assertEquals(10000L, original.originalAmountMinor)

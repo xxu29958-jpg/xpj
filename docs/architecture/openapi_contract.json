@@ -9828,6 +9828,17 @@
             "title": "Review Action",
             "type": "string"
           },
+          "target_choice_explicit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Choice Explicit"
+          },
           "target_with_expected_row_version": {
             "default": "",
             "title": "Target With Expected Row Version",
@@ -27963,6 +27974,11 @@
               }
             ],
             "title": "Original Currency"
+          },
+          "target_choice_explicit": {
+            "default": false,
+            "title": "Target Choice Explicit",
+            "type": "boolean"
           },
           "target_debt_public_id": {
             "maxLength": 36,

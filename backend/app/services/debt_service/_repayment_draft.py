@@ -56,6 +56,7 @@ from app.services.debt_service._repayment_draft_match import (
     list_repayment_match_candidates,
     suggest_debt_for_draft,
 )
+from app.services.repayment_learning_service import load_repayment_memory
 
 
 def _corrected_expense_id(draft: RepaymentDraft) -> int | None:
@@ -153,6 +154,7 @@ def list_repayment_drafts(
     # dismissed draft carries no suggestion.
     has_pending = any(draft.status == "pending" for draft in drafts)
     candidates = list_repayment_match_candidates(db, tenant_id=tenant_id) if has_pending else []
+    memory = load_repayment_memory(db, tenant_id=tenant_id, actor_account_id=actor_account_id, drafts=drafts)
     return RepaymentDraftListResponse(
         items=[
             repayment_draft_response(
@@ -161,10 +163,8 @@ def list_repayment_drafts(
                 suggested_debt_public_id=(
                     suggest_debt_for_draft(
                         db,
-                        account_id=draft.created_by_account_id,
-                        source=draft.source,
-                        merchant_label=draft.merchant_label,
-                        amount_cents=draft.amount_cents,
+                        draft=draft,
+                        memory=memory,
                         candidates=candidates,
                     )
                     if draft.status == "pending" and draft.amount_cents is not None
@@ -248,6 +248,8 @@ def list_repayment_draft_audit_for_account(
         )
     )
     candidates_by_tenant: dict[str, list] = {}
+    memory_by_tenant = {scope: load_repayment_memory(db, tenant_id=scope, actor_account_id=account_id,
+        drafts=[row for row in drafts if row.tenant_id == scope]) for scope in {row.tenant_id for row in drafts}}
     suggested_by_draft: dict[int, str | None] = {}
     referenced: set[str] = set()
     for draft in drafts:
@@ -256,10 +258,8 @@ def list_repayment_draft_audit_for_account(
                 candidates_by_tenant[draft.tenant_id] = list_repayment_match_candidates(db, tenant_id=draft.tenant_id)
             suggested = suggest_debt_for_draft(
                 db,
-                account_id=draft.created_by_account_id,
-                source=draft.source,
-                merchant_label=draft.merchant_label,
-                amount_cents=draft.amount_cents,
+                draft=draft,
+                memory=memory_by_tenant[draft.tenant_id],
                 candidates=candidates_by_tenant[draft.tenant_id],
             ) if draft.amount_cents is not None else None
             suggested_by_draft[draft.id] = suggested

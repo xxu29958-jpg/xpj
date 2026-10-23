@@ -4,7 +4,7 @@
   const repaymentNames = ["debt_public_id", "ledger_id", "origin_binding", "home_currency_code",
     "expected_row_version", "amount_major", "paid_at", "paid_at_timezone"];
   const repaymentTimeNames = ["time_precision", "calendar_revision"];
-  const captureTimeNames = ["payment_date", "calendar_revision", "reason", "correction_versions"];
+  const captureTimeNames = ["payment_date", "calendar_revision", "reason", "correction_versions", "target_choice_explicit"];
   const voidNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "reason", "repayment_public_id"];
   const kindNames = ["debt_public_id", "ledger_id", "origin_binding", "expected_row_version", "debt_kind"];
   const fieldNames = {repayment:repaymentNames, "debt-void":voidNames, "repayment-void":voidNames,
@@ -436,6 +436,13 @@
 
   form.addEventListener("input", function (event) {
     if (!held || phase !== "editing") return;
+    if (captureReview && event.target?.name === "target_with_expected_row_version") {
+      const choice = form.elements.namedItem("target_choice_explicit");
+      if (choice && !event.target.disabled) {
+        choice.disabled = false;
+        choice.value = event.target.value ? "true" : "";
+      }
+    }
     const settlementEdited = settlementField?.edit(event.target) || event.target?.name === "settlement_net_amount_major";
     if (settlementExplicit && settlementEdited) settlementExplicit.value = "true";
     try { persist("editing"); notice("输入已保留，尚未提交。", "editing"); }

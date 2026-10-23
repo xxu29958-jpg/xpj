@@ -30,7 +30,7 @@ data class RepaymentReviewState(val input: RepaymentReviewInputEntity?, val orig
 sealed interface RepaymentReviewChange {
     data class Money(val currency: String, val amount: String) : RepaymentReviewChange
     data class Date(val value: String) : RepaymentReviewChange
-    data class TargetDebt(val debt: Debt) : RepaymentReviewChange
+    data class TargetDebt(val debt: Debt, val explicitlySelected: Boolean = true) : RepaymentReviewChange
 }
 
 interface RepaymentReviewActions {
@@ -150,7 +150,9 @@ class RepaymentReviewRepository internal constructor(
                 inputs.put(when (change) {
                     is RepaymentReviewChange.Money -> input.copy(currency = change.currency, amountText = change.amount)
                     is RepaymentReviewChange.Date -> input.copy(paymentDate = change.value)
-                    is RepaymentReviewChange.TargetDebt -> input.selectDebt(binding, change.debt)
+                    is RepaymentReviewChange.TargetDebt -> input.selectDebt(binding, change.debt).copy(
+                        targetChoiceExplicit = change.explicitlySelected ||
+                            input.targetChoiceExplicit && input.debtPublicId == change.debt.publicId)
                 })
             }
         }
@@ -219,7 +221,7 @@ class RepaymentReviewRepository internal constructor(
                 inputs.put(retained.copy(originalKey = UUID.randomUUID().toString(), submittedAction = null,
                     serverUrl = binding.serverUrl,
                     sessionGeneration = binding.sessionGeneration, bindingRevision = binding.bindingRevision,
-                    debtPublicId = null, debtLabel = null, debtHomeCurrency = null, debtRowVersion = null))
+                    debtPublicId = null, debtLabel = null, debtHomeCurrency = null, debtRowVersion = null, targetChoiceExplicit = false))
             }
         }
     }

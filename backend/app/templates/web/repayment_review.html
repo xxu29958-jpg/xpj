@@ -61,6 +61,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       {% for name in ['draft_public_id', 'ledger_id', 'origin_binding', 'idempotency_key'] %}<input type="hidden" name="{{ name }}" value="{{ review['values'][name] }}">{% endfor %}
       <input type="hidden" name="correction_versions" value="{{ review['values'].get('correction_versions', '') }}">
+      <input type="hidden" name="target_choice_explicit" value="{{ review['values'].get('target_choice_explicit', '') }}">
       {% if row and row.can_correct_confirmed %}<p class="product-feedback" role="note">更正会撤销这笔还款的抵债效果，恢复相应欠款。若原消费曾因此冲正，将恢复原消费；否则生成消费待核对。原事实和更正原因保留，错误还款不再用于推荐。</p>{% endif %}
       <input type="hidden" name="calendar_revision" value="{{ review['values'].get('calendar_revision', '') }}"{% if 'calendar_revision' not in review['values'] %} disabled{% endif %}>
       {% if review.error %}<p class="product-feedback product-feedback--danger" role="alert">{{ review.error }}</p>{% endif %}

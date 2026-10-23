@@ -1,13 +1,13 @@
 /* Capture review uses the real shared form engine, store and exclusive leases. */
 const assert = require('node:assert/strict');
 const {environment, scope, original, fresh, target, repaymentId, tick} = require('./repayment_draft_contract.cjs');
-const optionalFields = ['payment_date', 'calendar_revision'];
+const optionalFields = ['payment_date', 'calendar_revision', 'target_choice_explicit'];
 const fieldNames = ['draft_public_id', 'ledger_id', 'origin_binding', 'review_action', 'target_with_expected_row_version', 'original_currency', 'original_amount', ...optionalFields];
 const draftPrefix = 'ticketbox:repayment-review-draft:v1:';
 const parent = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const values = {draft_public_id:target, ledger_id:scope.ledgerId, origin_binding:JSON.stringify(scope),
   review_action:'confirm', target_with_expected_row_version:parent + ':7', original_currency:'CNY', original_amount:' 90.',
-  payment_date:'2026-08-31', calendar_revision:'3'};
+  payment_date:'2026-08-31', calendar_revision:'3', target_choice_explicit:''};
 function page(env, options = {}) {
   const result = env.page({kind:'repayment-review', fieldNames, optionalFields, draftPrefix, values, ...options});
   for (const name of ['review_action', 'target_with_expected_row_version', 'original_currency']) {
@@ -23,13 +23,16 @@ async function continuity() {
   editing.start(); await tick();
   editing.form.fire('input');
   assert.equal(editing.store.read(original).values.original_amount, ' 90.');
+  assert.equal(editing.store.read(original).values.target_choice_explicit, '', 'default target display is not a label');
   editing.window.fire('pagehide'); await tick();
   const reopened = page(env, {values:{...values, target_with_expected_row_version:parent + ':99', original_currency:'USD', original_amount:'100', calendar_revision:'9'}});
   reopened.start(); await tick();
   assert.deepEqual(reopened.snapshot(), values, 'raw input, selected debt and its original version survive reopening');
+  reopened.form.fire('input', {target:reopened.fields.target_with_expected_row_version});
+  assert.equal(reopened.store.read(original).values.target_choice_explicit, 'true');
   assert.ok(reopened.fields.target_with_expected_row_version.options.some(option => option.value === parent + ':7'), 'missing stale option is retained');
   reopened.fields.original_amount.value = '90.00'; reopened.form.fire('input');
-  const submitted = {...values, original_amount:'90.00'};
+  const submitted = {...values, original_amount:'90.00', target_choice_explicit:'true'};
   const query = reopened.form.querySelector;
   reopened.form.querySelector = selector => selector === '[name="payment_date"]:invalid' ? reopened.fields.payment_date : query(selector);
   assert.equal(reopened.form.fire('submit').defaultPrevented, true, 'an incomplete native date must not become an unchanged capture confirmation');

@@ -174,11 +174,23 @@ RECOGNITION_TIME_CHOICE = AlgorithmType(
 )
 
 
+REPAYMENT_CHOICE = AlgorithmType(
+    decision_type="repayment_choice",
+    current_version="repayment-case-memory-v1",
+    display_label="还款选择记忆",
+    description="只参考本人明确选过的对应欠款；来源、欠款或还款事实失效后不再参考，余额仍按真实还款计算。",
+    subject_kinds=("repayment_draft",),
+    default_retention_days=0,
+    marker_keys=("target_debt_public_id",),
+)
+
+
 ALGORITHM_TYPES: dict[str, AlgorithmType] = {
     CATEGORY_SUGGESTION.decision_type: CATEGORY_SUGGESTION,
     DUPLICATE_CANDIDATE.decision_type: DUPLICATE_CANDIDATE,
     BUDGET_SUGGESTION.decision_type: BUDGET_SUGGESTION,
     RECOGNITION_TIME_CHOICE.decision_type: RECOGNITION_TIME_CHOICE,
+    REPAYMENT_CHOICE.decision_type: REPAYMENT_CHOICE,
 }
 
 

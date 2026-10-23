@@ -66,8 +66,10 @@ def get_repayment_drafts(
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> RepaymentDraftListResponse:
-    return list_repayment_drafts(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
+    result = list_repayment_drafts(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
         status=None if status == "all" else status)
+    db.commit()  # Keep the displayed learning decision independently withdrawable.
+    return result
 
 
 @router.get("/{public_id}", response_model=RepaymentDraftResponse)

@@ -69,6 +69,7 @@ class RepaymentDraftConfirmRequest(BaseModel):
 
     target_debt_public_id: str = Field(min_length=1, max_length=36)
     expected_row_version: int
+    target_choice_explicit: bool = False
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
     original_amount: PositiveCanonicalDecimalInput | None = None
     time_input: AccountingTimeInput | None = None

@@ -311,7 +311,7 @@ class RepaymentDraftInboxViewModel(
 
 private suspend fun RepaymentReviewActions.publishReview(binding: LogicalSessionBinding, capture: RepaymentDraft, debt: Debt?): Result<Long> {
     open(binding, capture).exceptionOrNull()?.let { return Result.failure(it) }
-    if (debt != null) edit(binding, capture.publicId, RepaymentReviewChange.TargetDebt(debt))
+    if (debt != null) edit(binding, capture.publicId, RepaymentReviewChange.TargetDebt(debt, explicitlySelected = false))
         .exceptionOrNull()?.let { return Result.failure(it) }
     return submit(binding, capture, dismiss = debt == null)
 }

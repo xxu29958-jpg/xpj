@@ -36,10 +36,10 @@ algorithm version".
 
 from __future__ import annotations
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import Select, case, func, select, update
 from sqlalchemy.orm import Session
 
-from app.models import AlgorithmDecision, Expense
+from app.models import AlgorithmDecision, Expense, RepaymentDraft
 from app.services.learning_service._algorithm_registry import ALGORITHM_TYPES
 
 # Statuses on the parent subject that mean "no UI will ever ask us to
@@ -168,6 +168,20 @@ def set_decision_status(
     return int(result.rowcount or 0)
 
 
+def _stale_active_ids(tenant_id: str | None) -> Select:
+    expense = ((AlgorithmDecision.subject_kind == "expense") &
+        (Expense.id.is_(None) | Expense.status.in_(tuple(TERMINAL_EXPENSE_STATUSES))))
+    repayment = ((AlgorithmDecision.subject_kind == "repayment_draft") &
+        (RepaymentDraft.id.is_(None) | (RepaymentDraft.status != "pending")))
+    query = (select(AlgorithmDecision.id).select_from(AlgorithmDecision)
+        .outerjoin(Expense, (AlgorithmDecision.subject_kind == "expense") & (Expense.id == AlgorithmDecision.subject_id)
+            & (Expense.tenant_id == AlgorithmDecision.tenant_id))
+        .outerjoin(RepaymentDraft, (AlgorithmDecision.subject_kind == "repayment_draft") & (RepaymentDraft.id == AlgorithmDecision.subject_id)
+            & (RepaymentDraft.tenant_id == AlgorithmDecision.tenant_id))
+        .where(AlgorithmDecision.status == "active", AlgorithmDecision.subject_id.is_not(None), expense | repayment))
+    return query.where(AlgorithmDecision.tenant_id == tenant_id) if tenant_id is not None else query
+
+
 def stale_active_count(
     db: Session, *, tenant_id: str | None = None
 ) -> int:
@@ -179,22 +193,7 @@ def stale_active_count(
     pulling every active row into Python.
     """
 
-    join_cond = Expense.id == AlgorithmDecision.subject_id
-    stmt = (
-        select(func.count(AlgorithmDecision.id))
-        .select_from(AlgorithmDecision)
-        .outerjoin(Expense, join_cond)
-        .where(AlgorithmDecision.status == "active")
-        .where(AlgorithmDecision.subject_kind == "expense")
-        .where(AlgorithmDecision.subject_id.is_not(None))
-        .where(
-            (Expense.id.is_(None))
-            | (Expense.tenant_id != AlgorithmDecision.tenant_id)
-            | (Expense.status.in_(tuple(TERMINAL_EXPENSE_STATUSES)))
-        )
-    )
-    if tenant_id is not None:
-        stmt = stmt.where(AlgorithmDecision.tenant_id == tenant_id)
+    stmt = select(func.count()).select_from(_stale_active_ids(tenant_id).subquery())
     return int(db.scalar(stmt) or 0)
 
 
@@ -203,9 +202,9 @@ def sweep_stale_active_decisions(
 ) -> int:
     """Close active decisions whose subject is no longer "live".
 
-    Today this only inspects ``subject_kind='expense'``: a decision is
-    stale when the referenced expense has ``status IN ('confirmed',
-    'rejected')`` or no longer exists at all. ``subject_kind='month'``
+    An expense decision closes when its expense is confirmed/rejected;
+    a repayment decision closes when its draft is no longer pending.
+    Missing subjects are stale too. ``subject_kind='month'``
     suggestions (budget P50/P75) intentionally aren't swept here —
     the user can still act on last month's suggestion next month.
 
@@ -214,26 +213,11 @@ def sweep_stale_active_decisions(
     huge ledger doesn't lock the table.
     """
 
-    join_cond = Expense.id == AlgorithmDecision.subject_id
     stale_id_q = (
-        select(AlgorithmDecision.id)
-        .select_from(AlgorithmDecision)
-        .outerjoin(Expense, join_cond)
-        .where(AlgorithmDecision.status == "active")
-        .where(AlgorithmDecision.subject_kind == "expense")
-        .where(AlgorithmDecision.subject_id.is_not(None))
-        .where(
-            (Expense.id.is_(None))
-            | (Expense.tenant_id != AlgorithmDecision.tenant_id)
-            | (Expense.status.in_(tuple(TERMINAL_EXPENSE_STATUSES)))
-        )
+        _stale_active_ids(tenant_id)
         .order_by(AlgorithmDecision.id.asc())
         .limit(max(1, min(int(batch_size), 5000)))
     )
-    if tenant_id is not None:
-        stale_id_q = stale_id_q.where(
-            AlgorithmDecision.tenant_id == tenant_id
-        )
     stale_ids = [int(row) for row in db.scalars(stale_id_q)]
     if not stale_ids:
         return 0

@@ -19,6 +19,24 @@ import org.junit.Test
  * suite (which never opens Room) cannot.
  */
 class AppDatabaseMigrationTest {
+    @Test fun migrate30To31KeepsOriginalRepaymentInputWithoutInventingAChoice() {
+        val name = "migration-30-31-repayment-choice.db"
+        helper.createDatabase(name, 30).use { db ->
+            db.execSQL("""INSERT INTO repayment_review_inputs (ownerKey, ledgerId, draftPublicId, serverUrl,
+                sessionGeneration, bindingRevision, originalKey, currency, amountText, debtPublicId, debtRowVersion, submittedAction)
+                VALUES ('owner', 'ledger', 'capture', 'https://isolated.invalid', 'session', 'binding', 'original-key',
+                    'CNY', ' 90.00 ', 'debt-original', 7, 'confirm_repayment_draft')""")
+        }
+        helper.runMigrationsAndValidate(name, 31, true, AppDatabase.Migration30To31).use { db ->
+            db.query("SELECT originalKey, amountText, debtPublicId, debtRowVersion, submittedAction, targetChoiceExplicit FROM repayment_review_inputs").use {
+                assertTrue(it.moveToFirst())
+                assertEquals("original-key", it.getString(0)); assertEquals(" 90.00 ", it.getString(1))
+                assertEquals("debt-original", it.getString(2)); assertEquals(7L, it.getLong(3))
+                assertEquals("confirm_repayment_draft", it.getString(4)); assertEquals(0, it.getInt(5))
+            }
+        }
+    }
+
     @Test fun migrate29To30PreservesFactsAndQueuedInputWithoutInventingPairEvidence() {
         val name = "migration-29-30-pair-evidence.db"
         helper.createDatabase(name, 29).use { db ->
@@ -115,7 +133,7 @@ class AppDatabaseMigrationTest {
         val originals = setOf(input, rename, otherRename, merge)
         var room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
             .addMigrations(AppDatabase.Migration25To26, AppDatabase.Migration26To27, AppDatabase.Migration27To28,
-                AppDatabase.Migration28To29, AppDatabase.Migration29To30).build()
+                AppDatabase.Migration28To29, AppDatabase.Migration29To30, AppDatabase.Migration30To31).build()
         try {
             kotlinx.coroutines.runBlocking {
                 room.merchantCreationInputDao().put(MerchantCreationInputEntity(binding.serverUrl, binding.ownerKey, binding.ledgerId,
@@ -200,7 +218,7 @@ class AppDatabaseMigrationTest {
         val room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
             .addMigrations(AppDatabase.Migration21To22, AppDatabase.Migration22To23, AppDatabase.Migration23To24, AppDatabase.Migration24To25,
                 AppDatabase.Migration25To26, AppDatabase.Migration26To27, AppDatabase.Migration27To28,
-                AppDatabase.Migration28To29, AppDatabase.Migration29To30).build()
+                AppDatabase.Migration28To29, AppDatabase.Migration29To30, AppDatabase.Migration30To31).build()
         try {
                 room.openHelper.readableDatabase.query("SELECT amountCents, homeCurrencyCode, rowVersion FROM expenses WHERE id = 1").use {
                     assertTrue(it.moveToFirst()); assertEquals(100, it.getInt(0)); assertEquals("JPY", it.getString(1)); assertEquals(7, it.getInt(2))

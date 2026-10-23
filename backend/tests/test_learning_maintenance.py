@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Expense
+from app.models import Expense, LedgerLearningEvent
 from app.models.app_meta import LEARNING_CLEANUP_LAST_RUN_KEY
 from app.routes.owner_console import _require_local
 from app.services.app_meta_service import get_value
@@ -32,7 +32,9 @@ def local_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_require_local, None)
 
 
-def _seed_active_decision(*, retention_days: int = 30, days_ago: int = 0) -> int:
+def _seed_active_decision(
+    *, retention_days: int = 30, days_ago: int = 0, subject_id: int = 1,
+) -> int:
     now = datetime.now(UTC) - timedelta(days=days_ago)
     with SessionLocal() as db:
         row = record_decision(
@@ -42,7 +44,7 @@ def _seed_active_decision(*, retention_days: int = 30, days_ago: int = 0) -> int
                 decision_type="category_suggestion",
                 algorithm_version="category-history-v1",
                 subject_kind="expense",
-                subject_id=1,
+                subject_id=subject_id,
                 payload={"category": "餐饮"},
             ),
             now=now,
@@ -322,11 +324,19 @@ def test_owner_maintenance_failure_shows_partial_result_without_retry(
     from app.models import AlgorithmDecision
     from app.services.learning_service import _cleanup
 
+    _seed_pending_expense()
     expense_id = _seed_pending_expense()
-    decision_id = _seed_active_decision(retention_days=1, days_ago=3)
+    decision_id = _seed_active_decision(
+        retention_days=1, days_ago=3, subject_id=expense_id,
+    )
     with SessionLocal() as db:
         db.get(AlgorithmDecision, decision_id).status = "dismissed"
+        event = record_event(db, EventDraft(tenant_id="owner", event_type="manual_override",
+            subject_kind="expense", subject_id=expense_id, decision_id=decision_id),
+            now=datetime.now(UTC) - timedelta(days=3))
+        event.retention_days = 1
         db.commit()
+        event_id = event.id
 
     attempts = []
 
@@ -334,7 +344,7 @@ def test_owner_maintenance_failure_shows_partial_result_without_retry(
         attempts.append(kwargs["tenant_id"])
         raise SQLAlchemyError("isolated second-table failure")
 
-    monkeypatch.setattr(_cleanup, "cleanup_expired_learning_events", fail_second_table)
+    monkeypatch.setattr(_cleanup, "cleanup_expired_algorithm_decisions", fail_second_table)
     response = local_client.post("/owner/learning-maintenance/run", data={"ledger_id": "owner"})
     assert response.status_code == 500
     assert "部分批次可能已经完成" in response.text
@@ -343,7 +353,8 @@ def test_owner_maintenance_failure_shows_partial_result_without_retry(
     assert "暂无完成记录" in response.text
     assert attempts == ["owner"]
     with SessionLocal() as db:
-        assert db.get(AlgorithmDecision, decision_id) is None
+        assert db.get(LedgerLearningEvent, event_id) is None
+        assert db.get(AlgorithmDecision, decision_id) is not None
         expense = db.get(Expense, expense_id)
         assert expense.status == "pending"
         assert expense.amount_cents == 1000

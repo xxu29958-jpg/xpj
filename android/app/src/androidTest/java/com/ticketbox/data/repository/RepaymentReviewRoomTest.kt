@@ -73,15 +73,37 @@ class RepaymentReviewRoomTest {
     }
     @After fun close() = fixture.close()
 
+    @Test fun defaultTargetStaysNonExplicitThroughReapplicationAndLostReply() = runBlocking {
+        val graph = fixture.reopen()
+        val binding = requireNotNull(graph.reportsRepository.dashboardAccess()).binding
+        graph.repaymentReviewRepository.open(binding, capture.toDomain(), debt(binding)).getOrThrow()
+        graph.repaymentReviewRepository.edit(binding, capture.publicId,
+            RepaymentReviewChange.TargetDebt(debt(binding), explicitlySelected = false)).getOrThrow()
+        graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Money("CNY", "90.00")).getOrThrow()
+        assertEquals(false, graph.repaymentReviewRepository.observe(binding, capture.publicId).first().input?.targetChoiceExplicit)
+        graph.repaymentReviewRepository.submit(binding, capture.toDomain(), false).getOrThrow()
+        drain()
+        assertEquals(null, confirmCalls.single().second.targetChoiceExplicit) // Omitted false preserves legacy replay bytes.
+        fixture.reopen()
+        loseReply = false
+        drain()
+        assertEquals(2, confirmCalls.size)
+        assertEquals(confirmCalls[0], confirmCalls[1])
+    }
+
     @Test fun rawInputAndOriginalReceiptSurviveReopenAndQueryCleanup() = runBlocking {
         expectedReviewDate = "2026-08-31"
         var graph = fixture.reopen()
         var binding = requireNotNull(graph.reportsRepository.dashboardAccess()).binding
-        graph.repaymentReviewRepository.open(binding, capture.toDomain()).getOrThrow()
+        graph.repaymentReviewRepository.open(binding, capture.toDomain(), debt(binding)).getOrThrow()
+        assertEquals(false, graph.repaymentReviewRepository.observe(binding, capture.publicId).first().input?.targetChoiceExplicit)
         graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.TargetDebt(debt(binding))).getOrThrow()
+        graph.repaymentReviewRepository.edit(binding, capture.publicId,
+            RepaymentReviewChange.TargetDebt(debt(binding), explicitlySelected = false)).getOrThrow()
         graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Money("CNY", " 90.")).getOrThrow()
         graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Date("2026-08-31")).getOrThrow()
         val raw = graph.repaymentReviewRepository.observe(binding, capture.publicId).first()
+        assertEquals(true, raw.input?.targetChoiceExplicit)
         graph = fixture.reopen()
         graph.expenseRepository.clearLocalCache()
         assertEquals(raw, graph.repaymentReviewRepository.observe(binding, capture.publicId).first())
@@ -98,12 +120,14 @@ class RepaymentReviewRoomTest {
         assertEquals(" 90.", reopened.input?.amountText)
         assertEquals("2026-08-31", reopened.input?.paymentDate)
         assertEquals(null, reopened.input?.debtPublicId)
+        assertEquals(false, reopened.input?.targetChoiceExplicit)
         assertTrue(reopened.input?.originalKey != raw.input?.originalKey)
         graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.TargetDebt(debt(binding))).getOrThrow()
         graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Money("CNY", "90.00")).getOrThrow()
         val id = graph.repaymentReviewRepository.submit(binding, capture.toDomain(), false).getOrThrow()
         val original = fixture.stored().single()
         drain()
+        assertEquals(true, confirmCalls.last().second.targetChoiceExplicit)
         assertEquals("pending", fixture.stored().single()["status"])
         graph = fixture.reopen()
         assertTrue(graph.repaymentReviewRepository.edit(binding, capture.publicId, RepaymentReviewChange.Money("CNY", "50.00")).isFailure)

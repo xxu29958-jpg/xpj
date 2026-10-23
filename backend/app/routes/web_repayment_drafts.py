@@ -12,7 +12,7 @@ from starlette.responses import Response
 from app.database import get_db
 from app.errors import AppError
 from app.routes._web_debt_write import repayment_scope
-from app.routes._web_repayment_review import _audit_row_view, render_review, submit_review
+from app.routes._web_repayment_review import REVIEW_TIME_FIELDS, _audit_row_view, render_review, submit_review
 from app.routes.web_common import (
     LocalOnly,
     _base_ctx,
@@ -98,7 +98,7 @@ def web_repayment_drafts(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    return _render_repayment_drafts(
+    response = _render_repayment_drafts(
         request,
         db,
         options=options,
@@ -106,6 +106,8 @@ def web_repayment_drafts(
         flash_message=flash_message,
         form_error=form_error,
     )
+    db.commit()
+    return response
 
 
 @router.get("/{public_id}", response_class=HTMLResponse)
@@ -115,8 +117,15 @@ def web_repayment_review(
 ) -> HTMLResponse:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
-    return render_review(request, db, options=options, selected_id=selected_id, public_id=public_id,
+    response = render_review(request, db, options=options, selected_id=selected_id, public_id=public_id,
         account_id=_actor_account_id(request, db, selected_id))
+    db.commit()
+    return response
+
+
+async def _review_optional_fields(request: Request) -> dict[str, str]:
+    raw = await request.form()
+    return {name: str(raw[name]) for name in REVIEW_TIME_FIELDS if name in raw}
 
 
 @router.post("/{public_id}/review", response_class=HTMLResponse)
@@ -129,17 +138,20 @@ def web_submit_repayment_review(
     payment_date: str | None = Form(default=None), calendar_revision: str | None = Form(default=None),
     csrf_token: str = Form(default=""), _local: None = LocalOnly, db: Session = Depends(get_db),
     reason: str | None = Form(default=None), correction_versions: str | None = Form(default=None),
+    target_choice_explicit: str | None = Form(default=None),
+    optional_values: dict[str, str] = Depends(_review_optional_fields),
 ) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id, options, request=request)
     values = {"draft_public_id": draft_public_id, "ledger_id": ledger_id, "origin_binding": origin_binding,
         "review_action": review_action, "target_with_expected_row_version": target_with_expected_row_version, "original_currency": original_currency,
         "original_amount": original_amount, "idempotency_key": idempotency_key}
-    # FastAPI maps an empty optional Form string to None. A reviewed calendar marks
-    # the new paired controls; retain its deliberate blank date in the exact ACK.
-    if calendar_revision is not None and payment_date is None:
-        payment_date = ""
     values.update({name: value for name, value in {"payment_date": payment_date,
-        "calendar_revision": calendar_revision, "reason": reason, "correction_versions": correction_versions}.items() if value is not None})
-    return submit_review(request, db, options=options, selected_id=selected_id, public_id=public_id,
+        "calendar_revision": calendar_revision, "reason": reason, "correction_versions": correction_versions,
+        "target_choice_explicit": target_choice_explicit}.items() if value is not None})
+    # Preserve present blanks and absent legacy fields as distinct original input.
+    values.update(optional_values)
+    response = submit_review(request, db, options=options, selected_id=selected_id, public_id=public_id,
         account_id=_actor_account_id(request, db, selected_id), values=values)
+    db.commit()  # An error render can display a newly recalled, withdrawable decision.
+    return response
