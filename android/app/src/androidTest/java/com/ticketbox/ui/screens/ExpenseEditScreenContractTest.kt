@@ -55,6 +55,43 @@ class ExpenseEditScreenContractTest {
         AppSkin.Midnight else AppSkin.Default
 
     @Test
+    fun coherentEventChoiceUsesOriginalSaveWithoutTeachingDefaultFieldRoles() {
+        var saved: ExpenseDraft? = null
+        val amount = com.ticketbox.domain.model.RecognitionFieldCandidate("amount_cents", "payment", "2800",
+            "第2笔 · 实付", "实付28.00元", "原件中的第二笔", "payment", true, "fact", "receipt-fields-v6", "CNY", 2,
+            "second", eventSelected = true)
+        val merchant = amount.copy(field = "merchant", id = "merchant", value = "青禾超市", role = "merchant")
+        val time = com.ticketbox.domain.model.RecognitionTimeCandidate("clock", "图片 · 第2笔 · 支付时间", "原文",
+            "2026-10-21 09:20", "2026-10-21T09:20", "minute", "Asia/Shanghai", 28800, true,
+            "fact", "image", "receipt-fields-v6", eventId = "second", eventSelected = true)
+        val recorded = expense().copy(
+            accountingTime = com.ticketbox.domain.model.ExpenseAccountingTime("instant", calendarRevision = 1L),
+            recognitionFields = listOf(amount, merchant),
+            recognitionTime = com.ticketbox.domain.model.RecognitionTime("fact", "receipt-fields-v6", "ambiguous", listOf(time)),
+        )
+        composeRule.setContent {
+            TicketboxTheme(skin = skin) {
+                ExpenseEditScreen(expenseEditScreenState(expense = recorded), ExpenseEditScreenActions(
+                    primary = ExpenseEditPrimaryActions(onSave = { saved = it }),
+                ))
+            }
+        }
+        composeRule.runOnIdle { assertEquals(null, saved) }
+        composeRule.onNodeWithText("填入第2笔的金额、商户、时间").performScrollTo().assertIsEnabled().performClick()
+        capture("review-coherent-event-draft")
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle {
+            assertEquals(2800L, saved?.originalAmountMinor)
+            assertEquals("青禾超市", saved?.merchant)
+            assertEquals("2026-10-21", saved?.timeInput?.userLocalDate)
+            assertEquals("2026-10-21T01:20:00Z", saved?.expenseTime)
+            assertEquals(listOf(amount.choice().copy(intent = "bookkeeping"), merchant.choice().copy(intent = "bookkeeping")),
+                saved?.toRequest(recorded)?.recognitionFieldChoices)
+            assertEquals("bookkeeping", saved?.toRequest(recorded)?.recognitionTimeChoice?.intent)
+        }
+    }
+
+    @Test
     fun localSubtasksKeepMainInputAndShowFailuresAtTheirOwnAction() {
         val item = ExpenseItem("item-a", 0, name = "家庭日用品与一段需要完整阅读的商品名称", quantityText = "2",
             unitPriceCents = 5000, amountCents = 10000, category = "日用品", rawText = null,

@@ -56,11 +56,11 @@ function copyExpenseTime(button, candidate) {
     if (!input) continue;
     copyTimeField(input, value);
   }
-  recordSourceChoice(button.closest("form"), candidate);
+  recordSourceChoice(button.closest("form"), candidate, Boolean(button.dataset.eventDraftApply));
   fieldset.querySelector("[data-recognized-time-status]").textContent = "已填入当前草稿，请核对后保存。";
 }
 
-function recordSourceChoice(form, candidate) {
+function recordSourceChoice(form, candidate, eventDraft) {
   if (candidate.evidence_public_id && candidate.parser_version && candidate.source) {
     let input = form.elements.namedItem("recognition_time_choice");
     if (!input) {
@@ -69,7 +69,7 @@ function recordSourceChoice(form, candidate) {
     }
     input.value = JSON.stringify({evidence_public_id: candidate.evidence_public_id,
       candidate_id: candidate.id, parser_version: candidate.parser_version, source: candidate.source,
-      intent: candidate.requires_year ? "original_correction" : "candidate"});
+      intent: eventDraft ? "bookkeeping" : candidate.requires_year ? "original_correction" : "candidate"});
     input.dispatchEvent(new Event("input", {bubbles: true}));
   }
 }

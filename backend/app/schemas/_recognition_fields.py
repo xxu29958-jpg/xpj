@@ -23,6 +23,7 @@ class RecognitionFieldCandidate(BaseModel):
     explanation: str
     role: str
     event_id: str | None = None
+    event_selected: bool = False
     currency_code: str | None = None
     minor_unit_exponent: int | None = None
     can_apply: bool

@@ -400,9 +400,11 @@ def _parse_multiple_events(raw_text: str, evidence_blocks: Sequence[dict] | None
         event_blocks = [evidence_blocks[index] for index in indices] if evidence_blocks else None
         event_id = hashlib.sha256(f"{start}:{end}:{card}".encode()).hexdigest()
         parsed = _parse_single_receipt(card, evidence_blocks=event_blocks, **options)
+        selected = {decision.selected_id for decision in parsed.decisions if decision.status == "selected"}
         for candidate in parsed.candidates:
             candidates.append(replace(candidate,
                 id=hashlib.sha256(f"{event_id}:{candidate.id}".encode()).hexdigest(), event_id=event_id,
+                event_selected=candidate.id in selected,
                 raw_spans=tuple((start + left, start + right) for left, right in candidate.raw_spans),
                 block_indices=tuple(indices[index] for index in candidate.block_indices)))
         events.append({"id": event_id, "raw_spans": [[start, end]], "block_indices": indices,

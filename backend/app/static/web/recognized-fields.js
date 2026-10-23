@@ -50,7 +50,7 @@
     saveChoices(form, [...choices(form).filter(item => item.field !== candidate.field), {
       field: candidate.field, candidate_id: candidate.id, evidence_public_id: candidate.evidence_public_id,
       parser_version: candidate.parser_version, source: candidate.source,
-      intent: correction ? "original_correction" : (candidate.selection_intent || "candidate"),
+      intent: button.dataset.eventDraftApply ? "bookkeeping" : correction ? "original_correction" : (candidate.selection_intent || "candidate"),
     }]);
     button.closest("[data-recognized-fields]").querySelector("[data-recognized-field-status]").textContent = correction
       ? "已注明你对照这一处原件作了纠正，请保存当前修改。" : "已填入当前草稿，请核对后保存。";

@@ -25,7 +25,7 @@ from app.services.receipt_parse_rules import (
     iter_labeled_merchant_matches,
 )
 
-FIELD_PARSE_VERSION = "receipt-fields-v5"
+FIELD_PARSE_VERSION = "receipt-fields-v8"
 
 
 @dataclass(frozen=True)
@@ -65,6 +65,7 @@ class ReceiptFieldCandidate:
     reference_time: str | None = None
     review_reason: str | None = None
     event_id: str | None = None
+    event_selected: bool = False
     components: dict[str, int] | None = None
     rule_version: str = FIELD_PARSE_VERSION
 

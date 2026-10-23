@@ -109,6 +109,10 @@ def _public_candidate(raw_text: str, field: str, candidate: _CandidateT,
     )
 
 
+def _merchant_binding(candidate) -> bool:
+    return candidate.role == "merchant" and candidate.source.startswith(("label:", "store_context"))
+
+
 def resolve_field(
     raw_text: str,
     field: str,
@@ -120,7 +124,7 @@ def resolve_field(
 ) -> tuple[_CandidateT | None, tuple[ReceiptFieldCandidate, ...], ReceiptFieldDecision]:
     precision_order = {"second": 0, "minute": 1, "date_only": 2}
     ordered = sorted(candidates, key=lambda item: (
-        -int(field == "merchant" and getattr(item, "role", "") == "merchant"),
+        -int(field == "merchant" and _merchant_binding(item)),
         -item.score, precision_order.get(getattr(item, "precision", ""), 0), item.line_index,
     ))
     public = tuple(_public_candidate(raw_text, field, item, block_spans, currency_code, minor_unit_exponent)
@@ -134,7 +138,7 @@ def resolve_field(
         selected, decision = _resolve_time(ordered, public)
         return selected, public, decision
     top_values = {item.value for item in public if item.rank_score == public[0].rank_score
-        and (field != "merchant" or item.role == public[0].role)}
+        and (field != "merchant" or _merchant_binding(item) == _merchant_binding(public[0]))}
     if len(top_values) != 1:
         return None, public, ReceiptFieldDecision(field, "ambiguous", None, "conflicting_top_values")
     return ordered[0], public, ReceiptFieldDecision(field, "selected", public[0].id, "unique_top_value")

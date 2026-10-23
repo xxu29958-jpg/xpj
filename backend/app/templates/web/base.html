@@ -208,6 +208,7 @@
   {% endif %}
   <script defer src="/static/web/recognized-time.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/recognized-fields.js?v={{ asset_version }}"></script>
+  <script defer src="/static/web/recognized-events.js?v={{ asset_version }}"></script>
   <script defer src="/static/web/desktop.js?v={{ asset_version }}"></script>
 </head>
 <body class="product-shell{% if _has_domain_subnav %} has-domain-subnav{% endif %}{% if inbox_is_empty|default(false) %} inbox-empty-page{% endif %}{% if _compact_ledger_header %} compact-ledger-header{% endif %}" data-body-stack="product" data-domain="{{ _domain }}" data-page="{{ _page_key }}" data-page-level="{{ _page_level }}">

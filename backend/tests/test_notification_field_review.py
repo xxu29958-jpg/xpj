@@ -53,7 +53,8 @@ def test_original_notification_title_reaches_merchant_choice_from_either_client_
     current = client.get(f"/api/expenses/{capture['expense_id']}", headers=identity.app_headers).json()
     chosen = next((c for c in current['recognition_fields'] if c['field'] == 'merchant' and c['value'] == '晴川书屋'), None)
     assert chosen is not None and chosen['can_apply']
-    assert chosen['original_text'] == '晴川书屋'
+    assert chosen['original_text'].splitlines()[0] == '晴川书屋'
+    assert chosen['source'] == 'notification' and chosen['evidence_public_id'] == capture['public_id']
     with SessionLocal() as db:
         source = db.scalar(select(PaymentCapture).where(PaymentCapture.public_id == capture['public_id']))
         assert source.field_evidence['input']['fragments'] == fragments

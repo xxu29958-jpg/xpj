@@ -11,11 +11,13 @@ from app.services.receipt_parse_rules import (
     CURRENCY_AMOUNT_PATTERN,
     CURRENCY_PREFIX_PATTERN,
     TRANSACTION_SUCCESS_KEYWORDS,
+    is_primary_amount_line,
 )
 from app.services.receipt_parse_structure import promotion_start
 
 _LABELS = {
-    "payment": ("实付金额", "支付金额", "付款金额", "交易金额", "实付", "实际支付", "实际付款"),
+    "payment": ("实付金额", "支付金额", "付款金额", "交易金额", "实付", "实际支付", "实际付款",
+        *TRANSACTION_SUCCESS_KEYWORDS),
     "expense": ("消费金额", "支出金额", "消费", "支出", "扣款"),
     "total": ("合计", "总计"),
     "order": ("订单金额", "应付金额", "应付"),
@@ -43,17 +45,23 @@ AMOUNT_ROLE_PRIORITY = {"rounded_total": 3, "payment": 2, "expense": 2, "final_t
 
 
 def _role(text: str, start: int, end: int) -> str:
+    return _role_evidence(text, start, end)[0]
+
+
+def _role_evidence(text: str, start: int, end: int) -> tuple[str, tuple[int, int] | None]:
     number = re.search(r"\d", text[start:end])
     money_start = start + number.start() if number else start
     prefix = text[max(0, money_start - 64):money_start]
     labels = list(_LABEL.finditer(prefix))
     if labels and _BRIDGE.fullmatch(prefix[labels[-1].end():]):
-        return _ROLE_BY_LABEL[labels[-1].group()]
+        label = labels[-1]
+        offset = max(0, money_start - 64)
+        return _ROLE_BY_LABEL[label.group()], (offset + label.start(), offset + label.end())
     suffix = text[end:end + 32]
     label = _LABEL.search(suffix)
     if label and "\n" not in suffix[:label.start()] and _BRIDGE.fullmatch(suffix[:label.start()]):
-        return _ROLE_BY_LABEL[label.group()]
-    return "unknown"
+        return _ROLE_BY_LABEL[label.group()], (end + label.start(), end + label.end())
+    return "unknown", None
 
 
 def _transaction_review_reason(text: str) -> str | None:
@@ -83,21 +91,69 @@ def bind_amount_roles(text: str, candidates: list[_AmountCandidate]) -> list[_Am
         item.role == "rounded_total" for item in candidates)
     if unresolved_rounding:
         reason = reason or "rounding_total_unresolved"
-    return [_bind_amount_role(text, item, reason=reason, promotion=promotion, has_total=has_total) for item in candidates]
+    bound = [_bind_amount_role(text, item, reason=reason, promotion=promotion, has_total=has_total) for item in candidates]
+    return _bind_unique_payment(text, bound)
 
 
 def _bind_amount_role(text: str, item: _AmountCandidate, *, reason: str | None,
         promotion: int | None, has_total: bool) -> _AmountCandidate:
-    role = item.role if item.role != "unknown" else _role(text, *item.normalized_span)
-    label_span = _total_remainder_label(text, item) if role == "unknown" else None
-    if label_span is not None:
+    role, label_span = ((item.role, item.label_span) if item.role != "unknown"
+        else _role_evidence(text, *item.normalized_span))
+    if role == "unknown" and (label_span := _total_remainder_label(text, item)) is not None:
         role = "total"
+    if role == "unknown" and (label_span := _success_amount_label(text, item)) is not None:
+        role = "payment"
     if promotion is not None and item.normalized_span[0] >= promotion:
         reason = reason or "promotion_amount"
     if role == "unknown":
         reason = reason or _unlabeled_review_reason(text, item, has_total=has_total)
-    return replace(item, role=role, review_reason=reason, label_span=label_span,
+    return replace(_with_label_span(item, label_span), role=role, review_reason=reason,
         score=max(1, item.score) if role in AMOUNT_ROLE_PRIORITY and role != "unknown" else item.score)
+
+
+def _with_label_span(item: _AmountCandidate, label_span: tuple[int, int] | None) -> _AmountCandidate:
+    start, end = item.normalized_span
+    if label_span is not None and label_span[0] < end and start < label_span[1]:
+        return replace(item, normalized_span=(min(start, label_span[0]), max(end, label_span[1])), label_span=None)
+    return replace(item, label_span=label_span)
+
+
+def _success_amount_label(text: str, candidate: _AmountCandidate) -> tuple[int, int] | None:
+    """A standalone price directly next to a completion status names its payment."""
+    if any(item.startswith("discount_context:") for item in candidate.evidence):
+        return None
+    lines = text.splitlines()
+    index = candidate.line_index
+    if not _explicit_primary_line(lines[index]):
+        return None
+    for nearby in (index - 1, index + 1):
+        if 0 <= nearby < len(lines) and lines[nearby] in TRANSACTION_SUCCESS_KEYWORDS:
+            start = sum(len(line) + 1 for line in lines[:nearby])
+            return start, start + len(lines[nearby])
+    return None
+
+
+def _explicit_primary_line(line: str) -> bool:
+    return is_primary_amount_line(line) and bool(re.search(r"[-−.．元]|" + CURRENCY_PREFIX_PATTERN, line, re.I))
+
+
+def _bind_unique_payment(text: str, candidates: list[_AmountCandidate]) -> list[_AmountCandidate]:
+    """One completed card and one otherwise unbound price can cross intervening controls."""
+    if any(item.role in AMOUNT_ROLE_PRIORITY and item.role != "unknown" for item in candidates):
+        return candidates
+    lines = text.splitlines()
+    statuses = [match for match in re.finditer(r"[^\n]+", text) if match.group() in TRANSACTION_SUCCESS_KEYWORDS]
+    unbound = _unbound_payment_amounts(candidates)
+    eligible = [item for item in unbound if _explicit_primary_line(lines[item.line_index])]
+    if len(statuses) != 1 or len({item.amount_cents for item in unbound}) != 1:
+        return candidates
+    return [replace(item, role="payment", label_span=statuses[0].span(), score=max(1, item.score))
+        if item in eligible else item for item in candidates]
+
+
+def _unbound_payment_amounts(candidates: list[_AmountCandidate]) -> list[_AmountCandidate]:
+    return [item for item in candidates if item.role == "unknown" and not item.review_reason
+        and not any(evidence.startswith("discount_context:") for evidence in item.evidence)]
 
 
 def _total_remainder_label(text: str, candidate: _AmountCandidate) -> tuple[int, int] | None:

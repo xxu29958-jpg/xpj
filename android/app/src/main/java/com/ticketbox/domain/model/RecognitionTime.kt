@@ -37,4 +37,6 @@ data class RecognitionTimeCandidate(
     val role: String = "unknown",
     val components: Map<String, Int> = emptyMap(),
     val requiresYear: Boolean = false,
+    val eventId: String? = null,
+    val eventSelected: Boolean = false,
 )

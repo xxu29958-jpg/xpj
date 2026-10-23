@@ -248,6 +248,7 @@
 
     function bindFragment() {
       app.bindReviewFields(drawer);
+      app.initRecognizedEvents(drawer);
       drawer.querySelectorAll("[data-review-position]").forEach(function (position) {
         const index = batchIds.indexOf(activeExpenseId);
         position.textContent = index < 0 ? "原核对任务" : "第 " + (index + 1) + " / " + batchIds.length + " 张";

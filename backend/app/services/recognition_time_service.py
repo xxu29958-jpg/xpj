@@ -63,7 +63,8 @@ def _candidate(item: dict, raw_text: str, *, public_id: str, source: str, versio
         can_apply=valid and role in {"payment", "transaction", "consumption", "unknown"}
         and reason not in {"invalid_date", "invalid_datetime", "nonexistent_local_time"},
         evidence_public_id=public_id, source=source, parser_version=version, role=role,
-        components=item.get("components") or {}, requires_year=_requires_year(item))
+        components=item.get("components") or {}, requires_year=_requires_year(item),
+        event_id=item.get("event_id"), event_selected=bool(item.get("event_selected")))
 
 
 def _requires_year(item: dict) -> bool:

@@ -1,5 +1,8 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.ui.screens.expense.RecognizedEventDrafts
+import com.ticketbox.ui.screens.expense.withEventTime
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.animation.AnimatedVisibility
@@ -483,6 +486,9 @@ fun ExpenseEditScreen(
         } else merchant = candidate.value
         fieldChoicesJson = updateFieldChoice(fieldChoicesJson, candidate.field, candidate.choice())
     }
+    fun chooseEventTime(candidate: com.ticketbox.domain.model.RecognitionTimeCandidate) {
+        setTimeForm(timeForm.withEventTime(candidate))
+    }
     val formSections: @Composable () -> Unit = {
         if (currentExpense.status == "pending") currentExpense.recognitionNotes.forEach { note ->
             androidx.compose.material3.Text(note, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
@@ -535,9 +541,13 @@ fun ExpenseEditScreen(
                 merchant = it; fieldChoicesJson = updateFieldChoice(fieldChoicesJson, "merchant")
             }, enabled = !readOnly)
         }
-        if (isPendingExpense) RecognizedFieldCandidates(currentExpense.recognitionFields, !readOnly, ::chooseOriginalField) { candidate ->
-            fieldChoicesJson = updateFieldChoice(fieldChoicesJson, candidate.field,
-                candidate.choice().copy(intent = "original_correction"))
+        if (isPendingExpense) {
+            RecognizedEventDrafts(currentExpense.recognitionFields, currentExpense.recognitionTime,
+                !readOnly, ::chooseOriginalField, ::chooseEventTime)
+            RecognizedFieldCandidates(currentExpense.recognitionFields, !readOnly, ::chooseOriginalField) { candidate ->
+                fieldChoicesJson = updateFieldChoice(fieldChoicesJson, candidate.field,
+                    candidate.choice().copy(intent = "original_correction"))
+            }
         }
         ExpenseEditCategorySelector(
             state = ExpenseEditCategorySelectorState(
