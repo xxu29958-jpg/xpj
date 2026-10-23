@@ -220,4 +220,23 @@ class ExpenseDtoContractTest {
             .toJson(ExpenseStateTokenRequest(expectedRowVersion = 1L))
         assertEquals("""{"expected_row_version":1}""", json)
     }
+
+    @Test
+    fun timeEvidenceCarriesEachSourceThroughJsonAndDomainMapping() {
+        val evidence = requireNotNull(moshi.adapter(RecognitionTimeDto::class.java).fromJson("""
+            {"evidence_public_id":"fact","source":"multiple","parser_version":"mixed","status":"ambiguous",
+             "candidates":[
+              {"id":"same-value-id","label":"图片 · 交易日期","explanation":"只有日期","original_text":"2025-12-31",
+               "local_value":"2025-12-31","precision":"date_only","source_timezone":null,"source_utc_offset_seconds":null,
+               "can_apply":true,"evidence_public_id":"fact","source":"image","parser_version":"receipt-fields-v2","role":"transaction"},
+              {"id":"same-value-id","label":"通知 · 交易日期","explanation":"只有日期","original_text":"2026-01-01",
+               "local_value":"2026-01-01","precision":"date_only","source_timezone":null,"source_utc_offset_seconds":null,
+               "can_apply":true,"evidence_public_id":"capture","source":"notification","parser_version":"receipt-fields-v3","role":"payment"}]}
+        """.trimIndent())).toDomain()
+        assertEquals(listOf("fact", "capture"), evidence.candidates.map { it.evidencePublicId })
+        assertEquals(listOf("image", "notification"), evidence.candidates.map { it.source })
+        assertEquals(listOf("receipt-fields-v2", "receipt-fields-v3"), evidence.candidates.map { it.parserVersion })
+        assertEquals(listOf("transaction", "payment"), evidence.candidates.map { it.role })
+        assertEquals(listOf("2025-12-31", "2026-01-01"), evidence.candidates.map { it.localValue })
+    }
 }

@@ -9,6 +9,7 @@ from app.models import PaymentCapture
 from app.schemas._recognition_time import RecognitionTimeResponse
 from app.schemas.notification_time import NotificationTimeEvidence
 from app.services.receipt_parse_candidates import resolve_field
+from app.services.receipt_parse_common import FIELD_PARSE_VERSION
 from app.services.receipt_parse_time import _time_candidates
 from app.services.recognition_time_service import project_time_evidence
 
@@ -25,7 +26,7 @@ def freeze_notification_time(evidence: NotificationTimeEvidence | None, captured
         if item["timezone_basis"] == "source_timezone":
             item["timezone_basis"] = "capture_timezone"
     return {"schema": "notification-time/v1", "input": evidence.model_dump(), "raw_text": raw,
-        "field_parse": {"version": "receipt-fields-v2", "reference_time": captured_at.isoformat(),
+        "field_parse": {"version": FIELD_PARSE_VERSION, "reference_time": captured_at.isoformat(),
             "candidates": values, "decisions": [asdict(decision)]}}
 
 

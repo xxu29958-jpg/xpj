@@ -27,7 +27,11 @@ data class RecognitionTimeCandidateDto(
     @param:Json(name = "source_timezone") val sourceTimezone: String?,
     @param:Json(name = "source_utc_offset_seconds") val sourceUtcOffsetSeconds: Int?,
     @param:Json(name = "can_apply") val canApply: Boolean,
+    @param:Json(name = "evidence_public_id") val evidencePublicId: String? = null,
+    val source: String? = null,
+    @param:Json(name = "parser_version") val parserVersion: String? = null,
+    val role: String = "unknown",
 ) {
     fun toDomain() = RecognitionTimeCandidate(id, label, explanation, originalText, localValue,
-        precision, sourceTimezone, sourceUtcOffsetSeconds, canApply)
+        precision, sourceTimezone, sourceUtcOffsetSeconds, canApply, evidencePublicId, source, parserVersion, role)
 }

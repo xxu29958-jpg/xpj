@@ -158,6 +158,31 @@ def test_scoring_prefers_business_time_over_generic_time() -> None:
     assert _utc_iso(parsed.expense_time) == "2026-05-04T08:23:25Z"
 
 
+@pytest.mark.parametrize("order", [(0, 1, 2, 3), (2, 1, 3, 0)])
+@pytest.mark.parametrize("other_label, label_y, role", [
+    ("下单时间", 70, "order"), ("打印时间Print time", 56, "printed"),
+    ("支付时间/打印时间", 70, "unknown"),
+])
+def test_time_roles_follow_page_rows_instead_of_ocr_serialization(order, other_label, label_y, role) -> None:
+    rows = [("支付时间", 10, 20), (other_label, 10, label_y),
+        ("2026-05-04 16:23", 200, 20), ("2026-05-04 16:00", 200, 70)]
+    blocks = [{"text": rows[index][0], "box": [[rows[index][1], rows[index][2]],
+        [rows[index][1] + 150, rows[index][2]], [rows[index][1] + 150, rows[index][2] + 20],
+        [rows[index][1], rows[index][2] + 20]]} for index in order]
+    raw = "\n".join(block["text"] for block in blocks)
+    parsed = parse_receipt_text(raw, timezone_name="Asia/Shanghai", evidence_blocks=blocks,
+        currency_code="CNY", minor_unit_exponent=2)
+    assert _utc_iso(parsed.expense_time) == "2026-05-04T08:23:00Z"
+    payment = next(item for item in parsed.candidates if item.role == "payment")
+    assert set(payment.block_indices) == {order.index(0), order.index(2)}
+    assert {raw[start:end] for start, end in payment.raw_spans} == {"支付时间", "2026-05-04 16:23"}
+    other = next(item for item in parsed.candidates if item.local_value == "2026-05-04T16:00")
+    assert other.role == role
+    if role != "unknown":
+        assert other.review_reason == "non_transaction_time"
+        assert set(other.block_indices) == {order.index(1), order.index(3)}
+
+
 def test_labeled_amount_and_merchant_parse_with_long_spacing() -> None:
     raw_text = "\n".join(
         [

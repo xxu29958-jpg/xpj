@@ -66,16 +66,16 @@ def test_api_date_only_choice_is_explicit_replayable_and_keeps_source_fact(clien
     assert not new_fields.intersection(ExpenseResponse.model_validate(old).model_dump(mode="json"))
 
 
-def test_web_shows_the_same_uncertain_year_and_does_not_edit_on_read(web_client, identity):
-    raw = "交易时间：12月31日23:59\n截图时间：2026-01-01 10:00"
+@pytest.mark.parametrize("literal", ["12月31日23:59", "昨天23:59"])
+def test_web_keeps_missing_image_date_unknown_without_a_capture_anchor(web_client, identity, literal):
+    raw = f"交易时间：{literal}"
     expense_id, fact_id = _seed(raw)
     page = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
     assert page.status_code == 200, page.text
     choices = [json.loads(unescape(value)) for value in re.findall(r"data-recognized-time='([^']+)'", page.text)]
-    assert len(choices) == 1
-    assert choices[0]["local_value"] == "2025-12-31T23:59"
-    assert "缺少年份" in choices[0]["explanation"]
-    assert choices[0]["original_text"] == "交易时间：12月31日23:59"
+    assert not choices
+    assert raw in page.text and "缺少完整日期" in page.text
+    assert "2025-12-31T23:59" not in page.text
     assert f'data-fact-id="{fact_id}"' in page.text
     with SessionLocal() as db:
         expense = db.get(Expense, expense_id)

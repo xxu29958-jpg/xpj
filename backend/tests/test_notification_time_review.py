@@ -86,7 +86,12 @@ def test_identity_backfill_keeps_new_time_evidence_and_original_delivery(client,
         assert len(list(db.scalars(select(PaymentCapture)))) == 1
 
 
-def test_printed_ocr_time_does_not_hide_actionable_notification_time(web_client, identity):
+@pytest.mark.parametrize("raw,conflicts", [
+    ("打印时间：2026-01-01 09:00", False),
+    ("支付时间：2025-12-31 22:00", True),
+    ("支付时间：2025-12-31 23:59", False),
+])
+def test_image_and_notification_times_keep_both_origins_on_real_reads(web_client, identity, raw, conflicts):
     from fastapi.testclient import TestClient
 
     from app.routes.web_auth import PAIRING_ATTEMPT_COOKIE_NAME, SESSION_COOKIE_NAME
@@ -95,13 +100,18 @@ def test_printed_ocr_time_does_not_hide_actionable_notification_time(web_client,
     url = f"/api/expenses/{created['expense_id']}"
     before = web_client.get(url, headers=identity.app_headers).json()
     headers = negotiated_headers(web_client, {**identity.app_headers, "Idempotency-Key": str(uuid4())})
-    raw = "打印时间：2026-01-01 09:00"
     parsed = web_client.post(url + "/recognize-text", headers=headers,
         json={"expected_row_version": before["row_version"], "raw_text": raw})
     assert parsed.status_code == 200, parsed.json()
     current = web_client.get(url, headers=identity.app_headers).json()
-    assert current["recognition_time"] == created["recognition_time"]
-    assert current["raw_text"] == raw and current["expense_time"] is None
+    combined = current["recognition_time"]
+    assert combined["source"] == "multiple"
+    assert combined["status"] == ("ambiguous" if conflicts else "needs_review")
+    notice = [item for item in combined["candidates"] if item["source"] == "notification"]
+    assert notice == created["recognition_time"]["candidates"]
+    assert all(item["evidence_public_id"] == created["public_id"] for item in notice)
+    assert combined["candidates"][0]["evidence_public_id"] == combined["evidence_public_id"]
+    assert current["raw_text"] == raw and current["expense_time"] == parsed.json()["expense_time"]
     assert current["original_amount_minor"] == before["original_amount_minor"]
     login_form = web_client.get("/web/auth/login")
     connected = web_client.post("/web/auth/login", data={"pairing_code": identity.pairing_code,
@@ -114,7 +124,9 @@ def test_printed_ocr_time_does_not_hide_actionable_notification_time(web_client,
         page = browser.get(f"/web/expenses/{created['expense_id']}/edit?ledger_id=owner",
             headers={"Cookie": f"{SESSION_COOKIE_NAME}={connected.cookies[SESSION_COOKIE_NAME]}"})
     assert page.status_code == 200
-    assert "2025-12-31T23:59" in page.text and f'data-fact-id="{created["public_id"]}"' in page.text
+    assert "2025-12-31T23:59" in page.text and f'data-fact-id="{combined["evidence_public_id"]}"' in page.text
+    assert "图片 · " in page.text and "通知 · 交易时间" in page.text
+    assert ("原件有不同的时间" in page.text) == conflicts
 
 
 def test_repayment_date_review_and_replay_preserve_delivery_and_original_time_evidence(client, identity):

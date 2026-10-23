@@ -25695,6 +25695,17 @@
             "title": "Can Apply",
             "type": "boolean"
           },
+          "evidence_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Public Id"
+          },
           "explanation": {
             "title": "Explanation",
             "type": "string"
@@ -25715,9 +25726,36 @@
             "title": "Original Text",
             "type": "string"
           },
+          "parser_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Version"
+          },
           "precision": {
             "title": "Precision",
             "type": "string"
+          },
+          "role": {
+            "default": "unknown",
+            "title": "Role",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
           },
           "source_timezone": {
             "anyOf": [

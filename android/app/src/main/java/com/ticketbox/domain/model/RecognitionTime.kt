@@ -19,4 +19,8 @@ data class RecognitionTimeCandidate(
     val sourceTimezone: String?,
     val sourceUtcOffsetSeconds: Int?,
     val canApply: Boolean,
+    val evidencePublicId: String? = null,
+    val source: String? = null,
+    val parserVersion: String? = null,
+    val role: String = "unknown",
 )
