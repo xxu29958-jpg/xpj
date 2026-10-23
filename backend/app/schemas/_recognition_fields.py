@@ -10,7 +10,7 @@ class RecognitionFieldChoice(BaseModel):
     evidence_public_id: str = Field(min_length=1, max_length=36)
     candidate_id: str = Field(min_length=1, max_length=64)
     parser_version: str = Field(min_length=1, max_length=64)
-    source: Literal["image"] = "image"
+    source: Literal["image", "notification"] = "image"
     intent: Literal["candidate", "original_correction", "bookkeeping"] = "candidate"
 
 
@@ -28,5 +28,5 @@ class RecognitionFieldCandidate(BaseModel):
     can_apply: bool
     evidence_public_id: str
     parser_version: str
-    source: Literal["image"] = "image"
+    source: Literal["image", "notification"] = "image"
     selection_intent: Literal["candidate", "bookkeeping"] = "candidate"

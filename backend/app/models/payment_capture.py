@@ -34,6 +34,7 @@ class PaymentCapture(Base):
     parser_version: Mapped[str] = mapped_column(String(64), nullable=False)
     candidates: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     time_evidence: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    field_evidence: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
     expense_public_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     repayment_public_id: Mapped[str | None] = mapped_column(String(36), nullable=True)

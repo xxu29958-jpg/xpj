@@ -24746,6 +24746,53 @@
         "title": "NotificationDraftCreateRequest",
         "type": "object"
       },
+      "NotificationFieldEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "fragments": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationFieldFragment"
+            },
+            "maxItems": 24,
+            "title": "Fragments",
+            "type": "array"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "title": "NotificationFieldEvidence",
+        "type": "object"
+      },
+      "NotificationFieldFragment": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "enum": [
+              "title",
+              "text",
+              "bigText",
+              "subText"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "literal": {
+            "maxLength": 96,
+            "minLength": 1,
+            "title": "Literal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "literal"
+        ],
+        "title": "NotificationFieldFragment",
+        "type": "object"
+      },
       "NotificationTimeEvidence": {
         "additionalProperties": false,
         "properties": {
@@ -25487,6 +25534,16 @@
             "title": "Captured At",
             "type": "string"
           },
+          "field_evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NotificationFieldEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "merchant": {
             "anyOf": [
               {
@@ -26031,8 +26088,11 @@
             "type": "string"
           },
           "source": {
-            "const": "image",
             "default": "image",
+            "enum": [
+              "image",
+              "notification"
+            ],
             "title": "Source",
             "type": "string"
           },
@@ -26103,8 +26163,11 @@
             "type": "string"
           },
           "source": {
-            "const": "image",
             "default": "image",
+            "enum": [
+              "image",
+              "notification"
+            ],
             "title": "Source",
             "type": "string"
           }

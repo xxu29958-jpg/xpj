@@ -23,10 +23,21 @@ internal object NotificationTransactionEvidence {
     private data class Anchor(val match: MatchResult, val kind: String)
     private data class Clause(val text: String, val anchors: List<Anchor>, val money: List<MatchResult>)
 
-    fun read(field: String, text: String): List<NotificationEvidence> {
-        val clauses = boundary.split(text).filter { it.isNotBlank() }.map { value ->
+    private fun clauses(text: String) = boundary.split(text).filter { it.isNotBlank() }.map { value ->
             Clause(value, label.findAll(value).map { Anchor(it, kind(value, it)) }.toList(), amount.findAll(value).toList())
         }
+
+    fun fieldFragments(field: String, text: String): List<NotificationFieldFragment> = clauses(text).flatMap { clause ->
+        clause.money.map { money ->
+            val anchor = bind(clause, money)?.match
+            val first = minOf(money.range.first, anchor?.range?.first ?: money.range.first)
+            val last = maxOf(money.range.last, anchor?.range?.last ?: money.range.last)
+            NotificationFieldFragment(field, clause.text.substring(first, last + 1))
+        }
+    }
+
+    fun read(field: String, text: String): List<NotificationEvidence> {
+        val clauses = clauses(text)
         val result = clauses.flatMap { clause ->
             clause.money.mapNotNull { money -> bind(clause, money)?.let { anchor ->
                 NotificationEvidence(anchor.kind, minor(money), field, "amount_bound_${anchor.kind}")

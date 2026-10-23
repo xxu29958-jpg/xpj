@@ -13,7 +13,8 @@ from app.services.accounting_time_service import accounting_time_snapshot
 from app.services.learning_service import EventDraft, read_ocr_facts, record_event
 from app.services.learning_service._algorithm_registry import RECOGNITION_TIME_CHOICE
 from app.services.learning_service._source_eligibility import _event_payload
-from app.services.notification_time_service import notification_times_for_expenses
+from app.services.notification_time_memory import notification_time_choice_context, notification_time_sources
+from app.services.notification_time_service import notification_time
 from app.services.recognition_time_service import recognition_time
 
 
@@ -38,13 +39,14 @@ def time_components(expense: Expense) -> dict:
 
 def _chosen_source(db: Session, expense: Expense, choice: RecognitionTimeChoice, actor_account_id: int):
     fact = read_ocr_facts(db, tenant_id=expense.tenant_id, expenses=[expense]).get(expense.id)
-    notification = notification_times_for_expenses(db, tenant_id=expense.tenant_id,
-        actor_account_id=actor_account_id, expense_public_ids=[expense.public_id]).get(expense.public_id)
+    capture = notification_time_sources(db, tenant_id=expense.tenant_id,
+        actor_account_id=actor_account_id, expense_ids=[expense.id]).get(expense.id)
+    notification = notification_time(capture) if capture else None
     evidence = recognition_time(fact, notification=notification)
     candidate = next((item for item in evidence.candidates if item.id == choice.candidate_id
         and item.evidence_public_id == choice.evidence_public_id and item.parser_version == choice.parser_version
         and item.source == choice.source), None) if evidence else None
-    return fact, candidate
+    return fact, candidate, capture
 
 
 def _candidate_components(candidate) -> dict:
@@ -67,7 +69,7 @@ def record_time_choice(db: Session, *, expense: Expense, choice: RecognitionTime
         actor_account_id: int | None) -> None:
     if choice is None or actor_account_id is None:
         return
-    fact, candidate = _chosen_source(db, expense, choice, actor_account_id)
+    fact, candidate, capture = _chosen_source(db, expense, choice, actor_account_id)
     if candidate is None:
         return  # Saving valid accounting intent must not manufacture a stale/foreign label.
     previous = db.scalar(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == expense.tenant_id,
@@ -85,6 +87,8 @@ def record_time_choice(db: Session, *, expense: Expense, choice: RecognitionTime
         field_parse = json.loads(fact.evidence_json)["field_parse"]
         payload["_candidate_key"] = next(time_candidate_key(fact.raw_text, item) for item in field_parse["candidates"]
             if item["id"] == choice.candidate_id)
+    elif choice.source == "notification" and capture is not None:
+        payload.update(notification_time_choice_context(capture, choice.candidate_id))
     event = record_event(db, EventDraft(tenant_id=expense.tenant_id, subject_kind="expense", subject_id=expense.id,
         actor_account_id=actor_account_id, event_type="accept" if payload["_learning_qualified"] else "edit",
         after_payload=payload, signal_type=RECOGNITION_TIME_CHOICE.decision_type,

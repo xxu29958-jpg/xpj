@@ -9,9 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import Expense, PaymentCapture, RepaymentDraft
+from app.schemas.notification_fields import NotificationFieldEvidence
 from app.schemas.notification_time import NotificationTimeEvidence
 from app.schemas.payment_capture import PaymentCaptureResponse
 from app.services.currency_binding_service import resolve_write_capability
+from app.services.notification_field_service import freeze_notification_fields
 from app.services.notification_time_service import freeze_notification_time, notification_time
 from app.services.time_service import ensure_utc, now_utc
 
@@ -76,6 +78,9 @@ def link_capture(db: Session, capture: PaymentCapture, target: Expense | Repayme
         if previous.time_evidence is None and capture.time_evidence is not None:
             previous.time_evidence = freeze_notification_time(
                 NotificationTimeEvidence.model_validate(capture.time_evidence["input"]), ensure_utc(previous.captured_at))
+        if previous.field_evidence is None and capture.field_evidence is not None:
+            previous.field_evidence = freeze_notification_fields(
+                NotificationFieldEvidence.model_validate(capture.field_evidence["input"]), previous.original_currency)
         db.delete(capture)
         db.flush()
         previous.identity_hash = original_hash

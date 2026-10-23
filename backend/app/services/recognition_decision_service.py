@@ -1,4 +1,4 @@
-"""One current, personal display decision for each original-image field."""
+"""One current, personal display decision for each original material field."""
 import json
 
 from sqlalchemy import select
@@ -9,7 +9,7 @@ from app.services.learning_service import DecisionDraft, record_decision
 
 def _owned_slot(decision, actor, slot):
     payload = json.loads(decision.output_payload)
-    return payload.get("actor_account_id") == actor and payload.get("field", "expense_time") == slot
+    return payload.get("actor_account_id") == actor and payload.get("slot", payload.get("field", "expense_time")) == slot
 
 
 def _retain_current_decision(owned, payload, entry):

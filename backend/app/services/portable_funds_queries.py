@@ -78,7 +78,7 @@ def funds_queries(auth: AuthContext, record: Callable[[type[Base], str, ColumnEl
         (m.EnvelopeAllocation, "tenant_id month purpose allocated_minor", m.EnvelopeAllocation.tenant_id == auth.ledger_id),
         (m.EnvelopeRevision, "tenant_id row_version actor_account_id month reason allocation_snapshot recorded_at", m.EnvelopeRevision.tenant_id == auth.ledger_id),
         (m.PaymentCapture, "id public_id tenant_id actor_account_id identity_hash source captured_at original_currency original_amount_minor "
-            "merchant parser_version candidates kind expense_public_id repayment_public_id decisions row_version created_at",
+            "merchant parser_version candidates time_evidence field_evidence kind expense_public_id repayment_public_id decisions row_version created_at",
             and_(m.PaymentCapture.tenant_id == auth.ledger_id, m.PaymentCapture.actor_account_id == auth.account_id)),
     )
     return (*((model.__tablename__, record(model, fields, scope)) for model, fields, scope in inventory),

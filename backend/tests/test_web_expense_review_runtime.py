@@ -992,13 +992,11 @@ def test_actual_review_browser_resolves_original_action_before_starting_next_com
 
 @pytest.mark.real_db
 @pytest.mark.parametrize("year_completion,single_use,field_choice", [(False, False, False), (True, False, False),
-    (False, True, False), (False, False, True), (False, False, "original_correction")])
+    (False, True, False), (False, False, True), (False, False, "original_correction"), (False, False, "notification")])
 def test_browser_explicit_same_category_replays_original_advice_once(review_browser, confirmation_store, monkeypatch, tmp_path, year_completion, single_use, field_choice):
     from app.models import AlgorithmDecision, LedgerLearningEvent
     from app.routes import web_expense_edit
     from app.services.expense_accounting_time_service import refresh_legacy_expense_time
-    from app.services.expense_service._ocr_facts import append_ocr_fact
-    from app.services.ocr_service import OcrResult
     from app.services.pending_suggestion_service import record_category_choice
 
     client, _ = review_browser
@@ -1009,12 +1007,7 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
     monkeypatch.setattr(web_expense_edit, "resolve_web_actor", lambda *args: (actor.account_id, actor.device_id))
     with confirmation_store() as db:
         resolve_write_capability(db)
-        text = "支付时间：02月29日23:04:05 +07:00" if year_completion else "支付时间：2026-10-18 12:20"
-        if field_choice:
-            text = ("商户：首识便利店\n支付金额：JPY 28500\n" if field_choice == "original_correction"
-                else "商户：首次便利店\n支付金额：JPY 2850\n") + text
-        append_ocr_fact(db, expense=db.get(Expense, 42), provider_name="mock", timezone_name="Asia/Shanghai",
-            result=OcrResult(raw_text=text, confidence=0.9))
+        _seed_review_field_evidence(db, actor, year_completion, field_choice)
         for _ in range(3):
             previous = Expense(tenant_id="owner", merchant="首次便利店", category="购物", amount_cents=1000,
                 original_amount_minor=1000, original_currency_code=original.original_currency_code,
@@ -1068,6 +1061,29 @@ def test_browser_explicit_same_category_replays_original_advice_once(review_brow
         assert db.get(AlgorithmDecision, event.decision_id).public_id == result["decision"]
 
 
+def _seed_review_field_evidence(db, actor, year_completion, field_choice):
+    from app.models import PaymentCapture
+    from app.schemas.notification_fields import NotificationFieldEvidence
+    from app.services.expense_service._ocr_facts import append_ocr_fact
+    from app.services.notification_field_service import freeze_notification_fields
+    from app.services.ocr_service import OcrResult
+
+    text = "支付时间：02月29日23:04:05 +07:00" if year_completion else "支付时间：2026-10-18 12:20"
+    if field_choice == "notification":
+        evidence = NotificationFieldEvidence(fragments=[{"field": "text", "literal": "商户：首次便利店"},
+            {"field": "text", "literal": "支付金额：JPY 2850"}])
+        db.add(PaymentCapture(tenant_id="owner", actor_account_id=actor.account_id, source="alipay",
+            captured_at=now_utc(), original_currency="JPY", original_amount_minor=2850,
+            merchant="首次便利店", parser_version="transaction-evidence-v4", candidates=[],
+            kind="expense", expense_public_id=db.get(Expense, 42).public_id, created_at=now_utc(),
+            field_evidence=freeze_notification_fields(evidence, "JPY")))
+    elif field_choice:
+        text = ("商户：首识便利店\n支付金额：JPY 28500\n" if field_choice == "original_correction"
+            else "商户：首次便利店\n支付金额：JPY 2850\n") + text
+    append_ocr_fact(db, expense=db.get(Expense, 42), provider_name="mock", timezone_name="Asia/Shanghai",
+        result=OcrResult(raw_text=text, confidence=0.9))
+
+
 def _assert_replayed_source_choices(events, actor, current, result, field_choice, year_completion):
     if field_choice:
         _assert_replayed_field_choices(events, actor, result, field_choice)
@@ -1086,6 +1102,8 @@ def _assert_replayed_field_choices(events, actor, result, field_choice):
     expected_type = "edit" if field_choice == "original_correction" else "accept"
     assert all(row.actor_account_id == actor.account_id and row.event_type == expected_type for row in field_events)
     assert all(json.loads(row.after_payload)["_learning_qualified"] for row in field_events)
+    if field_choice == "notification":
+        assert all(json.loads(row.after_payload)["source"] == "notification" for row in field_events)
     assert {json.loads(row.after_payload)["candidate_id"] for row in field_events} == {
         row["candidate_id"] for row in json.loads(result["fieldChoices"])}
 

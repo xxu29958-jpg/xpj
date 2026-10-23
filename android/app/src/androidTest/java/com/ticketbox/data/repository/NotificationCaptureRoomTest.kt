@@ -42,6 +42,9 @@ class NotificationCaptureRoomTest {
         val repaymentId = repository.accept(repayment, origin, "repayment-post").getOrThrow()
         assertNotEquals(id, repaymentId)
         val originals = fixture.pendingDao.allRows().associate { it.id to it.payload }
+        val frozen = requireNotNull(NotificationCaptureWire.payload.fromJson(requireNotNull(originals[id])))
+        assertTrue(requireNotNull(frozen.fieldEvidence).fragments.any { "37.90" in it.literal })
+        assertEquals(expense.fieldEvidence?.fragments?.map { it.literal }, frozen.fieldEvidence?.fragments?.map { it.literal })
         fixture.reopen()
         provider = fixture.notificationDependencies.apiServiceProvider
         val reopened = NotificationCaptureRepository(provider, fixture.outbox)

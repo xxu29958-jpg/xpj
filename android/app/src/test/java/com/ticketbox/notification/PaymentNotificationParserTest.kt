@@ -13,6 +13,16 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PaymentNotificationParserTest {
+    @Test fun fieldProofKeepsOriginalSpanAndOriginWithoutCopyingTheWholeNotification() {
+        val body = "商户：海棠咖啡，支付成功18.00元。" + "后续活动介绍".repeat(30)
+        val result = requireNotNull(PaymentNotificationParser.parse(snapshot("com.tencent.mm", "微信支付", body)))
+        val evidence = requireNotNull(result.fieldEvidence)
+        assertTrue(evidence.fragments.any { it.field == "text" && it.literal == "商户：海棠咖啡" })
+        assertTrue(evidence.fragments.any { "18.00" in it.literal })
+        assertTrue(evidence.fragments.all { it.literal.length <= 96 && it.literal != body })
+        assertFalse(evidence.truncated)
+    }
+
     @Test
     fun parsesWechatPaymentNotification() {
         val draft = expenseOf(

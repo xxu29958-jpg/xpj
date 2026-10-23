@@ -67,6 +67,7 @@ def test_identity_backfill_keeps_new_time_evidence_and_original_delivery(client,
     payload = _capture(kind)
     legacy = client.post("/api/payment-captures", headers=identity.app_headers,
         json={**payload, "time_evidence": None}).json()
+    payload["field_evidence"] = {"fragments": [{"field": "text", "literal": "支付金额：25元"}], "truncated": False}
     with SessionLocal() as db:
         capture = db.scalar(select(PaymentCapture).where(PaymentCapture.public_id == legacy["public_id"]))
         capture.identity_hash = None  # Historical draft materialized before notification identity was available.
@@ -83,7 +84,10 @@ def test_identity_backfill_keeps_new_time_evidence_and_original_delivery(client,
     payload["time_evidence"]["fragments"][0]["literal"] = "2026-02-03 08:00"
     assert client.post("/api/payment-captures", headers=identity.app_headers, json=payload).json() == restored
     with SessionLocal() as db:
-        assert len(list(db.scalars(select(PaymentCapture)))) == 1
+        captures = list(db.scalars(select(PaymentCapture)))
+        assert len(captures) == 1
+        field = captures[0].field_evidence["field_parse"]["candidates"][0]
+        assert field["value"] == 2500 and field["currency_code"] == "CNY"
 
 
 @pytest.mark.parametrize("raw,conflicts,truncated,image_zone,literal", [
