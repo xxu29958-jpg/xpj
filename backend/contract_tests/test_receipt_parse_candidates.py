@@ -14,6 +14,9 @@ def parse(text, **kwargs):
     ("21:36.…\n<账单详情\n全部账单\n联系商家\n晨光打车\n-12.09\n自动扣款成功", "晨光打车"),
     ("商家：11:45 书店\n实付金额：23.00", "11:45 书店"),
     ("支付成功\n¥23.00\n青禾通信\n付款方式\n储蓄卡\n支付有礼\n领取打车红包", "青禾通信"),
+    ("支付成功\n￥18.00\n青禾茶店\n支付奖励\n高德打车", "青禾茶店"),
+    ("支付成功\n￥18.00\n青禾茶店\n支付有礼\n滴滴打车", "青禾茶店"),
+    ("支付成功\n￥18.00\n高德打车\n支付奖励\n立即领取", "高德打车"),
 ])
 def test_status_clock_and_contact_action_do_not_replace_the_transaction_merchant(raw, merchant):
     result = parse(raw)

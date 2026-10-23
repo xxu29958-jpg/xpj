@@ -33,7 +33,8 @@ from app.services.receipt_parse_structure import related_value_index
 
 def _merchant_candidates(text: str, blocks: Sequence[dict] | None = None) -> list[_MerchantCandidate]:
     lines = text.splitlines()
-    return [
+    promotion_lines = _payment_promotion_lines(lines)
+    candidates = [
         *_success_merchant_candidates(text, lines),
         *_payment_method_merchant_candidates(text, lines),
         *_payment_sheet_merchant_candidates(text, lines),
@@ -42,6 +43,22 @@ def _merchant_candidates(text: str, blocks: Sequence[dict] | None = None) -> lis
         *_keyword_merchant_candidates(text),
         *_first_line_merchant_candidates(text, lines),
     ]
+    return [candidate for candidate in candidates if candidate.line_index not in promotion_lines]
+
+
+def _payment_promotion_lines(lines: list[str]) -> set[int]:
+    """A provider inside a post-payment promotion is not this transaction's merchant."""
+    payment_seen = promotion = False
+    excluded = set()
+    headings = {"支付奖励", "支付有礼", "消费有礼", "领取奖励", "领取红包", "更多优惠", "优惠推荐", "为你推荐"}
+    for index, line in enumerate(lines):
+        if any(keyword in line for keyword in TRANSACTION_SUCCESS_KEYWORDS):
+            payment_seen, promotion = True, False
+        elif payment_seen and line.strip(" ：:") in headings:
+            promotion = True
+        if promotion:
+            excluded.add(index)
+    return excluded
 
 
 def _success_merchant_candidates(text: str, lines: list[str]) -> list[_MerchantCandidate]:

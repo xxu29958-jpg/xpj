@@ -19,15 +19,18 @@ def recognition_fields(fact) -> list[RecognitionFieldCandidate]:
     evidence = json.loads(fact.evidence_json).get("field_parse", {})
     events = _event_prefixes(evidence)
     candidates = evidence.get("candidates", [])
-    named_merchants = {(item["value"], item.get("event_id")) for item in candidates
+    named_merchants = {(item["value"], item.get("event_id")): item["id"]
+        for item in sorted(candidates, key=lambda item: bool(item.get("event_selected")))
         if item["field"] == "merchant" and item.get("role") == "merchant"}
-    return [_field_candidate(fact, item, events, evidence["version"]) for item in candidates
+    selected_merchants = {named_merchants.get((item["value"], item.get("event_id")))
+        for item in candidates if item["field"] == "merchant" and item.get("event_selected")}
+    return [_field_candidate(fact, item, events, evidence["version"], selected_merchants) for item in candidates
         if item["field"] in {"amount_cents", "merchant"} and not (
             item["field"] == "merchant" and item.get("role") == "unknown"
             and (item["value"], item.get("event_id")) in named_merchants)]
 
 
-def _field_candidate(fact, item, events, version):
+def _field_candidate(fact, item, events, version, selected_merchants):
     field, role = item["field"], item.get("role") or "unknown"
     label = _AMOUNT_ROLES.get(role, "金额") if field == "amount_cents" else "商户"
     can_apply = role in {"payment", "expense", "total", "final_total", "rounded_total", "unknown", "merchant"}
@@ -39,7 +42,7 @@ def _field_candidate(fact, item, events, version):
         label = "通知 · " + label
     return RecognitionFieldCandidate(field=field, id=item["id"], value=item["value"], role=role,
         label=events.get(item.get("event_id"), "") + label, event_id=item.get("event_id"),
-        event_selected=bool(item.get("event_selected")) and can_apply,
+        event_selected=bool(item.get("event_selected") or item["id"] in selected_merchants) and can_apply,
         original_text="\n".join(fact.raw_text[start:end] for start, end in item["raw_spans"]),
         explanation="取自原件中这一处；请核对属于本次交易。", can_apply=can_apply,
         currency_code=item.get("currency_code"), minor_unit_exponent=item.get("minor_unit_exponent"),

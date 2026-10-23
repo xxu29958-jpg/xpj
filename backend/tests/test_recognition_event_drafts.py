@@ -27,6 +27,29 @@ def seed_event_material(db, expense, *, ambiguous_amount=False, incomplete_time=
         ocr_provider="manual_text", raw_text=raw, evidence_json=json.dumps(snapshot.evidence)))
 
 
+def test_wechat_card_duplicate_merchant_evidence_keeps_the_selected_bundle(client, identity):
+    raw = "支付成功\n￥18.00\n青禾茶店\n使用零钱支付\n微信支付\n支付成功\n￥28.00\n青禾超市\n使用零钱支付\n微信支付"
+    with SessionLocal() as db:
+        resolve_write_capability(db)
+        row = Expense(tenant_id="owner", source="camera", status="pending", category="其他", merchant="用户当前输入",
+            amount_cents=1500, original_amount_minor=1500, original_currency_code="CNY", home_currency_code="CNY", image_hash=str(uuid4()))
+        db.add(row)
+        db.flush()
+        snapshot = ocr_fact_snapshot(OcrResult(raw_text=raw, confidence=None), expense=row, timezone_name="Asia/Shanghai")
+        record_ocr_fact(db, OcrFactDraft(tenant_id=row.tenant_id, expense_id=row.id, ocr_provider="manual_text",
+            raw_text=raw, evidence_json=json.dumps(snapshot.evidence)))
+        db.commit()
+        expense_id = row.id
+    data = client.get(f"/api/expenses/{expense_id}", headers=negotiated_headers(client, identity.app_headers)).json()
+    fields = data["recognition_fields"]
+    for merchant, amount in (("青禾茶店", 1800), ("青禾超市", 2800)):
+        retained = [item for item in fields if item["field"] == "merchant" and item["value"] == merchant]
+        assert len(retained) == 1 and retained[0]["role"] == "merchant" and retained[0]["event_selected"]
+        bundle = [item for item in fields if item["event_id"] == retained[0]["event_id"] and item["event_selected"]]
+        assert {(item["field"], item["value"]) for item in bundle} == {("merchant", merchant), ("amount_cents", amount)}
+    assert data["merchant"] == "用户当前输入" and data["amount_cents"] == 1500
+
+
 @pytest.mark.parametrize("ambiguous_amount,incomplete_time", [(False, False), (True, False), (False, True)])
 def test_event_recommendations_keep_fields_within_their_transaction_and_preserve_unknowns(
         client, identity, ambiguous_amount, incomplete_time):
