@@ -134,6 +134,21 @@ def _choice_qualification(event: LedgerLearningEvent, payload: dict) -> tuple[st
     return None
 
 
+def _required_source_fields(event: LedgerLearningEvent, payload: dict) -> tuple[str, ...]:
+    if event.signal_type == "category_suggestion":
+        return ("merchant", "category")
+    if event.signal_type == "recognition_time_choice":
+        required = ("expense_time", "time_precision", "source_timezone", "accounting_date",
+            "source_utc_offset_seconds", "user_local_date")
+    elif event.signal_type == "recognition_field_choice":
+        required = (("merchant",) if payload.get("field") == "merchant" else
+            ("amount_cents", "original_currency_code", "original_amount_minor"))
+    else:
+        return ("merchant", "amount_cents", "original_currency_code", "original_amount_minor", "expense_time", "image_hash",
+            "accounting_date", "time_precision", "source_timezone")
+    return required if payload.get("source") == "notification" else (*required, "image_hash")
+
+
 def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, reversed_ids: set[int],
         candidate: Expense | None = None, latest_ids: set[int] | None = None) -> tuple[str, str, dict[str, str]]:
     """Both sides use the same source test; originals are never rewritten."""
@@ -143,15 +158,7 @@ def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, re
         return event_result
     paired = event.signal_type == "duplicate_candidate"
     resolution = payload.get("_resolution") if paired and payload.get("_relation") == "same" else None
-    required = ("merchant", "category") if event.signal_type == "category_suggestion" else (
-        "merchant", "amount_cents", "original_currency_code", "original_amount_minor", "expense_time", "image_hash",
-        "accounting_date", "time_precision", "source_timezone")
-    if event.signal_type == "recognition_time_choice":
-        required = ("expense_time", "image_hash", "time_precision", "source_timezone", "accounting_date",
-            "source_utc_offset_seconds", "user_local_date")
-    if event.signal_type == "recognition_field_choice":
-        required = (("merchant", "image_hash") if payload.get("field") == "merchant" else
-            ("amount_cents", "original_currency_code", "original_amount_minor", "image_hash"))
+    required = _required_source_fields(event, payload)
     result = _source_qualification(expense, payload.get("_source_context"), tenant_id=event.tenant_id,
         reversed_ids=reversed_ids, required=required, deliberately_discarded=resolution == "keep_candidate")
     if result[0] != "valid" or event.signal_type != "duplicate_candidate":

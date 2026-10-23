@@ -10,7 +10,7 @@ internal object NotificationTransactionEvidence {
         RegexOption.IGNORE_CASE,
     )
     // Decimal points and thousands separators belong to the amount, not a clause boundary.
-    private val boundary = Regex("""[，。；;\n]|(?<!\d)[,.]|[,.](?!\d)""")
+    private val boundary = Regex("""[，。；;]|(?<!\d)[,.]|[,.](?!\d)""")
     private val label = Regex(
         """实付|实际支付|实际付款|支付金额|付款金额|消费金额|还款成功|已还款|还款完成|已还清|偿还成功|还款入账|自动还款|主动还款|代扣还款|还款|偿还|还入|归还欠款|付款成功|成功付款|已成功付款|支付成功|已支付|消费|支出|扣款|交易成功|退款|退回|余额|额度|红包|优惠|订单金额|账单|应还|收款(?!方)|收入|转入""",
     )

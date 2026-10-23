@@ -117,9 +117,9 @@ def get_pending_expenses(
     ocr_facts_by_id = expense_ocr_facts_by_id(db, tenant_id=auth.tenant_id, expenses=expenses)
     fx_tasks_by_id = expense_fx_tasks_by_id(db, tenant_id=auth.tenant_id, expenses=expenses)
     time_memory = load_time_memory(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
-        expense_ids=list(ocr_facts_by_id))
+        expense_ids=[expense.id for expense in expenses])
     field_memory = load_field_memory(db, tenant_id=auth.tenant_id, actor_account_id=auth.account_id,
-        expense_ids=list(ocr_facts_by_id))
+        expense_ids=[expense.id for expense in expenses])
     items: list[ExpenseResponse] = []
     for expense in expenses:
         items.append(

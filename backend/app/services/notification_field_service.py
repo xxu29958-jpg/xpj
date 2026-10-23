@@ -39,7 +39,7 @@ def _field_source(capture):
     source = NotificationFieldSource(capture.public_id, frozen["raw_text"], json.dumps(frozen),
         capture_evidence_context(capture, kind="field"), "")
     # Neither another application nor another phone parser/currency inherits a case.
-    key = json.dumps(["notification", capture.source, capture.parser_version, capture.original_currency,
+    key = json.dumps(["notification", capture.source, frozen.get("capture_parser_version", capture.parser_version), capture.original_currency,
         [item["field"] for item in frozen["input"]["fragments"]], frozen["input"]["truncated"], time_case_key(source)])
     return NotificationFieldSource(source.public_id, source.raw_text, source.evidence_json,
         source.capture_context, hashlib.sha256(key.encode()).hexdigest())

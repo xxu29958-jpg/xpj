@@ -13,6 +13,16 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PaymentNotificationParserTest {
+    @Test fun wrappedBalanceKeepsItsLabelAndNeverBecomesThePayment() {
+        val result = requireNotNull(PaymentNotificationParser.parse(snapshot(
+            "com.tencent.mm", "微信支付", "商户：海棠咖啡，支付成功18元。余额\n1000元",
+        )))
+        assertEquals(1800L, expenseOf(result)?.amountCents)
+        val fragments = requireNotNull(result.fieldEvidence).fragments
+        assertTrue(fragments.any { it.literal == "余额\n1000元" })
+        assertFalse(fragments.any { it.literal == "1000元" })
+    }
+
     @Test fun fieldProofKeepsOriginalSpanAndOriginWithoutCopyingTheWholeNotification() {
         val body = "商户：海棠咖啡，支付成功18.00元。" + "后续活动介绍".repeat(30)
         val result = requireNotNull(PaymentNotificationParser.parse(snapshot("com.tencent.mm", "微信支付", body)))

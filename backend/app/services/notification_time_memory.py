@@ -26,7 +26,7 @@ def notification_time_sources(db, *, tenant_id, actor_account_id, expense_ids):
 
 def _case_key(capture):
     frozen = capture.time_evidence
-    parts = ["notification-time", capture.source, capture.parser_version, frozen["field_parse"]["version"],
+    parts = ["notification-time", capture.source, frozen.get("capture_parser_version", capture.parser_version), frozen["field_parse"]["version"],
         frozen["input"]["source_timezone"], frozen["input"]["truncated"],
         [item["field"] for item in frozen["input"]["fragments"]], re.sub(r"\d+", "#", frozen["raw_text"])]
     return hashlib.sha256(json.dumps(parts, ensure_ascii=False).encode()).hexdigest()
