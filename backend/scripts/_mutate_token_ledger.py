@@ -455,6 +455,10 @@ ALLOWLIST: dict[str, Exempt] = {
     # Explicit fixed-sample model request; does not read or mutate financial rows.
     "POST /owner/ai-advisor/test": Exempt("external_side_effect", "owner_console", (), "medium"),
     "POST /owner/algorithm-versions/withdraw": Exempt("batch_db_write", "learning", _ALGO_DECISIONS, "medium"),
+    # Local owner sets one ledger/type/version/axis key by atomic upsert; no financial row is edited.
+    "POST /owner/algorithm-versions/policy": Exempt("admin_single_writer", "learning", ("app_meta",), "medium"),
+    # Locks the original event and appends one withdrawal; retries do not edit or duplicate it.
+    "POST /owner/algorithm-versions/withdraw-feedback": Exempt("append_only_fact", "learning", ("ledger_learning_events",), "medium"),
     "POST /owner/devices/{public_id}/delete": Exempt("terminal_flag_flip", "owner_console", _DEVICE_REVOKE, "medium"),
     "POST /owner/devices/{public_id}/rename": Exempt("admin_single_writer", "owner_console", ("devices",)),
     "POST /owner/devices/{public_id}/revoke": Exempt("terminal_flag_flip", "owner_console", _DEVICE_REVOKE),

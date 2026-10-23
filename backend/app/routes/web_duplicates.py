@@ -220,6 +220,17 @@ def web_duplicates(
     )
 
 
+def _duplicate_task_pair(db, *, current, original_id, selected_id):
+    originals = list_expenses_by_ids(db, tenant_id=selected_id, expense_ids=[original_id]) if original_id else []
+    original = originals[0] if originals else None
+    home = require_runtime_home_currency_code(db)
+    if current:
+        return _duplicate_pair_view(current, original, home=home, selected_id=selected_id)
+    return {
+        "current": None, "original": _duplicate_expense_view(original, presentation_currency_code=home) if original else None,
+        "diff_fields": [], "reason_label": "原记录暂不可用", "evidence_label": "原决定待核实", "evidence_tone": ""}
+
+
 def _render_duplicate_task(request, db, *, options, selected_id, expense_id, action,
     original_id=None, draft_ref="", next_id="", prepared=False) -> Response:
     try:
@@ -230,19 +241,14 @@ def _render_duplicate_task(request, db, *, options, selected_id, expense_id, act
         current = None
     if prepared:
         original_id = current.duplicate_of_id if current else None
-    originals = list_expenses_by_ids(db, tenant_id=selected_id, expense_ids=[original_id]) if original_id else []
-    original = originals[0] if originals else None
-    home = require_runtime_home_currency_code(db)
-    pair = _duplicate_pair_view(current, original, home=home, selected_id=selected_id) if current else {
-        "current": None, "original": _duplicate_expense_view(original, presentation_currency_code=home) if original else None,
-        "diff_fields": [], "reason_label": "原记录暂不可用", "evidence_label": "原决定待核实", "evidence_tone": ""}
+    pair = _duplicate_task_pair(db, current=current, original_id=original_id, selected_id=selected_id)
     scope = browser_draft_scope(db, request)
     ctx = _base_ctx(request, db=db, options=options, selected_ledger_id=selected_id, page_title="相似账单决定")
     actor = resolve_web_actor(db, request, selected_id)[0]
     if current and ctx["can_write"] and actor is not None:
         matches = duplicate_candidates_for_pending_expense(db, tenant_id=selected_id, expense=current, actor_account_id=actor)
         pair["decision_public_id"] = next((match.decision_public_id for match in matches
-            if original and match.candidate_id == original.id), None)
+            if match.candidate_id == original_id), None)
         db.commit()
     ctx.update(duplicate_pairs=[pair], duplicate_task_action=action, duplicate_task_expense_id=expense_id,
         duplicate_task_key=str(uuid4()), duplicate_task_ref=draft_ref, duplicate_task_next=next_id,

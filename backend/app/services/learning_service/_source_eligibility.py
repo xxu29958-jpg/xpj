@@ -72,6 +72,16 @@ def _event_payload(event: LedgerLearningEvent) -> dict:
         return {}
 
 
+def _discarded_source_changed(expense: Expense, context: dict) -> bool:
+    return (expense.status != "rejected" or context.get("status") != "rejected"
+        or context.get("row_version") != expense.row_version)
+
+
+def _source_snapshot_changed(expense: Expense, context: dict, fields: dict, required: tuple[str, ...]) -> bool:
+    return (context.get("public_id") != expense.public_id
+        or context["row_version"] > expense.row_version or any(fields[name] != "valid" for name in required))
+
+
 def _source_qualification(expense: Expense | None, context: object, *, tenant_id: str,
         reversed_ids: set[int], required: tuple[str, ...], deliberately_discarded: bool = False) -> tuple[str, str, dict[str, str]]:
     if expense is None or expense.tenant_id != tenant_id:
@@ -84,20 +94,17 @@ def _source_qualification(expense: Expense | None, context: object, *, tenant_id
             "original_amount_minor", "expense_time", "image_hash", "accounting_date", "time_precision", "source_timezone")}
     if expense.id in reversed_ids or (expense.status == "rejected" and not deliberately_discarded):
         return "invalid", "消费已撤销或已冲正；商家等未变字段仍保留原反馈证据", fields
-    if deliberately_discarded and (expense.status != "rejected" or context.get("status") != "rejected"
-            or context.get("row_version") != expense.row_version):
+    if deliberately_discarded and _discarded_source_changed(expense, context):
         return "superseded", "当时选择移出的账目后来又有变化", fields
     if not isinstance(context.get("row_version"), int) or any(name not in context for name in required):
         return "needs_review", "缺少原版本或此字段的完整证据，未用于学习", fields
-    if (context.get("public_id") != expense.public_id
-            or context["row_version"] > expense.row_version or any(fields[name] != "valid" for name in required)):
+    if _source_snapshot_changed(expense, context, fields, required):
         return "superseded", "此建议依赖的来源字段已更正", fields
     return "valid", "来源与此字段反馈仍一致", fields
 
 
-def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, reversed_ids: set[int],
-        candidate: Expense | None = None, latest_ids: set[int] | None = None) -> tuple[str, str, dict[str, str]]:
-    """Both sides use the same source test; originals are never rewritten."""
+def _event_qualification(event: LedgerLearningEvent, latest_ids: set[int] | None) -> tuple[str, str, dict[str, str]] | None:
+    """Only explicit, current and retained events can qualify their sources."""
     if event.event_type == "withdraw":
         return "invalid", "这条反馈已撤回；原判断保留但不再用于学习", {}
     if event.actor_account_id is None:
@@ -108,6 +115,15 @@ def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, re
         return "needs_review", "未记录明确选择，不能作为学习标签", {}
     if event.retention_days > 0 and ensure_utc(event.created_at) + timedelta(days=event.retention_days) < now_utc():
         return "invalid", "反馈已超过保留期限，不再用于学习", {}
+    return None
+
+
+def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, reversed_ids: set[int],
+        candidate: Expense | None = None, latest_ids: set[int] | None = None) -> tuple[str, str, dict[str, str]]:
+    """Both sides use the same source test; originals are never rewritten."""
+    event_result = _event_qualification(event, latest_ids)
+    if event_result is not None:
+        return event_result
     payload = _event_payload(event)
     paired = event.signal_type == "duplicate_candidate"
     resolution = payload.get("_resolution") if paired and payload.get("_relation") == "same" else None

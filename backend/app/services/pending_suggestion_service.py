@@ -147,26 +147,10 @@ def record_pending_suggestion_event(
         subject_kind="expense", subject_id=expense_id, actor_account_id=actor_account_id)
     if _feedback_replayed(recorded, operation_key=operation_key, event_type=event_type):
         return True
-    expense = db.scalar(select(Expense).where(Expense.tenant_id == tenant_id, Expense.id == expense_id))
+    expense = _validated_feedback_source(db, decision=decision, actor_account_id=actor_account_id,
+        source_category_before=source_category_before, source_was_edited=source_was_edited)
     if expense is None:
-        raise ValueError("pending suggestion source does not exist")
-    payload = _loads(decision.output_payload)
-    context = decision_context(expense, decision.decision_type, actor_account_id)
-    if source_was_edited:
-        context["category"] = source_category_before
-        context["row_version"] = expense.row_version - 1
-    if (context not in (payload.get("_decision_context"), payload.get("_resolved_context"))
-            or decision.status in {"superseded", "withdrawn"}):
-        # A financial edit is still valid if its old advice became stale. Do not
-        # learn from that old advice; explicit feedback must reload its source.
-        if source_was_edited:
-            return False
-        raise ValueError("建议依据已变化，请重新打开当前账目核对")
-    if decision.decision_type == DUPLICATE_CANDIDATE.decision_type:
-        candidate = db.scalar(select(Expense).where(Expense.tenant_id == tenant_id,
-            Expense.id == payload.get("candidate_id")))
-        if candidate is None or payload.get("_candidate_context") != source_context(candidate):
-            raise ValueError("参考账目已变化，请重新打开当前配对核对")
+        return False
     previous = recorded[0] if recorded else None
     if operation_key is None and previous is not None and previous.event_type == event_type:
         return True
@@ -198,6 +182,11 @@ def record_pending_suggestion_event(
         ),
     )
     decision.output_payload = json.dumps({**payload, "_resolved_context": decision_context(expense, decision.decision_type, actor_account_id)}, ensure_ascii=False, sort_keys=True)
+    _close_feedback_decision(decision, event_type)
+    return True
+
+
+def _close_feedback_decision(decision: AlgorithmDecision, event_type: str) -> None:
     # Close the decision row to match the user's verdict. accept ->
     # 'accepted' (longer retention — positive signal worth keeping
     # for the next algorithm to learn from); reject -> 'dismissed'
@@ -216,7 +205,31 @@ def record_pending_suggestion_event(
     decision.status = terminal
     if target_retention is not None:
         decision.retention_days = target_retention
-    return True
+
+
+def _validated_feedback_source(db: Session, *, decision: AlgorithmDecision, actor_account_id: int | None,
+        source_category_before: str | None, source_was_edited: bool) -> Expense | None:
+    expense = db.scalar(select(Expense).where(Expense.tenant_id == decision.tenant_id, Expense.id == decision.subject_id))
+    if expense is None:
+        raise ValueError("pending suggestion source does not exist")
+    payload = _loads(decision.output_payload)
+    context = decision_context(expense, decision.decision_type, actor_account_id)
+    if source_was_edited:
+        context["category"] = source_category_before
+        context["row_version"] = expense.row_version - 1
+    if (context not in (payload.get("_decision_context"), payload.get("_resolved_context"))
+            or decision.status in {"superseded", "withdrawn"}):
+        # A financial edit is still valid if its old advice became stale. Do not
+        # learn from that old advice; explicit feedback must reload its source.
+        if source_was_edited:
+            return None
+        raise ValueError("建议依据已变化，请重新打开当前账目核对")
+    if decision.decision_type == DUPLICATE_CANDIDATE.decision_type:
+        candidate = db.scalar(select(Expense).where(Expense.tenant_id == decision.tenant_id,
+            Expense.id == payload.get("candidate_id")))
+        if candidate is None or payload.get("_candidate_context") != source_context(candidate):
+            raise ValueError("参考账目已变化，请重新打开当前配对核对")
+    return expense
 
 
 def _recorded_events(

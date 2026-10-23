@@ -117,7 +117,8 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
         originalInput: ExpenseFactOriginalInput? = null,
     ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
         val pairDecision = expense.duplicateDecisionPublicId.takeIf {
-            type == PendingMutationType.MarkNotDuplicate || originalInput?.formKey == "pending_duplicate"
+            type in setOf(PendingMutationType.MarkNotDuplicate, PendingMutationType.RejectExpense) ||
+                originalInput?.formKey == "pending_duplicate"
         }
         ExpenseCommandAcceptance(expense, admit(binding, listOf(stateIntent(type, expense,
             duplicateDecisionPublicId = pairDecision)), originalInput))

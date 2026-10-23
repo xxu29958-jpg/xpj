@@ -34,7 +34,8 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
     }
 
     private suspend fun assertStateAdmission(type: PendingMutationType) {
-        val baseline = baselineExpense().copy(duplicateStatus = "suspected", duplicateOfId = 81L)
+        val baseline = baselineExpense().copy(duplicateStatus = "suspected", duplicateOfId = 81L,
+            duplicateDecisionPublicId = "displayed-pair-decision")
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao)
         val success = ApiResult.Success(successExpenseDto())
@@ -59,7 +60,13 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         assertEquals(binding.ledgerId, row.ledgerId)
         assertEquals(binding.serverUrl, row.serverUrl)
         assertEquals(baseline.rowVersion, row.expectedRowVersion)
-        assertEquals(0L, moshi().adapter(ExpenseStateTokenRequest::class.java).fromJson(row.payload)?.expectedRowVersion)
+        val request = requireNotNull(moshi().adapter(ExpenseStateTokenRequest::class.java).fromJson(row.payload))
+        assertEquals(0L, request.expectedRowVersion)
+        val pairDecision = when (type) {
+            PendingMutationType.RejectExpense, PendingMutationType.MarkNotDuplicate -> "displayed-pair-decision"
+            else -> null
+        }
+        assertEquals(pairDecision, request.duplicateDecisionPublicId)
         assertNotNull(row.idempotencyKey)
         assertNull(api.lastConfirmIdempotencyKey)
         assertNull(api.lastRejectIdempotencyKey)
