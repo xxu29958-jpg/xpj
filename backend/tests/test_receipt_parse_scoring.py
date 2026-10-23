@@ -80,6 +80,7 @@ def test_material_equal_amount_cards_do_not_form_one_cross_event_draft():
     ("交易成功", ("¥17.89", "¥29.20"), True),
     ("交易成功", ("-17.89", "-17.89"), True),
     ("交易成功", ("支付金额：17.89元", "支付金额：29.20元"), True),
+    ("交易成功", ("支付金额\n17.89", "支付金额\n29.20"), True),
     ("支付成功", ("-17.89", "-29.20"), False),
     ("扣款成功", ("支付金额17.89", "支付金额29.20"), False),
 ])
@@ -114,6 +115,32 @@ def test_material_card_limit_leaves_the_unparsed_tail_outside_the_last_event():
     assert len(parsed.events) == 20
     assert parsed.events[-1]["raw_spans"][-1][1] <= text.index(cards[-1])
     assert not any(candidate.field == "merchant" and candidate.value == "门店20号" for candidate in parsed.candidates)
+
+
+@pytest.mark.parametrize("merchant_label", ["商家：", "商家名称\n"])
+def test_material_split_fields_and_their_labels_stay_in_the_same_event(merchant_label):
+    cards = [f"{merchant_label}{merchant}\n支付金额\n{amount}\n交易成功\n查看详情"
+        for merchant, amount in [("松针小笼包", "17.89"), ("罗森便利店", "29.20")]]
+    raw = "\n".join(cards)
+    parsed = _parse_cny(raw)
+    assert len(parsed.events) == 2 and parsed.merchant is None and parsed.amount_cents is None
+    for event, card, merchant in zip(parsed.events, cards, ["松针小笼包", "罗森便利店"], strict=True):
+        assert "".join(raw[start:end] for start, end in event["raw_spans"]).strip() == card
+        assert {item.value for item in parsed.candidates if item.event_id == event["id"]
+            and item.field == "merchant"} == {merchant}
+
+
+@pytest.mark.parametrize("second_amount", ["17.89", "29.20"])
+def test_material_inline_bank_amounts_are_separate_transaction_evidence(second_amount):
+    cards = [f"交易提醒\n尾号1234支出人民币{amount}元\n商户：{merchant}"
+        for amount, merchant in [("17.89", "松针小笼包"), (second_amount, "罗森便利店")]]
+    raw = "\n".join(cards)
+    parsed = _parse_cny(raw)
+    assert len(parsed.events) == 2 and parsed.amount_cents is None and parsed.merchant is None
+    assert all(item.reason == "multiple_transaction_events" for item in parsed.decisions)
+    for event, card in zip(parsed.events, cards, strict=True):
+        assert "".join(raw[start:end] for start, end in event["raw_spans"]).strip() == card
+        assert any(item.field == "amount_cents" and item.event_id == event["id"] for item in parsed.candidates)
 
 
 @pytest.mark.parametrize("merchant", ["城市打车", "7:11便利店", "8:30咖啡", "7:11 24小时便利店"])
