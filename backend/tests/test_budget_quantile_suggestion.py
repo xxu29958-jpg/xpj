@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
+
+import pytest
 
 from app.database import SessionLocal
 from app.models import Expense
@@ -80,30 +83,36 @@ def test_returns_p50_p75_with_sufficient_history(*, identity) -> None:
         assert result.p50_cents == 3500
         assert result.p75_cents == 4750
         assert result.sample_months == 6
-        assert result.algorithm_version == "budget-quantile-v1"
+        assert result.algorithm_version == "budget-quantile-v2"
 
 
-def test_under_min_months_returns_none(*, identity) -> None:
-    # Only 1 month of history → below the min_months default (3).
-    _seed(confirmed_year=2026, confirmed_month=4, amount_cents=5000)
-    now = datetime(2026, 5, 1, tzinfo=UTC)
+@pytest.mark.parametrize("recorded_months", [0, 1, 2])
+def test_under_min_months_returns_none(*, client, identity, recorded_months) -> None:
+    from app.services.monthly_report_service import compose_budget_explanation
+
+    for month in range(5, 5 + recorded_months):
+        _seed(confirmed_year=2026, confirmed_month=month, amount_cents=5000)
+    if recorded_months == 0:
+        planned = client.put("/api/budgets/monthly/2026-06?timezone=UTC",
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+            json={"home_currency_code": "CNY", "expected_row_version": None, "total_amount_cents": 50000,
+                "non_monthly_amount_cents": 0, "rollover_amount_cents": 0, "excluded_categories": [],
+                "category_budgets": [{"category": "餐饮", "amount_cents": 50000}]})
+        assert planned.status_code == 200, planned.json()
+    now = datetime(2026, 7, 1, tzinfo=UTC)
     with SessionLocal() as db:
-        # Need at least 3 months — but our look_back default pads with
-        # zeros so the sample is large. Lower the look_back to keep
-        # the test honest.
-        result = compute_budget_quantile_suggestion(
-            db,
-            tenant_id="owner",
-            category="餐饮",
-            look_back_months=1,
-            min_months=3,
-            now=now,
-        )
+        # The ordinary six-month window must not manufacture history from padding.
+        result = compute_budget_quantile_suggestion(db, tenant_id="owner", category="餐饮", now=now)
         assert result is None
+        explanation = compose_budget_explanation(db, tenant_id="owner", category="餐饮", year_month="2026-07")
+        assert explanation.verdict == "no_history" and explanation.p75_cents is None
 
 
 def test_zero_padding_reflects_actual_cadence(*, identity) -> None:
-    # User spent 600 / 0 / 0 / 0 / 0 / 0 over 6 months → P50 = 0.
+    # Records begin in February. Other categories establish the known months;
+    # this category's zeroes do not invent December/January history.
+    for month in (2, 3, 5):
+        _seed(category="交通", confirmed_year=2026, confirmed_month=month, amount_cents=100)
     _seed(confirmed_year=2026, confirmed_month=4, amount_cents=600)
     now = datetime(2026, 6, 30, tzinfo=UTC)
     with SessionLocal() as db:
@@ -117,10 +126,9 @@ def test_zero_padding_reflects_actual_cadence(*, identity) -> None:
         )
         assert result is not None
         assert result.p50_cents == 0
-        # P75 of [0, 0, 0, 0, 0, 600] at q=0.75 → between index 3 and 4
-        # both zero → 0.
-        assert result.p75_cents == 0
-        assert result.sample_months == 6
+        # P75 of [0, 0, 0, 600] interpolates between the third and fourth values.
+        assert result.p75_cents == 150
+        assert result.sample_months == 4
 
 
 def test_include_zero_months_false_drops_empty_months(*, identity) -> None:

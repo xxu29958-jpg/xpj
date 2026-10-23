@@ -167,5 +167,5 @@ def test_real_zero_and_missing_history_remain_distinct_from_missing_fx(monthly_p
     monthly_page.explanation = replace(monthly_page.explanation, actual_cents=0, p50_cents=None, p75_cents=None,
         delta_vs_p75_cents=None, verdict="no_history")
     html = _sections(monthly_page)
-    assert "历史不足" in html and "无历史" in html
+    assert "历史不足" in html and "无历史" not in html
     assert "待补信息" not in html and "待补汇率" not in html and not _rate_queries(html)
