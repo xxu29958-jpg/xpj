@@ -10,7 +10,10 @@
     <strong>{{ candidate.label }} · {{ candidate.local_value }}</strong>
     <span>{{ candidate.original_text }}</span>
     <span class="meta">{{ candidate.explanation }}</span>
-    {% if candidate.can_apply and can_write and not expense_review_basis_changed and not recognition_time_readonly | default(false) %}
+    {% if (candidate.can_apply or candidate.requires_year) and can_write and not expense_review_basis_changed and not recognition_time_readonly | default(false) %}
+    {% if candidate.requires_year %}
+    <label>补充年份<input type="text" inputmode="numeric" maxlength="4" autocomplete="off" data-recognized-year aria-label="补充年份"></label>
+    {% endif %}
     <button type="button" class="product-button product-button--secondary" {% if recognition_time_date_only | default(false) %}data-recognized-date{% endif %} data-recognized-time='{{ candidate.model_dump() | tojson }}'>{{ '将此日期填入还款草稿' if recognition_time_date_only | default(false) else '将此时间填入草稿' }}</button>
     {% endif %}
   </div>

@@ -6,4 +6,5 @@
     <string name="recognition_time_incomplete">通知中还有未列出的时间，请对照原通知完整核对。</string>
     <string name="recognition_time_date_help">此处可选发生日期，原件中的具体时刻继续保留供对照。</string>
     <string name="recognition_time_use_date">将此日期填入还款草稿</string>
+    <string name="recognition_time_year">补充年份</string>
 </resources>

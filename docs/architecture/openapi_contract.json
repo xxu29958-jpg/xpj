@@ -25771,6 +25771,13 @@
             "title": "Can Apply",
             "type": "boolean"
           },
+          "components": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Components",
+            "type": "object"
+          },
           "evidence_public_id": {
             "anyOf": [
               {
@@ -25816,6 +25823,11 @@
           "precision": {
             "title": "Precision",
             "type": "string"
+          },
+          "requires_year": {
+            "default": false,
+            "title": "Requires Year",
+            "type": "boolean"
           },
           "role": {
             "default": "unknown",

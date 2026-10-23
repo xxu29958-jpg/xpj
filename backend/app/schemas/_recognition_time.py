@@ -17,6 +17,8 @@ class RecognitionTimeCandidate(BaseModel):
     source: str | None = None
     parser_version: str | None = None
     role: str = "unknown"
+    components: dict[str, int] = Field(default_factory=dict)
+    requires_year: bool = False
 
 
 class RecognitionTimeResponse(BaseModel):

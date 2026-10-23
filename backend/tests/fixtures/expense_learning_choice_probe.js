@@ -27,6 +27,30 @@
     }
     return response;
   };
+  function chooseSourceTime(form, field) {
+      assert(!field("recognition_time_choice")?.value, "Untouched time became feedback");
+      const time = form.querySelector("[data-recognized-time]");
+      assert(time, "Original time candidate is missing");
+      assert(!time.disabled, "Original time candidate is not actionable");
+      for (let parent = time.parentElement; parent; parent = parent.parentElement) {
+        if (parent.tagName === "DETAILS" && !parent.open) parent.querySelector(":scope > summary").click();
+      }
+      time.scrollIntoView({block: "center"});
+      assert(time.getClientRects().length, "The time choice is hidden from the user");
+      const year = form.querySelector("[data-recognized-year]");
+      if (year) {
+        const unchanged = field("expense_time").value;
+        year.value = "2023"; time.click();
+        assert(field("expense_time").value === unchanged && !field("recognition_time_choice")?.value,
+          "An invalid leap date changed the draft or supplied a label");
+        year.value = "2024";
+      }
+      time.click();
+      state.timeChoice = field("recognition_time_choice").value;
+      assert(state.timeChoice, "Explicit time choice is missing");
+      assert(JSON.parse(state.timeChoice).candidate_id === JSON.parse(time.dataset.recognizedTime).id,
+        "Explicit time choice lost its original evidence identity");
+  }
   try {
     const form = document.querySelector("form.edit-form"), field = name => form.elements.namedItem(name);
     const primary = form.querySelector("[data-expensereview-submit]");
@@ -40,15 +64,7 @@
       suggestion.click();
       assert(field("category").value === state.category, "This case must exercise a same-value choice");
       assert(field("category_choice").value === "suggestion", "Choice was not preserved");
-      assert(!field("recognition_time_choice")?.value, "Untouched time became feedback");
-      const time = form.querySelector("[data-recognized-time]");
-      assert(time, "Original time candidate is missing");
-      assert(!time.disabled, "Original time candidate is not actionable");
-      time.click();
-      state.timeChoice = field("recognition_time_choice").value;
-      assert(state.timeChoice, "Explicit time choice is missing");
-      assert(JSON.parse(state.timeChoice).candidate_id === JSON.parse(time.dataset.recognizedTime).id,
-        "Explicit time choice lost its original evidence identity");
+      chooseSourceTime(form, field);
       state.stage = "sent"; save();
       form.requestSubmit([...form.querySelectorAll("button")].find(button => button.textContent === "保存草稿"));
       await wait(() => state.stage === "unknown" && form.querySelector("[data-expensereview-draft-status]").textContent.includes("暂未收到"));

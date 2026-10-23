@@ -9,6 +9,23 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class ExpenseTimeFormTest {
+    @Test fun yearCompletionPreservesPrintedPartsAndIdentityThroughDraftRestore() {
+        val adapter = com.squareup.moshi.Moshi.Builder().build().adapter(com.ticketbox.data.remote.dto.RecognitionTimeCandidateDto::class.java)
+        val candidate = requireNotNull(adapter.fromJson("""{"id":"partial","label":"支付时间","explanation":"缺少年份",
+            "original_text":"02月29日23:04:05 +07:00","local_value":"02月29日23:04:05 +07:00","precision":"second",
+            "source_timezone":null,"source_utc_offset_seconds":25200,"can_apply":false,"evidence_public_id":"fact",
+            "source":"image","parser_version":"receipt-fields-v5","requires_year":true,
+            "components":{"month":2,"day":29,"hour":23,"minute":4,"second":5}}""")).toDomain()
+        assertNull(candidate.withYear(""))
+        assertNull(candidate.withYear("2023"))
+        val chosen = form().withRecognizedTime(requireNotNull(candidate.withYear("2024")))
+        val restored = requireNotNull(readExpenseTimeForm(chosen.toSavedJson()))
+        assertEquals("2024-02-29T16:04:05Z", restored.resolve().instant)
+        assertEquals(25200, restored.resolve().input?.sourceUtcOffsetSeconds)
+        assertEquals("original_correction", restored.recognitionChoice?.intent)
+        assertEquals("partial", restored.recognitionChoice?.candidateId)
+        assertEquals("fact", restored.recognitionChoice?.evidencePublicId)
+    }
     private val rule = LedgerCalendarDto("owner", 2, "Asia/Shanghai", "explicit", "2026-09-20T00:00:00Z")
     private fun form(instant: String = "2026-11-01T06:30:00Z") =
         ExpenseTimeForm.initial(instant, null, rule, ZoneId.of("America/New_York"))

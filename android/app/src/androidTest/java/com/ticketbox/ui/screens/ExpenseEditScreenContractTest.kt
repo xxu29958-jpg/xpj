@@ -2,6 +2,7 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.isDialog
@@ -206,6 +207,42 @@ class ExpenseEditScreenContractTest {
         composeRule.onNodeWithText("与参考账单不是重复，保留两笔").performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(1, kept) }
         composeRule.onNodeWithText("查看其他候选 #3").assertExists()
+    }
+
+    @Test
+    fun missingYearIsCompletedInTheExistingEditorWithoutReplacingPrintedTime() {
+        var saved: ExpenseDraft? = null
+        val partial = com.ticketbox.domain.model.RecognitionTimeCandidate("partial", "图片 · 支付时间", "缺少年份",
+            "02月29日23:04:05 +07:00", "02月29日23:04:05 +07:00", "second", null, 25200, false,
+            evidencePublicId = "fact", source = "image", parserVersion = "receipt-fields-v5", role = "payment",
+            components = mapOf("month" to 2, "day" to 29, "hour" to 23, "minute" to 4, "second" to 5), requiresYear = true)
+        val recorded = expense().copy(expenseTime = null, originalAmountMinor = 1234L,
+            accountingTime = com.ticketbox.domain.model.ExpenseAccountingTime("unknown", calendarRevision = 1L),
+            recognitionTime = com.ticketbox.domain.model.RecognitionTime("fact", "receipt-fields-v5", "needs_review", listOf(partial)))
+        composeRule.setContent {
+            TicketboxTheme(skin = skin) {
+                ExpenseEditScreen(expenseEditScreenState(expense = recorded), ExpenseEditScreenActions(
+                    primary = ExpenseEditPrimaryActions(onSave = { saved = it })))
+            }
+        }
+        composeRule.onNodeWithTag("expense-edit-time-section").performScrollTo().performClick()
+        composeRule.onNodeWithText("将此时间填入草稿").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithText("补充年份").performScrollTo().performTextReplacement("2023")
+        closeSoftKeyboard()
+        composeRule.onNodeWithText("将此时间填入草稿").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithText("补充年份").performScrollTo().performTextReplacement("2024")
+        closeSoftKeyboard()
+        composeRule.onNodeWithText("将此时间填入草稿").performScrollTo().assertIsEnabled().performClick()
+        composeRule.runOnIdle { assertEquals(null, saved) }
+        capture("review-missing-year-completed")
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle {
+            assertEquals(1234L, saved?.originalAmountMinor)
+            assertEquals("2024-02-29T16:04:05Z", saved?.expenseTime)
+            assertEquals(25200, saved?.timeInput?.sourceUtcOffsetSeconds)
+            assertEquals(com.ticketbox.domain.model.RecognitionTimeChoice("fact", "partial", "receipt-fields-v5", "image", "original_correction"),
+                saved?.toRequest(recorded)?.recognitionTimeChoice)
+        }
     }
 
     @Test

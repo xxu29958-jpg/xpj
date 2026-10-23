@@ -66,6 +66,7 @@ def _candidate_spans(raw_text: str, field: str, candidate) -> tuple[tuple[int, i
         spans = [(start, end)]
         if (label_span := getattr(candidate, "label_span", None)) is not None:
             spans.append(label_span)
+        spans.extend(getattr(candidate, "context_spans", ()))
         return _original_spans(lines, spans)
     start, end = lines[candidate.line_index]
     if field == "amount_cents" and candidate.source.startswith("label:"):
@@ -91,7 +92,7 @@ def _public_candidate(raw_text: str, field: str, candidate: _CandidateT,
         if any(start < raw_end and raw_start < end for raw_start, raw_end in spans))
     semantic_fields = {name: getattr(candidate, name) for name in (
         "role", "precision", "local_value", "timezone_name", "timezone_basis",
-        "utc_offset_seconds", "inferred_components", "reference_time", "review_reason",
+        "utc_offset_seconds", "inferred_components", "reference_time", "review_reason", "components",
     )} if isinstance(candidate, _TimeCandidate) else {}
     if isinstance(candidate, _AmountCandidate):
         semantic_fields = {"role": candidate.role, "review_reason": candidate.review_reason}

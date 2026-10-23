@@ -17,6 +17,7 @@ _ROLES = {
 _REASONS = {
     "date_only": "原件只有日期，未补造时刻。",
     "year_inferred_from_capture_reference": "原件缺少年份；年份根据首次收录时间推定，请核对。",
+    "year_from_page_heading": "年份取自同栏的本页日期标题，请核对标题是否适用于这笔交易。",
     "date_inferred_from_capture_reference": "相对日期根据首次收录时间推定，请核对。",
     "reference_time_missing": "缺少完整日期，需对照原件填写。",
     "date_missing": "只有时刻，缺少发生日期。",
@@ -61,7 +62,15 @@ def _candidate(item: dict, raw_text: str, *, public_id: str, source: str, versio
         source_timezone=zone, source_utc_offset_seconds=item.get("utc_offset_seconds"),
         can_apply=valid and role in {"payment", "transaction", "consumption", "unknown"}
         and reason not in {"invalid_date", "invalid_datetime", "nonexistent_local_time"},
-        evidence_public_id=public_id, source=source, parser_version=version, role=role)
+        evidence_public_id=public_id, source=source, parser_version=version, role=role,
+        components=item.get("components") or {}, requires_year=_requires_year(item))
+
+
+def _requires_year(item: dict) -> bool:
+    components = item.get("components") or {}
+    return (item.get("role") in {"payment", "transaction", "consumption", "unknown"}
+        and item.get("review_reason") == "reference_time_missing" and "year" not in components
+        and {"month", "day"}.issubset(components))
 
 
 def recognition_time(fact: OcrFact | None, *,

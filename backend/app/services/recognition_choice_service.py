@@ -48,6 +48,10 @@ def _chosen_source(db: Session, expense: Expense, choice: RecognitionTimeChoice,
 
 
 def _candidate_components(candidate) -> dict:
+    if candidate.requires_year:
+        return {"year": None, **candidate.components, "timezone": candidate.source_timezone,
+            **({"offset_seconds": candidate.source_utc_offset_seconds} if candidate.source_utc_offset_seconds is not None else {}),
+            "precision": "date_only" if candidate.precision == "date_only" else "instant"}
     try:
         value = datetime.fromisoformat(candidate.local_value)
     except ValueError:

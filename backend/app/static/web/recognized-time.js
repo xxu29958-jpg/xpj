@@ -4,7 +4,9 @@
 document.addEventListener("click", function (event) {
   const button = event.target.closest("[data-recognized-time]");
   if (!button || button.disabled) return;
-  const candidate = JSON.parse(button.dataset.recognizedTime);
+  let candidate = JSON.parse(button.dataset.recognizedTime);
+  if (candidate.requires_year) candidate = completeYear(button, candidate);
+  if (!candidate) return;
   if (!candidate.can_apply) return;
   if (button.hasAttribute("data-recognized-date")) {
     copyRepaymentDate(button, candidate);
@@ -12,6 +14,22 @@ document.addEventListener("click", function (event) {
     copyExpenseTime(button, candidate);
   }
 });
+
+function completeYear(button, candidate) {
+  const yearText = button.closest(".product-field").querySelector("[data-recognized-year]").value;
+  const year = Number(yearText), parts = candidate.components;
+  const valid = /^[1-9]\d{3}$/.test(yearText) && parts.month >= 1 && parts.month <= 12 &&
+    parts.day >= 1 && parts.day <= new Date(year, parts.month, 0).getDate();
+  if (!valid) {
+    button.closest("[data-recognized-times]").querySelector("[data-recognized-time-status]").textContent = "请补充有效的四位年份，并核对原件中的月日。";
+    return null;
+  }
+  const pad = value => String(value).padStart(2, "0");
+  let value = `${yearText}-${pad(parts.month)}-${pad(parts.day)}`;
+  if (candidate.precision !== "date_only") value += `T${pad(parts.hour)}:${pad(parts.minute)}`;
+  if (candidate.precision === "second") value += `:${pad(parts.second)}`;
+  return {...candidate, local_value: value, can_apply: true};
+}
 
 function copyRepaymentDate(button, candidate) {
     const date = button.closest("form")?.querySelector('[name="payment_date"]');
@@ -38,7 +56,11 @@ function copyExpenseTime(button, candidate) {
     if (!input) continue;
     copyTimeField(input, value);
   }
-  const form = button.closest("form");
+  recordSourceChoice(button.closest("form"), candidate);
+  fieldset.querySelector("[data-recognized-time-status]").textContent = "已填入当前草稿，请核对后保存。";
+}
+
+function recordSourceChoice(form, candidate) {
   if (candidate.evidence_public_id && candidate.parser_version && candidate.source) {
     let input = form.elements.namedItem("recognition_time_choice");
     if (!input) {
@@ -46,10 +68,10 @@ function copyExpenseTime(button, candidate) {
       input.name = "recognition_time_choice"; form.append(input);
     }
     input.value = JSON.stringify({evidence_public_id: candidate.evidence_public_id,
-      candidate_id: candidate.id, parser_version: candidate.parser_version, source: candidate.source, intent: "candidate"});
+      candidate_id: candidate.id, parser_version: candidate.parser_version, source: candidate.source,
+      intent: candidate.requires_year ? "original_correction" : "candidate"});
     input.dispatchEvent(new Event("input", {bubbles: true}));
   }
-  fieldset.querySelector("[data-recognized-time-status]").textContent = "已填入当前草稿，请核对后保存。";
 }
 
 function copyTimeField(input, value) {

@@ -22,6 +22,46 @@ def decision(parsed):
     return next(item for item in parsed.decisions if item.field == "expense_time")
 
 
+def test_page_month_heading_supplies_its_year_without_using_a_later_upload_year():
+    raw = "2020年12月账单\n支付时间：12月31日23:59"
+    result = parse(raw, reference_time=datetime(2026, 1, 1, tzinfo=UTC))
+    candidate = times(result)[0]
+    assert candidate.local_value == "2020-12-31T23:59"
+    assert candidate.review_reason == "year_from_page_heading" and result.expense_time is None
+    assert candidate.reference_time is None
+    assert [raw[left:right] for left, right in candidate.raw_spans] == ["2020年12月账单", "支付时间：12月31日23:59"]
+
+
+def test_month_heading_does_not_cross_into_another_month_or_borrow_a_date_below():
+    for raw in ("2020年11月账单\n支付时间：12月31日23:59", "支付时间：12月31日23:59\n2020年12月账单"):
+        candidate = times(parse(raw))[0]
+        assert candidate.review_reason == "reference_time_missing"
+        assert candidate.local_value == "12月31日23:59"
+
+
+def test_page_heading_after_capture_preserves_the_conflict_and_both_sources():
+    reference = datetime(2025, 12, 31, tzinfo=UTC)
+    raw = "2026年12月账单\n支付时间：12月31日23:59"
+    result = parse(raw, reference_time=reference)
+    candidate = times(result)[0]
+    assert candidate.local_value == "2026-12-31T23:59" and result.expense_time is None
+    assert candidate.review_reason == "after_capture_date" and candidate.reference_time == reference.isoformat()
+    assert raw[slice(*candidate.raw_spans[0])] == "2026年12月账单"
+
+
+def test_page_year_heading_uses_the_dates_column_even_when_ocr_serializes_other_column_first():
+    def block(text, left, top, right):
+        return {"text": text, "box": [[left, top], [right, top], [right, top + 20], [left, top + 20]]}
+
+    blocks = [block("2021年12月账单", 400, 10, 550), block("12月21日 09:20", 20, 70, 180),
+        block("2020年12月账单", 20, 10, 180), block("12月22日 10:30", 400, 70, 560)]
+    raw = "\n".join(row["text"] for row in blocks)
+    candidates = times(parse(raw, evidence_blocks=blocks))
+    assert {row.local_value for row in candidates} == {"2020-12-21T09:20", "2021-12-22T10:30"}
+    for candidate in candidates:
+        assert {blocks[index]["box"][0][0] for index in candidate.block_indices} in ({20}, {400})
+
+
 def test_payment_time_is_separate_from_order_print_refund_and_capture_times():
     raw = "\n".join([
         "下单时间：2026-10-20 18:20", "支付时间：2026-10-21 10:20:31",
@@ -129,6 +169,25 @@ def test_numeric_date_order_remains_ambiguous_without_a_format_contract():
     assert {item.local_value for item in times(result)} == {"2026-03-04T13:20", "2026-04-03T13:20"}
     clear = parse("交易时间：13/04/2026 1:20 PM")
     assert clear.expense_time.isoformat() == "2026-04-13T05:20:00+00:00"
+
+
+@pytest.mark.parametrize("prefix,reference", [
+    ("", None), ("", datetime(2026, 10, 1, tzinfo=UTC)), ("2020年账单\n", None),
+])
+def test_yearless_numeric_dates_keep_both_orders_for_explicit_year_completion(prefix, reference):
+    result = parse(prefix + "交易日期：05/06 13:20:31 +07:00", reference_time=reference)
+    candidates = times(result)
+    assert {(item.components["month"], item.components["day"]) for item in candidates} == {(5, 6), (6, 5)}
+    assert len({item.id for item in candidates}) == len({item.local_value for item in candidates}) == 2
+    assert all(item.utc_offset_seconds == 25200 and item.components["second"] == 31 for item in candidates)
+    assert result.expense_time is None
+
+
+@pytest.mark.parametrize("literal,expected", [("13/04", (4, 13)), ("04/13", (4, 13)), ("04/04", (4, 4))])
+def test_yearless_numeric_date_has_only_its_valid_distinct_month_day(literal, expected):
+    candidate, = times(parse("交易日期：" + literal))
+    assert (candidate.components["month"], candidate.components["day"]) == expected
+    assert candidate.review_reason == "reference_time_missing"
 
 
 @pytest.mark.parametrize("literal", ["2518-03-12", "2518-03-12 13:07"])

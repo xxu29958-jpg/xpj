@@ -14,6 +14,7 @@ from app.services.receipt_parse_common import (
     _ScoreDimensions,
     _TimeCandidate,
 )
+from app.services.receipt_time_context import page_year_anchor
 
 _CLOCK = (
     r"(?:(?P<period>上午|下午|晚上)\s*)?(?P<hour>\d{1,2})[时:：](?P<minute>\d{2})"
@@ -29,6 +30,7 @@ _PATTERNS = (
     ("day_month", re.compile(r"(?<![\d/.-])(?P<first>\d{1,2})[/.-](?P<last>\d{1,2})[/.-](?P<year>\d{4})(?!\d)" + _CLOCK_SUFFIX, re.I)),
     ("month_name", re.compile(r"(?<!\d)(?P<day>\d{1,2})[\s/-]+(?P<month_name>JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?),?[\s/-]+(?P<year>\d{4})(?!\d)" + _CLOCK_SUFFIX, re.I)),
     ("missing_year", re.compile(r"(?<![\d年/.-])(?P<month>\d{1,2})月(?P<day>\d{1,2})日\s*" + rf"(?:{_CLOCK})?", re.I)),
+    ("missing_year_numeric", re.compile(r"(?<![A-Za-z\d/.-])(?P<month>\d{1,2})[-/](?P<day>\d{1,2})(?![A-Za-z\d/.-])" + _CLOCK_SUFFIX, re.I)),
     ("relative_day", re.compile(r"(?P<relative_day>今天|今日|昨天|昨日)\s*" + rf"(?:{_CLOCK})?", re.I)),
     ("clock", re.compile(r"(?<!\d)" + _CLOCK, re.I)),
 )
@@ -230,9 +232,9 @@ def _clock_time(groups: dict[str, str | None]) -> time:
 def _candidate(
     text: str, match: re.Match, kind: str, day: date | None, inferred: tuple[str, ...],
     reason: str | None, zone: tzinfo | None, zone_basis: str, reference: datetime | None,
-    blocks: Sequence[dict] | None = None,
+    blocks: Sequence[dict] | None = None, *, groups: dict[str, str | None] | None = None,
 ) -> _TimeCandidate:
-    groups = match.groupdict()
+    groups = match.groupdict() if groups is None else groups
     role, start, label = _role(text, match.start(), blocks)
     label_span = None
     if blocks and label and text.count("\n", 0, start) != text.count("\n", 0, match.start()):
@@ -255,7 +257,25 @@ def _candidate(
         evidence += (f"label:{label}",)
     if candidate.review_reason:
         evidence += (candidate.review_reason,)
-    return replace(candidate, evidence=evidence, dimensions=_ScoreDimensions(label=score, evidence=evidence))
+    return replace(candidate, evidence=evidence, dimensions=_ScoreDimensions(label=score, evidence=evidence),
+        components=_printed_components(groups, day))
+
+
+def _printed_components(groups: dict[str, str | None], day: date | None) -> dict[str, int]:
+    if day is not None:
+        parts = {"year": day.year, "month": day.month, "day": day.day}
+    elif groups.get("month") and groups.get("day"):
+        parts = {"month": int(groups["month"]), "day": int(groups["day"])}
+    else:
+        return {}
+    try:
+        date(parts.get("year", 2000), parts["month"], parts["day"])
+        if groups.get("hour"):
+            clock = _clock_time(groups)
+            parts.update(hour=clock.hour, minute=clock.minute, second=clock.second)
+    except ValueError:
+        return {}
+    return parts
 
 
 def _resolve_clock(candidate: _TimeCandidate, groups: dict[str, str | None], day: date | None,
@@ -264,15 +284,16 @@ def _resolve_clock(candidate: _TimeCandidate, groups: dict[str, str | None], day
         if unresolved_zone:
             raise ValueError("Unresolved or malformed printed timezone")
         clock = _clock_time(groups) if groups.get("hour") else None
+        if groups.get("offset"):
+            zone = _printed_zone(groups["offset"])
+            candidate = replace(candidate, timezone_basis="printed_offset", timezone_name=str(zone),
+                utc_offset_seconds=int(zone.utcoffset(None).total_seconds()))
         if clock is None:
             candidate = replace(candidate, review_reason=candidate.review_reason or "date_only")
         elif day is not None:
             local = datetime.combine(day, clock)
             local_value = local.isoformat(timespec="seconds" if candidate.precision == "second" else "minutes")
             candidate = replace(candidate, value=local_value, local_value=local_value)
-            if groups.get("offset"):
-                zone = _printed_zone(groups["offset"])
-                candidate = replace(candidate, timezone_basis="printed_offset")
             instant, timezone_reason = _local_instant(local, zone) if zone is not None else (None, "invalid_timezone")
             utc_offset = int(instant.astimezone(zone).utcoffset().total_seconds()) if instant is not None else None
             candidate = replace(candidate, value=instant or local_value, local_value=local_value,
@@ -286,7 +307,7 @@ def _resolve_clock(candidate: _TimeCandidate, groups: dict[str, str | None], day
 def _review_capture_date(candidate, day, reference, zone):
     reason = candidate.review_reason
     after_capture = day is not None and reference is not None and zone is not None and day > reference.astimezone(zone).date()
-    if after_capture and reason in {None, "date_only"}:
+    if after_capture and reason in {None, "date_only", "year_from_page_heading"}:
         reason = "after_capture_date"
     if candidate.role in NON_TRANSACTION_TIME_ROLES:
         reason = "non_transaction_time"
@@ -308,8 +329,61 @@ def _time_candidates(text: str, timezone_name: str | None = None, *, reference_t
             occupied.append(match.span())
             if kind == "clock" and _role(text, match.start(), evidence_blocks)[0] == "unknown":
                 continue  # Status-bar clocks cannot establish transaction evidence.
-            for day, inferred, reason in _dates(kind, match.groupdict(), reference, zone):
-                candidates.append(_candidate(text, match, kind, day, inferred, reason, zone, basis, reference, evidence_blocks))
+            candidates.extend(_contextual_time_candidates(text, match, kind, zone, basis, reference, evidence_blocks))
+    return candidates
+
+
+def _contextual_time_candidates(text: str, match: re.Match, kind: str, zone: tzinfo | None, basis: str,
+        reference: datetime | None, blocks: Sequence[dict] | None) -> list[_TimeCandidate]:
+    groups = match.groupdict()
+    if kind != "missing_year_numeric":
+        return _dated_time_candidates(text, match, kind, groups, zone, basis, reference, blocks)
+    variants = _numeric_month_day_groups(groups)
+    candidates = []
+    for variant in variants:
+        rows = _dated_time_candidates(text, match, "missing_year", variant, zone, basis, reference, blocks)
+        for row in rows:
+            # Both orders keep their own displayed month/day and candidate identity.
+            # Missing years still use the existing explicit-year completion command.
+            if row.components and "year" not in row.components:
+                local = f"--{int(variant['month']):02}-{int(variant['day']):02}"
+                if variant.get("hour"):
+                    local += "T" + _clock_time(variant).isoformat(timespec="seconds" if row.precision == "second" else "minutes")
+                row = replace(row, value=local, local_value=local)
+            if len(variants) > 1:
+                row = replace(row, evidence=(*row.evidence, "ambiguous_date_order"))
+            candidates.append(row)
+    return candidates
+
+
+def _numeric_month_day_groups(groups):
+    pairs = sorted({(int(groups["month"]), int(groups["day"])), (int(groups["day"]), int(groups["month"]))})
+    variants = []
+    for month, day in pairs:
+        try:
+            date(2000, month, day)  # Preserve February 29 until the user supplies its year.
+        except ValueError:
+            continue
+        variants.append({**groups, "month": str(month), "day": str(day)})
+    return variants or [groups]
+
+
+def _dated_time_candidates(text, match, kind, groups, zone, basis, reference, blocks):
+    anchor = page_year_anchor(text, match.start(), int(groups["month"]), blocks) if kind == "missing_year" else None
+    if anchor is not None:
+        try:
+            day = date(anchor.year, int(groups["month"]), int(groups["day"]))
+            dates = [(day, ("year",), "year_from_page_heading")]
+        except ValueError:
+            dates = [(None, ("year",), "invalid_date")]
+    else:
+        dates = _dates(kind, groups, reference, zone)
+    candidates = [_candidate(text, match, kind, day, inferred, reason, zone, basis,
+        reference, blocks, groups=groups) for day, inferred, reason in dates]
+    if anchor is not None:
+        candidates = [replace(candidate, context_spans=(anchor.span,),
+            reference_time=None if candidate.review_reason == "year_from_page_heading" else candidate.reference_time)
+            for candidate in candidates]
     return candidates
 
 
