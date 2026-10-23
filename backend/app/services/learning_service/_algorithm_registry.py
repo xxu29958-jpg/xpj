@@ -154,9 +154,9 @@ DUPLICATE_CANDIDATE = AlgorithmType(
 
 BUDGET_SUGGESTION = AlgorithmType(
     decision_type="budget_suggestion",
-    current_version="budget-quantile-v1",
+    current_version="budget-quantile-v2",
     display_label="预算建议",
-    description="在洞察中对照过去 6 个完整月份的分类支出，显示通常水平和较高水平。随账目重新计算，不会自动修改预算。",
+    description="在过去6个完整月份中，至少3个月有账本记录后，对照有记录以来的分类支出。资料不足就说明不足；不会自动修改预算。",
     subject_kinds=("expense", "month"),
     default_retention_days=365,
     marker_keys=(),

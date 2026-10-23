@@ -124,6 +124,9 @@ def test_quantile_does_not_train_on_false_zero_months_and_keeps_other_categories
         db = ProjectionRows()
         result = quantiles.compute_budget_quantile_suggestion(db, tenant_id="owner", category=category,
             home_currency_code="CNY", now=datetime(2026, 5, 1, tzinfo=UTC))
-        assert result.undated_expense_count == expected_count and result.missing_rates == ()
-        assert result.p50_cents is None if expected_count else result.p50_cents == 0
+        if expected_count:
+            assert result.undated_expense_count == expected_count and result.missing_rates == ()
+            assert result.p50_cents is None
+        else:
+            assert result is None, "No dated category history is not a known zero-spend series"
         assert len(db.statements) == 1

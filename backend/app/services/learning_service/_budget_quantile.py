@@ -3,28 +3,28 @@
 Looks at the user's confirmed-expense history per category and returns
 distribution-based budget hints: P50 ("typical month") and P75 ("a
 heavier month — leave headroom"). The suggestion is suggestion-only,
-exactly like its P1 cousins: never writes a budget, never modifies
-existing budgets. The user accepts it via the existing budget
-mutation path, which writes an ``accept`` event back.
+exactly like its P1 cousins: never writes a budget or modifies existing budgets.
 
-Algorithm v1 (``algorithm_version='budget-quantile-v1'``):
+Algorithm v2 (``algorithm_version='budget-quantile-v2'``):
 
-1. Bucket confirmed expenses by the project accounting contract:
-   ``COALESCE(expense_time, confirmed_at)`` in the requested
-   accounting timezone.
+1. Read the confirmed spending projection using adopted accounting dates,
+   refunds/reversals and recorded currency conversion in the ledger calendar.
 2. For each month, sum ``home_currency_amount`` per category. Months
    with zero spend in a category contribute a zero (because "I didn't
    spend on this category that month" is a valid data point — adding
    it makes the P50 reflect typical reality, not just "months I did
-   spend"). The zero-contribution behaviour is gated by
+   spend"). Padding begins when the ledger has recorded history, including
+   history before the comparison window. The zero-contribution behaviour is gated by
    ``include_zero_months`` so callers can opt out.
-3. Require at least ``min_months`` months of usable history.
+3. Require records in at least ``min_months`` distinct completed ledger months;
+   synthetic zeroes cannot establish this qualification. A category with no
+   recorded spending has no historical comparison.
 4. Sort, take P50 and P75 by linear interpolation (matches numpy's
    default ``method='linear'`` without a numpy dependency).
 
-Returns ``None`` for categories with too little history or empty
-input. Caller persists via ``record_decision(decision_type=
-'budget_suggestion')``.
+Returns ``None`` for categories with too little history or empty input.
+Reports and budget-advice inputs consume this read-only comparison. Accepting
+a budget changes a plan; it never supplies spending observations or labels.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.money_contract import (
@@ -54,6 +55,7 @@ from app.services.money_projection_service import (
 from app.services.spending_contract_service import (
     accounting_timezone_key,
     calendar_month_bounds,
+    confirmed_stream_query,
     month_labels_ending_at,
     shift_month,
 )
@@ -142,6 +144,20 @@ def _monthly_totals(entries, months, include_zero_months):
     return monthly_totals
 
 
+def _recorded_history_months(db, projection, requested_months, *, tenant_id, timezone_name, min_months):
+    recorded = {entry.stream_date.strftime("%Y-%m") for entry in projection.entries}
+    if not recorded:
+        return recorded, []
+    first = min(recorded)
+    if first > requested_months[0] and len(recorded) >= max(min_months, 1):
+        stream = confirmed_stream_query(tenant_id=tenant_id, timezone_name=timezone_name)
+        start, _ = calendar_month_bounds(requested_months[0])
+        earlier = db.scalar(select(stream.c.entry_id).where(stream.c.stream_date < start).limit(1))
+        if earlier is not None:
+            first = requested_months[0]
+    return recorded, [month for month in requested_months if month >= first]
+
+
 def compute_budget_quantile_suggestion(
     db: Session,
     *,
@@ -176,12 +192,17 @@ def compute_budget_quantile_suggestion(
     normalized = {normalize_category(value) for value in match_values}
     entries = [entry for entry in projection.entries if entry.category in normalized]
     gaps = entry_gaps(entries)
-    monthly_totals = _monthly_totals(entries, months, include_zero_months)
+    recorded_months, covered_months = _recorded_history_months(db, projection, months,
+        tenant_id=tenant_id, timezone_name=timezone_name, min_months=min_months)
+    monthly_totals = _monthly_totals(entries, covered_months, include_zero_months)
 
     undated = sum(projection.undated_by_category.get(name, 0) for name in normalized)
     if gaps or undated:
         return BudgetQuantileSuggestion(category=category, p50_cents=None, p75_cents=None,
             sample_months=len(monthly_totals), home_currency_code=home, missing_rates=ordered_projection_gaps(gaps), undated_expense_count=undated)
+
+    if not entries or len(recorded_months) < max(min_months, 1):
+        return None
 
     values = sorted(
         max(
