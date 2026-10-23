@@ -83,7 +83,7 @@ class RepaymentReviewRoomTest {
         assertEquals(false, graph.repaymentReviewRepository.observe(binding, capture.publicId).first().input?.targetChoiceExplicit)
         graph.repaymentReviewRepository.submit(binding, capture.toDomain(), false).getOrThrow()
         drain()
-        assertEquals(false, confirmCalls.single().second.targetChoiceExplicit)
+        assertEquals(null, confirmCalls.single().second.targetChoiceExplicit) // Omitted false preserves legacy replay bytes.
         fixture.reopen()
         loseReply = false
         drain()

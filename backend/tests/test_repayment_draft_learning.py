@@ -165,6 +165,30 @@ def test_learns_target_from_prior_confirmation(client: TestClient, *, identity) 
     assert _suggestion(client, identity, fresh["public_id"]) == x["public_id"]
 
 
+def test_accepted_repayment_memory_survives_cleanup_with_its_retained_feedback(client, identity):
+    from app.services.learning_service import cleanup_expired_learning_tables
+
+    debt = _create_external_debt(client, identity, counterparty_label="卡A")
+    first = _create_draft(client, identity, merchant_label=_NO_MATCH_LABEL, notification_key="retained-first")
+    _confirm(client, identity, first["public_id"], debt)
+    second = _create_draft(client, identity, merchant_label=_NO_MATCH_LABEL, notification_key="retained-second")
+    assert _suggestion(client, identity, second["public_id"]) == debt["public_id"]
+    debt = client.get(f"/api/debts/{debt['public_id']}", headers=identity.app_headers).json()
+    _confirm(client, identity, second["public_id"], debt)
+    with SessionLocal() as db:
+        decision = db.query(AlgorithmDecision).filter_by(status="accepted", decision_type="repayment_choice").one()
+        event = db.query(LedgerLearningEvent).filter_by(decision_id=decision.id).one()
+        assert event.retention_days == 0
+        # Acceptance must not keep the shorter dismissal window; retained
+        # feedback must remain usable even after the acceptance window ends.
+        assert decision.retention_days > 90
+        decision_id, event_id = decision.id, event.id
+        cleanup_expired_learning_tables(db, tenant_id=decision.tenant_id, now=now_utc() + timedelta(days=400))
+        assert db.get(AlgorithmDecision, decision_id) is not None
+        assert db.get(LedgerLearningEvent, event_id).decision_id == decision_id
+
+
+
 def test_ambiguous_signature_history_suppresses(client: TestClient, *, identity) -> None:
     # The same signature has been confirmed to TWO distinct still-feasible Debts (a generic label
     # split across cards) → the learned fallback stays silent rather than guess the wrong card.

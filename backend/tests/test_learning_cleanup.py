@@ -19,6 +19,7 @@ from app.services.learning_service import (
     cleanup_expired_learning_events,
     cleanup_expired_learning_tables,
     cleanup_expired_ocr_facts,
+    get_status_overview,
     record_decision,
     record_event,
     record_ocr_fact,
@@ -112,6 +113,43 @@ def test_retention_zero_opts_out(*, identity) -> None:
     with SessionLocal() as db:
         removed = cleanup_expired_algorithm_decisions(db, now=NOW)
         assert removed == 0
+
+
+def test_retained_feedback_preserves_parent_without_blocking_other_cleanup(identity, monkeypatch):
+    monkeypatch.setattr("app.services.learning_service._maintenance.now_utc", lambda: NOW)
+    retained = _seed_decision(status="accepted", retention_days=30, created_at=NOW - timedelta(days=400))
+    expired = _seed_decision(status="dismissed", retention_days=30, created_at=NOW - timedelta(days=200))
+    with SessionLocal() as db:
+        event = record_event(db, EventDraft(tenant_id="owner", event_type="manual_override",
+            subject_kind="expense", subject_id=1, decision_id=retained), now=NOW - timedelta(days=300))
+        event.retention_days = 0
+        db.commit()
+        # The retained parent must not consume the batch or appear as deletable
+        # in the Owner status. Its independent neighbour still gets collected.
+        assert get_status_overview(db, tenant_id="owner").algorithm_decisions.expired_candidate_rows == 1
+        assert cleanup_expired_algorithm_decisions(db, tenant_id="owner", now=NOW, batch_size=1) == 1
+        assert db.get(AlgorithmDecision, expired) is None
+        assert db.get(AlgorithmDecision, retained) is not None
+        assert db.get(LedgerLearningEvent, event.id).decision_id == retained
+        event.retention_days = 30
+        db.commit()
+        result = cleanup_expired_learning_tables(db, tenant_id="owner", now=NOW)
+        assert (result.ledger_learning_events, result.algorithm_decisions) == (1, 1)
+        assert cleanup_expired_learning_tables(db, tenant_id="owner", now=NOW).total == 0
+
+
+def test_retained_supersession_link_preserves_successor_until_predecessor_expires(identity):
+    previous = _seed_decision(status="superseded", retention_days=0, created_at=NOW - timedelta(days=400))
+    successor = _seed_decision(status="dismissed", retention_days=30, created_at=NOW - timedelta(days=300))
+    with SessionLocal() as db:
+        db.get(AlgorithmDecision, previous).superseded_by_id = successor
+        db.commit()
+        assert cleanup_expired_algorithm_decisions(db, tenant_id="owner", now=NOW, batch_size=1) == 0
+        assert db.get(AlgorithmDecision, previous).superseded_by_id == successor
+        db.get(AlgorithmDecision, previous).retention_days = 30
+        db.commit()
+        assert cleanup_expired_algorithm_decisions(db, tenant_id="owner", now=NOW, batch_size=1) == 1
+        assert cleanup_expired_algorithm_decisions(db, tenant_id="owner", now=NOW, batch_size=1) == 1
 
 
 def test_learning_events_pruned_by_age(*, identity) -> None:

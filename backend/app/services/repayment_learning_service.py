@@ -39,6 +39,7 @@ def record_repayment_choice(db: Session, *, draft: RepaymentDraft, actor_account
         .order_by(AlgorithmDecision.id.desc()).limit(1))
     if decision is not None and json.loads(decision.output_payload).get("target_debt_public_id") == debt.public_id:
         decision.status = "accepted"
+        decision.retention_days = entry.retention_for_status("accepted")
     event = record_event(db, EventDraft(tenant_id=draft.tenant_id, subject_kind="repayment_draft", subject_id=draft.id,
         decision_id=decision.id if decision is not None else None,
         actor_account_id=actor_account_id, event_type="manual_override", signal_type=entry.decision_type,

@@ -36,6 +36,7 @@ from app.models.app_meta import (
 from app.services.app_meta_service import get_value, set_value
 from app.services.learning_service._cleanup import (
     CleanupReport,
+    _unreferenced_decision,
     cleanup_expired_learning_tables,
 )
 from app.services.learning_service._lifecycle import (
@@ -118,6 +119,8 @@ def _expired_count(
     """
 
     stmt = select(model).where(model.retention_days > 0)
+    if model is AlgorithmDecision:
+        stmt = stmt.where(_unreferenced_decision())
     if tenant_id is not None:
         stmt = stmt.where(model.tenant_id == tenant_id)
     rows = list(db.scalars(stmt))

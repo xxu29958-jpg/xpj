@@ -18,8 +18,8 @@ Two safety rules different from the budget audit table:
 * ``algorithm_decisions`` rows in ``status='active'`` are NEVER
   pruned, regardless of age — the suggestion is still being shown
   to the user and removing it under their nose is the wrong
-  behaviour. Only ``superseded`` and ``withdrawn`` rows are
-  candidates.
+  behaviour. Only terminal rows with no surviving feedback or
+  supersession references are candidates.
 * Each call processes at most ``batch_size`` rows so a giant
   ledger doesn't block the request loop while pruning. The cleanup
   is idempotent; running it twice does nothing extra.
@@ -35,7 +35,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import AlgorithmDecision, LedgerLearningEvent, OcrFact
 from app.services.time_service import ensure_utc, now_utc
@@ -76,6 +77,18 @@ def _expired(
     return when + timedelta(days=int(retention_days)) <= threshold
 
 
+def _unreferenced_decision() -> ColumnElement[bool]:
+    """Retained feedback and supersession history keep their parent readable."""
+    predecessor = aliased(AlgorithmDecision)
+    return ~select(LedgerLearningEvent.id).where(
+        LedgerLearningEvent.tenant_id == AlgorithmDecision.tenant_id,
+        LedgerLearningEvent.decision_id == AlgorithmDecision.id,
+    ).exists() & ~select(predecessor.id).where(
+        predecessor.tenant_id == AlgorithmDecision.tenant_id,
+        predecessor.superseded_by_id == AlgorithmDecision.id,
+    ).exists()
+
+
 def cleanup_expired_algorithm_decisions(
     db: Session,
     *,
@@ -83,7 +96,7 @@ def cleanup_expired_algorithm_decisions(
     now: datetime | None = None,
     batch_size: int = _DEFAULT_BATCH,
 ) -> int:
-    """Delete superseded / withdrawn decisions past their retention.
+    """Delete unreferenced terminal decisions past their retention.
 
     ``tenant_id=None`` is the cron / scheduler default — walks every
     tenant. Route handlers MUST pass the current admin's tenant to
@@ -95,6 +108,7 @@ def cleanup_expired_algorithm_decisions(
     stmt = (
         select(AlgorithmDecision)
         .where(AlgorithmDecision.retention_days > 0)
+        .where(_unreferenced_decision())
         # All terminal statuses are eligible — superseded (newer
         # version replaced it), withdrawn (algo-version rollback),
         # accepted (user said yes), dismissed (user said no /
@@ -208,13 +222,15 @@ def cleanup_expired_learning_tables(
     to that tenant.
     """
 
+    # Expired feedback must release its reference before its parent can go.
+    events = cleanup_expired_learning_events(
+        db, tenant_id=tenant_id, now=now, batch_size=batch_size
+    )
     return CleanupReport(
         algorithm_decisions=cleanup_expired_algorithm_decisions(
             db, tenant_id=tenant_id, now=now, batch_size=batch_size
         ),
-        ledger_learning_events=cleanup_expired_learning_events(
-            db, tenant_id=tenant_id, now=now, batch_size=batch_size
-        ),
+        ledger_learning_events=events,
         ocr_facts=cleanup_expired_ocr_facts(
             db, tenant_id=tenant_id, now=now, batch_size=batch_size
         ),
