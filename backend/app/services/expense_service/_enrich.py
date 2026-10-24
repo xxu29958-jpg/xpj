@@ -120,6 +120,7 @@ def _prepare_enrichment(
     *,
     raise_on_failure: bool,
     explicit_retry: bool = False,
+    ocr_region: dict | None = None,
 ) -> _PreparedEnrichment | PendingEnrichmentResult:
     from app.database import SessionLocal
 
@@ -141,7 +142,15 @@ def _prepare_enrichment(
         # Copy values into a transient input, then close the read transaction
         # before snapshot IO, model startup or inference begins.
         snapshot = Expense(**{column.key: getattr(expense, column.key) for column in Expense.__table__.columns})
-    if explicit_retry:
+        if ocr_region is not None:
+            from app.services.ocr_region_service import region_base
+
+            _public_id, base_evidence = region_base(db, expense, ocr_region)
+    if ocr_region is not None:
+        from app.services.ocr_region_service import extract_region
+
+        extractions = [extract_region(snapshot, ocr_region, base_evidence)]
+    elif explicit_retry:
         from app.services.expense_service._ocr import extract_explicit_ocr
 
         extractions = [extract_explicit_ocr(snapshot, timezone_name)]
@@ -192,6 +201,10 @@ def _apply_extractions(db: Session, expense: Expense, prepared: _PreparedEnrichm
     """Stage draft fields and immutable facts under the caller's apply locks."""
     occ_snapshot = _enrichment_occ_snapshot(expense)
     for extraction in prepared.ocr_extractions:
+        if extraction.result.evidence and extraction.result.evidence.get("regional_retry"):
+            from app.services.ocr_region_service import region_base
+
+            region_base(db, expense, extraction.result.evidence["regional_retry"])
         apply_ocr_result_and_append_fact(db, expense=expense, result=extraction.result,
             provider_name=extraction.provider_name, ocr_model=extraction.ocr_model, timezone_name=timezone_name)
         _replace_ocr_draft_items_from_text(db, expense, extraction.result.raw_text, timezone_name=timezone_name)
@@ -292,6 +305,7 @@ def enrich_pending_expense(
     raise_on_failure: bool = False,
     task_id: int | None = None,
     explicit_retry: bool = False,
+    ocr_region: dict | None = None,
 ) -> PendingEnrichmentResult:
     """Run provider work outside the short OCC apply transaction."""
     staged_thumbnail: StagedThumbnail | None = None
@@ -303,6 +317,7 @@ def enrich_pending_expense(
             expected_row_version,
             raise_on_failure=raise_on_failure,
             explicit_retry=explicit_retry,
+            ocr_region=ocr_region,
         )
         if isinstance(prepared, PendingEnrichmentResult):
             return _complete_without_inference(task_id, expense_id, tenant_id, prepared)

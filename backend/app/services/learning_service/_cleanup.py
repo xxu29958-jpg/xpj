@@ -34,7 +34,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import case, cast, func, or_, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -178,7 +179,7 @@ def cleanup_expired_ocr_facts(
     now: datetime | None = None,
     batch_size: int = _DEFAULT_BATCH,
 ) -> int:
-    """Delete OCR facts past their retention. Anchors on
+    """Delete unreferenced OCR facts past their retention. Anchors on
     ``extracted_at`` because that's the user-visible "when did OCR run"
     timestamp; ``created_at`` is identical for normal paths but the
     distinction matters when a row is backfilled.
@@ -191,6 +192,7 @@ def cleanup_expired_ocr_facts(
     stmt = (
         select(OcrFact)
         .where(OcrFact.retention_days > 0)
+        .where(_unreferenced_ocr_fact())
         .order_by(OcrFact.extracted_at.asc())
         .limit(_clamp_batch(batch_size))
     )
@@ -206,6 +208,31 @@ def cleanup_expired_ocr_facts(
     if expired:
         db.commit()
     return len(expired)
+
+
+def _unreferenced_ocr_fact() -> ColumnElement[bool]:
+    """Keep referenced evidence and its current successor, never revive old feedback."""
+    payload = cast(case(
+        (func.pg_input_is_valid(LedgerLearningEvent.after_payload, "jsonb"), LedgerLearningEvent.after_payload),
+        else_="{}",
+    ), JSONB)
+    referenced, newest = aliased(OcrFact), aliased(OcrFact)
+    current_id = select(newest.id).where(
+        newest.tenant_id == OcrFact.tenant_id, newest.expense_id == OcrFact.expense_id,
+        newest.raw_text.is_not(None), newest.raw_text != "",
+    ).order_by(newest.extracted_at.desc(), newest.id.desc()).limit(1).correlate(OcrFact).scalar_subquery()
+    return ~select(LedgerLearningEvent.id).join(referenced,
+        (referenced.tenant_id == LedgerLearningEvent.tenant_id)
+        & (referenced.expense_id == LedgerLearningEvent.subject_id)
+        & (referenced.public_id == payload["evidence_public_id"].astext),
+    ).where(
+        LedgerLearningEvent.tenant_id == OcrFact.tenant_id,
+        LedgerLearningEvent.subject_kind == "expense",
+        LedgerLearningEvent.subject_id == OcrFact.expense_id,
+        LedgerLearningEvent.signal_type.in_(("recognition_time_choice", "recognition_field_choice")),
+        payload["source"].astext == "image",
+        or_(referenced.id == OcrFact.id, OcrFact.id == current_id),
+    ).exists()
 
 
 def cleanup_expired_learning_tables(

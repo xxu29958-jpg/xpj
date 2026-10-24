@@ -180,6 +180,7 @@ def run_pending_expense_enrichment_task(
         raise_on_failure=True,
         task_id=task_id,
         explicit_retry=explicit_retry,
+        **({"ocr_region": payload["region"]} if explicit_retry and payload.get("region") is not None else {}),
     )
     if result.outcome == "failed":
         raise PendingEnrichmentTaskError("expense enrichment failed without an exception")

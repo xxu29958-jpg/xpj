@@ -34,6 +34,41 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
         assertStateAdmission(PendingMutationType.RetryOcr)
     }
 
+    @Test
+    fun `region retry keeps source coordinates and identity in the original offline intent`() = runTest {
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val repo = buildRepository(ApiServiceStub(retryOcrResult = ApiResult.Success(successExpenseDto())),
+            testOutboxRepository(dao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val selection = com.ticketbox.domain.model.OcrRegionSelection("a".repeat(64), listOf(60, 25, 110, 50))
+        val accepted = repo.retryOcrAllowingOffline(binding, baseline, selection).getOrThrow()
+        val row = dao.rows.values.single()
+        val request = requireNotNull(moshi().adapter(ExpenseStateTokenRequest::class.java).fromJson(row.payload))
+        assertEquals(selection.imageSha256, request.region?.imageSha256)
+        assertEquals(selection.box, request.region?.box)
+        assertEquals(baseline.rowVersion, row.expectedRowVersion)
+        assertEquals(baseline, accepted.expense)
+        assertNotNull(row.idempotencyKey)
+    }
+
+    @Test
+    fun `OCR cannot enqueue an unsupported confirmed or rejected expense`() = runTest {
+        val dao = FakePendingMutationDao()
+        val api = ApiServiceStub(retryOcrResult = ApiResult.Success(successExpenseDto()))
+        val repo = buildRepository(api, testOutboxRepository(dao))
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val region = com.ticketbox.domain.model.OcrRegionSelection("a".repeat(64), listOf(60, 25, 110, 50))
+        for (status in listOf("confirmed", "rejected")) {
+            for (selection in listOf(null, region)) {
+                val result = repo.retryOcrAllowingOffline(binding, baselineExpense().copy(status = status), selection)
+                assertTrue(result.isFailure, "Only a pending expense can request OCR")
+            }
+        }
+        assertTrue(dao.rows.isEmpty(), "A rejected action must not be reported as an accepted Outbox request")
+        assertNull(api.lastRetryOcrIdempotencyKey)
+    }
+
     private suspend fun assertStateAdmission(type: PendingMutationType) {
         val baseline = successExpenseDto().copy(status = "pending", duplicateStatus = "suspected", duplicateOfId = 81L,
             duplicateCandidates = listOf(PendingDuplicateCandidateDto("displayed-pair-decision", 81L,

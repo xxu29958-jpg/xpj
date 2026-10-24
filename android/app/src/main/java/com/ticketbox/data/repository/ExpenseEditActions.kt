@@ -41,6 +41,7 @@ interface ExpenseEditActions : ExpenseRootReadActions {
     ): Result<ExpenseCommandAcceptance>
     suspend fun retryOcrAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
+        region: com.ticketbox.domain.model.OcrRegionSelection? = null,
     ): Result<ExpenseCommandAcceptance>
     suspend fun recognizeTextAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense, rawText: String,

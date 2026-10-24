@@ -121,7 +121,7 @@ data class ExpenseEditPrimaryActions(
 )
 
 data class ExpenseEditMediaActions(
-    val onRetryOcr: () -> Unit = {},
+    val onRetryOcr: (com.ticketbox.domain.model.OcrRegionSelection?) -> Unit = {},
     val onRecognizeText: (String) -> Unit = {},
     val onOpenRecognizeText: () -> Unit = {},
     val onDismissRecognizeText: () -> Unit = {},
@@ -451,8 +451,12 @@ fun ExpenseEditScreen(
                     imageLoading = state.imageLoading,
                     showLargeImage = showLargeImage,
                     originalTaskAvailable = originalContent != null,
+                    regionImageHash = currentExpense.imageHash,
+                    canRetryRegion = isPendingExpense && !readOnly && !state.saving && !state.ocrRunning,
                 ),
                 actions = ExpenseEditEvidenceActions(
+                    onLoadRegionImage = mediaActions.onLoadFullImage,
+                    onRetryRegion = mediaActions.onRetryOcr,
                     onToggleLargeImage = {
                         if (!showLargeImage && state.fullImage == null) {
                             mediaActions.onLoadFullImage()
@@ -634,7 +638,7 @@ fun ExpenseEditScreen(
                 onRegretScoreUndo = { regretScoreText = currentExpense.regretScore?.toString().orEmpty() },
                 onToggleMore = { moreExpanded = !moreExpanded },
                 onToggleRawText = { rawTextExpanded = !rawTextExpanded },
-                onRetryOcr = mediaActions.onRetryOcr,
+                onRetryOcr = { mediaActions.onRetryOcr(null) },
                 onRecognizeText = mediaActions.onOpenRecognizeText,
             ),
             noteContent = { ExpenseEditNoteField(note = note, onNoteChange = { note = it }, enabled = !readOnly) },

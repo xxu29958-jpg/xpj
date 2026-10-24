@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -14,6 +16,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.platform.app.InstrumentationRegistry
@@ -53,6 +57,81 @@ class ExpenseEditScreenContractTest {
 
     private val skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight")
         AppSkin.Midnight else AppSkin.Default
+
+    @Test
+    fun regionalRetryUsesOriginalPixelsAndKeepsTheUnsavedFinancialDraft() {
+        val digest = "a".repeat(64)
+        val bitmap = android.graphics.Bitmap.createBitmap(1000, 4000, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.WHITE)
+        android.graphics.Canvas(bitmap).drawText("Paid 216.75", 200f, 2100f,
+            android.graphics.Paint().apply { color = android.graphics.Color.BLACK; textSize = 50f })
+        val bytes = java.io.ByteArrayOutputStream().use { stream ->
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)
+            stream.toByteArray()
+        }
+        bitmap.recycle()
+        val image = mutableStateOf(ProtectedImage(bytes, "image/png", "b".repeat(64)))
+        var requested: com.ticketbox.domain.model.OcrRegionSelection? = null
+        var saved: ExpenseDraft? = null
+        val recorded = expense().copy(imagePath = "original.png", imageHash = digest, hasImage = true)
+        composeRule.setContent {
+            TicketboxTheme(skin = skin) {
+                ExpenseEditScreen(expenseEditScreenState(expense = recorded,
+                    editState = ExpenseEditUiState(fullImage = image.value)), ExpenseEditScreenActions(
+                    primary = ExpenseEditPrimaryActions(onSave = { saved = it }),
+                    media = ExpenseEditMediaActions(onRetryOcr = { requested = it }),
+                ))
+            }
+        }
+        composeRule.onNode(hasSetTextAction() and hasText("12.34")).performScrollTo().performTextReplacement("22.00")
+        closeSoftKeyboard()
+        composeRule.onNodeWithText("框选一行重识别").performScrollTo().performClick()
+        composeRule.onNodeWithText("重读这一行").assertIsNotEnabled()
+        composeRule.runOnIdle { image.value = ProtectedImage(bytes, "image/png", digest) }
+        val help = InstrumentationRegistry.getInstrumentation().targetContext.getString(com.ticketbox.R.string.ocr_region_help)
+        composeRule.onNodeWithText("放大").performClick().performClick()
+        composeRule.onNodeWithText("移动图片").performClick()
+        composeRule.onNode(hasContentDescription(help)).performTouchInput {
+            swipe(center, center + Offset(0f, -80f), durationMillis = 400)
+        }
+        composeRule.onNodeWithText("开始框选").performClick()
+        composeRule.onNode(hasContentDescription(help)).performTouchInput {
+            swipe(Offset(width * .2f, centerY - 20), Offset(width * .8f, centerY + 20), durationMillis = 400)
+        }
+        capture("review-original-region-selected")
+        composeRule.onNodeWithText("重读这一行").assertIsEnabled().performClick()
+        composeRule.runOnIdle {
+            val region = requireNotNull(requested)
+            assertEquals(digest, region.imageSha256)
+            org.junit.Assert.assertTrue(region.box[0] in 0..999 && region.box[2] in 1..1000 && region.box[0] < region.box[2])
+            org.junit.Assert.assertTrue(region.box[1] > 2000 && region.box[3] <= 4000)
+            org.junit.Assert.assertTrue(region.box[3] - region.box[1] in 4..120)
+            assertEquals(null, saved)
+        }
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle { assertEquals(2200L, saved?.originalAmountMinor) }
+    }
+
+    @Test
+    fun regionalRetryTracksPendingStatusWithoutMakingConfirmedExpenseReadOnly() {
+        val status = mutableStateOf("confirmed")
+        var requests = 0
+        composeRule.setContent {
+            TicketboxTheme(skin = skin) {
+                ExpenseEditScreen(expenseEditScreenState(expense = expense().copy(status = status.value,
+                    imagePath = "original.png", imageHash = "a".repeat(64), hasImage = true)), ExpenseEditScreenActions(
+                    media = ExpenseEditMediaActions(onRetryOcr = { requests++ }),
+                ))
+            }
+        }
+        composeRule.onNode(hasSetTextAction() and hasText("12.34")).assertIsEnabled()
+        composeRule.onNodeWithText("框选一行重识别").assertDoesNotExist()
+        composeRule.runOnIdle { status.value = "pending" }
+        composeRule.onNodeWithText("框选一行重识别").performScrollTo().assertIsEnabled()
+        composeRule.runOnIdle { status.value = "confirmed" }
+        composeRule.onNodeWithText("框选一行重识别").assertDoesNotExist()
+        composeRule.runOnIdle { assertEquals(0, requests) }
+    }
 
     @Test
     fun coherentEventChoiceUsesOriginalSaveWithoutTeachingDefaultFieldRoles() {

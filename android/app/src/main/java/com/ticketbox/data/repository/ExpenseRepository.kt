@@ -368,7 +368,8 @@ class ExpenseRepository internal constructor(
 
     override suspend fun retryOcrAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
-    ): Result<ExpenseCommandAcceptance> = pendingRepository.retryOcrAllowingOffline(expectedBinding, expense)
+        region: com.ticketbox.domain.model.OcrRegionSelection?,
+    ): Result<ExpenseCommandAcceptance> = pendingRepository.retryOcrAllowingOffline(expectedBinding, expense, region)
 
     override suspend fun recognizeTextAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense, rawText: String,

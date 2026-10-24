@@ -24,7 +24,7 @@ def test_native_failure_response_is_specific_and_worker_exits(monkeypatch, cause
     def fail(*_args):
         raise RuntimeError("wrapper-private-path") from cause
 
-    monkeypatch.setattr(engine, "RapidEngine", lambda *_args: SimpleNamespace(recognize=fail))
+    monkeypatch.setattr(engine, "RapidEngine", lambda *_args, **_kwargs: SimpleNamespace(recognize=fail))
     request = {"schema": 1, "operation": "recognize", "request_id": "call", "generation": "worker",
                "path": "synthetic-input.png", "input_sha256": "synthetic-digest"}
     source = io.BytesIO((json.dumps(request) + "\n").encode())

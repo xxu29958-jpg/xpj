@@ -140,17 +140,78 @@ def test_recognition_refuses_changed_binding_or_fact_with_original_input_retaine
 
 
 @pytest.mark.real_db
-@pytest.mark.parametrize("kind", ["text", "image"])
-def test_browser_resumes_recognition_and_original_financial_draft_after_lost_reply(recognition_browser, confirmation_store, tmp_path, kind):
+@pytest.mark.parametrize("kind", ["text", "image", "region"])
+def test_browser_resumes_recognition_and_original_financial_draft_after_lost_reply(recognition_browser, confirmation_store, tmp_path, monkeypatch, kind):
     client, _, _, accepted = recognition_browser
+    if kind == "region":
+        _region_browser_input(client, confirmation_store, monkeypatch, accepted)
     result = review_tests._run_review_page(client, tmp_path,
         "/web/expenses/42/edit?ledger_id=owner&return_to=pending&recognition_probe=" + kind)
-    assert not result.get("error"), result
+    assert not result.get("error"), result.get("error")
     assert result["restored"] and result["financial_retained"] and result["recognition_removed"]
     assert result["requests"][0] == result["requests"][1] and accepted == [42]
     with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert (current.merchant, current.row_version, current.status) == ("后来人工核对", 12, "pending")
+
+
+def _region_browser_input(client, store, monkeypatch, accepted, *, size=(120, 80)):
+    import io
+
+    from PIL import Image
+
+    from app.services.expense_service._ocr_facts import append_ocr_fact
+    from app.services.file_service import resolve_upload_path_for_tenant, save_upload_bytes
+    from tests.test_ocr_region_commands import _block, _retry
+
+    buffer = io.BytesIO()
+    Image.new("RGB", size, "white").save(buffer, format="PNG")
+    saved = save_upload_bytes(buffer.getvalue(), tenant_id="owner", filename="region.png", content_type="image/png")
+    with store() as db:
+        resolve_write_capability(db)
+        expense = db.get(Expense, 42)
+        expense.image_path, expense.image_hash = saved.relative_path, saved.image_hash
+        evidence = {"schema": "text-blocks/v1", "width": size[0], "height": size[1], "input_sha256": expense.image_hash,
+            "coordinate_space": "exif-transposed-pixels", "identity": {"recipe_name": "baseline"},
+            "blocks": [_block("商户：青禾超市", [0, 0, 80, 15]), _block("实付", [0, 30, 30, 45]), _block("21", [70, 30, 90, 45])]}
+        append_ocr_fact(db, expense=expense, result=OcrResult(raw_text="商户：青禾超市\n实付\n21",
+            confidence=0.9, evidence=evidence), provider_name="rapidocr")
+        db.commit()
+    monkeypatch.setattr(_ocr, "_active_provider_name", lambda: "rapidocr")
+    def recognize(_path, _digest, box):
+        accepted.append(42)
+        return _retry(evidence, box)
+    monkeypatch.setattr("app.services.ocr_region_service.recognize_region_snapshot", recognize)
+    @client.app.get("/web/expenses/42/image")
+    def source_image():
+        return FileResponse(resolve_upload_path_for_tenant(saved.relative_path, tenant_id="owner"), media_type="image/png")
+
+
+def test_invalid_region_can_be_reviewed_and_adjusted_without_losing_the_financial_draft(
+        recognition_browser, confirmation_store, monkeypatch, tmp_path):
+    client, _, _, accepted = recognition_browser
+    _region_browser_input(client, confirmation_store, monkeypatch, accepted, size=(1200, 800))
+    path = "/web/expenses/42/ocr/retry"
+    fields = _fields(client, path)
+    with confirmation_store() as db:
+        digest = db.get(Expense, 42).image_hash
+    fields["ocr_region"] = json.dumps({"image_sha256": digest, "box": [60, 25, 110, 600]})
+    native = client.post(path, data=fields)
+    result = review_tests._run_review_page(client, tmp_path,
+        "/web/expenses/42/edit?ledger_id=owner&return_to=pending&recognition_probe=region-invalid", width=393)
+    assert not result.get("error"), result
+    assert native.status_code == 422 and 'data-expenseocr-native-result="rejected"' in native.text
+    assert hidden_post_forms(native.text)[path]["ocr_region"] == fields["ocr_region"]
+    assert result["financial_retained"] and result["recognition_removed"] and result["review_kept_original"]
+    assert len(result["requests"]) == 2 and accepted == [42]
+    invalid, corrected = result["requests"]
+    assert json.loads(invalid["ocr_region"])["box"] == [60, 25, 110, 600]
+    assert json.loads(corrected["ocr_region"])["box"] == [60, 25, 110, 50]
+    assert invalid["idempotency_key"] != corrected["idempotency_key"] and invalid["draft_ref"] == corrected["draft_ref"]
+    with confirmation_store() as db:
+        current = db.get(Expense, 42)
+        assert (current.merchant, current.row_version, current.status) == ("首次便利店", 5, "pending")
+        assert db.query(OcrFact).filter_by(expense_id=42).count() == 2
 
 
 def test_async_completion_observer_keeps_open_financial_draft_and_original_occ(recognition_browser, tmp_path, monkeypatch):

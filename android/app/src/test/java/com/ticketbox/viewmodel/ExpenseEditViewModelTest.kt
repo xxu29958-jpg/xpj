@@ -818,6 +818,7 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
 
     override suspend fun retryOcrAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
+        region: com.ticketbox.domain.model.OcrRegionSelection?,
     ): Result<ExpenseCommandAcceptance> = error("retryOcr not exercised in these tests")
 
     override suspend fun recognizeTextAllowingOffline(

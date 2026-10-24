@@ -624,7 +624,7 @@ def post_ocr_task(
     task = submit_expense_ocr_task(db, expense_id=expense_pk, tenant_id=auth.tenant_id,
         initiator_account_id=auth.account_id, initiator_device_id=auth.device_id,
         expected_row_version=effective_row_version, request_expected_row_version=payload.expected_row_version,
-        idempotency_key=idempotency_key)
+        idempotency_key=idempotency_key, region=payload.region.model_dump() if payload.region else None)
     return BackgroundTaskResponse.model_validate(task_response_dicts(db, [task], tenant_id=auth.tenant_id)[0])
 
 
@@ -652,6 +652,7 @@ def post_retry_ocr(
         expected_row_version=effective_row_version,
         request_expected_row_version=payload.expected_row_version,
         idempotency_key=idempotency_key,
+        region=payload.region.model_dump() if payload.region else None,
     )
     return expense_to_response(db, tenant_id=auth.tenant_id, expense=expense)
 

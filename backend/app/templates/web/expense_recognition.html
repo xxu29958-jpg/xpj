@@ -8,6 +8,7 @@
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/expense-recognition-entry.js?v={{ asset_version }}"></script>
+{% if not recognition_text %}<script defer src="/static/web/ocr-region.js?v={{ asset_version }}"></script>{% endif %}
 {% endblock %}
 {% block content %}
 <header class="product-page-header">
@@ -38,6 +39,25 @@
     {% else %}
     <p class="product-page-summary">重新读取这张账单的原件。识别只提供建议，不会自动确认入账。</p>
     <a class="product-button product-button--quiet" href="{{ original_href }}">查看原件</a>
+    {% if recognition_current and recognition_current.image_hash %}
+    <details data-ocr-region data-image-sha256="{{ recognition_current.image_hash }}">
+      <summary>只重读一行文字</summary>
+      <p class="hint">拖出选框，包含完整的一行文字。长图可先放大、移动，再开始框选。其它区域保留原识别结果；仍需回到核对页确认。</p>
+      <div class="product-form-actions">
+        <button class="product-button product-button--quiet" type="button" data-ocr-region-move>移动图片</button>
+        <button class="product-button product-button--quiet" type="button" data-ocr-region-zoom="0.5">缩小</button>
+        <button class="product-button product-button--quiet" type="button" data-ocr-region-zoom="2">放大</button>
+      </div>
+      <div style="max-height:420px;overflow:auto;scrollbar-gutter:stable">
+        <div data-ocr-region-surface style="position:relative;line-height:0">
+          <img data-ocr-region-image loading="lazy" src="/web/expenses/{{ original_fields.expense_id }}/image?ledger_id={{ selected_ledger_id }}" alt="拖动框选要重新识别的一行文字" style="display:block;width:100%;height:auto;touch-action:none">
+          <span data-ocr-region-box hidden style="position:absolute;border:2px solid currentColor;background:color-mix(in srgb,currentColor 12%,transparent);pointer-events:none"></span>
+        </div>
+      </div>
+      <p data-ocr-region-status class="hint" role="status">未选择区域，将识别整张原件。</p>
+      <button class="product-button product-button--quiet" type="button" data-ocr-region-clear>取消选框，识别整张</button>
+    </details>
+    {% endif %}
     {% endif %}
     <div class="product-form-actions">
       <button class="product-button product-button--primary" type="submit" data-recognition-submit{% if not recognition_can_submit %} hidden{% endif %}{% if not can_write %} disabled{% endif %}>{{ '核实这次识别结果' if recognition_result in ['blocked', 'rejected'] else '提取字段建议' if recognition_text else '重新识别原件' }}</button>

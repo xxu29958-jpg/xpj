@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, Response
+from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -36,6 +37,7 @@ from app.routes.web_common import (
     preserve_original_ledger_form,
 )
 from app.schemas import BackgroundTaskResponse, ExpenseRecognizeTextRequest
+from app.schemas._ocr_region import OcrRegionRequest
 from app.services import background_task_service
 from app.services.background_task_response import task_response_dicts
 from app.services.expense_ocr_command_service import submit_expense_text_recognition
@@ -74,7 +76,11 @@ def _recognize(db: Session, request: Request, selected: str, expense_id: int,
             raise AppError("invalid_request", "请粘贴 1–20000 字的小票文字。", status_code=422)
         return submit_expense_text_recognition(db, **common,
             payload=ExpenseRecognizeTextRequest(expected_row_version=version, raw_text=raw))
-    return submit_web_expense_ocr_task(db, **common, request_expected_row_version=version)
+    try:
+        region = OcrRegionRequest.model_validate_json(fields["ocr_region"]).model_dump() if fields.get("ocr_region") else None
+    except ValidationError as exc:
+        raise AppError("ocr_region_invalid", status_code=422) from exc
+    return submit_web_expense_ocr_task(db, **common, request_expected_row_version=version, region=region)
 
 
 @router.post("/expenses/{expense_id}/recognize-text", response_class=HTMLResponse, include_in_schema=False)
@@ -82,6 +88,7 @@ def _recognize(db: Session, request: Request, selected: str, expense_id: int,
 def web_recognition_post(
     request: Request, expense_id: int, ledger_id: str = Form(""), raw_text: str = Form(""),
     expected_row_version: str = Form(""), idempotency_key: str = Form(""),
+    ocr_region: str = Form(""),
     draft_scope: str = Form(""), draft_ref: str = Form(""), review_latest: bool = Form(False),
     return_context: ExpenseReturnContext = Depends(expense_return_form_context),
     _local: None = LocalOnly, db: Session = Depends(get_db),
@@ -92,7 +99,7 @@ def web_recognition_post(
     fields = {**return_context.as_kwargs(), "ledger_id": ledger_id, "expense_id": str(expense_id),
         "expected_row_version": expected_row_version, "idempotency_key": idempotency_key,
         "draft_ref": draft_ref or str(uuid4()), "draft_scope": draft_scope,
-        **({"raw_text": raw_text} if text else {})}
+        **({"raw_text": raw_text} if text else {"ocr_region": ocr_region})}
     retained = preserve_original_ledger_form(request, db, options=options, selected=selected,
         fields=fields, task="继续原账单的识别请求")
     if retained is not None:

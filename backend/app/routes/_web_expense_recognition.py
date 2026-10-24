@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 def _recognition_controls(current: Expense | None, text: bool, error: AppError | None) -> dict:
     active = current is not None and current.status == "pending" and (text or bool(current.image_path))
-    editable = active and (not error or error.error == "invalid_request")
+    editable = active and (not error or error.error in {"invalid_request", "ocr_region_invalid", "ocr_region_source_unavailable"})
     retry_allowed = error and (error.status_code >= 500 or error.status_code == 429 or error.error == "idempotency_key_in_progress")
     return {"recognition_active": active, "recognition_editable": editable,
         "recognition_can_submit": bool(retry_allowed or editable)}
@@ -44,6 +44,8 @@ def recognition_page(request: Request, db: Session, options: list, selected: str
         "draft_scope": json.dumps(scope) if scope else "", **fields}
     if text:
         original.setdefault("raw_text", "")
+    else:
+        original.setdefault("ocr_region", "")
     origin = edit_context_params(**{name: fields.get(name, "") for name in ExpenseReturnContext().as_kwargs()})
     result = "prepared" if prepared else draft_refusal_result(error) if error else ""
     ctx.update(original_fields=original, recognition_text=text,

@@ -3,7 +3,7 @@
   "use strict";
   const definitions = {
     expensetext: {label: "小票文字", path: "recognize-text", operation: "recognize_text", extra: ["raw_text"]},
-    expenseocr: {label: "原件识别", path: "ocr/retry", operation: "retry_ocr", extra: []},
+    expenseocr: {label: "原件识别", path: "ocr/retry", operation: "retry_ocr", extra: ["ocr_region"]},
   };
   const scalars = ["ledger_id", "expense_id", "expected_row_version", "idempotency_key", "draft_ref"];
   const validRef = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -23,12 +23,14 @@
   function mount(form, family, definition) {
     const continuity = window.TicketboxPlanEntry.mount(form, {
       family, label: definition.label, list: "/web/pending", create: names(definition), edit: names(definition),
+      legacyMissing: ["ocr_region"],
       idField: "expense_id", titleField: "expense_id", commandKeyField: "idempotency_key", draftRefField: "draft_ref",
       reviewRequiresRejection: true, reviewWhileEditing: true, submitSelector: "[data-recognition-submit]",
       pendingLabel: "核实这次识别结果", inactiveMessage: "账单当前无法发起新的识别。原请求仍保留，可核实已发出的结果。",
       read: current => read(current, definition), present: () => {},
       restore(current, saved) {
-        [...scalars, ...definition.extra].forEach(name => { current.elements.namedItem(name).value = saved[name]; });
+        [...scalars, ...definition.extra].forEach(name => { current.elements.namedItem(name).value = saved[name] ?? ""; });
+        current.dispatchEvent(new Event("ocr-region-restored"));
         for (const input of [...current.elements].filter(input => input.name.startsWith("return_"))) input.remove();
         for (const [name, value] of Object.entries(JSON.parse(saved.return_context))) {
           const input = document.createElement("input"); input.type = "hidden"; input.name = name; input.value = value; current.append(input);
@@ -43,6 +45,7 @@
         receipt.operation === definition.operation && receipt.request_key === saved.idempotency_key,
       acceptsDestination: (next, saved) => next.pathname === "/web/expenses/" + saved.expense_id + "/edit",
       updatePresentation(current, state) {
+        current.dataset.ocrRegionEditable = state.editable ? "true" : "false";
         const changed = current.dataset[family + "RowVersion"] !== current.elements.expected_row_version.value;
         if (!changed && !state.rejected) {
           current.querySelector("[data-" + family + "-review]").hidden = true;
@@ -62,7 +65,7 @@
   function appendShelf(scope, list) {
     for (const [family, definition] of Object.entries(definitions)) {
       const store = window.TicketboxDraftStore.createStore({prefix: "ticketbox:" + family + "-edit-draft:v1:",
-        fields: [...names(definition), "amount_placeholder", "amount_inputmode"], validRef});
+        fields: [...names(definition), "amount_placeholder", "amount_inputmode"], validRef, legacyMissing: ["ocr_region"]});
       for (const record of store.list(scope)) {
         const item = document.createElement("li"), link = document.createElement("a");
         link.href = href(family, record, scope);

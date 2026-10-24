@@ -249,8 +249,10 @@ def test_original_ocr_failure_page_preserves_intent_or_guides_review(
     monkeypatch.setattr(templates, "env", env)
     request = Request({"type": "http", "method": "POST", "headers": [],
         "path": "/web/expenses/41/ocr/retry", "query_string": b""})
-    response = recognition.web_recognition_post(request, 41, "owner", "", "1", "original-ocr-key",
-        "", "original-draft-ref", False, ExpenseReturnContext(return_to="pending"), None, Mock())
+    response = recognition.web_recognition_post(request=request, expense_id=41, ledger_id="owner",
+        raw_text="", expected_row_version="1", idempotency_key="original-ocr-key", ocr_region="",
+        draft_scope="", draft_ref="original-draft-ref", review_latest=False,
+        return_context=ExpenseReturnContext(return_to="pending"), _local=None, db=Mock())
     body = response.body.decode()
     assert response.status_code == status
     if code == "database":

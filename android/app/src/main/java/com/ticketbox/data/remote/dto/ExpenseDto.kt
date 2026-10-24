@@ -236,6 +236,13 @@ data class ExpenseStateTokenRequest(
     val funding: List<ExpenseFundingPartDto>? = null,
     @param:Json(name = "duplicate_decision_public_id")
     val duplicateDecisionPublicId: String? = null,
+    val region: OcrRegionRequestDto? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class OcrRegionRequestDto(
+    @param:Json(name = "image_sha256") val imageSha256: String,
+    val box: List<Int>,
 )
 
 /**

@@ -1,14 +1,14 @@
 """Successful expense commands, not displayed defaults, supply field feedback."""
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal
-from app.models import AlgorithmDecision, Expense, LedgerLearningEvent
+from app.models import AlgorithmDecision, Expense, LedgerLearningEvent, OcrFact
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.learning_service import OcrFactDraft, record_ocr_fact
 from app.services.ocr_service import OcrResult, ocr_fact_snapshot
@@ -72,12 +72,19 @@ def test_original_amount_and_merchant_choices_are_scoped_and_replayed_once(clien
             assert data["field"] in {"amount_cents", "merchant"} and data["_action_outcome"] == "committed"
 
 
-@pytest.mark.parametrize("source_change", ["amount", "ocr_fact"])
+@pytest.mark.parametrize("source_change", ["amount", "ocr_fact", "ocr_fact_tie"])
 def test_personal_field_case_reorders_a_new_source_and_stops_when_its_source_changes(client, identity, source_change):
+    from app.services.learning_service._cleanup import cleanup_expired_learning_tables
+
     headers = negotiated_headers(client, identity.app_headers)
     source_id = _seed()
     saved = _choose_amount(client, headers, source_id, 2500)
     next_id = _seed(paid=1900, total=2600)
+    with SessionLocal() as db:
+        fact = db.scalars(select(OcrFact).where(OcrFact.expense_id == source_id)).one()
+        fact.extracted_at = datetime.now(UTC) - timedelta(days=400)
+        db.commit()
+        cleanup_expired_learning_tables(db, tenant_id="owner")
     suggested = client.get(f"/api/expenses/{next_id}", headers=headers).json()
     amounts = [item for item in suggested["recognition_fields"] if item["field"] == "amount_cents"]
     assert amounts[0]["value"] == 2600 and "同类原件" in amounts[0]["explanation"]
@@ -91,6 +98,13 @@ def test_personal_field_case_reorders_a_new_source_and_stops_when_its_source_cha
         with SessionLocal() as db:
             append_ocr_fact(db, expense=db.get(Expense, source_id), provider_name="mock", timezone_name="Asia/Shanghai",
                 result=OcrResult(raw_text="商户：海棠咖啡\n实付：25元", confidence=0.9))
+            latest = db.scalar(select(OcrFact).where(OcrFact.expense_id == source_id).order_by(OcrFact.id.desc()))
+            latest.extracted_at = fact.extracted_at if source_change == "ocr_fact_tie" else datetime.now(UTC) - timedelta(days=350)
+            current_fact_id = latest.id
+            # A later-inserted backfill is not the current source. Neither it nor
+            # an expired current source may reactivate the superseded feedback.
+            record_ocr_fact(db, OcrFactDraft(tenant_id="owner", expense_id=source_id,
+                ocr_provider="mock", raw_text="更早的补录原件"), now=datetime.now(UTC) - timedelta(days=450))
             db.commit()
     after = client.get(f"/api/expenses/{next_id}", headers=headers).json()
     assert not any("同类原件" in item["explanation"] for item in after["recognition_fields"])
@@ -98,6 +112,15 @@ def test_personal_field_case_reorders_a_new_source_and_stops_when_its_source_cha
     with SessionLocal() as db:
         assert db.query(AlgorithmDecision).filter_by(subject_id=next_id,
             decision_type="recognition_field_choice", status="active").count() == 0
+    if source_change != "amount":
+        from app.services.learning_service import read_ocr_facts
+        with SessionLocal() as db:
+            cleanup_expired_learning_tables(db, tenant_id="owner")
+            current = read_ocr_facts(db, tenant_id="owner", expenses=[db.get(Expense, source_id)])
+            assert current[source_id].id == current_fact_id, "Cleanup must not resurrect the referenced predecessor"
+        after_cleanup = client.get(f"/api/expenses/{next_id}", headers=headers).json()
+        assert not any("同类原件" in item["explanation"] for item in after_cleanup["recognition_fields"])
+        assert after_cleanup["amount_cents"] == 1900 and after_cleanup["row_version"] == suggested["row_version"]
 
 
 @pytest.mark.real_db

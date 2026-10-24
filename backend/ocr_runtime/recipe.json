@@ -161,5 +161,46 @@
       "bytes": 55571,
       "license": "Apache-2.0"
     }
+  },
+  "region_recognition": {
+    "name": "ticketbox-ppocrv6-small-line-cpu-v1",
+    "model": {
+      "file": "region-small-rec.onnx",
+      "sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634"
+    },
+    "dictionary": {
+      "file": "ppocr-v6-small-keys.txt",
+      "sha256": "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d"
+    },
+    "params": {
+      "Rec.engine_type": "onnxruntime",
+      "Rec.lang_type": "ch",
+      "Rec.model_type": "small",
+      "Rec.ocr_version": "PP-OCRv6",
+      "Rec.task_type": "rec",
+      "Rec.rec_img_shape": [
+        3,
+        48,
+        320
+      ],
+      "Rec.rec_batch_num": 1
+    },
+    "distribution": {
+      "model": {
+        "kind": "https",
+        "url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx/resolve/b8f84f0b80c529de40b4fbb3544b84fa7233a513/inference.onnx",
+        "bytes": 21159378,
+        "sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634",
+        "license": "Apache-2.0"
+      },
+      "dictionary": {
+        "kind": "https",
+        "url": "https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx/resolve/b8f84f0b80c529de40b4fbb3544b84fa7233a513/inference.yml",
+        "bytes": 150579,
+        "sha256": "ab078671bb49f06228eadccd34f1bb501e157f7a047095ffb943ba81512c77d1",
+        "license": "Apache-2.0",
+        "transform": "paddle-characters"
+      }
+    }
   }
 }

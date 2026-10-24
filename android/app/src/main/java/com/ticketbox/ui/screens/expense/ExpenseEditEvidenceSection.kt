@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.layout.ContentScale
@@ -28,10 +32,14 @@ internal data class ExpenseEditEvidenceState(
     val imageLoading: Boolean,
     val showLargeImage: Boolean,
     val originalTaskAvailable: Boolean = false,
+    val regionImageHash: String? = null,
+    val canRetryRegion: Boolean = false,
 )
 
 internal data class ExpenseEditEvidenceActions(
     val onToggleLargeImage: () -> Unit,
+    val onLoadRegionImage: () -> Unit = {},
+    val onRetryRegion: (com.ticketbox.domain.model.OcrRegionSelection) -> Unit = {},
 )
 
 /**
@@ -44,6 +52,9 @@ internal fun ExpenseEditEvidenceSection(
     state: ExpenseEditEvidenceState,
     actions: ExpenseEditEvidenceActions,
 ) {
+    var regionOpen by rememberSaveable(state.regionImageHash) { mutableStateOf(false) }
+    if (regionOpen) OcrRegionPicker(state.fullImage, state.regionImageHash, state.canRetryRegion,
+        onDismiss = { regionOpen = false }, onSubmit = { actions.onRetryRegion(it); regionOpen = false })
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
@@ -71,6 +82,10 @@ internal fun ExpenseEditEvidenceSection(
         if (state.showLargeImage) {
             ExpenseEvidenceLargeImage(state)
         }
+        if (state.canRetryRegion && state.regionImageHash != null) AppSecondaryButton(
+            text = stringResource(R.string.ocr_region_open),
+            onClick = { regionOpen = true; if (state.fullImage == null) actions.onLoadRegionImage() },
+        )
     }
 }
 

@@ -428,8 +428,8 @@ class ExpenseEditViewModel(
         repository.rejectExpenseAllowingOffline(binding, expense)
     }
 
-    fun retryOcr() = submitExpenseCommand(R.string.expense_edit_recognize_failed) { binding, expense ->
-        repository.retryOcrAllowingOffline(binding, expense)
+    fun retryOcr(region: com.ticketbox.domain.model.OcrRegionSelection? = null) = submitExpenseCommand(R.string.expense_edit_recognize_failed) { binding, expense ->
+        repository.retryOcrAllowingOffline(binding, expense, region)
     }
 
     fun openRecognizeTextDialog() {

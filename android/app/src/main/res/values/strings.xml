@@ -334,4 +334,15 @@
     <string name="recognition_fields_correction_help">若识别文字有误，先修改上方金额或商户，再指出原件中识别错的这一处。</string>
     <string name="recognition_fields_correct_amount">已对照此处纠正金额</string>
     <string name="recognition_fields_correct_merchant">已对照此处纠正商户</string>
+    <string name="ocr_region_open">框选一行重识别</string>
+    <string name="ocr_region_help">拖出选框，包含完整的一行文字。长图可先放大、移动，再开始框选。其它区域保留原识别结果，仍需核对后确认。</string>
+    <string name="ocr_region_move">移动图片</string>
+    <string name="ocr_region_select">开始框选</string>
+    <string name="ocr_region_zoom_in">放大</string>
+    <string name="ocr_region_zoom_out">缩小</string>
+    <string name="ocr_region_empty">尚未选择一行文字</string>
+    <string name="ocr_region_selected">已选一行，提交后回到核对页查看建议</string>
+    <string name="ocr_region_cancel">返回</string>
+    <string name="ocr_region_clear">清除选框</string>
+    <string name="ocr_region_submit">重读这一行</string>
 </resources>
