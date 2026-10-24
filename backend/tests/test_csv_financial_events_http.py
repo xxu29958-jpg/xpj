@@ -21,7 +21,6 @@ from app.models import (
     ExchangeRate,
     FxRate,
 )
-from app.services.csv_import_batch_service import _events as csv_events
 from tests._infra.csv import _apply, _batch, _bundle, _export, _fact_counts, _foreign_source_export, _rows
 from tests.expense_correction_support import _create_refund, _foreign_expense, _seed_usd_rate, idem, manual_confirmed
 from tests.family_ledger_test_support import set_owner_ledger_role
@@ -547,25 +546,20 @@ def test_missing_refund_quote_review_in_second_batch_becomes_canonical_for_repla
 
 @pytest.mark.real_db
 def test_concurrent_native_purchase_batches_commit_one_pending_fact_and_mapping(
-    client: TestClient, identity, monkeypatch: pytest.MonkeyPatch,
+    client: TestClient, identity,
 ) -> None:
     source_root = manual_confirmed(client, identity, amount_cents=10000)
     content = _export(client, identity.app_headers)
     target = identity.gray_app_headers
     batches = [_batch(client, target, content) for _ in range(2)]
     barrier = Barrier(2)
-    claim_event = csv_events.claim_csv_event
-
-    def synchronized_claim(db, row):
-        # Both HTTP requests reach the real PG unique claim before either can win.
-        barrier.wait(timeout=10)
-        return claim_event(db, row)
-
-    monkeypatch.setattr(csv_events, "claim_csv_event", synchronized_claim)
-
     def apply_once(batch):
         worker = TestClient(client.app)
         try:
+            # Enter together before either request owns the lifecycle lock.
+            # Per-row credential validation now holds that lock through commit;
+            # waiting for a second writer inside the protected claim deadlocks.
+            barrier.wait(timeout=10)
             return _apply(worker, target, batch)
         finally:
             worker.close()

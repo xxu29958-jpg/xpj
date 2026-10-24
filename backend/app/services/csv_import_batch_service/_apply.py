@@ -8,11 +8,11 @@ Top-level state-machine driver. Each call:
 4. Inserts an Expense per row (or marks the row ``insert_failed`` /
    ``applied`` based on idempotency). Each row commits independently, so
    the handler-entry advisory lock dies with the first row commit: when a
-   desktop bridge principal drives the apply (``desktop_session``), it is
+   session principal drives the apply (``session_auth``), it is
    revalidated under the identity advisory lock before every row — a
    mid-batch membership disable aborts 401 (durably revoked), a demotion
    to a read-only role aborts 403 with honest inserted/remaining counts.
-   Non-desktop callers pass ``None`` and skip the revalidation entirely.
+   Only internal/loopback callers without a session pass ``None``.
 5. Finalises the batch (``_finalize_csv_import_apply_success``).
 6. On AppError / IntegrityError / unexpected Exception: rolls back +
    releases the lease + marks the batch failed if needed.
@@ -66,13 +66,14 @@ from app.services.csv_import_batch_service._row_claim import (
 from app.services.currency_binding_service import (
     resolve_write_capability,
 )
-from app.services.desktop_switch_service import revalidate_desktop_session_under_lock
+from app.services.desktop_switch_service import is_desktop_platform_device, revalidate_desktop_session_under_lock
 from app.services.exchange_rate_service import apply_currency_payload, apply_imported_currency_snapshot
 from app.services.import_service import DEFAULT_SOURCE
 from app.services.pending_fx_task_service import (
     prepare_pending_expense_fx,
     submit_pending_expense_fx,
 )
+from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import now_utc
 from app.tenants import AuthContext
@@ -335,34 +336,42 @@ def _apply_one_claimed_csv_import_row(
     return 1
 
 
-def _revalidate_desktop_apply_session(
+def _revalidate_apply_session(
     db: Session,
     *,
-    desktop_session: AuthContext,
+    session_auth: AuthContext,
     batch: CsvImportBatch,
     tenant_id: str,
+    initiator_account_id: int,
     inserted: int,
 ) -> None:
-    """Revalidate the desktop bridge principal between row commits.
+    """Revalidate the original principal in each row's write transaction.
 
     Every row applies in its own transaction, so the handler-entry advisory
     lock is released by the first row commit — a membership disable or
-    demotion landing mid-batch must stop the remaining rows. Death (401) is
-    raised by the revalidation itself with the durable hard-revoke already
-    committed; a demotion to a read-only role aborts here with 403 and the
+    demotion landing mid-batch must stop the remaining rows. Desktop death
+    retains its durable hard-revoke; ordinary App/Web use their shared binding
+    validation. A demotion to a read-only role aborts here with 403 and the
     honest inserted/remaining counts. The row that follows runs in the same
     transaction as this revalidation, so each row write is itself covered by
     the lock.
     """
-    live_role = revalidate_desktop_session_under_lock(db, desktop_session, mutation=True)
-    if live_role in {"owner", "member"}:
-        return
-    remaining = _remaining_importable_rows(db, batch, tenant_id)
-    raise AppError(
-        "permission_denied",
-        f"当前角色已变更为只读，导入已中止：已导入 {inserted} 条，剩余 {remaining} 条未导入。",
-        status_code=403,
-    )
+    try:
+        if is_desktop_platform_device(db, session_auth.device_id):
+            live_role = revalidate_desktop_session_under_lock(db, session_auth, mutation=True)
+        else:
+            live_auth = lock_and_revalidate_mutation_actor(db, session_auth,
+                actor_account_id=initiator_account_id, ledger_id=tenant_id)
+            live_role = live_auth.role
+        if live_role not in {"owner", "member"}:
+            raise AppError("permission_denied", status_code=403)
+    except AppError as exc:
+        if exc.status_code != 403:
+            raise
+        remaining = _remaining_importable_rows(db, batch, tenant_id)
+        raise AppError(exc.error,
+            f"当前权限已变化，导入已中止：已导入 {inserted} 条，剩余 {remaining} 条未导入。",
+            status_code=403) from exc
 
 
 def _attempt_csv_import_apply(
@@ -376,7 +385,7 @@ def _attempt_csv_import_apply(
     apply_token: str,
     batch_size: int,
     claimed_row_ids: list[int],
-    desktop_session: AuthContext | None,
+    session_auth: AuthContext | None,
 ) -> CsvImportApplyResponse:
     """Happy-path body of :func:`apply_csv_import_batch`.
 
@@ -405,12 +414,13 @@ def _attempt_csv_import_apply(
     now = now_utc()
     inserted = 0
     for row_id in claimed_row_ids:
-        if desktop_session is not None:
-            _revalidate_desktop_apply_session(
+        if session_auth is not None:
+            _revalidate_apply_session(
                 db,
-                desktop_session=desktop_session,
+                session_auth=session_auth,
                 batch=batch,
                 tenant_id=tenant_id,
+                initiator_account_id=initiator_account_id,
                 inserted=inserted,
             )
         inserted += _apply_one_claimed_csv_import_row(
@@ -449,12 +459,12 @@ def apply_csv_import_batch(
     initiator_device_id: int | None,
     public_id: str,
     batch_size: int,
-    desktop_session: AuthContext | None = None,
+    session_auth: AuthContext | None = None,
 ) -> CsvImportApplyResponse:
     """Apply up to ``batch_size`` valid rows, committing each row independently.
 
-    ``desktop_session`` is the bridged desktop principal stashed by the web
-    session middleware (or ``None`` for any non-desktop caller): when present
+    ``session_auth`` is the original authenticated API or Web principal
+    (or ``None`` for an internal/loopback caller without a session): when present
     it is revalidated under the identity advisory lock before every row, so a
     mid-batch revocation/demotion cannot ride the per-row commits.
     """
@@ -474,7 +484,7 @@ def apply_csv_import_batch(
             apply_token=apply_token,
             batch_size=batch_size,
             claimed_row_ids=claimed_row_ids,
-            desktop_session=desktop_session,
+            session_auth=session_auth,
         )
     except AppError:
         db.rollback()

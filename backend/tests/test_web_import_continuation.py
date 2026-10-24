@@ -49,7 +49,7 @@ def test_apply_refusal_retains_only_a_recoverable_original_batch(import_route, m
     )
 
     assert calls == [{
-        "tenant_id": "family", "public_id": "original", "batch_size": 1, "desktop_session": None,
+        "tenant_id": "family", "public_id": "original", "batch_size": 1, "session_auth": request.state.web_session_auth,
         "initiator_account_id": 17, "initiator_device_id": 23,
     }]
     assert response.status_code == 303
