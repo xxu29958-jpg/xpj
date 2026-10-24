@@ -85,7 +85,7 @@ def record_field_choices(db, *, expense, choices, actor_account_id):
             _record_field_choice(db, expense, choice, candidate, origin, actor_account_id)
 
 
-def _record_field_choice(db, expense, choice, candidate, fact, actor):
+def _record_field_choice(db, expense, choice, candidate, fact, actor) -> None:
     previous = db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == expense.tenant_id,
         LedgerLearningEvent.subject_kind == "expense", LedgerLearningEvent.subject_id == expense.id,
         LedgerLearningEvent.actor_account_id == actor, LedgerLearningEvent.signal_type == RECOGNITION_FIELD_CHOICE.decision_type)

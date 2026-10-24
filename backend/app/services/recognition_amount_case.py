@@ -16,7 +16,7 @@ def _has_label(text, currency):
     return bool(re.sub(rf"\b(?:{currency.casefold()}|rm|rmb)\b|[#\s.,:+\-()$¥€£]+", "", _normalized(text)))
 
 
-def _pattern(raw, lines, candidate):
+def _pattern(raw, lines, candidate) -> list[str] | None:
     indices = sorted({raw.count("\n", 0, start) for start, _ in candidate["raw_spans"]}
         | {raw.count("\n", 0, max(start, end - 1)) for start, end in candidate["raw_spans"]})
     if not indices or indices[-1] - indices[0] > 1:
@@ -36,7 +36,7 @@ def _digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-def _amount_material(fact):
+def _amount_material(fact) -> tuple[dict, list[dict], set[str], list[str]] | None:
     if fact is None or getattr(fact, "source", "image") != "image":
         return None
     evidence = json.loads(fact.evidence_json or "{}").get("field_parse", {})
