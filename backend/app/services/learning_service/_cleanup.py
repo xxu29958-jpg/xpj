@@ -34,7 +34,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import case, cast, func, select
+from sqlalchemy import case, cast, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.sql.elements import ColumnElement
@@ -211,18 +211,27 @@ def cleanup_expired_ocr_facts(
 
 
 def _unreferenced_ocr_fact() -> ColumnElement[bool]:
-    """A retained choice keeps its source, including while training is paused."""
+    """Keep referenced evidence and its current successor, never revive old feedback."""
     payload = cast(case(
         (func.pg_input_is_valid(LedgerLearningEvent.after_payload, "jsonb"), LedgerLearningEvent.after_payload),
         else_="{}",
     ), JSONB)
-    return ~select(LedgerLearningEvent.id).where(
+    referenced, newest = aliased(OcrFact), aliased(OcrFact)
+    current_id = select(newest.id).where(
+        newest.tenant_id == OcrFact.tenant_id, newest.expense_id == OcrFact.expense_id,
+        newest.raw_text.is_not(None), newest.raw_text != "",
+    ).order_by(newest.extracted_at.desc(), newest.id.desc()).limit(1).correlate(OcrFact).scalar_subquery()
+    return ~select(LedgerLearningEvent.id).join(referenced,
+        (referenced.tenant_id == LedgerLearningEvent.tenant_id)
+        & (referenced.expense_id == LedgerLearningEvent.subject_id)
+        & (referenced.public_id == payload["evidence_public_id"].astext),
+    ).where(
         LedgerLearningEvent.tenant_id == OcrFact.tenant_id,
         LedgerLearningEvent.subject_kind == "expense",
         LedgerLearningEvent.subject_id == OcrFact.expense_id,
         LedgerLearningEvent.signal_type.in_(("recognition_time_choice", "recognition_field_choice")),
         payload["source"].astext == "image",
-        payload["evidence_public_id"].astext == OcrFact.public_id,
+        or_(referenced.id == OcrFact.id, OcrFact.id == current_id),
     ).exists()
 
 

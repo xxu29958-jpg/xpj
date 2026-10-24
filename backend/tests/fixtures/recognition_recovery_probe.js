@@ -10,7 +10,49 @@
   const fields = form => Object.fromEntries([...new FormData(form)].filter(([name]) => name !== "csrf_token")
     .map(([name, value]) => [name, name === "draft_scope" ? JSON.stringify(JSON.parse(value)) : value]));
   const input = (field, value) => { field.value = value; field.dispatchEvent(new Event("input", {bubbles: true})); };
-  const familyFor = kind => ["image", "region"].includes(kind) ? "expenseocr" : "expensetext";
+  const familyFor = kind => ["image", "region", "region-invalid"].includes(kind) ? "expenseocr" : "expensetext";
+  async function chooseRegion(form, box) {
+    const panel = form.querySelector("[data-ocr-region]"), image = panel.querySelector("img");
+    if (!panel.open) panel.querySelector("summary").click();
+    await wait(() => image.complete && image.naturalWidth, "region source");
+    image.scrollIntoView({block: "center", behavior: "instant"});
+    const bounds = image.getBoundingClientRect();
+    const point = (x, y) => ({clientX: bounds.left + x * bounds.width / image.naturalWidth,
+      clientY: bounds.top + y * bounds.height / image.naturalHeight});
+    const start = point(box[0], box[1]), end = point(box[2], box[3]);
+    if ([start, end].some(p => p.clientX < 0 || p.clientX > innerWidth || p.clientY < 0 || p.clientY > innerHeight))
+      throw Error("Region gesture is outside the visible image");
+    image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, pointerId: 1, ...start}));
+    image.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 1, ...end}));
+    image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 1, ...end}));
+    if (JSON.stringify(JSON.parse(form.elements.ocr_region.value).box) !== JSON.stringify(box)) throw Error("Region gesture was not retained");
+  }
+  async function recoverRegion(form, state, submit) {
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (url, options) => {
+      const command = new URL(url, location.href).pathname === new URL(form.action).pathname && options?.method === "POST";
+      if (command) { state.requests.push(Object.fromEntries([...options.body].filter(([name]) => name !== "csrf_token"))); keep(state); }
+      const response = await realFetch(url, options);
+      if (command && response.ok) { state.phase = "returned"; keep(state); }
+      return response;
+    };
+    if (state.phase === "send") {
+      submit.click();
+      const review = form.querySelector("[data-expenseocr-review]");
+      await wait(() => state.requests.length === 1 && !review.hidden && !review.disabled, "rejected region review");
+      if (form.dataset.ocrRegionEditable !== "false" || fields(form).ocr_region !== state.original.ocr_region)
+        throw Error("Rejected original became editable or lost its crop before review");
+      state.phase = "adjust"; keep(state); review.click(); return;
+    }
+    if (state.phase === "adjust") {
+      await wait(() => form.dataset.ocrRegionEditable === "true", "reviewed region editing");
+      const current = fields(form);
+      state.review_kept_original = current.ocr_region === state.original.ocr_region && current.draft_ref === state.original.draft_ref &&
+        current.idempotency_key !== state.original.idempotency_key;
+      await chooseRegion(form, [60, 25, 110, 50]);
+      keep(state); submit.click();
+    }
+  }
   async function openTask() {
     const kind = new URL(location.href).searchParams.get("recognition_probe");
     if (!kind) return;
@@ -59,6 +101,7 @@
       if (JSON.stringify(selected.box) !== "[60,25,110,50]") throw Error("Source crop coordinates changed: " + JSON.stringify({selected,
         before: bounds.toJSON(), after: image.getBoundingClientRect().toJSON()}));
     }
+    if (state.kind === "region-invalid") await chooseRegion(form, [60, 25, 110, 600]);
     state.original = fields(form); state.phase = "send"; keep(state);
     if (state.kind === "text") { location.reload(); return true; }
     return false;
@@ -96,6 +139,7 @@
       return;
     }
     if (await prepareOriginal(form, state)) return;
+    if (state.kind === "region-invalid") { await recoverRegion(form, state, submit); return; }
     const restored = fields(form);
     if (!Object.keys(state.original).every(name => restored[name] === state.original[name])) throw Error("Original recognition changed after reload");
     state.restored = true; keep(state);

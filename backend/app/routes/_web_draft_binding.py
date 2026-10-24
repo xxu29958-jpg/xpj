@@ -35,6 +35,7 @@ def draft_refusal_result(exc: AppError) -> str:
     # These command-owner failures precede a financial commit. Access refusal
     # or an unknown/in-progress key says nothing about an earlier request.
     return "rejected" if exc.error in {"state_conflict", "budget_currency_conflict", "invalid_request",
+        "ocr_region_invalid", "ocr_region_source_unavailable",
         "envelope_cash_unknown", "envelope_cash_insufficient",
         "amount_invalid", "amount_required", "currency_not_supported", "recurring_merchant_required", "exchange_rate_pending",
         "exchange_rate_invalid", "expense_split_total_exceeds_parent", "recurring_item_no_changes",

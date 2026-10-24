@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 def _recognition_controls(current: Expense | None, text: bool, error: AppError | None) -> dict:
     active = current is not None and current.status == "pending" and (text or bool(current.image_path))
-    editable = active and (not error or error.error == "invalid_request")
+    editable = active and (not error or error.error in {"invalid_request", "ocr_region_invalid", "ocr_region_source_unavailable"})
     retry_allowed = error and (error.status_code >= 500 or error.status_code == 429 or error.error == "idempotency_key_in_progress")
     return {"recognition_active": active, "recognition_editable": editable,
         "recognition_can_submit": bool(retry_allowed or editable)}

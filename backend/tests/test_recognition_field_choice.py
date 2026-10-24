@@ -72,7 +72,7 @@ def test_original_amount_and_merchant_choices_are_scoped_and_replayed_once(clien
             assert data["field"] in {"amount_cents", "merchant"} and data["_action_outcome"] == "committed"
 
 
-@pytest.mark.parametrize("source_change", ["amount", "ocr_fact"])
+@pytest.mark.parametrize("source_change", ["amount", "ocr_fact", "ocr_fact_tie"])
 def test_personal_field_case_reorders_a_new_source_and_stops_when_its_source_changes(client, identity, source_change):
     from app.services.learning_service._cleanup import cleanup_expired_learning_tables
 
@@ -98,6 +98,13 @@ def test_personal_field_case_reorders_a_new_source_and_stops_when_its_source_cha
         with SessionLocal() as db:
             append_ocr_fact(db, expense=db.get(Expense, source_id), provider_name="mock", timezone_name="Asia/Shanghai",
                 result=OcrResult(raw_text="商户：海棠咖啡\n实付：25元", confidence=0.9))
+            latest = db.scalar(select(OcrFact).where(OcrFact.expense_id == source_id).order_by(OcrFact.id.desc()))
+            latest.extracted_at = fact.extracted_at if source_change == "ocr_fact_tie" else datetime.now(UTC) - timedelta(days=350)
+            current_fact_id = latest.id
+            # A later-inserted backfill is not the current source. Neither it nor
+            # an expired current source may reactivate the superseded feedback.
+            record_ocr_fact(db, OcrFactDraft(tenant_id="owner", expense_id=source_id,
+                ocr_provider="mock", raw_text="更早的补录原件"), now=datetime.now(UTC) - timedelta(days=450))
             db.commit()
     after = client.get(f"/api/expenses/{next_id}", headers=headers).json()
     assert not any("同类原件" in item["explanation"] for item in after["recognition_fields"])
@@ -105,6 +112,15 @@ def test_personal_field_case_reorders_a_new_source_and_stops_when_its_source_cha
     with SessionLocal() as db:
         assert db.query(AlgorithmDecision).filter_by(subject_id=next_id,
             decision_type="recognition_field_choice", status="active").count() == 0
+    if source_change != "amount":
+        from app.services.learning_service import read_ocr_facts
+        with SessionLocal() as db:
+            cleanup_expired_learning_tables(db, tenant_id="owner")
+            current = read_ocr_facts(db, tenant_id="owner", expenses=[db.get(Expense, source_id)])
+            assert current[source_id].id == current_fact_id, "Cleanup must not resurrect the referenced predecessor"
+        after_cleanup = client.get(f"/api/expenses/{next_id}", headers=headers).json()
+        assert not any("同类原件" in item["explanation"] for item in after_cleanup["recognition_fields"])
+        assert after_cleanup["amount_cents"] == 1900 and after_cleanup["row_version"] == suggested["row_version"]
 
 
 @pytest.mark.real_db
