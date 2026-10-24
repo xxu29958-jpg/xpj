@@ -2,6 +2,7 @@
 
 import json
 from copy import deepcopy
+from itertools import combinations
 
 from app.errors import AppError
 from app.services.learning_service import read_ocr_facts
@@ -35,24 +36,57 @@ def prepare_region(db, expense, request) -> dict | None:
     return {**request, "base_evidence_public_id": public_id}
 
 
+def _validate_neighbor_borders(borders, removed, top, bottom) -> None:
+    # Adjacent detector boxes can share a narrow top/bottom margin. Retain that
+    # neighbour byte-for-byte only when another complete block anchors the crop.
+    # Horizontal cuts and a crop wholly inside a block still require adjustment.
+    if borders and (not removed or any(
+        (lo <= top and bottom <= hi) or min(hi, bottom) - max(lo, top) > (hi - lo) * 0.1
+        for lo, hi in borders
+    )):
+        raise AppError("ocr_region_incomplete", status_code=422)
+
+
 def _partition_blocks(blocks, region) -> tuple[list, list, int]:
     left, top, right, bottom = region
-    retained, removed = [], []
+    retained, removed, borders = [], [], []
     insertion, following = None, None
     for block in blocks:
         xs, ys = zip(*block["box"], strict=True)
         overlap = min(xs) < right and max(xs) > left and min(ys) < bottom and max(ys) > top
-        if overlap:
-            if not (left <= min(xs) <= max(xs) <= right and top <= min(ys) <= max(ys) <= bottom):
-                raise AppError("ocr_region_incomplete", status_code=422)
+        if left <= min(xs) <= max(xs) <= right and top <= min(ys) <= max(ys) <= bottom:
             insertion = len(retained) if insertion is None else insertion
             removed.append(block)
         else:
+            if overlap:
+                borders.append((min(ys), max(ys)))
             if following is None and min(ys) >= bottom:
                 following = len(retained)
             retained.append(block)
+    _validate_neighbor_borders(borders, removed, top, bottom)
     position = insertion if insertion is not None else following if following is not None else len(retained)
     return retained, removed, position
+
+
+def _validate_single_line(blocks) -> None:
+    # Compare bands perpendicular to the text direction: sloped neighbouring
+    # lines can overlap on the image Y axis without belonging to the same line.
+    directions = [(box[1][0] - box[0][0] + box[2][0] - box[3][0],
+                   box[1][1] - box[0][1] + box[2][1] - box[3][1])
+                  for box in (block["box"] for block in blocks)]
+    dx, dy = max(directions, key=lambda direction: direction[0] ** 2 + direction[1] ** 2, default=(1, 0))
+    if dx == dy == 0:
+        raise AppError("ocr_region_invalid", status_code=422)
+    spans = [[-dy * x + dx * y for x, y in block["box"]] for block in blocks]
+    bands = [(min(span), max(span)) for span in spans]
+    if any(hi <= lo for lo, hi in bands):
+        raise AppError("ocr_region_invalid", status_code=422)
+    # Baseline-aligned labels may be much smaller than the amount. Require a
+    # shared majority of each pair's shorter band, not matching font centres.
+    # Pairwise comparison also prevents a tiny block from bridging two rows.
+    for (lo, hi), (other_lo, other_hi) in combinations(bands, 2):
+        if min(hi, other_hi) - max(lo, other_lo) < min(hi - lo, other_hi - other_lo) / 2:
+            raise AppError("ocr_region_invalid", status_code=422)
 
 
 def merge_region_evidence(base, retry, request) -> dict:
@@ -62,17 +96,7 @@ def merge_region_evidence(base, retry, request) -> dict:
     if not retry["blocks"] or not retry["blocks"][0]["text"].strip():
         raise AppError("ocr_region_no_text", status_code=422)
     retained, removed, position = _partition_blocks(base["blocks"], request["box"])
-    # Compare bands perpendicular to the text direction: sloped neighbouring
-    # lines can overlap on the image Y axis without belonging to the same line.
-    directions = [(box[1][0] - box[0][0] + box[2][0] - box[3][0],
-                   box[1][1] - box[0][1] + box[2][1] - box[3][1])
-                  for block in removed for box in [block["box"]]]
-    dx, dy = max(directions, key=lambda direction: sum(value * value for value in direction), default=(1, 0))
-    if dx == dy == 0:
-        raise AppError("ocr_region_invalid", status_code=422)
-    spans = [[-dy * x + dx * y for x, y in block["box"]] for block in removed]
-    if spans and max(map(min, spans)) >= min(map(max, spans)):
-        raise AppError("ocr_region_invalid", status_code=422)
+    _validate_single_line(removed)
     result = deepcopy(base)
     result.pop("field_parse", None)
     result["blocks"] = deepcopy(retained)
