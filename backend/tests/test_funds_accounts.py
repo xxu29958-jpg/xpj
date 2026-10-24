@@ -697,6 +697,7 @@ def test_native_funds_entry_keeps_private_accounts_and_consumes_actual_funding(i
     cookie = f"{SESSION_COOKIE_NAME}={token}"
     page = installed.browser.get("/web/funds?task=create", headers={"Cookie": cookie})
     assert page.status_code == 200, page.text
+    assert 'data-domain="obligations"' in page.text
     fields = hidden_post_forms(page.text)["/web/funds/save"]
     headers = {"Cookie": f"{cookie}; {CSRF_COOKIE_NAME}={page.cookies.get(CSRF_COOKIE_NAME)}",
         "Origin": "http://127.0.0.1:8000", "Accept": "application/json"}
@@ -707,6 +708,7 @@ def test_native_funds_entry_keeps_private_accounts_and_consumes_actual_funding(i
     assert refused.status_code == 422 and refused.json()["draft_result"] == "rejected"
     reviewed = installed.browser.post("/web/funds/save", data={**rejected, "review_latest": "1"}, headers=headers)
     assert reviewed.status_code == 200, reviewed.text
+    assert 'data-domain="obligations"' in reviewed.text
     replacement = hidden_post_forms(reviewed.text)["/web/funds/save"]
     assert replacement["idempotency_key"] != fields["idempotency_key"]
     assert f'data-funds-prepared-from="{fields["idempotency_key"]}"' in reviewed.text
@@ -731,6 +733,7 @@ def test_native_funds_entry_keeps_private_accounts_and_consumes_actual_funding(i
     assert saved.status_code == 303, saved.text
     detail = installed.browser.get(first.json()["next"], headers=headers)
     assert detail.status_code == 200 and "12.34" in detail.text and "浏览器真实付款" in detail.text
+    assert 'data-domain="obligations"' in detail.text
     with SessionLocal() as db:
         purchase = db.scalar(select(Expense).where(Expense.merchant == "浏览器真实付款"))
         assert purchase.amount_cents == 1234
@@ -800,6 +803,7 @@ def _native_envelope_arrangement(installed, headers):
     bank = _native_share_account(installed, headers, created.json()["receipt"])
     page = installed.browser.get("/web/envelopes", headers=headers)
     assert page.status_code == 200, page.text
+    assert 'data-domain="plans"' in page.text
     fields = hidden_post_forms(page.text)["/web/envelopes/save"]
     fields.update(note="先留生活费和储蓄", **{"source:" + bank["public_id"]: "1",
         "allocation:spending": "300", "allocation:savings": "200", "allocation:buffer": "0"})
@@ -812,6 +816,7 @@ def _native_envelope_arrangement(installed, headers):
     assert (rejected.status_code, rejected.json()["draft_result"]) == (409, "rejected")
     reviewed = installed.browser.post("/web/envelopes/save", headers=headers, data={**stale, "review_latest": "1"})
     assert reviewed.status_code == 200, reviewed.text
+    assert 'data-domain="plans"' in reviewed.text
     original_key = stale["idempotency_key"]
     stale.update(hidden_post_forms(reviewed.text)["/web/envelopes/save"])
     assert stale["idempotency_key"] != original_key
