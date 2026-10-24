@@ -2,6 +2,8 @@ package com.ticketbox.ui.screens
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -98,8 +100,10 @@ class ExpenseEditScreenContractTest {
         composeRule.onNode(hasContentDescription(help)).performTouchInput {
             swipe(Offset(width * .2f, centerY - 20), Offset(width * .8f, centerY + 20), durationMillis = 400)
         }
-        capture("review-original-region-selected")
-        composeRule.onNodeWithText("重读这一行").assertIsEnabled().performClick()
+        composeRule.onNodeWithText("重读这一行").assertIsEnabled()
+        saveConsumerArtPreview("review-original-region-selected",
+            composeRule.onNode(isDialog()).captureToImage().asAndroidBitmap())
+        composeRule.onNodeWithText("重读这一行").performClick()
         composeRule.runOnIdle {
             val region = requireNotNull(requested)
             assertEquals(digest, region.imageSha256)

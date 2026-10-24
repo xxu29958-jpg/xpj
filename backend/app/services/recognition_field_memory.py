@@ -12,6 +12,7 @@ from app.services.learning_service._algorithm_registry import RECOGNITION_FIELD_
 from app.services.learning_service._policy import policy_enabled
 from app.services.learning_service._source_eligibility import _event_payload, eligible_feedback
 from app.services.notification_field_service import field_case_key, notification_field_sources
+from app.services.recognition_amount_case import amount_case_contexts
 from app.services.recognition_decision_service import reconcile_image_decision
 from app.services.recognition_field_service import recognition_fields
 from app.services.recognition_memory_service import time_candidate_key
@@ -102,6 +103,31 @@ def _matching_cases(memory, expense, fact):
             else _event_payload(row).get("_source_context", {}).get("image_hash") != expense.image_hash)]
 
 
+def _local_amount_matches(memory, expense, scopes):
+    return [row for row in memory.cases if row.subject_id != expense.id
+        and (data := _event_payload(row)).get("source") == "image" and data.get("field") == "amount_cents"
+        and data.get("_learning_target") == "field_selection"
+        and data.get("_source_context", {}).get("image_hash") != expense.image_hash
+        and (data.get("_amount_context") or {}).get("scope") in scopes]
+
+
+def _local_amount_case(memory, expense, fact, candidates):
+    contexts = amount_case_contexts(fact) if expense.image_hash else {}
+    matches = _local_amount_matches(memory, expense, {key["scope"] for key in contexts.values()})
+    choices = {_event_payload(row)["_amount_context"]["choice"] for row in matches}
+    ids = [identifier for identifier, key in contexts.items() if choices == {key["choice"]}]
+    chosen = next((item for item in candidates if len(ids) == 1 and item.id == ids[0] and item.can_apply), None)
+    return chosen, matches
+
+
+def _field_choice(memory, expense, fact, candidates, matches, field_name, source):
+    field_matches = [row for row in matches if _event_payload(row).get("field") == field_name]
+    chosen = _agreed_field(field_matches, fact, field_name, candidates) if fact is not None and candidates else None
+    if not field_matches and source == "image" and field_name == "amount_cents":
+        return _local_amount_case(memory, expense, fact, candidates)
+    return chosen, field_matches
+
+
 def recall_field_choices(db, *, expense, actor_account_id, fact, candidates, memory=None):
     if actor_account_id is None or expense.status != "pending":
         return candidates
@@ -116,12 +142,12 @@ def _recall_source(db, expense, actor, fact, candidates, memory, source):
     matches = _matching_cases(memory, expense, fact) if fact is not None and (source == "notification" or expense.image_hash) else []
     result = list(candidates)
     for field_name in ("amount_cents", "merchant"):
-        field_matches = [row for row in matches if _event_payload(row).get("field") == field_name]
-        chosen = _agreed_field(field_matches, fact, field_name, candidates) if fact is not None and candidates else None
+        chosen, field_matches = _field_choice(memory, expense, fact, candidates, matches, field_name, source)
         slot = f"notification:{field_name}" if source == "notification" else field_name
+        if chosen is not None and chosen.selection_intent == "candidate":
+            chosen = chosen.model_copy(update={"explanation": chosen.explanation + " 你曾在同类原件中明确选择这一处。",
+                "selection_intent": "bookkeeping"})
         if _visible_field(db, expense=expense, actor=actor,
                 fact=fact, field_name=field_name, slot=slot, chosen=chosen, matches=field_matches, memory=memory):
-            if chosen.selection_intent == "candidate":
-                chosen = chosen.model_copy(update={"explanation": chosen.explanation + " 你曾在同类原件中明确选择这一处。"})
             result = [chosen] + [item for item in result if item.id != chosen.id]
     return result

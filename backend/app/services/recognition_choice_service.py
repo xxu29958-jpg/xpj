@@ -15,6 +15,7 @@ from app.services.learning_service._algorithm_registry import RECOGNITION_TIME_C
 from app.services.learning_service._source_eligibility import _event_payload
 from app.services.notification_time_memory import notification_time_choice_context, notification_time_sources
 from app.services.notification_time_service import notification_time
+from app.services.recognition_decision_service import bind_source_choice
 from app.services.recognition_time_service import recognition_time
 
 
@@ -89,7 +90,9 @@ def record_time_choice(db: Session, *, expense: Expense, choice: RecognitionTime
             if item["id"] == choice.candidate_id)
     elif choice.source == "notification" and capture is not None:
         payload.update(notification_time_choice_context(capture, choice.candidate_id))
+    decision_id = bind_source_choice(db, expense, actor_account_id, RECOGNITION_TIME_CHOICE, choice, payload)
     event = record_event(db, EventDraft(tenant_id=expense.tenant_id, subject_kind="expense", subject_id=expense.id,
+        decision_id=decision_id,
         actor_account_id=actor_account_id, event_type="accept" if payload["_learning_qualified"] else "edit",
         after_payload=payload, signal_type=RECOGNITION_TIME_CHOICE.decision_type,
         signal_marker={"field": "expense_time", "evidence_public_id": choice.evidence_public_id}))

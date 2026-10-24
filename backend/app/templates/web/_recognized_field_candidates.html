@@ -1,5 +1,5 @@
 {% if recognition_fields is defined and recognition_fields and expense is defined and expense.status == 'pending' %}
-<details class="product-disclosure" data-recognized-fields>
+<details class="product-disclosure" data-recognized-fields{% if recognition_fields | selectattr('selection_intent', 'equalto', 'bookkeeping') | list %} open{% endif %}>
   <summary>对照原件金额与商户</summary>
   <p class="meta">选择属于本次交易的内容填入草稿，保存后才会修改账单。</p>
   <p class="meta">若识别文字有误，先修改上方金额或商户，再指出原件中识别错的这一处。</p>

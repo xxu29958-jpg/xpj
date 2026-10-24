@@ -9,6 +9,8 @@ from app.services.learning_service import EventDraft, read_ocr_facts, record_eve
 from app.services.learning_service._algorithm_registry import RECOGNITION_FIELD_CHOICE
 from app.services.learning_service._source_eligibility import _event_payload
 from app.services.notification_field_service import field_case_key, notification_field_sources
+from app.services.recognition_amount_case import amount_case_contexts
+from app.services.recognition_decision_service import bind_source_choice
 from app.services.recognition_memory_service import time_candidate_key
 from app.services.recognition_time_service import _AMOUNT_ROLES, _event_prefixes
 
@@ -95,10 +97,13 @@ def _record_field_choice(db, expense, choice, candidate, fact, actor):
         "selected": candidate.model_dump(), "final_value": final,
         "_algorithm_version": RECOGNITION_FIELD_CHOICE.current_version, "_action_outcome": "committed",
         "_case_key": field_case_key(fact), "_candidate_key": time_candidate_key(fact.raw_text, raw_candidate),
+        "_amount_context": amount_case_contexts(fact).get(candidate.id) if choice.field == "amount_cents" else None,
         "_capture_context": getattr(fact, "capture_context", None),
         "_feedback_revision": int(_event_payload(prior).get("_feedback_revision", 1)) + 1 if prior else 1,
         "_supersedes_event_public_id": prior.public_id if prior else None}
+    decision_id = bind_source_choice(db, expense, actor, RECOGNITION_FIELD_CHOICE, choice, payload)
     event = record_event(db, EventDraft(tenant_id=expense.tenant_id, subject_kind="expense", subject_id=expense.id,
+        decision_id=decision_id,
         actor_account_id=actor, event_type="accept" if payload["intent"] == "candidate" and payload["_learning_qualified"] else "edit",
         after_payload=payload, signal_type=RECOGNITION_FIELD_CHOICE.decision_type,
         signal_marker={"field": choice.field, "evidence_public_id": fact.public_id}))

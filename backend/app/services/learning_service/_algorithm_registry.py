@@ -187,7 +187,7 @@ REPAYMENT_CHOICE = AlgorithmType(
 
 RECOGNITION_FIELD_CHOICE = AlgorithmType(
     decision_type="recognition_field_choice",
-    current_version="field-case-memory-v1",
+    current_version="field-case-memory-v2",
     display_label="原件金额与商户选择",
     description="只参考本人明确选过的原件位置；保存普通改动和默认展示不会自动形成识别标签。",
     subject_kinds=("expense",),
