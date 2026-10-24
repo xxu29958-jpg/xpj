@@ -73,7 +73,7 @@ class ExpenseEditScreenContractTest {
         val image = mutableStateOf(ProtectedImage(bytes, "image/png", "b".repeat(64)))
         var requested: com.ticketbox.domain.model.OcrRegionSelection? = null
         var saved: ExpenseDraft? = null
-        val recorded = expense().copy(imagePath = "original.png", imageHash = digest)
+        val recorded = expense().copy(imagePath = "original.png", imageHash = digest, hasImage = true)
         composeRule.setContent {
             TicketboxTheme(skin = skin) {
                 ExpenseEditScreen(expenseEditScreenState(expense = recorded,
@@ -119,7 +119,7 @@ class ExpenseEditScreenContractTest {
         composeRule.setContent {
             TicketboxTheme(skin = skin) {
                 ExpenseEditScreen(expenseEditScreenState(expense = expense().copy(status = status.value,
-                    imagePath = "original.png", imageHash = "a".repeat(64))), ExpenseEditScreenActions(
+                    imagePath = "original.png", imageHash = "a".repeat(64), hasImage = true)), ExpenseEditScreenActions(
                     media = ExpenseEditMediaActions(onRetryOcr = { requests++ }),
                 ))
             }
