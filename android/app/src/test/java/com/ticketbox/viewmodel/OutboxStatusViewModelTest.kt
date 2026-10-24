@@ -162,6 +162,32 @@ class OutboxStatusViewModelTest {
     }
 
     @Test
+    fun agePausedDebtOriginalIsRetainedAndResumedByTheGlobalConsumer() = runTest(dispatcher) {
+        val harness = outboxStatusHarness()
+        val binding = assertNotNull(harness.debtWrites.currentAccess()).binding
+        val id = harness.debtWrites.save(binding, sampleDebt().copy(rowVersion = 7), -5_000, "减免").getOrThrow()
+        harness.outbox.markFailed(id, "outbox_row_expired")
+        val original = harness.outbox.observeStatus().first().failed.single()
+        val vm = OutboxStatusViewModel(harness.outbox, harness.expenseRepository,
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves,
+                harness.recurringItems, harness.rules, repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews()))
+        try {
+            runCurrent()
+            assertTrue(vm.uiState.value.offersRetry(original))
+            vm.dropFailed(original)
+            runCurrent()
+            assertEquals(original, harness.outbox.observeStatus().first().failed.single())
+            vm.retry(original)
+            runCurrent()
+            val resumed = harness.outbox.activeForTarget(original.targetId).single()
+            assertEquals(original.copy(status = PendingMutationStatus.Pending, retryCount = 0), resumed)
+            assertNull(vm.uiState.value.message)
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
+    @Test
     fun reopenedSyncStatusKeepsOriginalAdjustmentContextWhilePendingThenInFlight() = runTest(dispatcher) {
         val harness = outboxStatusHarness()
         val binding = assertNotNull(harness.debtWrites.currentAccess()).binding

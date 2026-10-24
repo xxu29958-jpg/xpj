@@ -198,23 +198,26 @@ class OutboxStatusViewModel(
 
     /** "重试" — flip a FAILED row back to PENDING for the next drain. */
     fun retry(row: OutboxRow) {
-        if (row.type in setOf(PendingMutationType.CreateBillSplitInvitation, PendingMutationType.AcceptBillSplitInvitation)) { recoverSubmission(row, false); return }
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
+        if (row.type in setOf(PendingMutationType.CreateBillSplitInvitation, PendingMutationType.AcceptBillSplitInvitation,
+                PendingMutationType.CorrectExpense)) { recoverSubmission(row, false); return }
         if (row.type in setOf(PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)) {
             _uiState.update { it.copy(message = UiText.res(R.string.sync_status_upload_recovery_body), messageTone = MessageTone.Info) }
             return
         }
-        if (row.type in originalSubmissionTypes) {
-            recoverSubmission(row, false)
-            return
-        }
-        if (row.type == PendingMutationType.CreateExpenseOffset && !expenseRepository.canReplayExpenseOffset(row)) {
-            explainOffsetReview()
-            return
-        }
-        if (row.type in DEBT_WRITE_TYPES) {
-            recoverDebtWrite(row, false)
-            return
+        if (row.lastError?.startsWith("outbox_row_expired") != true) {
+            if (row.type in originalSubmissionTypes) {
+                recoverSubmission(row, false)
+                return
+            }
+            if (row.type == PendingMutationType.CreateExpenseOffset && !expenseRepository.canReplayExpenseOffset(row)) {
+                explainOffsetReview()
+                return
+            }
+            if (row.type in DEBT_WRITE_TYPES) {
+                recoverDebtWrite(row, false)
+                return
+            }
         }
         resolve(row) {
             // A rendered button may carry an earlier failure; Room owns the current refusal.
@@ -237,6 +240,7 @@ class OutboxStatusViewModel(
         if (!_uiState.value.accepts(row, expenseRepository.captureDeferredLedgerBinding())) return
         if (row.type == PendingMutationType.CreateExpense) { recoverSubmission(row, true); return }
         if (row.type in setOf(PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)) return
+        if (row.lastError?.startsWith("outbox_row_expired") == true && row.type != PendingMutationType.CorrectExpense) return
         if (row.type in originalSubmissionTypes) recoverSubmission(row, true)
         else if (row.type in DEBT_WRITE_TYPES) recoverDebtWrite(row, true)
         else resolve(row) { outbox.resolveFailed(row.id, FailedResolution.Drop) }
@@ -411,6 +415,13 @@ data class OutboxStatusUiState(
 ) {
     fun offersRetry(row: OutboxRow): Boolean {
         if (row.refusesRetry(correctionObservation)) return false
+        if (row.lastError?.startsWith("outbox_row_expired") == true) {
+            return !row.idempotencyKey.isNullOrBlank() && row.type != PendingMutationType.Unknown
+        }
+        return offersUnpausedRetry(row)
+    }
+
+    private fun offersUnpausedRetry(row: OutboxRow): Boolean {
         return when (row.type) {
             in categoryRuleSubmissionTypes -> offersRuleRetry(row)
             PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem ->

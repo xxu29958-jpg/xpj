@@ -108,7 +108,8 @@ class FakePendingMutationDao : PendingMutationDao {
         lastError: String,
     ): Int {
         val current = rows[id] ?: return 0
-        rows[id] = current.copy(status = pendingStatus, lastError = lastError)
+        rows[id] = current.copy(status = pendingStatus, lastError =
+            if (current.lastError?.startsWith("outbox_row_expired") == true) "outbox_row_expired:$lastError" else lastError)
         refreshObservables()
         return 1
     }
@@ -134,7 +135,9 @@ class FakePendingMutationDao : PendingMutationDao {
 
     override suspend fun markFailed(id: Long, status: String, lastError: String, blocksFollowing: Boolean): Int {
         val current = rows[id] ?: return 0
-        rows[id] = current.copy(status = status, lastError = lastError, blocksFollowing = blocksFollowing)
+        rows[id] = current.copy(status = status, lastError =
+            if (current.lastError?.startsWith("outbox_row_expired") == true) "outbox_row_expired:$lastError" else lastError,
+            blocksFollowing = blocksFollowing)
         refreshObservables()
         return 1
     }
@@ -145,7 +148,7 @@ class FakePendingMutationDao : PendingMutationDao {
         lastError: String,
     ): Int {
         pendingExpiryCutoff = cutoffCreatedAtIso
-        val victims = expiredPendingIds.toList()
+        val victims = expiredPendingIds.filter { rows.getValue(it).lastError?.startsWith("outbox_row_expired") != true }
         expiredPendingIds.clear()
         for (id in victims) {
             rows[id] = rows.getValue(id).copy(status = status, lastError = lastError, blocksFollowing = true)
@@ -227,7 +230,10 @@ class FakePendingMutationDao : PendingMutationDao {
     override suspend fun retryFailed(id: Long, ownerKey: String, ledgerId: String, nonRetryableUploadErrors: Set<String>): Int {
         val current = rows[id] ?: return 0
         if (id in refusedRecoveries) return 0
-        rows[id] = current.copy(status = "pending", retryCount = 0, lastError = "manual_retry", blocksFollowing = true)
+        val expired = current.lastError?.startsWith("outbox_row_expired") == true
+        if (expired && current.idempotencyKey.isNullOrBlank()) return 0
+        rows[id] = current.copy(status = "pending", retryCount = 0,
+            lastError = if (expired) "outbox_row_expired" else "manual_retry", blocksFollowing = true)
         refreshObservables()
         return 1
     }
@@ -257,7 +263,9 @@ class FakePendingMutationDao : PendingMutationDao {
         expectedStatus: String,
     ): Int {
         deleteCalls += DeleteCall(id, ownerKey, ledgerId, expectedStatus)
-        if (id !in rows || id in refusedDeletes) return 0
+        val current = rows[id] ?: return 0
+        if (id in refusedDeletes || current.type !in setOf("create_expense", "correct_expense") &&
+            current.lastError?.startsWith("outbox_row_expired") == true) return 0
         rows.remove(id)
         refreshObservables()
         return 1
@@ -309,7 +317,9 @@ class FakePendingMutationDao : PendingMutationDao {
         val victims = staleInFlightIds.toList()
         staleInFlightIds.clear()
         for (id in victims) {
-            rows[id] = rows.getValue(id).copy(status = PendingMutationStatus.Pending.wireValue, lastError = recoveryMessage)
+            val current = rows.getValue(id)
+            rows[id] = current.copy(status = PendingMutationStatus.Pending.wireValue, lastError =
+                if (current.lastError?.startsWith("outbox_row_expired") == true) "outbox_row_expired:$recoveryMessage" else recoveryMessage)
         }
         if (victims.isNotEmpty()) refreshObservables()
         return victims.size

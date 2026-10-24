@@ -159,7 +159,8 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations
         SET status = :pendingStatus,
-            lastError = :lastError
+            lastError = CASE WHEN lastError LIKE 'outbox_row_expired%'
+                THEN 'outbox_row_expired:' || :lastError ELSE :lastError END
         WHERE id = :id
         """,
     )
@@ -207,7 +208,8 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations
         SET status = :status,
-            lastError = :lastError,
+            lastError = CASE WHEN lastError LIKE 'outbox_row_expired%'
+                THEN 'outbox_row_expired:' || :lastError ELSE :lastError END,
             blocksFollowing = :blocksFollowing
         WHERE id = :id
         """,
@@ -215,33 +217,9 @@ interface PendingMutationDao {
     suspend fun markFailed(id: Long, status: String, lastError: String, blocksFollowing: Boolean = true): Int
 
     /**
-     * ADR-0042 §4.10 reaper: flip every still-PENDING row enqueued before
-     * [cutoffCreatedAtIso] to a terminal status WITHOUT replaying it. Returns the
-     * rowcount so the repository can report how many rows it reaped.
-     *
-     * Why this exists (the double-apply hazard): a PENDING row's
-     * ``idempotencyKey`` is only honoured by the server while the matching key
-     * is still in ``api_idempotency_keys`` (~30-day retention). A row that's been
-     * PENDING longer than that would, on replay, hit a server that has forgotten
-     * the key → the server treats it as a NEW request → the mutation applies a
-     * second time. Reaping the row (terminal status, never dispatched) before the
-     * key could expire is the only safe outcome; the user redoes the action
-     * against fresh server state. See [OUTBOX_PENDING_AGE_CAP_MILLIS] for the
-     * margin rationale.
-     *
-     * **Cutoff is an ISO-Z string, not millis** — ``createdAt`` is a fixed-width
-     * ISO TEXT column (see [OutboxRepository.ISO]) that SQLite compares
-     * lexicographically; a numeric cutoff would not compare meaningfully against
-     * it. The repository converts ``now - cap`` to the same fixed-width format,
-     * exactly like [recoverStaleInFlight]'s ``staleCutoffIso``.
-     *
-     * Intentionally **not binding-scoped** (no ``ownerKey`` / ``ledgerId``
-     * filter, unlike the drain reads): a stale PENDING row under ANY binding is a
-     * double-apply risk the moment that binding becomes active again, so the
-     * reaper must catch all of them. The ``status = 'pending'``
-     * guard means only un-dispatched rows are affected; IN_FLIGHT / CONFLICT /
-     * FAILED / DONE rows are never touched (a CONFLICT/FAILED row is already
-     * awaiting the user, and an IN_FLIGHT row is mid-send).
+     * Pause unattended PENDING originals in every binding. ISO-Z createdAt uses
+     * a fixed-width text cutoff. An explicitly resumed age-paused original keeps
+     * its marker, so subsequent retries do not silently pause it again.
      */
     @Query(
         """
@@ -251,6 +229,7 @@ interface PendingMutationDao {
             blocksFollowing = 1
         WHERE status = 'pending'
           AND createdAt < :cutoffCreatedAtIso
+          AND COALESCE(lastError, '') NOT LIKE 'outbox_row_expired%'
         """,
     )
     suspend fun markExpiredPendingAsFailed(
@@ -260,17 +239,9 @@ interface PendingMutationDao {
     ): Int
 
     /**
-     * ADR-0042 §4.10 resolve-time age guard. The reaper ([markExpiredPendingAsFailed])
-     * only touches PENDING rows, so a FAILED (``max_attempts_exceeded``) or CONFLICT
-     * row that's been awaiting the user past the age cap never gets the
-     * ``outbox_row_expired`` marker. Retrying / keep-mine-ing such a row flips it to
-     * PENDING with its ORIGINAL ``createdAt``, so the very next drain's reaper
-     * re-expires it — a dead action that also risks double-apply (a rotated key
-     * doesn't save a committed-but-unseen original whose key the server has purged).
-     * This atomically expires the row (terminal, never re-queued) iff it's still in
-     * [fromStatus] AND already over-age, so the resolve path defers to the same
-     * cutoff the reaper uses. Returns rowcount so the repo can short-circuit the
-     * normal re-queue when this fired.
+     * Apply the same age pause when resolving a FAILED or CONFLICT original.
+     * The caller may resume only its unchanged key/body/OCC; refreshing a token
+     * or rotating a key cannot establish the original delivery result.
      */
     @Query(
         """
@@ -370,12 +341,14 @@ interface PendingMutationDao {
         UPDATE pending_mutations
         SET status = 'pending',
             retryCount = 0,
-            lastError = 'manual_retry',
+            lastError = CASE WHEN lastError LIKE 'outbox_row_expired%'
+                THEN 'outbox_row_expired' ELSE 'manual_retry' END,
             blocksFollowing = 1
         WHERE id = :id
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'failed'
+          AND (COALESCE(lastError, '') NOT LIKE 'outbox_row_expired%' OR length(trim(idempotencyKey)) > 0)
           AND (type != 'upload_screenshot' OR
             COALESCE(substr(lastError, 1, instr(lastError || ':', ':') - 1), '') NOT IN (:nonRetryableUploadErrors))
         """,
@@ -421,6 +394,8 @@ interface PendingMutationDao {
      * the row is in (CONFLICT or FAILED depending on which surface
      * is calling); rowcount = 0 means another surface already moved
      * the row out of that state.
+     * Generic age-paused originals require delivery resolution. The dedicated
+     * manual-create/correction owner retains its existing explicit Stop action.
      */
     @Query(
         """
@@ -429,6 +404,7 @@ interface PendingMutationDao {
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = :expectedStatus
+          AND (type IN ('create_expense', 'correct_expense') OR COALESCE(lastError, '') NOT LIKE 'outbox_row_expired%')
         """,
     )
     suspend fun deleteIfStatus(
@@ -562,7 +538,8 @@ interface PendingMutationDao {
         """
         UPDATE pending_mutations
         SET status = 'pending',
-            lastError = :recoveryMessage
+            lastError = CASE WHEN lastError LIKE 'outbox_row_expired%'
+                THEN 'outbox_row_expired:' || :recoveryMessage ELSE :recoveryMessage END
         WHERE ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'in_flight'
