@@ -62,7 +62,15 @@ def merge_region_evidence(base, retry, request) -> dict:
     if not retry["blocks"] or not retry["blocks"][0]["text"].strip():
         raise AppError("ocr_region_no_text", status_code=422)
     retained, removed, position = _partition_blocks(base["blocks"], request["box"])
-    spans = [tuple(zip(*block["box"], strict=True))[1] for block in removed]
+    # Compare bands perpendicular to the text direction: sloped neighbouring
+    # lines can overlap on the image Y axis without belonging to the same line.
+    directions = [(box[1][0] - box[0][0] + box[2][0] - box[3][0],
+                   box[1][1] - box[0][1] + box[2][1] - box[3][1])
+                  for block in removed for box in [block["box"]]]
+    dx, dy = max(directions, key=lambda direction: sum(value * value for value in direction), default=(1, 0))
+    if dx == dy == 0:
+        raise AppError("ocr_region_invalid", status_code=422)
+    spans = [[-dy * x + dx * y for x, y in block["box"]] for block in removed]
     if spans and max(map(min, spans)) >= min(map(max, spans)):
         raise AppError("ocr_region_invalid", status_code=422)
     result = deepcopy(base)

@@ -113,6 +113,27 @@ class ExpenseEditScreenContractTest {
     }
 
     @Test
+    fun regionalRetryTracksPendingStatusWithoutMakingConfirmedExpenseReadOnly() {
+        val status = mutableStateOf("confirmed")
+        var requests = 0
+        composeRule.setContent {
+            TicketboxTheme(skin = skin) {
+                ExpenseEditScreen(expenseEditScreenState(expense = expense().copy(status = status.value,
+                    imagePath = "original.png", imageHash = "a".repeat(64))), ExpenseEditScreenActions(
+                    media = ExpenseEditMediaActions(onRetryOcr = { requests++ }),
+                ))
+            }
+        }
+        composeRule.onNode(hasSetTextAction() and hasText("12.34")).assertIsEnabled()
+        composeRule.onNodeWithText("框选一行重识别").assertDoesNotExist()
+        composeRule.runOnIdle { status.value = "pending" }
+        composeRule.onNodeWithText("框选一行重识别").performScrollTo().assertIsEnabled()
+        composeRule.runOnIdle { status.value = "confirmed" }
+        composeRule.onNodeWithText("框选一行重识别").assertDoesNotExist()
+        composeRule.runOnIdle { assertEquals(0, requests) }
+    }
+
+    @Test
     fun coherentEventChoiceUsesOriginalSaveWithoutTeachingDefaultFieldRoles() {
         var saved: ExpenseDraft? = null
         val amount = com.ticketbox.domain.model.RecognitionFieldCandidate("amount_cents", "payment", "2800",

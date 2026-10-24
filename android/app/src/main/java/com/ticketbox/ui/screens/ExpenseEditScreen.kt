@@ -452,7 +452,7 @@ fun ExpenseEditScreen(
                     showLargeImage = showLargeImage,
                     originalTaskAvailable = originalContent != null,
                     regionImageHash = currentExpense.imageHash,
-                    canRetryRegion = !readOnly && !state.saving && !state.ocrRunning,
+                    canRetryRegion = isPendingExpense && !readOnly && !state.saving && !state.ocrRunning,
                 ),
                 actions = ExpenseEditEvidenceActions(
                     onLoadRegionImage = mediaActions.onLoadFullImage,

@@ -123,3 +123,32 @@ def test_partial_or_multiple_lines_cannot_erase_unselected_evidence(region_input
             merge_region_evidence(evidence, _retry(evidence, box), {**request["region"], "box": box})
         assert caught.value.error == error
         assert evidence == before
+
+
+def test_sloped_two_line_retry_fails_without_applying_or_erasing_a_fact(region_input, monkeypatch):
+    request, evidence = region_input
+    evidence["blocks"] = [
+        {"text": "实付80.00", "confidence": 0.9, "box": [[0, 0], [100, 20], [100, 30], [0, 10]]},
+        {"text": "优惠20.00", "confidence": 0.9, "box": [[0, 20], [100, 40], [100, 50], [0, 30]]},
+    ]
+    request["region"]["box"] = [0, 0, 100, 50]
+    with SessionLocal() as db:
+        expense = db.get(Expense, request["expense_id"])
+        append_ocr_fact(db, expense=expense, result=OcrResult(raw_text="实付80.00\n优惠20.00",
+            confidence=0.9, evidence=evidence), provider_name="rapidocr")
+        db.commit()
+        before = (expense.row_version, expense.amount_cents, expense.merchant, expense.status)
+        facts = list(db.scalars(select(OcrFact).where(OcrFact.expense_id == expense.id).order_by(OcrFact.id)))
+        original_facts = [(fact.public_id, fact.raw_text, fact.evidence_json) for fact in facts]
+        task = submit_expense_ocr_task(db, **request)
+        task_id, payload = task.id, json.loads(task.input_payload_json)
+    monkeypatch.setattr("app.services.ocr_region_service.recognize_region_snapshot",
+        lambda _path, _digest, box: _retry(evidence, box))
+    background_task_worker.run_task(task_id, payload)
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        assert (task.status, task.error_code) == ("failed", "ocr_region_invalid")
+        expense = db.get(Expense, request["expense_id"])
+        assert (expense.row_version, expense.amount_cents, expense.merchant, expense.status) == before
+        facts = list(db.scalars(select(OcrFact).where(OcrFact.expense_id == expense.id).order_by(OcrFact.id)))
+        assert [(fact.public_id, fact.raw_text, fact.evidence_json) for fact in facts] == original_facts

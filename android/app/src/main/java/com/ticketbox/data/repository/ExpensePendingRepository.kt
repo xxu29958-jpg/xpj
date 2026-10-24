@@ -102,6 +102,7 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
         region: com.ticketbox.domain.model.OcrRegionSelection? = null,
     ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
         requireBaseline(expense)
+        require(expense.status == "pending") { "仅待确认账单可以重新识别原件。" }
         val payload = ExpenseStateTokenRequest(0L, region = region?.let {
             com.ticketbox.data.remote.dto.OcrRegionRequestDto(it.imageSha256, it.box)
         })
