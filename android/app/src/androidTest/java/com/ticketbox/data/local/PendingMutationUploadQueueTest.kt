@@ -226,7 +226,7 @@ class PendingMutationUploadQueueTest {
             val foreign = fixture.row("foreign").copy(ownerKey = "other-owner", ledgerId = "other-ledger")
             val preserved = listOf(
                 fixture.row("at-cutoff").copy(createdAt = cutoff),
-                fixture.row("busy").copy(status = "in_flight"),
+                fixture.row("busy").copy(status = "in_flight", attemptedAt = COMPLETED),
                 fixture.row("conflict").copy(status = "conflict"),
                 fixture.row("done").copy(status = "done", receiptJson = RECEIPT),
             )
@@ -244,6 +244,45 @@ class PendingMutationUploadQueueTest {
             for (id in ids.take(3)) assertEquals(originals.getValue(id).copy(
                 blocksFollowing = true, status = "failed", lastError = "outbox_row_expired"), stored[id])
             for (id in ids.drop(3)) assertEquals(originals[id], stored[id])
+
+            // A generic financial original is resumed without changing identity,
+            // intent or OCC, even after network failure and process recreation.
+            val command = pending.copy(type = "create_goal", targetId = "goal:original", idempotencyKey = "goal-original")
+            val originalId = fixture.dao.insert(command)
+            assertEquals(1, fixture.dao.markExpiredPendingAsFailed(cutoff, "failed", "outbox_row_expired"))
+            assertEquals(0, fixture.dao.deleteIfStatus(originalId, OWNER, LEDGER, "failed"))
+            assertEquals(0, fixture.dao.retryFailed(originalId, "other-owner", LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
+            assertEquals(0, fixture.dao.retryFailed(originalId, OWNER, "other-ledger", NON_RETRYABLE_UPLOAD_ERRORS))
+            assertEquals(1, fixture.dao.retryFailed(originalId, OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
+            assertEquals(0, fixture.dao.markExpiredPendingAsFailed(cutoff, "failed", "outbox_row_expired"))
+            assertEquals(1, fixture.dao.markInFlightIfPending(originalId, "pending", "in_flight", ATTEMPTED))
+            fixture.dao.markRetryable(originalId, "pending", "reply_lost")
+            assertEquals(0, fixture.dao.markExpiredPendingAsFailed(cutoff, "failed", "outbox_row_expired"))
+            assertEquals(1, fixture.dao.markInFlightIfPending(originalId, "pending", "in_flight", ATTEMPTED))
+            val reopened = fixture.reopen()
+            assertEquals(1, reopened.recoverStaleInFlight(OWNER, LEDGER, COMPLETED, "process_reopened"))
+            assertEquals(0, reopened.markExpiredPendingAsFailed(cutoff, "failed", "outbox_row_expired"))
+            val resumed = reopened.allRows().single { it.id == originalId }
+            assertEquals(command.copy(id = originalId, status = "pending", retryCount = 2,
+                attemptedAt = ATTEMPTED, blocksFollowing = true, lastError = "outbox_row_expired:process_reopened"), resumed)
+            assertTrue(runnable(reopened).any { it.id == originalId })
+            reopened.markFailed(originalId, "failed", "permission_denied")
+            assertEquals(0, reopened.deleteIfStatus(originalId, OWNER, LEDGER, "failed"))
+            assertEquals(1, reopened.retryFailed(originalId, OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
+            reopened.markDone(originalId, "done", COMPLETED, receiptJson = RECEIPT)
+            val accepted = fixture.reopen().allRows().single { it.id == originalId }
+            assertEquals("done", accepted.status)
+            assertEquals(RECEIPT, accepted.receiptJson)
+            assertEquals(command.idempotencyKey, accepted.idempotencyKey)
+
+            val unprovenId = fixture.dao.insert(command.copy(idempotencyKey = null, status = "failed", lastError = "outbox_row_expired"))
+            assertEquals(0, fixture.dao.retryFailed(unprovenId, OWNER, LEDGER, NON_RETRYABLE_UPLOAD_ERRORS))
+            assertEquals(0, fixture.dao.deleteIfStatus(unprovenId, OWNER, LEDGER, "failed"))
+            assertEquals("failed", fixture.reopen().allRows().single { it.id == unprovenId }.status)
+            val reviewedExpenseId = fixture.dao.insert(command.copy(type = "correct_expense", status = "failed", lastError = "outbox_row_expired"))
+            var published = false
+            assertTrue(fixture.dao.deleteAndPublish(reviewedExpenseId, OWNER, LEDGER, "failed") { published = true })
+            assertTrue(published)
         }
     }
 

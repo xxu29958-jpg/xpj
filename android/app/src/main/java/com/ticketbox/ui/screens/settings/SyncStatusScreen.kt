@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.ButtonDefaults
@@ -388,29 +387,16 @@ internal fun FailedCard(
             )
             debtCreation?.let { DebtCreationIntentSummary(it) }
             Text(
-                text = if (reviewMessage != null) stringResource(reviewMessage)
+                text = if (expired && row.idempotencyKey.isNullOrBlank()) stringResource(R.string.sync_status_error_expired_unverifiable)
+                    else if (reviewMessage != null) stringResource(reviewMessage)
                     else friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_failed_fallback)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             SyncStatusItemActions(
-                next = if (reviewMessage != null) {
-                    expenseReviewAction(row, busy, actions)
-                } else if (row.manualCreateReviewExpenseId() != null) {
-                    SyncStatusActionButton(text = stringResource(R.string.ledger_manual_review_existing), enabled = !busy,
-                        onClick = { row.manualCreateReviewExpenseId()?.let(actions.onOpenExpense) })
-                } else if (expired || onRetry == null) {
-                    null
-                } else {
-                    SyncStatusActionButton(
-                        text = stringResource(R.string.sync_status_failed_button_retry),
-                        icon = Icons.Filled.RestartAlt,
-                        enabled = !busy,
-                        onClick = onRetry,
-                    )
-                },
-                other = SyncStatusActionButton(
-                    text = stringResource(failedCardDangerLabels.getValue(expired)),
+                next = failedRecoveryAction(row, busy, onRetry, actions, reviewMessage),
+                other = if (expired) null else SyncStatusActionButton(
+                    text = stringResource(R.string.sync_status_failed_button_drop),
                     enabled = !busy,
                     danger = true,
                     onClick = { actions.onDropFailed(row) },
@@ -421,11 +407,27 @@ internal fun FailedCard(
 }
 
 @Composable
-private fun expenseReviewAction(row: OutboxRow, busy: Boolean, actions: SyncStatusActions): SyncStatusActionButton? {
-    val id = com.ticketbox.data.repository.expenseRefreshTargetId(row.targetId, row.receiptJson) ?: return null
-    return SyncStatusActionButton(text = stringResource(R.string.expense_offset_review_current),
-        icon = Icons.AutoMirrored.Filled.OpenInNew, enabled = !busy,
-        onClick = { actions.onOpenExpense(id) })
+private fun failedRecoveryAction(
+    row: OutboxRow,
+    busy: Boolean,
+    onRetry: (() -> Unit)?,
+    actions: SyncStatusActions,
+    reviewMessage: Int?,
+): SyncStatusActionButton? {
+    if (reviewMessage != null) return expenseReviewAction(row, busy, actions)
+    val existingExpenseId = row.manualCreateReviewExpenseId()
+    if (existingExpenseId != null) {
+        return SyncStatusActionButton(text = stringResource(R.string.ledger_manual_review_existing), enabled = !busy,
+            onClick = { actions.onOpenExpense(existingExpenseId) })
+    }
+    val expired = isExpiredFailure(row.lastError)
+    if (onRetry == null) return if (expired) expenseReviewAction(row, busy, actions) else null
+    return SyncStatusActionButton(
+        text = stringResource(if (expired) R.string.sync_status_expired_button_recover else R.string.sync_status_failed_button_retry),
+        icon = Icons.Filled.RestartAlt,
+        enabled = !busy,
+        onClick = onRetry,
+    )
 }
 
 /**
@@ -500,14 +502,10 @@ private fun SyncStatusActionLayout(modifier: Modifier, gap: Dp, content: @Compos
     }
 }
 
-/** A reaper age-cap expiry is terminal; retry cannot help. */
+/** An age-paused original must be resolved before it can be discarded or replaced. */
 internal fun isExpiredFailure(lastError: String?): Boolean =
     lastError?.startsWith("outbox_row_expired") == true
 
-private val failedCardDangerLabels = mapOf(
-    true to R.string.sync_status_failed_button_remove,
-    false to R.string.sync_status_failed_button_drop,
-)
 
 internal val syncStatusMutationLabelResources = mapOf(
     PendingMutationType.FinancialAccountCommand to R.string.sync_status_mutation_funds_command,

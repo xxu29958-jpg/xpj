@@ -624,7 +624,7 @@ class OutboxDrainEngineTest {
     }
 
     @Test
-    fun drainWithOnlyAnOverAgeRowReapsItAndReportsChangedWithEmptyBatch() = runTest {
+    fun agePausedOriginalNeedsExplicitRecoveryThenCompletesWithItsOriginalKey() = runTest {
         // Reap-only pass: the single PENDING row is over-age, so after the reaper
         // flips it to FAILED the runnable batch is empty. drainOnce must still
         // report reaped > 0 + anythingChanged (it mutated the DB) rather than the
@@ -640,11 +640,16 @@ class OutboxDrainEngineTest {
             override val type = PendingMutationType.PatchExpense
             override suspend fun dispatch(row: OutboxRow): DispatchResult {
                 dispatchCalls++
+                assertEquals("original-before-pause", row.idempotencyKey)
+                assertEquals("{}", row.payloadJson)
+                assertEquals(1L, row.expectedRowVersion)
+                if (dispatchCalls == 1) return DispatchResult.RetryableFailure("reply_lost")
                 return DispatchResult.Success()
             }
         }
         val engine = OutboxDrainEngine(outbox, listOf(dispatcher), now = { now.toEpochMilli() })
-        val staleId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L)
+        val staleId = outbox.enqueue(PendingMutationType.PatchExpense, "expense:1", "{}", 1L,
+            idempotencyKey = "original-before-pause")
         dao.rows[staleId] = dao.rows[staleId]!!.copy(createdAt = "2026-04-01T00:00:00.000Z")
         dao.expiredPendingIds += staleId
 
@@ -655,6 +660,20 @@ class OutboxDrainEngineTest {
         assertEquals(1, summary.reaped)
         assertTrue(summary.anythingChanged, "a reap-only pass still changed the DB")
         assertEquals(PendingMutationStatus.Failed, outbox.activeForTarget("expense:1").single().status)
+        dao.expiredBoundIds += staleId
+        assertTrue(outbox.resolveFailed(staleId, FailedResolution.Retry()))
+        dao.runnableBatches += listOf(staleId)
+        dao.expiredPendingIds += staleId
+        val unknown = engine.drainOnce()
+        assertEquals(0, unknown.reaped)
+        assertEquals(1, dispatchCalls)
+        assertEquals("outbox_row_expired:reply_lost", dao.rows.getValue(staleId).lastError)
+        dao.runnableBatches += listOf(staleId)
+        dao.expiredPendingIds += staleId
+        assertEquals(1, engine.drainOnce().done)
+        assertEquals(2, dispatchCalls)
+        assertEquals("done", dao.rows.getValue(staleId).status)
+        assertEquals("original-before-pause", dao.rows.getValue(staleId).idempotencyKey)
     }
 
     private fun withDispatcher(

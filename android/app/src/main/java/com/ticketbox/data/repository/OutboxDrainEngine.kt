@@ -18,28 +18,9 @@ import kotlinx.coroutines.withContext
 internal const val DEFAULT_MAX_ATTEMPTS: Int = 10
 
 /**
- * ADR-0042 §4.10 client-outbox PENDING age-cap.
- *
- * A PENDING row carries an [idempotencyKey] (intent-time UUID). The server keeps
- * the matching key in `api_idempotency_keys` for only ~30 days, then purges it.
- * If a row sits PENDING **longer than that retention** and *then* replays, the
- * server no longer holds its key → it reads the replay as a brand-new request →
- * **double-apply**: the idempotency protection that the whole ADR-0042 plumbing
- * exists to provide is silently gone (a confirm fires twice, an edit re-applies
- * to a now-different state, etc).
- *
- * So a row older than this cap must be **reaped — flipped to FAILED and NEVER
- * replayed** — and surfaced to the user, who can redo the action by hand against
- * fresh server state. The reaper is a keys-to-production prerequisite.
- *
- * 7 days is chosen to stay **safely under** the server's ~30-day key retention:
- * we fail the row with weeks of head-room, so a reaped row is never one that
- * *would* have replayed against a still-valid key — we always give up well before
- * the key could expire, never after. (If the server retention is ever shortened,
- * this cap must shrink in lock-step to preserve the same margin.)
- *
- * `internal` for the same reason as [DEFAULT_MAX_ATTEMPTS]: engine + same-module
- * tests only; production tuning would go through an engine constructor param.
+ * Pause unattended originals after seven days. Accepted server receipts are
+ * durable; explicit recovery keeps the original identity, key, body and OCC.
+ * Unknown delivery must never invite a replacement financial operation.
  */
 internal const val OUTBOX_PENDING_AGE_CAP_MILLIS: Long = 7L * 24 * 60 * 60 * 1000
 
@@ -166,14 +147,8 @@ class OutboxDrainEngine(
      */
     suspend fun drainOnce(): DrainSummary {
         outbox.recoverStaleInFlight()
-        // [ADR-0042 §4.10] PENDING age-cap reaper: terminally FAIL (never replay)
-        // any row that has sat PENDING past OUTBOX_PENDING_AGE_CAP_MILLIS, BEFORE
-        // we dequeue runnable work. A row older than the cap can no longer trust
-        // its idempotency key (server retention has likely purged it), so a replay
-        // would double-apply; flipping it to FAILED here means the row never
-        // reaches a dispatcher and instead surfaces in the user's "manual retry /
-        // drop" banner. Done before dequeueNextRunnable so the just-reaped (now
-        // FAILED) rows are excluded from this very pass's batch.
+        // Pause old unattended work before dispatch. An explicitly resumed
+        // original keeps its age marker through retries and process recovery.
         val reaped = outbox.reapExpiredPending(now())
         // [codex round-9 P1] session-boundary epoch: capture the
         // counter BEFORE dequeue. A binding transition between this snapshot
@@ -324,9 +299,8 @@ data class DrainSummary(
     val aborted: Int = 0,
     /**
      * [ADR-0042 §4.10] PENDING rows reaped to FAILED at the start of this pass
-     * because they sat PENDING past [OUTBOX_PENDING_AGE_CAP_MILLIS] and could no
-     * longer trust their idempotency key. These rows are NOT in [attempted] —
-     * they were terminally failed before dequeue, never handed to a dispatcher.
+     * because they sat PENDING past [OUTBOX_PENDING_AGE_CAP_MILLIS]. These rows
+     * are not in [attempted]; the user must first resume the original submission.
      */
     val reaped: Int = 0,
     /** The bounded pass left a runnable original for the existing worker's next attempt. */

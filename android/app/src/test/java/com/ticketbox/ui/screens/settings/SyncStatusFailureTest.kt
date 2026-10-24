@@ -15,10 +15,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * ADR-0042 §4.10: a reaper age-cap expiry is terminal — the FailedCard hides
- * Retry for it (replaying would hit a server-purged idempotency key, and the
- * next drain would just re-reap the row). Other reasons are not age expiry;
- * payload support and protocol recovery are separate decisions.
+ * The age-cap marker identifies a paused original. Its recovery action keeps
+ * the original key/body and resolves the stable server receipt. Other failure
+ * reasons, payload support and protocol recovery remain separate decisions.
  */
 class SyncStatusFailureTest {
 
@@ -76,7 +75,7 @@ class SyncStatusFailureTest {
     }
 
     @Test
-    fun `reaper-expired marker is terminal (no retry)`() {
+    fun `age pause is identified separately from other failures`() {
         assertTrue(isExpiredFailure("outbox_row_expired"))
     }
 

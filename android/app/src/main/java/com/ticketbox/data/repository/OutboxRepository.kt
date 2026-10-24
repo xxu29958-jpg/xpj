@@ -702,7 +702,10 @@ class OutboxRepository private constructor(
             when {
                 drop -> dao.deleteIfStatus(id, binding.ownerStorageKey, binding.ledgerId, status.wireValue) > 0
                 dao.expireBoundIfOverAge(id, binding, status.wireValue, overAgeCutoffIso()) -> {
-                    expired = true
+                    // Recovery reuses the original body, OCC and key. A fresh token/key
+                    // is forbidden until that original has a definite server result.
+                    expired = freshToken != null || status != PendingMutationStatus.Failed ||
+                        dao.retryFailed(id, binding.ownerStorageKey, binding.ledgerId, NON_RETRYABLE_UPLOAD_ERRORS) == 0
                     true
                 }
                 freshToken != null -> requeue(id, binding.ownerStorageKey, binding.ledgerId,

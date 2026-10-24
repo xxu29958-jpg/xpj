@@ -235,29 +235,30 @@ class SyncStatusScreenConfirmTest {
     }
 
     @Test
-    fun expiredFailedRowUsesRemoveWording() {
+    fun expiredFailedRowRecoversTheOriginalWithoutOfferingRemoval() {
         var dropped: OutboxRow? = null
-        // The reaper's real terminal marker (ADR-0042 §4.10) — drives both the
-        // card's 移除-only rendering and the dialog's remove wording.
+        var recovered: OutboxRow? = null
         val row = outboxRow(status = PendingMutationStatus.Failed, lastError = "outbox_row_expired")
+            .copy(idempotencyKey = "original-before-age-pause")
         setScreenContent(
             failed = listOf(row),
             actions = SyncStatusActions(onRefreshAcceptedResult = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = {}, onOpenGoalCreation = {}, onOpenRecurring = {}, onOpenBudget = {},
         onOpenExpense = {},
                 onKeepMine = {},
                 onDropMine = {},
-                onRetry = {},
+                onRetry = { recovered = it },
                 onDropFailed = { dropped = it },
                 onClearQuarantined = {},
             ),
         )
 
-        composeRule.onNodeWithText("移除").performScrollTo().performClick()
-        composeRule.onNodeWithText("移除这条记录？").assertIsDisplayed()
-        composeRule.runOnIdle { assertNull(dropped) }
-
-        composeRule.onNodeWithText("确定移除").performClick()
-        composeRule.runOnIdle { assertEquals(row, dropped) }
+        composeRule.onNodeWithText("移除").assertDoesNotExist()
+        composeRule.onNodeWithText("放弃").assertDoesNotExist()
+        composeRule.onNodeWithText("核对原结果").performScrollTo().performClick()
+        composeRule.runOnIdle {
+            assertNull(dropped)
+            assertEquals(row, recovered)
+        }
     }
 
     @Test

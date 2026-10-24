@@ -19,6 +19,14 @@ import com.ticketbox.ui.screens.expense.fact.CorrectionSubmissionOptions
 import com.ticketbox.ui.screens.expense.fact.ExpenseCorrectionSubmissionCard
 import com.ticketbox.viewmodel.OutboxStatusUiState
 
+@Composable
+internal fun expenseReviewAction(row: OutboxRow, busy: Boolean, actions: SyncStatusActions): SyncStatusActionButton? {
+    val id = com.ticketbox.data.repository.expenseRefreshTargetId(row.targetId, row.receiptJson) ?: return null
+    return SyncStatusActionButton(text = stringResource(R.string.expense_offset_review_current),
+        icon = Icons.AutoMirrored.Filled.OpenInNew, enabled = !busy,
+        onClick = { actions.onOpenExpense(id) })
+}
+
 /** Original-command recovery stays ahead of read-only refresh and identity quarantine. */
 @Composable
 internal fun SyncStatusExpenseReviewSection(state: OutboxStatusUiState, actions: SyncStatusActions) {

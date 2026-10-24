@@ -1,5 +1,6 @@
 """Spending-goal creation and its accepted receipt commit together."""
 
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
@@ -44,6 +45,13 @@ def test_create_replays_original_receipt_after_edit_and_archive(client, identity
     assert later.status_code == 200, later.text
     archived = client.post(f"/api/goals/{goal['public_id']}/archive", headers=identity.app_headers)
     assert archived.status_code == 200, archived.text
+    # An Android original can be reopened well after its seven-day pause and
+    # the old retention floor. The first receipt, not today's goal, owns replay.
+    with SessionLocal() as db:
+        receipt = db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == key))
+        receipt.created_at -= timedelta(days=45)
+        receipt.expires_at -= timedelta(days=45)
+        db.commit()
     replay = client.post("/api/goals", headers=headers, json=_body())
     assert replay.status_code == 201, replay.text
     assert replay.json() == goal
