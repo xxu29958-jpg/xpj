@@ -322,6 +322,10 @@ def web_edit_context(
     )
     ctx["split_members"] = web_split_members(db, selected_id)
     ctx["category_options"] = list_ledger_category_options(db, tenant_id=selected_id)
+    # Command owners commit or roll back before rendering. All pending-page
+    # consumers, including recovery/error forms, must retain suggestion exposure
+    # so adopting it cannot later masquerade as independent source feedback.
+    db.commit()
     return ctx
 
 
