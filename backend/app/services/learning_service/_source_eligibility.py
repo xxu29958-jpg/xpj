@@ -253,6 +253,7 @@ def _changed_feedback_source(event, payload, image_facts, category_sources, capt
 def feedback_assessments(db: Session, *, tenant_id: str,
         events: list[LedgerLearningEvent]) -> dict[int, tuple[str, str, dict[str, str]]]:
     from app.services.learning_service._repayment_sources import repayment_source_assessments
+    from app.services.recognition_decision_service import recognition_adoption_ids
     from app.services.recognition_evidence_context import notification_evidence_contexts
 
     sources, reversed_ids = feedback_sources(db, tenant_id=tenant_id, events=events)
@@ -261,6 +262,7 @@ def feedback_assessments(db: Session, *, tenant_id: str,
     captures, time_captures = notification_evidence_contexts(db, tenant_id=tenant_id,
         payloads=[_event_payload(row) for row in events])
     category_sources = _current_category_contexts(db, tenant_id, events, sources)
+    adopted = recognition_adoption_ids(db, tenant_id, events)
     latest = _latest_feedback_ids(db, tenant_id=tenant_id, events=events)
     decisions = {row.id: row.algorithm_version for row in db.scalars(select(AlgorithmDecision).where(
         AlgorithmDecision.tenant_id == tenant_id, AlgorithmDecision.id.in_({row.decision_id for row in events})))}
@@ -281,6 +283,8 @@ def feedback_assessments(db: Session, *, tenant_id: str,
                 sources.get(payload.get("candidate_id")), latest)
         if status == "valid" and (changed := _changed_feedback_source(row, payload, image_facts, category_sources, captures, time_captures)):
             status, reason = "superseded", changed
+        if status == "valid" and row.id in adopted:
+            status, reason = "needs_review", "采纳过系统推荐；不再当作独立的原件标注"
         results[row.id] = _apply_feedback_controls(row.public_id, (status, reason, fields),
             withdrawn=withdrawn, training_enabled=policies[key])
     return results

@@ -85,6 +85,31 @@ def test_choice_survives_replay_and_reorders_a_new_case_then_withdraws(client, i
             decision_type="recognition_time_choice", status="active").count() == 0
 
 
+@pytest.mark.parametrize("source", ["image", "notification"])
+def test_accepting_a_remembered_time_does_not_survive_withdrawal_as_a_new_label(client, identity, source):
+    from app.services.learning_service._withdrawal import withdraw_feedback
+    from tests.test_notification_time_memory import _capture
+
+    def create(day, family):
+        return _image(identity, day=day, family=family) if source == "image" else _capture(client, identity, day)["expense_id"]
+
+    first, second = create(18, "a"), create(19, "b")
+    assert _choose(client, identity, first)[0].status_code == 200
+    proposed = client.get(f"/api/expenses/{second}", headers=identity.app_headers).json()
+    assert "你曾" in proposed["recognition_time"]["candidates"][0]["explanation"]
+    # Older clients send ordinary candidate intent even when adopting memory.
+    response, *_ = _choose(client, identity, second, index=0)
+    assert response.status_code == 200 and response.json()["expense_time"] is not None
+    with SessionLocal() as db:
+        original = db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == first,
+            LedgerLearningEvent.signal_type == "recognition_time_choice")).one()
+        withdraw_feedback(db, tenant_id="owner", public_id=original.public_id)
+        db.commit()
+    third = create(20, "c")
+    after = client.get(f"/api/expenses/{third}", headers=identity.app_headers).json()
+    assert not any("你曾" in c["explanation"] for c in after["recognition_time"]["candidates"])
+
+
 @pytest.mark.parametrize("problem", ["foreign", "version", "stale", "accounting_date"])
 def test_invalid_source_or_accounting_intent_never_becomes_a_time_label(client, identity, problem):
     expense_id = _image(identity)

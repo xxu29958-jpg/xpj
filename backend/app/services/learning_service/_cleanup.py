@@ -80,6 +80,8 @@ def _expired(
 
 def _unreferenced_decision() -> ColumnElement[bool]:
     """Retained feedback and supersession history keep their parent readable."""
+    from app.services.recognition_decision_service import recognition_adoption_predicates
+
     predecessor = aliased(AlgorithmDecision)
     return ~select(LedgerLearningEvent.id).where(
         LedgerLearningEvent.tenant_id == AlgorithmDecision.tenant_id,
@@ -87,7 +89,7 @@ def _unreferenced_decision() -> ColumnElement[bool]:
     ).exists() & ~select(predecessor.id).where(
         predecessor.tenant_id == AlgorithmDecision.tenant_id,
         predecessor.superseded_by_id == AlgorithmDecision.id,
-    ).exists()
+    ).exists() & ~select(LedgerLearningEvent.id).where(*recognition_adoption_predicates()).correlate(AlgorithmDecision).exists()
 
 
 def cleanup_expired_algorithm_decisions(

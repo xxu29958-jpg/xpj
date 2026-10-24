@@ -17,8 +17,8 @@ from tests._runtime_protocol import negotiated_headers
 from tests._web_native_form_support import hidden_post_forms
 
 
-def _seed(merchant="海棠咖啡", paid=1800, total=2500):
-    raw = f"商户：{merchant}\n支付金额：{paid / 100:.2f}元\n合计：{total / 100:.2f}元\n支付时间：2026-10-20 12:30"
+def _seed(merchant="海棠咖啡", paid=1800, total=2500, raw_override=None):
+    raw = raw_override or f"商户：{merchant}\n支付金额：{paid / 100:.2f}元\n合计：{total / 100:.2f}元\n支付时间：2026-10-20 12:30"
     with SessionLocal() as db:
         resolve_write_capability(db)
         row = Expense(tenant_id="owner", source="camera", status="pending", category="其他",
@@ -167,6 +167,102 @@ def _choose_amount(client, headers, source_id, value):
             "recognition_field_choices": [choice]})
     assert saved.status_code == 200, saved.text
     return saved
+
+
+def _rounding_case(client, headers, variation):
+    def material(items, total, rounded, change, header="门店A", extra=""):
+        return f"海棠咖啡\n收款小票\n{header}\n{items}\nTOTAL\n￥{total}\nTOTAL ROUNDED\n￥{rounded}\nCASH\n￥30.00\nCHANGE\n￥{change}{extra}"
+
+    source_id = _seed(raw_override=material("咖啡豆", "25.01", "25.00", "5.00"))
+    if variation == "literal_correction":
+        source = client.get(f"/api/expenses/{source_id}", headers=headers).json()
+        selected = next(c for c in source["recognition_fields"] if c["field"] == "amount_cents" and c["value"] == 2501)
+        choice = {**_choice(selected), "intent": "original_correction"}
+        response = client.patch(f"/api/expenses/{source_id}", headers={**headers, "Idempotency-Key": str(uuid4())},
+            json={"expected_row_version": source["row_version"], "original_currency_code": "CNY", "original_amount_minor": 2500,
+                "recognition_field_choices": [choice]})
+        assert response.status_code == 200, response.text
+    else:
+        _choose_amount(client, headers, source_id, 2500)
+    raw = material("牛奶\n面包", "26.01", "26.00", "4.00",
+        header="门店B" if variation == "changed_header" else "门店A",
+        extra="\n手续费\n￥0.50" if variation == "changed_structure" else "")
+    if variation == "duplicate_label":
+        raw += "\nTOTAL ROUNDED\n￥27.00"
+    if variation == "other_currency":
+        raw = raw.replace("￥26.00", "USD 26.00")
+    return source_id, _seed(paid=1900, raw_override=raw)
+
+
+@pytest.mark.parametrize("variation", ["new_items", "changed_header", "changed_structure", "literal_correction", "duplicate_label", "other_currency"])
+def test_local_amount_role_survives_new_items_but_not_changed_context_or_withdrawal(client, identity, variation):
+    headers = negotiated_headers(client, identity.app_headers)
+    source_id, target_id = _rounding_case(client, headers, variation)
+    suggested = client.get(f"/api/expenses/{target_id}", headers=headers).json()
+    amounts = [c for c in suggested["recognition_fields"] if c["field"] == "amount_cents"]
+    learned = variation == "new_items"
+    assert any("同类原件" in c["explanation"] for c in amounts) == learned, amounts
+    if learned:
+        assert amounts[0]["value"] == 2600
+    assert suggested["amount_cents"] == 1900 and suggested["status"] == "pending"
+    # A later explicit selection supersedes this source's role preference.
+    _choose_amount(client, headers, source_id, 2501)
+    after = client.get(f"/api/expenses/{target_id}", headers=headers).json()
+    assert after["amount_cents"] == 1900 and after["row_version"] == suggested["row_version"]
+    if learned:
+        amounts = [c for c in after["recognition_fields"] if c["field"] == "amount_cents"]
+        assert amounts[0]["value"] == 2601, "The superseded rounded-total case still affects this new receipt"
+        from app.services.learning_service._withdrawal import withdraw_feedback
+        with SessionLocal() as db:
+            event = db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == source_id,
+                LedgerLearningEvent.signal_type == "recognition_field_choice").order_by(LedgerLearningEvent.id.desc())).first()
+            withdraw_feedback(db, tenant_id="owner", public_id=event.public_id)
+            db.commit()
+        withdrawn = client.get(f"/api/expenses/{target_id}", headers=headers).json()
+        assert not any("同类原件" in c["explanation"] for c in withdrawn["recognition_fields"])
+        assert withdrawn["amount_cents"] == 1900 and withdrawn["row_version"] == suggested["row_version"]
+
+
+@pytest.mark.parametrize("client_intent", ["projected", "legacy", "historic"])
+def test_accepting_a_learned_amount_does_not_recreate_withdrawn_source_feedback(client, identity, client_intent):
+    from app.services.learning_service._withdrawal import withdraw_feedback
+
+    headers = negotiated_headers(client, identity.app_headers)
+    source_id, target_id = _rounding_case(client, headers, "new_items")
+    proposed = client.get(f"/api/expenses/{target_id}", headers=headers).json()
+    selected = next(c for c in proposed["recognition_fields"] if c["field"] == "amount_cents")
+    assert selected["value"] == 2600
+    accepted = client.patch(f"/api/expenses/{target_id}", headers={**headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": proposed["row_version"], "original_currency_code": "CNY", "original_amount_minor": 2600,
+            "recognition_field_choices": [{**_choice(selected), "intent": selected["selection_intent"] if client_intent == "projected" else "candidate"}]})
+    assert accepted.status_code == 200, accepted.text
+    with SessionLocal() as db:
+        adopted = db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == target_id,
+            LedgerLearningEvent.signal_type == "recognition_field_choice")).one()
+        assert not json.loads(adopted.after_payload)["_learning_qualified"]
+        if client_intent == "historic":
+            # Old clients had no decision link and incorrectly qualified adoption.
+            from app.services.learning_service._cleanup import cleanup_expired_algorithm_decisions
+
+            exposure = db.get(AlgorithmDecision, adopted.decision_id)
+            assert exposure is not None
+            exposure.status = "superseded"
+            payload = json.loads(adopted.after_payload)
+            payload.update(intent="candidate", _learning_qualified=True)
+            payload.pop("_adopted_suggestion_public_id", None)
+            adopted.after_payload, adopted.decision_id = json.dumps(payload), None
+            db.commit()
+            cleanup_expired_algorithm_decisions(db, tenant_id="owner", now=datetime.now(UTC) + timedelta(days=400))
+            assert db.get(AlgorithmDecision, exposure.id) is not None, "Cleanup erased the evidence that this was suggestion adoption"
+        original = db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == source_id,
+            LedgerLearningEvent.signal_type == "recognition_field_choice")).one()
+        withdraw_feedback(db, tenant_id="owner", public_id=original.public_id)
+        raw = db.scalars(select(OcrFact.raw_text).where(OcrFact.expense_id == target_id)).one()
+        db.commit()
+    future = _seed(paid=2000, raw_override=raw.replace("牛奶", "豆浆").replace("26.01", "27.01").replace("26.00", "27.00"))
+    after = client.get(f"/api/expenses/{future}", headers=headers).json()
+    assert not any("同类原件" in c["explanation"] for c in after["recognition_fields"]), "An accepted suggestion resurrected the withdrawn original judgement"
+    assert after["amount_cents"] == 2000 and after["status"] == "pending"
 
 
 @pytest.mark.parametrize("problem", ["foreign_source", "parser_version", "edited_value"])

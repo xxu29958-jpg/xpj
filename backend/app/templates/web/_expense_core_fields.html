@@ -197,7 +197,6 @@
     <span><input type="checkbox" data-category-one-off {% if form_values and form_values.get('category_choice') == 'one_off' %}checked{% endif %} {% if not can_write %}disabled{% endif %}> 此分类只用于这笔</span>
   </label>
   {% if form_values and form_values.get('category_choice') %}<input type="hidden" name="category_choice" value="{{ form_values.category_choice }}">{% endif %}
-  {% include '_recognized_field_candidates.html' %}
   {% if form_values and form_values.get('recognition_field_choices') %}<input type="hidden" name="recognition_field_choices" value="{{ form_values.recognition_field_choices }}">{% endif %}
   {% if form_values and form_values.get('recognition_time_choice') %}<input type="hidden" name="recognition_time_choice" value="{{ form_values.recognition_time_choice }}">{% endif %}
   {% if form_values and form_values.get('category_decision_public_id') %}<input type="hidden" name="category_decision_public_id" value="{{ form_values.category_decision_public_id }}">{% endif %}
@@ -208,11 +207,13 @@
   {% set suggestion = learning_suggestions.category_suggestion %}
   <div class="product-feedback" data-learning-suggestion data-category-merchant="{{ e.merchant }}">
     <strong>常用分类：{{ suggestion.category }}</strong>
-    <p>参考同一商家最近 {{ suggestion.sample_size }} 笔已入账记录。保存后记住你的选择；仍需确认才会入账。</p>
+    <p>参考你在同一商家、相同用途下的 {{ suggestion.sample_size }} 笔独立选择。采纳建议不会重复计入偏好；仍需确认才会入账。</p>
     <button type="button" class="product-button product-button--quiet" data-category-suggestion="{{ suggestion.category }}" data-category-decision="{{ suggestion.decision_public_id }}">填入这个分类</button>
   </div>
   {% endif %}
   {% if core_fields_compact|default(false) %}</details>{% endif %}
+
+  {% include '_recognized_field_candidates.html' %}
 
   {% if time_form %}
   {% if core_fields_compact|default(false) %}
