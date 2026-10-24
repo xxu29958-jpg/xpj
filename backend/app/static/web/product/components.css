@@ -1251,21 +1251,19 @@ html:has(:is(.product-workspace > .product-task-actions, main.content .product-t
 }
 
 .product-drawer-input-prefix {
-    position: relative;
     display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
     align-items: center;
+    gap: var(--space-2);
 }
 
 .product-drawer-input-prefix > span {
-    position: absolute;
-    z-index: 1;
-    inset-inline-start: var(--space-4);
     color: var(--text-meta);
     pointer-events: none;
 }
 
 .expense-core-fields .product-drawer-input-prefix > input.product-input {
-    padding-inline-start: var(--space-8);
+    padding-inline-start: var(--space-4);
 }
 
 .expense-manual-fx {
@@ -1425,7 +1423,7 @@ details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); 
 .review-amount-field .product-drawer-input-prefix > span { color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-title-size); font-weight: var(--type-title-weight); }
 .review-amount-field .product-drawer-input-prefix > input.product-input {
     min-height: calc(var(--target-min) + var(--space-4));
-    padding-inline-start: var(--space-9);
+    padding-inline-start: var(--space-4);
     border-color: transparent;
     background: var(--surface-card);
     font-family: var(--font-numeric);
