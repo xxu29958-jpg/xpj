@@ -12,11 +12,14 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.errors import AppError
 from app.main import app
-from app.models import AlgorithmDecision, Device, Expense, LedgerLearningEvent, OcrFact
+from app.models import Account, AlgorithmDecision, Device, Expense, LedgerLearningEvent, OcrFact
 from app.services.learning_service._withdrawal import withdraw_feedback
+from app.services.recognition_review_service import recognition_review_context
 from tests._runtime_protocol import negotiated_headers
 from tests._web_native_form_support import hidden_post_forms
 from tests.test_recognition_field_choice import _choice, _rounding_case, _seed
+
+pytestmark = pytest.mark.real_db
 
 
 @pytest.mark.parametrize("entry", ["review", "failed_save"])
@@ -81,3 +84,19 @@ def test_recovered_form_records_the_learned_amount_it_displays(web_client, ident
 
 def _fail_receipt(*args, **kwargs):
     raise AppError("state_conflict", "Controlled receipt failure after the real update", status_code=409)
+
+
+def test_review_exposure_does_not_commit_the_callers_unsaved_financial_change(web_client, identity):
+    headers = negotiated_headers(web_client, identity.app_headers)
+    _source, target = _rounding_case(web_client, headers, "new_items")
+    with SessionLocal() as caller:
+        expense = caller.get(Expense, target)
+        actor = caller.scalars(select(Account.id)).first()
+        expense.amount_cents = 8888
+        context = recognition_review_context(tenant_id="owner", expense_id=target, actor_account_id=actor)
+        assert any("同类原件" in choice.explanation for choice in context["recognition_fields"])
+        caller.rollback()
+    with SessionLocal() as db:
+        assert db.get(Expense, target).amount_cents == 1900
+        assert db.scalars(select(AlgorithmDecision).where(AlgorithmDecision.subject_id == target,
+            AlgorithmDecision.decision_type == "recognition_field_choice")).one().status == "active"

@@ -65,7 +65,8 @@ def fact_context(monkeypatch):
         basis="legacy_assumed", adopted_at=now)
     monkeypatch.setattr(helpers, "calendar_revision", lambda _db, *, ledger_id, revision: rule)
     monkeypatch.setattr(helpers, "get_expense", lambda *_a: expense)
-    monkeypatch.setattr(helpers, "read_ocr_facts", lambda *_a, **_k: {})
+    monkeypatch.setattr(helpers, "recognition_review_context", lambda **_k: {
+        "recognition_time": None, "recognition_fields": [], "recognition_notes": []})
     monkeypatch.setattr(fact, "get_expense", lambda *_a: expense)
     monkeypatch.setattr(helpers, "_base_ctx", lambda *_a, **_k: {
         "home_currency_code": "JPY", "can_write": True})
