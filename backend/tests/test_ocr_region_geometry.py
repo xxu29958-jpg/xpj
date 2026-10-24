@@ -15,9 +15,13 @@ from app.services.ocr_region_service import merge_region_evidence
       [[0, 50], [100, 30], [100, 40], [0, 60]]], False),
     ([[[0, 0], [40, 8], [40, 18], [0, 10]],
       [[100, 20], [140, 28], [140, 38], [100, 30]]], True),
+    ([[[0, 20], [40, 20], [40, 30], [0, 30]],
+      [[70, 0], [180, 0], [180, 30], [70, 30]]], True),
+    ([[[0, 20], [40, 28], [40, 38], [0, 30]],
+      [[70, 14], [180, 36], [180, 66], [70, 44]]], True),
 ])
 def test_sloped_receipt_line_membership_preserves_original_evidence(boxes, one_line):
-    request = {"image_sha256": "a" * 64, "box": [0, 0, 160, 65]}
+    request = {"image_sha256": "a" * 64, "box": [0, 0, 190, 70]}
     texts = ("实付", "80.00") if one_line else ("实付 80.00", "优惠 20.00")
     blocks = [{"text": text, "box": box, "confidence": 0.9}
               for text, box in zip(texts, boxes, strict=True)]

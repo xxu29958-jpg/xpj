@@ -2,6 +2,7 @@
 
 import json
 from copy import deepcopy
+from itertools import combinations
 
 from app.errors import AppError
 from app.services.learning_service import read_ocr_facts
@@ -77,11 +78,15 @@ def _validate_single_line(blocks) -> None:
     if dx == dy == 0:
         raise AppError("ocr_region_invalid", status_code=422)
     spans = [[-dy * x + dx * y for x, y in block["box"]] for block in blocks]
-    # Overlapping detector margins do not make two complete lines one line.
-    cores = [(min(span) + (max(span) - min(span)) / 4,
-              max(span) - (max(span) - min(span)) / 4) for span in spans]
-    if cores and max(lo for lo, _hi in cores) >= min(hi for _lo, hi in cores):
+    bands = [(min(span), max(span)) for span in spans]
+    if any(hi <= lo for lo, hi in bands):
         raise AppError("ocr_region_invalid", status_code=422)
+    # Baseline-aligned labels may be much smaller than the amount. Require a
+    # shared majority of each pair's shorter band, not matching font centres.
+    # Pairwise comparison also prevents a tiny block from bridging two rows.
+    for (lo, hi), (other_lo, other_hi) in combinations(bands, 2):
+        if min(hi, other_hi) - max(lo, other_lo) < min(hi - lo, other_hi - other_lo) / 2:
+            raise AppError("ocr_region_invalid", status_code=422)
 
 
 def merge_region_evidence(base, retry, request) -> dict:
