@@ -37,3 +37,39 @@ def test_sloped_receipt_line_membership_preserves_original_evidence(boxes, one_l
             merge_region_evidence(base, retry, request)
         assert caught.value.error == "ocr_region_invalid"
     assert base == original
+
+
+@pytest.mark.parametrize("region,selected,error", [
+    ([224, 261, 577, 307], 0, None),
+    ([280, 304, 510, 353], 1, None),
+    ([400, 261, 577, 307], None, "ocr_region_incomplete"),
+    ([224, 261, 577, 340], None, "ocr_region_incomplete"),
+    ([224, 261, 577, 353], None, "ocr_region_invalid"),
+    ([224, 300, 577, 307], None, "ocr_region_incomplete"),
+])
+def test_touching_detector_borders_preserve_the_other_original_line(region, selected, error):
+    # Geometry captured from an installed full-line retry: adjacent detector
+    # margins overlap although the two visible text lines are separate.
+    blocks = [
+        {"text": "商户名称", "confidence": 0.98,
+         "box": [[239, 262], [565, 262], [565, 307], [239, 307]]},
+        {"text": "登记编号", "confidence": 0.99,
+         "box": [[291, 304], [497, 306], [497, 352], [290, 350]]},
+    ]
+    base = {"input_sha256": "a" * 64, "width": 932, "height": 1695, "blocks": blocks}
+    left, top, right, bottom = region
+    retry = {**base, "region": region, "identity": {}, "timings_ms": {}, "decoding": {},
+             "blocks": [{"text": "重读结果", "confidence": 0.95,
+                         "box": [[left, top], [right, top], [right, bottom], [left, bottom]]}]}
+    original = deepcopy(base)
+    request = {"image_sha256": base["input_sha256"], "box": region}
+    if error:
+        with pytest.raises(AppError) as caught:
+            merge_region_evidence(base, retry, request)
+        assert caught.value.error == error
+    else:
+        result = merge_region_evidence(base, retry, request)
+        assert result["blocks"][selected] == retry["blocks"][0]
+        assert result["blocks"][1 - selected] == original["blocks"][1 - selected]
+        assert result["regional_retry"]["previous_blocks"] == [original["blocks"][selected]]
+    assert base == original
