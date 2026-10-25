@@ -97,7 +97,7 @@ def _write_manifest(root, *, slot: str, version: str = "1.2.0"):
     executable = "ticketbox-manager.exe" if slot == "manager" else "ticketbox-backend.exe"
     manifest = root / "BUILD_PROVENANCE.json"
     document = {
-        "schema_version": 1 if slot == "manager" else 3,
+        "schema_version": 1 if slot == "manager" else 4,
         "artifact_type": (
             "ticketbox-frozen-desktop-manager" if slot == "manager" else "ticketbox-frozen-backend"
         ),
@@ -106,6 +106,21 @@ def _write_manifest(root, *, slot: str, version: str = "1.2.0"):
         "source": _snapshot({"source/main.py": b"print('safe')"}),
         "payload": _payload(root, {executable: b"MZ-safe"}),
     }
+    if slot == "backend":
+        payload = _payload(root, {
+            executable: b"MZ-safe",
+            "DATABASE_GENERATION_PROGRAM.json": b"{}",
+            "ticketbox-database-maintenance.exe": b"MZ-helper",
+        })
+        records = {record["path"]: record for record in payload["files"]}
+        payload["executable"] = records[executable]
+        payload["database_generation_program"] = records["DATABASE_GENERATION_PROGRAM.json"]
+        payload["database_maintenance_helper"] = records["ticketbox-database-maintenance.exe"]
+        payload["database_maintenance_helper_smoke"] = {
+            "schema": "ticketbox-database-maintenance-helper-smoke-v1",
+            "private_build_path": r"C:\secret\helper",
+        }
+        document["payload"] = payload
     document["version" if slot == "manager" else "backend_version"] = version
     manifest.write_text(json.dumps(document), encoding="utf-8")
     return manifest, document
@@ -302,7 +317,7 @@ def test_bundle_validates_manager_and_backend_manifest_schemas(tmp_path, monkeyp
             "slot": "backend",
             "manifest_state": "valid",
             "artifact_type": "ticketbox-frozen-backend",
-            "schema_version": 3,
+            "schema_version": 4,
             "version": "1.2.0.7",
             "generated_at_utc": "2026-07-13T00:00:00Z",
             "recorded_source_sha256": backend_document["source"]["fingerprint"],
@@ -361,14 +376,23 @@ def test_manifest_summary_distinguishes_unreadable_and_oversized_evidence(tmp_pa
     }
 
 
-def test_bundle_reports_payload_mismatch_without_repeating_recorded_hashes(tmp_path, monkeypatch) -> None:
-    manifest, document = _write_manifest(tmp_path / "manager", slot="manager")
-    (manifest.parent / document["payload"]["executable"]["path"]).write_bytes(b"MZ-tampered")
-    monkeypatch.setattr(diagnostic_bundle, "_manifest_paths", lambda: (manifest,))
+@pytest.mark.parametrize("slot,record_key", [
+    ("manager", "executable"),
+    ("backend", "database_generation_program"),
+    ("backend", "database_maintenance_helper"),
+])
+def test_bundle_reports_payload_mismatch_without_repeating_recorded_hashes(
+    tmp_path, monkeypatch, slot, record_key,
+) -> None:
+    manager, _ = _write_manifest(tmp_path / "manager", slot="manager")
+    manifest, document = _write_manifest(tmp_path / slot, slot=slot)
+    (manifest.parent / document["payload"][record_key]["path"]).write_bytes(b"MZ-tampered")
+    paths = (manifest,) if slot == "manager" else (manager, manifest)
+    monkeypatch.setattr(diagnostic_bundle, "_manifest_paths", lambda: paths)
 
     _, payload = _read_payload(export_diagnostic_bundle({}, output_dir=tmp_path / "downloads"))
 
-    build = payload["builds"][0]
+    build = next(item for item in payload["builds"] if item["slot"] == slot)
     assert build["manifest_state"] == "valid"
     assert build["installed_payload_integrity"] == "mismatch"
     assert "payload_sha256" not in build
