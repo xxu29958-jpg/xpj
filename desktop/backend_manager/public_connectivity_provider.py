@@ -16,7 +16,8 @@ from backend_manager.cloudflared_probe import (
     ManagedConnectorExpectation,
 )
 from backend_manager.cloudflared_probe import probe_cloudflared as default_cloudflared_probe
-from backend_manager.product_data import ProductDataError, derive_desktop_pending_token
+from backend_manager.product_auth_check import ProductAuthIdentity
+from backend_manager.product_data import ProductDataError, derive_desktop_pending_token, read_product_auth_identity
 from backend_manager.product_identity import (
     ProductCredentialError,
     ProductSession,
@@ -54,6 +55,7 @@ class PublicConnectivityContext:
     public_origin_configured: bool | None
     session: ProductSession | None = field(default=None, repr=False)
     connector_expectation: ManagedConnectorExpectation | None = field(default=None, repr=False)
+    local_identity: ProductAuthIdentity | None = field(default=None, repr=False)
 
 
 class _StopEvent(Protocol):
@@ -302,6 +304,7 @@ class PublicConnectivityProvider:
                     PublicEndpointContext(
                         public_origin=context.public_origin,
                         session=context.session,
+                        local_identity=context.local_identity,
                     )
                 )
                 public_checked_at = now
@@ -406,6 +409,7 @@ def build_public_connectivity_provider(
     *,
     product_session_loader: Callable[[str], ProductSession | None] = load_product_session,
     product_recovery_loader: Callable[[str], RebindRecovery | None] = load_rebind_recovery,
+    product_identity_reader: Callable[[str, ProductSession], ProductAuthIdentity | None] = read_product_auth_identity,
     cloudflared_probe: Callable[[ManagedConnectorExpectation | None], CloudflaredProbeResult] = (
         default_cloudflared_probe
     ),
@@ -431,6 +435,7 @@ def build_public_connectivity_provider(
         elif snapshot.mobile_endpoint_state == "public_configured_unverified" and public_origin:
             public_origin_configured = True
         session: ProductSession | None = None
+        local_identity: ProductAuthIdentity | None = None
         if full and public_origin_configured is True:
             try:
                 session = product_session_loader(config.expected_installation_id)
@@ -452,11 +457,17 @@ def build_public_connectivity_provider(
                         session = None
             except (ProductCredentialError, ProductDataError):
                 session = None
+            if session is not None and _origin_state(snapshot) is OriginState.HEALTHY:
+                try:
+                    local_identity = product_identity_reader(config.backend_origin, session)
+                except ProductDataError:
+                    local_identity = None
         return PublicConnectivityContext(
             origin=_origin_state(snapshot),
             public_origin=public_origin,
             public_origin_configured=public_origin_configured,
             session=session,
+            local_identity=local_identity,
             # The current installed release has no protected connector
             # projection. Absence is material: external evidence cannot be
             # promoted to managed ownership.

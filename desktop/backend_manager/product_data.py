@@ -28,6 +28,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Final
 
+from backend_manager.product_auth_check import ProductAuthIdentity, parse_auth_check
 from backend_manager.product_identity import ProductSession
 
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -179,6 +180,26 @@ def _required_response_text(payload: Mapping[str, object], key: str, limit: int)
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
         raise ProductDataError("后端绑定响应合同不完整。")
     return value.strip()
+
+
+def read_product_auth_identity(
+    backend_origin: str,
+    session: ProductSession,
+    *,
+    timeout_seconds: float = 1.0,
+    opener: urllib.request.OpenerDirector | None = None,
+) -> ProductAuthIdentity | None:
+    """Read fresh stable identity only from the attested loopback Backend."""
+    _validated_loopback_origin(backend_origin)
+    request = urllib.request.Request(
+        f"{backend_origin.rstrip('/')}/api/auth/check",
+        headers=_auth_headers(session.session_token),
+        method="GET",
+    )
+    result = parse_auth_check(_read_json_response(opener or _opener(), request, timeout_seconds=timeout_seconds))
+    if result is None or result[1] != "current" or result[0].ledger_id != session.ledger_id:
+        return None
+    return result[0]
 
 
 def _optional_response_text(

@@ -1,0 +1,387 @@
+{
+  "ingress": [
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/app/upload\\-screenshot)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/auth/check|/api/auth/pair|/api/auth/refresh)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/bill\\-splits/[^/]+/accept|/api/bill\\-splits/[^/]+/cancel|/api/bill\\-splits/[^/]+/reject|/api/bill\\-splits/inbox|/api/bill\\-splits/sent)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/budget/advise|/api/budget/advisor/inputs|/api/budget/advisor/status|/api/budget/arrangements/[^/]+|/api/budget/arrangements/[^/]+/history|/api/budget/discretionary|/api/budget/envelopes/[^/]+|/api/budget/envelopes/history/list)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/budgets/monthly|/api/budgets/monthly/[^/]+|/api/budgets/monthly/[^/]+/history)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/dashboard/cards)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/debts|/api/debts/[^/]+|/api/debts/[^/]+/activity|/api/debts/[^/]+/adjustments|/api/debts/[^/]+/forgive|/api/debts/[^/]+/kind|/api/debts/[^/]+/repayment\\-proposals|/api/debts/[^/]+/repayment\\-proposals/[^/]+/confirm|/api/debts/[^/]+/repayment\\-proposals/[^/]+/reject|/api/debts/[^/]+/repayment\\-proposals/[^/]+/withdraw|/api/debts/[^/]+/repayment\\-voids|/api/debts/[^/]+/repayments|/api/debts/[^/]+/split\\-agreement|/api/debts/[^/]+/split\\-change\\-proposals|/api/debts/[^/]+/split\\-change\\-proposals/[^/]+/accept|/api/debts/[^/]+/split\\-change\\-proposals/[^/]+/reject|/api/debts/[^/]+/split\\-change\\-proposals/[^/]+/withdraw|/api/debts/[^/]+/void|/api/debts/parse\\-bill|/api/debts/receivables)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/duplicates)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/exchange\\-rates|/api/exchange\\-rates/[^/]+/[^/]+|/api/exchange\\-rates/conversion|/api/exchange\\-rates/reference)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/expenses/[^/]+|/api/expenses/[^/]+/confirm|/api/expenses/[^/]+/corrections|/api/expenses/[^/]+/fact\\-bundle|/api/expenses/[^/]+/funding|/api/expenses/[^/]+/fx|/api/expenses/[^/]+/image|/api/expenses/[^/]+/items|/api/expenses/[^/]+/items/acknowledge\\-mismatch|/api/expenses/[^/]+/mark\\-not\\-duplicate|/api/expenses/[^/]+/ocr/retry|/api/expenses/[^/]+/ocr/tasks|/api/expenses/[^/]+/offsets|/api/expenses/[^/]+/offsets/[^/]+/corrections|/api/expenses/[^/]+/offsets/[^/]+/voids|/api/expenses/[^/]+/original|/api/expenses/[^/]+/original/attach|/api/expenses/[^/]+/original/cleanup/cancel|/api/expenses/[^/]+/original/cleanup/retry|/api/expenses/[^/]+/original/replenish|/api/expenses/[^/]+/original/verify|/api/expenses/[^/]+/recognize\\-text|/api/expenses/[^/]+/reject|/api/expenses/[^/]+/repayment\\-draft|/api/expenses/[^/]+/revisions|/api/expenses/[^/]+/split\\-invite|/api/expenses/[^/]+/splits|/api/expenses/[^/]+/suggestions/[^/]+/accept|/api/expenses/[^/]+/suggestions/[^/]+/reject|/api/expenses/[^/]+/thumbnail|/api/expenses/[^/]+/undo|/api/expenses/categories|/api/expenses/categories/preferences|/api/expenses/categories/preferences/[^/]+|/api/expenses/categories/preferences/[^/]+/delete|/api/expenses/categories/preferences/[^/]+/restore|/api/expenses/confirmed|/api/expenses/confirmed/batch\\-update|/api/expenses/export\\.csv|/api/expenses/manual|/api/expenses/months|/api/expenses/notification\\-drafts|/api/expenses/pending|/api/expenses/tags)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/exports/ledgers|/api/exports/portable)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/funds/accounts|/api/funds/accounts/[^/]+|/api/funds/accounts/[^/]+/activities|/api/funds/accounts/[^/]+/activities/void|/api/funds/accounts/[^/]+/credit\\-applications|/api/funds/accounts/[^/]+/credit\\-applications/void|/api/funds/accounts/[^/]+/fees|/api/funds/accounts/[^/]+/installments|/api/funds/accounts/[^/]+/repay|/api/funds/accounts/[^/]+/repayments/void|/api/funds/accounts/existing\\-debts/list|/api/funds/accounts/summary/net\\-worth|/api/funds/accounts/templates/list)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/goals|/api/goals/[^/]+|/api/goals/[^/]+/archive|/api/goals/[^/]+/debt\\-links|/api/goals/[^/]+/history|/api/goals/[^/]+/integrity\\-review/acknowledge|/api/goals/[^/]+/restore|/api/goals/[^/]+/target\\-date)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/health)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/imports/csv|/api/imports/csv/[^/]+|/api/imports/csv/[^/]+/apply|/api/imports/csv/[^/]+/errors\\.csv|/api/imports/csv/[^/]+/rows|/api/imports/csv/[^/]+/rows/[^/]+/review)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/income\\-plans|/api/income\\-plans/[^/]+|/api/income\\-plans/[^/]+/history|/api/income\\-plans/[^/]+/restore)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/insights/data\\-quality|/api/insights/recurring\\-candidates)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/invitations/accept|/api/invitations/preview)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/ledgers|/api/ledgers/[^/]+/audit|/api/ledgers/[^/]+/calendar|/api/ledgers/[^/]+/devices|/api/ledgers/[^/]+/devices/[^/]+/delete|/api/ledgers/[^/]+/devices/[^/]+/rename|/api/ledgers/[^/]+/devices/[^/]+/revoke|/api/ledgers/[^/]+/devices/pairing\\-codes|/api/ledgers/[^/]+/invitations|/api/ledgers/[^/]+/invitations/[^/]+/revoke|/api/ledgers/[^/]+/members|/api/ledgers/[^/]+/members/[^/]+/disable|/api/ledgers/[^/]+/members/[^/]+/role|/api/ledgers/[^/]+/members/[^/]+/transfer\\-owner|/api/ledgers/[^/]+/name|/api/ledgers/[^/]+/switch|/api/ledgers/[^/]+/switch/prepare)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/merchants/aliases|/api/merchants/aliases/[^/]+|/api/merchants/aliases/[^/]+/undo|/api/merchants/catalog|/api/merchants/catalog/[^/]+|/api/merchants/catalog/[^/]+/merge)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/payment\\-captures|/api/payment\\-captures/[^/]+|/api/payment\\-captures/[^/]+/decision)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/recurring/from\\-candidate|/api/recurring/items|/api/recurring/items/[^/]+|/api/recurring/items/[^/]+/archive|/api/recurring/items/[^/]+/history|/api/recurring/items/[^/]+/occurrences/[^/]+|/api/recurring/items/[^/]+/pause|/api/recurring/items/[^/]+/restore|/api/recurring/items/[^/]+/resume)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/recycle\\-bin|/api/recycle\\-bin/restore)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/repayment\\-drafts|/api/repayment\\-drafts/[^/]+|/api/repayment\\-drafts/[^/]+/as\\-expense|/api/repayment\\-drafts/[^/]+/confirm|/api/repayment\\-drafts/[^/]+/dismiss)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/reports/overview|/api/reports/overview\\.csv)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/rules/applications|/api/rules/applications/[^/]+/rollback|/api/rules/applications/[^/]+/rollback\\-preview|/api/rules/apply\\-confirmed|/api/rules/apply\\-pending|/api/rules/apply\\-pending/preview|/api/rules/categories|/api/rules/categories/[^/]+|/api/rules/categories/[^/]+/undo|/api/rules/preview)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/saved\\-views|/api/saved\\-views/[^/]+|/api/saved\\-views/[^/]+/results)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/settings/account|/api/settings/server)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/stats/lifestyle|/api/stats/monthly)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/system/runtime\\-compatibility)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/tags|/api/tags/[^/]+/delete|/api/tags/[^/]+/merge|/api/tags/[^/]+/rename|/api/tags/mutations/[^/]+/undo)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/api/tasks|/api/tasks/[^/]+|/api/tasks/[^/]+/cancel)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/static/shared/[^?]+)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/static/web/[^?]+)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/u/[^/]+)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/auth/join|/web/auth/join/accept|/web/auth/join/preview|/web/auth/ledgers|/web/auth/login|/web/auth/logout|/web/auth/whoami)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/bill\\-splits/[^/]+/accept|/web/bill\\-splits/[^/]+/cancel|/web/bill\\-splits/[^/]+/reject|/web/bill\\-splits/inbox|/web/bill\\-splits/sent)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/budget\\-advise|/web/budget\\-advise/history|/web/budget\\-advise/rates|/web/budget\\-advise/rates/reference|/web/budget\\-advise/save)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/budgets|/web/budgets/archive|/web/budgets/history|/web/budgets/save)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/categories|/web/categories/preferences/[^/]+/delete|/web/categories/uncategorized|/web/categories/uncategorized/bulk\\-set)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/confirmed|/web/confirmed/batch\\-update)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/dashboard/cards|/web/dashboard/cards/reset|/web/dashboard/cards/save)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/data\\-quality)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/debt\\-goals|/web/debt\\-goals/[^/]+/archive|/web/debt\\-goals/[^/]+/links|/web/debt\\-goals/[^/]+/restore|/web/debt\\-goals/[^/]+/review/acknowledge|/web/debt\\-goals/[^/]+/review/remove\\-voided|/web/debt\\-goals/[^/]+/target\\-date|/web/debt\\-goals/create|/web/debt\\-goals/new)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/debts|/web/debts/[^/]+|/web/debts/[^/]+/adjustments|/web/debts/[^/]+/forgive|/web/debts/[^/]+/kind|/web/debts/[^/]+/repayment\\-proposals|/web/debts/[^/]+/repayment\\-proposals/[^/]+/confirm|/web/debts/[^/]+/repayment\\-proposals/[^/]+/reject|/web/debts/[^/]+/repayment\\-proposals/[^/]+/withdraw|/web/debts/[^/]+/repayment\\-voids|/web/debts/[^/]+/repayments|/web/debts/[^/]+/split\\-agreement|/web/debts/[^/]+/split\\-agreement/preview|/web/debts/[^/]+/split\\-changes|/web/debts/[^/]+/split\\-changes/[^/]+/accept|/web/debts/[^/]+/split\\-changes/[^/]+/reject|/web/debts/[^/]+/split\\-changes/[^/]+/withdraw|/web/debts/[^/]+/void|/web/debts/new|/web/debts/rate)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/duplicates|/web/duplicates/[^/]+/decision|/web/duplicates/[^/]+/keep|/web/duplicates/[^/]+/reject\\-current|/web/duplicates/[^/]+/reject\\-original)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/envelopes|/web/envelopes/save)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/expenses/[^/]+/confirm|/web/expenses/[^/]+/confirmation/[^/]+|/web/expenses/[^/]+/correct|/web/expenses/[^/]+/correction\\-rate|/web/expenses/[^/]+/corrections|/web/expenses/[^/]+/edit|/web/expenses/[^/]+/funding|/web/expenses/[^/]+/fx|/web/expenses/[^/]+/fx\\-status|/web/expenses/[^/]+/image|/web/expenses/[^/]+/items/acknowledge\\-mismatch|/web/expenses/[^/]+/items/save|/web/expenses/[^/]+/ocr/retry|/web/expenses/[^/]+/ocr/tasks/[^/]+|/web/expenses/[^/]+/ocr/tasks/[^/]+/cancel|/web/expenses/[^/]+/offset\\-rate|/web/expenses/[^/]+/offsets|/web/expenses/[^/]+/offsets/[^/]+/voids|/web/expenses/[^/]+/original|/web/expenses/[^/]+/original/attach|/web/expenses/[^/]+/original/cleanup/cancel|/web/expenses/[^/]+/original/cleanup/retry|/web/expenses/[^/]+/original/health|/web/expenses/[^/]+/original/replenish|/web/expenses/[^/]+/original/verify|/web/expenses/[^/]+/recognize\\-text|/web/expenses/[^/]+/reject|/web/expenses/[^/]+/save|/web/expenses/[^/]+/split\\-invite|/web/expenses/[^/]+/splits/save|/web/expenses/[^/]+/thumbnail|/web/expenses/[^/]+/undo|/web/expenses/new|/web/expenses/new/result)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/export/portable)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/export\\.csv)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/exports)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/family|/web/family/invitations|/web/family/invitations/[^/]+/revoke|/web/family/members/[^/]+/disable|/web/family/members/[^/]+/role|/web/family/members/[^/]+/transfer\\-owner|/web/family/name)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/funds|/web/funds/conversion|/web/funds/save)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/goals|/web/goals/[^/]+/archive|/web/goals/[^/]+/edit|/web/goals/[^/]+/history|/web/goals/create)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/import|/web/import/[^/]+|/web/import/[^/]+/apply|/web/import/[^/]+/errors\\.csv|/web/import/[^/]+/rows/[^/]+/review|/web/import/confirm|/web/import/preview)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/income\\-plans|/web/income\\-plans/[^/]+/archive|/web/income\\-plans/[^/]+/edit|/web/income\\-plans/[^/]+/history|/web/income\\-plans/[^/]+/restore|/web/income\\-plans/create)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/library)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/merchants|/web/merchants/aliases/[^/]+/delete|/web/merchants/aliases/[^/]+/toggle|/web/merchants/aliases/[^/]+/undo|/web/merchants/aliases/create|/web/merchants/catalog/[^/]+/delete|/web/merchants/catalog/[^/]+/merge|/web/merchants/catalog/[^/]+/rename|/web/merchants/catalog/[^/]+/toggle|/web/merchants/catalog/create)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/originals)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/overview)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/payment\\-captures/[^/]+/decision)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/pending|/web/pending/batch\\-reject|/web/pending/batch\\-undo|/web/pending/upload)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/receivables)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/recurring|/web/recurring/[^/]+/archive|/web/recurring/[^/]+/edit|/web/recurring/[^/]+/history|/web/recurring/[^/]+/occurrence|/web/recurring/[^/]+/pause|/web/recurring/[^/]+/restore|/web/recurring/[^/]+/resume|/web/recurring/confirm\\-candidate|/web/recurring/create)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/recycle\\-bin|/web/recycle\\-bin/restore)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/reference/[^/]+/create|/web/reference/[^/]+/new)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/repayment\\-drafts|/web/repayment\\-drafts/[^/]+|/web/repayment\\-drafts/[^/]+/review)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/reports|/web/reports/export\\.csv)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/review/bulk)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/rules|/web/rules/[^/]+/delete|/web/rules/[^/]+/edit|/web/rules/[^/]+/toggle|/web/rules/[^/]+/undo|/web/rules/applications/[^/]+/rollback|/web/rules/apply\\-confirmed|/web/rules/apply\\-pending|/web/rules/create)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/saved\\-views|/web/saved\\-views/[^/]+/delete|/web/saved\\-views/[^/]+/open|/web/saved\\-views/[^/]+/rename)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/search)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/settings|/web/settings/account/name|/web/settings/devices/[^/]+/delete|/web/settings/devices/[^/]+/rename|/web/settings/devices/[^/]+/revoke|/web/settings/devices/pairing\\-codes)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
+      "path": "^(/web/tags|/web/tags/[^/]+/delete|/web/tags/[^/]+/edit|/web/tags/[^/]+/merge|/web/tags/[^/]+/rename|/web/tags/mutations/[^/]+/undo)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "service": "http_status:404"
+    }
+  ]
+}
