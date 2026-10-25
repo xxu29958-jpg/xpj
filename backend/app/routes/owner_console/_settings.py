@@ -171,7 +171,7 @@ def _post_public_base_url(
     ctx = _settings_ctx(
         request,
         db,
-        message="地址已保存，之后获取的上传地址使用新域名；已分享的旧地址请重新获取并分享。公网连接请在桌面管理器检查。",
+        message="地址已保存，之后获取的上传地址使用新域名；已分享的旧地址请重新获取并分享。公网连接请回到小票夹管理器设置并检查。",
     )
     return templates.TemplateResponse(request=request, name="settings/public_base_url.html", context=ctx)
 

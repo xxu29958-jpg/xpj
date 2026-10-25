@@ -12,9 +12,9 @@
 <section class="workspace-section" aria-labelledby="public-setup">
   <h2 id="public-setup">先准备连接，再获取上传地址</h2>
   <ol class="workspace-note">
-    <li>先在域名与隧道服务中，将自己的 HTTPS 域名连接到这台电脑。桌面管理器负责检查已有连接，目前不提供创建域名或隧道的功能。</li>
-    <li>把自己的 HTTPS 服务地址填在下方并保存，再到桌面管理器运行「完整检查」。</li>
-    <li>检查通过后，<a href="/owner/pairing">连接安卓手机</a>或<a href="/owner/upload-links">获取 iPhone 上传链接</a>。</li>
+    <li>先在 Cloudflare 中准备 Tunnel、HTTPS 域名和对应的公开路由。</li>
+    <li>在下方保存服务地址，然后回到小票夹管理器选择「设置公网连接」，按提示确认 Windows 权限并填写 Cloudflare 连接凭据。</li>
+    <li>管理器的「完整检查」通过后，<a href="/owner/pairing">连接安卓手机</a>或<a href="/owner/upload-links">获取 iPhone 上传链接</a>。</li>
   </ol>
   <p class="workspace-note">当前：{{ '地址已保存；本页没有公网连通性检查结果' if settings_view.public_base_url_configured else '尚未保存公网地址' }}。是否可用以桌面管理器的完整检查结果为准。</p>
 </section>
@@ -37,7 +37,7 @@
     </div>
   </details>
   <div class="workspace-save"><button type="submit" class="btn btn-primary">保存地址 {{ icon('arrow-right') }}</button></div>
-  {% if message %}<a class="workspace-check-action workspace-task" href="/owner/upload-links"><strong class="workspace-task__text">下一步：获取上传链接</strong>{{ icon('arrow-right') }}</a>{% endif %}
+  {% if message %}<p class="workspace-note"><strong>下一步：回到小票夹管理器设置公网连接，并运行「完整检查」。</strong></p>{% endif %}
 </form>
 </div>
 {% endblock %}

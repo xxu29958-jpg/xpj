@@ -52,6 +52,8 @@ def _api():
     user.SetTimer.restype = ctypes.c_size_t
     user.EndDialog.argtypes = (wintypes.HWND, ctypes.c_ssize_t)
     user.EndDialog.restype = wintypes.BOOL
+    user.ShowWindow.argtypes = (wintypes.HWND, ctypes.c_int)
+    user.ShowWindow.restype = wintypes.BOOL
     return user, callback
 
 
@@ -72,6 +74,10 @@ def confirm_native(request: ConnectorRequest, *, needs_token: bool) -> str | Non
                 user.SendMessageW(user.GetDlgItem(hwnd, _EDIT), 0xC5, 16384, 0)
             if not user.SetTimer(hwnd, 1, INPUT_SECONDS * 1000, None):
                 user.EndDialog(hwnd, 2)
+                return 1
+            # Consume the helper's SW_HIDE startup setting before DialogBox
+            # shows the input window; its console must remain hidden.
+            user.ShowWindow(hwnd, 1)
             return 1
         if event in {0x10, 0x113}:
             user.EndDialog(hwnd, 2)
