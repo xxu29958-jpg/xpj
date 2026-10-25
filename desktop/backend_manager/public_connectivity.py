@@ -11,6 +11,8 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Final
 
+from ticketbox_lifecycle.connector_schema import PROFILE
+
 
 class OwnershipState(StrEnum):
     UNCONFIGURED = "unconfigured"
@@ -132,6 +134,8 @@ _STATE_TEXT: Final[dict[StrEnum, str]] = {
 }
 
 _SUMMARY: Final[dict[str, tuple[str, str]]] = {
+    "connector_operation_interrupted": ("上次操作尚未完成", "继续上次操作以确认本机结果；如仍失败，请导出诊断。本地账本仍可使用。"),
+    "connector_operation_context_changed": ("上次配置已失效", "公网地址已变化，请关闭未完成的配置，再按当前地址重新设置。本地账本仍可使用。"),
     "connector_paused": ("公网已暂停", "本机连接已停止，重启电脑后仍保持暂停。本地账本可正常使用。"),
     "connector_pause_pending": ("正在关闭公网", "尚未确认连接停止，公网可能仍然开放。"),
     "connector_setup_available": ("尚未设置公网连接", "设置后可在外出时连接这台电脑中的小票夹。"),
@@ -295,6 +299,7 @@ class PublicConnectivityStatus:
     host_committed: bool = False
     pending_action: str | None = None
     pending_can_continue: bool = True
+    operation_phase: str | None = None
 
     @property
     def overall(self) -> OverallState:
@@ -345,6 +350,8 @@ class PublicConnectivityStatus:
             return "service_identity_conflict"
         if self.freshness is FreshnessState.STALE:
             return "public_connectivity_stale"
+        if self.pending_action is not None:
+            return "connector_operation_interrupted" if self.pending_can_continue else "connector_operation_context_changed"
         return self._connection_code()
 
     def _connection_code(self) -> str:
@@ -423,6 +430,8 @@ class PublicConnectivityStatus:
             "host_committed": self.host_committed,
             "pending_action": self.pending_action,
             "pending_can_continue": self.pending_can_continue,
+            "operation_phase": self.operation_phase,
+            "connector_profile": PROFILE if self.managed_action is ActionState.AVAILABLE else None,
             "observed_at": _utc_text(self.observed_at),
             "public_checked_at": _utc_text(self.public_checked_at),
             "in_progress": self.in_progress,

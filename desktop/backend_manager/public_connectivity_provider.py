@@ -384,7 +384,7 @@ class PublicConnectivityProvider:
             boundary = BoundaryState.UNKNOWN
         projection = context.connector_projection
         state = projection.state if projection else None
-        if public is PublicState.UNCONFIGURED or state is not None and not state.enabled:
+        if public is PublicState.UNCONFIGURED or state is not None and not state.enabled or projection is not None and projection.busy:
             observed_at = now
         elif public_checked_at is None:
             observed_at = None
@@ -516,10 +516,11 @@ def _connector_status_fields(projection: ConnectorProjection | None) -> dict:
     operation = projection.operation
     if operation is not None:
         fields["host_committed"] = operation.phase == "committed"
+        fields["operation_phase"] = operation.phase
         if projection.busy:
             fields["pending_action"] = operation.request.action
         fields["pending_can_continue"] = not (
-            operation.request.desired_enabled
+            (operation.request.desired_enabled or operation.request.action == "configure")
             and operation.request.expected_public_origin_revision != projection.origin_revision
         )
     return fields

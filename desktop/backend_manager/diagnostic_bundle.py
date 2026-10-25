@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from ticketbox_lifecycle.connector_schema import ACTIONS, PHASES, PROFILE
+
 from backend_manager.public_connectivity import (
     PUBLIC_CONNECTIVITY_STATUS_CODES,
     ActionState,
@@ -77,11 +79,18 @@ _PUBLIC_CONNECTIVITY_ENUMS = {
     "public": frozenset(item.value for item in PublicState),
     "boundary": frozenset(item.value for item in BoundaryState),
     "managed_action": frozenset(item.value for item in ActionState),
+    "pending_action": ACTIONS | {None},
+    "operation_phase": PHASES | {None},
+    "connector_profile": frozenset({PROFILE, None}),
 }
 _PUBLIC_CONNECTIVITY_MATCH_FIELDS = (
     "service_identity_match",
     "binary_identity_match",
     "tunnel_identity_match",
+    "configured",
+    "desired_enabled",
+    "host_committed",
+    "pending_can_continue",
 )
 
 
@@ -329,7 +338,7 @@ def _public_connectivity_summary(value: object) -> dict[str, object] | None:
     result: dict[str, object] = {}
     for key, allowed in _PUBLIC_CONNECTIVITY_ENUMS.items():
         item = value.get(key)
-        if not isinstance(item, str) or item not in allowed:
+        if not isinstance(item, (str, type(None))) or item not in allowed:
             return None
         result[key] = item
     code = value.get("code")

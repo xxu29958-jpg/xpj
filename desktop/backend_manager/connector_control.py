@@ -90,7 +90,7 @@ class ConnectorControl:
             if operation.phase == "committed":
                 self._completed(request)
             elif projection.busy:
-                if request.desired_enabled and request.expected_public_origin_revision != projection.origin_revision:
+                if (request.desired_enabled or request.action == "configure") and request.expected_public_origin_revision != projection.origin_revision:
                     self._incomplete("connector_origin_changed")
                 else:
                     self._incomplete(operation.result_code)

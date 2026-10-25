@@ -5,6 +5,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event, Thread
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -208,6 +209,26 @@ def test_late_public_result_cannot_publish_after_credential_or_origin_revision_c
     assert provider.snapshot().boundary is BoundaryState.UNKNOWN
     provider.request_refresh(full=False)
     assert provider.snapshot().public is PublicState.UNKNOWN
+    provider.shutdown()
+
+
+def test_interrupted_paused_credential_change_after_address_change_requires_closing():
+    request = SimpleNamespace(action="configure", desired_enabled=False, expected_public_origin_revision=7)
+    operation = SimpleNamespace(phase="failed_recoverable", request=request)
+    projection = SimpleNamespace(state=SimpleNamespace(configured=True, enabled=False),
+        operation=operation, busy=True, origin_revision=8)
+    context = replace(_context(False), connector_projection=projection)
+    provider = PublicConnectivityProvider(context_loader=lambda _full: context,
+        cloudflared_probe=lambda _expected: _cloud(ownership=OwnershipState.MANAGED, service=ServiceState.STOPPED),
+        public_endpoint_probe=lambda _context: pytest.fail("local continuation does not require a public request"),
+        executor=_InlineExecutor(), utcnow=_Clock().utcnow)
+    provider.request_refresh(full=False)
+    status = provider.snapshot()
+    assert status.freshness is FreshnessState.FRESH
+    assert status.code == "connector_operation_context_changed"
+    assert status.pending_action == "configure" and status.pending_can_continue is False
+    assert "关闭未完成的配置" in status.next_step
+    assert status.to_projection()["operation_phase"] == "failed_recoverable"
     provider.shutdown()
 
 

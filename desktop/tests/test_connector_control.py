@@ -128,22 +128,28 @@ def test_continue_cannot_reassign_another_users_request():
     assert control.snapshot()["state"] == "failed"
 
 
-def test_replacing_a_paused_connections_credential_keeps_the_pause():
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_replacing_a_paused_connections_credential_keeps_the_pause(interrupted):
     state = ConnectorState(STATE_SCHEMA, PROFILE, **_IDENTITY, revision=3, credential_generation=2,
         public_origin_revision=7, enabled=False, configured=True,
         operation_id="44444444-4444-4444-8444-444444444444", tunnel_id="55555555-5555-4555-8555-555555555555")
     projection = ConnectorProjection(_IDENTITY, 7, state, None, False)
+    current = [projection]
     sent = []
 
     def runner(request, _binding):
         sent.append(request)
+        if interrupted:
+            current[0] = replace(projection, origin_revision=8,
+                operation=_operation(request, "failed_recoverable"), busy=True)
+            raise LifecycleError("connector_channel_closed", "reply lost and Owner changed the address")
         return {"ok": True}
 
     control = ConnectorControl(lambda: ("http://127.0.0.1:8000", "fixture-session", _BINDING), _Public(),
-        runner=runner, reader=lambda *_args: projection, sid_reader=lambda: _SID)
+        runner=runner, reader=lambda *_args: current[0], sid_reader=lambda: _SID)
     control._work("configure", True)
     assert len(sent) == 1 and not sent[0].desired_enabled
-    assert "公网保持暂停" in control.snapshot()["message"]
+    assert ("关闭未完成的配置" if interrupted else "公网保持暂停") in control.snapshot()["message"]
 
 
 @pytest.mark.parametrize("changes", [{"code": ""}, {"phase": []}, {"operation_id": "other"}, {"request_hash": "b" * 64}, {"code": "secret token"}, {"phase": "applying"}])

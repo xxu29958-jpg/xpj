@@ -62,6 +62,7 @@ ERROR_MESSAGES = {
     "desktop_identity_rotation_required": "这次桌面凭证轮换已完成，请使用当前会话。",
     "desktop_invitation_not_supported": "桌面设备请使用绑定码完成配对，暂不支持通过邀请加入。",
     "desktop_bridge_required": "该入口仅接受本机桌面产品桥请求。",
+    "connector_projection_unavailable": "暂时无法确认公网连接状态，请刷新；仍不可用时请导出诊断。",
     "rate_limited": "尝试太频繁，请稍后再试。",
     "enrichment_capacity_full": "识别队列暂时已满，这张小票还没有保存，请稍后再试。",
     "file_too_large": "图片太大，请换一张较小的截图。",
