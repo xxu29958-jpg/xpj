@@ -6,7 +6,7 @@ import hashlib
 import hmac
 from datetime import timedelta
 
-from sqlalchemy import select, text, update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -15,12 +15,15 @@ from app.models import (
     AuthToken,
     BootstrapSecretConsumption,
     DatasetAuthorityRecord,
+    DesktopActivationAttempt,
     Device,
+    DeviceEnrollmentAttempt,
     InstallationOwnerClaim,
     Invitation,
     Ledger,
     LedgerMember,
     PairingCode,
+    SessionRefreshAttempt,
     UploadLink,
 )
 from app.services.identity_service import _installation_claim as claims
@@ -82,11 +85,15 @@ def _publish_restored_identity(db: Session, authority, claim, account, *, instal
     timestamp = now_utc()
     # Preserve credential history, but no credential recovered from the snapshot
     # (including a refresh/enrollment response) can regain access to the new host.
-    for model in (AuthToken, Device, PairingCode, UploadLink, Invitation):
-        db.execute(update(model).where(model.revoked_at.is_(None)).values(revoked_at=timestamp))
+    db.execute(update(AuthToken).where(AuthToken.revoked_at.is_(None)).values(revoked_at=timestamp))
+    db.execute(update(Device).where(Device.revoked_at.is_(None)).values(revoked_at=timestamp))
+    db.execute(update(PairingCode).where(PairingCode.revoked_at.is_(None)).values(revoked_at=timestamp))
+    db.execute(update(UploadLink).where(UploadLink.revoked_at.is_(None)).values(revoked_at=timestamp))
+    db.execute(update(Invitation).where(Invitation.revoked_at.is_(None)).values(revoked_at=timestamp))
     db.execute(update(AuthToken).values(grace_until=None))
-    for table in ("device_enrollment_attempts", "desktop_activation_attempts", "session_refresh_attempts"):
-        db.execute(text(f"UPDATE {table} SET expires_at = :now"), {"now": timestamp})
+    db.execute(update(DeviceEnrollmentAttempt).values(expires_at=timestamp))
+    db.execute(update(DesktopActivationAttempt).values(expires_at=timestamp))
+    db.execute(update(SessionRefreshAttempt).values(expires_at=timestamp))
     device = Device(account_id=account.id, device_name="Windows 恢复来源", platform="windows")
     db.add(device)
     db.flush()

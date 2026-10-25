@@ -11,25 +11,25 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 
-from app.database_maintenance_runtime import assert_maintenance_libpq_environment
+from app.database_maintenance_runtime import DatabaseMaintenanceContractError, assert_maintenance_libpq_environment
 
 
 def _payload(stream) -> dict:
     raw = stream.read(8193)
     if len(raw) > 8192:
-        raise RuntimeError("restore identity input is too large")
+        raise DatabaseMaintenanceContractError("restore identity input is too large")
     payload = json.loads(raw)
     if set(payload) != {"source", "installation_id", "backup_id", "operation_id", "bootstrap_secret", "recovery_secret"}:
-        raise RuntimeError("restore identity input is not closed")
+        raise DatabaseMaintenanceContractError("restore identity input is not closed")
     source = payload["source"]
     for value in (payload["installation_id"], payload["backup_id"], source["install_id"], source["dataset_id"]):
         if str(UUID(value)) != value:
-            raise RuntimeError("restore identity is not canonical")
+            raise DatabaseMaintenanceContractError("restore identity is not canonical")
     for secret in (payload["bootstrap_secret"], payload["recovery_secret"]):
         if not isinstance(secret, str) or not 32 <= len(secret) <= 256 or any(char.isspace() for char in secret):
-            raise RuntimeError("restore credential input is invalid")
+            raise DatabaseMaintenanceContractError("restore credential input is invalid")
     if type(source["restore_epoch"]) is not int or source["restore_epoch"] < 0:
-        raise RuntimeError("restore source epoch is invalid")
+        raise DatabaseMaintenanceContractError("restore source epoch is invalid")
     return payload
 
 
@@ -50,7 +50,7 @@ def _verify_originals(db) -> int:
         for reference in referenced_upload_paths(db, ledger.ledger_id):
             path = resolve_upload_path_for_tenant(reference, ledger.ledger_id)
             if path is None or not path.is_file():
-                raise RuntimeError("restore is missing a retained original reference")
+                raise DatabaseMaintenanceContractError("restore is missing a retained original reference")
     return count
 
 
@@ -64,7 +64,7 @@ def run_cold_restore(argv: list[str]) -> int:
     payload = _payload(sys.stdin.buffer)
     assert_maintenance_libpq_environment(args.pgpassfile)
     if not args.data_root.is_absolute():
-        raise RuntimeError("restore data root must be explicit")
+        raise DatabaseMaintenanceContractError("restore data root must be explicit")
     os.environ["TICKETBOX_DATA_DIR"] = str(args.data_root / "app")
     os.environ["UPLOAD_DIR"] = str(args.data_root / "app" / "uploads")
 
@@ -75,6 +75,7 @@ def run_cold_restore(argv: list[str]) -> int:
     from app.database._managed_postgres_contract import DATABASE_NAME, MIGRATOR_ROLE, SCHEMA_OWNER_ROLE
     from app.database._managed_postgres_role_authority import assume_managed_postgres_schema_owner
     from app.database._managed_postgres_url import validated_local_role_url
+    from app.database._release_schema_readiness import assert_release_head
     from app.services.cold_restore_identity import rebind_cold_dataset
     from app.services.secure_file import hold_installer_machine_secret_for_read
 
@@ -88,9 +89,7 @@ def run_cold_restore(argv: list[str]) -> int:
                 connection.execute(text("SET LOCAL lock_timeout = '10s'"))
                 assume_managed_postgres_schema_owner(connection, contract=SimpleNamespace(
                     database_name=DATABASE_NAME, migrator_role=MIGRATOR_ROLE, schema_owner_role=SCHEMA_OWNER_ROLE))
-                revision = tuple(connection.scalars(text("SELECT version_num FROM alembic_version")))
-                if revision != (payload["source"]["schema_revision"],):
-                    raise RuntimeError("restore schema does not match the selected backup")
+                assert_release_head(connection, expected_revision=payload["source"]["schema_revision"])
                 with Session(bind=connection, expire_on_commit=False) as db:
                     originals = _verify_originals(db)
                     result = rebind_cold_dataset(db, **payload)

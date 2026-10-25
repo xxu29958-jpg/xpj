@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from ticketbox_lifecycle.errors import LifecycleError
+from ticketbox_lifecycle.cli import _emit_failure
 from ticketbox_lifecycle.restore_cli import _restore_candidate
 from ticketbox_lifecycle.schemas import OwnerPairing
 from fakes import MemoryStores, RecordingAdapterBundle, make_install_request
@@ -27,6 +28,8 @@ def _candidate(tmp_path, monkeypatch, *, fail_at=None):
         extract_data=extract)
     def rebind(_request, _source, **_kwargs):
         events.append("identity-transaction")
+        if fail_at == "unexpected":
+            raise ValueError("private recovery secret must not reach the installer log")
         return OwnerPairing(pairing_code="12345678", pairing_expires_at="2026-10-25T12:00:00Z")
     platform = SimpleNamespace(runner=None, prepare_data=lambda *_args: None,
         rotate_credentials=lambda *_args: None, rebind_identity=rebind)
@@ -56,7 +59,7 @@ def test_restore_admits_writes_only_after_identity_and_candidate_health(tmp_path
     assert "owner_claim" not in adapters.applied
 
 
-@pytest.mark.parametrize("failure", ["extract", "data_ready", "committed"])
+@pytest.mark.parametrize("failure", ["extract", "data_ready", "committed", "unexpected"])
 def test_restore_failure_preserves_candidate_and_keeps_durable_fence(tmp_path, monkeypatch, failure):
     result, stores, adapters, events = _candidate(tmp_path, monkeypatch, fail_at=failure)
     assert not result.ok
@@ -67,3 +70,16 @@ def test_restore_failure_preserves_candidate_and_keeps_durable_fence(tmp_path, m
     assert adapters.scm.backend_fenced
     assert (tmp_path / "programdata/data/original").read_bytes() == b"preserved-original"
     assert result.installation_published == (failure == "committed")
+
+
+def test_unexpected_restore_failure_uses_existing_terminal_report_without_private_input(tmp_path, monkeypatch, capsys):
+    result, stores, adapters, _events = _candidate(tmp_path, monkeypatch, fail_at="unexpected")
+    assert result.code == "restore_incomplete"
+    assert stores.read_active().phase == "failed_recoverable"
+    assert adapters.scm.backend_fenced and not adapters.scm.autostart_enabled
+    _emit_failure(result)
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert captured.err.count("TicketboxLifecycle failed [restore_incomplete]") == 1
+    assert "preserve source and fenced candidate" in captured.err
+    assert "private recovery secret" not in captured.err
