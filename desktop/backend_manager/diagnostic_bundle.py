@@ -105,6 +105,8 @@ class _ManifestSpec:
     schema_version: int
     version_key: str
     top_level_keys: frozenset[str]
+    payload_record_keys: tuple[str, ...] = ("executable",)
+    payload_metadata_keys: tuple[str, ...] = ()
 
 
 _MANIFEST_SPECS = (
@@ -118,9 +120,11 @@ _MANIFEST_SPECS = (
     _ManifestSpec(
         slot="backend",
         artifact_type="ticketbox-frozen-backend",
-        schema_version=3,
+        schema_version=4,
         version_key="backend_version",
         top_level_keys=_BACKEND_MANIFEST_KEYS,
+        payload_record_keys=("executable", "database_generation_program", "database_maintenance_helper"),
+        payload_metadata_keys=("database_maintenance_helper_smoke",),
     ),
 )
 
@@ -214,8 +218,13 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _payload_integrity(manifest_path: Path, payload: object) -> tuple[str, str | None, str | None]:
-    if not isinstance(payload, dict) or set(payload) != {"algorithm", "fingerprint", "files", "executable"}:
+def _payload_integrity(
+    manifest_path: Path, payload: object, spec: _ManifestSpec,
+) -> tuple[str, str | None, str | None]:
+    expected_keys = {"algorithm", "fingerprint", "files", *spec.payload_record_keys, *spec.payload_metadata_keys}
+    if not isinstance(payload, dict) or set(payload) != expected_keys:
+        return "manifest_invalid", None, None
+    if any(not isinstance(payload[key], dict) for key in spec.payload_metadata_keys):
         return "manifest_invalid", None, None
     files = payload.get("files")
     fingerprint = _digest_text(payload.get("fingerprint"))
@@ -251,9 +260,11 @@ def _payload_integrity(manifest_path: Path, payload: object) -> tuple[str, str |
 
     if _snapshot_fingerprint(typed_records) != fingerprint:
         return "manifest_invalid", None, None
-    executable = _payload_record(payload.get("executable"))
-    if executable is None or executable not in typed_records:
+    references = [_payload_record(payload[key]) for key in spec.payload_record_keys]
+    if any(record is None or record not in typed_records for record in references):
         return "manifest_invalid", None, None
+    executable = references[0]
+    assert executable is not None
     return "verified", fingerprint, executable[2]
 
 
@@ -287,7 +298,7 @@ def _manifest_summary(path: Path, spec: _ManifestSpec) -> dict[str, object]:
         return base
     source = payload.get("source")
     artifact = payload.get("payload")
-    integrity, payload_digest, executable_digest = _payload_integrity(path, artifact)
+    integrity, payload_digest, executable_digest = _payload_integrity(path, artifact, spec)
     if integrity == "manifest_invalid":
         return base
     summary = {
