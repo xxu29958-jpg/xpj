@@ -355,6 +355,8 @@ class PublicConnectivityStatus:
         return self._connection_code()
 
     def _connection_code(self) -> str:
+        if self.ownership is OwnershipState.EXTERNAL_UNMANAGED:
+            return "external_connector_unmanaged"
         if self.configured is False and self.managed_action is ActionState.AVAILABLE:
             return "connector_setup_available"
         if self.configured and self.desired_enabled is False:
