@@ -142,7 +142,7 @@ def _manifest_paths() -> tuple[Path, ...]:
     manager_dir = Path(sys.executable).resolve().parent
     return (
         manager_dir / _MANIFEST_NAME,
-        manager_dir.parent / "program" / "ticketbox-backend" / _MANIFEST_NAME,
+        manager_dir.parent / "backend" / _MANIFEST_NAME,
     )
 
 
