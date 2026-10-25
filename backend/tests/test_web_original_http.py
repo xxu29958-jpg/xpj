@@ -19,8 +19,8 @@ def _browser(client, identity):
     return browser
 
 
-def _form(browser, expense_id, operation):
-    page = browser.get(f"/web/expenses/{expense_id}/original?ledger_id=owner")
+def _form(browser, expense_id, operation, *, origin=None):
+    page = browser.get(f"/web/expenses/{expense_id}/original", params={"ledger_id": "owner", **(origin or {})})
     assert page.status_code == 200, page.text
     suffix = f"/original/{operation}"
     return next((action, fields) for action, fields in hidden_post_forms(page.text).items()
@@ -31,7 +31,10 @@ def test_web_actual_image_review_and_ack_replay_do_not_rebaseline_changed_bytes(
     expense_id, saved, source = _bill(client, identity, legacy=True)
     original = _financial_snapshot(expense_id)
     browser = _browser(client, identity)
-    action, fields = _form(browser, expense_id, "verify")
+    origin = {"return_to": "reports", "return_month": "2026-05", "return_home_currency_code": "JPY"}
+    action, fields = _form(browser, expense_id, "verify", origin=origin)
+    for key, value in origin.items():
+        assert parse_qs(urlsplit(action).query)[key] == [value]
     assert fields["reviewed_sha256"] == ""
     image = browser.get(f"/web/expenses/{expense_id}/image?ledger_id=owner")
     assert image.status_code == 200 and image.content == source.read_bytes()
@@ -40,6 +43,11 @@ def test_web_actual_image_review_and_ack_replay_do_not_rebaseline_changed_bytes(
     accepted = browser.post(action, data=fields, headers=headers)
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["receipt"]["sha256"] == saved.image_hash
+    next_href = accepted.json()["next"]
+    for key, value in origin.items():
+        assert parse_qs(urlsplit(next_href).query)[key] == [value]
+    next_page = browser.get(next_href)
+    assert next_page.status_code == 200 and "返回原月份月报" in next_page.text
     source.write_bytes(b"changed after the accepted review")
     replay = browser.post(action, data=fields, headers=headers)
     assert replay.status_code == 200 and replay.json() == accepted.json()

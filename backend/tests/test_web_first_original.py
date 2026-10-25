@@ -5,9 +5,12 @@ financial facts, CAS, receipt settlement, publication locks and bytes are real.
 """
 import hashlib
 import json
+import re
 from dataclasses import replace
 from datetime import timedelta
+from html import unescape
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from sqlalchemy import select
@@ -25,14 +28,32 @@ from tests.web_expense_fact_test_support import confirmation_store as confirmati
 from tests.web_expense_fact_test_support import confirmation_web as confirmation_web
 
 
-def test_first_attachment_page_offers_optional_same_bill_action_only_to_writer(first_original_web):
+@pytest.mark.parametrize("status,fragment", [("pending", 0), ("pending", 1), ("confirmed", 0)])
+def test_first_attachment_page_offers_optional_same_bill_action_only_to_writer(first_original_web, status, fragment):
     case = first_original_web
-    response = case.client.get("/web/expenses/42/original?ledger_id=owner")
+    with case.session_factory() as db:
+        db.get(Expense, 42).status = status
+        db.commit()
+    origin = {"ledger_id": "owner", "return_to": "search", "return_query": "咖啡 & 茶"}
+    detail = case.client.get("/web/expenses/42/edit", params={**origin, "fragment": fragment})
+    assert detail.status_code == 200, detail.text
+    links = [unescape(href) for href in re.findall(r'<a\b[^>]*href="([^"]+)"', detail.text)]
+    original_links = [href for href in links if urlsplit(href).path == "/web/expenses/42/original"]
+    assert len(original_links) == (2 if status == "pending" else 1)
+    for original_href in original_links:
+        assert parse_qs(urlsplit(original_href).query) == {key: [value] for key, value in origin.items()}
+    response = case.client.get(original_href)
     assert response.status_code == 200, response.text
     assert "添加到这笔账单" in response.text and "/web/expenses/42/original/attach?" in response.text
     assert "没有小票也可以记账" in response.text
+    links = [unescape(href) for href in re.findall(r'<a\b[^>]*href="([^"]+)"', response.text)]
+    assert any(urlsplit(href).path == "/web/search" and parse_qs(urlsplit(href).query) == {
+        "ledger_id": ["owner"], "q": ["咖啡 & 茶"]} for href in links)
+    reload_href, = [href for href in links if urlsplit(href).path == "/web/expenses/42/original"]
+    assert parse_qs(urlsplit(reload_href).query) == {key: [value] for key, value in origin.items()}
+    assert case.client.get(reload_href).status_code == 200
     case.options[0].role = "viewer"
-    response = case.client.get("/web/expenses/42/original?ledger_id=owner")
+    response = case.client.get(original_href)
     assert response.status_code == 200 and "/original/attach?" not in response.text
 
 
