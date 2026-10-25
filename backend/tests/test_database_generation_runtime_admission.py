@@ -111,6 +111,25 @@ def test_installed_runtime_admits_exact_live_dataset_authority(
     assert engine.connection.executed_statement is RUNTIME_AUTHORITY_QUERY
 
 
+@pytest.mark.parametrize("epoch,backup,accepted", [
+    (2, "33333333-3333-4333-8333-333333333333", True),
+    (0, None, False), (1, "33333333-3333-4333-8333-333333333333", False),
+    (2, None, False), (2, "not-a-backup-id", False),
+])
+def test_restored_runtime_requires_exact_epoch_and_backup_lineage(
+    monkeypatch: pytest.MonkeyPatch, epoch: int, backup: str | None, accepted: bool,
+) -> None:
+    monkeypatch.setenv("TICKETBOX_INSTALLATION_ID", INSTALL_ID)
+    monkeypatch.setenv("TICKETBOX_DATASET_ID", DATASET_ID)
+    monkeypatch.setenv("TICKETBOX_EXPECTED_RESTORE_EPOCH", "2")
+    engine = _Engine(_row(restore_epoch=epoch, restored_from_backup_id=backup))
+    if accepted:
+        assert_database_generation_startup_ready(engine, _program())
+    else:
+        with pytest.raises(DatabaseMigrationPreflightError):
+            assert_database_generation_startup_ready(engine, _program())
+
+
 def test_runtime_authority_query_rejects_ownership_and_all_role_memberships() -> None:
     statement = str(RUNTIME_AUTHORITY_QUERY)
 

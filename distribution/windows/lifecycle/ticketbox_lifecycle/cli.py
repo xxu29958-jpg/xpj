@@ -27,6 +27,10 @@ from ticketbox_lifecycle.schemas import (
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "restore":
+        from ticketbox_lifecycle.restore_cli import main as restore_main
+
+        return restore_main(argv)
     if argv and argv[0] in {"cold-copy", "verify-cold-copy"}:
         from ticketbox_lifecycle.cold_copy_cli import main as cold_main
 

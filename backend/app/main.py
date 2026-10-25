@@ -173,6 +173,11 @@ _logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    if os.environ.get("TICKETBOX_RESTORE_VERIFY_ONLY") == "1":
+        wait_for_db()
+        init_db()
+        yield
+        return
     # Reject an overlapping old runner before startup can alter its PG state.
     from app.services.background_task_executor import start_executor
 
@@ -370,6 +375,16 @@ app.middleware("http")(web_session_gate)
 app.middleware("http")(static_owner_guard)
 app.middleware("http")(cloudflare_access_guard)
 app.middleware("http")(security_headers)
+
+
+@app.middleware("http")
+async def restore_candidate_admission(request: Request, call_next):
+    if os.environ.get("TICKETBOX_RESTORE_VERIFY_ONLY") == "1" and (
+        request.method != "GET" or request.url.path != "/api/health/installation"
+    ):
+        return Utf8JSONResponse(status_code=503, content={"error": "restore_verification_in_progress",
+            "message": "恢复候选正在核验，尚未开放业务。"})
+    return await call_next(request)
 
 app.include_router(auth.router)
 app.include_router(desktop.router)

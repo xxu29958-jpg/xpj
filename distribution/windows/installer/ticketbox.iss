@@ -148,9 +148,16 @@ begin
     Result := Copy(Rest, 1, Q - 1);
 end;
 
+function TicketboxRestoreRequested: Boolean;
+begin
+  Result := ExpandConstant('{param:RESTORECOPY|}') <> '';
+end;
+
 function TicketboxOperationId: String;
 begin
   Result := 'fresh-{#ReleaseManifestSha256}';
+  if TicketboxRestoreRequested then
+    Result := 'restore-{#ReleaseManifestSha256}';
 end;
 
 function TicketboxActivePath: String;
@@ -207,7 +214,8 @@ end;
 
 function TicketboxExactResumeMaterialization: Boolean;
 begin
-  Result := TicketboxExactActiveCanContinue or TicketboxCommittedReplayCanContinue;
+  Result := (not TicketboxRestoreRequested) and
+    (TicketboxExactActiveCanContinue or TicketboxCommittedReplayCanContinue);
 end;
 
 function TicketboxFreshMaterialization: Boolean;
@@ -225,11 +233,36 @@ begin
   Result := CompareText(ActualPath, ExpectedPath) = 0;
 end;
 
+function TicketboxActionRecoveryText: String;
+begin
+  if TicketboxRestoreRequested then
+    Result := '请保留源备份和失败候选。诊断后使用新的干净隔离环境恢复；不要清空数据或删除操作记录。'
+  else
+    Result := '请关闭安装程序，处理上述问题后重新运行同一个安装包。';
+end;
+
+function TicketboxRestorePreflight(var Reason: String): Boolean;
+begin
+  Result := True;
+  Reason := '';
+  if not TicketboxRestoreRequested then
+    Exit;
+  if (ExpandConstant('{param:SOURCEISOLATED|}') <> 'YES') or
+     (Length(ExpandConstant('{param:RESTORESHA256|}')) <> 64) or
+     (not FileExists(ExpandConstant('{param:RESTORECOPY|}'))) then
+    Reason := '恢复需要已隔离的原实例、完整冷备和可信 SHA-256'
+  else if DirExists(ExpandConstant('{commonappdata}\Ticketbox\data')) or
+     FileExists(TicketboxActivePath) or
+     FileExists(ExpandConstant('{commonappdata}\Ticketbox\machine\installation.json')) then
+    Reason := 'R1 恢复只接受干净隔离环境；保留已有数据和中断候选';
+  Result := Reason = '';
+end;
+
 function TicketboxPrepareFailure(const Reason: String): String;
 begin
   Log('Ticketbox preflight failed: ' + Reason);
   Result := Reason + '。' + #13#10 +
-    '请关闭安装程序，处理上述问题后重新运行同一个安装包。' + #13#10 +
+    TicketboxActionRecoveryText + #13#10 +
     '安装日志：' + ExpandConstant('{log}');
 end;
 
@@ -263,6 +296,11 @@ begin
   if Length(TicketboxExpectedReleaseManifestSha256) <> 64 then
   begin
     Result := TicketboxPrepareFailure('安装包缺少 immutable release manifest 身份');
+    Exit;
+  end;
+  if not TicketboxRestorePreflight(ResultFailure) then
+  begin
+    Result := TicketboxPrepareFailure(ResultFailure);
     Exit;
   end;
   if FileExists(TicketboxActivePath) and (not TicketboxExactActiveCanContinue()) then
@@ -396,6 +434,8 @@ begin
   OperationId := TicketboxOperationId;
   if TicketboxExactResumeMaterialization then
     Command := 'resume';
+  if TicketboxRestoreRequested then
+    Command := 'restore';
   ManifestPath := ExpandConstant('{app}\releases\{#ReleaseId}\release-manifest.json');
   ManifestSha := LowerCase(GetSHA256OfFile(ManifestPath));
   if (ManifestSha = '') or
@@ -413,6 +453,9 @@ begin
   Result := Command + ' --request "' +
     ExpandConstant('{tmp}\ticketbox-install-request.json') + '" --result "' +
     TicketboxResultPath + '"';
+  if TicketboxRestoreRequested then
+    Result := Result + ' --source "' + ExpandConstant('{param:RESTORECOPY|}') +
+      '" --sha256 "' + LowerCase(ExpandConstant('{param:RESTORESHA256|}')) + '" --source-isolated';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -431,7 +474,7 @@ begin
     TicketboxDeletePrivateResult;
     if TicketboxInstallFailed then
       SuppressibleMsgBox('小票夹安装未完成：' + TicketboxInstallFailureReason + '。' + #13#10 +
-        '请重新运行同一个安装包继续。' + #13#10 +
+        TicketboxActionRecoveryText + #13#10 +
         '安装日志：' + ExpandConstant('{log}'), mbError, MB_OK, IDOK)
     else
       SuppressibleMsgBox('小票夹安装完成。' + #13#10 + #13#10 +
@@ -447,7 +490,7 @@ begin
   begin
     WizardForm.FinishedHeadingLabel.Caption := '小票夹安装未完成';
     WizardForm.FinishedLabel.Caption := TicketboxInstallFailureReason + '。' + #13#10 +
-      '请关闭安装程序，然后重新运行同一个安装包继续。' + #13#10 +
+      TicketboxActionRecoveryText + #13#10 +
       '安装日志：' + ExpandConstant('{log}');
   end;
 end;

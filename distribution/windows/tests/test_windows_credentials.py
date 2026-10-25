@@ -42,6 +42,7 @@ def test_pgpass_consumer_topology_is_closed_and_follows_acl_verification() -> No
         "command.py",
         "postgres_connection.py",
         "windows_alembic.py",
+        "windows_cold_restore.py",
         "windows_credentials.py",
         "windows_dataset.py",
     }
@@ -55,6 +56,9 @@ def test_pgpass_consumer_topology_is_closed_and_follows_acl_verification() -> No
         "health",
     ):
         assert acl_index < APPLY_SEQUENCE.index(step)
+    restore = (runtime.parent / "restore_cli.py").read_text(encoding="utf-8")
+    assert restore.index('security.verify(bound, "acl")') < restore.index("platform.rotate_credentials(")
+    assert restore.index('security.verify(bound, "acl")') < restore.index("platform.rebind_identity(")
 
 
 def _request(tmp_path: Path) -> InstallRequest:

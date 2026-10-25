@@ -47,6 +47,12 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # Exact-symbol evidence, never a module/directory exemption or a handler registry.
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
+    ("distribution/windows/lifecycle/ticketbox_lifecycle/restore_cli.py", "_restore_candidate"): {
+        "sha256": "0755c461339de568acb016de7c49ddc6888f0b7c4dfc5537f80860942cc82584",
+        "owner": "existing Lifecycle failed-operation result, private result file and sanitized CLI stderr",
+        "test": "distribution/windows/tests/test_cold_restore_coordinator.py::test_unexpected_restore_failure_uses_existing_terminal_report_without_private_input",
+        "reason": "The coordinator fences Backend and publishes failed_recoverable through the existing operation owner. Known lifecycle codes survive; unknown errors become the static restore_incomplete result so recovery credentials cannot reach logs. main writes that same private result and calls the existing _emit_failure exactly once. The regression proves the durable fence, retained candidate, one terminal report and absence of private input; no retry or new financial writer is introduced.",
+    },
     (ANDROID + "data/repository/LedgerCalendarRepository.kt", "refresh"): {
         "sha256": "2aadb35b46bcb202aefdb7dc9d083f4713b9847ce239627bf83d5c65f9157fa4",
         "owner": "existing sanitized TicketboxNetwork output and unchanged read Result",

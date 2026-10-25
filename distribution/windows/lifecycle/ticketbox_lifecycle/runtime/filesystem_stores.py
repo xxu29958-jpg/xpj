@@ -38,10 +38,26 @@ from ticketbox_lifecycle.schemas import (
     HostObservation,
     InstallationBinding,
     InstallRequest,
+    RestoreOperation,
 )
 
 _ACTIVE_OPERATION_FIELDS = frozenset(field.name for field in fields(ActiveOperation))
 _INSTALLATION_BINDING_FIELDS = frozenset(field.name for field in fields(InstallationBinding))
+
+
+def _operation_type(payload: dict[str, object]):
+    restoring = payload.get("kind") == "restore"
+    expected = _ACTIVE_OPERATION_FIELDS | ({"expected_restore_epoch"} if restoring else set())
+    if set(payload) != expected:
+        raise LifecycleError("bad_operation_fields", "operation fields are not closed")
+    if payload.get("schema") != OPERATION_SCHEMA:
+        raise LifecycleError("bad_operation_schema", "operation schema is not v2")
+    if payload.get("kind") not in {"install", "restore"}:
+        raise LifecycleError("bad_operation_kind", "operation kind is unsupported")
+    if restoring and (type(payload["expected_restore_epoch"]) is not int or payload["expected_restore_epoch"] <= 0):
+        raise LifecycleError("bad_restore_epoch", "restore operation requires a positive target epoch")
+    operation_type = RestoreOperation if restoring else ActiveOperation
+    return operation_type, restoring
 
 
 class FilesystemStores:
@@ -137,20 +153,17 @@ class FilesystemStores:
 
     @staticmethod
     def _operation_from_payload(payload: dict[str, object]) -> ActiveOperation:
-        if set(payload) != _ACTIVE_OPERATION_FIELDS:
-            raise LifecycleError("bad_operation_fields", "operation fields are not closed")
-        if payload.get("schema") != OPERATION_SCHEMA:
-            raise LifecycleError("bad_operation_schema", "operation schema is not v2")
+        operation_type, restoring = _operation_type(payload)
         completed_step = payload.get("completed_step")
         if completed_step is not None and completed_step not in APPLY_SEQUENCE:
             raise LifecycleError("bad_operation_progress", "operation completed_step is invalid")
         health_attestation_key = str(payload.get("health_attestation_key") or "")
         if re.fullmatch(r"[0-9a-f]{64}", health_attestation_key) is None:
             raise LifecycleError("bad_operation_attestation", "operation health attestation key is invalid")
-        return ActiveOperation(
+        return operation_type(
             schema=OPERATION_SCHEMA,
             operation_id=str(payload["operation_id"]),
-            kind="install",
+            kind=payload["kind"],
             request_hash=str(payload["request_hash"]),
             target_release_id=str(payload["target_release_id"]),
             data_root=str(payload["data_root"]),
@@ -163,6 +176,7 @@ class FilesystemStores:
             dataset_id=str(payload.get("dataset_id") or ""),
             schema_revision=str(payload.get("schema_revision") or ""),
             health_attestation_key=health_attestation_key,
+            **({"expected_restore_epoch": payload["expected_restore_epoch"]} if restoring else {}),
         )
 
     def prepare(self, request: InstallRequest) -> None:

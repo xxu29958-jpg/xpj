@@ -14,6 +14,7 @@ other public symbols are direct re-exports.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 from sqlalchemy.engine import Connection
@@ -124,6 +125,10 @@ def init_db() -> None:
         alembic,
         installed_program=installed_program,
     )
+    if os.environ.get("TICKETBOX_RESTORE_VERIFY_ONLY") == "1":
+        if not installed_runtime or plan.action is not DatabaseLifecycleAction.NOOP:
+            raise DatabaseMigrationPreflightError("恢复候选只允许 exact schema 的只读核验。")
+        return
     record_schema_migration(
         BASELINE_MIGRATION_NAME,
         backend_version=BACKEND_VERSION,

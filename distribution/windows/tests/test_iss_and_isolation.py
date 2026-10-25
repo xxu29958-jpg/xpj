@@ -241,9 +241,15 @@ def test_prepare_to_install_failures_surface_reason_retry_and_log() -> None:
     )[0]
 
     assert "Log('Ticketbox preflight failed: ' + Reason)" in helper
-    assert "重新运行同一个安装包" in helper
+    assert "TicketboxActionRecoveryText" in helper
+    recovery = text.split("function TicketboxActionRecoveryText", 1)[1].split("function TicketboxPrepareFailure", 1)[0]
+    assert "重新运行同一个安装包" in recovery
+    assert "保留源备份和失败候选" in recovery
     assert "ExpandConstant('{log}')" in helper
-    assert prepare.count("Result := TicketboxPrepareFailure(") == 7
+    assert prepare.count("Result := TicketboxPrepareFailure(") == 8
+    assert "TicketboxRestorePreflight" in prepare
+    assert "RESTORESHA256" in recovery
+    assert "SOURCEISOLATED" in recovery
     assert "TicketboxPreparePrivateResult" in prepare
     assert "受保护的首次配对结果" in (
         ISS.parent / "setup_private_result.iss"

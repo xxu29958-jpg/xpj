@@ -83,6 +83,7 @@ def _assert_exact_authority(
     dataset_id: str,
     target_revision: str,
     revisions: tuple[str, ...],
+    expected_restore_epoch: int = 0,
 ) -> None:
     if values["session_user"] != RUNTIME_ROLE or values["current_user"] != RUNTIME_ROLE:
         raise DatabaseGenerationAdmissionError("live connection is not the exact runtime role")
@@ -110,8 +111,7 @@ def _assert_exact_authority(
         raise DatabaseGenerationAdmissionError("live dataset_id does not match the installed instance")
     if _canonical_uuid(client_generation, "live installation_id") != installation_id:
         raise DatabaseGenerationAdmissionError("live installation_id does not match the installed instance")
-    if type(restore_epoch) is not int or restore_epoch != 0 or restored_from_backup_id is not None:
-        raise DatabaseGenerationAdmissionError("live authority is not a fresh dataset")
+    _assert_restore_lineage(restore_epoch, expected_restore_epoch, restored_from_backup_id)
     if schema_revision != target_revision or revisions != (target_revision,):
         raise DatabaseGenerationAdmissionError("live schema is not the installed program target")
     if not isinstance(schema_min_compatible, str) or _PRODUCT_VERSION.fullmatch(schema_min_compatible) is None:
@@ -120,19 +120,35 @@ def _assert_exact_authority(
         raise DatabaseGenerationAdmissionError("live dataset semantics are not the closed contract")
 
 
+def _assert_restore_lineage(restore_epoch: object, expected_restore_epoch: int, restored_from_backup_id: object) -> None:
+    if type(restore_epoch) is not int or restore_epoch != expected_restore_epoch or restore_epoch < 0:
+        if expected_restore_epoch == 0:
+            raise DatabaseGenerationAdmissionError("fresh dataset cannot carry a restored generation")
+        raise DatabaseGenerationAdmissionError("live restore epoch does not match the installed binding")
+    if restore_epoch == 0:
+        if restored_from_backup_id is not None:
+            raise DatabaseGenerationAdmissionError("fresh dataset cannot carry restore lineage")
+    else:
+        _canonical_uuid(restored_from_backup_id, "restored_from_backup_id")
+
+
 def assert_database_generation_startup_ready(engine: object, program: object) -> None:
-    """Fail closed unless the one live dataset belongs to this fresh installation."""
+    """Fail closed unless the one live dataset matches the installed binding."""
 
     try:
         installation_id, dataset_id = _explicit_identity()
         target_revision = _target_revision(program)
         revisions, values = _observe(engine)
+        epoch = os.environ.get("TICKETBOX_EXPECTED_RESTORE_EPOCH", "0")
+        if not epoch.isdecimal() or len(epoch) > 18:
+            raise DatabaseGenerationAdmissionError("installed restore epoch is invalid")
         _assert_exact_authority(
             values,
             installation_id=installation_id,
             dataset_id=dataset_id,
             target_revision=target_revision,
             revisions=revisions,
+            expected_restore_epoch=int(epoch),
         )
     except DatabaseGenerationAdmissionError as exc:
         raise DatabaseMigrationPreflightError(
