@@ -10,6 +10,7 @@ import pytest
 
 from backend_manager.cloudflared_probe import CloudflaredProbeResult
 from backend_manager.config import ManagerConfig, SourceRuntimeConfig
+from backend_manager.product_auth_check import ProductAuthIdentity
 from backend_manager.product_identity import ProductSession
 from backend_manager.product_recovery import RebindRecovery
 from backend_manager.projection import RuntimeProjection
@@ -877,6 +878,7 @@ def test_builder_maps_existing_attested_runtime_and_loads_wincred_only_for_full(
     clock = _Clock()
     provider = build_public_connectivity_provider(
         runtime_provider,  # type: ignore[arg-type]
+        product_identity_reader=lambda _origin, _session: ProductAuthIdentity("server-1", "generation-1", "account-1", "device-1", "owner", "owner"),
         product_session_loader=lambda installation_id: (session_loads.append(installation_id), _session())[1],
         cloudflared_probe=lambda _expectation: _cloud(),
         public_endpoint_probe=lambda context: (public_contexts.append(context), _public())[1],
@@ -908,6 +910,7 @@ def test_builder_uses_attested_runtime_public_origin_when_manager_config_hides_i
     public_contexts: list[object] = []
     provider = build_public_connectivity_provider(
         runtime_provider,  # type: ignore[arg-type]
+        product_identity_reader=lambda _origin, _session: ProductAuthIdentity("server-1", "generation-1", "account-1", "device-1", "owner", "owner"),
         product_session_loader=lambda installation_id: (
             session_loads.append(installation_id),
             _session(),
@@ -930,6 +933,7 @@ def test_builder_blocks_predecessor_auth_while_completed_recovery_is_unsettled()
     public_contexts: list[PublicEndpointContext] = []
     provider = build_public_connectivity_provider(
         runtime_provider,  # type: ignore[arg-type]
+        product_identity_reader=lambda _origin, _session: ProductAuthIdentity("server-1", "generation-1", "account-1", "device-1", "owner", "owner"),
         product_session_loader=lambda _installation_id: _session(),
         product_recovery_loader=lambda _installation_id: _completed_recovery(),
         cloudflared_probe=lambda _expectation: _cloud(),
@@ -958,6 +962,7 @@ def test_builder_accepts_promoted_session_matching_completed_recovery() -> None:
     public_contexts: list[PublicEndpointContext] = []
     provider = build_public_connectivity_provider(
         runtime_provider,  # type: ignore[arg-type]
+        product_identity_reader=lambda _origin, _session: ProductAuthIdentity("server-1", "generation-1", "account-1", "device-1", "owner", "owner"),
         product_session_loader=lambda _installation_id: promoted,
         product_recovery_loader=lambda _installation_id: _completed_recovery(),
         cloudflared_probe=lambda _expectation: _cloud(),
@@ -983,6 +988,7 @@ def test_builder_does_not_report_unconfigured_when_backend_authority_is_unavaila
     )
     provider = build_public_connectivity_provider(
         runtime_provider,  # type: ignore[arg-type]
+        product_identity_reader=lambda _origin, _session: ProductAuthIdentity("server-1", "generation-1", "account-1", "device-1", "owner", "owner"),
         cloudflared_probe=lambda _expectation: _cloud(),
         public_endpoint_probe=lambda _context: _public(),
         executor=_InlineExecutor(),

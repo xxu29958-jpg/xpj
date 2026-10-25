@@ -8,10 +8,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Final, Protocol
 
+from backend_manager.product_auth_check import ProductAuthIdentity, parse_auth_check
 from backend_manager.product_identity import ProductSession
 from backend_manager.public_connectivity import BoundaryState, PublicState
 
@@ -26,6 +26,9 @@ BOUNDARY_GET_PATHS: Final = (
     "/u/ticketbox-public-probe-no-capability",
     "/uploads/ticketbox-public-probe-missing",
     "/static/uploads/ticketbox-public-probe-missing",
+    "/openapi.json",
+    "/static/owner/owner.css",
+    "/metrics",
 )
 _ALLOWED_GET_PATHS: Final = frozenset(
     {
@@ -35,35 +38,6 @@ _ALLOWED_GET_PATHS: Final = frozenset(
     }
 )
 _EXPLICIT_DENIALS: Final = frozenset({401, 403, 404, 405})
-_AUTH_KEYS: Final = frozenset(
-    {
-        "status",
-        "server_id",
-        "data_generation",
-        "account_public_id",
-        "device_public_id",
-        "account_name",
-        "ledger_id",
-        "ledger_name",
-        "device_name",
-        "role",
-        "scope",
-        "credential_state",
-    }
-)
-_AUTH_TEXT_LIMITS: Final = {
-    "server_id": 128,
-    "data_generation": 128,
-    "account_public_id": 128,
-    "device_public_id": 128,
-    "account_name": 120,
-    "ledger_id": 64,
-    "ledger_name": 120,
-    "device_name": 120,
-    "role": 32,
-    "scope": 32,
-    "credential_state": 16,
-}
 
 
 class PublicEndpointProbeError(RuntimeError):
@@ -74,6 +48,7 @@ class PublicEndpointProbeError(RuntimeError):
 class PublicEndpointContext:
     public_origin: str | None
     session: ProductSession | None = field(default=None, repr=False)
+    local_identity: ProductAuthIdentity | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -236,6 +211,8 @@ class BoundedHttpsTransport:
     ) -> BoundedHttpResponse:
         if path not in _ALLOWED_GET_PATHS:
             raise PublicEndpointProbeError("invalid public probe path")
+        if session_token is not None and path != "/api/auth/check":
+            raise PublicEndpointProbeError("credential not allowed on this probe path")
         elapsed = self._monotonic() - self._started_at
         remaining = self._deadline_seconds - elapsed
         if self._request_count >= self._max_requests or remaining <= 0:
@@ -311,39 +288,15 @@ def _boundary_result(transport: PublicTransport) -> BoundaryState:
     return BoundaryState.UNKNOWN if ambiguous else BoundaryState.SAFE
 
 
-def _required_auth_text(payload: Mapping[str, object], key: str) -> str | None:
-    value = payload.get(key)
-    limit = _AUTH_TEXT_LIMITS[key]
-    if not isinstance(value, str) or not value.strip() or value != value.strip() or len(value) > limit:
-        return None
-    return value
-
-
-def _auth_session_state(payload: dict[str, object] | None, session: ProductSession) -> str | None:
-    if payload is None or set(payload) != _AUTH_KEYS or payload.get("status") != "ok":
-        return None
-    values = {key: _required_auth_text(payload, key) for key in _AUTH_TEXT_LIMITS}
-    if any(value is None for value in values.values()) or values["scope"] != "app":
-        return None
-    metadata_matches = (
-        values["account_name"] == session.account_name
-        and values["ledger_id"] == session.ledger_id
-        and values["ledger_name"] == session.ledger_name
-        and values["device_name"] == session.device_name
-        and values["role"] == session.role
-    )
-    credential_state = values["credential_state"]
-    if not metadata_matches or credential_state not in {"current", "grace"}:
-        return None
-    return credential_state
-
-
 def _public_result(
     transport: PublicTransport,
     session: ProductSession | None,
+    local_identity: ProductAuthIdentity | None,
 ) -> tuple[PublicState, str]:
     if session is None:
         return PublicState.REACHABLE_UNVERIFIED, "public_reachable_unverified"
+    if local_identity is None:
+        return PublicState.REACHABLE_UNVERIFIED, "public_local_identity_unverified"
     response = _safe_get(
         transport,
         "/api/auth/check",
@@ -353,11 +306,13 @@ def _public_result(
         return PublicState.REACHABLE_UNVERIFIED, "public_session_unverified"
     if response.status != 200:
         return PublicState.WRONG_PRODUCT, "public_endpoint_wrong_product"
-    auth_state = _auth_session_state(response.payload, session)
-    if auth_state == "grace":
+    auth = parse_auth_check(response.payload)
+    if auth is not None and auth[1] == "grace":
         return PublicState.REACHABLE_UNVERIFIED, "public_session_unverified"
-    if auth_state != "current":
+    if auth is None:
         return PublicState.WRONG_PRODUCT, "public_endpoint_wrong_product"
+    if auth[0] != local_identity:
+        return PublicState.WRONG_PRODUCT, "public_identity_mismatch"
     return PublicState.AUTHENTICATED_REACHABLE, "public_authenticated_reachable"
 
 
@@ -389,7 +344,7 @@ def probe_public_endpoint(
         public = PublicState.WRONG_PRODUCT
         code = "public_endpoint_wrong_product"
     else:
-        public, code = _public_result(http, context.session)
+        public, code = _public_result(http, context.session, context.local_identity)
     if boundary is BoundaryState.VIOLATION:
         code = "public_boundary_violation"
     return PublicEndpointProbeResult(public=public, boundary=boundary, code=code)

@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
+from backend_manager.product_auth_check import ProductAuthIdentity
 from backend_manager.product_data import (
     PendingProductSession,
     ProductDataError,
@@ -17,6 +18,7 @@ from backend_manager.product_data import (
     list_product_ledgers,
     new_activation_attempt,
     pair_product_session,
+    read_product_auth_identity,
     revoke_product_session,
     switch_product_ledger,
 )
@@ -59,6 +61,61 @@ def _json_response(handler, payload: dict, *, status: int = 200) -> None:
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
+
+
+def test_fresh_local_auth_identity_requires_current_closed_contract_and_stays_loopback() -> None:
+    payload = {
+        "status": "ok", "server_id": "server-1", "data_generation": "generation-1",
+        "account_public_id": "account-1", "device_public_id": "device-1", "ledger_id": "owner",
+        "account_name": "我", "ledger_name": "我的账本", "device_name": "Desktop",
+        "role": "owner", "scope": "app", "credential_state": "current",
+    }
+    seen = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args: object) -> None:
+            pass
+
+        def do_GET(self) -> None:
+            seen.append((self.path, self.headers.get("Authorization"), self.headers.get("X-Ticketbox-Desktop-Bridge")))
+            _json_response(self, payload)
+
+    session = ProductSession("local-only-test-credential", "我", "owner", "我的账本", "Desktop", "owner", None)
+    with _Server(Handler) as server:
+        assert read_product_auth_identity(server.origin, session) == ProductAuthIdentity(
+            "server-1", "generation-1", "account-1", "device-1", "owner", "owner",
+        )
+        payload["credential_state"] = "grace"
+        assert read_product_auth_identity(server.origin, session) is None
+        payload["credential_state"] = "current"
+        payload["ledger_id"] = "another-ledger"
+        assert read_product_auth_identity(server.origin, session) is None
+        payload["ledger_id"] = "owner"
+        payload.pop("server_id")
+        assert read_product_auth_identity(server.origin, session) is None
+    assert seen == [("/api/auth/check", "Bearer local-only-test-credential", "v1")] * 4
+    with pytest.raises(ProductDataError):
+        read_product_auth_identity("https://untrusted.example", session)
+
+
+def test_fresh_local_identity_never_follows_a_redirect_with_its_bearer() -> None:
+    seen = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_args: object) -> None:
+            pass
+
+        def do_GET(self) -> None:
+            seen.append(self.path)
+            self.send_response(302)
+            self.send_header("Location", "/redirect-must-not-be-followed")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    session = ProductSession("test-credential", "我", "owner", "账本", "Desktop", "owner", None)
+    with _Server(Handler) as server, pytest.raises(ProductDataError):
+        read_product_auth_identity(server.origin, session)
+    assert seen == ["/api/auth/check"]
 
 
 def test_derive_desktop_pending_token_matches_backend_kdf() -> None:

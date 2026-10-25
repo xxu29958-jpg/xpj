@@ -7,6 +7,7 @@ from dataclasses import replace
 
 import pytest
 
+from backend_manager.product_auth_check import ProductAuthIdentity
 from backend_manager.product_identity import ProductSession
 from backend_manager.public_connectivity import BoundaryState, PublicState
 from backend_manager.public_endpoint_probe import (
@@ -32,6 +33,10 @@ def _session(**changes: object) -> ProductSession:
         expires_at="2026-10-01T00:00:00Z",
     )
     return replace(baseline, **changes)
+
+
+def _identity() -> ProductAuthIdentity:
+    return ProductAuthIdentity("server-1", "generation-1", "account-1", "device-1", "owner", "owner")
 
 
 def _auth_payload(**changes: object) -> dict[str, object]:
@@ -155,7 +160,7 @@ def test_matching_desktop_session_proves_authenticated_ticketbox_product() -> No
     transport = _Transport(_responses(authenticated_auth=BoundedHttpResponse(200, _auth_payload())))
 
     result = probe_public_endpoint(
-        PublicEndpointContext(public_origin="https://public.example", session=_session()),
+        PublicEndpointContext(public_origin="https://public.example", session=_session(), local_identity=_identity()),
         transport=transport,
     )
 
@@ -163,6 +168,38 @@ def test_matching_desktop_session_proves_authenticated_ticketbox_product() -> No
     assert result.boundary is BoundaryState.SAFE
     assert result.code == "public_authenticated_reachable"
     assert transport.requests.count(("/api/auth/check", True)) == 1
+
+
+@pytest.mark.parametrize("field", [
+    "server_id", "data_generation", "account_public_id", "device_public_id", "ledger_id", "role",
+])
+def test_same_names_cannot_hide_stable_identity_mismatch(field: str) -> None:
+    remote = _auth_payload(**{field: "member" if field == "role" else "other-identity"})
+    result = probe_public_endpoint(
+        PublicEndpointContext("https://public.example", _session(), _identity()),
+        transport=_Transport(_responses(authenticated_auth=BoundedHttpResponse(200, remote))),
+    )
+    assert result.public is PublicState.WRONG_PRODUCT
+    assert result.code == "public_identity_mismatch"
+
+
+def test_fresh_identity_allows_renamed_labels_without_repairing_credentials() -> None:
+    remote = _auth_payload(account_name="新名称", ledger_name="新账本名称", device_name="新设备名称")
+    result = probe_public_endpoint(
+        PublicEndpointContext("https://public.example", _session(), _identity()),
+        transport=_Transport(_responses(authenticated_auth=BoundedHttpResponse(200, remote))),
+    )
+    assert result.public is PublicState.AUTHENTICATED_REACHABLE
+
+
+def test_missing_local_identity_never_sends_product_secret_to_public_endpoint() -> None:
+    transport = _Transport(_responses())
+    result = probe_public_endpoint(
+        PublicEndpointContext("https://public.example", _session()), transport=transport,
+    )
+    assert result.public is PublicState.REACHABLE_UNVERIFIED
+    assert result.code == "public_local_identity_unverified"
+    assert ("/api/auth/check", True) not in transport.requests
 
 
 def test_grace_session_is_reachable_but_never_promoted_to_authenticated() -> None:
@@ -176,7 +213,7 @@ def test_grace_session_is_reachable_but_never_promoted_to_authenticated() -> Non
     )
 
     result = probe_public_endpoint(
-        PublicEndpointContext(public_origin="https://public.example", session=_session()),
+        PublicEndpointContext(public_origin="https://public.example", session=_session(), local_identity=_identity()),
         transport=transport,
     )
 
@@ -188,7 +225,7 @@ def test_grace_session_is_reachable_but_never_promoted_to_authenticated() -> Non
 @pytest.mark.parametrize("status", [401, 403, 404])
 def test_rejected_desktop_session_keeps_valid_health_reachable_unverified(status: int) -> None:
     result = probe_public_endpoint(
-        PublicEndpointContext(public_origin="https://public.example", session=_session()),
+        PublicEndpointContext(public_origin="https://public.example", session=_session(), local_identity=_identity()),
         transport=_Transport(_responses(authenticated_auth=BoundedHttpResponse(status, {"error": "invalid_token"}))),
     )
 
@@ -201,10 +238,6 @@ def test_rejected_desktop_session_keeps_valid_health_reachable_unverified(status
     [
         {"status": "ok"},
         _auth_payload(scope="admin"),
-        _auth_payload(account_name="别人"),
-        _auth_payload(ledger_id="family"),
-        _auth_payload(device_name="Unknown Desktop"),
-        _auth_payload(role="viewer"),
         _auth_payload(server_id=""),
         {**_auth_payload(), "unexpected": "field"},
     ],
@@ -217,7 +250,7 @@ def test_successful_auth_with_wrong_schema_or_local_metadata_is_wrong_product(
     if payload.get("ignored_marker") is None:
         payload.pop("ignored_marker", None)
     result = probe_public_endpoint(
-        PublicEndpointContext(public_origin="https://public.example", session=_session()),
+        PublicEndpointContext(public_origin="https://public.example", session=_session(), local_identity=_identity()),
         transport=_Transport(_responses(authenticated_auth=BoundedHttpResponse(200, payload))),
     )
 
@@ -228,7 +261,7 @@ def test_successful_auth_with_wrong_schema_or_local_metadata_is_wrong_product(
 
 def test_successful_non_200_auth_with_malformed_payload_is_wrong_product() -> None:
     result = probe_public_endpoint(
-        PublicEndpointContext(public_origin="https://public.example", session=_session()),
+        PublicEndpointContext(public_origin="https://public.example", session=_session(), local_identity=_identity()),
         transport=_Transport(_responses(authenticated_auth=BoundedHttpResponse(201, None))),
     )
 
@@ -238,7 +271,7 @@ def test_successful_non_200_auth_with_malformed_payload_is_wrong_product() -> No
 
 def test_non_200_auth_with_matching_schema_cannot_attest_product() -> None:
     result = probe_public_endpoint(
-        PublicEndpointContext(public_origin="https://public.example", session=_session()),
+        PublicEndpointContext(public_origin="https://public.example", session=_session(), local_identity=_identity()),
         transport=_Transport(
             _responses(authenticated_auth=BoundedHttpResponse(201, _auth_payload()))
         ),
@@ -387,7 +420,7 @@ def test_result_and_error_never_expose_session_or_public_origin() -> None:
     marker = "DO-NOT-EXPORT-PUBLIC-ORIGIN"
     origin = f"https://{marker.lower()}.example"
     result = probe_public_endpoint(
-        PublicEndpointContext(public_origin=origin, session=_session()),
+        PublicEndpointContext(public_origin=origin, session=_session(), local_identity=_identity()),
         transport=_Transport(_responses(authenticated_auth=PublicEndpointProbeError("DO-NOT-EXPORT-TRANSPORT-DETAIL"))),
     )
 
@@ -494,6 +527,15 @@ def test_https_transport_puts_session_only_in_authorization_header() -> None:
     assert _TOKEN not in request.full_url
     assert request.get_header("Authorization") == f"Bearer {_TOKEN}"
     assert _TOKEN not in repr(transport)
+
+
+@pytest.mark.parametrize("path", ["/api/health", *BOUNDARY_GET_PATHS])
+def test_https_transport_refuses_bearer_on_any_non_auth_probe(path: str) -> None:
+    opener = _Opener(_HttpResponse(b"{}"))
+    transport = BoundedHttpsTransport("https://public.example", opener=opener)
+    with pytest.raises(PublicEndpointProbeError, match="credential not allowed"):
+        transport.get(path, session_token=_TOKEN)
+    assert not opener.requests
 
 
 @pytest.mark.parametrize(

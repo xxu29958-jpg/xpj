@@ -248,58 +248,28 @@ Cloudflare Tunnel 配置 ingress 时，下面两类路径互不重叠。**不要
 
 `/web/auth/login` 负责浏览器绑定码登录；其它 `/web/*` 请求必须带后端签发的 `__Host-session` cookie。没有 cookie、cookie 无效或服务端固定 TTL 过期时，后端返回 `303`，`Location` 指向 `/web/auth/login?next=...`，并在无效 cookie 场景清除 cookie。有有效 cookie 时，后端按 session 绑定的账本渲染页面。服务端 Web token 写入 `auth_tokens.expires_at`，固定 8 小时有效，不做滑动刷新；到期后重新 pairing。所有 `/web` 与 `/owner` 非安全方法还必须通过同源来源头 + CSRF token 校验。
 
-允许公网（allowlist）：
+公网路径、方法和鉴权责任以 [完整路由清单](PUBLIC_ROUTE_CATALOG.md) 为准。
+清单逐项覆盖当前注册路由和实际 Android 声明，包括会话刷新、App 上传、资金账户、
+收入计划、任务、债务/分账、标签、还款草稿等产品入口。`/api/status/private` 继续私有。
+本机身份确认 `/web/auth/local`、Desktop 币种设置、`/owner`、`/desktop`、安装证明、
+管理/维护/引导 API、文档、metrics 和上传目录均不进入公网 ingress。
 
-| 路径前缀 | 用途 | 鉴权 |
-|---|---|---|
-| `/api/health` | Liveness 探测，只返回 `{"status":"ok"}` | 无 |
-| `/api/auth/check` | Android session token 校验 | Bearer token |
-| `/api/auth/pair` | Android 首次绑定（pairing code → session token）| 8 位 code，一次性 + 短 TTL |
-| `/api/system/runtime-compatibility` | 当前客户端写入前读取稳定运行兼容结论与币种绑定证明 | Bearer token |
-| `/api/expenses/*` `/api/reports/*` `/api/goals/*` `/api/dashboard/*` `/api/budgets/*` `/api/budget/*` `/api/recurring/*` `/api/merchants/*` `/api/rules/*` `/api/duplicates/*` `/api/imports/*` `/api/stats/*` `/api/me/*` `/api/exchange-rates/*` `/api/settings/*` `/api/ledgers/*` `/api/invitations/*` | Android / Web 账本主面；单数 `/api/budget/*` 承接本地试算、建议及月度储蓄/备用金安排 | Bearer token + viewer/member/owner 角色 |
-| `/u/{upload_key}` | iPhone UploadLink | 一次性 upload_key（URL-as-credential，必须 HTTPS）|
-| `/web/auth/login` | 浏览器登录页和绑定码提交 | GET 无 cookie 返回 200；POST 需 CSRF；成功后 `303` 并设置 `__Host-session` |
-| `/web/auth/logout` | 浏览器退出 | POST 需 CSRF；只撤销 web token 并清除 cookie |
-| `/web/auth/whoami` | 浏览器 session 自检 | 有效 `__Host-session` 返回 200；无效返回 `401 invalid_token` |
-| `/web/*` | 浏览器版账本 | Cloudflare Access JWT（生产建议） + `__Host-session` HttpOnly Secure cookie；`auth_tokens.expires_at` 固定 8h server-side TTL；无 cookie 返回 `303 Location: /web/auth/login?next=...` |
-| `/static/web/*` | `/web` 桌面账本 CSS/JS/font/vendor | 只放无用户数据的静态前端资产 |
-| `/static/shared/*` | `/web` 与 `/owner` 共享设计 token / confirm-modal 资源 | 只放无用户数据的共享静态资产；公网仅供 `/web` 渲染 |
+使用 [生成的 remote-managed ingress 配置](cloudflared-ingress.example.json)，
+将每条 hostname 改为同一个专用域名，Service 的端口改为该安装的 Backend 端口。
+必须保留最后的 `http_status:404`，移除同域名下其它宽泛或重叠的转发规则。
+不得把整个 `/api`、自动导出的所有 OpenAPI 路由或未分类 Web 路由直接放行。
+不要设置 `httpHostHeader` 为 localhost/127.0.0.1；Backend 必须看到公网 Host。
 
-拒绝公网（denylist / Tunnel 不要建路由）：
+配置只约束路径；HTTP 方法、App Bearer、Web cookie、UploadLink capability、角色、
+账本隔离和 CSRF 仍由 Backend 执行。可选 Access 只覆盖 `/web`、`/web/*` 和对应静态资源。
+Android API、认证刷新和 `/u/{upload_key}` 不得被 Access 登录页或 WAF JavaScript challenge 拦截。
 
-| 路径前缀 | 理由 |
-|---|---|
-| `/owner/*` | Owner Console 永远 loopback only；backend 自带 `require_owner_console_local`，Tunnel 路由层再 deny 一遍是 defense in depth |
-| `/api/admin/*` | backend 始终要求本机 peer + Host 和管理会话，没有公网放行开关；Tunnel 不要建路由 |
-| `/api/bootstrap/*` | `enable_http_bootstrap=false` 默认关；`/api/bootstrap/pairing-codes` 已挂 `require_admin_network_boundary`；Tunnel 不要建路由 |
-| `/api/maintenance/*` | 与 Admin 共用不可放宽的本机网络边界；仅在后端所在电脑执行 |
-| `/api/status/private` | 私有运行状态（版本、DB、上传目录等），需要 Bearer token；默认不走公网 allowlist |
-| `/docs` `/redoc` `/openapi.json` | `ENABLE_API_DOCS=false` 默认关 |
-| `/static/owner/*` | Owner Console 静态资源跟随 `/owner` loopback only，不走公网 |
-| `/static/uploads/*` | 上传图片目录永不公开；即使路径猜中也必须 404 |
-| `/static/*` 其它子树 | 默认不暴露；新增公网静态子树必须先有 ADR 和 allowlist |
-| 实际 uploads 目录 | 永不挂载为静态；图片只通过 `/api/expenses/{id}/image` 鉴权读 |
+## WAF rate limit 规则
 
-Tunnel 公网 hostname 配置时只给上面 allowlist 的路径建 Public Hostname 条目，每条 Service 都指 `http://127.0.0.1:8000` + path matcher。或者用单一 hostname + Cloudflare Rules / Workers 在边缘做路径过滤。
-
-## WAF rate limit 规则建议
-
-Cloudflare Free Plan 2022 起已经包含 unmetered rate limiting（不算钱），可以直接配。下面是按攻击面权衡的起步规则：
-
-| 规则名 | 匹配 | 限速 | 动作 | 理由 |
-|---|---|---|---|---|
-| upload-link-anti-scan | `path ~ "^/u/"` | 10 req/min/IP | challenge | UploadLink 凭证在 URL 里，必须挡爆破扫描 |
-| pair-anti-brute | `path eq "/api/auth/pair"` | 5 req/min/IP | block 10 min | 8 位 pairing code 防爆破；正常用户成功一次就够 |
-| auth-check-loose | `path eq "/api/auth/check"` | 60 req/min/IP | log only | App 启动时高频；不挡，但留可观测窗口 |
-| api-default | `path ~ "^/api/"` | 100 req/min/token (用 `Authorization` header 当 characteristic) | challenge | 正常 client 远低于；超过基本是凭证泄露后扫表 |
-| size-cap | `cf.threats.request.content_length gt 10485760` | n/a | block | matches backend `MAX_UPLOAD_SIZE_MB=10` |
-
-配置入口：Cloudflare dashboard → Security → WAF → Rate limiting rules。
-
-注意 `characteristic` 选择：
-- `/u/*` 用 client IP（无 token）
-- `/api/auth/pair` 用 client IP（pair 之前没 token）
-- 其它 `/api/*` 用 `Authorization` header（防止单 token 被多 IP 共享后绕单 IP 限）
+按 Cloudflare 当前账号实际可用能力配置，本文不声明套餐额度或无限免费规则。
+连接码和 UploadLink 的后端限流及有效期仍生效；边缘限流不能替代这些校验。
+原生 API 与 UploadLink 超限时使用客户端能识别的拒绝响应，不使用交互式 challenge。
+配额应按真实同步、上传和重试流量验证，不能用一个过低的 `/api/*` 全局阈值截断正常客户端。
 
 ## Cloudflare Access 四层部署
 
@@ -327,26 +297,25 @@ powershell -ExecutionPolicy Bypass -File scripts\check_public_boundary.ps1 `
 
 ## Tunnel config 形态
 
-2026 推荐**远程管理 tunnel**（config 放 Cloudflare dashboard，本机 cloudflared 只需要 token），不再用本机 `config.yml`。优点：
-- 多 replica HA 共享同一 tunnel ID
-- 改 ingress 不用重启本机进程
-- token 不掉地（dashboard 一次性 reveal）
+本专项使用专用 remotely-managed Tunnel 和专用 hostname；远端 DNS、ingress、Access/WAF
+及 Token 轮换由 Cloudflare 账号持有人管理。受管本机动作不需要账号密码、Global API Key
+或 `cert.pem`。Token-only connector 运行中会接收远端配置更新，本机 JSON/YAML 或历史探测
+回执不能锁定远端策略。验证时检查当前实际请求结果；该结果不等同于账号级配置审计。
 
-如果坚持要本机 config，最小 starter（**仅参考，实际部署用 dashboard**）：
+正式凭据采用 ACL 保护的明文 `--token-file`，不宣称“不落地”或 DPAPI 加密；输入必须在
+提升权限后的原生入口完成，不能把原始 Token 放入命令行、普通浏览器、环境变量、日志或操作记录。
+当前源码中受管四动作的交付资格以专项现行交接为准；手工外部 connector 不会自动变成受管实例。
 
-```yaml
-# 仅本机调试参考，生产用 dashboard remote-managed config
-tunnel: <tunnel-uuid>
-credentials-file: C:\Users\<you>\.cloudflared\<tunnel-uuid>.json
+重生成和检查路由材料：
 
-ingress:
-  # allowlist 优先匹配
-  - hostname: api.your-domain.com
-    path: ^/(web(?:/|$)|static/(?:web|shared)(?:/|$)|u/|api/(?:health$|auth/(?:check|pair)$|system/runtime-compatibility$|expenses(?:/|$)|reports(?:/|$)|goals(?:/|$)|dashboard(?:/|$)|budgets(?:/|$)|budget(?:/|$)|recurring(?:/|$)|merchants(?:/|$)|rules(?:/|$)|duplicates(?:/|$)|imports(?:/|$)|stats(?:/|$)|me(?:/|$)|exchange-rates(?:/|$)|settings(?:/|$)|ledgers(?:/|$)|invitations(?:/|$)))
-    service: http://127.0.0.1:8000
-  # catch-all return 404，绝对不要让其它路径漏到 backend
-  - service: http_status:404
+```powershell
+python backend/scripts/render_public_routes.py
+python backend/scripts/render_public_routes.py --check
 ```
+
+只编辑 `backend/scripts/public_route_catalog.py` 的审核分类，不手工改生成的清单或配置。
+变更后运行 `backend/packaging/tests/test_public_route_catalog.py`，核对实际端点、方法、Android
+消费者和全部私有路由，再在远端账号应用该配置并执行实际公网资格检查。
 
 ## 官方资料
 
