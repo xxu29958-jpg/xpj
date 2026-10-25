@@ -493,6 +493,7 @@ def edit_navigation_view(context: ExpenseReturnContext, *, expense_id: int, ledg
     return {
         "edit_return_fields": edit_context_params(**params),
         "edit_current_href": current_href,
+        "edit_original_href": flow_href(f"/web/expenses/{expense_id}/original", ledger_id=ledger_id, **params),
         "edit_reload_href": current_href + "&new_expensereview=1",
         "edit_return_href": return_href(ledger_id=ledger_id, default_path="/web/pending", **params),
         "edit_return_label": "返回原核对任务" if _review_origin(params) else "返回确认回执" if _receipt_origin(params) else return_label(context.return_to),

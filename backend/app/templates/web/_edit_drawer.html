@@ -146,7 +146,7 @@
     <summary>原件信息与识别</summary>
     <a class="product-button product-button--small" data-review-full href="{{ edit_current_href }}">完整整理</a>
     <p class="product-drawer-meta">{{ e.source_label }} · 上传于 {{ saved_time(e.created_at, ledger_timezone_name|default(none)) if e.created_at else '时间待核对' }}</p>
-    <a class="product-button product-button--small" href="/web/expenses/{{ e.id }}/original{{ '?ledger_id=' ~ selected_ledger_id }}">检查原件与继续处理</a>
+    <a class="product-button product-button--small" href="{{ edit_original_href }}">检查原件与继续处理</a>
     {% include "_expense_ocr_actions.html" %}
     <dl class="product-drawer-facts">
       <div>

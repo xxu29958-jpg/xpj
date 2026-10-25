@@ -17,6 +17,7 @@ from app.routes._web_expense_return_context import (
     ExpenseReturnContext,
     edit_context_params,
     expense_return_query_context,
+    flow_href,
     return_href,
     return_label,
 )
@@ -102,6 +103,7 @@ def web_original(request: Request, expense_id: int, ledger_id: str | None = None
                for action in ("attach", "verify", "replenish", "cleanup/retry", "cleanup/cancel")}
     ctx.update(original=health, original_expense=expense, original_intents=intents,
         message=request.query_params.get("msg", ""),
+        original_current_href=flow_href(root, ledger_id=selected, **origin),
         original_return_href=return_href(**origin, ledger_id=selected, default_path=f"/web/expenses/{expense_id}/edit"),
         original_return_label=return_label(return_context.return_to, default="账单详情"))
     ctx["original_amount_label"], _ = _expense_amount_labels(expense,

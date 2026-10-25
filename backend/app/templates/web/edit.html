@@ -135,7 +135,7 @@
       {% include "_expense_original_state.html" %}
       {% endif %}
       <details class="review-original-details"><summary>原件信息与识别</summary>
-      <a class="product-button" href="/web/expenses/{{ e.id }}/original{{ _q }}">检查原件与继续处理</a>
+      <a class="product-button" href="{{ edit_original_href }}">检查原件与继续处理</a>
       {% include "_expense_ocr_actions.html" %}
       </details>
     </section>
