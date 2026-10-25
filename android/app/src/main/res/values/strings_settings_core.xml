@@ -253,7 +253,7 @@
     <string name="sync_status_overview_caption_queued">离线改动已保留，恢复连接后会自动同步。</string>
     <string name="sync_status_overview_caption_binding_changed">有 %1$d 笔原提交的连接已变化，请核对并停止本机追踪；原记录会保留。</string>
     <string name="sync_status_overview_caption_settled">没有等待处理的离线改动。</string>
-    <string name="sync_status_quarantined_body">这 %1$d 笔操作不属于当前已验证的成员与设备。带原设备身份的操作会在恢复同一设备后重新出现；旧版本未记录主体的操作无法安全认领，只能继续保留或由你明确移除。</string>
+    <string name="sync_status_quarantined_body">这 %1$d 笔操作与当前账本、成员或设备身份不匹配。恢复同一设备后仍须核对账本身份；服务器从备份恢复前留下的操作不会自动发送。请保留原设备和未发送内容，先核对已入账结果。旧版本未记录身份的操作无法安全认领，可继续保留，或由你明确移除。</string>
     <string name="sync_status_quarantined_remove_button">移除隔离数据</string>
     <string name="sync_status_quarantined_remove_dialog_title">移除全部隔离操作？</string>
     <string name="sync_status_quarantined_remove_dialog_text">将永久删除 %1$d 笔不属于当前已验证设备的本地操作，不会影响当前设备的待同步内容。删除后无法找回。</string>
@@ -362,6 +362,6 @@
     <string name="settings_root_sync_directory_title">同步与后台任务</string>
     <string name="settings_root_sync_directory_subtitle">连接、待处理操作与小票识别</string>
     <string name="sync_status_review_entry_hint">查看原操作，核对后再继续</string>
-    <string name="sync_status_quarantine_entry_title">原设备身份不匹配</string>
+    <string name="sync_status_quarantine_entry_title">原账本或设备身份不匹配</string>
     <string name="sync_status_quarantine_entry_hint">%1$d 笔操作保留，不会自动放入当前账本</string>
 </resources>

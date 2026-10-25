@@ -28,6 +28,8 @@ R1 复用安装包中的 Lifecycle、数据库维护程序与 Manager。仅支�
 
 发行资格必须绑定实际 Setup/源码 SHA、源冷备摘要、停机截止时间、目标 Windows/PG 组合及真实业务续写证据。源码测试或安装健康成功不等于 R1 整组通过；未演练的组合不在已验证范围。苹果快捷指令实机验收仍单独后补。
 
+2026-10-25 已在 Windows 11 Pro 10.0.26200 x64、随包 PostgreSQL 17.11、schema `20261023_0002` 上完成 R1 的有界完整恢复资格。实际恢复使用独立 main `f8191b5112acc79943d75e67a0a4b1dd79158488` 的 Setup；原事实、历史、原件、Owner/角色、普通桌面与 Web 入口、原 Android Release 客户端重连、旧意图隔离、新业务恰好一次及宿主重启均已核对。源副本来自 `edad37ef`，恢复点是 2026-10-25 10:24:24.808（Asia/Shanghai）停机检查点完成时；它不是后续新候选的备份。完整身份、反例来源和未验证范围见 [R1 资格记录](../qualification/2026-10-25-r1-same-environment.md)。这不代表全产品 RC 退出。
+
 ## 其他不可用能力
 
 当前 Manager 不暴露 `/api/backup`、`/api/backups` 或 `/api/restore` mutation。R1 使用上述离线管理员安装入口，不增加高权限 HTTP 通道。完整恢复 GUI、其他恢复组合以及 repair/upgrade/uninstall 生命周期仍为 `HOLD`。
