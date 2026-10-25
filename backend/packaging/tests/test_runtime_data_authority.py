@@ -213,6 +213,63 @@ def test_frozen_runtime_admits_exact_installation_binding(
     assert os.environ["TICKETBOX_HEALTH_ATTESTATION_KEY"] == HEALTH_ATTESTATION_KEY
 
 
+@pytest.mark.parametrize("phase,step,verify_only", [
+    ("data_ready", "owner_claim", "1"), ("committed", "health", "0"),
+])
+def test_restore_authority_controls_verification_even_with_forged_dotenv(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, phase: str, step: str, verify_only: str,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    binding = {**_binding(data_root), "expected_restore_epoch": 3}
+    active = {**_active(data_root), "kind": "restore", "phase": phase, "completed_step": step, "expected_restore_epoch": 3}
+    if phase == "committed":
+        _write_authority(program_data, "installation.json", binding)
+    _write_authority(program_data, "operations/active.json", active)
+    data_dir.mkdir(parents=True)
+    (data_dir / ".env").write_text("TICKETBOX_RESTORE_VERIFY_ONLY=0\nTICKETBOX_EXPECTED_RESTORE_EPOCH=0\n")
+
+    assert launch.configure_environment() == data_dir.resolve()
+    assert os.environ["TICKETBOX_EXPECTED_RESTORE_EPOCH"] == "3"
+    assert os.environ["TICKETBOX_RESTORE_VERIFY_ONLY"] == verify_only
+
+
+@pytest.mark.parametrize("phase,step", [("prepared", None), ("failed_recoverable", "owner_claim")])
+def test_interrupted_restore_cannot_start_business_with_published_binding(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, phase: str, step: str | None,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    _write_authority(program_data, "installation.json", {**_binding(data_root), "expected_restore_epoch": 1})
+    _write_authority(program_data, "operations/active.json", {
+        **_active(data_root), "kind": "restore", "phase": phase, "completed_step": step, "expected_restore_epoch": 1,
+    })
+    with pytest.raises(RuntimeError):
+        launch.configure_environment()
+    assert not (data_dir / "uploads").exists()
+
+
+def test_completed_restore_reboot_reads_positive_epoch_from_binding(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    _write_authority(program_data, "installation.json", {**_binding(data_root), "expected_restore_epoch": 1})
+    monkeypatch.setenv("TICKETBOX_RESTORE_VERIFY_ONLY", "1")
+    launch.configure_environment()
+    assert os.environ["TICKETBOX_RESTORE_VERIFY_ONLY"] == "0"
+    assert os.environ["TICKETBOX_EXPECTED_RESTORE_EPOCH"] == "1"
+
+
+def test_restore_verification_requires_expected_generation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    _write_authority(program_data, "operations/active.json", {**_active(data_root), "kind": "restore"})
+    with pytest.raises(RuntimeError):
+        launch.configure_environment()
+    assert not (data_dir / "uploads").exists()
+
+
 def test_frozen_runtime_admits_active_fresh_install_before_binding_publication(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

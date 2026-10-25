@@ -270,6 +270,8 @@ def _require_matching_operation(
     request: InstallRequest,
     request_hash: str,
 ) -> None:
+    if active.kind != "install":
+        raise LifecycleViolation("operation_conflict", "Fresh cannot resume a restore operation")
     if active.operation_id != request.operation_id:
         raise LifecycleViolation(
             "operation_conflict",

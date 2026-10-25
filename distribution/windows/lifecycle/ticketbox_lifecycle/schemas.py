@@ -8,8 +8,8 @@ OPERATION_SCHEMA = "ticketbox-lifecycle-operation-v2"
 REQUEST_SCHEMA = "ticketbox-lifecycle-request-v1"
 RESULT_SCHEMA = "ticketbox-lifecycle-result-v2"
 
-CommandName = Literal["install", "resume", "inspect"]
-OperationKind = Literal["install"]
+CommandName = Literal["install", "resume", "inspect", "restore"]
+OperationKind = Literal["install", "restore"]
 ApplyStepName = Literal[
     "programdata_root",
     "acl",
@@ -110,6 +110,13 @@ class ActiveOperation:
     dataset_id: str = ""
     schema_revision: str = ""
     health_attestation_key: str = ""
+
+
+@dataclass(frozen=True)
+class RestoreOperation(ActiveOperation):
+    """Restore's transient authority carries its expected generation before publication."""
+
+    expected_restore_epoch: int = 1
 
 
 @dataclass(frozen=True)

@@ -69,7 +69,8 @@ class WindowsShipmentVerifier:
                 "release_hash_mismatch",
                 "installed release manifest does not match this Setup request",
             )
-        if request.operation_id != f"fresh-{actual_manifest_sha}":
+        prefix = "restore" if request.command == "restore" else "fresh"
+        if request.operation_id != f"{prefix}-{actual_manifest_sha}":
             raise LifecycleViolation(
                 "untrusted_setup_request",
                 "privileged request does not match the trusted Setup contract",

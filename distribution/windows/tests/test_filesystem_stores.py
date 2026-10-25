@@ -15,6 +15,7 @@ from ticketbox_lifecycle.schemas import (
     OPERATION_SCHEMA,
     ActiveOperation,
     InstallationBinding,
+    RestoreOperation,
 )
 
 
@@ -139,6 +140,23 @@ def test_active_reader_rejects_an_unknown_completed_step(tmp_path: Path) -> None
 
     with pytest.raises(LifecycleError, match="completed_step is invalid"):
         stores.read_active()
+
+
+def test_restore_operation_retains_target_epoch_through_failure_and_history(tmp_path: Path) -> None:
+    stores = _stores(tmp_path, RecordingSecurity())
+    operation = RestoreOperation(**{**asdict(_active()), "kind": "restore"}, expected_restore_epoch=2)
+    stores.publish_active(operation)
+    assert stores.read_active() == operation
+    failed = replace(operation, phase="failed_recoverable")
+    stores.publish_active(failed)
+    assert stores.read_active() == failed
+    committed = replace(operation, phase="committed", completed_step="health")
+    stores.archive_committed(committed)
+    assert stores.read_committed(operation.operation_id) == committed
+    payload = asdict(operation)
+    payload["expected_restore_epoch"] = 0
+    with pytest.raises(LifecycleError, match="positive target epoch"):
+        stores._operation_from_payload(payload)
 
 
 @pytest.mark.parametrize("reader", ["active", "binding"])

@@ -59,6 +59,8 @@ _FROZEN_HOST_AUTHORITY_KEYS = (
 _HEALTH_ATTESTATION_ENV = "TICKETBOX_HEALTH_ATTESTATION_KEY"
 _FRESH_SCHEMA_UPGRADE_SWITCH = "--fresh-schema-upgrade"
 _FRESH_OWNER_CLAIM_SWITCH = "--fresh-owner-claim"
+_COLD_RESTORE_SWITCH = "--restore-cold-dataset"
+_RESTORE_ENV_KEYS = ("TICKETBOX_EXPECTED_RESTORE_EPOCH", "TICKETBOX_RESTORE_VERIFY_ONLY")
 _DATABASE_GENERATION_TARGET_VERIFY_SWITCH = "--database-generation-verify-target"
 _GENERATION_PROGRAM_VALIDATE_SWITCH = "--validate-generation-program"
 _DATABASE_GENERATION_HELPER_NAME = "ticketbox-database-maintenance.exe"
@@ -499,6 +501,23 @@ def _closed_authorities(
         "backend_port",
         "health_attestation_key",
     }
+    if binding is not None:
+        if set(binding) != binding_fields:
+            raise RuntimeError("installation.json runtime authority fields are not closed")
+        if (
+            type(binding["expected_restore_epoch"]) is not int
+            or binding["expected_restore_epoch"] < 0
+            or binding["previous_release_id"] is not None
+        ):
+            raise RuntimeError("installation.json has an invalid restore epoch or unsupported release transition")
+        authorities.append(binding)
+    if active is not None:
+        _closed_active_authority(active, binding)
+        authorities.append(active)
+    return authorities
+
+
+def _closed_active_authority(active: dict[str, object], binding: dict[str, object] | None) -> None:
     active_fields = {
         "schema",
         "operation_id",
@@ -516,33 +535,28 @@ def _closed_authorities(
         "schema_revision",
         "health_attestation_key",
     }
-    if binding is not None:
-        if set(binding) != binding_fields:
-            raise RuntimeError("installation.json runtime authority fields are not closed")
-        if (
-            type(binding["expected_restore_epoch"]) is not int
-            or binding["expected_restore_epoch"] != 0
-            or binding["previous_release_id"] is not None
-        ):
-            raise RuntimeError("installation.json is not a fresh-install binding")
-        authorities.append(binding)
-    if active is not None:
-        if set(active) != active_fields or active.get("kind") != "install":
-            raise RuntimeError("active.json runtime authority fields are not closed")
-        phase = active.get("phase")
-        if phase not in {"data_ready", "release_activated", "committed"}:
-            raise RuntimeError("active.json is not in a runtime-capable install phase")
-        expected_step = {
-            "data_ready": "owner_claim",
-            "release_activated": "health",
-            "committed": "health",
-        }[phase]
-        if active.get("completed_step") != expected_step:
-            raise RuntimeError("active.json runtime progress is not closed")
-        if phase == "committed" and binding is None:
-            raise RuntimeError("committed active operation requires installation binding")
-        authorities.append(active)
-    return authorities
+    if active.get("kind") == "restore":
+        active_fields.add("expected_restore_epoch")
+    if set(active) != active_fields or active.get("kind") not in {"install", "restore"}:
+        raise RuntimeError("active.json runtime authority fields are not closed")
+    if active["kind"] == "restore":
+        epoch = active["expected_restore_epoch"]
+        if type(epoch) is not int or epoch <= 0 or (binding is not None and binding["expected_restore_epoch"] != epoch):
+            raise RuntimeError("restore operation requires an exact positive target epoch")
+    elif binding is not None and binding["expected_restore_epoch"] != 0:
+        raise RuntimeError("Fresh cannot adopt a restored dataset")
+    phase = active.get("phase")
+    if phase not in {"data_ready", "release_activated", "committed"}:
+        raise RuntimeError("active.json is not in a runtime-capable install phase")
+    expected_step = {
+        "data_ready": "owner_claim",
+        "release_activated": "health",
+        "committed": "health",
+    }[phase]
+    if active.get("completed_step") != expected_step:
+        raise RuntimeError("active.json runtime progress is not closed")
+    if phase == "committed" and binding is None:
+        raise RuntimeError("committed active operation requires installation binding")
 
 
 def _assert_authority_contract(
@@ -601,6 +615,12 @@ def _assert_vnext_runtime_authority(data_dir: Path) -> str:
         ):
             if binding[field] != active[field]:
                 raise RuntimeError("published and active runtime authorities disagree")
+    os.environ["TICKETBOX_EXPECTED_RESTORE_EPOCH"] = str(
+        binding["expected_restore_epoch"] if binding else active.get("expected_restore_epoch", 0)
+    )
+    os.environ["TICKETBOX_RESTORE_VERIFY_ONLY"] = (
+        "1" if active is not None and active["kind"] == "restore" and active["phase"] != "committed" else "0"
+    )
     return str(authorities[0]["health_attestation_key"])
 
 
@@ -624,7 +644,10 @@ def configure_environment() -> Path:
     # app .env may configure business settings but cannot replace host identity.
     host_authority = {key: os.environ.get(key) for key in _FROZEN_HOST_AUTHORITY_KEYS}
     os.environ.pop(_HEALTH_ATTESTATION_ENV, None)
+    for key in _RESTORE_ENV_KEYS:
+        os.environ.pop(key, None)
     health_attestation_key = _assert_runtime_data_root_authority(data_dir)
+    restore_authority = {key: os.environ.get(key) for key in _RESTORE_ENV_KEYS}
     (data_dir / "uploads").mkdir(parents=True, exist_ok=True)
 
     # Anchor app.config.DATA_ROOT here so mutable application data
@@ -644,6 +667,11 @@ def configure_environment() -> Path:
 
     os.environ["TICKETBOX_DATA_DIR"] = str(data_dir)
     for key, value in host_authority.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    for key, value in restore_authority.items():
         if value is None:
             os.environ.pop(key, None)
         else:
@@ -745,6 +773,7 @@ def main() -> int | None:
         for switch in (
             _FRESH_SCHEMA_UPGRADE_SWITCH,
             _FRESH_OWNER_CLAIM_SWITCH,
+            _COLD_RESTORE_SWITCH,
             _DATABASE_GENERATION_TARGET_VERIFY_SWITCH,
             _GENERATION_PROGRAM_VALIDATE_SWITCH,
         )
@@ -759,6 +788,10 @@ def main() -> int | None:
             return _run_fresh_schema_upgrade(arguments)
         if maintenance_switches[0] == _FRESH_OWNER_CLAIM_SWITCH:
             return _run_fresh_owner_claim(arguments)
+        if maintenance_switches[0] == _COLD_RESTORE_SWITCH:
+            from app.cold_restore_runtime import run_cold_restore
+
+            return run_cold_restore(arguments)
         if maintenance_switches[0] == _DATABASE_GENERATION_TARGET_VERIFY_SWITCH:
             return _run_database_generation_target_verification(arguments)
         return _run_generation_program_validation(arguments)
