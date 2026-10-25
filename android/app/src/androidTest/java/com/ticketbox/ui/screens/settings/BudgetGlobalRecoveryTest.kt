@@ -142,7 +142,7 @@ class BudgetGlobalRecoveryTest {
         compose.onNodeWithText("重新读取预算").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(accepted.row, recovered); assertEquals(0, cleared) }
         saveConsumerArtPreview("sync-accepted-read-paper", compose.onRoot().captureToImage().asAndroidBitmap())
-        compose.onNodeWithText("原设备身份不匹配").performScrollTo().performClick()
+        compose.onNodeWithText("原账本或设备身份不匹配").performScrollTo().performClick()
         compose.onNodeWithText("移除隔离数据").performScrollTo().performClick()
         compose.onNodeWithText("取消").performClick()
         compose.runOnIdle { assertEquals(0, cleared); skin.value = AppSkin.Midnight; scale.value = 1.8f }
