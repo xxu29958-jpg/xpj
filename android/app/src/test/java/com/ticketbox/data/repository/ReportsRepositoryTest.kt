@@ -181,7 +181,7 @@ class ReportsRepositoryTest {
     }
 
     @Test
-    fun backendPermissionDeniedMapsToReadOnlyMessage() = runTest {
+    fun backendPermissionDeniedDoesNotMislabelTheRole() = runTest {
         val api = ReportsApiHandler().apply {
             archiveGoalError = HttpException(
                 Response.error<GoalDto>(
@@ -196,7 +196,7 @@ class ReportsRepositoryTest {
         val result = repository.archiveGoal("goal-a", repository.dashboardAccess()!!.binding)
 
         assertTrue(result.isFailure)
-        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
+        assertEquals("当前身份没有执行此操作的权限。", result.exceptionOrNull()?.message)
     }
 
     @Test
