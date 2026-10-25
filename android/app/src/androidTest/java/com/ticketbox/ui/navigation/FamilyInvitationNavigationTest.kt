@@ -1,6 +1,11 @@
 package com.ticketbox.ui.navigation
 
 import android.content.Context
+import android.util.Log
+import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.printToLog
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
@@ -27,6 +32,7 @@ import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.ui.RealKeyboard
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.settings.FamilyMembersScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.FamilyMembersViewModel
@@ -128,10 +134,28 @@ class FamilyInvitationNavigationTest {
         compose.waitForIdle()
         InstrumentationRegistry.getInstrumentation().uiAutomation.waitForIdle(500, 3_000)
         val revoked = compose.onNodeWithText("只读 · 已撤销")
-        compose.waitUntil(5_000) { revoked.performScrollTo().isDisplayed() }
+        awaitRevokedVisible(revoked)
         revoked.assertIsDisplayed()
         compose.onNodeWithText("复制").assertDoesNotExist()
         assertEquals(listOf(original.publicId), revokes.toList())
         captureReferenceLibraryStep(compose, context, "family-invitation-revoked")
+    }
+
+    private fun awaitRevokedVisible(revoked: SemanticsNodeInteraction) {
+        try {
+            compose.waitUntil(5_000) { revoked.performScrollTo().isDisplayed() }
+        } catch (failure: ComposeTimeoutException) {
+            // Capture before teardown or another scroll changes the failed layout.
+            try {
+                val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+                saveConsumerArtPreview("family-revoked-timeout", requireNotNull(automation.takeScreenshot()))
+                Log.e("FamilyRevokeLayout", "fresh=${model.uiState.value.invitationsFresh}; revoked=" +
+                    model.uiState.value.invitations.singleOrNull()?.revokedAt)
+                compose.onAllNodes(isRoot(), useUnmergedTree = true).printToLog("FamilyRevokeLayout")
+            } catch (captureFailure: Exception) {
+                failure.addSuppressed(captureFailure)
+            }
+            throw failure
+        }
     }
 }
