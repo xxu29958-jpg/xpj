@@ -162,7 +162,15 @@ def test_cloudflare_endpoint_script_does_not_accept_token_params() -> None:
     assert '"Ticketbox-Api-Version"' in preflight
     assert '"Ticketbox-Currency-Binding"' in preflight
     assert '"ADOPTION_REQUIRED"' not in preflight
-    assert "system/runtime-compatibility$" in tunnel_contract
+    assert "PUBLIC_ROUTE_CATALOG.md" in tunnel_contract
+    from scripts.public_surface import remote_ingress_config, route_catalog
+
+    route = next(row for row in route_catalog() if row.path == "/api/system/runtime-compatibility")
+    assert route.method == "GET" and route.authentication == "app_session" and route.exposed
+    import re
+
+    ingress = remote_ingress_config("https://ticketbox.example.com", 8000)["ingress"]
+    assert any(re.fullmatch(rule.get("path", ""), route.path) for rule in ingress)
     public_boundary = (project_root / "scripts/check_public_boundary.ps1").read_text(
         encoding="utf-8-sig",
     )

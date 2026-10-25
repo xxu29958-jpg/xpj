@@ -10,10 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.public_surface import catalog_markdown, remote_ingress_config  # noqa: E402
-
-
 def main() -> int:
+    from scripts.public_surface import catalog_markdown, remote_ingress_config
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()

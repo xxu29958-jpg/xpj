@@ -313,7 +313,7 @@ python backend/scripts/render_public_routes.py
 python backend/scripts/render_public_routes.py --check
 ```
 
-只编辑 `backend/app/public_route_catalog.py` 的审核分类，不手工改生成的清单或配置。
+只编辑 `backend/scripts/public_route_catalog.py` 的审核分类，不手工改生成的清单或配置。
 变更后运行 `backend/packaging/tests/test_public_route_catalog.py`，核对实际端点、方法、Android
 消费者和全部私有路由，再在远端账号应用该配置并执行实际公网资格检查。
 

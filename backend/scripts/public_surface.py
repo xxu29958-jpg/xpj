@@ -9,10 +9,9 @@ from __future__ import annotations
 import ipaddress
 import re
 from dataclasses import dataclass
-from functools import lru_cache
 from urllib.parse import urlsplit
 
-from app.public_route_catalog import ROUTE_GROUPS
+from scripts.public_route_catalog import ROUTE_GROUPS
 
 PRIVATE_AUTH_CLASSES = frozenset({"local_only", "private_status", "retired"})
 AUTH_DESCRIPTIONS = {
@@ -43,7 +42,6 @@ class PublicRoute:
         return self.authentication not in PRIVATE_AUTH_CLASSES
 
 
-@lru_cache(maxsize=1)
 def route_catalog() -> tuple[PublicRoute, ...]:
     return tuple(
         PublicRoute(*line.split(" ", 1), authentication)
@@ -104,7 +102,7 @@ def remote_ingress_config(public_origin: str, backend_port: int) -> dict:
 def catalog_markdown() -> str:
     lines = [
         "# 公网路径与方法清单", "",
-        "由 `backend/app/public_route_catalog.py` 经 `backend/scripts/render_public_routes.py` 生成。",
+        "由 `backend/scripts/public_route_catalog.py` 经 `backend/scripts/render_public_routes.py` 生成。",
         "这是审核后的路径策略，不是自动公开 OpenAPI。新增路由必须明确分类；测试比较真实注册路由与此清单。",
         "", "Cloudflare ingress 只匹配 hostname/path；方法、鉴权、角色、账本隔离与 CSRF 继续由 Backend 执行。",
         "静态资源仅允许 `GET/HEAD /static/web/*` 与 `/static/shared/*`；不允许 `/static/owner/*`、上传目录、文档或 metrics。",

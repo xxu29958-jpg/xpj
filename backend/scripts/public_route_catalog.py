@@ -1,4 +1,4 @@
-"""Reviewed method/path/authentication catalogue for the public Tunnel boundary.
+"""Build-time method/path/authentication catalogue for the public Tunnel boundary.
 
 This is explicit policy, not an export of OpenAPI. New routes require a reviewed
 classification here; the route coverage test fails when the two disagree.

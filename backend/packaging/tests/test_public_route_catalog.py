@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from app.public_surface import (
+from scripts.public_surface import (
     AUTH_DESCRIPTIONS,
     catalog_markdown,
     remote_ingress_config,
