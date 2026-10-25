@@ -35,7 +35,7 @@ def rebind_cold_dataset(db: Session, *, source: dict, installation_id: str, back
     authority = db.get(DatasetAuthorityRecord, 1, with_for_update=True)
     rows = list(db.scalars(select(InstallationOwnerClaim).with_for_update().limit(2)))
     if authority is None or len(rows) != 1:
-        raise AppError("restore_identity_missing", status_code=409)
+        raise AppError("restore_identity_missing", "冷备缺少完整的数据集与安装身份；恢复候选保持关闭。", status_code=409)
     claim = rows[0]
     fingerprint = hashlib.sha256((operation_id + "\0" + backup_id).encode()).hexdigest()
     if authority.client_generation == installation_id and authority.restored_from_backup_id == backup_id:
@@ -57,7 +57,7 @@ def _require_source_authority(authority, claim, source, installation_id) -> None
         or claim.installation_id != source["install_id"]
         or installation_id == source["install_id"]
     ):
-        raise AppError("restore_identity_mismatch", status_code=409)
+        raise AppError("restore_identity_mismatch", "冷备身份与所选恢复点不匹配；恢复候选保持关闭。", status_code=409)
 
 
 def _authorized_owner(db: Session, claim: InstallationOwnerClaim, recovery_secret: str) -> Account:
@@ -72,7 +72,7 @@ def _authorized_owner(db: Session, claim: InstallationOwnerClaim, recovery_secre
     if (account is None or account.disabled_at is not None or ledger is None or ledger.archived_at is not None
             or ledger.owner_account_id != account.id or member is None
             or member.disabled_at is not None or member.role != "owner"):
-        raise AppError("restore_owner_unavailable", status_code=409)
+        raise AppError("restore_owner_unavailable", "原安装的 Owner 身份或账本角色不可用；无法签发恢复配对。", status_code=409)
     return account
 
 

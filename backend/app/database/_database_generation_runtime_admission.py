@@ -111,6 +111,16 @@ def _assert_exact_authority(
         raise DatabaseGenerationAdmissionError("live dataset_id does not match the installed instance")
     if _canonical_uuid(client_generation, "live installation_id") != installation_id:
         raise DatabaseGenerationAdmissionError("live installation_id does not match the installed instance")
+    _assert_restore_lineage(restore_epoch, expected_restore_epoch, restored_from_backup_id)
+    if schema_revision != target_revision or revisions != (target_revision,):
+        raise DatabaseGenerationAdmissionError("live schema is not the installed program target")
+    if not isinstance(schema_min_compatible, str) or _PRODUCT_VERSION.fullmatch(schema_min_compatible) is None:
+        raise DatabaseGenerationAdmissionError("schema_min_compatible is not a product version")
+    if semantic_revision != _SEMANTIC_REVISION:
+        raise DatabaseGenerationAdmissionError("live dataset semantics are not the closed contract")
+
+
+def _assert_restore_lineage(restore_epoch: object, expected_restore_epoch: int, restored_from_backup_id: object) -> None:
     if type(restore_epoch) is not int or restore_epoch != expected_restore_epoch or restore_epoch < 0:
         if expected_restore_epoch == 0:
             raise DatabaseGenerationAdmissionError("fresh dataset cannot carry a restored generation")
@@ -120,12 +130,6 @@ def _assert_exact_authority(
             raise DatabaseGenerationAdmissionError("fresh dataset cannot carry restore lineage")
     else:
         _canonical_uuid(restored_from_backup_id, "restored_from_backup_id")
-    if schema_revision != target_revision or revisions != (target_revision,):
-        raise DatabaseGenerationAdmissionError("live schema is not the installed program target")
-    if not isinstance(schema_min_compatible, str) or _PRODUCT_VERSION.fullmatch(schema_min_compatible) is None:
-        raise DatabaseGenerationAdmissionError("schema_min_compatible is not a product version")
-    if semantic_revision != _SEMANTIC_REVISION:
-        raise DatabaseGenerationAdmissionError("live dataset semantics are not the closed contract")
 
 
 def assert_database_generation_startup_ready(engine: object, program: object) -> None:
