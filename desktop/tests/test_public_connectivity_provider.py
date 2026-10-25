@@ -189,26 +189,26 @@ def test_snapshot_is_cache_only_and_initially_stale_unknown() -> None:
     assert calls == []
 
 
-def test_late_public_result_cannot_publish_after_credential_or_origin_revision_changes() -> None:
-    for changed in ((2, 7, True), (1, 9, True), (1, 7, False)):
-        key = [(1, 7, True)]
+@pytest.mark.parametrize("changed", [(2, 7, True), (1, 9, True), (1, 7, False)])
+def test_late_public_result_cannot_publish_after_credential_or_origin_revision_changes(changed) -> None:
+    key = [(1, 7, True)]
 
-        def read_context(full):
-            return replace(_context(full, session=_session()), authority_key=key[0])
+    def read_context(full):
+        return replace(_context(full, session=_session()), authority_key=key[0])
 
-        def public_probe(_context):
-            key[0] = changed
-            return _public(PublicState.AUTHENTICATED_REACHABLE)
+    def public_probe(_context):
+        key[0] = changed
+        return _public(PublicState.AUTHENTICATED_REACHABLE)
 
-        provider = PublicConnectivityProvider(context_loader=read_context,
-            cloudflared_probe=lambda _expectation: _cloud(ownership=OwnershipState.MANAGED, service=ServiceState.RUNNING),
-            public_endpoint_probe=public_probe, executor=_InlineExecutor(), utcnow=_Clock().utcnow)
-        provider.request_refresh(full=True)
-        assert provider.snapshot().public is PublicState.UNKNOWN
-        assert provider.snapshot().boundary is BoundaryState.UNKNOWN
-        provider.request_refresh(full=False)
-        assert provider.snapshot().public is PublicState.UNKNOWN
-        provider.shutdown()
+    provider = PublicConnectivityProvider(context_loader=read_context,
+        cloudflared_probe=lambda _expectation: _cloud(ownership=OwnershipState.MANAGED, service=ServiceState.RUNNING),
+        public_endpoint_probe=public_probe, executor=_InlineExecutor(), utcnow=_Clock().utcnow)
+    provider.request_refresh(full=True)
+    assert provider.snapshot().public is PublicState.UNKNOWN
+    assert provider.snapshot().boundary is BoundaryState.UNKNOWN
+    provider.request_refresh(full=False)
+    assert provider.snapshot().public is PublicState.UNKNOWN
+    provider.shutdown()
 
 
 def test_manager_restart_does_not_carry_a_prior_healthy_cache() -> None:

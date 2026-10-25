@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ServerUrl = "https://api.example.com",
     [int]$Tail = 40,
     [string]$SessionToken = ""

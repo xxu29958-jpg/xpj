@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 
 # vNext 安装器配方闭包：新 ISS + TicketboxLifecycle CLI + 构建/装配脚本。
 # 旧 pre-copy 执行图（install/uninstall owner、generation 小城、dataset 管道、

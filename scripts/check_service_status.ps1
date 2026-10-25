@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$ServerUrl = "https://api.example.com",
     [int]$Port = 8000,
     [int]$Tail = 30,

@@ -1,4 +1,4 @@
-# Source/manual tools must not become a second owner of an installed machine.
+﻿# Source/manual tools must not become a second owner of an installed machine.
 # Presence is enough to refuse: this is not an ownership or health assertion.
 $ticketboxMachineRoot = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'Ticketbox\machine'
 $ticketboxInstalledServices = @(Get-Service -Name TicketboxBackend,TicketboxPg,TicketboxCloudflared -ErrorAction SilentlyContinue)

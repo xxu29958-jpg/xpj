@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Build-time supply for one official binary, never a runtime downloader/updater.
 
 function Assert-TicketboxCloudflaredPayload {

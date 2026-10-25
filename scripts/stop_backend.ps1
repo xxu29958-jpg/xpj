@@ -1,4 +1,4 @@
-param(
+﻿param(
     [int]$Port = 8000,
     [string]$TaskName = "TicketboxBackend",
     [switch]$SkipTask,
