@@ -47,6 +47,24 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # Exact-symbol evidence, never a module/directory exemption or a handler registry.
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
+    ("desktop/backend_manager/connector_control.py", "ConnectorControl.start"): {
+        "sha256": "7bd3df2bda00d8c3707dc6b698db8033ed6467052745441ae6432bcabf72ce45",
+        "owner": "ConnectorControl._run and the existing Manager action status",
+        "test": "desktop/tests/test_connector_control.py::test_worker_reports_unexpected_failure_without_leaking_or_repeating",
+        "reason": "The one finite worker enters _run, which observes failures in both the action and its final refresh. Known action results keep their existing owner; an unexpected terminal failure produces a static unknown status with refresh/diagnostic guidance. The real-thread regression proves termination, one host request, released mutation state and no uncaught thread exception or private stderr. No new request or automatic retry is created.",
+    },
+    ("desktop/backend_manager/connector_control.py", "ConnectorControl._run"): {
+        "sha256": "6ea2f1aa084ff1d92d895b96a89ab63014b61099d09bbee3a4e0926a0a246e7d",
+        "owner": "existing Manager action status; durable host result remains owned by Lifecycle",
+        "test": "desktop/tests/test_connector_control.py::test_worker_reports_unexpected_failure_without_leaking_or_repeating",
+        "reason": "This is the terminal owner of the fixed connector worker, including exceptions from final refresh. It exposes only a static unknown result and next step, never exception text, a false success, or another operation. The regression injects a private marker both during the action and after the host reply and verifies the real thread cannot leak it through stderr or remain running.",
+    },
+    ("distribution/windows/lifecycle/ticketbox_lifecycle/cli.py", "_install_main"): {
+        "sha256": "62d7027d61e73f8efd566629eb9aa17e718302770361c0ed6daf69951bc9bafb",
+        "owner": "existing Lifecycle private result file and sanitized CLI stderr",
+        "test": "distribution/windows/tests/test_cli.py::test_unhandled_failure_does_not_publish_exception_text",
+        "reason": "Dispatch now delegates the existing install/resume/inspect body to this function. Its terminal behavior is unchanged: unexpected failures become static unhandled/failed_recoverable results and pass once through _emit_failure. The regression checks the result, empty stdout, one sanitized stderr line and absence of the private exception marker; no alternate recovery path is added.",
+    },
     ("distribution/windows/lifecycle/ticketbox_lifecycle/restore_cli.py", "_restore_candidate"): {
         "sha256": "0755c461339de568acb016de7c49ddc6888f0b7c4dfc5537f80860942cc82584",
         "owner": "existing Lifecycle failed-operation result, private result file and sanitized CLI stderr",

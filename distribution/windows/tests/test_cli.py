@@ -109,4 +109,7 @@ def test_unhandled_failure_does_not_publish_exception_text(
     payload = json.loads(result.read_text(encoding="utf-8"))
     assert payload["code"] == "unhandled"
     assert secret not in payload["message"]
-    assert secret not in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert secret not in captured.err
+    assert "unhandled" in captured.err and captured.err.count("\n") == 1

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from threading import Thread
 from types import SimpleNamespace
 
 import pytest
@@ -50,6 +51,9 @@ class _Public:
         self.ended = 0
         self.closed = closed
 
+    def begin_authority_mutation(self):
+        pass
+
     def end_authority_mutation(self):
         self.ended += 1
 
@@ -57,6 +61,48 @@ class _Public:
         if self.closed:
             raise PublicConnectivityProviderClosedError("closed")
         self.refreshes.append(full)
+
+
+@pytest.mark.parametrize("failure", ["action", "refresh"])
+def test_worker_reports_unexpected_failure_without_leaking_or_repeating(failure, monkeypatch, capsys):
+    from backend_manager import connector_control
+
+    secret = "private-token-must-not-escape-the-worker"
+    requests, workers, unhandled = [], [], []
+    public = _Public()
+
+    def fail():
+        raise AssertionError(secret)
+
+    def runner(request, _binding):
+        requests.append(request)
+        if failure == "action":
+            fail()
+        return {"ok": True}
+
+    def refresh(*, full):
+        if failure == "refresh":
+            fail()
+
+    def thread(**kwargs):
+        worker = Thread(**kwargs)
+        workers.append(worker)
+        return worker
+
+    public.request_refresh = refresh
+    monkeypatch.setattr(connector_control.threading, "Thread", thread)
+    monkeypatch.setattr(connector_control.threading, "excepthook", unhandled.append)
+    control = ConnectorControl(lambda: ("http://127.0.0.1:8000", "fixture-session", _BINDING), public,
+        runner=runner, reader=lambda *_args: ConnectorProjection(_IDENTITY, 7, None, None, False), sid_reader=lambda: _SID)
+    control.start("configure", True)
+    assert len(workers) == 1
+    workers[0].join(timeout=2)
+    assert not workers[0].is_alive()
+    assert len(requests) == 1 and public.ended == 1 and not unhandled
+    status = control.snapshot()
+    assert status["state"] == "unknown" and "刷新" in status["message"] and "诊断" in status["message"]
+    captured = capsys.readouterr()
+    assert secret not in str(status) + captured.out + captured.err
 
 
 @pytest.mark.parametrize("observed", ["committed", "failed_recoverable", "origin_changed", "different_request", "different_binding", "unreadable"])

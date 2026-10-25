@@ -40,10 +40,18 @@ class ConnectorControl:
             self._status = {"state": "running", "message": "正在处理，请完成 Windows 授权。"}
         self._public.begin_authority_mutation()
         try:
-            threading.Thread(target=self._work, args=(action, enabled), name="ticketbox-connector-action", daemon=True).start()
+            threading.Thread(target=self._run, args=(action, enabled), name="ticketbox-connector-action", daemon=True).start()
         except RuntimeError:
             self._public.end_authority_mutation()
             self._set("failed", "暂时无法开始，请稍后重试。")
+
+    def _run(self, action: str, enabled: bool) -> None:
+        try:
+            self._work(action, enabled)
+        except Exception:
+            # Includes failures in the worker's final refresh. The existing
+            # status owns this outcome; raw exceptions cannot reach stderr.
+            self._set("unknown", "结果暂时无法确认。请刷新连接状态；仍无法确认时请导出诊断。不会自动重复本次操作。")
 
     def _request(self, projection, action: str, enabled: bool):
         sid = self._sid_reader()
