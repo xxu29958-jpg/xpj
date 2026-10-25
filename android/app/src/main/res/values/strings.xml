@@ -127,7 +127,7 @@
     <string name="error_image_not_found">图片不存在。</string>
     <string name="error_rule_not_found">分类规则不存在。</string>
     <string name="error_rule_in_use">分类规则仍在使用，不能删除。</string>
-    <string name="error_permission_denied">当前角色为只读，无法修改账本。</string>
+    <string name="error_permission_denied">当前身份没有执行此操作的权限。</string>
     <string name="error_merchant_alias_not_found">商家别名不存在。</string>
     <string name="error_merchant_alias_conflict">商家别名已指向其他商家。</string>
     <string name="error_merchant_catalog_not_found">商家不存在或已删除。</string>
