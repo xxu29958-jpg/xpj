@@ -218,13 +218,22 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _payload_executable(
+    payload: dict, spec: _ManifestSpec, records: list[tuple[str, int, str]],
+) -> tuple[str, int, str] | None:
+    if any(not isinstance(payload[key], dict) for key in spec.payload_metadata_keys):
+        return None
+    references = [_payload_record(payload[key]) for key in spec.payload_record_keys]
+    if any(record is None or record not in records for record in references):
+        return None
+    return references[0]
+
+
 def _payload_integrity(
     manifest_path: Path, payload: object, spec: _ManifestSpec,
 ) -> tuple[str, str | None, str | None]:
     expected_keys = {"algorithm", "fingerprint", "files", *spec.payload_record_keys, *spec.payload_metadata_keys}
     if not isinstance(payload, dict) or set(payload) != expected_keys:
-        return "manifest_invalid", None, None
-    if any(not isinstance(payload[key], dict) for key in spec.payload_metadata_keys):
         return "manifest_invalid", None, None
     files = payload.get("files")
     fingerprint = _digest_text(payload.get("fingerprint"))
@@ -260,11 +269,9 @@ def _payload_integrity(
 
     if _snapshot_fingerprint(typed_records) != fingerprint:
         return "manifest_invalid", None, None
-    references = [_payload_record(payload[key]) for key in spec.payload_record_keys]
-    if any(record is None or record not in typed_records for record in references):
+    executable = _payload_executable(payload, spec, typed_records)
+    if executable is None:
         return "manifest_invalid", None, None
-    executable = references[0]
-    assert executable is not None
     return "verified", fingerprint, executable[2]
 
 
