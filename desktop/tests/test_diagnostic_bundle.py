@@ -277,9 +277,11 @@ def test_bundle_publication_does_not_require_windows_hard_links_or_overwrite(
 
 
 def test_bundle_validates_manager_and_backend_manifest_schemas(tmp_path, monkeypatch) -> None:
-    manager, manager_document = _write_manifest(tmp_path / "manager", slot="manager", version="1.2.0.7")
-    backend, backend_document = _write_manifest(tmp_path / "backend", slot="backend", version="1.2.0.7")
-    monkeypatch.setattr(diagnostic_bundle, "_manifest_paths", lambda: (manager, backend))
+    release = tmp_path / "Ticketbox" / "releases" / "1.2.0.7"
+    manager, manager_document = _write_manifest(release / "manager", slot="manager", version="1.2.0.7")
+    _, backend_document = _write_manifest(release / "backend", slot="backend", version="1.2.0.7")
+    monkeypatch.setattr(diagnostic_bundle.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(diagnostic_bundle.sys, "executable", str(manager.parent / "ticketbox-manager.exe"))
 
     raw, payload = _read_payload(export_diagnostic_bundle({}, output_dir=tmp_path / "downloads"))
 
