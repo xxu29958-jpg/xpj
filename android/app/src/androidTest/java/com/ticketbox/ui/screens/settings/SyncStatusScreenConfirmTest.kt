@@ -362,7 +362,7 @@ class SyncStatusScreenConfirmTest {
             composeRule.onNodeWithText("查看原操作，核对后再继续").performScrollTo().performClick()
         }
         if (quarantinedCount > 0) {
-            composeRule.onNodeWithText("原设备身份不匹配").performScrollTo().performClick()
+            composeRule.onNodeWithText("原账本或设备身份不匹配").performScrollTo().performClick()
         }
     }
 
