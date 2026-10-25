@@ -20,7 +20,7 @@ class BackendErrorMessageMapperTest {
         assertEquals("请使用新版绑定方式。", backendErrorUserMessage("legacy_auth_removed", "请使用新版绑定方式。"))
         assertEquals("账本版本过旧，请重启电脑上的小票夹后再试。", backendErrorUserMessage("route_not_found", "接口不存在。"))
         assertEquals("操作方式不正确，请更新 App 后再试。", backendErrorUserMessage("method_not_allowed", "请求方法不允许。"))
-        assertEquals("当前角色为只读，无法修改账本。", backendErrorUserMessage("permission_denied", "当前角色无权进行此操作。"))
+        assertEquals("当前身份没有执行此操作的权限。", backendErrorUserMessage("permission_denied", "当前角色无权进行此操作。"))
         assertEquals("商家别名不存在。", backendErrorUserMessage("merchant_alias_not_found", "Not found"))
         assertEquals("商家别名已指向其他商家。", backendErrorUserMessage("merchant_alias_conflict", "Conflict"))
         assertEquals("固定支出不存在。", backendErrorUserMessage("recurring_item_not_found", "Not found"))
