@@ -119,7 +119,7 @@ private val backendErrorUserMessages = mapOf(
     "image_not_found" to "图片不存在。",
     "rule_not_found" to "分类规则不存在。",
     "rule_in_use" to "分类规则仍在使用，不能删除。",
-    "permission_denied" to "当前角色为只读，无法修改账本。",
+    "permission_denied" to "当前身份没有执行此操作的权限。",
     "merchant_alias_not_found" to "商家别名不存在。",
     "merchant_alias_conflict" to "商家别名已指向其他商家。",
     "merchant_catalog_not_found" to "商家不存在或已删除。",
