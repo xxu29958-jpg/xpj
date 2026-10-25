@@ -83,18 +83,20 @@ function Get-TicketboxManagerSourcePaths([string]$RepoRoot) {
         }
         $paths += (Resolve-Path -LiteralPath $path).Path
     }
-    $managerPackage = Join-Path $RepoRoot "desktop\backend_manager"
-    if (-not (Test-Path -LiteralPath $managerPackage -PathType Container)) {
-        throw "Frozen Desktop Manager package is missing: $managerPackage"
-    }
-    $paths += @(
-        Get-ChildItem -LiteralPath $managerPackage -Recurse -File |
+    foreach ($packageRelativePath in @("desktop\backend_manager", "distribution\windows\lifecycle\ticketbox_lifecycle")) {
+        $packagePath = Join-Path $RepoRoot $packageRelativePath
+        if (-not (Test-Path -LiteralPath $packagePath -PathType Container)) {
+            throw "Frozen Desktop Manager source package is missing: $packagePath"
+        }
+        $paths += @(
+        Get-ChildItem -LiteralPath $packagePath -Recurse -File |
             Where-Object {
                 $_.Extension -notin @(".pyc", ".pyo") -and
                 $_.FullName -notmatch '[\\/]__pycache__[\\/]'
             } |
             ForEach-Object { $_.FullName }
-    )
+        )
+    }
     return @(Get-TicketboxOrdinalSortedPaths $paths)
 }
 

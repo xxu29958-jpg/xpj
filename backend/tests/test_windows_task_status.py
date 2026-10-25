@@ -97,6 +97,19 @@ def test_owner_index_renders_windows_tasks_section(local_client: TestClient) -> 
     assert "Windows 计划任务" in local_client.get("/owner").text
 
 
+def test_installed_owner_does_not_query_or_show_legacy_task_setup(
+    local_client: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TICKETBOX_INSTALLATION_ID", "22222222-2222-4222-8222-222222222222")
+
+    def unexpected_query(_name: str) -> None:
+        pytest.fail("installed product must not query legacy login tasks")
+
+    monkeypatch.setattr(wts, "_query_one", unexpected_query)
+    assert wts.list_windows_tasks(force_refresh=True) == []
+    assert "Windows 计划任务" not in local_client.get("/owner").text
+
+
 def test_owner_index_no_secret_leak_with_tasks(local_client: TestClient, *, identity) -> None:
     body = local_client.get("/owner").text
     assert identity.app_token not in body

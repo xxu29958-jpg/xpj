@@ -45,7 +45,7 @@ def source(tmp_path):
         "schema": "ticketbox-installed-instance-v1", **identity, "expected_restore_epoch": 0}))
     history = roots["machine"] / "operations/history/source.json"
     history.parent.mkdir(parents=True)
-    history.write_text(json.dumps({"schema": "ticketbox-lifecycle-operation-v2", "phase": "committed",
+    history.write_text(json.dumps({"schema": "ticketbox-lifecycle-operation-v2", "kind": "install", "phase": "committed",
         "operation_id": "source-install", **identity}))
     secret_root = roots["machine"] / "secrets"
     secret_root.mkdir()

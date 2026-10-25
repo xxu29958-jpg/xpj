@@ -1,14 +1,14 @@
-﻿param(
+param(
     [string]$ServerUrl = "https://api.example.com",
     [int]$Port = 8000,
     [string]$BackendTaskName = "TicketboxBackend",
-    [string]$TunnelTaskName = "TicketboxCloudflareTunnel",
     [int]$TimeoutSeconds = 45,
     [switch]$SkipPublicAuth,
     [string]$SessionToken = ""
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "assert_external_runtime.ps1")
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -221,45 +221,11 @@ function Start-BackendIfNeeded {
     & $BackendStartScript -Port $Port
 }
 
-function Start-TunnelIfNeeded {
-    Write-Step "检查 Cloudflare Tunnel"
-    $process = Get-Process -Name "cloudflared" -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-    if ($process) {
-        Write-Host "OK   cloudflared 已运行，pid=$($process.Id)"
-        return
-    }
-
-    $service = Get-Service -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.Name -like "*cloudflared*" -or $_.DisplayName -like "*cloudflared*"
-        } |
-        Select-Object -First 1
-    if ($service) {
-        Write-Host "启动 Windows 服务：$($service.Name)"
-        if ($service.Status -ne "Running") {
-            Start-Service -Name $service.Name
-        }
-        return
-    }
-
-    $task = Get-ScheduledTask -TaskName $TunnelTaskName -ErrorAction SilentlyContinue
-    if ($task) {
-        Write-Host "启动计划任务：$TunnelTaskName"
-        Start-ScheduledTask -TaskName $TunnelTaskName
-        return
-    }
-
-    Write-Host "WARN 未找到 cloudflared 进程、Windows 服务或计划任务。"
-    Write-Host "WARN 如果公网检查失败，请先按 docs\\runbook\\CLOUDFLARE_TUNNEL.md 安装 Tunnel connector。"
-}
-
 Write-Host "小票夹运行保障检查"
 Write-Host "项目目录：$ProjectRoot"
 Write-Host "公网地址：$BaseUrl"
 
 Start-BackendIfNeeded
-Start-TunnelIfNeeded
 
 Write-Step "接口健康检查"
 if (-not (Wait-Endpoint -Name "local health " -Uri "http://127.0.0.1:$Port/api/health")) {
@@ -291,4 +257,4 @@ if ($Failures.Count -gt 0) {
     throw "小票夹运行保障检查未通过。"
 }
 
-Write-Host "OK   电脑端服务已就绪。手机使用 $BaseUrl 访问即可，不需要和电脑在同一个 Wi-Fi。"
+Write-Host "OK   本次源码后端和端点抽查通过。公网归属、业务路径与独立网络尚需验证；此脚本不启动或管理连接器。"

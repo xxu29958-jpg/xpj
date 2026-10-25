@@ -1,0 +1,14 @@
+{
+  "schema": "ticketbox-cloudflared-payload-v1",
+  "profile": "cloudflare-tunnel-v1",
+  "version": "2026.10.3",
+  "source_commit": "de6376c5af4a67cbc65258682e5a01781827643d",
+  "archive_name": "cloudflared-windows-amd64.exe",
+  "url": "https://github.com/cloudflare/cloudflared/releases/download/2026.10.3/cloudflared-windows-amd64.exe",
+  "sha256": "76b2805253d0d6ffacb092a7acfbee99e7af6917835c0c5410e23f3ef5052da2",
+  "size": 55329336,
+  "pe_machine": 34404,
+  "signer_thumbprint": "0B6C68C4BAD79F9AC39E07FE84223FB796D4D0BC",
+  "license_url": "https://raw.githubusercontent.com/cloudflare/cloudflared/de6376c5af4a67cbc65258682e5a01781827643d/LICENSE",
+  "license_sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+}

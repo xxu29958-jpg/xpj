@@ -60,7 +60,7 @@ _HEALTH_ATTESTATION_ENV = "TICKETBOX_HEALTH_ATTESTATION_KEY"
 _FRESH_SCHEMA_UPGRADE_SWITCH = "--fresh-schema-upgrade"
 _FRESH_OWNER_CLAIM_SWITCH = "--fresh-owner-claim"
 _COLD_RESTORE_SWITCH = "--restore-cold-dataset"
-_RESTORE_ENV_KEYS = ("TICKETBOX_EXPECTED_RESTORE_EPOCH", "TICKETBOX_RESTORE_VERIFY_ONLY")
+_RESTORE_ENV_KEYS = ("TICKETBOX_EXPECTED_RESTORE_EPOCH", "TICKETBOX_RESTORE_VERIFY_ONLY", "TICKETBOX_RELEASE_MANIFEST_SHA256")
 _DATABASE_GENERATION_TARGET_VERIFY_SWITCH = "--database-generation-verify-target"
 _GENERATION_PROGRAM_VALIDATE_SWITCH = "--validate-generation-program"
 _DATABASE_GENERATION_HELPER_NAME = "ticketbox-database-maintenance.exe"
@@ -394,7 +394,7 @@ def _is_reparse_entry(entry: os.stat_result) -> bool:
 
 def _read_vnext_authority(
     path: Path,
-    schema: str,
+    schema: str | tuple[str, ...],
     *,
     root: Path,
 ) -> dict[str, object] | None:
@@ -426,7 +426,8 @@ def _read_vnext_authority(
         payload = json.loads(encoded.decode("utf-8", errors="strict"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"{path.name} runtime authority is unreadable") from exc
-    if not isinstance(payload, dict) or payload.get("schema") != schema:
+    allowed_schemas = schema if isinstance(schema, tuple) else (schema,)
+    if not isinstance(payload, dict) or payload.get("schema") not in allowed_schemas:
         raise RuntimeError(f"{path.name} runtime authority schema is unsupported")
     return payload
 
@@ -465,10 +466,10 @@ def _read_temporal_authorities() -> tuple[dict[str, object] | None, dict[str, ob
     machine = ticketbox_root / "machine"
     active = _read_vnext_authority(
         machine / "operations" / "active.json",
-        "ticketbox-lifecycle-operation-v2",
+        ("ticketbox-lifecycle-operation-v2", "ticketbox-lifecycle-operation-v3"),
         root=ticketbox_root,
     )
-    if active is not None and active.get("phase") != "committed":
+    if active is not None and active.get("phase") != "committed" and active.get("schema") != "ticketbox-lifecycle-operation-v3":
         return None, active
     binding = _read_vnext_authority(
         machine / "installation.json",
@@ -512,6 +513,11 @@ def _closed_authorities(
             raise RuntimeError("installation.json has an invalid restore epoch or unsupported release transition")
         authorities.append(binding)
     if active is not None:
+        if active.get("schema") == "ticketbox-lifecycle-operation-v3":
+            from app.windows_connector_authority import require_connector_binding
+
+            require_connector_binding(active, binding)
+            return authorities
         _closed_active_authority(active, binding)
         authorities.append(active)
     return authorities
@@ -604,7 +610,7 @@ def _assert_vnext_runtime_authority(data_dir: Path) -> str:
         release_id=release_id,
         port=port,
     )
-    if binding is not None and active is not None:
+    if binding is not None and active is not None and active.get("schema") != "ticketbox-lifecycle-operation-v3":
         for field in (
             "install_id",
             "dataset_id",
@@ -618,6 +624,7 @@ def _assert_vnext_runtime_authority(data_dir: Path) -> str:
     os.environ["TICKETBOX_EXPECTED_RESTORE_EPOCH"] = str(
         binding["expected_restore_epoch"] if binding else active.get("expected_restore_epoch", 0)
     )
+    os.environ["TICKETBOX_RELEASE_MANIFEST_SHA256"] = str(authorities[0]["release_manifest_sha256"])
     os.environ["TICKETBOX_RESTORE_VERIFY_ONLY"] = (
         "1" if active is not None and active["kind"] == "restore" and active["phase"] != "committed" else "0"
     )

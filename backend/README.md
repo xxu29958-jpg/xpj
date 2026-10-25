@@ -126,7 +126,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\diagnose_ticketbox.p
 
 ## Windows 开机自启
 
-推荐从项目根目录安装统一自启任务，同时处理后端和 Cloudflare Tunnel：
+正式安装请使用小票夹管理器设置公网连接，关闭界面后服务仍运行。以下任务命令仅供没有正式安装的源码环境，且不管理 Cloudflare Tunnel：
 
 ```powershell
 cd E:\projects\xiaopiaojia

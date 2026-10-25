@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
 重启 Ticketbox 后端：先停止本机后端进程，再启动新实例。
 
@@ -10,6 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "assert_external_runtime.ps1")
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 

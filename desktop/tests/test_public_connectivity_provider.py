@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event, Thread
@@ -188,6 +189,28 @@ def test_snapshot_is_cache_only_and_initially_stale_unknown() -> None:
     assert calls == []
 
 
+def test_late_public_result_cannot_publish_after_credential_or_origin_revision_changes() -> None:
+    for changed in ((2, 7, True), (1, 9, True), (1, 7, False)):
+        key = [(1, 7, True)]
+
+        def read_context(full):
+            return replace(_context(full, session=_session()), authority_key=key[0])
+
+        def public_probe(_context):
+            key[0] = changed
+            return _public(PublicState.AUTHENTICATED_REACHABLE)
+
+        provider = PublicConnectivityProvider(context_loader=read_context,
+            cloudflared_probe=lambda _expectation: _cloud(ownership=OwnershipState.MANAGED, service=ServiceState.RUNNING),
+            public_endpoint_probe=public_probe, executor=_InlineExecutor(), utcnow=_Clock().utcnow)
+        provider.request_refresh(full=True)
+        assert provider.snapshot().public is PublicState.UNKNOWN
+        assert provider.snapshot().boundary is BoundaryState.UNKNOWN
+        provider.request_refresh(full=False)
+        assert provider.snapshot().public is PublicState.UNKNOWN
+        provider.shutdown()
+
+
 def test_manager_restart_does_not_carry_a_prior_healthy_cache() -> None:
     def new_provider() -> PublicConnectivityProvider:
         return PublicConnectivityProvider(
@@ -356,7 +379,7 @@ def test_product_session_mutation_window_blocks_refresh_until_the_session_settle
     # Capture a second full check before the session transition. The begin edge
     # must both retire the cached green and prevent this old worker publishing.
     provider.request_refresh(full=True)
-    provider.begin_product_session_mutation()
+    provider.begin_authority_mutation()
     executor.run(1)
     retired = provider.snapshot()
     assert retired.public is PublicState.UNKNOWN
@@ -369,7 +392,7 @@ def test_product_session_mutation_window_blocks_refresh_until_the_session_settle
     assert len(executor.tasks) == 2
     assert provider.snapshot().public is PublicState.UNKNOWN
 
-    provider.end_product_session_mutation()
+    provider.end_authority_mutation()
     accepted_generation = provider.request_refresh(full=True)
     executor.run(2)
 

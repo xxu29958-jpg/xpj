@@ -1,10 +1,11 @@
-﻿param(
+param(
     [int]$Port = 8000,
     [int]$TimeoutSeconds = 45,
     [switch]$NoWait
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "assert_external_runtime.ps1")
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 

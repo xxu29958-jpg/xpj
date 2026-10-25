@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import cast
 
 from ticketbox_lifecycle.adapters.ports import AdapterBundle, Mutex
+from ticketbox_lifecycle.connector_schema import ConnectorOperation, parse_operation
 from ticketbox_lifecycle.domain.install import LifecycleStores
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime import layout
@@ -79,6 +80,13 @@ class FilesystemStores:
         self._mutex = mutex
 
     @classmethod
+    def from_installed(cls) -> FilesystemStores:
+        """Resolve installed authority without accepting Setup paths or commands."""
+        return cls(ticketbox_program_data_root() / "machine", "TicketboxBackend",
+            WindowsAdapterBundle(SubprocessCommandRunner(), WindowsFileSecurity(), NativeWindowsScmObserver()),
+            os_mutex(ticketbox_control_root() / "lifecycle.lock"))
+
+    @classmethod
     def from_request(cls, request: InstallRequest) -> FilesystemStores:
         machine_root = Path(request.program_data_root) / "machine"
         runner = SubprocessCommandRunner()
@@ -118,7 +126,7 @@ class FilesystemStores:
             backend_service_present=service_registered(request.backend_service_name),
         )
 
-    def read_active(self) -> ActiveOperation | None:
+    def read_active(self) -> ActiveOperation | ConnectorOperation | None:
         reject_reparse_components(self._active_path)
         if not self._active_path.is_file():
             return None
@@ -128,7 +136,7 @@ class FilesystemStores:
         )
         return self._operation_from_payload(payload)
 
-    def read_committed(self, operation_id: str) -> ActiveOperation | None:
+    def read_committed(self, operation_id: str) -> ActiveOperation | ConnectorOperation | None:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", operation_id):
             raise LifecycleViolation(
                 "operation_id_invalid",
@@ -152,7 +160,9 @@ class FilesystemStores:
         return operation
 
     @staticmethod
-    def _operation_from_payload(payload: dict[str, object]) -> ActiveOperation:
+    def _operation_from_payload(payload: dict[str, object]) -> ActiveOperation | ConnectorOperation:
+        if payload.get("schema") == "ticketbox-lifecycle-operation-v3":
+            return parse_operation(payload)
         operation_type, restoring = _operation_type(payload)
         completed_step = payload.get("completed_step")
         if completed_step is not None and completed_step not in APPLY_SEQUENCE:
@@ -185,7 +195,7 @@ class FilesystemStores:
     def require_fresh_inputs(self, request: InstallRequest) -> None:
         self._adapters.security.require_fresh_inputs(request)
 
-    def publish_active(self, operation: ActiveOperation) -> None:
+    def publish_active(self, operation: ActiveOperation | ConnectorOperation) -> None:
         reject_reparse_components(self._active_path)
         reject_reparse_components(self._active_temp_path)
         self._operations_dir.mkdir(parents=True, exist_ok=True)
@@ -208,7 +218,7 @@ class FilesystemStores:
             if tmp_path.exists():
                 tmp_path.unlink()
 
-    def archive_committed(self, operation: ActiveOperation) -> None:
+    def archive_committed(self, operation: ActiveOperation | ConnectorOperation) -> None:
         if operation.phase != "committed":
             raise LifecycleError(
                 "archive_requires_commit",

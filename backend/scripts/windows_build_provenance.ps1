@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 
 # vNext 安装器配方闭包：新 ISS + TicketboxLifecycle CLI + 构建/装配脚本。
 # 旧 pre-copy 执行图（install/uninstall owner、generation 小城、dataset 管道、
@@ -11,6 +11,10 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "backend\packaging\windows-build-toolchain.json",
     "backend\packaging\prepare_windows_build_toolchain.ps1",
     "backend\packaging\prepare_windows_installer_vendor.ps1",
+    "backend\packaging\cloudflared-profile.json",
+    "backend\packaging\cloudflared-empty.json",
+    "backend\packaging\cloudflared_vendor.ps1",
+    "backend\packaging\legal\cloudflared-LICENSE",
     "backend\packaging\build_pg_bundle.ps1",
     "backend\packaging\languages\ChineseSimplified.isl",
     "backend\packaging\ticketbox.ico",
@@ -31,16 +35,21 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "distribution\windows\lifecycle\ticketbox_lifecycle\restore_cli.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\errors.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\schemas.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\connector_schema.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\connector_cli.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\adapters\__init__.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\adapters\ports.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\domain\__init__.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\domain\binding.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\domain\install.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\domain\connector.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\domain\planner.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\policy\__init__.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\policy\health_attestation.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\policy\postgres_roles.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\policy\windows_scm_contract.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\policy\connector_profile.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\policy\connector_token.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\__init__.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\command.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\cold_archive.py",
@@ -57,6 +66,14 @@ $script:TicketboxInstallerRecipeRelativePaths = @(
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\filesystem_stores.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_adapters.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_credentials.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_connector_scm.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_connector_files.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_connector_context.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_connector_observation.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_connector_host.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_connector_peer.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_connector_channel.py",
+    "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_connector_prompt.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_alembic.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_dataset.py",
     "distribution\windows\lifecycle\ticketbox_lifecycle\runtime\windows_installation_health.py",
@@ -530,7 +547,7 @@ function Assert-TicketboxInstallerBuildProvenance(
     catch {
         throw "安装器 provenance 不是有效 JSON：$Path。$($_.Exception.Message)"
     }
-    if ($manifest.schema_version -ne 4 -or $manifest.artifact_type -cne "ticketbox-windows-installer-inputs") {
+    if ($manifest.schema_version -ne 5 -or $manifest.artifact_type -cne "ticketbox-windows-installer-inputs") {
         throw "安装器 provenance schema/artifact_type 不受支持。"
     }
     Assert-TicketboxStructuredEvidence "安装器 ISCC defines" @($manifest.compiler_defines) @(Get-TicketboxNormalizedCompilerDefines $ExpectedCompilerDefines)
@@ -589,6 +606,10 @@ function Assert-TicketboxInstallerBuildProvenance(
         "安装器 Shawl provenance" `
         $manifest.shawl `
         $ExpectedBuildInputs.shawl
+    Assert-TicketboxStructuredEvidence `
+        "安装器 Cloudflared provenance" `
+        $manifest.cloudflared `
+        $ExpectedBuildInputs.cloudflared
     Assert-TicketboxStructuredEvidence `
         "安装器 immutable shipment provenance" `
         $manifest.shipment `

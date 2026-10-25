@@ -31,7 +31,8 @@ from app.services.secure_file import (
 _LEGACY_SCHEMA = "ticketbox-runtime-settings-v1"
 _RECOGNITION_SCHEMA = "ticketbox-runtime-settings-v2"
 _INTEGRATION_SCHEMA = "ticketbox-runtime-settings-v3"
-_SCHEMA = "ticketbox-runtime-settings-v4"
+_OPERATIONS_SCHEMA = "ticketbox-runtime-settings-v4"
+_SCHEMA = "ticketbox-runtime-settings-v5"
 _MAX_BYTES = 32768
 _LEGACY_FIELDS = frozenset({"schema", "public_base_url", "budget_advisor_owner_confirmed"})
 _RECOGNITION_SCHEMA_FIELDS = frozenset({*_LEGACY_FIELDS, "recognition"})
@@ -39,7 +40,8 @@ _FIELDS = frozenset({*_RECOGNITION_SCHEMA_FIELDS, "advisor", "fx", "uploads", "m
 _FIELDS_BY_SCHEMA = {
     _RECOGNITION_SCHEMA: _RECOGNITION_SCHEMA_FIELDS,
     _INTEGRATION_SCHEMA: _FIELDS,
-    _SCHEMA: _FIELDS,
+    _OPERATIONS_SCHEMA: _FIELDS,
+    _SCHEMA: _FIELDS | {"public_origin_revision"},
 }
 _RECOGNITION_FIELDS = frozenset(
     {
@@ -84,6 +86,7 @@ class RuntimeSettingsProjection:
     fx: FxSettingsProjection | None = None
     uploads: UploadSettingsProjection | None = None
     maintenance: MaintenanceSettingsProjection | None = None
+    public_origin_revision: int = 0
 
 
 @dataclass(frozen=True)
@@ -166,6 +169,8 @@ def _recognition_payload(projection: RecognitionSettingsProjection) -> dict[str,
 
 
 def _payload(projection: RuntimeSettingsProjection) -> dict[str, object]:
+    if type(projection.public_origin_revision) is not int or not 0 <= projection.public_origin_revision < 2**53:
+        raise ValueError("runtime public origin revision is invalid")
     if (
         type(projection.budget_advisor_owner_confirmed) is not bool
         or projection.recognition is not None
@@ -175,6 +180,7 @@ def _payload(projection: RuntimeSettingsProjection) -> dict[str, object]:
     return {
         "schema": _SCHEMA,
         "public_base_url": _clean_text(projection.public_base_url, limit=2048),
+        "public_origin_revision": projection.public_origin_revision,
         "budget_advisor_owner_confirmed": projection.budget_advisor_owner_confirmed,
         "recognition": (_recognition_payload(projection.recognition) if projection.recognition is not None else None),
         "advisor": advisor_payload(projection.advisor) if projection.advisor is not None else None,
@@ -298,6 +304,7 @@ def _decode_runtime_settings(encoded: bytes) -> RuntimeSettingsProjection:
         fx=_decode_fx_settings(value.get("fx"), schema),
         uploads=_decode_integration(value.get("uploads"), UploadSettingsProjection),
         maintenance=_decode_integration(value.get("maintenance"), MaintenanceSettingsProjection),
+        public_origin_revision=value.get("public_origin_revision", 0),
     )
     canonical = _canonical_runtime_payload(projection, schema)
     expected = json.dumps(canonical, ensure_ascii=True, allow_nan=False, sort_keys=True, separators=(",", ":")) + "\n"
@@ -369,6 +376,8 @@ def patch_runtime_settings(
         if mutation.check_advisor and current.advisor != mutation.expected_advisor:
             raise RuntimeSettingsConflictError("advisor connection changed")
         projection = replace(current, **{mutation.field: mutation.value})
+        if mutation.field == "public_base_url" and current.public_base_url != mutation.value:
+            projection = replace(projection, public_origin_revision=current.public_origin_revision + 1)
         # Permission to send budget aggregates belongs to the saved connection.
         # Changing it must never silently carry consent to another provider.
         if mutation.field == "advisor":

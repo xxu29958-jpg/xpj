@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$ServerUrl = "https://api.example.com",
     [int]$Port = 8000,
     [int]$Tail = 30,
@@ -8,6 +8,7 @@
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "assert_external_runtime.ps1")
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 

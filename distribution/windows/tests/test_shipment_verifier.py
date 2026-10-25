@@ -6,6 +6,7 @@ import json
 import os
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from ticketbox_lifecycle.errors import LifecycleViolation
@@ -87,6 +88,18 @@ def _verifier(request: InstallRequest) -> WindowsShipmentVerifier:
         Path(request.app_dir),
         Path(request.program_data_root),
     )
+
+
+def test_installed_action_verifies_the_bound_payload_without_setup_request(tmp_path: Path) -> None:
+    request, _manifest = _request(tmp_path)
+    binding = SimpleNamespace(active_release_id=request.target_release_id,
+        release_manifest_sha256=request.release_manifest_sha256)
+    verifier = _verifier(request)
+    assert verifier.verify_installed(binding)["release_id"] == request.target_release_id
+    executable = Path(request.app_dir) / "releases" / request.target_release_id / "backend/ticketbox-backend.exe"
+    executable.write_bytes(b"changed")
+    with pytest.raises(LifecycleViolation, match="payload changed"):
+        verifier.verify_installed(binding)
 
 
 def test_verifier_binds_release_semantics_and_accepts_only_the_closed_file_set(

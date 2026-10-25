@@ -1,9 +1,10 @@
-﻿param(
+param(
     [string]$TaskName = "TicketboxBackend",
     [int]$Port = 8000
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "..\..\scripts\assert_external_runtime.ps1")
 $BackendRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $StartScript = Join-Path $BackendRoot "scripts\start_backend.ps1"
 

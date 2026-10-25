@@ -270,6 +270,7 @@ Cloudflare ingress 只匹配 hostname/path；方法、鉴权、角色、账本�
 | POST | `/api/tasks/{public_id}/cancel` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
 | POST | `/api/upload-screenshot` | 拒绝 | 已退役上传入口；不进公网 ingress |
 | GET | `/api/upload/check` | 拒绝 | 已退役上传入口；不进公网 ingress |
+| GET | `/desktop/public-connectivity` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | POST | `/desktop/session/revoke` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | GET | `/owner` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | GET | `/owner/ai-advisor` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |

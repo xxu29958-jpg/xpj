@@ -1,25 +1,29 @@
 # 公网连接 Backstage 运维说明
 
-本文只说明 Desktop Manager 的 `公网连接` 只读状态面。它帮助操作者区分
-Windows 服务、Cloudflare Edge、Ticketbox 源站、公网产品和公网边界；它不负责安装、
-接管或修复 cloudflared。
+本文说明 Desktop Manager 的 `公网连接` 状态与操作入口。普通使用只需看当前结果和下一步；
+服务、Edge、源站及边界证据收在“连接详情”中，供排障使用。
 
-上位施工合同是 2026-09-01 Gmail《Ticketbox 公网连接 Backstage / cloudflared
-受管接入｜GPT 主提示词 + 完整施工合同》。本页不替代该合同，也不改变
-[Cloudflare Tunnel 配置说明](CLOUDFLARE_TUNNEL.md) 中现有人工部署拓扑。
+当前施工范围以 2026-10-25《小票夹受管公网接入专项合同》为准。受管操作复用既有 Lifecycle；
+状态 Provider 仍只读。配置和外部连接迁移见 [Cloudflare Tunnel 配置说明](CLOUDFLARE_TUNNEL.md)。
+源码接线不等于发行资格；实际安装与公网消费者验收须绑定对应发行件。
 
 ## 操作入口
 
-Manager 卡片标题为 `公网连接`，副标题为 `由 Cloudflare Tunnel 提供`。它只提供三个动作：
+Manager 卡片根据当前状态提供“设置公网连接”“开启/暂停公网”“重新连接”，以及单个
+“继续上次操作”或“关闭未完成的配置”入口。替换凭据和移除本机连接放在维护操作中。
+管理动作按需短时 UAC；Tunnel Token 只在提升后的原生窗口输入，浏览器不接触秘密。
+
+只读观察保持以下三个动作：
 
 | 动作 | 会做什么 | 不会做什么 |
 |---|---|---|
-| 刷新状态 | 异步读取精确 Windows 服务、固定 loopback cloudflared 诊断端点和现有 Ticketbox 源站状态 | 不读取产品凭据，不访问公网，不改变服务或进程 |
+| 刷新状态 | 异步读取精确 Windows 服务、固定 loopback 诊断端点、本机源站及认证的安装投影 | 不访问公网，不改变服务或进程；本机认证复用已有 Desktop 身份 |
 | 完整检查 | 在后台执行刷新，并对已配置 HTTPS 公网地址做有界 GET、产品身份和边界验证 | 不上传、不写业务数据、不跟随重定向、不调用 Cloudflare 账号 API |
 | 导出诊断 | 导出关闭式 allowlist 中的状态码、时间、版本、计数和布尔匹配结果 | 不导出 URL、token、UUID、账号/设备标识、路径、argv、日志或配置 |
 
-卡片不得出现安装、启动、停止、重启、修复、更新、UAC 或 token 管理按钮；这类能力属于
-后续受管生命周期阶段。
+管理动作只对应 configure/reconnect/set_enabled/remove 四种固定请求，没有通用命令或修复入口。
+关闭 UI 不会撤销已经授权的有限动作。回复丢失时只核对一次原操作的权威记录；仍不能确认则
+说明结果未知并给出刷新或导出诊断的下一步，不自动创建新操作。继续必须保持原请求和当前安装绑定。
 
 正式安装态的公网地址 authority 是 Backend 服务拥有的 runtime setting，不是 Manager 的
 `ManagerConfig.public_base_url`（该字段在 installed mode 中故意为 `None`）。Backend 先将地址
@@ -45,10 +49,10 @@ HTTPS origin 也属于合法消费值。
 | `degraded` | 正在连接、部分连接或只证明匿名健康可达 |
 | `healthy` | 受管所有权、服务、Edge、精确源站、认证公网产品和安全边界全部当前有效 |
 
-不要只看 `overall`。卡片同时保留这些独立事实：
+排障时可展开连接详情，核对以下独立事实：
 
 - `ownership`：是否由当前 Ticketbox 安装合同受管；
-- `service`：精确 `Cloudflared` Windows 服务状态；
+- `service`：精确 `TicketboxCloudflared` Windows 服务状态；外部发现不会取得受管所有权；
 - `connector`：固定 loopback 诊断端点证明的 Edge 连接状态；
 - `origin`：精确 Ticketbox 本机源站状态；
 - `public`：公网健康与认证产品状态；
@@ -106,16 +110,12 @@ cloudflared tunnel/connector UUID、连接明细、服务 ImagePath、argv、SCM
   Scheduled Tasks、进程、文件、注册表、凭据、网络或 tunnel 配置；
 - Manager 重启回归证明新 Provider 从 `stale + unknown` 开始，不继承旧 `healthy` 缓存。
 
-## Stage 2 HOLD
+## 当前资格与远端边界
 
-以下责任没有随本页开放，继续保持 `MANAGED_PUBLIC_CONNECTOR = HOLD`：
+固定发行供给、原生服务、秘密保管、四动作和普通 Manager 已接入当前候选。它们仍须取得
+精确发行件上的 Windows、迁移、恢复和真实公网资格；不能把本页或单元测试作为交付证明。
+既有 2026-09-01 观察只证明上节当时的只读状态，不证明当前受管旅程。
 
-- cloudflared 下载、安装、升级、执行与版本供应链；
-- Windows 服务注册、启动、停止、重启、修复、失败恢复与卸载；
-- tunnel token 获取、轮换与 Machine Secrets；
-- Cloudflare 账号 API、DNS、Public Hostname 和远端 ingress 变更；
-- UAC helper、installer、repair/restore/upgrade/uninstall 与 Release Manifest/receipt 写入；
-- 受保护 connector expectation 的生成、持久化与生命周期所有权。
-
-在 Stage 2 获得独立 Owner 裁决和施工合同之前，不得把这些动作塞进当前 Manager 卡片或只读
-Provider。
+Cloudflare 账号、域名/DNS、远端 Tunnel/Token、ingress/Access/WAF 仍由远端维护者管理。
+本机移除不撤销远端 Token；共享 Tunnel 迁移不能通过停掉其他 connector 来猜测归属。
+尚未取得资格的更新、升级恢复或通用修复能力不作为已交付功能宣称。

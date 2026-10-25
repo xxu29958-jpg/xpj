@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath
 
 from ticketbox_lifecycle.errors import LifecycleViolation
 from ticketbox_lifecycle.runtime.windows_security_native import reject_reparse_components
-from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
+from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallationBinding, InstallRequest
 
 _MANIFEST_KEYS = {
     "schema",
@@ -36,6 +36,26 @@ class WindowsShipmentVerifier:
     def __init__(self, expected_app_dir: Path, expected_program_data_root: Path) -> None:
         self._expected_app_dir = expected_app_dir
         self._expected_program_data_root = expected_program_data_root
+
+    def verify_connector_payload(self, binding: InstallationBinding) -> None:
+        """Read-only diagnostics qualify the four connector files, not the whole release."""
+        app_dir = self._expected_app_dir
+        manifest_path = app_dir / "releases" / binding.active_release_id / "release-manifest.json"
+        reject_reparse_components(manifest_path)
+        raw = manifest_path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != binding.release_manifest_sha256:
+            raise LifecycleViolation("release_hash_mismatch", "installed release manifest changed")
+        manifest = _parse_manifest(raw, binding.active_release_id)
+        expected = _expected_files(manifest, app_dir, manifest_path)
+        root = app_dir / "releases" / binding.active_release_id / "connector"
+        for name in ("cloudflared.exe", "config.json", "profile.json", "LICENSE"):
+            path = root / name
+            reject_reparse_components(path)
+            record = expected.get(path.relative_to(app_dir).as_posix().casefold())
+            if record is None or path.stat().st_size != record["size"] or _sha256(path) != record["sha256"]:
+                raise LifecycleViolation("connector_payload_changed", "connector payload does not match the installed release")
+        if manifest_path.read_bytes() != raw:
+            raise LifecycleViolation("release_manifest_changed", "installed manifest changed during observation")
 
     def bind_and_verify(self, request: InstallRequest) -> InstallRequest:
         app_dir = Path(request.app_dir)
@@ -75,7 +95,7 @@ class WindowsShipmentVerifier:
                 "untrusted_setup_request",
                 "privileged request does not match the trusted Setup contract",
             )
-        manifest = _parse_manifest(manifest_bytes, request)
+        manifest = _parse_manifest(manifest_bytes, request.target_release_id)
         expected = _expected_files(manifest, app_dir, manifest_path)
         actual = _actual_files(app_dir, manifest_path)
         if set(expected) != set(actual):
@@ -102,6 +122,27 @@ class WindowsShipmentVerifier:
             schema_min_compatible=str(manifest["product_version"]),
             semantic_revision=str(manifest["min_semantic_revision"]),
         )
+
+    def verify_installed(self, binding: InstallationBinding) -> dict[str, object]:
+        """Read-only payload qualification; does not synthesize Setup authority."""
+        app_dir = self._expected_app_dir
+        manifest_path = app_dir / "releases" / binding.active_release_id / "release-manifest.json"
+        reject_reparse_components(manifest_path)
+        manifest_bytes = manifest_path.read_bytes()
+        if hashlib.sha256(manifest_bytes).hexdigest() != binding.release_manifest_sha256:
+            raise LifecycleViolation("release_hash_mismatch", "installed release changed since binding publication")
+        manifest = _parse_manifest(manifest_bytes, binding.active_release_id)
+        expected = _expected_files(manifest, app_dir, manifest_path)
+        actual = _actual_files(app_dir, manifest_path)
+        if set(expected) != set(actual):
+            raise LifecycleViolation("shipment_file_set_mismatch", "immutable shipment has missing or unexpected files")
+        for key, record in expected.items():
+            path = actual[key]
+            if path.stat().st_size != record["size"] or _sha256(path) != record["sha256"]:
+                raise LifecycleViolation("shipment_file_mismatch", "installed immutable payload changed")
+        if manifest_path.read_bytes() != manifest_bytes:
+            raise LifecycleViolation("release_manifest_changed", "installed manifest changed during verification")
+        return manifest
 
 
 def _require_trusted_setup_contract(
@@ -140,7 +181,7 @@ def _absolute_path_key(path: Path) -> str:
     return os.path.normcase(os.path.normpath(value))
 
 
-def _parse_manifest(payload: bytes, request: InstallRequest) -> dict[str, object]:
+def _parse_manifest(payload: bytes, release_id: str) -> dict[str, object]:
     try:
         manifest = json.loads(payload.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -149,10 +190,10 @@ def _parse_manifest(payload: bytes, request: InstallRequest) -> dict[str, object
         raise LifecycleViolation("release_manifest_invalid", "release manifest shape is not closed")
     if (
         manifest["schema"] != "ticketbox-release-manifest-v1"
-        or manifest["release_id"] != request.target_release_id
+        or manifest["release_id"] != release_id
         or not isinstance(manifest["product_version"], str)
         or _PRODUCT_VERSION.fullmatch(manifest["product_version"]) is None
-        or manifest["product_version"] != request.target_release_id
+        or manifest["product_version"] != release_id
         or manifest["lifecycle_compatibility"] != [REQUEST_SCHEMA]
         or manifest["signing_state"] != "release-bound"
         or not all(

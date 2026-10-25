@@ -14,7 +14,14 @@ from typing import BinaryIO
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.windows_security_native import reject_reparse_components
 
-SCHEMA = "ticketbox-beta-cold-copy-v1"
+LEGACY_SCHEMA = "ticketbox-beta-cold-copy-v1"
+SCHEMA = "ticketbox-beta-cold-copy-v2"
+CONNECTOR_SECRET_ROOT = "machine/connectors/cloudflare/secrets"
+CONNECTOR_POLICY = {
+    "excluded_directory": CONNECTOR_SECRET_ROOT,
+    "credentials": "not_backed_up",
+    "after_restore": "configure_again",
+}
 MANIFEST = "COLD_COPY.json"
 COMPONENTS = frozenset({"program", "machine", "data/pgdata", "data/attachments", "data/app"})
 _REQUIRED_FILES = frozenset({
@@ -52,7 +59,8 @@ def write_archive(
         if sources != _scan(roots):
             raise LifecycleError("cold_source_changed", "source file set changed during cold copy")
         require_stopped()
-        manifest = {"schema": SCHEMA, "complete": True, "identity": identity, "entries": records}
+        manifest = {"schema": SCHEMA, "complete": True, "identity": identity, "entries": records,
+            "public_connectivity": CONNECTOR_POLICY}
         archive.writestr(MANIFEST, json.dumps(manifest, ensure_ascii=False).encode("utf-8"))
     output.flush()
     os.fsync(output.fileno())
@@ -82,20 +90,29 @@ def _read_manifest(archive: zipfile.ZipFile) -> dict[str, object]:
     manifest = json.loads(archive.read(MANIFEST))
     if (
         not isinstance(manifest, dict)
-        or manifest.get("schema") != SCHEMA
+        or manifest.get("schema") not in {LEGACY_SCHEMA, SCHEMA}
         or manifest.get("complete") is not True
         or not isinstance(manifest.get("identity"), dict)
         or not isinstance(manifest.get("entries"), dict)
     ):
         raise LifecycleError("cold_incomplete", "cold copy completion manifest is invalid")
+    _require_archive_components(manifest, names)
+    return manifest
+
+
+def _require_archive_components(manifest: dict, names: list[str]) -> None:
     records = manifest["entries"]
+    if manifest["schema"] == SCHEMA and (
+        manifest.get("public_connectivity") != CONNECTOR_POLICY
+        or any(_connector_secret(name) for name in records)
+    ):
+        raise LifecycleError("cold_secret_policy_invalid", "new cold copies must exclude the exact connector secret directory")
     if (
         set(names) != set(records) | {MANIFEST}
         or any(f"{root}/" not in records for root in COMPONENTS)
         or not _REQUIRED_FILES.issubset(records)
     ):
         raise LifecycleError("cold_incomplete", "cold copy component set is incomplete")
-    return manifest
 
 
 def _scan(roots: Mapping[str, Path]) -> dict[str, Path | None]:
@@ -106,11 +123,17 @@ def _scan(roots: Mapping[str, Path]) -> dict[str, Path | None]:
             raise LifecycleError("cold_source_missing", "a required cold copy directory is missing")
         found[f"{prefix}/"] = None
         for parent, directories, files in os.walk(root, onerror=_raise_walk_error):
+            # Exclude this entire dedicated authority, including unknown future
+            # pending/previous names. No filename heuristic may hide DB secrets.
+            directories[:] = [name for name in directories
+                if not _connector_secret(f"{prefix}/{(Path(parent) / name).relative_to(root).as_posix()}")]
             for name in sorted(directories + files):
                 path = Path(parent) / name
                 reject_reparse_components(path)
                 mode = path.lstat().st_mode
                 relative = f"{prefix}/{path.relative_to(root).as_posix()}"
+                if _connector_secret(relative):
+                    raise LifecycleError("cold_secret_shape_invalid", "connector secret authority must be a directory")
                 if stat.S_ISDIR(mode):
                     found[f"{relative}/"] = None
                 elif stat.S_ISREG(mode):
@@ -118,6 +141,12 @@ def _scan(roots: Mapping[str, Path]) -> dict[str, Path | None]:
                 else:
                     raise LifecycleError("cold_source_invalid", "cold copy contains a non-regular file")
     return dict(sorted(found.items()))
+
+
+def _connector_secret(name: str) -> bool:
+    # Windows is case-insensitive. Archive policy must not admit spelling aliases.
+    normalized = name.replace("\\", "/").rstrip("/").casefold()
+    return normalized == CONNECTOR_SECRET_ROOT or normalized.startswith(CONNECTOR_SECRET_ROOT + "/")
 
 
 def _raise_walk_error(error: OSError) -> None:
@@ -160,4 +189,5 @@ def _digest(source: BinaryIO) -> dict[str, object]:
 
 def _summary(manifest: dict[str, object]) -> dict[str, object]:
     files = [record for record in manifest["entries"].values() if record is not None]
-    return {"files": len(files), "bytes": sum(record["size"] for record in files), "identity": manifest["identity"]}
+    return {"files": len(files), "bytes": sum(record["size"] for record in files), "identity": manifest["identity"],
+        "schema": manifest["schema"], "public_connectivity": manifest.get("public_connectivity", {"credentials": "legacy_unspecified"})}

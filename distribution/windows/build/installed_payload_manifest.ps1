@@ -65,6 +65,9 @@ function New-TicketboxInstalledPayloadManifest {
     Add-TicketboxInstalledPayloadTree $records `
         (Join-Path $StagedPayloadDir "TicketboxLifecycle") `
         "bin/lifecycle"
+    Add-TicketboxInstalledPayloadTree $records `
+        (Join-Path $StagedBackendRoot "packaging\vendor\cloudflared") `
+        "releases/$Version/connector"
     foreach ($file in @(
         @{
             Source = Join-Path $StagedBackendRoot "packaging\vendor\vc-runtime\vc_redist.x64.exe"
