@@ -64,7 +64,7 @@ class ConnectorControl:
         return projection.request(action, enabled=enabled, sid=sid)
 
     def _completed(self, request) -> None:
-        message = "本机操作已完成，正在检查公网连接。"
+        message = "本机操作已完成。"
         if request.action == "remove":
             message = "本机连接已移除。远端凭据仍需在 Cloudflare 撤销；共享连接需先确认影响范围。"
         elif not request.desired_enabled:

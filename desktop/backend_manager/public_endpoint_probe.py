@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import ssl
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Final, Protocol
+
+import truststore
 
 from backend_manager.product_auth_check import ProductAuthIdentity, parse_auth_check
 from backend_manager.product_identity import ProductSession
@@ -178,8 +181,8 @@ class BoundedHttpsTransport:
         self,
         public_origin: str,
         *,
-        timeout_seconds: float = 1.0,
-        deadline_seconds: float = 8.0,
+        timeout_seconds: float = 3.0,
+        deadline_seconds: float = 30.0,
         max_requests: int = 16,
         max_response_bytes: int = 8 * 1024,
         opener: urllib.request.OpenerDirector | None = None,
@@ -201,6 +204,7 @@ class BoundedHttpsTransport:
         self._opener = opener or urllib.request.build_opener(
             urllib.request.ProxyHandler({}),
             _NoRedirect(),
+            urllib.request.HTTPSHandler(context=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)),
         )
 
     def get(
@@ -218,7 +222,7 @@ class BoundedHttpsTransport:
         if self._request_count >= self._max_requests or remaining <= 0:
             raise PublicEndpointProbeError("public probe budget exhausted")
         self._request_count += 1
-        headers = {"Accept": "application/json"}
+        headers = {"Accept": "application/json", "User-Agent": "Ticketbox-Manager"}
         if session_token is not None:
             headers["Authorization"] = f"Bearer {_valid_session_token(session_token)}"
         request = urllib.request.Request(

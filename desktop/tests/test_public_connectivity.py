@@ -139,6 +139,9 @@ def test_projection_is_stable_ui_ready_and_contains_only_readonly_actions() -> N
     assert projection["public_checked_at"] == "2026-09-01T08:30:00+00:00"
     assert projection["managed_action"] == "unavailable"
     assert projection["connection_count"] == 4
+    rows = {row["label"]: row["text"] for row in projection["detail_rows"]}
+    assert rows["Cloudflare Edge"] == "Edge 连接正常"
+    assert rows["本机源站"] == "小票夹源站正常"
     assert [row["label"] for row in projection["detail_rows"]] == [
         "小票夹后端",
         "Windows 服务",
