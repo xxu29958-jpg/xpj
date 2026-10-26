@@ -72,7 +72,7 @@ Cloudflare Edge 健康只证明 connector 到 Edge 的连接存在，不证明 T
 - 每次请求使用递增 generation；旧请求晚完成也不能覆盖更新请求。
 - 若两个刷新请求发生重叠，后一个请求会在调度前销毁可复用的公网/边界证据；只有非重叠的本机刷新可以沿用上次完整检查。
 - 任何可能改变 Backend 或 WinCred ProductSession 真相的操作都会打开 fail-closed 突变窗口：窗口两端都销毁旧公网/边界证据并推进 generation，窗口内不调度刷新。即使 Backend 已提交但响应丢失，或 WinCred 保存/删除失败，旧 bearer 和中间态检查也不能回写。若完成态恢复位仍存在，后续完整检查（包括 Manager 重启后）只接受与恢复证明派生 successor 一致的主凭据。主凭据尚未成为该 successor 或旧凭据撤销未结清时，新的绑定不得删除/覆盖恢复位；只有 Backend 明确以终局 401 拒绝 activation replay 时才可清理这颗不再可激活的证明。即使清理后 predecessor 仍在轮换宽限期，auth-check 的 `credential_state=grace` 也只能得到 `reachable_unverified`，不能重新变绿。
-- 完整检查有 8 秒总期限、最多 16 个固定 GET，每个响应最多 8 KiB。
+- 完整检查有 30 秒总期限、单次请求最多 3 秒、最多 16 个固定 GET，每个响应最多 8 KiB。
 - Manager 退出会取消排队工作并使用有界等待；新进程从 `stale + unknown` 开始，不继承旧缓存。
 - Manager UI 对状态 fetch/body 与后续产品会话/账本读取使用同一个 2 秒刷新期限；Manager 状态 reject/non-2xx、状态 body reject，或链路任一阶段永久 pending 至超时，都会丢弃旧公网投影并显示 `状态未知`。立即返回的产品会话/账本 fetch、HTTP、JSON body 或消费 schema 失败都会清除旧账本选项、隐藏产品管理入口、把产品卡降级为“暂不可验证”并释放刷新锁，但不会否定已经成功取得的 Manager 公网投影。产品角色只接受 `owner`、`member`、`viewer`；未知角色按 schema 失败处理，不直接显示。
 
