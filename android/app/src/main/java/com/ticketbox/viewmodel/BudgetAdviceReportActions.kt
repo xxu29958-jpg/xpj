@@ -1,7 +1,7 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.MissingExchangeRateDto
+import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.UiText
@@ -24,5 +24,5 @@ fun BudgetAdviceViewModel.openReportRate(binding: LogicalSessionBinding, month: 
         arrangementHistoryLoaded = false, arrangementHistoryNext = null, arrangementHistoryCached = false,
         arrangementHistoryFetchedAt = null, arrangementHistoryReceiptVersions = emptySet()) }
     openArrangementMonth()
-    if (sourceCurrencyCode != null && rateDate != null) openRate(MissingExchangeRateDto(sourceCurrencyCode, homeCurrencyCode, rateDate))
+    if (sourceCurrencyCode != null && rateDate != null) openRate(CurrencyProjectionGap(sourceCurrencyCode, homeCurrencyCode, rateDate))
 }

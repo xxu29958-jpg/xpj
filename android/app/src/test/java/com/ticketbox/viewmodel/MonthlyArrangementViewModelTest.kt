@@ -2,6 +2,8 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.repository.*
 import com.ticketbox.data.remote.dto.*
+import com.ticketbox.domain.model.BudgetAdviceInputs
+import com.ticketbox.domain.model.BudgetAdviceBreakdown
 import com.ticketbox.domain.model.BudgetAdvice
 import com.ticketbox.domain.model.BudgetAdviceResult
 import kotlinx.coroutines.CompletableDeferred
@@ -187,10 +189,10 @@ class MonthlyArrangementViewModelTest {
             override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest): Result<Long> {
                 queued += request; return Result.success(1L)
             }
-            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceInputsDto> {
+            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceInputs> {
                 trials += request
-                return Result.success(BudgetAdviceInputsDto(month, request.homeCurrencyCode,
-                    DiscretionaryResponseDto(10000, 1000, 2000, request.savingsTargetCents, request.reservedBufferCents,
+                return Result.success(BudgetAdviceInputs(month, request.homeCurrencyCode,
+                    BudgetAdviceBreakdown(10000, 1000, 2000, request.savingsTargetCents, request.reservedBufferCents,
                         7000 - request.savingsTargetCents - request.reservedBufferCents, 0), emptyList(), isTrial = true))
             }
         }
@@ -221,7 +223,7 @@ class MonthlyArrangementViewModelTest {
     }
 }
 
-private fun trialInputs(month: String, request: MonthlyArrangementSaveRequest, income: Long) = BudgetAdviceInputsDto(
-    month, request.homeCurrencyCode, DiscretionaryResponseDto(income, 1000, 2000, request.savingsTargetCents,
+private fun trialInputs(month: String, request: MonthlyArrangementSaveRequest, income: Long) = BudgetAdviceInputs(
+    month, request.homeCurrencyCode, BudgetAdviceBreakdown(income, 1000, 2000, request.savingsTargetCents,
         request.reservedBufferCents, income - 3000 - request.savingsTargetCents - request.reservedBufferCents, 0),
     emptyList(), isTrial = true)

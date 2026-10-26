@@ -1,6 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.local.RepaymentReviewInputEntity
 import com.ticketbox.data.remote.dto.RepaymentDraftConfirmRequestDto
@@ -11,7 +10,7 @@ import com.ticketbox.domain.model.parseExactMoneyMinor
 import java.time.LocalDate
 
 internal fun RepaymentReviewInputEntity.command(binding: LogicalSessionBinding, draft: RepaymentDraft,
-    dismiss: Boolean, adapters: OutboxAdapterGraph): PendingMutationIntent {
+    dismiss: Boolean, adapters: DebtMutationAdapters): PendingMutationIntent {
     if (dismiss) return PendingMutationIntent(PendingMutationType.DismissRepaymentDraft,
         "repayment-draft:$draftPublicId", adapters.repaymentDismissAdapter.toJson(RepaymentDismissPayload(1, draftPublicId, binding)),
         0, originalKey)

@@ -161,7 +161,7 @@ class DebtAdjustmentRepositoryTest {
         assertTrue(fixture.api.calls.isEmpty())
         assertEquals(listOf(1), fixture.queueDepthAtSchedule)
         val stored = fixture.dao.rows.getValue(id)
-        val payload = requireNotNull(fixture.adapters.debtAdjustmentAdapter.fromJson(stored.payload))
+        val payload = requireNotNull(fixture.adapters.debt.debtAdjustmentAdapter.fromJson(stored.payload))
         assertEquals(PendingMutationType.RecordDebtAdjustment.wireValue, stored.type)
         assertEquals("debt:d1", stored.targetId)
         assertEquals(fixture.binding.ownerKey, stored.ownerKey)
@@ -188,12 +188,12 @@ class DebtAdjustmentRepositoryTest {
         val fixture = DebtAdjustmentFixture()
         val id = fixture.save().getOrThrow()
         val original = fixture.dao.rows.getValue(id)
-        val payload = requireNotNull(fixture.adapters.debtAdjustmentAdapter.fromJson(original.payload))
+        val payload = requireNotNull(fixture.adapters.debt.debtAdjustmentAdapter.fromJson(original.payload))
         // Seed a separate stored command to detect an unauthorized cascade by the real drain engine.
         val followingId = fixture.outbox.enqueue(
             type = PendingMutationType.RecordDebtAdjustment,
             targetId = original.targetId,
-            payloadJson = fixture.adapters.debtAdjustmentAdapter.toJson(payload.copy(
+            payloadJson = fixture.adapters.debt.debtAdjustmentAdapter.toJson(payload.copy(
                 request = DebtAdjustmentCreateRequestDto(7_000L, "另一笔调整", 7L),
             )),
             expectedRowVersion = 7L,
@@ -315,10 +315,10 @@ class DebtAdjustmentRepositoryTest {
             val fixture = DebtAdjustmentFixture()
             val id = fixture.save().getOrThrow()
             val row = fixture.dao.rows.getValue(id)
-            val payload = requireNotNull(fixture.adapters.debtAdjustmentAdapter.fromJson(row.payload))
+            val payload = requireNotNull(fixture.adapters.debt.debtAdjustmentAdapter.fromJson(row.payload))
             val invalid = if (reason == null) payload.copy(revision = 99)
                 else payload.copy(request = payload.request.copy(reason = reason))
-            val unsupported = row.copy(payload = fixture.adapters.debtAdjustmentAdapter.toJson(invalid))
+            val unsupported = row.copy(payload = fixture.adapters.debt.debtAdjustmentAdapter.toJson(invalid))
             fixture.dao.rows[id] = unsupported
 
             fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
@@ -475,7 +475,7 @@ internal class DebtAdjustmentFixture(role: String = "owner") {
         onEnqueued = { queueDepthAtSchedule += dao.rows.size },
     )
 
-    fun newRepository(outbox: OutboxRepository) = DebtWriteRepository(provider, outbox, adapters)
+    fun newRepository(outbox: OutboxRepository) = DebtWriteRepository(provider, outbox, adapters.debt)
 
     suspend fun save(amountCents: Long = 3_000L, reason: String = "  补记借款  ", debt: Debt = this.debt) =
         repository.save(binding, debt, amountCents, reason)
@@ -484,7 +484,7 @@ internal class DebtAdjustmentFixture(role: String = "owner") {
 
     fun engine(outbox: OutboxRepository = this.outbox, clock: Clock = this.clock, maxAttempts: Int = 10) = OutboxDrainEngine(
         outbox = outbox,
-        dispatchers = listOf(RecordDebtAdjustmentDispatcher(LedgerRequestGuard(provider), adapters.debtAdjustmentAdapter)),
+        dispatchers = listOf(RecordDebtAdjustmentDispatcher(LedgerRequestGuard(provider), adapters.debt.debtAdjustmentAdapter)),
         maxAttempts = maxAttempts, now = clock::millis,
     )
 

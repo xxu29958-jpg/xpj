@@ -138,7 +138,7 @@ class AppContainer(context: Context) {
 
     val uploadIntentRepository: UploadIntentRepository = UploadIntentRepository(
         apiServiceProvider, outboxRepository, uploadFiles,
-        outboxAdapters, settingsStore, database.expenseDao(),
+        outboxAdapters.upload, settingsStore, database.expenseDao(),
     )
 
     private fun outboxApi(row: OutboxRow) = outboxRequestGuard
@@ -205,8 +205,8 @@ class AppContainer(context: Context) {
             com.ticketbox.data.repository.OriginalAttachmentDispatcher(::outboxApi, uploadFiles::read),
             UploadScreenshotDispatcher(
                 apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.uploadPayloadAdapter,
-                receiptAdapter = outboxAdapters.uploadReceiptAdapter,
+                payloadAdapter = outboxAdapters.upload.uploadPayloadAdapter,
+                receiptAdapter = outboxAdapters.upload.uploadReceiptAdapter,
                 readOriginal = uploadFiles::read,
             ),
             PatchExpenseDispatcher(
@@ -343,53 +343,53 @@ class AppContainer(context: Context) {
                 outboxAdapters.incomePlanSubmissionAdapter, outboxAdapters.incomePlanReceiptAdapter),
             com.ticketbox.data.repository.SaveMonthlyBudgetDispatcher(
                 apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.budgetSaveAdapter,
-                receiptAdapter = outboxAdapters.budgetReceiptAdapter,
+                payloadAdapter = outboxAdapters.budget.budgetSaveAdapter,
+                receiptAdapter = outboxAdapters.budget.budgetReceiptAdapter,
                 onAccepted = budgetRepository.invalidateBudgetReadsAfterDelivery,
             ),
             com.ticketbox.data.repository.SaveMonthlyArrangementDispatcher(::outboxApi,
-                outboxAdapters.arrangementSaveAdapter, outboxAdapters.arrangementReceiptAdapter),
+                outboxAdapters.budget.arrangementSaveAdapter, outboxAdapters.budget.arrangementReceiptAdapter),
             com.ticketbox.data.repository.ManualExchangeRateDispatcher(::outboxApi,
-                outboxAdapters.manualRateAdapter, outboxAdapters.manualRateReceiptAdapter),
+                outboxAdapters.budget.manualRateAdapter, outboxAdapters.budget.manualRateReceiptAdapter),
             com.ticketbox.data.repository.ConfirmRecurringCandidateDispatcher(
                 apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.recurringCandidateAdapter,
+                payloadAdapter = outboxAdapters.recurring.recurringCandidateAdapter,
             ),
             CreateRecurringItemDispatcher(
                 apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.recurringCreateAdapter,
+                payloadAdapter = outboxAdapters.recurring.recurringCreateAdapter,
             ),
             com.ticketbox.data.repository.SplitAgreementDispatcher(
                 ::outboxApi, outboxAdapters.splitAgreementAdapter, outboxAdapters.splitAgreementReceiptAdapter,
             ),
             com.ticketbox.data.repository.RecordDebtAdjustmentDispatcher(
                 guard = outboxRequestGuard,
-                adapter = outboxAdapters.debtAdjustmentAdapter,
+                adapter = outboxAdapters.debt.debtAdjustmentAdapter,
             ),
             com.ticketbox.data.repository.RecordDebtRepaymentDispatcher(
-                guard = outboxRequestGuard, adapter = outboxAdapters.debtRepaymentAdapter,
-                receiptAdapter = outboxAdapters.debtRepaymentReceiptAdapter,
+                guard = outboxRequestGuard, adapter = outboxAdapters.debt.debtRepaymentAdapter,
+                receiptAdapter = outboxAdapters.debt.debtRepaymentReceiptAdapter,
             ),
             com.ticketbox.data.repository.VoidDebtDispatcher(
-                outboxRequestGuard, outboxAdapters.debtVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
+                outboxRequestGuard, outboxAdapters.debt.debtVoidAdapter, outboxAdapters.debt.debtVoidReceiptAdapter,
             ),
             com.ticketbox.data.repository.ConfirmRepaymentDraftDispatcher(outboxRequestGuard,
-                outboxAdapters.repaymentReviewAdapter, outboxAdapters.repaymentDraftReceiptAdapter,
+                outboxAdapters.debt.repaymentReviewAdapter, outboxAdapters.debt.repaymentDraftReceiptAdapter,
                 ::publishExpenseFactBundle),
             com.ticketbox.data.repository.DismissRepaymentDraftDispatcher(outboxRequestGuard,
-                outboxAdapters.repaymentDismissAdapter, outboxAdapters.repaymentDraftReceiptAdapter),
+                outboxAdapters.debt.repaymentDismissAdapter, outboxAdapters.debt.repaymentDraftReceiptAdapter),
             com.ticketbox.data.repository.PaymentCaptureResolutionDispatcher(outboxRequestGuard,
                 { binding, expense -> publishExpenseSnapshot(binding.ledgerId, expense) }),
             com.ticketbox.data.repository.FundsCommandDispatcher(outboxRequestGuard),
             com.ticketbox.data.repository.VoidDebtRepaymentDispatcher(
-                outboxRequestGuard, outboxAdapters.debtRepaymentVoidAdapter, outboxAdapters.debtVoidReceiptAdapter,
+                outboxRequestGuard, outboxAdapters.debt.debtRepaymentVoidAdapter, outboxAdapters.debt.debtVoidReceiptAdapter,
             ),
             com.ticketbox.data.repository.SetDebtKindDispatcher(
-                outboxRequestGuard, outboxAdapters.debtKindAdapter, outboxAdapters.debtVoidReceiptAdapter,
+                outboxRequestGuard, outboxAdapters.debt.debtKindAdapter, outboxAdapters.debt.debtVoidReceiptAdapter,
             ),
             CreateDebtDispatcher(
                 apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.debtCreateAdapter,
+                payloadAdapter = outboxAdapters.debt.debtCreateAdapter,
             ),
             com.ticketbox.data.repository.NotificationCaptureDispatcher(outboxRequestGuard,
                     onExpense = { binding, created ->
@@ -410,11 +410,11 @@ class AppContainer(context: Context) {
             ),
             com.ticketbox.data.repository.RecurringOccurrenceDispatcher(
                 apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.recurringOccurrenceAdapter,
+                payloadAdapter = outboxAdapters.recurring.recurringOccurrenceAdapter,
             ),
             UpdateRecurringItemDispatcher(
                 apiProvider = ::outboxApi,
-                payloadAdapter = outboxAdapters.recurringUpdateAdapter,
+                payloadAdapter = outboxAdapters.recurring.recurringUpdateAdapter,
             ),
         )
     }

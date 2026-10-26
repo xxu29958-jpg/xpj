@@ -1,5 +1,7 @@
 package com.ticketbox.data.remote.dto
 
+import com.ticketbox.data.repository.toDomain
+
 import com.squareup.moshi.Moshi
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.repository.ManualRatePayload
@@ -14,11 +16,11 @@ class ManualRateDtoContractTest {
         val graph = OutboxAdapterGraph()
         val original = ManualRatePayload(1, "2026-09", "original-rate",
             ExchangeRateRequestDto("JPY", "USD", "2026-09-02", "0.0069", "manual", 4))
-        val json = graph.manualRateAdapter.toJson(original)
+        val json = graph.budget.manualRateAdapter.toJson(original)
         assertTrue(json.contains("\"home_currency_code\":\"USD\""))
         assertTrue(json.contains("\"rate_to_cny\":\"0.0069\""))
         assertTrue(json.contains("\"expected_row_version\":4"))
-        assertEquals(original, graph.manualRateAdapter.fromJson(json))
+        assertEquals(original, graph.budget.manualRateAdapter.fromJson(json))
     }
 
     @Test fun missingFxAndUnknownOriginalFactsRemainNullableWithNoZeroSubstitution() {
@@ -31,6 +33,6 @@ class ManualRateDtoContractTest {
         assertNull(dto.breakdown.discretionaryCents)
         assertNull(dto.missingRates.single().sourceCurrencyCode)
         assertNull(dto.missingRates.single().rateDate)
-        assertFalse(dto.readyForAdvice)
+        assertFalse(dto.toDomain().readyForAdvice)
     }
 }

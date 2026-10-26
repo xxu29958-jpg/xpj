@@ -134,8 +134,8 @@ class BudgetOfflineSnapshotConnectedTest {
         }
         val adapters = OutboxAdapterGraph()
         val done = try {
-            OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api }, adapters.budgetSaveAdapter,
-                adapters.budgetReceiptAdapter, afterReopen.invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis).drainOnce()
+            OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api }, adapters.budget.budgetSaveAdapter,
+                adapters.budget.budgetReceiptAdapter, afterReopen.invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis).drainOnce()
         } finally { releaseUnknown.complete(Unit) }
         assertEquals(1, done.done)
         assertTrue("An unknown response started before save acceptance cannot seed the read", oldUnknown.await().isFailure)
@@ -265,7 +265,7 @@ class BudgetOfflineSnapshotConnectedTest {
         val adapters = OutboxAdapterGraph()
         val outcome = try {
             OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher(
-                { api }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis).drainOnce()
+                { api }, adapters.budget.budgetSaveAdapter, adapters.budget.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis).drainOnce()
         } finally { resume.complete(Unit) }
         assertEquals(1, outcome.done)
         val acceptedIntent = fixture.stored().single()
@@ -309,7 +309,7 @@ class BudgetOfflineSnapshotConnectedTest {
             }
             val adapters = OutboxAdapterGraph()
             val engine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
-                adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, onAccepted = { _, _ ->
+                adapters.budget.budgetSaveAdapter, adapters.budget.budgetReceiptAdapter, onAccepted = { _, _ ->
                     throw IOException("Local cleanup unavailable after the accepted original replay")
                 })),
                 now = fixture.clock::millis)
@@ -324,7 +324,7 @@ class BudgetOfflineSnapshotConnectedTest {
             for (field in listOf("payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId", "serverUrl")) {
                 assertEquals("Replay must preserve original $field", original[field], settled[field])
             }
-            assertEquals(receipt, adapters.budgetReceiptAdapter.fromJson(requireNotNull(settled["receiptJson"])))
+            assertEquals(receipt, adapters.budget.budgetReceiptAdapter.fromJson(requireNotNull(settled["receiptJson"])))
             transport.offline = true
             val saved = fixture.reopen().budgetRepository.monthlyBudget(month)
             assertTrue("Receipt replay cannot delete an already queried v$queryVersion budget", saved.isSuccess)
@@ -359,13 +359,13 @@ class BudgetOfflineSnapshotConnectedTest {
         fixture.blockBudgetReadDeletion(true)
         val adapters = OutboxAdapterGraph()
         val engine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
-            adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery)),
+            adapters.budget.budgetSaveAdapter, adapters.budget.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery)),
             now = fixture.clock::millis)
         assertEquals("Local Room cleanup cannot undo a verified server receipt", 1, engine.drainOnce().done)
         val accepted = fixture.stored().single()
         assertEquals(PendingMutationStatus.Done.wireValue, accepted["status"])
         assertEquals("budget_read_refresh_required", accepted["lastError"])
-        assertEquals(receipt, adapters.budgetReceiptAdapter.fromJson(requireNotNull(accepted["receiptJson"])))
+        assertEquals(receipt, adapters.budget.budgetReceiptAdapter.fromJson(requireNotNull(accepted["receiptJson"])))
         val status = fixture.outbox.observeStatus().first()
         assertTrue(status.failed.isEmpty())
         assertEquals(accepted["id"], status.refreshRequired.single().id.toString())
@@ -412,7 +412,7 @@ class BudgetOfflineSnapshotConnectedTest {
         val adapters = OutboxAdapterGraph()
         fixture.blockBudgetReadDeletion(true)
         val engine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
-            adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery)),
+            adapters.budget.budgetSaveAdapter, adapters.budget.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery)),
             now = fixture.clock::millis)
         assertEquals(1, engine.drainOnce().done)
         val accepted = fixture.stored().single()
@@ -493,14 +493,14 @@ class BudgetOfflineSnapshotConnectedTest {
         }
         val adapters = OutboxAdapterGraph()
         val engine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
-            adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter, onAccepted = { _, _ ->
+            adapters.budget.budgetSaveAdapter, adapters.budget.budgetReceiptAdapter, onAccepted = { _, _ ->
                 currentCoroutineContext().cancel()
                 yield()
             })), now = fixture.clock::millis)
         launch { engine.drainOnce() }.join()
         val accepted = fixture.stored().single()
         assertEquals(PendingMutationStatus.Done.wireValue, accepted["status"])
-        assertEquals(receipt, adapters.budgetReceiptAdapter.fromJson(requireNotNull(accepted["receiptJson"])))
+        assertEquals(receipt, adapters.budget.budgetReceiptAdapter.fromJson(requireNotNull(accepted["receiptJson"])))
         assertEquals("budget_read_refresh_required", accepted["lastError"])
         assertEquals(0, engine.drainOnce().attempted)
         assertEquals(1, writes)
@@ -590,13 +590,13 @@ class BudgetOfflineSnapshotConnectedTest {
         }
         val adapters = OutboxAdapterGraph()
         val engine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
-            adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
+            adapters.budget.budgetSaveAdapter, adapters.budget.budgetReceiptAdapter,
             onAccepted = repository.invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis)
         assertEquals(1, engine.drainOnce().done)
         transport.original = receipt
         repository.monthlyBudget("2026-09").getOrThrow()
         val originalIntents = fixture.stored()
-        assertEquals(receipt, adapters.budgetReceiptAdapter.fromJson(requireNotNull(originalIntents.single()["receiptJson"])))
+        assertEquals(receipt, adapters.budget.budgetReceiptAdapter.fromJson(requireNotNull(originalIntents.single()["receiptJson"])))
         val bindingJson = com.squareup.moshi.Moshi.Builder().add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
             .build().adapter(com.ticketbox.data.repository.LogicalSessionBinding::class.java).toJson(binding)
         for (brokenJson in listOf("{", "{}")) {
@@ -627,12 +627,12 @@ class BudgetOfflineSnapshotConnectedTest {
         receipt = receipt.copy(rowVersion = 9, totalAmountCents = 3600, remainingAmountCents = 3189)
         fixture.blockBudgetReadDeletion(true)
         val recoveryEngine = OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api },
-            adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
+            adapters.budget.budgetSaveAdapter, adapters.budget.budgetReceiptAdapter,
             onAccepted = repository.invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis)
         assertEquals(1, recoveryEngine.drainOnce().done)
         val accepted = fixture.stored().maxBy { requireNotNull(it["id"]).toLong() }
         assertEquals("budget_read_refresh_required", accepted["lastError"])
-        assertEquals(receipt, adapters.budgetReceiptAdapter.fromJson(requireNotNull(accepted["receiptJson"])))
+        assertEquals(receipt, adapters.budget.budgetReceiptAdapter.fromJson(requireNotNull(accepted["receiptJson"])))
         assertTrue("A damaged query still cannot bypass an unavailable accepted-save cleanup",
             repository.monthlyBudget("2026-09").isFailure)
         fixture.blockBudgetReadDeletion(false)

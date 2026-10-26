@@ -14,10 +14,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.MissingExchangeRateDto
+import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto
 import com.ticketbox.data.remote.dto.SavedViewDto
 import com.ticketbox.data.remote.dto.SavedViewResultRowDto
+import com.ticketbox.data.repository.toDomain
 import com.ticketbox.data.repository.SavedQueryDraft
 import com.ticketbox.data.repository.queryDefinition
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -45,7 +46,7 @@ data class SavedQueryActions(
     val resume: (SavedQueryDraft) -> Unit,
     val refresh: () -> Unit,
     val openExpense: (Long) -> Unit,
-    val repairRate: (MissingExchangeRateDto) -> Unit,
+    val repairRate: (CurrencyProjectionGap) -> Unit,
 )
 
 @Composable
@@ -140,7 +141,7 @@ private fun SavedQueryResult(row: SavedViewResultRowDto, currency: String, canMo
             if (entry.offset != null) Text(stringResource(R.string.saved_query_offset))
             if (originalMinor != null && originalCurrency != null) Text(stringResource(R.string.saved_query_original,
                 "${formatDisplayAmount(originalMinor, CurrencyDisplay.forRecord(originalCurrency))} $originalCurrency"))
-            row.projectionGap?.let { gap ->
+            row.projectionGap?.toDomain()?.let { gap ->
                 Text(stringResource(R.string.saved_query_projection_missing))
                 if (canModify && gap.canEnterManualRate()) AppSecondaryButton(stringResource(R.string.saved_query_rate_repair),
                     onClick = { actions.repairRate(gap) })

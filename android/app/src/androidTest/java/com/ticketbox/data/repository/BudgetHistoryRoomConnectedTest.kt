@@ -108,8 +108,8 @@ class BudgetHistoryRoomConnectedTest {
         }
         val adapters = OutboxAdapterGraph()
         val result = try {
-            OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api }, adapters.budgetSaveAdapter,
-                adapters.budgetReceiptAdapter, reader.invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis).drainOnce()
+            OutboxDrainEngine(fixture.outbox, listOf(SaveMonthlyBudgetDispatcher({ api }, adapters.budget.budgetSaveAdapter,
+                adapters.budget.budgetReceiptAdapter, reader.invalidateBudgetReadsAfterDelivery)), now = fixture.clock::millis).drainOnce()
         } finally { release.complete(Unit) }
         assertEquals(1, result.done)
         assertTrue("A pre-save history reply cannot republish the retired history head", stale.await().isFailure)

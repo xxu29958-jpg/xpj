@@ -95,7 +95,7 @@ class RecurringOccurrenceRoomContinuityTest {
         compose.onNodeWithTag("occurrence-submit").performClick()
         compose.waitUntil(10_000) { fixture.stored().size == 1 && host.model.value?.uiState?.value?.saving == false }
         val original = fixture.stored().single()
-        val intent = requireNotNull(OutboxAdapterGraph().recurringOccurrenceAdapter.fromJson(requireNotNull(original["payload"])))
+        val intent = requireNotNull(OutboxAdapterGraph().recurring.recurringOccurrenceAdapter.fromJson(requireNotNull(original["payload"])))
         val binding = requireNotNull(host.model.value?.uiState?.value?.access).binding
         assertEquals(binding.ownerKey, original["ownerKey"])
         assertEquals(binding.bindingRevision, intent.originBindingRevision)

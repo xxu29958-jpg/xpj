@@ -1130,13 +1130,13 @@ internal class FakeBudgetActions(
 
 internal class FakeBudgetAdviceInputsActions : com.ticketbox.data.repository.BudgetAdviceInputsActions {
     val months = mutableListOf<String>()
-    var response: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto? = null
-    override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> = error("Unexpected trial read")
+    var response: com.ticketbox.domain.model.BudgetAdviceInputs? = null
+    override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<com.ticketbox.domain.model.BudgetAdviceInputs> = error("Unexpected trial read")
     override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceResult> = error("Unexpected trial AI call")
-    override suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String, homeCurrencyCode: String?): Result<com.ticketbox.data.remote.dto.BudgetAdviceInputsDto> {
+    override suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String, homeCurrencyCode: String?): Result<com.ticketbox.domain.model.BudgetAdviceInputs> {
         months += month
-        return Result.success(response ?: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto(month, homeCurrencyCode ?: "CNY",
-            com.ticketbox.data.remote.dto.DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000), emptyList()))
+        return Result.success(response ?: com.ticketbox.domain.model.BudgetAdviceInputs(month, homeCurrencyCode ?: "CNY",
+            com.ticketbox.domain.model.BudgetAdviceBreakdown(10000, 1000, 2000, 0, 0, 7000), emptyList()))
     }
 }
 

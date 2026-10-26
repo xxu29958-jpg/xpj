@@ -164,8 +164,8 @@ class BudgetRepositoryTest {
         assertTrue(result.isSuccess)
         val pending = repository.observeSaves(binding).first { it.isNotEmpty() }.single()
         val adapters = com.ticketbox.OutboxAdapterGraph()
-        val refused = SaveMonthlyBudgetDispatcher({ api.service() }, adapters.budgetSaveAdapter,
-            adapters.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery).dispatch(pending.row)
+        val refused = SaveMonthlyBudgetDispatcher({ api.service() }, adapters.budget.budgetSaveAdapter,
+            adapters.budget.budgetReceiptAdapter, repository.invalidateBudgetReadsAfterDelivery).dispatch(pending.row)
         assertTrue(refused is DispatchResult.Failure)
         assertEquals(pending.row, repository.observeSaves(binding).first().single().row)
     }

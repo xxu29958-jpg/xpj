@@ -257,7 +257,7 @@ class DebtRepositoryTest {
         assertEquals(original.idempotencyKey, call.third)
         assertTrue(call.third.isNotBlank())
         val stored = fixture.dao.rows.values.single()
-        val receipt = requireNotNull(fixture.adapters.debtVoidReceiptAdapter.fromJson(requireNotNull(stored.receiptJson)))
+        val receipt = requireNotNull(fixture.adapters.debt.debtVoidReceiptAdapter.fromJson(requireNotNull(stored.receiptJson)))
         assertEquals(DebtKinds.REVOLVING, receipt.debtKind)
         assertEquals(4L, receipt.rowVersion)
         assertEquals(original.payload, stored.payload)

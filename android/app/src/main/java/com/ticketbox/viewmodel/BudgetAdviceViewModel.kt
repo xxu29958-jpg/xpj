@@ -47,7 +47,7 @@ data class BudgetAdviceUiState(
     val terminalErrorCode: String? = null,
     val binding: com.ticketbox.data.repository.LogicalSessionBinding? = null,
     val reportingHomeCurrencyCode: String? = null,
-    val inputs: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto? = null,
+    val inputs: com.ticketbox.domain.model.BudgetAdviceInputs? = null,
     val inputsLoading: Boolean = false,
     val inputsError: UiText? = null,
     val rates: List<com.ticketbox.data.remote.dto.ExchangeRateDto> = emptyList(),

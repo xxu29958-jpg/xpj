@@ -118,7 +118,7 @@ internal class RepositoryGraph(
     val recurringRepository = RecurringRepository(
         apiProvider = apiServiceProvider,
         outbox = outbox,
-        adapters = outboxAdapters,
+        adapters = outboxAdapters.recurring,
         queryReader = recurringQueries,
     )
 
@@ -135,7 +135,7 @@ internal class RepositoryGraph(
     val budgetRepository = BudgetRepository(
         apiProvider = apiServiceProvider,
         outbox = outbox,
-        adapters = outboxAdapters,
+        adapters = outboxAdapters.budget,
         localStorage = BudgetLocalStorage(database.monthlyArrangementCacheDao(), budgetQueries),
         sessionCoordinator = ledgerSessionCoordinator,
     )
@@ -159,13 +159,13 @@ internal class RepositoryGraph(
     )
 
     val debtWriteRepository = com.ticketbox.data.repository.DebtWriteRepository(
-        apiServiceProvider, outbox, outboxAdapters,
+        apiServiceProvider, outbox, outboxAdapters.debt,
     )
 
     val debtCreationRepository = DebtCreationRepository(
         apiProvider = apiServiceProvider,
         outbox = outbox,
-        payloadAdapter = outboxAdapters.debtCreateAdapter,
+        payloadAdapter = outboxAdapters.debt.debtCreateAdapter,
     )
 
     // Personal repayment review uses the existing debt query owner; capture is dispatched by Outbox.
@@ -177,7 +177,7 @@ internal class RepositoryGraph(
     )
 
     val repaymentReviewRepository = com.ticketbox.data.repository.RepaymentReviewRepository(
-        apiServiceProvider, database, outbox, outboxAdapters,
+        apiServiceProvider, database, outbox, outboxAdapters.debt,
     )
 
     init {

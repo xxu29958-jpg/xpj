@@ -1,6 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
@@ -44,7 +43,7 @@ interface DebtWriteActions {
 class DebtWriteRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
-    private val adapters: OutboxAdapterGraph,
+    private val adapters: DebtMutationAdapters,
     private val clock: Clock = Clock.systemUTC(),
 ) : DebtWriteActions {
     private val guard = LedgerRequestGuard(apiProvider)

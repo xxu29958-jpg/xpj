@@ -32,7 +32,7 @@ data class PendingExpenseCorrection(
     val hasSupportedIntent: Boolean get() = intent != null
     val exchangeRatePending: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Failed &&
         row.lastError?.substringBefore(':') == CORRECTION_RATE_PENDING
-    val missingExchangeRate: com.ticketbox.data.remote.dto.MissingExchangeRateDto? get() =
+    val missingExchangeRate: com.ticketbox.domain.model.CurrencyProjectionGap? get() =
         row.lastError?.takeIf { exchangeRatePending }?.let(::readCorrectionRateFailure)
     val expenseId: Long? get() = parseExpenseTargetRef(row.targetId)?.toLongOrNull()
     val delivered: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Done

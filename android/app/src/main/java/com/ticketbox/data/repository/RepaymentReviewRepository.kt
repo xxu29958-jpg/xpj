@@ -1,7 +1,6 @@
 package com.ticketbox.data.repository
 
 import androidx.room.withTransaction
-import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
@@ -52,7 +51,7 @@ class RepaymentReviewRepository internal constructor(
     private val provider: ApiServiceProvider,
     private val database: AppDatabase,
     private val outbox: OutboxRepository,
-    private val adapters: OutboxAdapterGraph,
+    private val adapters: DebtMutationAdapters,
 ) : RepaymentReviewActions {
     private val guard = LedgerRequestGuard(provider)
     private val inputs = database.repaymentReviewInputDao()

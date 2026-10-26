@@ -162,7 +162,7 @@ internal class ExpenseCorrectionConnectedFixture(
         notificationDependencies = NotificationRuntimeDependencies(context, settingsStore, provider,
             graph.recurringRepository, graph.budgetRepository, ledgerCalendarRepository)
         uploadIntents = UploadIntentRepository(provider, outbox, UploadIntentFileStore(context) { if (originalStorageAvailable) it.usableSpace else 0L },
-            adapters, settingsStore, db.expenseDao())
+            adapters.upload, settingsStore, db.expenseDao())
         graph.expenseRepository.onConfirmedCommitted = { confirmedCallbacks++ }
         return graph
     }

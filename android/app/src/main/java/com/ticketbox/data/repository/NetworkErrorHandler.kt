@@ -102,7 +102,7 @@ internal class NetworkErrorHandler(
                 conflict = it.toConflictDetails(),
                 expenseId = it.expenseId,
                 missingExchangeRate = it.homeCurrencyCode?.let { home ->
-                    com.ticketbox.data.remote.dto.MissingExchangeRateDto(it.currencyCode, home, it.rateDate)
+                    com.ticketbox.domain.model.CurrencyProjectionGap(it.currencyCode, home, it.rateDate)
                 },
             )
         }
@@ -121,7 +121,7 @@ internal class NetworkErrorHandler(
         val errorCode: String?,
         val conflict: RepositoryConflictDetails = RepositoryConflictDetails(),
         val expenseId: Long? = null,
-        val missingExchangeRate: com.ticketbox.data.remote.dto.MissingExchangeRateDto? = null,
+        val missingExchangeRate: com.ticketbox.domain.model.CurrencyProjectionGap? = null,
         val requestId: String? = null,
     ) {
         val conflictTagPublicId: String? get() = conflict.tag.publicId

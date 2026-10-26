@@ -11,7 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.MissingExchangeRateDto
+import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.CurrencyChoiceField
@@ -38,7 +38,7 @@ internal fun ReferenceRateLookup(state: BudgetAdviceUiState, actions: BudgetAdvi
             }.show()
         }) { Text(stringResource(R.string.advice_reference_lookup_date, day)) }
         TextButton(enabled = !state.rateBusy && source != home,
-            onClick = { actions.onOpenRate(MissingExchangeRateDto(source, home, day)) }) {
+            onClick = { actions.onOpenRate(CurrencyProjectionGap(source, home, day)) }) {
             Text(stringResource(R.string.advice_reference_lookup_pair, source, home))
         }
     }

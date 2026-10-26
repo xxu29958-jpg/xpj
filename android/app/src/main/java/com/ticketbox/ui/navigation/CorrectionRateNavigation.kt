@@ -4,14 +4,14 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.ticketbox.data.remote.dto.MissingExchangeRateDto
+import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.data.repository.LogicalSessionBinding
 import java.time.LocalDate
 import java.time.YearMonth
 
 internal const val CORRECTION_RATE_ROUTE = "product/plans/budget-advice/correction?report={report}"
 
-internal fun correctionRateRoute(binding: LogicalSessionBinding, gap: MissingExchangeRateDto): String {
+internal fun correctionRateRoute(binding: LogicalSessionBinding, gap: CurrencyProjectionGap): String {
     require(gap.canEnterManualRate())
     val date = requireNotNull(gap.rateDate)
     val context = ReportRateContext(binding, YearMonth.from(LocalDate.parse(date)).toString(), gap.homeCurrencyCode, gap.sourceCurrencyCode, date)

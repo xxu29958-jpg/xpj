@@ -85,7 +85,12 @@ data class ReportsOverview(
 
 data class CurrencyReferenceRate(val sourceCurrencyCode: String, val homeCurrencyCode: String, val rateDate: String)
 
-data class CurrencyProjectionGap(val sourceCurrencyCode: String?, val homeCurrencyCode: String, val rateDate: String?)
+data class CurrencyProjectionGap(val sourceCurrencyCode: String?, val homeCurrencyCode: String, val rateDate: String?) {
+    fun canEnterManualRate(): Boolean =
+        CurrencyCode.fromStorageKeyOrNull(sourceCurrencyCode)?.storageKey == sourceCurrencyCode && sourceCurrencyCode != null &&
+            CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)?.storageKey == homeCurrencyCode && sourceCurrencyCode != homeCurrencyCode &&
+            rateDate != null && runCatching { java.time.LocalDate.parse(rateDate).toString() == rateDate }.getOrDefault(false)
+}
 
 enum class GoalProgressState(val apiValue: String) {
     Idle("not_started"),

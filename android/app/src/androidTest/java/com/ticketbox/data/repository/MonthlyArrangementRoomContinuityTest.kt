@@ -105,7 +105,7 @@ class MonthlyArrangementRoomContinuityTest {
         outbox = OutboxRepository(opened.pendingMutationDao(), clock, onRowsDeleted = {}, bindingProvider = { session.value.toOutboxBinding() })
         val settings = LocalSettingsStore(settingsContext)
         coordinator = LocalLedgerSessionCoordinator(settings, sessions, opened.expenseDao(), outbox)
-        return MonthlyArrangementRepository(provider, outbox, opened.monthlyArrangementCacheDao(), adapters,
+        return MonthlyArrangementRepository(provider, outbox, opened.monthlyArrangementCacheDao(), adapters.budget,
             { key, stamp -> snapshots[key] = stamp }, coordinator)
     }
     private fun binding() = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
@@ -113,7 +113,7 @@ class MonthlyArrangementRoomContinuityTest {
         "owner", "2026-09", values.map { MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
             it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents) }, null)
     private suspend fun drain() = OutboxDrainEngine(outbox, listOf(SaveMonthlyArrangementDispatcher({ api },
-        adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter)), now = clock::millis).drainOnce()
+        adapters.budget.arrangementSaveAdapter, adapters.budget.arrangementReceiptAdapter)), now = clock::millis).drainOnce()
     @After fun close() { db?.close(); context.deleteDatabase(name); LocalSettingsStore(settingsContext).clear() }
     @Test fun deniedCleanupSurvivesOwnerRecreationUntilOldQueriesAreRetiredWithoutChangingDraftOrReceipt() = runBlocking {
         loseAck = false

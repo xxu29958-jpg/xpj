@@ -39,13 +39,13 @@ internal class DirectRepaymentTestFixture(role: String = "owner") {
         onEnqueued = { publishedDepths += dao.rows.size })
 
     fun newRepository(outbox: OutboxRepository, at: Clock) = DebtWriteRepository(provider, outbox,
-        adapters, at)
+        adapters.debt, at)
 
     fun engine(outbox: OutboxRepository = this.outbox, at: Clock = clock) = OutboxDrainEngine(outbox,
-        listOf(RecordDebtRepaymentDispatcher(LedgerRequestGuard(provider), adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter),
-            VoidDebtDispatcher(LedgerRequestGuard(provider), adapters.debtVoidAdapter, adapters.debtVoidReceiptAdapter),
-            VoidDebtRepaymentDispatcher(LedgerRequestGuard(provider), adapters.debtRepaymentVoidAdapter, adapters.debtVoidReceiptAdapter),
-            SetDebtKindDispatcher(LedgerRequestGuard(provider), adapters.debtKindAdapter, adapters.debtVoidReceiptAdapter)),
+        listOf(RecordDebtRepaymentDispatcher(LedgerRequestGuard(provider), adapters.debt.debtRepaymentAdapter, adapters.debt.debtRepaymentReceiptAdapter),
+            VoidDebtDispatcher(LedgerRequestGuard(provider), adapters.debt.debtVoidAdapter, adapters.debt.debtVoidReceiptAdapter),
+            VoidDebtRepaymentDispatcher(LedgerRequestGuard(provider), adapters.debt.debtRepaymentVoidAdapter, adapters.debt.debtVoidReceiptAdapter),
+            SetDebtKindDispatcher(LedgerRequestGuard(provider), adapters.debt.debtKindAdapter, adapters.debt.debtVoidReceiptAdapter)),
         maxAttempts = 1, now = at::millis)
 
     suspend fun save(amount: Long = 10_000) = repository.saveRepayment(binding, debt, amount)
