@@ -50,7 +50,6 @@
       accepted ? "返回收件箱核对" : "上传小票";
     picker.disabled = closedTask || sending;
     if (onlineOnly) status.textContent = "浏览器不能保留这些原图。请逐张在线上传，离开会失去尚未上传的选择。";
-    if (accepted && accepted === items.length) status.textContent = "图片已经安全收到，可从近期上传再次打开原单。";
     form.querySelector(".file-picker").hidden = attempted;
     stop.hidden = !sending;
     updateProgress(accepted);
@@ -63,6 +62,7 @@
     progress.max = Math.max(1, items.length);
     progress.value = accepted;
     if (accepted) {
+      if (accepted === items.length) status.textContent = "图片已经安全收到，可从近期上传再次打开原单。";
       const readyToReview = accepted === items.length && items.every(item => ["updated", "no_result"].includes(item.recognition));
       task.querySelector("[data-capture-title]").textContent = readyToReview ? "小票已准备好核对" : "小票正在整理";
       task.querySelector("[data-capture-description]").textContent = readyToReview ? "核对金额、商家和日期，确认后计入流水。" : "已收到的图片会继续识别，可以离开后再回来。";
