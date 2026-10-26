@@ -54,6 +54,8 @@ def _api():
     user.EndDialog.restype = wintypes.BOOL
     user.ShowWindow.argtypes = (wintypes.HWND, ctypes.c_int)
     user.ShowWindow.restype = wintypes.BOOL
+    user.SetForegroundWindow.argtypes = (wintypes.HWND,)
+    user.SetForegroundWindow.restype = wintypes.BOOL
     return user, callback
 
 
@@ -75,9 +77,11 @@ def confirm_native(request: ConnectorRequest, *, needs_token: bool) -> str | Non
             if not user.SetTimer(hwnd, 1, INPUT_SECONDS * 1000, None):
                 user.EndDialog(hwnd, 2)
                 return 1
-            # Consume the helper's SW_HIDE startup setting before DialogBox
-            # shows the input window; its console must remain hidden.
+            # The first call consumes SW_HIDE. Show the input before requesting
+            # foreground after UAC; the helper console remains hidden.
             user.ShowWindow(hwnd, 1)
+            user.ShowWindow(hwnd, 1)
+            user.SetForegroundWindow(hwnd)
             return 1
         if event in {0x10, 0x113}:
             user.EndDialog(hwnd, 2)
