@@ -60,16 +60,22 @@ REVIEWED_BOUNDARIES = {
         "reason": "This is the terminal owner of the fixed connector worker, including exceptions from final refresh. It exposes only a static unknown result and next step, never exception text, a false success, or another operation. The regression injects a private marker both during the action and after the host reply and verifies the real thread cannot leak it through stderr or remain running.",
     },
     ("distribution/windows/lifecycle/ticketbox_lifecycle/cli.py", "_install_main"): {
-        "sha256": "62d7027d61e73f8efd566629eb9aa17e718302770361c0ed6daf69951bc9bafb",
+        "sha256": "1b93a3014ad723ca12f7bf916b92c26fe755dbffcfcc63173e2ed903a94f7dde",
         "owner": "existing Lifecycle private result file and sanitized CLI stderr",
         "test": "distribution/windows/tests/test_cli.py::test_unhandled_failure_does_not_publish_exception_text",
-        "reason": "Dispatch now delegates the existing install/resume/inspect body to this function. Its terminal behavior is unchanged: unexpected failures become static unhandled/failed_recoverable results and pass once through _emit_failure. The regression checks the result, empty stdout, one sanitized stderr line and absence of the private exception marker; no alternate recovery path is added.",
+        "reason": "Dispatch retains the install/resume/inspect terminal owner while shared parsing and result I/O move to command_io. Unexpected failures still become static unhandled/failed_recoverable results and pass once through command_io.emit_failure. The regression checks the result, empty stdout, one sanitized stderr line and absence of the private exception marker; no alternate recovery path is added.",
     },
-    ("distribution/windows/lifecycle/ticketbox_lifecycle/restore_cli.py", "_restore_candidate"): {
-        "sha256": "0755c461339de568acb016de7c49ddc6888f0b7c4dfc5537f80860942cc82584",
+    ("distribution/windows/lifecycle/ticketbox_lifecycle/cli.py", "_deliver_install_result"): {
+        "sha256": "65d6c2ef010e6def609fb718b73487c8a51dee822f5ac382c96e04d919fb431e",
+        "owner": "existing Lifecycle committed-operation delivery and command_io failure output",
+        "test": "distribution/windows/tests/test_install_sequence.py::test_archive_failure_retains_exact_commit_and_reports_once",
+        "reason": "Only the shared result writer and stderr function moved. An archive failure still returns operation_archive_failed without claiming successful delivery, repeating the operation or removing its exact active commit. The regression injects an archive failure and verifies one attempt, retained authority, the private failure result and one sanitized stderr report with no pairing code. It does not add an archive retry or a new reporting path.",
+    },
+    ("distribution/windows/lifecycle/ticketbox_lifecycle/domain/restore.py", "_restore_candidate"): {
+        "sha256": "2fab1d47a8e99d77eb6e436b5d0d07d5913924924aee14ab7beddbbb1ef6b54a",
         "owner": "existing Lifecycle failed-operation result, private result file and sanitized CLI stderr",
         "test": "distribution/windows/tests/test_cold_restore_coordinator.py::test_unexpected_restore_failure_uses_existing_terminal_report_without_private_input",
-        "reason": "The coordinator fences Backend and publishes failed_recoverable through the existing operation owner. Known lifecycle codes survive; unknown errors become the static restore_incomplete result so recovery credentials cannot reach logs. main writes that same private result and calls the existing _emit_failure exactly once. The regression proves the durable fence, retained candidate, one terminal report and absence of private input; no retry or new financial writer is introduced.",
+        "reason": "The bounded coordinator moved from restore_cli to domain.restore and fences Backend through the shared domain.operation owner. Known lifecycle codes survive; unknown errors still become the static restore_incomplete result so recovery credentials cannot reach logs. The CLI writes that same private result and calls command_io.emit_failure exactly once. The regression proves the durable fence, retained candidate, one terminal report and absence of private input; no retry or new financial writer is introduced.",
     },
     (ANDROID + "data/repository/LedgerCalendarRepository.kt", "refresh"): {
         "sha256": "2aadb35b46bcb202aefdb7dc9d083f4713b9847ce239627bf83d5c65f9157fa4",

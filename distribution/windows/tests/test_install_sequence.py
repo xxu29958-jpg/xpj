@@ -280,6 +280,43 @@ def test_active_operation_is_archived_before_committed_result_is_published(
     assert [operation.phase for operation in stores.history] == ["committed"]
 
 
+def test_archive_failure_retains_exact_commit_and_reports_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    result = install_or_resume(stores.as_lifecycle_stores(), request)
+    active = stores.read_active()
+    calls: list[str] = []
+
+    def fail_archive(operation: ActiveOperation) -> None:
+        calls.append(operation.operation_id)
+        raise OSError("archive unavailable for pairing 12345678")
+
+    monkeypatch.setattr(stores, "archive_committed", fail_archive)
+    result_path = tmp_path / "result.json"
+
+    assert cli._deliver_install_result(result_path, result, stores.as_lifecycle_stores()) == 2
+    delivered = json.loads(result_path.read_text(encoding="utf-8"))
+    assert delivered["ok"] is False
+    assert delivered["code"] == "operation_archive_failed"
+    assert delivered["phase"] == "committed"
+    assert delivered["operation_id"] == request.operation_id
+    assert delivered["installation_published"] is True
+    assert delivered["pairing_code"] == ""
+    assert calls == [request.operation_id]
+    assert stores.read_active() == active
+    assert stores.history == []
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.count("\n") == 1
+    assert "operation_archive_failed" in captured.err
+    assert "12345678" not in captured.err
+
+
 def test_archived_commit_replays_pairing_after_setup_crashes_before_consuming_result(
     tmp_path: Path,
 ) -> None:

@@ -64,6 +64,8 @@ Manager 与 Lifecycle 的静态 Python 模块导入图中，两条包含函数�
 由 exact candidate Windows CI 执行。Manager 安装识别、诊断目录及原生 Known Folder 的相关消费者
 已通过；来源契约 7 通过，Windows PowerShell 5.1 和 PowerShell 7 的 source preflight 均通过。
 恢复的既有六项成功/失败用例现在经过公开领域入口，包含 mutex 和源上下文关闭顺序断言。
+组合验证共 392 通过、6 个上述权限跳过。命令 I/O 迁移后的错误审计登记同步到真实函数路径和
+精确 AST 指纹；审计与相关 CLI/恢复消费者追加验证 51 通过，包含归档失败保留原提交且只报告一次。
 
 新增生产 Python 文件及修改的 Desktop 文件 Ruff 通过。将 backend Ruff 配置额外用于 Lifecycle
 会报基线已有的两处 C901 和一处 B905；已对 `663f6e1` 原文件复算，未扩大阈值或添加忽略。
