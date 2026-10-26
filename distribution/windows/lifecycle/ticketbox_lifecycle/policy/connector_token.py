@@ -25,7 +25,9 @@ def tunnel_identity(token: str) -> str:
             raise ValueError
         if not isinstance(value["a"], str) or re.fullmatch(r"[0-9a-f]{32}", value["a"]) is None:
             raise ValueError
-        if not isinstance(value["s"], str) or len(base64.b64decode(value["s"], validate=True)) != 32:
+        # Cloudflare requires at least 32 bytes; its remotely managed tokens
+        # also use longer secrets. The enclosing Token size remains bounded.
+        if not isinstance(value["s"], str) or len(base64.b64decode(value["s"], validate=True)) < 32:
             raise ValueError
         if not isinstance(value["t"], str) or str(UUID(value["t"])) != value["t"]:
             raise ValueError

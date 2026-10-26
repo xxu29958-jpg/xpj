@@ -72,13 +72,19 @@ class ConnectorControl:
             message += "重启电脑后仍保持暂停，本地账本可正常使用。"
         self._set("succeeded", message)
 
-    def _incomplete(self, code: str) -> None:
-        if code == "connector_origin_changed":
+    def _incomplete(self, code: str, phase: str) -> None:
+        if code == "connector_token_invalid" and phase == "uncommitted":
+            message = "连接凭据格式无效，本次设置未提交。请重新选择「设置公网连接」，粘贴完整的 Cloudflare Tunnel Token。本地账本仍可使用。"
+        elif code == "connector_origin_changed":
             message = "公网地址已变化，上次操作不能继续开放连接。请关闭未完成的配置，再重新设置。"
         elif code in {"connector_binding_changed", "connector_stale_request", "connector_request_changed"}:
             message = "安装或连接记录已变化，不能继续这次操作。请重新打开管理器，查看当前状态。"
         elif code in {"connector_service_collision", "connector_account_mismatch", "connector_metrics_collision", "scm_configuration_mismatch", "connector_scm_security_changed"}:
             message = "检测到其他连接或服务配置冲突，未接管该服务。请查看连接详情并导出诊断。"
+        elif phase == "uncommitted":
+            message = "本次操作未提交。请重新操作；若仍失败，请导出诊断。本地账本仍可使用。"
+        elif phase == "manual_intervention":
+            message = "本次操作需要检查。请查看连接详情并导出诊断。本地账本仍可使用。"
         else:
             message = "操作尚未完成。可继续上次操作；若仍失败，请导出诊断。本地账本仍可使用。"
         self._set("incomplete", message)
@@ -99,9 +105,9 @@ class ConnectorControl:
                 self._completed(request)
             elif projection.busy:
                 if (request.desired_enabled or request.action == "configure") and request.expected_public_origin_revision != projection.origin_revision:
-                    self._incomplete("connector_origin_changed")
+                    self._incomplete("connector_origin_changed", operation.phase)
                 else:
-                    self._incomplete(operation.result_code)
+                    self._incomplete(operation.result_code, operation.phase)
         except (ProductDataError, LifecycleError, OSError, ValueError, TypeError, RuntimeError):
             return
 
@@ -119,7 +125,7 @@ class ConnectorControl:
                 if result["code"] == "connector_input_cancelled":
                     self._set("cancelled", "已取消本次操作。")
                 else:
-                    self._incomplete(result["code"])
+                    self._incomplete(result["code"], result["phase"])
                 return
             self._completed(request)
         except ProductDataError as exc:

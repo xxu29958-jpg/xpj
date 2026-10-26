@@ -14,7 +14,7 @@
   <ol class="workspace-note">
     <li>先在 Cloudflare 中准备 Tunnel、HTTPS 域名和对应的公开路由。</li>
     <li>在下方保存服务地址，然后回到小票夹管理器选择「设置公网连接」，按提示确认 Windows 权限并填写 Cloudflare 连接凭据。</li>
-    <li>管理器的「完整检查」通过后，<a href="/owner/pairing">连接安卓手机</a>或<a href="/owner/upload-links">获取 iPhone 上传链接</a>。</li>
+    <li>设置后管理器会自动检查连接；检查通过后，<a href="/owner/pairing">连接安卓手机</a>或<a href="/owner/upload-links">获取 iPhone 上传链接</a>。</li>
   </ol>
   <p class="workspace-note">当前：{{ '地址已保存；本页没有公网连通性检查结果' if settings_view.public_base_url_configured else '尚未保存公网地址' }}。是否可用以桌面管理器的完整检查结果为准。</p>
 </section>
@@ -37,7 +37,7 @@
     </div>
   </details>
   <div class="workspace-save"><button type="submit" class="btn btn-primary">保存地址 {{ icon('arrow-right') }}</button></div>
-  {% if message %}<p class="workspace-note"><strong>下一步：回到小票夹管理器设置公网连接，并运行「完整检查」。</strong></p>{% endif %}
+  {% if message %}<p class="workspace-note"><strong>下一步：回到小票夹管理器设置公网连接，等待自动检查完成。</strong></p>{% endif %}
 </form>
 </div>
 {% endblock %}

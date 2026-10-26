@@ -162,6 +162,32 @@ def test_continue_reuses_the_original_request_and_does_not_require_new_input():
     assert public.ended == 1
 
 
+@pytest.mark.parametrize(("phase", "code", "expected", "can_continue"), [
+    ("uncommitted", "connector_token_invalid", "凭据格式无效", False),
+    ("uncommitted", "connector_not_committed", "本次操作未提交", False),
+    ("failed_recoverable", "connector_scm_failed", "可继续上次操作", True),
+    ("manual_intervention", "connector_credential_mismatch", "查看连接详情并导出诊断", False),
+])
+def test_failed_reply_only_offers_continuation_for_a_resumable_operation(phase, code, expected, can_continue):
+    projection = ConnectorProjection(_IDENTITY, 7, None, None, False)
+    requests = []
+    public = _Public()
+
+    def runner(request, _binding):
+        requests.append(request)
+        return {"ok": False, "phase": phase, "code": code}
+
+    control = ConnectorControl(lambda: ("http://127.0.0.1:8000", "fixture-session", _BINDING), public,
+        runner=runner, reader=lambda *_args: projection, sid_reader=lambda: _SID)
+    control._work("configure", True)
+    status = control.snapshot()
+    assert status["state"] == "incomplete" and expected in status["message"]
+    assert ("可继续上次操作" in status["message"]) is can_continue
+    assert len(requests) == 1 and public.refreshes == [True]
+    if phase == "uncommitted":
+        assert "继续" not in status["message"]
+
+
 def test_continue_cannot_reassign_another_users_request():
     initial = ConnectorProjection(_IDENTITY, 7, None, None, False)
     original = initial.request("configure", enabled=True, sid=_SID)

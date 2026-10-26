@@ -14,12 +14,15 @@ def encoded(**changes):
     return base64.b64encode(json.dumps({**value, **changes}).encode()).decode()
 
 
-def test_official_token_shape_and_empty_optional_endpoint_preserve_tunnel_identity():
-    assert tunnel_identity(encoded()) == tunnel_identity(encoded(e="")) == "77777777-7777-4777-8777-777777777777"
+@pytest.mark.parametrize("secret_size", [32, 33, 64])
+def test_official_token_shape_and_empty_optional_endpoint_preserve_tunnel_identity(secret_size):
+    secret = base64.b64encode(b"x" * secret_size).decode()
+    assert tunnel_identity(encoded(s=secret)) == tunnel_identity(encoded(s=secret, e="")) == "77777777-7777-4777-8777-777777777777"
 
 
 @pytest.mark.parametrize("token", [
     encoded(e="https://custom.invalid"), encoded(unknown="extra"), encoded(s="short"),
+    encoded(s=base64.b64encode(b"x" * 31).decode()),
     encoded(t="not-a-uuid"), encoded(a="account"), "partial", "not ascii \u2603", encoded() + "\n",
 ])
 def test_unsupported_or_partial_input_has_only_a_fixed_nonsecret_error(token):
