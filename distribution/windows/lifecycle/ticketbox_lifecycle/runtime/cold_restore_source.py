@@ -120,6 +120,7 @@ class ColdRestoreSource:
         history = [json.loads(archive.read(name)) for name in manifest["entries"]
             if name.startswith("machine/operations/history/") and name.endswith(".json")]
         claims = [record for record in history if record.get("schema") == "ticketbox-lifecycle-operation-v2"
+            and record.get("kind") in {"install", "restore"}
             and record.get("phase") == "committed" and record.get("install_id") == identity["install_id"]
             and record.get("dataset_id") == identity["dataset_id"]
             and record.get("release_manifest_sha256") == identity["release_manifest_sha256"]]

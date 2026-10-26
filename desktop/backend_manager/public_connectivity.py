@@ -11,6 +11,8 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Final
 
+from ticketbox_lifecycle.connector_schema import PROFILE
+
 
 class OwnershipState(StrEnum):
     UNCONFIGURED = "unconfigured"
@@ -96,42 +98,47 @@ SUPPORTED_READONLY_ACTIONS: Final = (
     "export_diagnostics",
 )
 
-_STATE_TEXT: Final[dict[StrEnum, str]] = {
-    OwnershipState.UNCONFIGURED: "未配置",
-    OwnershipState.EXTERNAL_UNMANAGED: "发现外部连接，未由小票夹管理",
-    OwnershipState.MANAGED: "由小票夹管理",
-    OwnershipState.CONFLICT: "身份冲突",
-    OwnershipState.UNKNOWN: "未知",
-    ServiceState.UNKNOWN: "未知",
-    ServiceState.MISSING: "未安装",
-    ServiceState.STOPPED: "已停止",
-    ServiceState.START_PENDING: "正在启动",
-    ServiceState.RUNNING: "正在运行",
-    ServiceState.STOP_PENDING: "正在停止",
-    ServiceState.FAILED: "运行失败",
-    ServiceState.IDENTITY_MISMATCH: "服务身份不匹配",
-    ConnectorState.UNKNOWN: "未知",
-    ConnectorState.CONNECTING: "正在连接 Edge",
-    ConnectorState.HEALTHY: "Edge 连接正常",
-    ConnectorState.DEGRADED: "Edge 连接降级",
-    ConnectorState.DOWN: "Edge 未连接",
-    ConnectorState.TUNNEL_MISMATCH: "Tunnel 身份不匹配",
-    OriginState.UNKNOWN: "未知",
-    OriginState.HEALTHY: "小票夹源站正常",
-    OriginState.UNREACHABLE: "小票夹源站不可达",
-    OriginState.IDENTITY_MISMATCH: "源站身份不匹配",
-    PublicState.UNCONFIGURED: "未配置公网地址",
-    PublicState.UNKNOWN: "未知",
-    PublicState.REACHABLE_UNVERIFIED: "公网可达，尚未用桌面身份验证",
-    PublicState.AUTHENTICATED_REACHABLE: "公网产品身份已验证",
-    PublicState.UNREACHABLE: "公网端点不可达",
-    PublicState.WRONG_PRODUCT: "公网端点不是当前小票夹产品",
-    BoundaryState.UNKNOWN: "尚未完整检查",
-    BoundaryState.SAFE: "公开边界符合预期",
-    BoundaryState.VIOLATION: "发现不应公开的入口",
+_STATE_TEXT: Final[dict[tuple[type[StrEnum], StrEnum], str]] = {
+    (OwnershipState, OwnershipState.UNCONFIGURED): "未配置",
+    (OwnershipState, OwnershipState.EXTERNAL_UNMANAGED): "发现外部连接，未由小票夹管理",
+    (OwnershipState, OwnershipState.MANAGED): "由小票夹管理",
+    (OwnershipState, OwnershipState.CONFLICT): "身份冲突",
+    (OwnershipState, OwnershipState.UNKNOWN): "未知",
+    (ServiceState, ServiceState.UNKNOWN): "未知",
+    (ServiceState, ServiceState.MISSING): "未安装",
+    (ServiceState, ServiceState.STOPPED): "已停止",
+    (ServiceState, ServiceState.START_PENDING): "正在启动",
+    (ServiceState, ServiceState.RUNNING): "正在运行",
+    (ServiceState, ServiceState.STOP_PENDING): "正在停止",
+    (ServiceState, ServiceState.FAILED): "运行失败",
+    (ServiceState, ServiceState.IDENTITY_MISMATCH): "服务身份不匹配",
+    (ConnectorState, ConnectorState.UNKNOWN): "未知",
+    (ConnectorState, ConnectorState.CONNECTING): "正在连接 Edge",
+    (ConnectorState, ConnectorState.HEALTHY): "Edge 连接正常",
+    (ConnectorState, ConnectorState.DEGRADED): "Edge 连接降级",
+    (ConnectorState, ConnectorState.DOWN): "Edge 未连接",
+    (ConnectorState, ConnectorState.TUNNEL_MISMATCH): "Tunnel 身份不匹配",
+    (OriginState, OriginState.UNKNOWN): "未知",
+    (OriginState, OriginState.HEALTHY): "小票夹源站正常",
+    (OriginState, OriginState.UNREACHABLE): "小票夹源站不可达",
+    (OriginState, OriginState.IDENTITY_MISMATCH): "源站身份不匹配",
+    (PublicState, PublicState.UNCONFIGURED): "未配置公网地址",
+    (PublicState, PublicState.UNKNOWN): "未知",
+    (PublicState, PublicState.REACHABLE_UNVERIFIED): "公网可达，尚未用桌面身份验证",
+    (PublicState, PublicState.AUTHENTICATED_REACHABLE): "公网产品身份已验证",
+    (PublicState, PublicState.UNREACHABLE): "公网端点不可达",
+    (PublicState, PublicState.WRONG_PRODUCT): "公网端点不是当前小票夹产品",
+    (BoundaryState, BoundaryState.UNKNOWN): "尚未完整检查",
+    (BoundaryState, BoundaryState.SAFE): "公开边界符合预期",
+    (BoundaryState, BoundaryState.VIOLATION): "发现不应公开的入口",
 }
 
 _SUMMARY: Final[dict[str, tuple[str, str]]] = {
+    "connector_operation_interrupted": ("上次操作尚未完成", "继续上次操作以确认本机结果；如仍失败，请导出诊断。本地账本仍可使用。"),
+    "connector_operation_context_changed": ("上次配置已失效", "公网地址已变化，请关闭未完成的配置，再按当前地址重新设置。本地账本仍可使用。"),
+    "connector_paused": ("本机公网连接已暂停", "重启电脑后仍保持暂停，本地账本可正常使用；其他连接不受影响。"),
+    "connector_pause_pending": ("正在暂停本机公网连接", "尚未确认本机连接停止，公网可能仍然开放。"),
+    "connector_setup_available": ("尚未设置公网连接", "设置后可在外出时连接这台电脑中的小票夹。"),
     "public_boundary_violation": (
         "公网边界存在风险",
         "停止把该公网入口视为安全，并由维护者检查公开路由边界。",
@@ -150,23 +157,23 @@ _SUMMARY: Final[dict[str, tuple[str, str]]] = {
     ),
     "public_connectivity_unconfigured": (
         "尚未配置小票夹公网连接",
-        "本阶段不会创建连接；配置仍由后续受管连接流程负责。",
+        "设置公网地址后，在管理器中完成连接配置。本地账本仍可使用。",
     ),
     "external_connector_unmanaged": (
         "已发现外部 Cloudflare 连接",
-        "该连接不属于小票夹受管对象；这里只显示只读观察。",
+        "旧连接仍由原工具管理。请为此电脑准备专属连接；沿用原地址前，先确认旧连接已退出该地址的转发。",
     ),
     "cloudflared_service_missing": (
         "受管连接服务不存在",
-        "本阶段不会安装服务；由后续生命周期流程处理。",
+        "请重新设置本机连接；如有其他应用的同名服务，请先查看连接详情。",
     ),
     "cloudflared_service_stopped": (
         "受管连接服务已停止",
-        "本阶段不会启动服务；由后续生命周期流程处理。",
+        "检查是否已暂停；需要恢复时，在管理器中开启公网连接。",
     ),
     "cloudflared_service_failed": (
         "受管连接服务运行失败",
-        "导出安全诊断，并由后续生命周期流程处理。",
+        "可尝试一次重新连接；仍失败时，请导出诊断查看具体原因。",
     ),
     "cloudflared_start_pending": (
         "连接服务正在启动",
@@ -186,7 +193,7 @@ _SUMMARY: Final[dict[str, tuple[str, str]]] = {
     ),
     "cloudflared_down": (
         "Cloudflare Edge 当前不可用",
-        "检查网络后刷新；本阶段不会重启连接器。",
+        "网络恢复后会继续尝试；仍未恢复时，可在管理器中重新连接。",
     ),
     "cloudflared_tunnel_mismatch": (
         "Tunnel 身份与受保护绑定不一致",
@@ -287,6 +294,12 @@ class PublicConnectivityStatus:
     binary_identity_match: bool | None = None
     tunnel_identity_match: bool | None = None
     in_progress: bool = False
+    configured: bool | None = None
+    desired_enabled: bool | None = None
+    host_committed: bool = False
+    pending_action: str | None = None
+    pending_can_continue: bool = True
+    operation_phase: str | None = None
 
     @property
     def overall(self) -> OverallState:
@@ -296,8 +309,13 @@ class PublicConnectivityStatus:
             return OverallState.UNSAFE
         if self.freshness is FreshnessState.STALE:
             return OverallState.UNKNOWN
+        if self.pending_action is not None:
+            return OverallState.UNKNOWN
         if self.ownership is not OwnershipState.MANAGED:
             return OverallState.UNKNOWN
+        return self._observed_overall()
+
+    def _observed_overall(self) -> OverallState:
         if self.service in {ServiceState.MISSING, ServiceState.STOPPED, ServiceState.FAILED}:
             return OverallState.OFFLINE
         if self.connector in {ConnectorState.DOWN, ConnectorState.TUNNEL_MISMATCH}:
@@ -332,6 +350,17 @@ class PublicConnectivityStatus:
             return "service_identity_conflict"
         if self.freshness is FreshnessState.STALE:
             return "public_connectivity_stale"
+        if self.pending_action is not None:
+            return "connector_operation_interrupted" if self.pending_can_continue else "connector_operation_context_changed"
+        return self._connection_code()
+
+    def _connection_code(self) -> str:
+        if self.ownership is OwnershipState.EXTERNAL_UNMANAGED:
+            return "external_connector_unmanaged"
+        if self.configured is False and self.managed_action is ActionState.AVAILABLE:
+            return "connector_setup_available"
+        if self.configured and self.desired_enabled is False:
+            return "connector_paused" if self.service is ServiceState.STOPPED and self.ownership is OwnershipState.MANAGED else "connector_pause_pending"
         axis_code = (
             _OWNERSHIP_CODES.get(self.ownership)
             or _SERVICE_CODES.get(self.service)
@@ -343,10 +372,14 @@ class PublicConnectivityStatus:
 
     @property
     def summary(self) -> str:
+        if self.code == "connector_paused" and self.public in {PublicState.AUTHENTICATED_REACHABLE, PublicState.REACHABLE_UNVERIFIED}:
+            return "本机已暂停，公网仍可达"
         return _SUMMARY[self.code][0]
 
     @property
     def next_step(self) -> str:
+        if self.code == "connector_paused" and self.public in {PublicState.AUTHENTICATED_REACHABLE, PublicState.REACHABLE_UNVERIFIED}:
+            return "公网仍由其他连接提供。如需关闭整个入口，请在 Cloudflare 核对其他连接器；本机保持暂停，本地账本可正常使用。"
         return _SUMMARY[self.code][1]
 
     def current(
@@ -373,14 +406,14 @@ class PublicConnectivityStatus:
         version = self.cloudflared_version or "未知"
         return [
             {"label": "小票夹后端", "state": self.overall.value, "text": self.summary},
-            {"label": "Windows 服务", "state": self.service.value, "text": _STATE_TEXT[self.service]},
-            {"label": "Cloudflare Edge", "state": self.connector.value, "text": _STATE_TEXT[self.connector]},
-            {"label": "本机源站", "state": self.origin.value, "text": _STATE_TEXT[self.origin]},
-            {"label": "公网端点", "state": self.public.value, "text": _STATE_TEXT[self.public]},
-            {"label": "公开边界", "state": self.boundary.value, "text": _STATE_TEXT[self.boundary]},
+            {"label": "Windows 服务", "state": self.service.value, "text": _STATE_TEXT[type(self.service), self.service]},
+            {"label": "Cloudflare Edge", "state": self.connector.value, "text": _STATE_TEXT[type(self.connector), self.connector]},
+            {"label": "本机源站", "state": self.origin.value, "text": _STATE_TEXT[type(self.origin), self.origin]},
+            {"label": "公网端点", "state": self.public.value, "text": _STATE_TEXT[type(self.public), self.public]},
+            {"label": "公开边界", "state": self.boundary.value, "text": _STATE_TEXT[type(self.boundary), self.boundary]},
             {"label": "最近观察", "state": self.freshness.value, "text": observed or "尚无观察"},
             {"label": "cloudflared 版本", "state": "informational", "text": version},
-            {"label": "所有权", "state": self.ownership.value, "text": _STATE_TEXT[self.ownership]},
+            {"label": "所有权", "state": self.ownership.value, "text": _STATE_TEXT[type(self.ownership), self.ownership]},
         ]
 
     def to_projection(self) -> dict[str, object]:
@@ -398,6 +431,13 @@ class PublicConnectivityStatus:
             "boundary": self.boundary.value,
             "freshness": self.freshness.value,
             "managed_action": self.managed_action.value,
+            "configured": self.configured,
+            "desired_enabled": self.desired_enabled,
+            "host_committed": self.host_committed,
+            "pending_action": self.pending_action,
+            "pending_can_continue": self.pending_can_continue,
+            "operation_phase": self.operation_phase,
+            "connector_profile": PROFILE if self.managed_action is ActionState.AVAILABLE else None,
             "observed_at": _utc_text(self.observed_at),
             "public_checked_at": _utc_text(self.public_checked_at),
             "in_progress": self.in_progress,

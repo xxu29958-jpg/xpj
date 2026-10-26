@@ -80,10 +80,10 @@ class FakePublicConnectivityProvider:
     def invalidate_product_session(self) -> None:
         self.product_session_invalidations += 1
 
-    def begin_product_session_mutation(self) -> None:
+    def begin_authority_mutation(self) -> None:
         self.product_session_mutation_events.append("begin")
 
-    def end_product_session_mutation(self) -> None:
+    def end_authority_mutation(self) -> None:
         self.product_session_mutation_events.append("end")
 
 

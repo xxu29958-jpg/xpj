@@ -1,123 +1,74 @@
 # Cloudflare Tunnel 配置说明
 
-小票夹后端默认只监听：
+正式 Windows 安装的公网连接从**小票夹管理器**设置。Backend 保持 `http://127.0.0.1:8000`，
+公网使用专属 HTTPS 地址。无需开放路由器端口或保留终端；不能把 Backend 改为 `0.0.0.0`，
+也不能把 `uploads/` 直接公开。以下说明是操作与边界契约，发行资格仍须绑定实际安装包和测试结果。
 
-```text
-http://127.0.0.1:8000
-```
+## 首次设置
 
-Cloudflare Tunnel 只负责把公网 HTTPS 域名转发到这个本机地址：
+1. 在 Cloudflare 账户内为此电脑建立专用 remotely-managed Tunnel 和专用 hostname。
+   按下文“公网路由分层”应用完整 ingress，保留末尾 404；不要执行控制台提供的全局 service install 命令。
+2. 在小票夹设置中保存该 HTTPS 地址。保存地址使用当前合法 Owner 身份；本机安装另由 Windows 授权。
+3. 回到管理器点击“设置公网连接”，完成一次 Windows 授权，在随后打开的遮蔽输入框粘贴 Tunnel Token。
+   不把 Token 发到聊天、普通网页、脚本参数或环境变量。取消输入不会替换既有凭据或启动候选连接。
+4. 主机操作结束后自动检查公网。以管理器当前结果和覆盖范围为准，再从原有入口连接 Android、Web 或 iPhone。
+   “本机完成，公网待验证”允许继续使用本地账本，不等于公网已可用。
 
-```text
-https://api.你的域名.com -> http://127.0.0.1:8000
-```
+连接完成后关闭管理器不影响后台运行；日常无需重新粘贴 Token。
+“暂停公网”只关闭本机受管连接并跨重启保持；“开启公网”恢复这一连接。
+“重新连接”沿用既有配置，执行一次有限操作；不会重新安装、轮换凭据或清空手机任务。
+替换凭据和移除位于连接详情。暂停期间替换凭据仍保持暂停。
+移除只处理本机拥有的服务与凭据；远端撤销仍由 Cloudflare 账户持有人完成。
 
-不要开放路由器端口，不要把 `uploads/` 暴露成静态目录，不要把 FastAPI 改成监听 `0.0.0.0`。
+## 失败后继续
 
-## MCP 状态
+管理器重开后读取同一操作的记录。只有原请求、当前安装身份与可安全重复的步骤相符，才提供“继续上次操作”。
+地址已变化或原配置不能继续时，提供关闭该未完成配置的明确下一步。
+结果无法确认时先刷新并查看诊断；不会自动创建另一个操作或反复重装。
 
-如果当前 Codex 会话暴露了 Cloudflare MCP 工具，可以用 MCP 查询账号、Zone、Tunnel 和 DNS 记录。
+## 已有外部连接或旧电脑
 
-如果工具没有暴露，但 Cloudflare 插件已经安装，通常需要重开或刷新 Codex 会话后工具才会出现在工具注册表里。没有 MCP 时，仍然可以按本文档和脚本完成本机验收。
+外部服务、登录任务与手工进程仍归原工具管理，小票夹不会从它们的命令行读取 Token，
+也不会按名称起停、升级或删除。默认使用新的专用 Tunnel；共享连接不得整体停止。
+沿用已有 hostname 时，先在原管理工具或 Cloudflare 中确认旧目标已退出该地址的转发，
+再启用新目标并核对当前安装身份。旧电脑和新电脑同时连接同一 Tunnel，可能分流到不同账本；
+一次成功请求不证明交接完成。不能确认远端退出时，应停在待交接状态，或改用新的专用地址。
 
-当前项目不把 Cloudflare Token、Tunnel Token 或账号凭据写入仓库。
+旧 `ensure_ticketbox_runtime.ps1` 与 `install_windows_tasks.ps1` 已移除连接器控制：
+不再扫描或启动 cloudflared 服务，不推断运行参数，不创建 Tunnel 登录任务。
+源码运维脚本遇到正式安装或相关服务会在任何动作前拒绝，并指向管理器。
+保留的源码后端工具仅供未安装产品的外部手工环境；见 [Windows 运行说明](WINDOWS_SERVICE_RUNBOOK.md)。
 
-## 推荐 Dashboard 配置
+## 验收与支持
 
-在 Cloudflare Zero Trust 控制台：
+日常检查在管理器完成，详情可导出允许字段的诊断摘要。工程验收仍可使用
+`check_cloudflare_endpoint.ps1`、`check_public_boundary.ps1` 和 `real_device_preflight.ps1`，
+必须针对实际目标与有效产品身份执行；脚本结果不替代普通用户旅程或独立网络客户端证据。
+这些只读检查不负责启动连接器。真实上传探针会产生待确认记录，应使用隔离测试账本。
 
-1. 进入 `Networks` -> `Tunnels`。
-2. 创建 Cloudflared Tunnel。
-3. Public hostname 填：
+### 固定版本的维护责任
 
-```text
-api.你的域名.com
-```
+本仓库所有者 `xxu29958-jpg` 是本组件的唯一发行责任人，负责版本跟踪、安全修复评估、
+兼容验证、发布说明与旧版本退役。责任交接须在发行说明中明确新的负责人；不能将更新责任
+转给普通用户手工覆盖程序目录。Cloudflare 账户持有人仍负责远端账号、DNS 与 Token。
 
-4. Service 类型选 `HTTP`，URL 填：
+当前候选绑定 `2026.10.3`（上游发布于 2026-10-21），版本、官方来源、签名、摘要及许可证
+均由 `backend/packaging/cloudflared-profile.json` 固定。Cloudflare 的当前规则为一年支持窗口，
+Windows 也不会自动更新；每次发行及每月维护复核时重新检查
+[官方支持说明](https://developers.cloudflare.com/tunnel/downloads/)与
+[上游发布](https://github.com/cloudflare/cloudflared/releases/tag/2026.10.3)。
+上游缩短支持或出现安全修复时，按更早的要求处理，不能仅凭固定日期继续声明可支持。
 
-```text
-127.0.0.1:8000
-```
+本候选最晚在 **2027-07-21 前**由同一发行责任人完成替代版本的资格与发布，预留至少三个月
+维护余量。优先沿已取得资格的完整发行升级路径；若该路径届时仍未取得资格，则只交付最窄的
+连接器版本维护切片：验证受信候选、精确停启、秘密与暂停意图保留、中断后的明确继续方式，
+以及旧版本恢复边界，并在管理器提供用户可达入口。该维护切片目前尚未取得资格，不能宣称
+已经支持独立热更新或完整 U1，也不能直接覆盖 immutable app_dir。
 
-5. 保存后按 Cloudflare 提供的命令在 Windows 上运行 connector。
-
-## 本机后端检查
-
-启动后端：
-
-```bat
-cd /d E:\projects\xiaopiaojia\backend
-run.bat
-```
-
-本机健康检查：
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/health
-```
-
-## 公网入口检查
-
-Tunnel 配好后，从项目根目录运行：
-
-```powershell
-cd E:\projects\xiaopiaojia
-powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1
-```
-
-项目默认检查：
-
-```text
-https://api.zen70.cn
-```
-
-也可以显式指定：
-
-```powershell
-$env:TICKETBOX_SESSION_TOKEN="<session_token>"
-$env:TICKETBOX_UPLOAD_LINK="/u/<upload_key>?tz=Asia/Shanghai"
-powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
-  -ServerUrl https://api.zen70.cn
-```
-
-脚本会：
-
-- 检查 `/api/health`。
-- 检查 `/api/auth/check`（使用 session token）。
-- 用 UploadLink URL 测试上传。
-- 在公网边界脚本中检查 `/web/auth/login` 可达、`/web/*` 无 cookie 返回 `303`，且 `Location` 指向 `/web/auth/login?...`。
-
-> **注意**：v0.3 以后脚本不再从 `backend\.env` 读取旧 `APP_TOKEN`/`UPLOAD_TOKEN`，也不接受命令行传 token。请通过 `TICKETBOX_SESSION_TOKEN` / `TICKETBOX_UPLOAD_LINK` 环境变量传入当前有效凭证，避免 token 进入 PowerShell 历史。`UploadLink` 可以是完整 URL，也可以是 `/u/<upload_key>?tz=...` 路径。
-
-当前 Windows 联调推荐同时启用两个登录自启任务：
-
-```powershell
-cd E:\projects\xiaopiaojia
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install_windows_tasks.ps1
-```
-
-其中：
-
-- `TicketboxBackend` 启动本机 FastAPI：`127.0.0.1:8000`。
-- `TicketboxCloudflareTunnel` 启动 Cloudflare Tunnel connector。
-
-查看任务状态：
-
-```powershell
-Get-ScheduledTask -TaskName TicketboxBackend,TicketboxCloudflareTunnel
-```
-
-更完整的长期运行流程见 [Windows 长期运行 Runbook](WINDOWS_SERVICE_RUNBOOK.md)。
-
-只检查健康和 session token，不上传测试图：
-
-```powershell
-$env:TICKETBOX_SESSION_TOKEN="<session_token>"
-powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
-  -ServerUrl https://api.你的域名.com `
-  -SkipUpload
-```
+首版发布必须同时确认负责人、当前支持窗口和上述维护期限。未能按期取得替代资格、上游提前
+停止支持或发现无法缓解的安全风险时，发行责任人停止发布受影响候选并通知已安装用户暂停公网；
+本地账本与既有数据继续保留。正式 EXE 只接受小票夹核准发行路径，不能交给 cloudflared
+自身、包管理器或另一套脚本并行更新。
 
 ## iPhone 快捷指令 URL
 
@@ -140,7 +91,7 @@ User-Agent: TicketBox/1.0 iOS-Shortcut
 文件值：转换后的图像
 ```
 
-建议在快捷指令里先转换为 JPEG 或 PNG。iOS 26.4 实测应使用"文件"请求正文，不要使用"表单"请求正文。
+快捷指令沿用文件请求正文，必要时转换为 JPEG 或 PNG。历史使用说明不替代本次目标 iOS 真机资格；新模板的可用声明单独以真机结果为准。
 
 旧快捷指令如果使用旧版 `/api/upload-screenshot` 和 `Upload-Token` header，后端会返回 `legacy_auth_removed`。
 
@@ -206,32 +157,10 @@ iPhone：更新快捷指令为完整 UploadLink URL。
 优先把 HEIC 转成 JPEG 或 PNG。
 ```
 
-离开家里 Wi-Fi 后显示网络中断：
-
-```text
-确认 App 或快捷指令使用 https://api.zen70.cn。
-确认 Windows 没有睡眠，cloudflared 和 FastAPI 都在运行。
-在手机 Safari 打开 https://api.zen70.cn/api/health，应看到 {"status":"ok"}。
-在 Windows 运行 scripts\check_cloudflare_endpoint.ps1。
-```
-
-查看后端和 Tunnel 当前状态、最近访问日志：
-
-```powershell
-$env:TICKETBOX_SESSION_TOKEN="<session_token>"
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_service_status.ps1 `
-  -ServerUrl https://api.zen70.cn
-```
-
-出门前建议运行一键保障检查。它会尝试启动 FastAPI 后端、启动已安装的 cloudflared 服务或计划任务，并检查公网 health：
-
-```powershell
-cd E:\projects\xiaopiaojia
-powershell -ExecutionPolicy Bypass -File scripts\ensure_ticketbox_runtime.ps1 `
-  -ServerUrl https://api.zen70.cn
-```
-
-如果这条命令通过，手机离开家里 Wi-Fi 后仍然可以通过 `https://api.zen70.cn` 访问。前提是 Windows 主机没有睡眠、断网或关机。
+离开家里 Wi-Fi 后显示网络中断：在小票夹管理器查看“公网连接”。
+先确认电脑在线且未睡眠，再根据当前原因处理；可运行完整检查并导出诊断。
+健康端点返回 200、一个 cloudflared 进程存在或 Edge 已连接，都不能单独证明账本身份与业务路径正确。
+普通网络中断不需要重新配对手机、清理待上传任务或更换连接凭据。
 
 后端启动脚本默认关闭 Uvicorn access log，避免 UploadLink URL 中的 `upload_key` 被写入日志。排查上传时以脚本输出、pending 列表或数据库状态为准，不要为了看 `/u/<upload_key>` 路径临时打开访问日志。
 

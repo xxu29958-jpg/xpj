@@ -214,6 +214,10 @@ def list_windows_tasks(*, force_refresh: bool = False) -> list[TaskStatusVM]:
     Cached for 30 seconds because schtasks spawns a process and the Owner
     index re-renders frequently while the operator inspects it.
     """
+    # Installed service ownership and public status live in Lifecycle/Manager.
+    # Legacy login tasks are only relevant to external source deployments.
+    if os.environ.get("TICKETBOX_INSTALLATION_ID", "").strip():
+        return []
     now = time.monotonic()
     if not force_refresh:
         cached_rows = _TASK_STATUS_CACHE.fresh_rows(now)

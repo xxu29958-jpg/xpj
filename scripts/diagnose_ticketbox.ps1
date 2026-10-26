@@ -8,6 +8,7 @@
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "assert_external_runtime.ps1")
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -111,7 +112,7 @@ else {
 
 $cloudflaredProcess = Get-Process -Name "cloudflared*" -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($cloudflaredProcess) {
-    Add-Row -Target $Summary -Name "Cloudflare Tunnel" -Status "OK" -Detail "在线"
+    Add-Row -Target $Summary -Name "Cloudflare Tunnel" -Status "WARN" -Detail "进程存在；归属与公网业务尚未验证"
     Add-Row -Target $Details -Name "cloudflared 进程" -Status "OK" -Detail "PID $($cloudflaredProcess.Id)"
 }
 else {
@@ -135,7 +136,7 @@ if ($localHealth -and $expectedBackendVersion -and [string]$localHealth.backend_
 }
 $publicHealth = Invoke-JsonCheck -Name "公网健康检查" -Uri "$BaseUrl/api/health" -Target $Details
 if ($publicHealth) {
-    Add-Row -Target $Summary -Name "外网访问" -Status "OK" -Detail "正常"
+    Add-Row -Target $Summary -Name "公网健康端点" -Status "OK" -Detail "可达；不能据此确认业务可用"
 }
 else {
     Add-Row -Target $Summary -Name "外网访问" -Status "FAIL" -Detail "不可访问"

@@ -5,6 +5,7 @@
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "assert_external_runtime.ps1")
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 

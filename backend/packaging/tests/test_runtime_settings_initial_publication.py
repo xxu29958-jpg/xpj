@@ -36,6 +36,36 @@ def test_initial_runtime_settings_publication_is_create_only(tmp_path: Path) -> 
     assert store.read_runtime_settings(target, service_owned=False) == initial
 
 
+def test_origin_revision_invalidates_a_to_b_to_a_without_unrelated_settings_changes(tmp_path):
+    from app.services import runtime_settings_store as store
+
+    path = (tmp_path / "runtime-settings.json").resolve()
+    initial = store.RuntimeSettingsProjection("https://a.example", False)
+    store.initialize_runtime_settings(path, initial, service_owned=False)
+    for origin, expected in (("https://b.example", 1), ("https://a.example", 2), ("https://a.example", 2)):
+        changed = store.patch_runtime_settings(path, defaults=initial, service_owned=False,
+            mutation=store.RuntimeSettingsMutation("public_base_url", origin))
+        assert changed.public_origin_revision == expected
+    changed = store.patch_runtime_settings(path, defaults=initial, service_owned=False,
+        mutation=store.RuntimeSettingsMutation("budget_advisor_owner_confirmed", True))
+    assert changed.public_origin_revision == 2
+
+
+@pytest.mark.parametrize("schema", ["ticketbox-runtime-settings-v1", "ticketbox-runtime-settings-v2", "ticketbox-runtime-settings-v3", "ticketbox-runtime-settings-v4"])
+def test_old_runtime_projection_preserves_values_and_begins_origin_revision_zero(schema):
+    import json
+
+    from app.services import runtime_settings_store as store
+
+    initial = store.RuntimeSettingsProjection("https://existing.example", False)
+    if schema.endswith("v1"):
+        encoded = store._encode_legacy(initial)
+    else:
+        encoded = json.dumps(store._canonical_runtime_payload(initial, schema), sort_keys=True, separators=(",", ":")) + "\n"
+    decoded = store._decode_runtime_settings(encoded.encode())
+    assert decoded == initial and decoded.public_origin_revision == 0
+
+
 def test_retry_accepts_completed_no_replace_publish(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

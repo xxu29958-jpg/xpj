@@ -13,7 +13,7 @@ REPO_ROOT = os.path.dirname(DESKTOP)
 
 analysis = Analysis(
     [os.path.join(DESKTOP, "backend_manager", "__main__.py")],
-    pathex=[DESKTOP],
+    pathex=[DESKTOP, os.path.join(REPO_ROOT, "distribution", "windows", "lifecycle")],
     binaries=[],
     datas=[
         (os.path.join(DESKTOP, "backend_manager", "ui.html"), "backend_manager"),

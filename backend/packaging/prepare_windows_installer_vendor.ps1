@@ -14,6 +14,7 @@ if (-not (Test-Path -LiteralPath $BuildProvenanceScript -PathType Leaf)) {
     throw "缺少 Windows build provenance helper：$BuildProvenanceScript"
 }
 . $BuildProvenanceScript
+. (Join-Path $ScriptDir "cloudflared_vendor.ps1")
 $vendorRoot = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "vendor"))
 $archiveRoot = Join-Path $vendorRoot "archives"
 $processStagingRoot = Join-Path $vendorRoot (".vendor-staging-{0}-{1}" -f $PID, [Guid]::NewGuid().ToString("N"))
@@ -464,6 +465,7 @@ try {
         $visualCppRuntimeOutputExe `
         $visualCppRuntimeSource `
         "Published Microsoft Visual C++ runtime"
+    Publish-TicketboxCloudflaredVendor $ScriptDir $vendorRoot $archiveRoot
 }
 catch { $PrimaryFailure = $_ }
 finally {

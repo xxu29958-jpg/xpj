@@ -102,12 +102,12 @@ def test_failed_publication_keeps_effective_configuration(settings_file, monkeyp
 
 def test_old_recognition_projection_can_gain_integration_settings_without_losing_values(settings_file):
     write_runtime_settings(settings_file, RuntimeSettingsProjection("https://receipts.example", True), service_owned=False)
-    old = json.loads(settings_file.read_bytes())
-    old.pop("uploads")
-    old.pop("maintenance")
-    old.pop("advisor")
-    old.pop("fx")
-    old["schema"] = "ticketbox-runtime-settings-v2"
+    old = {
+        "schema": "ticketbox-runtime-settings-v2",
+        "public_base_url": "https://receipts.example",
+        "budget_advisor_owner_confirmed": True,
+        "recognition": None,
+    }
     settings_file.write_text(json.dumps(old, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8", newline="")
     config.reset_settings_cache()
     integration.save_fx(integration.FxSettingsForm())

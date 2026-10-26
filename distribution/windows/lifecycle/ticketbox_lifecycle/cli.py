@@ -27,6 +27,10 @@ from ticketbox_lifecycle.schemas import (
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "connector":
+        from ticketbox_lifecycle.connector_cli import main as connector_main
+
+        return connector_main(argv)
     if argv and argv[0] == "restore":
         from ticketbox_lifecycle.restore_cli import main as restore_main
 
@@ -35,6 +39,10 @@ def main(argv: list[str] | None = None) -> int:
         from ticketbox_lifecycle.cold_copy_cli import main as cold_main
 
         return cold_main(argv)
+    return _install_main(argv)
+
+
+def _install_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="TicketboxLifecycle",
         epilog="Beta retention: cold-copy --output <new.tbxcold>; verify-cold-copy --source <copy.tbxcold>.",
@@ -176,6 +184,7 @@ def _emit_failure(result: CommandResult) -> None:
 def _is_exact_commit(operation: ActiveOperation | None, operation_id: str) -> bool:
     return (
         operation is not None
+        and operation.kind in {"install", "restore"}
         and operation.phase == "committed"
         and operation.operation_id == operation_id
     )

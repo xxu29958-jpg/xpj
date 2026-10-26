@@ -86,6 +86,22 @@ def test_non_managed_ownership_can_never_be_healthy(ownership: OwnershipState) -
     }
 
 
+def test_installed_setup_keeps_external_handoff_visible_before_managed_configuration() -> None:
+    status = _status(
+        ownership=OwnershipState.EXTERNAL_UNMANAGED,
+        managed_action=ActionState.AVAILABLE,
+        configured=False,
+        desired_enabled=False,
+    )
+    projection = status.to_projection()
+
+    assert projection["code"] == "external_connector_unmanaged"
+    assert "旧连接仍由原工具管理" in projection["next_step"]
+    assert "旧连接已退出该地址的转发" in projection["next_step"]
+    assert projection["managed_action"] == "available"
+    assert replace(status, ownership=OwnershipState.UNCONFIGURED).code == "connector_setup_available"
+
+
 def test_stale_healthy_demotes_to_unknown_but_known_violation_remains_unsafe() -> None:
     stale = _status().current(evidence_age=timedelta(seconds=61), max_age=timedelta(seconds=60))
     stale_violation = _status(boundary=BoundaryState.VIOLATION).current(
@@ -111,6 +127,21 @@ def test_current_marks_evidence_at_the_age_boundary_fresh() -> None:
     assert current.overall is OverallState.HEALTHY
 
 
+@pytest.mark.parametrize("public", [PublicState.AUTHENTICATED_REACHABLE, PublicState.REACHABLE_UNVERIFIED])
+def test_paused_local_connection_does_not_claim_shared_public_origin_is_closed(public) -> None:
+    status = _status(configured=True, desired_enabled=False, service=ServiceState.STOPPED,
+        connector=ConnectorState.DOWN, public=public)
+
+    assert status.code == "connector_paused"
+    assert status.summary == "本机已暂停，公网仍可达"
+    assert "其他连接" in status.next_step
+    assert "Cloudflare" in status.next_step
+    assert replace(status, public=PublicState.UNREACHABLE).summary == "本机公网连接已暂停"
+    assert replace(status, public=PublicState.UNKNOWN).summary == "本机公网连接已暂停"
+    assert replace(status, freshness=FreshnessState.STALE).code == "public_connectivity_stale"
+    assert "仍可达" not in replace(status, freshness=FreshnessState.STALE).summary
+
+
 def test_projection_is_stable_ui_ready_and_contains_only_readonly_actions() -> None:
     projection = _status().to_projection()
 
@@ -123,6 +154,9 @@ def test_projection_is_stable_ui_ready_and_contains_only_readonly_actions() -> N
     assert projection["public_checked_at"] == "2026-09-01T08:30:00+00:00"
     assert projection["managed_action"] == "unavailable"
     assert projection["connection_count"] == 4
+    rows = {row["label"]: row["text"] for row in projection["detail_rows"]}
+    assert rows["Cloudflare Edge"] == "Edge 连接正常"
+    assert rows["本机源站"] == "小票夹源站正常"
     assert [row["label"] for row in projection["detail_rows"]] == [
         "小票夹后端",
         "Windows 服务",

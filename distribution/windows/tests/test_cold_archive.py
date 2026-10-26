@@ -49,7 +49,8 @@ def test_retention_reopens_with_every_original_file_and_empty_directory(
     assert cli.main(["verify-cold-copy", "--source", str(target)]) == 0
     output = json.loads(capsys.readouterr().out)
     assert output["ok"] is True and output["identity"] == {"dataset_id": "original"}
-    assert "credential" not in json.dumps(output)
+    assert "fixture-only-private-credential" not in json.dumps(output)
+    assert output["public_connectivity"]["credentials"] == "not_backed_up"
     with zipfile.ZipFile(target) as archive:
         assert archive.read("data/app/.env") == b"fixture-only-private-credential"
         assert archive.read("data/pgdata/financial-facts") == b"amount=1234;revision=9;dataset=original"
@@ -136,3 +137,52 @@ def test_read_failure_or_missing_source_cannot_publish_completion(
     materials["data/pgdata"] = tmp_path / "missing-pgdata"
     with pytest.raises(LifecycleError, match="required cold copy directory"):
         _write(tmp_path / "missing.tbxcold", materials, lambda: observed.append(True))
+
+
+def test_new_copy_excludes_entire_connector_secret_authority_and_keeps_database_material(tmp_path, materials):
+    secrets = materials["machine"] / "connectors/cloudflare/secrets"
+    secrets.mkdir(parents=True)
+    for name in ("active", "pending", "previous", "generation-7/value.bin"):
+        target = secrets / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"fixture-tunnel-private")
+    record = secrets.parent / "state.json"
+    record.write_text('{"configured":true}')
+    archive_path = tmp_path / "without-tunnel.tbxcold"
+    result = _write(archive_path, materials, lambda: None)
+    assert result["schema"] == cold_archive.SCHEMA
+    with zipfile.ZipFile(archive_path) as archive:
+        assert not any("connectors/cloudflare/secrets" in name for name in archive.namelist())
+        assert archive.read("machine/connectors/cloudflare/state.json") == record.read_bytes()
+        assert archive.read("machine/secrets/postgres.password") == b"fixture-only-secret"
+    with archive_path.open("rb") as stream:
+        assert cold_archive.verify_archive(stream) == result
+
+
+@pytest.mark.parametrize("schema", [cold_archive.LEGACY_SCHEMA, cold_archive.SCHEMA])
+def test_legacy_copy_keeps_its_original_policy_but_new_format_cannot_smuggle_tunnel_secret(tmp_path, materials, schema):
+    original = tmp_path / "new.tbxcold"
+    _write(original, materials, lambda: None)
+    candidate = tmp_path / "fixture.tbxcold"
+    with zipfile.ZipFile(original) as old, zipfile.ZipFile(candidate, "w") as new:
+        manifest = json.loads(old.read(cold_archive.MANIFEST))
+        for name in old.namelist():
+            if name != cold_archive.MANIFEST:
+                new.writestr(name, old.read(name))
+        name = "machine/connectors/cloudflare/secrets/previous"
+        raw = b"historical-fixture-tunnel"
+        new.writestr(name, raw)
+        manifest["entries"][name] = {"size": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+        manifest["schema"] = schema
+        if schema == cold_archive.LEGACY_SCHEMA:
+            manifest.pop("public_connectivity")
+        new.writestr(cold_archive.MANIFEST, json.dumps(manifest))
+    before = candidate.read_bytes()
+    with candidate.open("rb") as stream:
+        if schema == cold_archive.LEGACY_SCHEMA:
+            result = cold_archive.verify_archive(stream)
+            assert result["public_connectivity"]["credentials"] == "legacy_unspecified"
+        else:
+            with pytest.raises(LifecycleError, match="exclude"):
+                cold_archive.verify_archive(stream)
+    assert candidate.read_bytes() == before

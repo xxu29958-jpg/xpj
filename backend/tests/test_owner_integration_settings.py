@@ -228,14 +228,16 @@ def test_saved_fx_source_supplies_desktop_and_api_without_creating_a_manual_over
 def test_fx_settings_upgrade_preserves_old_source_schedule_and_other_groups(integration_file):
     import json
 
-    from app.services.runtime_integration_settings import FxSettingsProjection
-    from app.services.runtime_settings_store import RuntimeSettingsProjection, _encode, read_runtime_settings
+    from app.services.runtime_settings_store import read_runtime_settings
     from app.services.secure_file import write_protected_file_no_replace
 
-    old = json.loads(_encode(RuntimeSettingsProjection(public_base_url="https://household.example",
-        budget_advisor_owner_confirmed=False, fx=FxSettingsProjection(False, "ecb", "10:30", "UTC"))))
-    old["schema"] = "ticketbox-runtime-settings-v3"
-    old["fx"].pop("url")
+    old = {
+        "schema": "ticketbox-runtime-settings-v3",
+        "public_base_url": "https://household.example",
+        "budget_advisor_owner_confirmed": False,
+        "recognition": None, "advisor": None, "uploads": None, "maintenance": None,
+        "fx": {"auto_enabled": False, "source": "ecb", "sync_times": "10:30", "timezone": "UTC"},
+    }
     write_protected_file_no_replace(integration_file,
         json.dumps(old, ensure_ascii=True, sort_keys=True, separators=(",", ":")) + "\n", service_owned=False)
     saved = read_runtime_settings(integration_file, service_owned=False)

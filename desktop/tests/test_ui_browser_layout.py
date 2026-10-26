@@ -363,6 +363,66 @@ def test_manager_layout_has_no_overflow_overlap_or_unsafe_repair_path(
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
+@pytest.mark.parametrize("width", [390, 820])
+def test_connector_primary_flow_uses_one_fixed_action_and_keeps_technical_details_collapsed(tmp_path: Path, width: int) -> None:
+    baseline = _status(degraded=False)
+    variants = [
+        ({"configured": False, "public": "unconfigured"}, "设置公网地址", "open_settings"),
+        ({"configured": False, "public": "unknown"}, "设置公网连接", "configure_connector"),
+        ({"configured": True, "desired_enabled": True, "overall": "healthy"}, "暂停公网", "pause_connector"),
+        ({"configured": True, "desired_enabled": False, "code": "connector_paused"}, "开启公网", "enable_connector"),
+        ({"pending_action": "configure", "pending_can_continue": True}, "继续上次操作", "continue_connector"),
+        ({"pending_action": "configure", "pending_can_continue": False}, "关闭未完成的配置", "remove_connector"),
+    ]
+    script = f"""    (async () => {{
+      const baseline = {json.dumps(baseline, ensure_ascii=False)};
+      const variants = {json.dumps(variants, ensure_ascii=False)};
+      const results = [], requests = [];
+      let current = baseline;
+      window.fetch = async (url, options) => {{
+        if (options && options.method === 'POST') {{
+          requests.push({{url, body: options.body ?? null}});
+          current = {{...current, connector_action: {{state: 'running', message: '正在处理，请完成 Windows 授权。'}}}};
+        }}
+        return {{ok: true, status: 200, json: async () => url === '/api/status' || options?.method === 'POST'
+          ? current : {{configured: false}}}};
+      }};
+      for (const [connection, label, action] of variants) {{
+        current = {{...baseline, connector_action: {{state: 'idle', message: ''}},
+          public_connectivity: {{...baseline.public_connectivity, managed_action: 'available', ...connection}}}};
+        render(current);
+        const button = document.querySelector('#connectorPrimaryActions button');
+        const card = document.getElementById('publicConnectivityCard');
+        const view = {{label: button.textContent, enabled: !button.disabled,
+          detailsCollapsed: !card.querySelector('details').open,
+          overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+          clipped: button.scrollWidth > button.clientWidth + 1,
+          countBefore: requests.length}};
+        button.click();
+        view.disabledDuringAction = [...document.querySelectorAll('.connector-action')].every(item => item.disabled);
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        view.requests = requests.slice(view.countBefore);
+        view.primaryBusy = [...document.querySelectorAll('#connectorPrimaryActions button')].every(item => item.disabled);
+        results.push(view);
+      }}
+      document.body.setAttribute('data-connector-flow', JSON.stringify(results));
+    }})().catch(error => document.body.setAttribute('data-connector-flow', JSON.stringify({{error: error.message}})));"""
+    page = _render_probe_page(tmp_path, "connector-primary.html", script)
+    edge = discover_edge_executable()
+    assert edge is not None
+    value = evaluate_page(edge, profile=tmp_path / "edge-connector", prepare_url=lambda _attempt: page.as_uri(),
+        width=width, height=844, expression="document.body && document.body.getAttribute('data-connector-flow') || undefined")
+    results = json.loads(value)
+    assert isinstance(results, list), results
+    for view, (_state, label, action) in zip(results, variants, strict=True):
+        assert view["label"] == label
+        assert view["enabled"] and view["detailsCollapsed"]
+        assert not view["overflow"] and not view["clipped"]
+        assert view["disabledDuringAction"] and view["primaryBusy"]
+        assert view["requests"] == [{"url": f"/api/{action}", "body": None}]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
 def test_manager_offline_state_remains_coherent(tmp_path: Path) -> None:
     probe = _render_behavior_probe(tmp_path)
 

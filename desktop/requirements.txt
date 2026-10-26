@@ -7,3 +7,5 @@ psutil==7.2.2
 # aligned with backend/requirements.txt so the manager and backend parse the
 # same deployment configuration with one tested dotenv version.
 python-dotenv==1.2.2
+# Native certificate-chain validation, including Windows automatic root retrieval.
+truststore==0.10.5

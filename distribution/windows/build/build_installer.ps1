@@ -61,7 +61,7 @@ function Write-InstallerBuildProvenance {
         $compilerRecord.executable = $Compiler.executable
     }
     $manifest = [ordered]@{
-        schema_version = 4
+        schema_version = 5
         artifact_type = "ticketbox-windows-installer-inputs"
         compiler_defines = @(Get-TicketboxNormalizedCompilerDefines $CompilerDefines)
         recipe = $Recipe
@@ -72,6 +72,7 @@ function Write-InstallerBuildProvenance {
         manager = $BuildInputs.manager
         postgresql = $BuildInputs.postgresql
         shawl = $BuildInputs.shawl
+        cloudflared = $BuildInputs.cloudflared
         shipment = $BuildInputs.shipment
     }
     Write-TicketboxJsonFile $Path $manifest
@@ -105,7 +106,7 @@ function Assert-InstallerPublishUnitBytes(
         throw "provenance 字节身份不一致：expected=$($ExpectedProvenanceSha256.ToLowerInvariant()) actual=$actualProvenance"
     }
     $manifest = Get-Content -LiteralPath $manifestPath -Encoding UTF8 -Raw | ConvertFrom-Json
-    if ($manifest.schema_version -ne 4 -or $manifest.artifact_type -cne "ticketbox-windows-installer-inputs") {
+    if ($manifest.schema_version -ne 5 -or $manifest.artifact_type -cne "ticketbox-windows-installer-inputs") {
         throw "安装器 publish unit 的 provenance schema/artifact_type 不受支持。"
     }
     $actualInstaller = Get-TicketboxFileSha256 $exePath
@@ -122,7 +123,8 @@ function Get-TicketboxInstallerShipmentPaths([string]$Root) {
     $directories = @(
         (Join-Path $Root "backend\dist\ticketbox-backend"),
         (Join-Path $Root "desktop\dist\ticketbox-manager"),
-        (Join-Path $Root "backend\packaging\vendor\pg")
+        (Join-Path $Root "backend\packaging\vendor\pg"),
+        (Join-Path $Root "backend\packaging\vendor\cloudflared")
     )
     $paths = @()
     foreach ($directory in $directories) {
@@ -229,6 +231,9 @@ $pgManifest = Read-TicketboxPgBundleManifest (Join-Path $pgDir "BUNDLE_MANIFEST.
 
 $toolchainConfigPath = Join-Path $StagedBackendRoot "packaging\windows-build-toolchain.json"
 $toolchainConfig = Get-Content -LiteralPath $toolchainConfigPath -Encoding UTF8 -Raw | ConvertFrom-Json
+. (Join-Path $StagedBackendRoot "packaging\cloudflared_vendor.ps1")
+$cloudflaredProfile = Get-Content -LiteralPath (Join-Path $StagedBackendRoot "packaging\cloudflared-profile.json") -Raw | ConvertFrom-Json
+Assert-TicketboxCloudflaredPayload (Join-Path $StagedBackendRoot "packaging\vendor\cloudflared") $cloudflaredProfile
 $shawlSource = $toolchainConfig.installer_vendor_sources.shawl
 $shawlExe = Join-Path $StagedBackendRoot "packaging\vendor\shawl\shawl.exe"
 if (-not (Test-Path -LiteralPath $shawlExe -PathType Leaf)) {
@@ -256,6 +261,7 @@ $BuildInputs = [ordered]@{
         version = [string]$shawlSource.version
         fingerprint = $shawlSha
     }
+    cloudflared = $cloudflaredProfile
 }
 
 # ===== TicketboxLifecycle onedir（elevated code only runs from installed Program Files）=====

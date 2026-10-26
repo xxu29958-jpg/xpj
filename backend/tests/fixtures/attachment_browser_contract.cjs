@@ -13,6 +13,7 @@ let serial = 0;
 let mode = 'success';
 let device = 'device';
 let batch = false;
+let recognitionState = 'updated';
 function page() {
   const ref = (++serial).toString(16).padStart(32,'0');
   const query = new URLSearchParams({ledger_id:'owner',idempotency_key:ref,draft_scope:JSON.stringify({...scope,deviceId:device})});
@@ -56,7 +57,7 @@ const server = http.createServer(async (req,res)=>{
   }
   if(url.pathname==='/image'){res.writeHead(200,{'Content-Type':'image/png','ETag':'"'+'e'.repeat(64)+'"'});return res.end(imageBytes);}
   if(url.pathname==='/review'){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(reviewPage());}
-  if(batch&&url.searchParams.has('watch')){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end('<div data-inbox-enrichment-terminal data-enrichment-state="updated"><span>识别完成 · 待你核对</span><a href="/web/expenses/17/edit">打开账单</a><a href="/web/pending">关闭提示</a></div>');}
+  if(batch&&url.searchParams.has('watch')){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(`<div data-inbox-enrichment-terminal data-enrichment-state="${recognitionState}"><span>识别完成 · 待你核对</span><a href="/web/expenses/17/edit">打开账单</a><a href="/web/pending">关闭提示</a></div>`);}
   if(req.method==='GET') {res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(page());}
   const chunks=[];for await(const chunk of req)chunks.push(chunk);
   const body=Buffer.concat(chunks);
@@ -67,6 +68,7 @@ const server = http.createServer(async (req,res)=>{
   attempts.push(intent);
   if(['conflict','mismatch','not-needed'].includes(mode)){res.writeHead(409,{'Content-Type':'application/json'});return res.end(JSON.stringify({error:mode==='conflict'?'state_conflict':mode==='mismatch'?'image_replenishment_mismatch':'original_replenishment_not_needed',message:'版本已更新'}));}
   if(!receipt.has(intent.key))receipt.set(intent.key,{id:17+receipt.size,enrichment_task_public_id:'durable-task-'+intent.key});
+  if(mode==='unknown'){res.writeHead(502,{'Content-Type':'application/json'});return res.end(JSON.stringify({error:'upstream_reply_unavailable'}));}
   res.setHeader('Content-Type','application/json');
   res.end(JSON.stringify({ack:{scope:JSON.parse(url.searchParams.get('draft_scope')),clientRef:intent.key},
     receipt:receipt.get(intent.key),next:batch?'/web/pending?watch='+intent.key:'/web/pending?accepted=1'}));
@@ -135,6 +137,27 @@ async function checkBatch(browser,origin) {
   assert.equal(receipt.size,3);
   await rejectedContext.close();mode='success';
   console.log('PASS real Chromium batch: two retained files; remove unsent; reload; lost ACK same request; accepted count distinct from OCR; stop leaves accepted result and unsent original');
+}
+async function checkSingleRetry(browser,origin) {
+  batch=true;mode='unknown';recognitionState='no_result';receipt.clear();attempts.length=0;
+  const context=await browser.newContext(),tab=await context.newPage();
+  const primary='[data-capture-actions] button[type=submit]';
+  await tab.goto(origin+'/web/pending');
+  await tab.setInputFiles('#inbox-upload-file',{name:'single.png',mimeType:'image/png',buffer:imageBytes});
+  await tab.waitForFunction(()=>document.querySelector('[data-capture-actions] button[type=submit]').textContent==='上传 1 张小票');
+  await tab.click(primary);
+  await tab.waitForFunction(()=>!document.querySelector('.inbox-upload-task button[type=submit]').disabled);
+  assert.match(await tab.locator('.inbox-upload-task [data-attachment-status]').innerText(),/暂未收到完成确认/);
+  assert.equal(receipt.size,1);
+  mode='success';
+  await tab.locator('.inbox-upload-task button[type=submit]').click();
+  await tab.waitForFunction(()=>document.querySelector('[data-capture-progress-label]').textContent==='1 / 1');
+  await tab.waitForFunction(()=>document.querySelector('[data-capture-title]').textContent==='小票已准备好核对');
+  assert.equal(await tab.locator('#capture [data-attachment-status]').innerText(),'图片已经安全收到，可从近期上传再次打开原单。');
+  assert.equal(receipt.size,1);assert.equal(attempts.length,2);assert.deepEqual(attempts[0],attempts[1]);
+  assert.equal(await tab.evaluate(s=>TicketboxAttachmentDrafts.store.list(s).length,scope),0);
+  await context.close();recognitionState='updated';
+  console.log('PASS real Chromium single retry: unknown ACK keeps original; per-row retry clears failure summary; completed recognition without suggestions is ready for review');
 }
 let browser;
 (async()=>{
@@ -314,4 +337,5 @@ let browser;
   console.log('PASS real Chromium: legacy verification empty until actual snapshot decoded and user checked; digest bound to response ETag');
   await context.close();
   await checkBatch(browser,origin);
+  await checkSingleRetry(browser,origin);
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{if(browser)await browser.close();server.close();});

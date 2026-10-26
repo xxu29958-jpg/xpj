@@ -49,7 +49,6 @@ def _expectation(**changes: object) -> ManagedConnectorExpectation:
         failure_actions=_FAILURE_ACTIONS,
         metrics_port=24001,
         tunnel_id=_TUNNEL_ID,
-        connector_id=_CONNECTOR_ID,
         origin_url="http://127.0.0.1:8000",
         public_origin="https://ticketbox.invalid",
     )

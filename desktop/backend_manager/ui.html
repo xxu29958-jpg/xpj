@@ -627,10 +627,14 @@ Start-Service TicketboxBackend</pre>
         <p class="connectivity-summary" id="publicConnectivitySummary">正在读取公网连接状态</p>
         <p class="connectivity-next"><strong>下一步：</strong><span id="publicConnectivityNextStep">请稍候</span></p>
       </div>
+      <p class="connectivity-next" id="connectorActionNotice" role="status" hidden></p>
+      <div class="connectivity-actions" id="connectorPrimaryActions" aria-label="管理公网连接"></div>
       <details class="connectivity-details">
         <summary>查看连接详情</summary>
       <div class="connectivity-grid" id="publicConnectivityDetails" aria-label="公网连接分层状态"></div>
       <div class="connectivity-actions" id="publicConnectivityActions" aria-label="公网连接只读操作"></div>
+      <div class="connectivity-actions" id="connectorMaintenanceActions" aria-label="维护公网连接"></div>
+      <p class="card-subtitle" id="connectorControlHelp" hidden>更改连接需要 Windows 授权。凭据仅在随后打开的原生窗口录入；关闭管理器不影响后台连接。移除本机连接不会撤销远端凭据。</p>
       </details>
     </section>
 
@@ -760,6 +764,49 @@ Start-Service TicketboxBackend</pre>
       applyPublicConnectivityActionAvailability(projection);
     }
 
+    function connectorButton(label, action, busy) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "button connector-action";
+      button.textContent = label;
+      button.disabled = actionInFlight || busy;
+      button.addEventListener("click", () => act(action, button));
+      return button;
+    }
+
+    function renderConnectorControls(status) {
+      const connection = status.public_connectivity || {};
+      const action = status.connector_action || {};
+      const supported = connection.managed_action === "available";
+      const busy = action.state === "running";
+      const primary = [], maintenance = [];
+      if (supported && connection.pending_action) {
+        primary.push(connectorButton(connection.pending_can_continue ? "继续上次操作" : "关闭未完成的配置",
+          connection.pending_can_continue ? "continue_connector" : "remove_connector", busy));
+        if (connection.pending_action !== "remove" && connection.pending_can_continue) {
+          maintenance.push(connectorButton("停止并移除本机连接", "remove_connector", busy));
+        }
+      } else if (supported && !connection.configured) {
+        primary.push(connectorButton(connection.public === "unconfigured" ? "设置公网地址" : "设置公网连接",
+          connection.public === "unconfigured" ? "open_settings" : "configure_connector", busy));
+      } else if (supported) {
+        primary.push(connectorButton(connection.desired_enabled ? "暂停公网" : "开启公网",
+          connection.desired_enabled ? "pause_connector" : "enable_connector", busy));
+        if (connection.desired_enabled && connection.overall !== "healthy") {
+          primary.push(connectorButton("重新连接", "reconnect_connector", busy));
+        }
+        maintenance.push(connectorButton("替换连接凭据", "configure_connector", busy),
+          connectorButton("移除本机连接", "remove_connector", busy));
+      }
+      $("connectorPrimaryActions").replaceChildren(...primary);
+      $("connectorMaintenanceActions").replaceChildren(...maintenance);
+      $("connectorControlHelp").hidden = !supported;
+      $("connectorActionNotice").textContent = action.message || "";
+      $("connectorActionNotice").hidden = !action.message;
+      if (busy) $("publicConnectivityCard").setAttribute("aria-busy", "true");
+      if (connection.code === "connector_paused") $("publicConnectivityBadge").textContent = "已暂停";
+    }
+
     function applyActionAvailability(s) {
       const hasStatus = Boolean(s);
       const isRunning = hasStatus && Boolean(s.running);
@@ -774,6 +821,9 @@ Start-Service TicketboxBackend</pre>
       $("restartAction").disabled = actionInFlight || !serviceControls || !isRunning;
       document.querySelectorAll(".owner-action").forEach((button) => {
         button.disabled = actionInFlight || !productAvailable;
+      });
+      document.querySelectorAll(".connector-action").forEach((button) => {
+        button.disabled = actionInFlight || !productAvailable || s.connector_action?.state === "running";
       });
       // Runtime health cannot authorize product navigation before the
       // current user's WinCred-backed product session has been read.
@@ -870,6 +920,7 @@ Start-Service TicketboxBackend</pre>
         : "开发环境也可导出流水与完整账本包。冷备工具仅适用于正式安装。";
       $("diagnosticState").textContent = s.diagnostic_bundle_file ? `最近导出：${s.diagnostic_bundle_file}` : "导出包不包含令牌、账本内容或原始日志。";
       renderPublicConnectivity(s.public_connectivity);
+      renderConnectorControls(s);
 
       $("backendService").textContent = serviceState(s.backend_service_state);
       $("databaseService").textContent = serviceState(s.database_service_state);

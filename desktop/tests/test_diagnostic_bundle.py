@@ -33,6 +33,13 @@ _PUBLIC_DIAGNOSTIC_KEYS = {
     "service_identity_match",
     "binary_identity_match",
     "tunnel_identity_match",
+    "configured",
+    "desired_enabled",
+    "host_committed",
+    "pending_can_continue",
+    "pending_action",
+    "operation_phase",
+    "connector_profile",
 }
 
 
@@ -56,6 +63,13 @@ def _public_connectivity_projection() -> dict[str, object]:
         "service_identity_match": None,
         "binary_identity_match": None,
         "tunnel_identity_match": None,
+        "configured": None,
+        "desired_enabled": None,
+        "host_committed": False,
+        "pending_can_continue": True,
+        "pending_action": None,
+        "operation_phase": None,
+        "connector_profile": None,
         "summary": "safe display only",
         "next_step": "safe display only",
         "supported_actions": ["refresh", "full_check", "export_diagnostics"],
@@ -250,6 +264,10 @@ def test_public_connectivity_diagnostics_rebuild_a_closed_safe_projection(tmp_pa
         ("connection_count", True),
         ("connection_count", 17),
         ("service_identity_match", "MATCH-MARKER"),
+        ("pending_action", "TOKEN-MARKER"),
+        ("operation_phase", ["committed"]),
+        ("connector_profile", "TOKEN-MARKER"),
+        ("host_committed", "TOKEN-MARKER"),
     ],
 )
 def test_invalid_public_connectivity_projection_is_omitted_fail_closed(

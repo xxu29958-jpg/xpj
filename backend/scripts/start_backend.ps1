@@ -3,6 +3,7 @@
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "..\..\scripts\assert_external_runtime.ps1")
 $BackendRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $LogDir = Join-Path $BackendRoot "logs"
 $Python = Join-Path $BackendRoot ".venv\Scripts\python.exe"

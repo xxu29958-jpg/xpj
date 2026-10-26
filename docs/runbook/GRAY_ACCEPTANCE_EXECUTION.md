@@ -138,8 +138,8 @@ powershell -ExecutionPolicy Bypass -File scripts\check_cloudflare_endpoint.ps1 `
 ```powershell
 cd E:\projects\xiaopiaojia
 $env:TICKETBOX_SESSION_TOKEN="<session_token>"
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ensure_ticketbox_runtime.ps1 `
-  -ServerUrl https://api.你的域名.com
+# 正式安装：在小票夹管理器运行完整公网检查并导出诊断。
+# 此处不再通过源码脚本启动 Backend 或 Tunnel。
 ```
 
 **预期结果**：

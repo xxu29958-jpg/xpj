@@ -53,6 +53,8 @@ Source: "..\..\..\backend\dist\ticketbox-backend\*"; DestDir: "{app}\releases\{#
 Source: "..\..\..\backend\dist\ticketbox-backend\*"; DestDir: "{app}\releases\{#ReleaseId}\backend"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
 Source: "..\..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\releases\{#ReleaseId}\manager"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
 Source: "..\..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\releases\{#ReleaseId}\manager"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
+Source: "..\..\..\backend\packaging\vendor\cloudflared\*"; DestDir: "{app}\releases\{#ReleaseId}\connector"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
+Source: "..\..\..\backend\packaging\vendor\cloudflared\*"; DestDir: "{app}\releases\{#ReleaseId}\connector"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
 Source: "..\..\..\backend\packaging\vendor\pg\*"; DestDir: "{app}\postgresql"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
 Source: "..\..\..\backend\packaging\vendor\pg\*"; DestDir: "{app}\postgresql"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
 Source: "..\..\..\backend\packaging\vendor\shawl\shawl.exe"; DestDir: "{app}\bin"; DestName: "shawl.exe"; Flags: ignoreversion; Check: TicketboxFreshMaterialization

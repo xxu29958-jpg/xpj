@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import io
+import ssl
 import urllib.error
 import urllib.request
 from dataclasses import replace
 
 import pytest
+import truststore
 
 from backend_manager.product_auth_check import ProductAuthIdentity
 from backend_manager.product_identity import ProductSession
@@ -483,6 +485,11 @@ def test_https_transport_disables_proxies_rejects_redirect_following_and_uses_ge
     assert handlers is not None
     proxy_handlers = [value for value in handlers if isinstance(value, urllib.request.ProxyHandler)]
     assert len(proxy_handlers) == 1 and proxy_handlers[0].proxies == {}
+    https_handlers = [value for value in handlers if isinstance(value, urllib.request.HTTPSHandler)]
+    assert len(https_handlers) == 1
+    context = https_handlers[0]._context
+    assert isinstance(context, truststore.SSLContext)
+    assert context.verify_mode == ssl.CERT_REQUIRED and context.check_hostname
     redirect_handlers = [value for value in handlers if isinstance(value, urllib.request.HTTPRedirectHandler)]
     assert len(redirect_handlers) == 1
     assert redirect_handlers[0].redirect_request(
@@ -491,7 +498,35 @@ def test_https_transport_disables_proxies_rejects_redirect_following_and_uses_ge
     request, timeout = opener.requests[0]
     assert request.get_method() == "GET"
     assert request.full_url == "https://public.example/api/health"
+    assert request.get_header("User-agent") == "Ticketbox-Manager"
     assert timeout <= 0.5
+
+
+def test_complete_public_route_check_fits_measured_latency_and_stays_bounded() -> None:
+    now = 0.0
+
+    class EdgeOpener(_Opener):
+        def open(self, request: urllib.request.Request, *, timeout: float) -> _HttpResponse:
+            nonlocal now
+            now += 1.1  # The actual Edge round trips take about one second each.
+            assert timeout >= 1.1
+            return super().open(request, timeout=timeout)
+
+    opener = EdgeOpener(_HttpResponse(b'{}'))
+    transport = BoundedHttpsTransport("https://public.example", opener=opener, monotonic=lambda: now)
+    paths = ["/api/health", "/api/auth/check", "/api/auth/check", *BOUNDARY_GET_PATHS]
+    for path in paths:
+        assert transport.get(path).status == 200
+    with pytest.raises(PublicEndpointProbeError, match="budget exhausted"):
+        transport.get("/api/health")
+    assert len(opener.requests) == len(paths)
+
+    now = 0.0
+    timed = BoundedHttpsTransport("https://public.example", opener=opener, monotonic=lambda: now)
+    now = 30.1
+    with pytest.raises(PublicEndpointProbeError, match="budget exhausted"):
+        timed.get("/api/health")
+    assert len(opener.requests) == len(paths)
 
 
 @pytest.mark.parametrize(

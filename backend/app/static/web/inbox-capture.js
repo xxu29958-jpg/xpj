@@ -62,7 +62,8 @@
     progress.max = Math.max(1, items.length);
     progress.value = accepted;
     if (accepted) {
-      const readyToReview = accepted === items.length && items.every(item => item.recognition === "updated");
+      if (accepted === items.length) status.textContent = "图片已经安全收到，可从近期上传再次打开原单。";
+      const readyToReview = accepted === items.length && items.every(item => ["updated", "no_result"].includes(item.recognition));
       task.querySelector("[data-capture-title]").textContent = readyToReview ? "小票已准备好核对" : "小票正在整理";
       task.querySelector("[data-capture-description]").textContent = readyToReview ? "核对金额、商家和日期，确认后计入流水。" : "已收到的图片会继续识别，可以离开后再回来。";
       task.querySelector("[data-capture-progress] .product-page-summary").textContent = readyToReview ? "上传和识别已完成，账单仍需你确认。" : "上传完成后，识别还会继续。重试沿用原任务。";

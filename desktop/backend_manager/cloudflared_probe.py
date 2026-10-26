@@ -18,6 +18,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Final
 
+from ticketbox_lifecycle.schemas import InstallationBinding
+
 from backend_manager.cloudflared_contract import (
     CloudflaredProbeError,
     CloudflaredProbeResult,
@@ -47,16 +49,16 @@ class ManagedConnectorExpectation:
     failure_actions: tuple[ServiceFailureAction, ...]
     metrics_port: int
     tunnel_id: str = field(repr=False)
-    connector_id: str = field(repr=False)
     origin_url: str = field(repr=False)
     public_origin: str = field(repr=False)
+    binding: InstallationBinding | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if not self.service_name.strip() or not self.argv:
             raise ValueError("managed connector expectation is incomplete")
         if not 1 <= self.metrics_port <= 65535:
             raise ValueError("managed connector metrics port is invalid")
-        if _canonical_uuid(self.tunnel_id) is None or _canonical_uuid(self.connector_id) is None:
+        if _canonical_uuid(self.tunnel_id) is None:
             raise ValueError("managed connector identity is invalid")
 
 
@@ -296,6 +298,10 @@ def probe_cloudflared(
 ) -> CloudflaredProbeResult:
     """Observe one exact managed binding or the fixed external discovery set."""
 
+    if expectation is not None and service_reader is None:
+        from backend_manager.managed_connector_probe import probe_managed_connector
+
+        return probe_managed_connector(expectation, transport or LoopbackCloudflaredTransport())
     reader = service_reader or WindowsCloudflaredServiceReader()
     http = transport or LoopbackCloudflaredTransport()
     service_name = expectation.service_name if expectation is not None else _DEFAULT_SERVICE_NAME
@@ -314,26 +320,7 @@ def probe_cloudflared(
 
     endpoint = endpoints[0] if endpoints else None
     if expectation is None:
-        if endpoint is not None and not endpoint.identity_consistent:
-            return CloudflaredProbeResult(
-                ownership=OwnershipState.CONFLICT,
-                service=service.state,
-                connector=ConnectorState.TUNNEL_MISMATCH,
-                cloudflared_version=version,
-            )
-        if service.exists or endpoint is not None:
-            ownership = OwnershipState.EXTERNAL_UNMANAGED
-        elif service.state is ServiceState.MISSING:
-            ownership = OwnershipState.UNCONFIGURED
-        else:
-            ownership = OwnershipState.UNKNOWN
-        return CloudflaredProbeResult(
-            ownership=ownership,
-            service=service.state,
-            connector=(endpoint.connector if endpoint is not None else _connector_without_endpoint(service)),
-            cloudflared_version=version,
-            connection_count=(endpoint.connection_count if endpoint is not None else None),
-        )
+        return _external_result(service, endpoint, version)
 
     service_match, binary_match = _service_matches(service, expectation)
     if service.exists and not service_match:
@@ -354,7 +341,6 @@ def probe_cloudflared(
         tunnel_match = (
             endpoint.identity_consistent
             and endpoint.tunnel_id == expectation.tunnel_id
-            and endpoint.connector_id == expectation.connector_id
         )
         if not tunnel_match:
             connector = ConnectorState.TUNNEL_MISMATCH
@@ -373,4 +359,27 @@ def probe_cloudflared(
         service_identity_match=service_match,
         binary_identity_match=binary_match,
         tunnel_identity_match=tunnel_match,
+    )
+
+
+def _external_result(service: ServiceObservation, endpoint: _EndpointObservation | None, version: str | None) -> CloudflaredProbeResult:
+    if endpoint is not None and not endpoint.identity_consistent:
+        return CloudflaredProbeResult(
+            ownership=OwnershipState.CONFLICT,
+            service=service.state,
+            connector=ConnectorState.TUNNEL_MISMATCH,
+            cloudflared_version=version,
+        )
+    if service.exists or endpoint is not None:
+        ownership = OwnershipState.EXTERNAL_UNMANAGED
+    elif service.state is ServiceState.MISSING:
+        ownership = OwnershipState.UNCONFIGURED
+    else:
+        ownership = OwnershipState.UNKNOWN
+    return CloudflaredProbeResult(
+        ownership=ownership,
+        service=service.state,
+        connector=(endpoint.connector if endpoint is not None else _connector_without_endpoint(service)),
+        cloudflared_version=version,
+        connection_count=(endpoint.connection_count if endpoint is not None else None),
     )

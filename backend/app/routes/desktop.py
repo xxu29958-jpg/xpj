@@ -19,7 +19,9 @@ from app.middleware.web_session import DESKTOP_BRIDGE_HEADER, DESKTOP_BRIDGE_VER
 from app.network_boundary import require_owner_console_local
 from app.services.desktop_switch_service import revoke_desktop_app_session
 from app.services.identity_service import authenticate_desktop_session_token
+from app.services.windows_connector_projection import connector_projection
 from app.tenants import AuthContext
+from app.windows_connector_authority import ConnectorAuthorityError
 
 router = APIRouter(
     prefix="/desktop",
@@ -47,6 +49,17 @@ def _get_current_desktop_context(
     )
     _require_desktop_bridge(request)
     return auth
+
+
+@router.get("/public-connectivity")
+def desktop_public_connectivity(
+    _auth: AuthContext = Depends(_get_current_desktop_context),
+) -> dict:
+    """No Token or mutation capability crosses this ordinary HTTP boundary."""
+    try:
+        return connector_projection()
+    except (ConnectorAuthorityError, OSError, ValueError):
+        raise AppError("connector_projection_unavailable", status_code=503) from None
 
 
 @router.post("/session/revoke", status_code=status.HTTP_204_NO_CONTENT)

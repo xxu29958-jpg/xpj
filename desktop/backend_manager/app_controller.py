@@ -11,8 +11,10 @@ from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 
 from backend_manager.config import ConfigError, ManagerConfig
+from backend_manager.connector_control import ConnectorControl
 from backend_manager.desktop_shell import open_in_browser
 from backend_manager.diagnostic_bundle import DiagnosticExportError, export_diagnostic_bundle
+from backend_manager.installation import _read_installation_binding
 from backend_manager.netinfo import lan_ip
 from backend_manager.product_data import (
     PendingProductSession,
@@ -213,6 +215,7 @@ class AppController:
         self._product_recovery_saver = product_recovery_saver
         self._product_recovery_deleter = product_recovery_deleter
         self._product_session_lock = threading.RLock()
+        self._connector_control = ConnectorControl(self._connector_context, self._public_connectivity)
 
     def status(self) -> dict:
         status_error: str | None = None
@@ -269,6 +272,7 @@ class AppController:
             "database_service_state": snapshot.database_service_state,
             "lan": lan_text,
             "public_connectivity": public_connectivity,
+            "connector_action": self._connector_control.snapshot(),
             "mobile_endpoint_state": snapshot.mobile_endpoint_state,
             "android_binding_state": snapshot.android_binding_state,
             "iphone_upload_state": snapshot.iphone_upload_state,
@@ -686,11 +690,11 @@ class AppController:
 
     @contextmanager
     def _public_session_mutation(self) -> Iterator[None]:
-        self._public_connectivity.begin_product_session_mutation()
+        self._public_connectivity.begin_authority_mutation()
         try:
             yield
         finally:
-            self._public_connectivity.end_product_session_mutation()
+            self._public_connectivity.end_authority_mutation()
 
     def _load_rebind_recovery(self, config: ManagerConfig) -> RebindRecovery | None:
         try:
@@ -946,6 +950,35 @@ class AppController:
 
     def refresh_public_connectivity(self) -> None:
         self._public_connectivity.request_refresh(full=False)
+
+    def _connector_context(self) -> tuple[str, str, dict]:
+        with self._product_session_lock:
+            config = self._product_config(require_available=True)
+            if config.runtime_mode != "installed":
+                raise ProductDataError("受管公网连接需要正式 Windows 安装。")
+            session = self._required_product_session(config)
+            binding = _read_installation_binding()
+            if binding is None or binding["install_id"] != config.expected_installation_id:
+                raise ProductDataError("无法确认当前安装，请重新打开管理器。")
+            return self._loopback_origin(config), session.session_token, binding
+
+    def configure_connector(self) -> None:
+        self._connector_control.start("configure", True)
+
+    def reconnect_connector(self) -> None:
+        self._connector_control.start("reconnect", True)
+
+    def enable_connector(self) -> None:
+        self._connector_control.start("set_enabled", True)
+
+    def pause_connector(self) -> None:
+        self._connector_control.start("set_enabled", False)
+
+    def remove_connector(self) -> None:
+        self._connector_control.start("remove", False)
+
+    def continue_connector(self) -> None:
+        self._connector_control.start("continue")
 
     def run_full_public_connectivity_check(self) -> None:
         self._public_connectivity.request_refresh(full=True)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -67,6 +68,68 @@ def _active(data_root: Path) -> dict[str, object]:
         "schema_revision": "20260821_0001",
         "health_attestation_key": HEALTH_ATTESTATION_KEY,
     }
+
+
+def _connector_operation() -> dict[str, object]:
+    request = {
+        "schema": "ticketbox-connector-request-v1", "profile": "cloudflare-tunnel-v1", "action": "configure",
+        "operation_id": OPERATION_ID, "install_id": INSTALL_ID, "dataset_id": DATASET_ID,
+        "expected_restore_epoch": 0, "release_manifest_sha256": MANIFEST_SHA,
+        "expected_revision": 0, "expected_credential_generation": 0, "expected_enabled": False,
+        "expected_public_origin_revision": 3, "initiator_sid": "S-1-5-21-1-2-3-1001", "desired_enabled": True,
+        "closing_operation_id": None, "closing_request_hash": None,
+    }
+    return {
+        "schema": "ticketbox-lifecycle-operation-v3", "kind": "connector", "impact": "connector_only",
+        "operation_id": OPERATION_ID,
+        "request_hash": hashlib.sha256(json.dumps(request, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        "request": request, "phase": "prepared", "completed_step": None, "result_code": "running",
+        "replaced_operation": None,
+    }
+
+
+@pytest.mark.parametrize("phase", ["prepared", "applying", "failed_recoverable", "manual_intervention", "committed"])
+def test_exact_connector_operation_preserves_binding_without_becoming_startup_authority(monkeypatch, tmp_path, phase):
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    binding = _binding(data_root)
+    active = _connector_operation()
+    active["phase"] = phase
+    if phase == "committed":
+        active["completed_step"] = "host_applied"
+    _write_authority(program_data, "installation.json", binding)
+    _write_authority(program_data, "operations/active.json", active)
+    assert launch._closed_authorities(binding, active) == [binding]
+    assert launch._assert_vnext_runtime_authority(data_dir) == HEALTH_ATTESTATION_KEY
+    assert os.environ["TICKETBOX_EXPECTED_RESTORE_EPOCH"] == "0"
+
+
+@pytest.mark.parametrize("change", ["install_id", "dataset_id", "epoch", "manifest", "kind", "impact", "schema", "hash", "extra", "action", "binding_missing"])
+def test_connector_mismatch_never_unfences_backend(monkeypatch, tmp_path, change):
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    active = _connector_operation()
+    request = active["request"]
+    if change in {"install_id", "dataset_id"}:
+        request[change] = OPERATION_ID
+    elif change == "epoch":
+        request["expected_restore_epoch"] = 1
+    elif change == "manifest":
+        request["release_manifest_sha256"] = "d" * 64
+    elif change in {"kind", "impact", "schema"}:
+        active[change] = "unrecognized"
+    elif change == "extra":
+        request["exe"] = "arbitrary.exe"
+    elif change == "action":
+        request["action"] = "repair"
+    active["request_hash"] = hashlib.sha256(json.dumps(request, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if change == "hash":
+        active["request_hash"] = "e" * 64
+    if change != "binding_missing":
+        _write_authority(program_data, "installation.json", _binding(data_root))
+    _write_authority(program_data, "operations/active.json", active)
+    with pytest.raises(RuntimeError):
+        launch._assert_vnext_runtime_authority(data_dir)
 
 
 def _configure_frozen(

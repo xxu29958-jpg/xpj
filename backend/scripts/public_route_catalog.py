@@ -529,6 +529,7 @@ POST /api/maintenance/cleanup-learning
 POST /api/maintenance/cleanup-orphans
 POST /api/maintenance/cleanup-rejected
 POST /desktop/session/revoke
+GET /desktop/public-connectivity
 POST /owner/ai-advisor/confirmation
 POST /owner/ai-advisor/settings
 POST /owner/ai-advisor/test
