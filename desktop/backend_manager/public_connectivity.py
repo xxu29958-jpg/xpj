@@ -136,8 +136,8 @@ _STATE_TEXT: Final[dict[tuple[type[StrEnum], StrEnum], str]] = {
 _SUMMARY: Final[dict[str, tuple[str, str]]] = {
     "connector_operation_interrupted": ("上次操作尚未完成", "继续上次操作以确认本机结果；如仍失败，请导出诊断。本地账本仍可使用。"),
     "connector_operation_context_changed": ("上次配置已失效", "公网地址已变化，请关闭未完成的配置，再按当前地址重新设置。本地账本仍可使用。"),
-    "connector_paused": ("公网已暂停", "本机连接已停止，重启电脑后仍保持暂停。本地账本可正常使用。"),
-    "connector_pause_pending": ("正在关闭公网", "尚未确认连接停止，公网可能仍然开放。"),
+    "connector_paused": ("本机公网连接已暂停", "重启电脑后仍保持暂停，本地账本可正常使用；其他连接不受影响。"),
+    "connector_pause_pending": ("正在暂停本机公网连接", "尚未确认本机连接停止，公网可能仍然开放。"),
     "connector_setup_available": ("尚未设置公网连接", "设置后可在外出时连接这台电脑中的小票夹。"),
     "public_boundary_violation": (
         "公网边界存在风险",
@@ -372,10 +372,14 @@ class PublicConnectivityStatus:
 
     @property
     def summary(self) -> str:
+        if self.code == "connector_paused" and self.public in {PublicState.AUTHENTICATED_REACHABLE, PublicState.REACHABLE_UNVERIFIED}:
+            return "本机已暂停，公网仍可达"
         return _SUMMARY[self.code][0]
 
     @property
     def next_step(self) -> str:
+        if self.code == "connector_paused" and self.public in {PublicState.AUTHENTICATED_REACHABLE, PublicState.REACHABLE_UNVERIFIED}:
+            return "公网仍由其他连接提供。如需关闭整个入口，请在 Cloudflare 核对其他连接器；本机保持暂停，本地账本可正常使用。"
         return _SUMMARY[self.code][1]
 
     def current(

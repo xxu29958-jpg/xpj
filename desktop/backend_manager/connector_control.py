@@ -68,7 +68,7 @@ class ConnectorControl:
         if request.action == "remove":
             message = "本机连接已移除。远端凭据仍需在 Cloudflare 撤销；共享连接需先确认影响范围。"
         elif not request.desired_enabled:
-            message = ("连接凭据已更新，公网保持暂停。" if request.action == "configure" else "公网已暂停。")
+            message = ("连接凭据已更新，本机公网保持暂停。" if request.action == "configure" else "本机公网连接已暂停。")
             message += "重启电脑后仍保持暂停，本地账本可正常使用。"
         self._set("succeeded", message)
 

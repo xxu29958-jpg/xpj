@@ -127,6 +127,21 @@ def test_current_marks_evidence_at_the_age_boundary_fresh() -> None:
     assert current.overall is OverallState.HEALTHY
 
 
+@pytest.mark.parametrize("public", [PublicState.AUTHENTICATED_REACHABLE, PublicState.REACHABLE_UNVERIFIED])
+def test_paused_local_connection_does_not_claim_shared_public_origin_is_closed(public) -> None:
+    status = _status(configured=True, desired_enabled=False, service=ServiceState.STOPPED,
+        connector=ConnectorState.DOWN, public=public)
+
+    assert status.code == "connector_paused"
+    assert status.summary == "本机已暂停，公网仍可达"
+    assert "其他连接" in status.next_step
+    assert "Cloudflare" in status.next_step
+    assert replace(status, public=PublicState.UNREACHABLE).summary == "本机公网连接已暂停"
+    assert replace(status, public=PublicState.UNKNOWN).summary == "本机公网连接已暂停"
+    assert replace(status, freshness=FreshnessState.STALE).code == "public_connectivity_stale"
+    assert "仍可达" not in replace(status, freshness=FreshnessState.STALE).summary
+
+
 def test_projection_is_stable_ui_ready_and_contains_only_readonly_actions() -> None:
     projection = _status().to_projection()
 
