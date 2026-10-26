@@ -193,7 +193,7 @@ _SUMMARY: Final[dict[str, tuple[str, str]]] = {
     ),
     "cloudflared_down": (
         "Cloudflare Edge 当前不可用",
-        "网络恢复后会继续尝试；仍未恢复时，可在管理器中重新连接。",
+        "尚未连上 Edge，原因暂未确认。可重新连接一次；若已在 Cloudflare 轮换凭据，请替换为新凭据。仍失败时请导出诊断，本地账本仍可使用。",
     ),
     "cloudflared_tunnel_mismatch": (
         "Tunnel 身份与受保护绑定不一致",
