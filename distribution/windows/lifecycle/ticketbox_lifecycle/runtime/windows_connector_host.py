@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from ticketbox_lifecycle.adapters.scm import ServiceConfiguration
 from ticketbox_lifecycle.connector_schema import ConnectorOperation, ConnectorRequest, ConnectorState, require_binding
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.connector_profile import SERVICE_ACCOUNT, SERVICE_NAME, expected_service, service_argv
@@ -17,7 +18,7 @@ from ticketbox_lifecycle.runtime.windows_connector_context import (
 from ticketbox_lifecycle.runtime.windows_connector_files import CONNECTOR_SID, WindowsConnectorFiles
 from ticketbox_lifecycle.runtime.windows_connector_observation import require_metrics_owner, require_process_image
 from ticketbox_lifecycle.runtime.windows_connector_scm import ConnectorScm
-from ticketbox_lifecycle.runtime.windows_scm_observation import NativeWindowsScmObserver, ServiceConfiguration
+from ticketbox_lifecycle.runtime.windows_scm_observation import NativeWindowsScmObserver
 from ticketbox_lifecycle.runtime.windows_shipment import WindowsShipmentVerifier
 from ticketbox_lifecycle.schemas import InstallationBinding
 

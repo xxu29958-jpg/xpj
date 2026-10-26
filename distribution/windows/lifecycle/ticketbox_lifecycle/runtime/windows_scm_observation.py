@@ -3,9 +3,9 @@ from __future__ import annotations
 import ctypes
 import os
 from ctypes import wintypes
-from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from typing import TypeVar
 
+from ticketbox_lifecycle.adapters import scm
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.windows_account import lookup_account_sid
 
@@ -17,37 +17,6 @@ _SERVICE_CONFIG_DELAYED_AUTO_START_INFO = 3
 _SERVICE_CONFIG_FAILURE_ACTIONS_FLAG = 4
 _SERVICE_CONFIG_SERVICE_SID_INFO = 5
 _SERVICE_CONFIG_TRIGGER_INFO = 8
-
-
-@dataclass(frozen=True)
-class FailureAction:
-    action_type: int
-    delay_ms: int
-
-
-@dataclass(frozen=True)
-class ServiceConfiguration:
-    service_type: int
-    start_type: int
-    error_control: int
-    argv: tuple[str, ...]
-    load_order_group: str
-    tag_id: int
-    dependencies: tuple[str, ...]
-    account_sid: str
-    display_name: str
-    sid_type: int
-    failure_reset_seconds: int
-    failure_actions: tuple[FailureAction, ...]
-    failure_reboot_message: str
-    failure_command: str
-    failure_actions_on_non_crash: bool
-    delayed_auto_start: bool
-    trigger_count: int
-
-
-class ScmObserver(Protocol):
-    def observe(self, name: str) -> ServiceConfiguration: ...
 
 
 class _QueryServiceConfigW(ctypes.Structure):
@@ -102,7 +71,7 @@ _ConfigInfo = TypeVar("_ConfigInfo", bound=ctypes.Structure)
 
 
 class NativeWindowsScmObserver:
-    def observe(self, name: str) -> ServiceConfiguration:
+    def observe(self, name: str) -> scm.ServiceConfiguration:
         if os.name != "nt":
             raise LifecycleError("windows_required", "SCM observation requires Windows")
         advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
@@ -142,13 +111,13 @@ class NativeWindowsScmObserver:
                 _ServiceTriggerInfo,
             )
             actions = tuple(
-                FailureAction(
+                scm.FailureAction(
                     action_type=int(failure.actions[index].action_type),
                     delay_ms=int(failure.actions[index].delay_ms),
                 )
                 for index in range(int(failure.action_count))
             )
-            observed = ServiceConfiguration(
+            observed = scm.ServiceConfiguration(
                 service_type=int(base.service_type),
                 start_type=int(base.start_type),
                 error_control=int(base.error_control),

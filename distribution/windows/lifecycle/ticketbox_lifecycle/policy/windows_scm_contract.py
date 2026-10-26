@@ -4,11 +4,8 @@ import os
 from dataclasses import fields
 from pathlib import Path
 
+from ticketbox_lifecycle.adapters.scm import FailureAction, ServiceConfiguration
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
-from ticketbox_lifecycle.runtime.windows_scm_observation import (
-    FailureAction,
-    ServiceConfiguration,
-)
 from ticketbox_lifecycle.schemas import InstallRequest
 
 SERVICE_WIN32_OWN_PROCESS = 0x10

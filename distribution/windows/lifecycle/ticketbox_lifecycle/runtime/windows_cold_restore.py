@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import shutil
 import time
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from ticketbox_lifecycle.errors import LifecycleError
-from ticketbox_lifecycle.policy.postgres_roles import _escape_literal, provision_statements
+from ticketbox_lifecycle.policy.postgres_roles import (
+    _escape_literal,
+    provision_statements,
+)
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.cold_installation import read_stopped_cluster
 from ticketbox_lifecycle.runtime.cold_restore_source import ColdRestoreSource
@@ -17,6 +22,10 @@ from ticketbox_lifecycle.runtime.durable_files import durable_write_text
 from ticketbox_lifecycle.runtime.postgres_connection import maintenance_database_url
 from ticketbox_lifecycle.runtime.windows_file_security import WindowsFileSecurity
 from ticketbox_lifecycle.runtime.windows_postgres import _write_cluster_config
+from ticketbox_lifecycle.runtime.windows_security_native import (
+    protect_directory,
+    reject_reparse_components,
+)
 from ticketbox_lifecycle.runtime.windows_services import start_service
 from ticketbox_lifecycle.schemas import InstallRequest, OwnerPairing
 
@@ -24,6 +33,21 @@ from ticketbox_lifecycle.schemas import InstallRequest, OwnerPairing
 class WindowsColdRestore:
     def __init__(self, runner: CommandRunner) -> None:
         self.runner = runner
+
+    @contextmanager
+    def open_source(self, request: InstallRequest, path: Path, digest: str):
+        reject_reparse_components(path)
+        with path.open("rb") as stream:
+            source = ColdRestoreSource(stream, digest, request)
+            required = sum(record["size"] for name, record in source.manifest["entries"].items()
+                if name.startswith("data/") and record is not None)
+            if shutil.disk_usage(Path(request.data_root).anchor).free < required + 512 * 1024 * 1024:
+                raise LifecycleError("restore_space_insufficient", "candidate volume lacks recovery working space")
+            yield source
+
+    def extract_data(self, request: InstallRequest, source: ColdRestoreSource) -> None:
+        source.extract_data(Path(request.data_root), make_private=lambda path: protect_directory(
+            self.runner, path, code="restore_data_acl_failed"))
 
     def prepare_data(self, request: InstallRequest, source: ColdRestoreSource) -> None:
         system_id = read_stopped_cluster(self.runner, layout.pg_bin(request), layout.pgdata(request))

@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from ticketbox_lifecycle.adapters.scm import FailureAction, ServiceConfiguration
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.postgres_roles import (
     expected_alembic_probe,
@@ -27,10 +28,6 @@ from ticketbox_lifecycle.runtime import (
 )
 from ticketbox_lifecycle.runtime.command import CompletedCommand
 from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle
-from ticketbox_lifecycle.runtime.windows_scm_observation import (
-    FailureAction,
-    ServiceConfiguration,
-)
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
 
 _BACKEND_SERVICE_SID = "S-1-5-80-111-222-333-444-555"

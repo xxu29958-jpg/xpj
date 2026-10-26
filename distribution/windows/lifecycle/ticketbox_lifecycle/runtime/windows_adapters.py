@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ticketbox_lifecycle.adapters.scm import ScmObserver
 from ticketbox_lifecycle.runtime.command import CommandRunner
 from ticketbox_lifecycle.runtime.windows_alembic import WindowsAlembicAdapter
 from ticketbox_lifecycle.runtime.windows_dataset import WindowsDatasetAdapter
@@ -7,7 +8,6 @@ from ticketbox_lifecycle.runtime.windows_file_security import FileSecurity
 from ticketbox_lifecycle.runtime.windows_files import WindowsFilesAdapter
 from ticketbox_lifecycle.runtime.windows_postgres import WindowsPostgresAdapter
 from ticketbox_lifecycle.runtime.windows_scm import WindowsScmAdapter
-from ticketbox_lifecycle.runtime.windows_scm_observation import ScmObserver
 from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 
 

@@ -5,7 +5,8 @@ import json
 import threading
 from pathlib import Path
 
-from ticketbox_lifecycle.domain.install import LifecycleStores, hash_request_payload
+from ticketbox_lifecycle.domain.install import hash_request_payload
+from ticketbox_lifecycle.domain.operation import LifecycleStores
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.schemas import (
     INSTALLATION_SCHEMA,
