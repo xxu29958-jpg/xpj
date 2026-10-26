@@ -6,8 +6,9 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from fakes import MemoryStores, RecordingAdapterBundle, make_install_request as _request
-from ticketbox_lifecycle import cli
+from fakes import MemoryStores, RecordingAdapterBundle
+from fakes import make_install_request as _request
+from ticketbox_lifecycle import cli, command_io
 from ticketbox_lifecycle.domain.install import (
     hash_install_identity,
     hash_request_payload,
@@ -257,7 +258,7 @@ def test_active_operation_is_archived_before_committed_result_is_published(
     result_path = tmp_path / "result.json"
     events: list[str] = []
     archive_committed = stores.archive_committed
-    write_result = cli._write_result
+    write_result = command_io.write_result
 
     def record_archive(operation: ActiveOperation) -> None:
         events.append("archive")
@@ -268,7 +269,7 @@ def test_active_operation_is_archived_before_committed_result_is_published(
         write_result(path, command_result)
 
     monkeypatch.setattr(stores, "archive_committed", record_archive)
-    monkeypatch.setattr(cli, "_write_result", record_result)
+    monkeypatch.setattr(command_io, "write_result", record_result)
 
     assert cli._deliver_install_result(result_path, result, stores.as_lifecycle_stores()) == 0
     assert events == ["archive", "result"]
@@ -344,7 +345,7 @@ def test_result_write_failure_after_archive_replays_exact_committed_history(
         del path, result
         raise OSError("injected result write failure")
 
-    monkeypatch.setattr(cli, "_write_result", fail_result_write)
+    monkeypatch.setattr(command_io, "write_result", fail_result_write)
     with pytest.raises(OSError, match="result write failure"):
         cli._deliver_install_result(tmp_path / "result.json", first, stores.as_lifecycle_stores())
 

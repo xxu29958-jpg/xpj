@@ -45,6 +45,8 @@ flowchart LR
 | restore CLI 直接发布恢复阶段和 binding，依赖源 ZIP/ACL 机制，并调用 install 私有失败函数 | `domain.restore` 保留原有限步骤；`RestorePlatform` 承担源文件、空间和 ACL；`domain.operation` 复用原失败封闭逻辑 | CLI 的恢复编排定义、install 私有失败实现及旧消费者进口 |
 | Fresh/connector 策略为了使用服务数据模型导入具体 runtime | `adapters.scm` 拥有 ServiceConfiguration、FailureAction、ScmObserver | runtime 中三份类型定义及 policy → runtime 导入 |
 | Manager 和 Lifecycle 各自维护 GUID/COM/SHGetKnownFolderPath | `adapters.windows_known_folders` 只有一份原生实现；调用端保留产品目录与错误文案映射 | 两端原生重复实现、Manager 的重复 COM 测试 |
+| 主 CLI 与恢复 CLI 为共享请求/结果 IO 互相导入 | `command_io` 只拥有原解析、原子结果写入和脱敏输出；两个 CLI 直接使用 | restore CLI → 主 CLI 私有工具函数回边 |
+| cloudflared 探测选择器 → 已安装探测器 → 选择器私有端点观测 | 原选择器传入单次端点观测能力；已安装探测器继续拥有 SCM/PID/配置前后核验 | 已安装探测器对选择器的延迟反向导入 |
 
 CLI 继续做参数、管理员权限、组合和结果映射。R1 仍只接受干净隔离目标：
 mutex → shipment/目标核验 → 源核验 → prepared → 私有提取 → ACL/SCM → 凭证轮换/身份事务 →
@@ -52,6 +54,7 @@ mutex → shipment/目标核验 → 源核验 → prepared → 私有提取 → 
 失败仍调用同一持久失败封闭逻辑，保留源和候选；没有新增自动续办或通用恢复系统。
 
 新文件已加入真实安装器来源清单和独立清单契约测试；PyInstaller 的现有 import 路径纳入它们。
+Manager 与 Lifecycle 的静态 Python 模块导入图中，两条包含函数内导入的回环均已移除；这不声称能覆盖反射或动态外部加载。
 安装身份、DataRoot、服务名、operation/request 字段、凭证顺序、协议和错误结果均未改变。
 用户仍使用原入口、原任务和原失败恢复方式，没有新增操作步骤。
 

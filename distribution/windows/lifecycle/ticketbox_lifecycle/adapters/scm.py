@@ -35,5 +35,3 @@ class ServiceConfiguration:
 
 class ScmObserver(Protocol):
     def observe(self, name: str) -> ServiceConfiguration: ...
-
-

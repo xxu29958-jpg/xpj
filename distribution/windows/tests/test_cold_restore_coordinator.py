@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from fakes import MemoryStores, RecordingAdapterBundle, make_install_request
-from ticketbox_lifecycle.cli import _emit_failure
+from ticketbox_lifecycle.command_io import emit_failure
 from ticketbox_lifecycle.domain.restore import restore
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.schemas import OwnerPairing
@@ -89,7 +89,7 @@ def test_unexpected_restore_failure_uses_existing_terminal_report_without_privat
     assert result.code == "restore_incomplete"
     assert stores.read_active().phase == "failed_recoverable"
     assert adapters.scm.backend_fenced and not adapters.scm.autostart_enabled
-    _emit_failure(result)
+    emit_failure(result)
     captured = capsys.readouterr()
     assert not captured.out
     assert captured.err.count("TicketboxLifecycle failed [restore_incomplete]") == 1

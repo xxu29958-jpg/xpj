@@ -11,13 +11,10 @@ from ticketbox_lifecycle.adapters.ports import (
     adapter_for_step,
     phase_after,
 )
+from ticketbox_lifecycle.domain import operation as operation_state
 from ticketbox_lifecycle.domain.binding import (
     ensure_runtime_binding,
     require_runtime_binding,
-)
-from ticketbox_lifecycle.domain.operation import (
-    LifecycleStores,
-    failed_operation_result,
 )
 from ticketbox_lifecycle.domain.planner import plan_fresh_install
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
@@ -35,7 +32,7 @@ from ticketbox_lifecycle.schemas import (
 )
 
 
-def inspect_machine(stores: LifecycleStores, request: InstallRequest) -> CommandResult:
+def inspect_machine(stores: operation_state.LifecycleStores, request: InstallRequest) -> CommandResult:
     observation = stores.observer.observe(request)
     binding = stores.binding_read.read()
     active = stores.operations_read.read_active()
@@ -56,7 +53,7 @@ def inspect_machine(stores: LifecycleStores, request: InstallRequest) -> Command
     )
 
 
-def install_or_resume(stores: LifecycleStores, request: InstallRequest) -> CommandResult:
+def install_or_resume(stores: operation_state.LifecycleStores, request: InstallRequest) -> CommandResult:
     stores.mutex.acquire()
     try:
         return _install_locked(stores, request)
@@ -64,7 +61,7 @@ def install_or_resume(stores: LifecycleStores, request: InstallRequest) -> Comma
         stores.mutex.release()
 
 
-def _install_locked(stores: LifecycleStores, request: InstallRequest) -> CommandResult:
+def _install_locked(stores: operation_state.LifecycleStores, request: InstallRequest) -> CommandResult:
     request = stores.shipment.bind_and_verify(request)
     existing = stores.operations_read.read_active()
     committed = (
@@ -91,7 +88,7 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
         try:
             binding = stores.binding_read.read()
         except (LifecycleError, OSError) as exc:
-            return failed_operation_result(
+            return operation_state.failed_operation_result(
                 stores,
                 request,
                 active,
@@ -169,7 +166,7 @@ def _install_locked(stores: LifecycleStores, request: InstallRequest) -> Command
     except (LifecycleError, OSError) as exc:
         if active is None or bound is None:
             raise
-        return failed_operation_result(
+        return operation_state.failed_operation_result(
             stores,
             request,
             active,
@@ -233,7 +230,7 @@ def _bind_operation_identity(
 
 
 def _replay_committed_result(
-    stores: LifecycleStores,
+    stores: operation_state.LifecycleStores,
     request: InstallRequest,
     active: ActiveOperation,
 ) -> CommandResult:

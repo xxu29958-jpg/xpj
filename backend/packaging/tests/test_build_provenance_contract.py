@@ -300,6 +300,7 @@ _INSTALLER_RECIPE_PATHS = (
     "distribution/windows/lifecycle/ticketbox_lifecycle/__init__.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/__main__.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/cli.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/command_io.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/cold_copy_cli.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/restore_cli.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/errors.py",

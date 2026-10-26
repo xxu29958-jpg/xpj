@@ -19,9 +19,9 @@ from backend_manager.cloudflared_contract import CloudflaredProbeError, Cloudfla
 from backend_manager.public_connectivity import ConnectorState, OwnershipState, ServiceState
 
 
-def probe_managed_connector(expectation, transport) -> CloudflaredProbeResult:
+def probe_managed_connector(expectation, observe_endpoint) -> CloudflaredProbeResult:
     try:
-        return _observe(expectation, transport)
+        return _observe(expectation, observe_endpoint)
     except LifecycleError as exc:
         conflict = isinstance(exc, LifecycleViolation) or exc.code in {"scm_configuration_mismatch", "connector_scm_security_changed"}
         return CloudflaredProbeResult(ownership=OwnershipState.CONFLICT if conflict else OwnershipState.UNKNOWN,
@@ -31,9 +31,7 @@ def probe_managed_connector(expectation, transport) -> CloudflaredProbeResult:
             connector=ConnectorState.UNKNOWN)
 
 
-def _observe(expectation, transport) -> CloudflaredProbeResult:
-    from backend_manager.cloudflared_probe import _observe_endpoint
-
+def _observe(expectation, observe_endpoint) -> CloudflaredProbeResult:
     if expectation.binding is None or expectation.service_name != SERVICE_NAME:
         raise ValueError("a protected installed binding is required")
     root = ticketbox_install_root()
@@ -62,7 +60,7 @@ def _observe(expectation, transport) -> CloudflaredProbeResult:
     endpoint = None
     try:
         if process is not None:
-            endpoint = _observe_endpoint(transport, expectation.metrics_port)
+            endpoint = observe_endpoint(expectation.metrics_port)
     except (CloudflaredProbeError, TimeoutError):
         pass
     if before[0] in {1, 4}:

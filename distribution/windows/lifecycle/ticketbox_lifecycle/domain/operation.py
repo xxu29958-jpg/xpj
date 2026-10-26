@@ -90,5 +90,3 @@ def _failure_identity(failure: LifecycleError | OSError) -> tuple[str, str]:
     if isinstance(failure, LifecycleError):
         return failure.code, failure.message
     return "operation_io_failed", "lifecycle operation I/O failed"
-
-

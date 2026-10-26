@@ -99,5 +99,3 @@ def _restore_candidate(stores: LifecycleStores, request: InstallRequest, source:
             "restore_incomplete", "restore failed; preserve source and fenced candidate")
         return failed_operation_result(stores, request, active, bound,
             installation_published=published, primary=primary)
-
-
