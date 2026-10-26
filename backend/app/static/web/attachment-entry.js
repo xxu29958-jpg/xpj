@@ -210,7 +210,7 @@
           rejection = {scope, clientRef: ref, values: record.values, serverResult: "rejected"};
           discard.hidden = false;
         }
-        notice((result.message || "提交未完成。") + " 原文件与原请求保留；可重试原任务，或先核对当前账单。");
+        notice((result.message || "暂未收到完成确认。") + " 原文件与原请求保留；可重试原任务，或先核对当前账单。");
         return;
       }
       if (!result.receipt || result.ack?.clientRef !== ref || !store.matches(result.ack.scope, scope)) {
