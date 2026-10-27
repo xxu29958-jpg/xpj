@@ -33,9 +33,8 @@ data class ManualRateSubmission(val revision: Int, val month: String,
 }
 
 data class PendingManualRateSubmission(val row: OutboxRow,
-    val intent: ManualRateSubmission?, val receipt: com.ticketbox.domain.model.ExchangeRate?, val supported: Boolean) {
-    internal constructor(row: OutboxRow, intent: ManualRateSubmission?, receipt: ExchangeRate?) :
-        this(row, intent, receipt, intent?.supports(row) == true)
+    val intent: ManualRateSubmission?, val receipt: ExchangeRate?) {
+    val supported: Boolean get() = intent?.supports(row) == true
     val isConfirmed: Boolean get() = row.status == PendingMutationStatus.Done && receipt != null
     val canRetry: Boolean get() = supported && row.status == PendingMutationStatus.Failed &&
         (row.lastError?.startsWith("max_attempts_exceeded(") == true ||

@@ -21,9 +21,8 @@ data class OccurrencePaymentDraft(
 )
 
 data class PendingOccurrencePayment(val row: OutboxRow,
-    val intent: RecurringOccurrenceSubmission?, private val supported: Boolean) {
-    internal constructor(row: OutboxRow, intent: RecurringOccurrencePayload?) :
-        this(row, intent?.toView(), intent?.matchesOriginal(row) == true)
+    val intent: RecurringOccurrenceSubmission?) {
+    private val supported: Boolean get() = intent?.matchesOriginal(row) == true
     val canRetry: Boolean get() = supported && row.status == PendingMutationStatus.Failed &&
         (row.lastError?.startsWith("max_attempts_exceeded(") == true ||
             row.lastError in setOf("client_upgrade_required", "runtime_version_mismatch"))
@@ -44,7 +43,7 @@ interface RecurringOccurrenceActions {
 class RecurringOccurrenceRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
-    private val adapter: JsonAdapter<RecurringOccurrencePayload>,
+    private val adapter: JsonAdapter<RecurringOccurrenceSubmission>,
     private val queryReader: RecurringQueryReader,
 ) : RecurringOccurrenceActions {
     private val guard = LedgerRequestGuard(apiProvider)
@@ -120,7 +119,7 @@ class RecurringOccurrenceRepository internal constructor(
     }
 }
 
-private fun OccurrencePaymentDraft.toPayload(binding: LogicalSessionBinding) = RecurringOccurrencePayload(
+private fun OccurrencePaymentDraft.toPayload(binding: LogicalSessionBinding) = RecurringOccurrenceSubmission(
     revision = RECURRING_OCCURRENCE_PAYLOAD_REVISION,
     seriesPublicId = occurrence.seriesPublicId,
     seriesLabel = seriesLabel,

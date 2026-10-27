@@ -23,11 +23,11 @@ data class PendingBudgetSave(
     val row: OutboxRow,
     val intent: BudgetSaveSubmission?,
     val receipt: com.ticketbox.domain.model.BudgetMonthly?,
-    val hasSupportedIntent: Boolean,
 ) {
     internal constructor(row: OutboxRow, intent: BudgetSavePayload?, receipt: com.ticketbox.domain.model.BudgetMonthly?) :
-        this(row, intent?.toView(), receipt, intent?.matches(row) == true)
+        this(row, intent?.toView(), receipt)
     val requiresReadRefresh: Boolean get() = row.requiresBudgetReadRefresh()
+    val hasSupportedIntent: Boolean get() = intent?.matches(row) == true
     val canRetry: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Failed &&
         row.lastError != BUDGET_CURRENCY_CONFLICT && row.lastError?.startsWith("outbox_row_expired") != true
 }
@@ -44,14 +44,16 @@ internal fun OutboxRow.requiresBudgetReadRefresh(): Boolean =
 internal fun monthlyBudgetTarget(month: String): String = "monthly_budget:$month"
 
 internal fun JsonAdapter<BudgetSavePayload>.readSupportedBudgetSave(json: String): BudgetSavePayload? = try {
-    fromJson(json)?.takeIf { it.isSupported() }
+    fromJson(json)?.takeIf { it.toView().isSupported() }
 } catch (_: JsonDataException) { null } catch (_: IOException) { null }
 
-internal fun BudgetSavePayload.matches(row: OutboxRow): Boolean = isSupported() &&
+internal fun BudgetSavePayload.matches(row: OutboxRow): Boolean = toView().matches(row)
+
+private fun BudgetSaveSubmission.matches(row: OutboxRow): Boolean = isSupported() &&
     row.type == PendingMutationType.SaveMonthlyBudget && row.targetId == monthlyBudgetTarget(month) &&
     row.expectedRowVersion >= 0 && !row.idempotencyKey.isNullOrBlank()
 
-private fun BudgetSavePayload.isSupported(): Boolean = revision == 1 && request.expectedRowVersion == null &&
+private fun BudgetSaveSubmission.isSupported(): Boolean = revision == 1 && request.expectedRowVersion == null &&
     CurrencyCode.fromStorageKeyOrNull(request.homeCurrencyCode) != null && runCatching {
         ZoneId.of(timezone)
         YearMonth.parse(month).toString() == month

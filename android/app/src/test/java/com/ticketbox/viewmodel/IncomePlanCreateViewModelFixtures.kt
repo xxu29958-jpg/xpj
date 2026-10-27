@@ -6,7 +6,7 @@ import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanListing
 import com.ticketbox.data.repository.IncomePlanPatch
-import com.ticketbox.data.repository.IncomePlanSubmissionPayload
+import com.ticketbox.data.repository.IncomePlanSubmission
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OutboxRow
@@ -79,7 +79,7 @@ internal class FakeIncomePlanCreateRepository(
 internal fun createSubmission(call: IncomePlanCreateCall, rowId: Long = 1,
     status: PendingMutationStatus = PendingMutationStatus.Pending): PendingIncomePlanSubmission {
     val draft = call.draft
-    val intent = IncomePlanSubmissionPayload(2, "", draft.label, draft.amountCents, draft.homeCurrencyCode,
+    val intent = IncomePlanSubmission(2, "", draft.label, draft.amountCents, draft.homeCurrencyCode,
         call.binding.sessionGeneration, call.binding.bindingRevision,
         IncomePlanUpdateRequest(draft.intentMonth, 0, draft.label, draft.sourceType.wireValue,
             draft.frequency.wireValue, draft.incomeMonth, draft.amountCents, draft.payDay))

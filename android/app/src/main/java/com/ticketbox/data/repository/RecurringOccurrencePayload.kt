@@ -11,7 +11,7 @@ import java.time.YearMonth
 internal const val RECURRING_OCCURRENCE_PAYLOAD_REVISION = 2
 
 @JsonClass(generateAdapter = true)
-data class RecurringOccurrencePayload(
+data class RecurringOccurrenceSubmission(
     val revision: Int,
     val seriesPublicId: String,
     val seriesLabel: String,
@@ -26,7 +26,7 @@ data class RecurringOccurrencePayload(
 
 internal fun occurrenceTarget(seriesId: String, period: String): String = "recurring_occurrence:$seriesId:$period"
 
-internal fun JsonAdapter<RecurringOccurrencePayload>.readSupportedOccurrence(json: String): RecurringOccurrencePayload? =
+internal fun JsonAdapter<RecurringOccurrenceSubmission>.readSupportedOccurrence(json: String): RecurringOccurrenceSubmission? =
     try {
         fromJson(json)?.takeIf { it.isSupported() }?.let {
             // Revision 1 captured the display default, not the payment's currency.
@@ -39,18 +39,18 @@ internal fun JsonAdapter<RecurringOccurrencePayload>.readSupportedOccurrence(jso
         null
     }
 
-private fun RecurringOccurrencePayload.isSupported(): Boolean {
+private fun RecurringOccurrenceSubmission.isSupported(): Boolean {
     val validPeriod = runCatching { YearMonth.parse(period).toString() == period }.getOrDefault(false)
     return revision in 1..RECURRING_OCCURRENCE_PAYLOAD_REVISION && validPeriod && request.hasSupportedAction() &&
         seriesPublicId.isNotBlank() && request.expectedRowVersion >= 0 && request.expectedSeriesRowVersion > 0 &&
         originSessionGeneration.isNotBlank() && originBindingRevision.isNotBlank()
 }
 
-internal fun RecurringOccurrencePayload.matchesOriginal(row: OutboxRow): Boolean =
+internal fun RecurringOccurrenceSubmission.matchesOriginal(row: OutboxRow): Boolean =
     !row.idempotencyKey.isNullOrBlank() && row.targetId == occurrenceTarget(seriesPublicId, period) &&
         row.expectedRowVersion == request.expectedRowVersion
 
-internal fun RecurringOccurrencePayload.acceptsReceipt(receipt: RecurringOccurrence): Boolean =
+internal fun RecurringOccurrenceSubmission.acceptsReceipt(receipt: RecurringOccurrence): Boolean =
     receipt.seriesPublicId == seriesPublicId && receipt.period == period &&
         receipt.seriesRowVersion == request.expectedSeriesRowVersion &&
         receipt.rowVersion == request.expectedRowVersion + 1 &&
@@ -62,29 +62,3 @@ private fun RecurringOccurrencePaymentRequest.hasSupportedAction(): Boolean = wh
     "clear" -> expensePublicId == null && expectedExpenseRowVersion == null
     else -> false
 }
-
-data class RecurringOccurrenceSubmission(
-    val revision: Int,
-    val seriesPublicId: String,
-    val seriesLabel: String,
-    val period: String,
-    val originSessionGeneration: String,
-    val originBindingRevision: String,
-    val paymentLabel: String?,
-    val paymentAmountCents: Long?,
-    val request: com.ticketbox.domain.model.RecurringOccurrencePaymentRequest,
-    val paymentCurrencyCode: String? = null,
-)
-
-internal fun RecurringOccurrencePayload.toView() = RecurringOccurrenceSubmission(
-    revision = revision,
-    seriesPublicId = seriesPublicId,
-    seriesLabel = seriesLabel,
-    period = period,
-    originSessionGeneration = originSessionGeneration,
-    originBindingRevision = originBindingRevision,
-    paymentLabel = paymentLabel,
-    paymentAmountCents = paymentAmountCents,
-    request = request,
-    paymentCurrencyCode = paymentCurrencyCode,
-)

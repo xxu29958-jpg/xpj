@@ -17,7 +17,7 @@ internal const val INCOME_PLAN_CREATE_PAYLOAD_REVISION = 2
 
 /** Revision 1 edit JSON is preserved byte for byte in Room; revision 2 captures a complete creation. */
 @JsonClass(generateAdapter = true)
-data class IncomePlanSubmissionPayload(
+data class IncomePlanSubmission(
     val revision: Int,
     val planPublicId: String,
     val originalLabel: String,
@@ -33,38 +33,6 @@ data class IncomePlanSubmissionPayload(
         PendingMutationType.UpdateIncomePlan -> revision == INCOME_PLAN_EDIT_PAYLOAD_REVISION &&
             row.expectedRowVersion > 0 && row.targetId == incomePlanTarget(planPublicId)
         else -> false
-    }
-
-    fun createRequest() = IncomePlanCreateRequestDto(request.intentMonth, requireNotNull(request.label),
-        requireNotNull(request.sourceType), requireNotNull(request.frequency), request.incomeMonth,
-        requireNotNull(request.amountCents), requireNotNull(request.payDay), homeCurrencyCode)
-
-    fun acceptsReceipt(row: OutboxRow, receipt: IncomePlanDto): Boolean = supports(row) &&
-        acceptsReceiptIdentity(row, receipt) && acceptsReceiptMoney(receipt) && acceptsReceiptSchedule(receipt)
-
-    private fun acceptsReceiptIdentity(row: OutboxRow, receipt: IncomePlanDto): Boolean =
-        receipt.publicId.isNotBlank() && (row.type == PendingMutationType.CreateIncomePlan || receipt.publicId == planPublicId) &&
-        receipt.rowVersion == row.expectedRowVersion + 1 && receipt.status == "active" && receipt.archivedAt == null
-
-    private fun acceptsReceiptMoney(receipt: IncomePlanDto): Boolean = receipt.homeCurrencyCode == homeCurrencyCode &&
-        receipt.label == (request.label ?: originalLabel) && receipt.amountCents == (request.amountCents ?: originalAmountCents)
-
-    private fun acceptsReceiptSchedule(receipt: IncomePlanDto): Boolean =
-        (request.sourceType == null || receipt.sourceType == request.sourceType) &&
-        (request.frequency == null || receipt.frequency == request.frequency) &&
-        (request.payDay == null || receipt.payDay == request.payDay) &&
-        (request.incomeMonth == null || receipt.incomeMonth == request.incomeMonth) &&
-        (request.frequency != "monthly" || receipt.incomeMonth == null)
-
-    internal fun toMutationIntent(adapter: JsonAdapter<IncomePlanSubmissionPayload>, expectedVersion: Long,
-        key: String): PendingMutationIntent {
-        val encoded = adapter.toJson(this)
-        require(adapter.readSupportedIncomeSubmission(encoded) != null) { "请检查收入月份、币种和提交内容。" }
-        val creating = revision == INCOME_PLAN_CREATE_PAYLOAD_REVISION
-        return PendingMutationIntent(
-            if (creating) PendingMutationType.CreateIncomePlan else PendingMutationType.UpdateIncomePlan,
-            if (creating) "income_plan_create:$key" else incomePlanTarget(planPublicId), encoded, expectedVersion, key,
-        )
     }
 
     internal fun isSupported(): Boolean = validMonth(request.intentMonth) && originalLabel.isNotBlank() &&
@@ -84,9 +52,8 @@ data class IncomePlanSubmissionPayload(
 }
 
 data class PendingIncomePlanSubmission(val row: OutboxRow, val intent: IncomePlanSubmission?,
-    val confirmed: IncomePlan?, val hasSupportedIntent: Boolean) {
-    internal constructor(row: OutboxRow, intent: IncomePlanSubmissionPayload?, confirmed: IncomePlan? = null) :
-        this(row, intent?.toView(), confirmed, intent?.supports(row) == true)
+    val confirmed: IncomePlan? = null) {
+    val hasSupportedIntent: Boolean get() = intent?.supports(row) == true
     val isConfirmed: Boolean get() = row.status == PendingMutationStatus.Done && confirmed != null
     val requiresReview: Boolean get() = row.status == PendingMutationStatus.Done && !isConfirmed
     val canRetry: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Failed &&
@@ -97,7 +64,7 @@ data class PendingIncomePlanSubmission(val row: OutboxRow, val intent: IncomePla
 
 internal fun incomePlanTarget(publicId: String): String = "income_plan:$publicId"
 
-internal fun JsonAdapter<IncomePlanSubmissionPayload>.readSupportedIncomeSubmission(json: String): IncomePlanSubmissionPayload? =
+internal fun JsonAdapter<IncomePlanSubmission>.readSupportedIncomeSubmission(json: String): IncomePlanSubmission? =
     runCatching { fromJson(json)?.takeIf { it.isSupported() } }.getOrNull()
 
 private fun validMonth(value: String): Boolean = value.length == 7 &&
@@ -110,24 +77,34 @@ private fun validIncomeFields(request: IncomePlanUpdateRequest): Boolean =
         (request.frequency == null || request.frequency in setOf("monthly", "one_time")) &&
         (request.incomeMonth == null || validMonth(request.incomeMonth))
 
-data class IncomePlanSubmission(
-    val revision: Int,
-    val planPublicId: String,
-    val originalLabel: String,
-    val originalAmountCents: Long,
-    val homeCurrencyCode: String,
-    val originSessionGeneration: String,
-    val originBindingRevision: String,
-    val request: com.ticketbox.domain.model.IncomePlanUpdateRequest,
-)
+internal fun IncomePlanSubmission.createRequest() = IncomePlanCreateRequestDto(request.intentMonth, requireNotNull(request.label),
+    requireNotNull(request.sourceType), requireNotNull(request.frequency), request.incomeMonth,
+    requireNotNull(request.amountCents), requireNotNull(request.payDay), homeCurrencyCode)
 
-internal fun IncomePlanSubmissionPayload.toView() = IncomePlanSubmission(
-    revision = revision,
-    planPublicId = planPublicId,
-    originalLabel = originalLabel,
-    originalAmountCents = originalAmountCents,
-    homeCurrencyCode = homeCurrencyCode,
-    originSessionGeneration = originSessionGeneration,
-    originBindingRevision = originBindingRevision,
-    request = request,
-)
+internal fun IncomePlanSubmission.acceptsReceipt(row: OutboxRow, receipt: IncomePlanDto): Boolean = supports(row) &&
+    acceptsReceiptIdentity(row, receipt) && acceptsReceiptMoney(receipt) && acceptsReceiptSchedule(receipt)
+
+private fun IncomePlanSubmission.acceptsReceiptIdentity(row: OutboxRow, receipt: IncomePlanDto): Boolean =
+    receipt.publicId.isNotBlank() && (row.type == PendingMutationType.CreateIncomePlan || receipt.publicId == planPublicId) &&
+    receipt.rowVersion == row.expectedRowVersion + 1 && receipt.status == "active" && receipt.archivedAt == null
+
+private fun IncomePlanSubmission.acceptsReceiptMoney(receipt: IncomePlanDto): Boolean = receipt.homeCurrencyCode == homeCurrencyCode &&
+    receipt.label == (request.label ?: originalLabel) && receipt.amountCents == (request.amountCents ?: originalAmountCents)
+
+private fun IncomePlanSubmission.acceptsReceiptSchedule(receipt: IncomePlanDto): Boolean =
+    (request.sourceType == null || receipt.sourceType == request.sourceType) &&
+    (request.frequency == null || receipt.frequency == request.frequency) &&
+    (request.payDay == null || receipt.payDay == request.payDay) &&
+    (request.incomeMonth == null || receipt.incomeMonth == request.incomeMonth) &&
+    (request.frequency != "monthly" || receipt.incomeMonth == null)
+
+internal fun IncomePlanSubmission.toMutationIntent(adapter: JsonAdapter<IncomePlanSubmission>, expectedVersion: Long,
+    key: String): PendingMutationIntent {
+    val encoded = adapter.toJson(this)
+    require(adapter.readSupportedIncomeSubmission(encoded) != null) { "请检查收入月份、币种和提交内容。" }
+    val creating = revision == INCOME_PLAN_CREATE_PAYLOAD_REVISION
+    return PendingMutationIntent(
+        if (creating) PendingMutationType.CreateIncomePlan else PendingMutationType.UpdateIncomePlan,
+        if (creating) "income_plan_create:$key" else incomePlanTarget(planPublicId), encoded, expectedVersion, key,
+    )
+}

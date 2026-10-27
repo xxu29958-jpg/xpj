@@ -19,9 +19,8 @@ data class MonthlyArrangementSubmission(val revision: Int, val month: String, va
 internal fun JsonAdapter<MonthlyArrangementSubmission>.readArrangement(json: String): MonthlyArrangementSubmission? =
     runCatching { fromJson(json) }.getOrNull()
 data class PendingMonthlyArrangement(val row: OutboxRow,
-    val intent: MonthlyArrangementSubmission?, val receipt: com.ticketbox.domain.model.MonthlyArrangement?, val supported: Boolean) {
-    internal constructor(row: OutboxRow, intent: MonthlyArrangementSubmission?, receipt: MonthlyArrangement?) :
-        this(row, intent, receipt, intent?.supports(row) == true)
+    val intent: MonthlyArrangementSubmission?, val receipt: MonthlyArrangement?) {
+    val supported: Boolean get() = intent?.supports(row) == true
     val isConfirmed: Boolean get() = row.status == PendingMutationStatus.Done && receipt != null
     val canRetry: Boolean get() = supported && row.status == PendingMutationStatus.Failed &&
         row.lastError?.startsWith("outbox_row_expired") != true

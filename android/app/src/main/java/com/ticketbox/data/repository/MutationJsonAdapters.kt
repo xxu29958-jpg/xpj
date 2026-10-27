@@ -48,8 +48,8 @@ internal class RecurringMutationAdapters(private val moshi: () -> Moshi) {
         moshi().adapter(RecurringItemUpdateRequestDto::class.java)
     }
 
-    val recurringOccurrenceAdapter: JsonAdapter<com.ticketbox.data.repository.RecurringOccurrencePayload> = lazyJsonAdapter {
-        moshi().adapter(com.ticketbox.data.repository.RecurringOccurrencePayload::class.java)
+    val recurringOccurrenceAdapter: JsonAdapter<com.ticketbox.data.repository.RecurringOccurrenceSubmission> = lazyJsonAdapter {
+        moshi().adapter(com.ticketbox.data.repository.RecurringOccurrenceSubmission::class.java)
     }
 }
 

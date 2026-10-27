@@ -46,7 +46,7 @@ data class IncomePlanListing(
 class IncomePlanRepository(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
-    private val incomePlanSubmissionAdapter: JsonAdapter<IncomePlanSubmissionPayload>,
+    private val incomePlanSubmissionAdapter: JsonAdapter<IncomePlanSubmission>,
     private val incomePlanReceiptAdapter: JsonAdapter<IncomePlanDto>,
     internal val reads: IncomePlanReadRepository,
 ) : IncomePlanActions, IncomePlanReads by reads {
@@ -114,7 +114,7 @@ class IncomePlanRepository(
         require(creationKey.isNotBlank()) { "收入创建标识无法确认，请重新打开创建任务。" }
         val bound = guard.bindExact(expectedBinding)
         val request = draft.toCreateRequest()
-        val payload = IncomePlanSubmissionPayload(INCOME_PLAN_CREATE_PAYLOAD_REVISION, "", request.label,
+        val payload = IncomePlanSubmission(INCOME_PLAN_CREATE_PAYLOAD_REVISION, "", request.label,
             request.amountCents, request.homeCurrencyCode, expectedBinding.sessionGeneration, expectedBinding.bindingRevision,
             IncomePlanUpdateRequest(request.intentMonth, 0, request.label, request.sourceType, request.frequency,
                 request.incomeMonth, request.amountCents, request.payDay))
@@ -131,7 +131,7 @@ class IncomePlanRepository(
         }
         if (patch.expectedRowVersion != baseline.rowVersion) throw RepositoryException("请刷新计划后重新核对修改。")
         if (baseline.homeCurrencyCode != currency.storageKey) throw RepositoryException("计划币种还无法确认，请刷新计划后核对金额。")
-        val payload = IncomePlanSubmissionPayload(INCOME_PLAN_EDIT_PAYLOAD_REVISION, baseline.publicId, baseline.label,
+        val payload = IncomePlanSubmission(INCOME_PLAN_EDIT_PAYLOAD_REVISION, baseline.publicId, baseline.label,
             baseline.amountCents, currency.storageKey, expectedBinding.sessionGeneration, expectedBinding.bindingRevision,
             patch.toUpdateRequest().copy(expectedRowVersion = 0))
         outbox.enqueue(boundRequest = bound, intent = payload.toMutationIntent(incomePlanSubmissionAdapter,

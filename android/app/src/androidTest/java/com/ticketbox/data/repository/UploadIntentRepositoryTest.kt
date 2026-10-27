@@ -207,7 +207,11 @@ class UploadIntentRepositoryTest {
             val reopened = fixture.reopen()
             fixture.failNextTimestampWrite = true
             val observation = withTimeout(5_000) { reopened.observeUploadIntents().first { it.uploads.size == 3 } }
-            assertEquals(UploadIntentRepositoryFixture.RECEIPT, observation.uploads[0].receipt)
+            assertEquals(UploadIntentRepositoryFixture.RECEIPT.id, observation.uploads[0].receipt?.expenseId)
+            assertEquals(UploadIntentRepositoryFixture.RECEIPT.enrichmentTaskPublicId,
+                observation.uploads[0].receipt?.enrichmentTaskPublicId)
+            assertEquals(UploadIntentRepositoryFixture.RECEIPT,
+                fixture.adapters.upload.uploadReceiptAdapter.fromJson(requireNotNull(original[0].receiptJson)))
             assertEquals(original.map { it.payload }, observation.uploads.map { it.row.payloadJson })
             assertArrayEquals("b.png".toByteArray(), fixture.fileStore.read(requireNotNull(observation.uploads[1].payload?.file)))
             assertArrayEquals("c.png".toByteArray(), fixture.fileStore.read(requireNotNull(observation.uploads[2].payload?.file)))

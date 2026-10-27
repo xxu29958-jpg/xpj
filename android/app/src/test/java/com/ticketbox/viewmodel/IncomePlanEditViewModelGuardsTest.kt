@@ -2,7 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.SavedStateHandle
 import com.ticketbox.data.repository.IncomePlanListing
-import com.ticketbox.data.repository.IncomePlanSubmissionPayload
+import com.ticketbox.data.repository.IncomePlanSubmission
 import com.ticketbox.data.repository.PendingIncomePlanSubmission
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.toUpdateRequest
@@ -298,7 +298,7 @@ class IncomePlanEditViewModelGuardsTest {
         val session = assertNotNull(editor.state.value.session)
         val snapshot = saved.get<String>("income.edit.drafts")
         val request = requireNotNull(session.draft.toPatchOrNull(7)).toUpdateRequest().copy(expectedRowVersion = 0)
-        val intent = IncomePlanSubmissionPayload(1, "p1", session.baseline.label, session.baseline.amountCents,
+        val intent = IncomePlanSubmission(1, "p1", session.baseline.label, session.baseline.amountCents,
             "CNY", session.binding.sessionGeneration, session.binding.bindingRevision, request)
         val row = OutboxRow(1, session.binding.serverUrl, session.binding.ledgerId, session.binding.ownerKey,
             PendingMutationType.UpdateIncomePlan, "income_plan:p1", "original-json", 7, PendingMutationStatus.Done,

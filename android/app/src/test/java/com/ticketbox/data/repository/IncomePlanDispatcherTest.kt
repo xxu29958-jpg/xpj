@@ -58,8 +58,8 @@ class IncomePlanDispatcherTest {
             ledgerId = "owner",
             type = PendingMutationType.UpdateIncomePlan,
             targetId = "income_plan:plan-1",
-            payloadJson = moshi().adapter(IncomePlanSubmissionPayload::class.java)
-                .toJson(IncomePlanSubmissionPayload(1, "plan-1", "工资", 1400000, "CNY", "test-session", "test-binding",
+            payloadJson = moshi().adapter(IncomePlanSubmission::class.java)
+                .toJson(IncomePlanSubmission(1, "plan-1", "工资", 1400000, "CNY", "test-session", "test-binding",
                     IncomePlanUpdateRequest(intentMonth = "2026-09", expectedRowVersion = 0L, amountCents = 1500000))),
             expectedRowVersion = 1L,
             status = PendingMutationStatus.InFlight,
@@ -96,7 +96,7 @@ class IncomePlanDispatcherTest {
         return IncomePlanDispatcher(
             type = PendingMutationType.UpdateIncomePlan,
             apiProvider = { stub },
-            payloadAdapter = moshi().adapter(IncomePlanSubmissionPayload::class.java),
+            payloadAdapter = moshi().adapter(IncomePlanSubmission::class.java),
             receiptAdapter = moshi().adapter(IncomePlanDto::class.java),
         )
     }

@@ -125,7 +125,9 @@ class ExpenseCorrectionStreamContinuityTest {
             for (column in listOf("id", "payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId", "serverUrl")) {
                 assertEquals("Original command $column", original[column], stored[column])
             }
-            assertEquals(requireNotNull(delivered.intent).request to original["idempotencyKey"], fixture.network.calls.single())
+            val originalRequest = requireNotNull(fixture.adapters.correctionAdapter.fromJson(requireNotNull(original["payload"]))).request
+            assertEquals(originalRequest to original["idempotencyKey"], fixture.network.calls.single())
+            assertEquals(originalRequest.toDomain(), requireNotNull(delivered.intent).request)
             assertEquals(7L, fixture.network.calls.single().first.expectedRowVersion)
             assertEquals(1_400L, fixture.network.calls.single().first.originalAmountMinor)
             assertEquals("${newDate}T04:00:00Z", fixture.network.calls.single().first.expenseTime.value)

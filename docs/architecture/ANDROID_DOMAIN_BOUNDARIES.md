@@ -41,7 +41,8 @@ Screen → ViewModel → Repository → ApiService / Dao / SecureStorage；DTO�
 | #682 之前 8 个业务文件依赖完整 `OutboxAdapterGraph` | 四组 `MutationJsonAdapters` 仅供预算/安排、固定支出、债务/复核、上传；其余具体 codec 继续直接注入 | #682 已迁移根图、仓库和 Dispatcher；业务文件对两个 Graph 引用为零 |
 | 建议规则和缺汇率规则位于网络 DTO | `BudgetAdviceInputs`、`CurrencyProjectionGap` 承接原规则 | #682 已退役 DTO 规则；本轮复用已有领域值，未复制另一套判断 |
 | 多个 Repository 返回网络 DTO，部分待处理状态通过嵌套字段泄漏 wire，复核状态直接暴露 Room Entity | 同义对象共用一个领域值，删除旧 DTO 和纯字段复制；Expense/Debt/Repayment、账务时间、流水投影等真实差异仍在仓库边界转换 | UI/ViewModel 只消费领域值或仓库的用户意图描述；网络、页面、测试与 AndroidTest 同步迁移，没有类型别名或通用反射转换器 |
-| 待处理命令的 UI 描述同时被 Dispatcher 用作原始请求 | `readOriginalDebt*` / `readOriginalRepaymentReview` 保留同一准入校验，展示才调用 `toView` | 债务还款、调整、分类、作废和复核 Dispatcher 直接使用原 wire；旧 describe → wire 反取路径退出，原 key/OCC/绑定保持 |
+| 待处理命令的 UI 描述同时被 Dispatcher 用作原始请求 | `readOriginalDebt*` / `readOriginalRepaymentReview` 保留同一准入校验，展示才调用 `toView`；同义的收入、固定支出当期付款、月安排、汇率和分摊提交共用原值 | Dispatcher 直接使用原提交；旧 describe → wire 反取路径和同形提交副本退出，原 key/OCC/绑定保持 |
+| 迁移时缓存提交资格会在对象复制后留下过时判断 | 预算、目标创建、月安排、汇率、收入和当期付款从当前意图及原队列行计算资格，复用原准入规则 | 六处派生布尔字段退役；清空意图或修改原绑定后不沿用此前的可重试资格。协议字段不同的预算仍在原边界转换 |
 | 改领域类型会改变已持久化草稿的嵌套 JSON 或对象比较 | Funds/SavedQuery/Reference 直接保存唯一草稿，复用同义领域值的原 JSON 字段名；Merchant 和 MemberSettlement 的实际格式差异局限于原存储边界；RepaymentReview 在仓库内转换 Entity | 原字段/默认值/顺序和嵌套时间字段保留；consume 仍核对原始 JSON，reviewAgain 仍核对完整已读输入，不用不同类型对象做恒假的比较 |
 | AppContainer 决定回执如何写投影、兼容性如何阻断写、如何选原绑定 API | `ExpenseReceiptPublication` 由 ExpenseRepositoryCore 持有并复用原 DAO；`OutboxRuntimeCompatibility` 持有原会话内阻断流；绑定选择归 `LedgerRequestGuard` | 根图中旧 publishExpenseSnapshot/publishExpenseFactBundle、outboxWriteCompatibility/outboxApi 实现删除；Dispatcher、Worker 迁入真实 owner。原锁、版本栅栏和发布顺序保持 |
 | RepositoryGraph 根据回收站类型决定恢复读保护 | `RecycleBinReadProtection` 使用各域现有 QueryReader 的 directMutation/directWrite/invalidate | 根图只连接方法引用；旧 when 流程移走，没有另一套恢复事务或财务规则 |

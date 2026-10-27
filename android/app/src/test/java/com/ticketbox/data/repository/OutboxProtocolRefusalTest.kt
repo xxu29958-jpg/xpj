@@ -35,8 +35,8 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         val clock = Clock.fixed(Instant.parse("2026-09-30T23:55:00Z"), ZoneOffset.UTC)
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao, clock)
-        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(IncomePlanSubmissionPayload::class.java)
-        val payload = IncomePlanSubmissionPayload(1, "plan-1", "工资", 10000, "CNY", "session", "binding",
+        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(IncomePlanSubmission::class.java)
+        val payload = IncomePlanSubmission(1, "plan-1", "工资", 10000, "CNY", "session", "binding",
             IncomePlanUpdateRequest("2026-09", 0, amountCents = 12000))
         val id = outbox.enqueue(PendingMutationType.UpdateIncomePlan, "income_plan:plan-1", adapter.toJson(payload), 7, "original-key")
         val original = dao.rows.getValue(id)

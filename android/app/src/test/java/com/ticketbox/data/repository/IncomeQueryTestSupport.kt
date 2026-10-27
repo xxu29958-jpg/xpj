@@ -20,7 +20,7 @@ internal class FakeIncomeQueryCacheDao : IncomeQueryCacheDao {
 }
 
 internal fun testIncomePlanRepository(provider: ApiServiceProvider, outbox: OutboxRepository,
-    submissionAdapter: JsonAdapter<IncomePlanSubmissionPayload>, receiptAdapter: JsonAdapter<IncomePlanDto>): IncomePlanRepository =
+    submissionAdapter: JsonAdapter<IncomePlanSubmission>, receiptAdapter: JsonAdapter<IncomePlanDto>): IncomePlanRepository =
     IncomePlanRepository(provider, outbox, submissionAdapter, receiptAdapter,
         IncomePlanReadRepository(provider, FakeIncomeQueryCacheDao(), testSnapshotCoordinator(provider, outbox))).also { repository ->
         outbox.onIncomeDispatchPreparing = repository.reads::prepareReadsBeforeDispatch

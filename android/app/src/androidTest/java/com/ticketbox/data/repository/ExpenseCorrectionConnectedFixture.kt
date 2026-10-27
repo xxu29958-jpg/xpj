@@ -79,7 +79,7 @@ internal class ExpenseCorrectionConnectedFixture(
     val clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
     private val session = MutableStateFlow(correctionSession())
     val network = CorrectionConnectedNetwork()
-    private val adapters = OutboxAdapterGraph()
+    val adapters = OutboxAdapterGraph()
     lateinit var outbox: OutboxRepository
     lateinit var graph: RepositoryGraph
     lateinit var apiProvider: ApiServiceProvider

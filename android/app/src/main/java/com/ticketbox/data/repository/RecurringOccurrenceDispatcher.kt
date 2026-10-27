@@ -9,7 +9,7 @@ import retrofit2.HttpException
 
 class RecurringOccurrenceDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
-    private val payloadAdapter: JsonAdapter<RecurringOccurrencePayload>,
+    private val payloadAdapter: JsonAdapter<RecurringOccurrenceSubmission>,
 ) : OutboxMutationDispatcher {
     override val type = PendingMutationType.SetRecurringOccurrencePayment
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "Recurring occurrence")
