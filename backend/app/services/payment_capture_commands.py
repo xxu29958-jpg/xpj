@@ -163,7 +163,7 @@ def repayment_as_expense(db, *, auth, public_id, payload, idempotency_key) -> Pa
     return _commit(db, capture, claim, fx_task)
 
 
-def _correct_confirmed_capture(db, auth, draft, capture, payload, key, claim):
+def _correct_confirmed_capture(db, auth, draft, capture, payload, key, claim) -> PaymentCaptureResponse:
     from app.models import AccountMovement
     from app.services.expense_funding_service import expense_funding_account_ids
     from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
