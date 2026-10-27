@@ -3,6 +3,7 @@ package com.ticketbox.domain.model
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
+@JsonClass(generateAdapter = true)
 data class BillSplitInviteRequest(
     @param:Json(name = "receiver_account_id")
     val receiverAccountId: Long,

@@ -62,8 +62,8 @@ internal class ExpenseFactWriteBindingTest {
         val repayment = fixture.repository.createRepaymentDraftFromExpense(original, fixture.expense)
         val split = fixture.repository.createBillSplitInvitation(original, fixture.expense, 22L, "Receiver", 400L)
 
-        assertTrue(repayment.isSuccess)
-        assertTrue(split.isSuccess)
+        assertTrue(repayment.isSuccess, repayment.exceptionOrNull()?.toString())
+        assertTrue(split.isSuccess, split.exceptionOrNull()?.toString())
         val originalRow = fixture.repository.observeBillSplitCreations().first().submissions.single()
         assertEquals(fixture.expense.rowVersion, originalRow.row.expectedRowVersion)
         assertEquals(400L, originalRow.payload?.request?.amountCents)

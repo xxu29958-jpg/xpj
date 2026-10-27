@@ -7,8 +7,6 @@ import com.squareup.moshi.Json
  * See backend ``schemas/_bill_split.py`` for canonical reference.
  */
 
-@com.squareup.moshi.JsonClass(generateAdapter = true)
-
 data class BillSplitAcceptRequestDto(
     @param:Json(name = "target_ledger_id")
     val targetLedgerId: String,
