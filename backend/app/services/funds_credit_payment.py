@@ -38,7 +38,7 @@ def pay_credit(db: Session, *, auth: AuthContext, public_id: str, payload: Credi
     if claim is None:
         return replay_funds(db, auth, key)
     draft = prepare_repayment_capture(db, auth, payload)
-    credit, payer = _payment_accounts(db, auth, public_id, payload, draft)
+    credit, payer, affected_account_ids = _payment_accounts(db, auth, public_id, payload, draft)
     review_capture_amount(db, draft, credit, payer, payload)
     if draft is not None:
         reverse_source_expense(db, draft, auth.account_id)
@@ -75,11 +75,11 @@ def pay_credit(db: Session, *, auth: AuthContext, public_id: str, payload: Credi
     if draft is not None:
         resolve_repayment_draft(db, draft, actor_account_id=auth.account_id,
             debt_public_id=debt.public_id, repayment_public_id=repayment.public_id)
-    return finish_funds(db, auth, claim, credit)
+    return finish_funds(db, auth, claim, credit, affected_account_ids=affected_account_ids)
 
 
 def _payment_accounts(db: Session, auth: AuthContext, public_id: str, payload: CreditPayment,
-                      draft: RepaymentDraft | None) -> tuple[FinancialAccount, FinancialAccount]:
+                      draft: RepaymentDraft | None) -> tuple[FinancialAccount, FinancialAccount, set[int]]:
     identifiers = {public_id, payload.payer_public_id}
     if draft is not None and draft.source_expense_public_id:
         identifiers.update(db.scalars(select(FinancialAccount.public_id)
@@ -101,7 +101,7 @@ def _payment_accounts(db: Session, auth: AuthContext, public_id: str, payload: C
         raise AppError("credit_opening_unknown", "请先核对初始欠款，保留本次付款输入。", status_code=409)
     if credit.currency_code == payer.currency_code and payload.principal_minor != payload.payer_amount_minor:
         raise AppError("funding_amount_mismatch", "同币种本金清偿与实际付款必须一致；费用请单独记录。", status_code=422)
-    return credit, payer
+    return credit, payer, {row.id for row in accounts.values()}
 
 
 def _repayment_fact(db: Session, auth: AuthContext, credit: FinancialAccount, debt: Debt,

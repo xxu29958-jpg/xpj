@@ -17,9 +17,10 @@ from app.schemas import (
 )
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.goal_debt_repayment_core import (
-    _evaluate_and_maybe_latch,
+    _evaluate_goal,
     _require_debt_repayment_goal,
     _resolve_linked_debts,
+    stage_locked_goal_achievement,
 )
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
@@ -86,10 +87,11 @@ def replace_debt_repayment_goal_links(
                 created_at=now,
             )
         )
+    db.flush()
     if commit:
+        db.refresh(goal)
+        stage_locked_goal_achievement(db, goal)
         db.commit()
-    else:
-        db.flush()
 
 
 def acknowledge_integrity_review(
@@ -113,7 +115,7 @@ def acknowledge_integrity_review(
             "目标已归档，不能继续修改。",
             status_code=409,
         )
-    evaluation, _ = _evaluate_and_maybe_latch(db, goal, persist=False)
+    evaluation = _evaluate_goal(db, goal)
     if evaluation.evaluation_state != "achieved" or not evaluation.voided_debt_public_ids:
         raise AppError(
             "invalid_request",

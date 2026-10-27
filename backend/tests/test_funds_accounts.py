@@ -995,6 +995,8 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
     assert get(goal_url)["debt_repayment"]["projected_payoff_date"] == revised["periods"][-1]["due_on"]
     credit = _settle_rescheduled_fees(post, get, credit_url, bank_url, credit, history[0], first_payment, goal_url)
     assert credit["balance_minor"] == 0
+    from tests.debt_repayment_goal_helpers import _goal_latch_state
+    assert _goal_latch_state(goal["public_id"])[1] == 1  # fee settlement commits before the query
     assert get(goal_url)["debt_repayment"]["evaluation_state"] == "achieved"
     _hide_credit_goal_account(client, identity, credit_url, credit, goal, goal_body, goal_key)
     credit = get(credit_url)

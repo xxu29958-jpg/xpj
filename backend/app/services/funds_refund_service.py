@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import AccountMovement, Expense, ExpenseFunding, ExpenseOffsetFact
 from app.schemas.funds import RefundDestination
-from app.services.expense_funding_service import reverse_expense_funding
+from app.services.expense_funding_service import expense_funding_account_ids, reverse_expense_funding
 from app.services.funds_commands import movement, require_account_version
 from app.services.funds_fact_service import (
     lock_reviewed_accounts,
@@ -22,19 +22,20 @@ from app.services.installment_query import draw_balances
 
 
 def apply_offset_funds(db: Session, *, expense: Expense, offset: ExpenseOffsetFact,
-        destinations: list[RefundDestination] | None, actor_account_id: int) -> None:
+        destinations: list[RefundDestination] | None, actor_account_id: int) -> set[int]:
     if offset.kind == "reversal":
         if destinations:
             raise AppError("invalid_request", "冲正按原付款来源撤销，请勿同时填写退款去向。", status_code=422)
+        affected = expense_funding_account_ids(db, expense.id)
         reverse_expense_funding(db, expense=expense, actor_account_id=actor_account_id, reason=offset.reason,
             occurred_on=offset.accounting_date, offset_id=offset.id)
-        return
+        return affected
     has_funding = db.scalar(select(ExpenseFunding.id).where(ExpenseFunding.expense_id == expense.id,
         ExpenseFunding.voided_at.is_(None)).limit(1)) is not None
     if not destinations:
         if has_funding:
             raise AppError("refund_destination_required", "请选择实际退入的账户；申请中的退款先保留原稿，到账后再确认。", status_code=422)
-        return
+        return set()
     if sum(row.original_amount_minor for row in destinations) != offset.original_amount_minor:
         raise AppError("funding_amount_mismatch", "退款各去向的原币合计须等于本次退款金额。", status_code=422)
     accounts = {pid: get_account(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id,
@@ -53,6 +54,7 @@ def apply_offset_funds(db: Session, *, expense: Expense, offset: ExpenseOffsetFa
     for account in accounts.values():
         account.row_version += 1
         refresh_credit(db, account)
+    return {account.id for account in accounts.values()}
 
 
 def refund_credit_targets(db, account, expense_id, amount):
@@ -69,7 +71,7 @@ def refund_credit_targets(db, account, expense_id, amount):
     return result
 
 
-def reverse_offset_funds(db, *, expense, offset, actor_account_id, reason):
+def reverse_offset_funds(db, *, expense, offset, actor_account_id, reason) -> set[int]:
     rows = list(db.scalars(unreversed_movements(select(AccountMovement).where(AccountMovement.offset_id == offset.id))))
     if offset.kind == "reversal":
         opening_ids = db.scalars(select(ExpenseFunding.account_id).where(ExpenseFunding.expense_id == expense.id,
@@ -84,3 +86,4 @@ def reverse_offset_funds(db, *, expense, offset, actor_account_id, reason):
             funding.voided_at = None
     # The offset owner expires its snapshot before applying the reviewed correction.
     db.flush()
+    return {row.account_id for row in rows}
