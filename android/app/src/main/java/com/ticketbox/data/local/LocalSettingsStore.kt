@@ -6,9 +6,13 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.NotificationPreferences
+import com.ticketbox.domain.model.NotificationCaptureFailure
+import com.ticketbox.data.repository.logNetworkWarning
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONObject
+import java.time.Instant
+import java.util.UUID
 
 private val Context.ticketboxBackgroundDataStore by preferencesDataStore(
     name = "ticketbox_background_settings",
@@ -25,6 +29,14 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
 
     // 币种偏好 hot flow，与 ledger id 同理：磁盘初值保证首订阅者不会错过当前值。
     private val currencyCodeFlow = MutableStateFlow(prefs.getString(KEY_CURRENCY_CODE, null))
+    private val captureFailures = MutableStateFlow(
+        prefs.all.keys.filter { it.startsWith(KEY_CAPTURE_FAILURE_PREFIX) }.associate { key ->
+            val value = JSONObject(requireNotNull(prefs.getString(key, null)))
+            key.removePrefix(KEY_CAPTURE_FAILURE_PREFIX) to NotificationCaptureFailure(
+                token = value.getString("token"), occurredAt = value.getString("occurredAt"),
+            )
+        },
+    )
 
     override fun observeCurrencyCodeKey(): Flow<String?> = currencyCodeFlow
 
@@ -51,6 +63,38 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
             putBoolean(KEY_NOTIFY_BUDGET_OVERSPEND, preferences.budgetOverspendAlerts)
             putBoolean(KEY_NOTIFY_BACKUP_STALE, preferences.backupStaleAlerts)
         }
+    }
+
+    override fun notificationCaptureFailure(scope: String): NotificationCaptureFailure? = captureFailures.value[scope]
+
+    override fun observeNotificationCaptureFailures(): Flow<Map<String, NotificationCaptureFailure>> = captureFailures
+
+    override fun recordNotificationCaptureFailure(scope: String) = synchronized(prefs) {
+        val failure = NotificationCaptureFailure(UUID.randomUUID().toString(), Instant.now().toString())
+        val persisted = writeNotificationCaptureFailure(scope, failure)
+        captureFailures.value += scope to failure.copy(persistenceFailed = !persisted)
+    }
+
+    override fun acknowledgeNotificationCaptureFailure(scope: String, expectedToken: String) = synchronized(prefs) {
+        val current = captureFailures.value[scope] ?: return@synchronized
+        if (current.token != expectedToken) return@synchronized
+        captureFailures.value = if (writeNotificationCaptureFailure(scope, null)) {
+            captureFailures.value - scope
+        } else {
+            captureFailures.value + (scope to current.copy(persistenceFailed = true))
+        }
+    }
+
+    private fun writeNotificationCaptureFailure(scope: String, failure: NotificationCaptureFailure?): Boolean = try {
+        val key = "$KEY_CAPTURE_FAILURE_PREFIX$scope"
+        val update = prefs.edit()
+        if (failure == null) update.remove(key) else update.putString(key, JSONObject()
+            .put("token", failure.token).put("occurredAt", failure.occurredAt).toString())
+        check(update.commit()) { "Unable to persist notification capture status." }
+        true
+    } catch (error: Exception) {
+        logNetworkWarning("notification_capture_status_save_failed scope=$scope", error)
+        false
     }
 
     override fun lastConfirmedSyncAt(): String? = lastConfirmedSyncAtForLedger(LEGACY_LEDGER_ID)
@@ -244,7 +288,10 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
     }
 
     override fun clear() {
-        check(prefs.edit().clear().commit()) { "Unable to clear local settings." }
+        // A sign-out does not acknowledge a missed capture. Its original authority alone can see it again.
+        val update = prefs.edit()
+        prefs.all.keys.filterNot { it.startsWith(KEY_CAPTURE_FAILURE_PREFIX) }.forEach(update::remove)
+        check(update.commit()) { "Unable to clear local settings." }
         currencyCodeFlow.value = null
     }
 
@@ -272,6 +319,7 @@ internal class LocalSettingsStore(context: Context) : TicketboxSettingsStore {
     }
 
     private companion object {
+        const val KEY_CAPTURE_FAILURE_PREFIX = "notification_capture_failure:"
         const val KEY_RECENT_SEARCHES = "recent_searches"
         const val KEY_APP_THEME_MODE = "app_theme_mode"
         const val KEY_CURRENCY_CODE = "currency_code"

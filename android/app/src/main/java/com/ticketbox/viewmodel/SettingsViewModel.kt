@@ -14,6 +14,8 @@ import com.ticketbox.domain.model.DiagnosticCheckKind
 import com.ticketbox.domain.model.DiagnosticStatus
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.NotificationPreferences
+import com.ticketbox.domain.model.NotificationCaptureFailure
+import com.ticketbox.notification.notificationCaptureFailureScope
 import com.ticketbox.domain.model.ServerSettings
 import com.ticketbox.domain.model.ServerBackupHealth
 import com.ticketbox.domain.model.UiText
@@ -44,6 +46,7 @@ data class SettingsUiState(
     val role: String? = null,
     val boundAt: String? = null,
     val notificationPreferences: NotificationPreferences = NotificationPreferences(),
+    val notificationCaptureFailure: NotificationCaptureFailure? = null,
     val serverSettings: ServerSettings? = null,
     val serverSettingsFresh: Boolean = false,
     val backupHealth: ServerBackupHealth? = null,
@@ -69,6 +72,7 @@ class SettingsViewModel(
 
     init {
         viewModelScope.launch { repository.observeAccess().collect { refreshLocalBindingState() } }
+        viewModelScope.launch { settingsStore.observeNotificationCaptureFailures().collect { refreshLocalBindingState() } }
         loadServerSettings()
     }
 
@@ -81,6 +85,13 @@ class SettingsViewModel(
         } else {
             _uiState.update { it.withLocalBindingFields(repository, settingsStore, access) }
         }
+    }
+
+    fun acknowledgeNotificationCaptureFailure(failure: NotificationCaptureFailure) {
+        refreshLocalBindingState()
+        val binding = _uiState.value.access?.binding ?: return
+        settingsStore.acknowledgeNotificationCaptureFailure(notificationCaptureFailureScope(binding), failure.token)
+        refreshLocalBindingState()
     }
 
     private fun updateFor(binding: LogicalSessionBinding, transform: (SettingsUiState) -> SettingsUiState) {
@@ -274,6 +285,9 @@ private fun SettingsUiState.withLocalBindingFields(
             binding?.let { settings.copy(role = it.role, accountName = it.accountName, ledgerName = it.ledgerName) } ?: settings
         },
         notificationPreferences = settingsStore.notificationPreferences(),
+        notificationCaptureFailure = access?.binding?.let {
+            settingsStore.notificationCaptureFailure(notificationCaptureFailureScope(it))
+        },
         lastUploadAt = repository.lastUploadAt(),
         lastConfirmedSyncAt = repository.lastConfirmedSyncAt(),
     )

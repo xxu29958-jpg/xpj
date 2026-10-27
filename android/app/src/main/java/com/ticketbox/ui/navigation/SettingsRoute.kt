@@ -55,6 +55,7 @@ internal fun SettingsRoute(
             onSync = settingsViewModel::sync,
             onClearCache = settingsViewModel::clearLocalCache,
             onSaveNotificationPreferences = settingsViewModel::saveNotificationPreferences,
+            onAcknowledgeCaptureFailure = settingsViewModel::acknowledgeNotificationCaptureFailure,
             onThemeModeChange = preferenceControls.onThemeModeChange,
             onCurrencyChange = preferenceControls.onCurrencyChange,
             onImportBackgroundImage = appearanceViewModel::importBackgroundImage,

@@ -27,6 +27,7 @@ import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.NotificationPreferences
+import com.ticketbox.domain.model.NotificationCaptureFailure
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.screens.settings.AboutScreen
@@ -49,6 +50,7 @@ import com.ticketbox.ui.screens.settings.LedgerSwitcherNavigation
 import com.ticketbox.ui.screens.settings.LedgerSwitcherScreen
 import com.ticketbox.ui.screens.settings.MyDevicesScreen
 import com.ticketbox.ui.screens.settings.NotificationPreferencesScreen
+import com.ticketbox.ui.screens.settings.NotificationCaptureFailureStatus
 import com.ticketbox.ui.screens.settings.SecurityPrivacyScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreen
 import com.ticketbox.ui.screens.settings.ServerSettingsScreenActions
@@ -113,6 +115,7 @@ internal data class SettingsRouteActions(
     val onSync: () -> Unit,
     val onClearCache: () -> Unit,
     val onSaveNotificationPreferences: (NotificationPreferences) -> Unit,
+    val onAcknowledgeCaptureFailure: (NotificationCaptureFailure) -> Unit,
     val onThemeModeChange: (AppThemeMode) -> Unit,
     val onCurrencyChange: (CurrencyCode) -> Unit,
     // 全局背景批:导入 / 编辑 draft / 取消 / 应用全部由 AppearanceViewModel 唯一持有,
@@ -338,9 +341,10 @@ internal fun SettingsDestinationHost(
         SettingsDestination.NotificationPreferences -> NotificationPreferencesScreen(
             preferences = states.settings.notificationPreferences,
             readOnly = !ledgerRoleCanModify(states.settings.role),
-            // Revives the previously silent save feedback: SettingsViewModel
-            // already writes message + tone; surface it in the page-header slot.
-            status = { AppStatusBanner(message = states.settings.message, tone = states.settings.messageTone) },
+            status = {
+                NotificationCaptureFailureStatus(states.settings.notificationCaptureFailure, actions.onAcknowledgeCaptureFailure)
+                AppStatusBanner(message = states.settings.message, tone = states.settings.messageTone)
+            },
             onBack = { route = SettingsDestination.Root },
             onSave = actions.onSaveNotificationPreferences,
         )

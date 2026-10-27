@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notification_capture_not_saved">有付款通知未能保存为待确认。请先核对支付记录和待确认列表；确有遗漏时，请手工记一笔。</string>
+    <string name="notification_capture_status_not_saved">本机未能保存这项提醒状态。请先核对支付记录；关闭应用后，提醒可能丢失或再次出现。</string>
+    <string name="notification_capture_acknowledge">已核对，清除提醒</string>
+</resources>
