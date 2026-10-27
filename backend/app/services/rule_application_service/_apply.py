@@ -8,11 +8,11 @@ from app.errors import AppError
 from app.models import RuleApplicationBatch, RuleApplicationChange
 from app.services.category_service import normalize_category
 from app.services.currency_binding_service import authorize_currency_metadata_write
+from app.services.learning_service import read_ocr_texts
 from app.services.merchant_alias_service import enabled_merchant_alias_map
 from app.services.rule_application_service._common import (
     _enabled_rules,
     _matching_rule_category,
-    _ocr_text_by_expense_id,
     _rule_application_candidates,
     _rule_application_preview_token,
     _try_apply_rule_category,
@@ -110,17 +110,19 @@ def _apply_rules_to_status(
     authorize_currency_metadata_write(db)
 
     alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
-    ocr_text_by_id = _ocr_text_by_expense_id(db, tenant_id=tenant_id, expenses=expenses)
+    ocr_text_by_id = read_ocr_texts(db, tenant_id=tenant_id, expenses=expenses)
     matches = [_matching_rule_category(db, expense, rules, alias_map,
         ocr_text=ocr_text_by_id.get(int(expense.id), "")) for expense in expenses]
     current_token = _rule_application_preview_token(status=status, max_scan=max_scan, expenses=expenses,
         rules=rules, alias_map=alias_map, ocr_text_by_id=ocr_text_by_id, matches=matches)
     if current_token != preview_token:
         raise AppError("preview_stale", "预览已过期，请重新预览后再确认。", status_code=409)
-    versions = [expense.row_version for expense in expenses]
-    changes: list[tuple[int, int, str, str, str]] = []
+    candidates = [(position, expense, match, expense.row_version)
+        for position, (expense, match) in enumerate(zip(expenses, matches, strict=True))]
+    changes: list[tuple[int, int, int, str, str, str]] = []
     now = now_utc()
-    for expense, match, expected_version in zip(expenses, matches, versions, strict=True):
+    # All multi-expense writers acquire fact rows in ID order.
+    for position, expense, match, expected_version in sorted(candidates, key=lambda item: item[1].id):
         if match.unavailable or match.rule_id is None or match.category is None:
             continue
         new_category = match.category
@@ -136,7 +138,7 @@ def _apply_rules_to_status(
             reason=reason,
         )
         if applied is not None:
-            changes.append(applied)
+            changes.append((position, *applied))
     application_id = None
     if changes:
         batch = RuleApplicationBatch(
@@ -148,7 +150,8 @@ def _apply_rules_to_status(
         db.add(batch)
         db.flush()
         application_id = batch.public_id
-        for expense_id, rule_id, matched_keyword, before_category, after_category in changes:
+        # Retain the preview's original newest-first order in the audit history.
+        for _, expense_id, rule_id, matched_keyword, before_category, after_category in sorted(changes):
             db.add(RuleApplicationChange(
                 tenant_id=tenant_id, batch_id=batch.id, expense_id=expense_id,
                 rule_id=rule_id, matched_keyword=matched_keyword,

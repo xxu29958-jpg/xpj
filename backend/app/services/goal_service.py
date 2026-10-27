@@ -167,14 +167,13 @@ def get_goal_response(
     tenant_id: str,
     public_id: str,
     timezone_name: str | None = None,
-    persist_achievement: bool = False,
 ) -> GoalResponse:
     goal = get_goal(db, tenant_id=tenant_id, public_id=public_id)
     if goal.goal_type == "debt_repayment":
         # ADR-0049 §6: debt goals carry no monthly spend total; the evaluator
-        # builds the response (and latches a fresh achievement on writer reads).
+        # builds a read-only response; completed commands own achievement.
         return goal_debt_repayment_service.build_debt_repayment_goal_response(
-            db, goal, persist_achievement=persist_achievement
+            db, goal
         )
     totals = month_spend_totals(
         db,
@@ -364,13 +363,13 @@ def _goal_response_by_type(db: Session, goal: Goal, *, timezone_name: str | None
 
     A debt_repayment goal has a NULL ``target_amount_cents`` — the spending
     response builder crashes on ``int(None)`` — so it goes through the debt
-    evaluator instead. ``persist_achievement=False``: archive / restore are not
-    achievement-evaluation reads. Shared by :func:`archive_goal` and
+    evaluator instead. Archive / restore do not latch achievement.
+    Shared by :func:`archive_goal` and
     :func:`restore_goal` (lifecycle flips that only differ in the status they
     set, not in how the result serialises).
     """
     if goal.goal_type == "debt_repayment":
-        return goal_debt_repayment_service.build_debt_repayment_goal_response(db, goal, persist_achievement=False)
+        return goal_debt_repayment_service.build_debt_repayment_goal_response(db, goal)
     totals = month_spend_totals(
         db,
         tenant_id=goal.tenant_id,

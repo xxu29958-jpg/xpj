@@ -16,9 +16,11 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
+from app.services.time_service import now_utc
 from tests.debt_repayment_goal_helpers import (
     _acknowledge_review,
     _adjust_debt,
@@ -26,7 +28,9 @@ from tests.debt_repayment_goal_helpers import (
     _create_debt_goal,
     _create_external_debt,
     _goal_latch_state,
+    _insert_repayment_fact,
     _links_count_for_version,
+    _repay_debt,
     _replace_links,
     _void_debt,
 )
@@ -68,6 +72,7 @@ def test_all_linked_cleared_achieves_and_latches_once(client: TestClient, *, ide
     ).json()
     _clear_debt(client, identity.app_headers, a)
     _clear_debt(client, identity.app_headers, b)
+    assert _goal_latch_state(goal["public_id"])[1] == 1  # committed before any goal read
 
     detail = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)
     assert detail.status_code == 200, detail.json()
@@ -237,10 +242,9 @@ def test_achieved_then_reopened_debt_stays_achieved(client: TestClient, *, ident
     ).json()
     cleared = _clear_debt(client, identity.app_headers, a)  # carries the post-clear row_version
 
-    achieved = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)
-    assert achieved.json()["debt_repayment"]["evaluation_state"] == "achieved"
+    assert _goal_latch_state(goal["public_id"])[1] == 1
 
-    # Reopen the Debt with a positive adjustment (remaining > 0 → status open).
+    # Reopen with a positive adjustment before any goal query.
     reopened = _adjust_debt(client, identity.app_headers, cleared, amount_cents=5000)
     assert reopened["status"] == "open"
 
@@ -291,7 +295,7 @@ def test_acknowledge_integrity_review_clears_review_flag(client: TestClient, *, 
         client, identity.app_headers, name="保留存档", debt_public_ids=[a["public_id"]]
     ).json()
     cleared = _clear_debt(client, identity.app_headers, a)
-    client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)  # latch
+    client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)  # read
     _void_debt(client, identity.app_headers, cleared)
 
     pending = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)
@@ -322,7 +326,7 @@ def test_acknowledgement_does_not_carry_across_a_version_bump(client: TestClient
         client, identity.app_headers, name="按版本作用域", debt_public_ids=[a["public_id"]]
     ).json()
     cleared_a = _clear_debt(client, identity.app_headers, a)
-    client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)  # latch v1
+    client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)  # read v1
     _void_debt(client, identity.app_headers, cleared_a)
     acked = _acknowledge_review(
         client, identity.app_headers, goal["public_id"], expected_row_version=goal["row_version"]
@@ -351,25 +355,25 @@ def test_acknowledgement_does_not_carry_across_a_version_bump(client: TestClient
     assert detail["debt_repayment"]["voided_debt_public_ids"] == [b["public_id"]]
 
 
-def test_viewer_read_computes_achieved_without_latching(client: TestClient, *, identity) -> None:
-    # Writer creates + clears the linked Debt but does NOT read the goal, so the
-    # latch is not yet stamped. A viewer's read must COMPUTE 'achieved' but never
-    # persist (writer-gated latch). Confirmed both in the response and the DB row.
+@pytest.mark.parametrize("role", ["owner", "viewer"])
+def test_legacy_clear_reads_remain_unlatched_until_a_new_completion_command(client: TestClient, role, *, identity) -> None:
+    # A historical clear fact can predate command-owned achievement. Neither
+    # writer nor viewer queries may manufacture the missing business timestamp.
     a = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
     goal = _create_debt_goal(
         client, identity.app_headers, name="只读不锁存", debt_public_ids=[a["public_id"]]
     ).json()
-    _clear_debt(client, identity.app_headers, a)
+    _insert_repayment_fact(a["public_id"], amount_cents=10000, created_at=now_utc())
     assert _goal_latch_state(goal["public_id"]) == (None, None)  # not latched yet
 
-    set_owner_ledger_role("viewer")
+    set_owner_ledger_role(role)
     viewer_read = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)
     assert viewer_read.status_code == 200, viewer_read.json()
     block = viewer_read.json()["debt_repayment"]
     assert block["evaluation_state"] == "achieved"  # computed
     assert block["achieved_version"] is None  # but not latched
     assert block["achieved_at"] is None
-    # The viewer read wrote nothing to the Goal row.
+    # Neither role's detail query writes the Goal row.
     assert _goal_latch_state(goal["public_id"]) == (None, None)
 
     viewer_list = client.get("/api/goals?goal_type=debt_repayment", headers=identity.app_headers)
@@ -378,19 +382,33 @@ def test_viewer_read_computes_achieved_without_latching(client: TestClient, *, i
     assert list_block["evaluation_state"] == "achieved"
     assert list_block["achieved_version"] is None
     assert list_block["achieved_at"] is None
-    # The viewer list path is also read-only.
+    # The list path is also read-only.
     assert _goal_latch_state(goal["public_id"]) == (None, None)
 
+    # Unpersisted historical completion is not sticky. A later command can
+    # reopen it; only a new completed command records the first real latch.
+    set_owner_ledger_role("owner")
+    reopened = _adjust_debt(client, identity.app_headers, a, amount_cents=5000)
+    assert reopened["status"] == "open"
+    assert _goal_latch_state(goal["public_id"]) == (None, None)
+    read = client.get(f"/api/goals/{goal['public_id']}", headers=identity.app_headers)
+    assert read.json()["debt_repayment"]["evaluation_state"] == "in_progress"
+    cleared = _repay_debt(client, identity.app_headers, reopened, amount_cents=5000)
+    achieved = _goal_latch_state(goal["public_id"])
+    assert achieved[0] is not None and achieved[1] == 1
+    _adjust_debt(client, identity.app_headers, cleared, amount_cents=1000)
+    assert _goal_latch_state(goal["public_id"]) == achieved
 
-def test_writer_list_latches_completed_debt_goals(client: TestClient, *, identity) -> None:
+
+def test_writer_list_reads_command_latched_debt_goals(client: TestClient, *, identity) -> None:
     # Android refresh uses this list endpoint; it must return the sticky, latched state
     # without forcing the app to GET every goal detail one by one.
     a = _create_external_debt(client, identity.app_headers, principal_amount_cents=10000)
     goal = _create_debt_goal(
-        client, identity.app_headers, name="列表锁存", debt_public_ids=[a["public_id"]]
+        client, identity.app_headers, name="读取已达成", debt_public_ids=[a["public_id"]]
     ).json()
     _clear_debt(client, identity.app_headers, a)
-    assert _goal_latch_state(goal["public_id"]) == (None, None)
+    assert _goal_latch_state(goal["public_id"])[1] == 1
 
     response = client.get("/api/goals?goal_type=debt_repayment", headers=identity.app_headers)
     assert response.status_code == 200, response.json()

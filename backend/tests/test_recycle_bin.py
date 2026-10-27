@@ -27,10 +27,10 @@ from app.services.category_preference_service import (
     delete_category_preference,
     ensure_category_preference_for_name,
 )
-from app.services.classify_service import create_rule, delete_rule
 from app.services.goal_service import archive_goal
 from app.services.income_plan_service import archive_income_plan, create_income_plan
 from app.services.recurring_service import archive_recurring_item
+from app.services.rule_service import create_rule, delete_rule
 from app.services.soft_delete_policy import recycle_bin_retention_delta
 from app.services.spending_contract_service import current_accounting_month
 from app.services.time_service import now_utc

@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import ApiIdempotencyKey
+from app.models import ApiIdempotencyKey, Debt
 from app.schemas import (
     DebtAdjustmentCreateRequest,
     DebtCreateRequest,
@@ -39,6 +39,7 @@ from app.services.debt_service import (
     void_debt,
     void_repayment,
 )
+from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
 from app.services.idempotency import (
     IDEMPOTENCY_STATUS_SUCCEEDED,
     IdempotencyOutcomeKind,
@@ -240,6 +241,7 @@ def record_repayment_idempotently(
         resource_type="repayment",
         resource_id=result.repayment_public_id,
     )
+    stage_debt_goal_achievements(db, debt_ids=db.scalars(select(Debt.id).where(Debt.public_id == public_id)))
     db.commit()
     db.expire_all()
     return _repayment_response(
@@ -288,6 +290,7 @@ def record_adjustment_idempotently(
         resource_type=_DEBT_TARGET_TYPE,
         resource_id=debt.public_id,
     )
+    stage_debt_goal_achievements(db, debt_ids=[debt.id])
     db.commit()
     db.expire_all()
     return get_debt_response(db, tenant_id=tenant_id, public_id=public_id)
@@ -427,7 +430,7 @@ def forgive_debt_idempotently(
             ledger_id=tenant_id,
             account_id=actor_account_id,
         )
-    forgive_debt(
+    debt = forgive_debt(
         db,
         tenant_id=tenant_id,
         public_id=public_id,
@@ -442,6 +445,7 @@ def forgive_debt_idempotently(
         resource_type=_DEBT_TARGET_TYPE,
         resource_id=public_id,
     )
+    stage_debt_goal_achievements(db, debt_ids=[debt.id])
     db.commit()
     db.expire_all()
     return get_participant_debt_response(

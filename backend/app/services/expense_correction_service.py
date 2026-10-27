@@ -21,6 +21,7 @@ from app.services.category_preference_service import ensure_category_preference_
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.expense_revision_service import (
     PreparedCorrectionRevision,
+    correction_funding_account_ids,
     prepare_correction_revision,
     record_prepared_correction_revision,
 )
@@ -31,6 +32,7 @@ from app.services.expense_split_service import (
     apply_expense_splits_to_claimed_row,
     validate_current_expense_split_allocation,
 )
+from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.pending_suggestion_service import record_category_choice
@@ -130,6 +132,7 @@ def complete_correction_command(
         resource_type="expense",
         resource_id=str(expense_id),
     )
+    stage_debt_goal_achievements(db, account_ids=correction_funding_account_ids(db, revision))
     db.commit()
     db.refresh(expense)
     db.refresh(revision)
@@ -485,6 +488,7 @@ def correct_expense(
     if revision is None:
         raise AssertionError("confirmed correction must publish a revision")
     if commit:
+        stage_debt_goal_achievements(db, account_ids=correction_funding_account_ids(db, revision))
         db.commit()
         db.refresh(expense)
         db.refresh(revision)

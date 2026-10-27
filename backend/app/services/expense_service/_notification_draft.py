@@ -8,7 +8,6 @@ from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.schemas import NotificationDraftCreateRequest
 from app.services.category_preference_service import ensure_category_preference_for_name
-from app.services.classify_service import classify_expense
 from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.exchange_rate_service import apply_currency_payload, validate_currency_payload_money_command
@@ -22,6 +21,7 @@ from app.services.expense_service._helpers import (
     _notification_draft_fields,
     _notification_draft_key,
 )
+from app.services.rule_service import classify_expense
 from app.services.time_service import ensure_utc, now_utc
 from app.tenants import AuthContext
 

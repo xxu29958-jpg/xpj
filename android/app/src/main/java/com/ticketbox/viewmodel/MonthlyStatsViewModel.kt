@@ -131,13 +131,17 @@ class MonthlyStatsViewModel(
     }
 
     fun refresh() {
-        if (resolvingMonth) return
         val state = _uiState.value
         val binding = state.binding ?: return
-        if (state.month.isBlank()) { resolveMonth(binding); return }
         val query = StatsQuery(binding, state.month, state.selectedTag, state.homeCurrencyCode, state.timezone)
         if (inFlightRefresh?.query == query) return
         val snapshot = MonthlyStatsRefreshSnapshot(++refreshGeneration, query)
+        // Ledger-wide quality remains readable while the default month is unresolved.
+        loadDataQuality(snapshot)
+        if (state.month.isBlank()) {
+            if (!resolvingMonth) resolveMonth(binding)
+            return
+        }
         inFlightRefresh = snapshot
         viewModelScope.launch {
             try {
@@ -160,7 +164,6 @@ class MonthlyStatsViewModel(
                 homeCurrencyCode = read.value.homeCurrencyCode, loading = false, statsLoadError = null,
                 primaryRefreshRevision = it.primaryRefreshRevision + 1)
         }
-        loadDataQuality(snapshot)
         if (snapshot.query.tag.isBlank()) loadLifestyle(snapshot, read.value.homeCurrencyCode)
         if (!read.fromCache) viewModelScope.launch {
             if (snapshot.isCurrent()) repository.syncConfirmed(snapshot.query.month, null, snapshot.query.tag.ifBlank { null })
@@ -175,7 +178,6 @@ class MonthlyStatsViewModel(
                 statsLoadError = if (it.stats == null) error.toUiText(R.string.stats_message_stats_failed) else null,
                 message = if (it.stats == null) null else error.toUiText(R.string.stats_message_stats_failed))
         }
-        loadDataQuality(snapshot)
     }
 
     private fun clearRejectedRead(error: Throwable): Boolean {
@@ -185,6 +187,8 @@ class MonthlyStatsViewModel(
         inFlightRefresh = null
         _uiState.update { it.copy(stats = null, statsFetchedAt = null, statsSource = StatsSource.None,
             lifestyleStats = null, lifestyleFetchedAt = null, lifestyleFromCache = false,
+            dataQualityLoadState = DataQualityLoadState.Failed,
+            dataQualityError = error.toUiText(R.string.stats_data_quality_load_failed),
             loading = false, statsLoadError = error.toUiText(R.string.stats_message_stats_failed), message = null) }
         return true
     }
@@ -206,6 +210,7 @@ class MonthlyStatsViewModel(
 
     private fun loadDataQuality(snapshot: MonthlyStatsRefreshSnapshot) {
         viewModelScope.launch {
+            if (!snapshot.isCurrent()) return@launch
             _uiState.update { it.copy(dataQualityLoadState = DataQualityLoadState.Loading, dataQualityError = null) }
             val result = repository.dataQualitySummary()
             if (!snapshot.isCurrent()) return@launch

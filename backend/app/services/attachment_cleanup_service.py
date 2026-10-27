@@ -202,9 +202,11 @@ def settle_cleanup_request(
 
 def execute_attachment_cleanup(
     db: Session, expense: Expense, *, reason: str, settings_provider: Callable,
-    actor_account_id: int | None = None,
+    actor_account_id: int | None = None, authorize: Callable[[], None] | None = None,
 ) -> CleanupSettlement:
-    """Automatic cleanup owns two short transactions around durable acceptance."""
+    """Own acceptance and deletion, reauthorizing admin work after each commit."""
+    if authorize is not None:
+        authorize()
     authorize_currency_metadata_write(db)
     db.refresh(expense, with_for_update=True)
     request = read_cleanup_request(expense)
@@ -222,6 +224,8 @@ def execute_attachment_cleanup(
         db.commit()
         # No unlink follows a failed/uncertain acceptance commit. A new call may
         # recover the durable ID if COMMIT succeeded but its acknowledgement did not.
+        if authorize is not None:
+            authorize()
         authorize_currency_metadata_write(db)
         db.refresh(expense, with_for_update=True)
     result = settle_cleanup_request(db, expense, expected_request_id=request.request_id,

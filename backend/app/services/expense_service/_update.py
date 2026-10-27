@@ -216,6 +216,9 @@ def _publish_confirmation(
     if not commit:
         db.flush()
         return expense
+    from app.services.expense_funding_service import expense_funding_account_ids
+    from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
+    stage_debt_goal_achievements(db, account_ids=expense_funding_account_ids(db, expense.id))
     db.commit()
     db.refresh(expense)
     cleanup_after_confirm(db, expense)

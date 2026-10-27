@@ -56,7 +56,7 @@ def redact_credit_goal_receipt(db: Session, tenant_id: str, response: GoalRespon
 
 def read_credit_goal(db: Session, debt: Debt, ledger_id: str) -> CreditGoalReading:
     account = db.scalar(select(FinancialAccount).join(CreditFacility, CreditFacility.account_id == FinancialAccount.id)
-        .where(CreditFacility.debt_id == debt.id))
+        .where(CreditFacility.debt_id == debt.id).execution_options(populate_existing=True))
     # Goals belong to the shared ledger, including when their viewer owns the account.
     if account is None or account.tenant_id != ledger_id or account.visibility != "ledger":
         return CreditGoalReading("unavailable", None, "账户当前未向此账本共享；请调整关联欠款，或由账户所有者重新共享。")
