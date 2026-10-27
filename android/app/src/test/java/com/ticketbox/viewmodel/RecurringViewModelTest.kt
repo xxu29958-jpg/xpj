@@ -7,6 +7,8 @@ import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.MonthCalendarFixture
 import com.ticketbox.data.repository.calendar
 import com.ticketbox.ui.screens.recurring.RecurringTab
+import com.ticketbox.ui.screens.recurring.RecurringEditorHostState
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.screens.recurring.recurringDueIsPast
 import com.ticketbox.ui.screens.recurring.recurringItemMeta
 import com.ticketbox.ui.screens.recurring.recurringScreenDerived
@@ -157,6 +159,10 @@ class RecurringViewModelTest {
                 advanceUntilIdle()
                 val state = vm.uiState.value
                 assertEquals(LocalDate.parse(expectedDay), state.ledgerToday)
+                val editor = RecurringEditorHostState()
+                editor.openCreate(CurrencyCode.CNY, state.ledgerToday)
+                val originalSession = requireNotNull(editor.editor).session
+                assertEquals(LocalDate.parse(expectedDay).plusMonths(1).toString(), originalSession.dateIso)
                 val hero = recurringScreenDerived(state, RecurringTab.Active).hero
                 val meta = recurringItemMeta(state.items.single(), state.ledgerToday)
                 assertEquals(zone == "Asia/Shanghai", recurringDueIsPast(requireNotNull(hero.nearestNextDate), hero.ledgerToday))
@@ -167,6 +173,17 @@ class RecurringViewModelTest {
                 advanceUntilIdle()
                 assertEquals(null, vm.uiState.value.ledgerToday)
                 assertEquals(listOf(due), vm.uiState.value.items)
+                editor.openCreate(CurrencyCode.CNY, vm.uiState.value.ledgerToday)
+                assertEquals(originalSession, editor.editor?.session)
+                assertEquals(LocalDate.parse(expectedDay).plusMonths(1).toString(), originalSession.dateIso)
+                val unknown = RecurringEditorHostState()
+                unknown.openCreate(CurrencyCode.CNY, vm.uiState.value.ledgerToday)
+                assertEquals(null, unknown.editor?.session?.dateIso)
+                calendars.response = Result.success(calendar(access.binding, zone))
+                vm.refresh()
+                advanceUntilIdle()
+                unknown.openCreate(CurrencyCode.CNY, vm.uiState.value.ledgerToday)
+                assertEquals(null, unknown.editor?.session?.dateIso)
             }
         }
     }

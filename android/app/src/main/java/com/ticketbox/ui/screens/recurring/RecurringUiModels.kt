@@ -155,7 +155,7 @@ internal fun recurringDueIsPast(date: String, today: LocalDate?): Boolean? =
     today?.let { runCatching { LocalDate.parse(date).isBefore(it) }.getOrNull() }
 
 /** 新建表单默认建议的下次日期：下月同日（LocalDate 自动处理月末回退）。 */
-internal fun recurringDefaultNextDate(today: LocalDate = LocalDate.now()): String =
+internal fun recurringDefaultNextDate(today: LocalDate): String =
     today.plusMonths(1).toString()
 
 /** DatePicker 的 millis（UTC 当日零点）→ 后端 date 语义 yyyy-MM-dd。 */

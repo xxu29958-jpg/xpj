@@ -15,6 +15,7 @@ import com.ticketbox.viewmodel.RecurringListLoadState
 import com.ticketbox.viewmodel.RecurringManualSaveFeedback
 import com.ticketbox.viewmodel.RecurringManualSaveSettlement
 import com.ticketbox.viewmodel.RecurringUiState
+import java.time.LocalDate
 
 /** 提交等待态以本轮 attempt id 落定；页面 refresh 不拥有它。 */
 internal data class RecurringSubmitUi(
@@ -122,6 +123,7 @@ internal class RecurringEditorSession internal constructor(
 internal fun newRecurringEditorSession(
     baseline: RecurringItem?,
     currency: CurrencyCode,
+    ledgerToday: LocalDate? = null,
 ): RecurringEditorSession {
     val home = if (baseline == null) currency.storageKey else baseline.homeCurrencyCode
     val recordedCurrency = CurrencyCode.fromStorageKeyOrNull(home)
@@ -135,7 +137,7 @@ internal fun newRecurringEditorSession(
                 baseline?.baselineAmountCents?.toString().orEmpty()
             },
         ),
-        dateIso = mutableStateOf(baseline?.nextExpectedDate ?: recurringDefaultNextDate()),
+        dateIso = mutableStateOf(if (baseline != null) baseline.nextExpectedDate else ledgerToday?.let(::recurringDefaultNextDate)),
         dateTouched = mutableStateOf(false),
     )
     val interaction = RecurringInteractionStates(

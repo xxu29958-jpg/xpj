@@ -10,7 +10,10 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.parseExactMoneyMinor
 
 internal fun FundsInput.command(): FundsCommand {
-    if (mode !in setOf("funding", "envelopes", "apply_credit", "void_credit")) java.time.LocalDate.parse(date)
+    if (mode in setOf("create", "repay", "income", "loan", "transfer", "reconciliation",
+            "incur_fee", "installments", "void_repayment", "void_activity")) {
+        require(runCatching { java.time.LocalDate.parse(date) }.isSuccess) { "请填写有效的实际日期。" }
+    }
     require(tail.isEmpty() || tail.matches(Regex("[0-9]{1,4}"))) { "尾号只需填写最后 1 至 4 位数字。" }
     return when (mode) {
         "apply_credit", "void_credit" -> creditApplicationCommand()

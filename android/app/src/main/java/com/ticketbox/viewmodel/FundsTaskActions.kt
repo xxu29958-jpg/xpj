@@ -9,7 +9,6 @@ import com.ticketbox.data.repository.InstallmentInputWire
 import com.ticketbox.data.repository.InstallmentPeriodInput
 import com.ticketbox.data.repository.fundingInputs
 import com.ticketbox.data.repository.withCreditApplicationSuggestion
-import java.time.LocalDate
 import java.util.UUID
 
 fun FundsViewModel.start(mode: String) {
@@ -69,7 +68,7 @@ fun FundsViewModel.reviseAgreement(agreement: InstallmentView) {
 }
 
 private fun FundsUiState.accountInput(binding: LogicalSessionBinding, mode: String): FundsInput {
-    var base = FundsInput(binding, mode, UUID.randomUUID().toString(), date = overview?.valuationDate ?: LocalDate.now().toString(),
+    var base = FundsInput(binding, mode, UUID.randomUUID().toString(), date = overview?.valuationDate.orEmpty(),
         currency = overview?.homeCurrencyCode.orEmpty())
     if (mode in setOf("create", "repay")) repaymentCapture?.takeIf { it.isPending }?.let { capture ->
         val digits = com.ticketbox.domain.model.CurrencyCode.fromStorageKey(capture.originalCurrencyCode).minorUnitDigits

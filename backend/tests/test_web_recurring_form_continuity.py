@@ -1,6 +1,7 @@
 """Rejected native recurring forms preserve intentions independently of facts."""
 
 import re
+from datetime import date
 from html import unescape
 from uuid import uuid4
 
@@ -51,6 +52,17 @@ def _open_form(client, action):
     public_id = "" if action.endswith("/create") else action.split("/")[-2]
     page = open_recurring_form(client, listing, public_id=public_id)
     return _form(page, action)
+
+
+def test_create_reminder_uses_the_pages_ledger_day_and_preserves_rejected_input(web_recurring, monkeypatch):
+    monkeypatch.setattr(recurring_routes, "current_ledger_date", lambda *args, **kwargs: date(2026, 5, 1))
+    action = "/web/recurring/create"
+    form, fields = _open_form(web_recurring, action)
+    assert 'name="next_expected_date" value="2026-06-01"' in form
+    fields.update(merchant="房租", baseline_amount_yuan="0", next_expected_date="2026-07-19")
+    refused, retained = _form(web_recurring.post(action, data=fields), action)
+    assert 'name="next_expected_date" value="2026-07-19"' in refused
+    assert retained["idempotency_key"] == fields["idempotency_key"]
 
 
 @pytest.mark.parametrize("reminder", ["", "2026-12-19"])

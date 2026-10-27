@@ -83,7 +83,7 @@ fun RecurringScreen(
     val derived = recurringScreenDerived(state, selectedTab)
     val hasReadableData = recurringHasReadableData(state)
     val callbacks = RecurringScreenCallbacks(
-        onCreate = { editorHost.openCreate(currencyDisplay.homeCurrency) },
+        onCreate = { editorHost.openCreate(currencyDisplay.homeCurrency, state.ledgerToday) },
         onEdit = { item -> editorHost.openEdit(item, currencyDisplay.homeCurrency) },
         onSelectTab = { selectedTab = it },
         onConflictAction = { model ->
