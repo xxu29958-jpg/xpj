@@ -8,11 +8,11 @@ from app.errors import AppError
 from app.models import RuleApplicationBatch, RuleApplicationChange
 from app.services.category_service import normalize_category
 from app.services.currency_binding_service import authorize_currency_metadata_write
+from app.services.learning_service import read_ocr_texts
 from app.services.merchant_alias_service import enabled_merchant_alias_map
 from app.services.rule_application_service._common import (
     _enabled_rules,
     _matching_rule_category,
-    _ocr_text_by_expense_id,
     _rule_application_candidates,
     _rule_application_preview_token,
     _try_apply_rule_category,
@@ -110,7 +110,7 @@ def _apply_rules_to_status(
     authorize_currency_metadata_write(db)
 
     alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
-    ocr_text_by_id = _ocr_text_by_expense_id(db, tenant_id=tenant_id, expenses=expenses)
+    ocr_text_by_id = read_ocr_texts(db, tenant_id=tenant_id, expenses=expenses)
     matches = [_matching_rule_category(db, expense, rules, alias_map,
         ocr_text=ocr_text_by_id.get(int(expense.id), "")) for expense in expenses]
     current_token = _rule_application_preview_token(status=status, max_scan=max_scan, expenses=expenses,

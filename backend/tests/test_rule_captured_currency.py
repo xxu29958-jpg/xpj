@@ -56,7 +56,7 @@ def _preview_with(monkeypatch, *, projected):
     monkeypatch.setattr(_preview, "_rule_application_candidates", lambda *a, **k: ([expense], False))
     monkeypatch.setattr(_preview, "_enabled_rules", lambda *a, **k: rules)
     monkeypatch.setattr(_preview, "enabled_merchant_alias_map", lambda *a, **k: {})
-    monkeypatch.setattr(_preview, "_ocr_text_by_expense_id", lambda *a, **k: {})
+    monkeypatch.setattr(_preview, "read_ocr_texts", lambda *a, **k: {})
     monkeypatch.setattr(_preview, "_non_auto_fillable_category_count", lambda *a, **k: 0)
     return _preview.preview_apply_rules_to_pending(SimpleNamespace(), tenant_id="owner"), observed
 
@@ -176,7 +176,7 @@ def test_apply_rechecks_conversion_token_and_never_applies_unknown_fallback(monk
     from app.services.rule_application_service import _apply
 
     original, _ = _preview_with(monkeypatch, projected=None)
-    for name in ("_rule_application_candidates", "_enabled_rules", "enabled_merchant_alias_map", "_ocr_text_by_expense_id"):
+    for name in ("_rule_application_candidates", "_enabled_rules", "enabled_merchant_alias_map", "read_ocr_texts"):
         monkeypatch.setattr(_apply, name, getattr(_preview, name))
     monkeypatch.setattr(_apply, "authorize_currency_metadata_write", lambda *a, **k: None)
     monkeypatch.setattr(_apply, "_try_apply_rule_category", lambda *a, **k: pytest.fail("unknown FX must not mutate category"))
@@ -197,7 +197,7 @@ def test_apply_retains_preview_occ_when_prior_correction_refreshes_other_rows(mo
     second.id, second.row_version = 2, 7
     monkeypatch.setattr(_preview, "_rule_application_candidates", lambda *a, **k: ([first, second], False))
     preview = _preview.preview_apply_rules_to_pending(SimpleNamespace(), tenant_id="owner")
-    for name in ("_rule_application_candidates", "_enabled_rules", "enabled_merchant_alias_map", "_ocr_text_by_expense_id"):
+    for name in ("_rule_application_candidates", "_enabled_rules", "enabled_merchant_alias_map", "read_ocr_texts"):
         monkeypatch.setattr(_apply, name, getattr(_preview, name))
     monkeypatch.setattr(_apply, "authorize_currency_metadata_write", lambda *a, **k: None)
     observed = []

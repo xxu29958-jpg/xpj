@@ -26,6 +26,11 @@ def refresh_credit(db, account):
     debt = db.scalar(select(Debt).join(CreditFacility, CreditFacility.debt_id == Debt.id)
         .where(CreditFacility.account_id == account.id).with_for_update(of=Debt))
     allocate_credit(db, account)
+    refresh_credit_debt(db, account, debt)
+
+
+def refresh_credit_debt(db: Session, account: FinancialAccount, debt: Debt) -> None:
+    """Refresh the credit Debt once after its caller has locked and changed the funds facts."""
     debt.row_version += 1
     debt.status = "cleared" if account.balance_known and account_balance(db, account) >= 0 else "open"
     debt.updated_at = now_utc()

@@ -24,13 +24,12 @@ from app.services.credit_allocation_service import allocate_credit
 from app.services.credit_fee_settlement import reviewed_fee_settlement
 from app.services.debt_service._repayment_time import resolve_repayment_time
 from app.services.funds_commands import claim_funds, finish_funds, movement, replay_funds, require_account_version
-from app.services.funds_fact_service import validate_movement_date
+from app.services.funds_fact_service import refresh_credit_debt, validate_movement_date
 from app.services.funds_money import valuation
 from app.services.funds_query import account_balance, get_account
 from app.services.funds_repayment_capture import prepare_repayment_capture, review_capture_amount
 from app.services.installment_settlement import record_installment_payments, reviewed_settlement
 from app.services.repayment_draft_resolution import resolve_repayment_draft, reverse_source_expense
-from app.services.time_service import now_utc
 from app.tenants import AuthContext
 
 
@@ -71,10 +70,8 @@ def pay_credit(db: Session, *, auth: AuthContext, public_id: str, payload: Credi
         allocate_credit(db, credit)
     credit.row_version += 1
     payer.row_version += 1
-    debt.row_version += 1
+    refresh_credit_debt(db, credit, debt)
     db.flush()
-    debt.status = "cleared" if account_balance(db, credit) >= 0 else "open"
-    debt.updated_at = now_utc()
     if draft is not None:
         resolve_repayment_draft(db, draft, actor_account_id=auth.account_id,
             debt_public_id=debt.public_id, repayment_public_id=repayment.public_id)

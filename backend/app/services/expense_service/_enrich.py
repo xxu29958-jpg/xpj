@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from app.errors import AppError, PathTraversalError
 from app.models import Expense
 from app.services.category_preference_service import ensure_category_preference_for_name
-from app.services.classify_service import classify_expense
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.expense_query import resolve_expense
@@ -35,6 +34,7 @@ from app.services.ocr_retry_receipt import stage_legacy_retry_receipt
 from app.services.ocr_service import OcrExtraction, collect_auto_ocr_extractions
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.original_read_service import read_original_snapshot
+from app.services.rule_service import classify_expense
 from app.services.thumb_service import (
     StagedThumbnail,
     discard_staged_thumbnail,
