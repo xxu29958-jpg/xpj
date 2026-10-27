@@ -19,6 +19,8 @@ from app.routes.web_common import (
     _resolve_selected_ledger_id,
     _web_redirect,
 )
+from app.services.admin_scope_service import lock_and_resolve_mutation_ledger_ids
+from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -66,9 +68,22 @@ async def web_pending_upload(
         request=request,
     )
     _require_selected_ledger_write(options, selected_id)
-    require_draft_binding(db, request, ledger_id=ledger_id, draft_scope=draft_scope, require_session=False)
+    auth = require_draft_binding(db, request, ledger_id=ledger_id, draft_scope=draft_scope, require_session=False)
     actor_account_id, actor_device_id = resolve_web_actor(db, request, selected_id)
     timezone_name = timezone.strip() or None
+
+    def revalidate_before_commit() -> None:
+        if auth is None:
+            current_scope = lock_and_resolve_mutation_ledger_ids(
+                db, auth=None, actor_account_id=actor_account_id, requested_ledger_ids={selected_id},
+            )
+            if not current_scope or selected_id not in current_scope:
+                raise AppError("permission_denied", status_code=403)
+            return
+        lock_and_revalidate_mutation_actor(
+            db, auth, actor_account_id=actor_account_id, ledger_id=selected_id,
+        )
+
     try:
         upload = await handle_upload(
             request=request,
@@ -80,6 +95,7 @@ async def web_pending_upload(
             initiator_device_id=actor_device_id,
             timezone_name=timezone_name,
             idempotency_key=idempotency_key,
+            commit_guard=revalidate_before_commit,
         )
     except AppError as exc:
         if "application/json" in request.headers.get("accept", ""):
