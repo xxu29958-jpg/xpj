@@ -10,7 +10,6 @@ from app.models import CreditFeeObligation, Expense
 from app.schemas import ExpenseManualCreateRequest, ExpenseResponse, NotificationDraftCreateRequest
 from app.services import permission_service
 from app.services.category_preference_service import ensure_category_preference_for_name
-from app.services.classify_service import classify_expense
 from app.services.currency_binding_service import (
     assert_currency_binding_consistent,
     require_runtime_home_currency_code,
@@ -44,6 +43,7 @@ from app.services.manual_expense_receipt import (
     _manual_review_error,
     local_ref_storage_key,
 )
+from app.services.rule_service import classify_expense
 from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import ensure_utc, now_utc
