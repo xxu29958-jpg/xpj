@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -13,8 +13,9 @@ from sqlalchemy.exc import OperationalError
 
 from app.database import SessionLocal, engine
 from app.errors import AppError
-from app.models import BillSplitInvitation, Expense, Ledger, LedgerMember
+from app.models import BillSplitInvitation, Expense, Ledger, LedgerAuditLog, LedgerMember
 from app.services import bill_split_service as bsplit
+from app.services.bill_split_service import _create as create_impl
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_accounting_time_service import refresh_legacy_expense_time
 from app.services.ledger_calendar_service import adopt_ledger_calendar
@@ -110,6 +111,79 @@ def test_active_split_invitation_total_cannot_exceed_parent_expense(
     )
     assert second.status_code == 422
     assert second.json()["error"] == "split_total_exceeds_parent"
+
+
+@pytest.mark.parametrize(("old_amount", "same_receiver"), [(5000, False), (2000, True)])
+def test_expired_invitation_releases_capacity_and_pending_slot_on_new_command(
+    client: TestClient, identity, old_amount: int, same_receiver: bool,
+) -> None:
+    expense_id = _make_expense_for_owner(amount_cents=5000)
+    receiver = _seed_receiver(name="Expired", ledger_id="expired_receiver")
+    replacement_receiver = receiver if same_receiver else _seed_receiver(name="New", ledger_id="new_receiver")
+    original_headers = _split_headers(client, identity.app_headers)
+    payload = {"expected_row_version": 1, "receiver_account_id": receiver, "amount_cents": old_amount}
+    original = client.post(f"/api/expenses/{expense_id}/split-invite", headers=original_headers, json=payload)
+    assert original.status_code == 200, original.json()
+    public_id = original.json()["public_id"]
+    with SessionLocal() as db:
+        db.execute(update(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
+            .values(expires_at=now_utc() - timedelta(days=1)))
+        db.commit()
+
+    listed = client.get("/api/bill-splits/sent", headers=identity.app_headers)
+    assert listed.status_code == 200, listed.json()
+    assert listed.json()["items"][0]["status"] == "invited"
+    headers = _split_headers(client, identity.app_headers)
+    replacement_payload = {**payload, "receiver_account_id": replacement_receiver}
+    replacement = client.post(f"/api/expenses/{expense_id}/split-invite", headers=headers, json=replacement_payload)
+    assert replacement.status_code == 200, replacement.json()
+    replay = client.post(f"/api/expenses/{expense_id}/split-invite", headers=headers, json=replacement_payload)
+    assert replay.status_code == 200 and replay.json()["public_id"] == replacement.json()["public_id"]
+    original_replay = client.post(f"/api/expenses/{expense_id}/split-invite", headers=original_headers, json=payload)
+    assert original_replay.status_code == 200 and original_replay.json()["public_id"] == public_id
+    assert original_replay.json()["status"] == "expired"
+    with SessionLocal() as db:
+        expired = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
+        assert expired.status == "expired" and expired.expired_at is not None
+        assert expired.received_expense_id is None and expired.amount_cents == old_amount
+        audits = list(db.scalars(select(LedgerAuditLog).where(
+            LedgerAuditLog.invitation_public_id == public_id, LedgerAuditLog.action == "bill_split_expired")))
+        assert len(audits) == 1 and audits[0].actor_account_id is None
+        assert audits[0].target_account_id == receiver and audits[0].ledger_id == "owner"
+        source = db.get(Expense, expense_id)
+        assert (source.amount_cents, source.row_version) == (5000, 1)
+
+
+def test_expiry_rolls_back_with_failed_replacement_and_original_key_can_retry(client, identity, monkeypatch):
+    expense_id = _make_expense_for_owner()
+    receiver = _seed_receiver(name="Rollback", ledger_id="expiry_rollback")
+    payload = {"expected_row_version": 1, "receiver_account_id": receiver, "amount_cents": 2500}
+    original = client.post(f"/api/expenses/{expense_id}/split-invite",
+        headers=_split_headers(client, identity.app_headers), json=payload)
+    assert original.status_code == 200, original.json()
+    public_id = original.json()["public_id"]
+    with SessionLocal() as db:
+        db.execute(update(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
+            .values(expires_at=now_utc() - timedelta(days=1)))
+        db.commit()
+    headers = _split_headers(client, identity.app_headers)
+
+    def fail_receipt(*args, **kwargs):
+        raise RuntimeError("injected replacement receipt failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(create_impl, "mark_idempotency_succeeded", fail_receipt)
+        with pytest.raises(RuntimeError, match="injected replacement receipt failure"):
+            client.post(f"/api/expenses/{expense_id}/split-invite", headers=headers, json=payload)
+    with SessionLocal() as db:
+        invitations = list(db.scalars(select(BillSplitInvitation).where(BillSplitInvitation.sender_expense_id == expense_id)))
+        assert len(invitations) == 1 and invitations[0].status == "invited"
+        assert invitations[0].expired_at is None
+        assert list(db.scalars(select(LedgerAuditLog).where(
+            LedgerAuditLog.invitation_public_id == public_id, LedgerAuditLog.action == "bill_split_expired"))) == []
+    retry = client.post(f"/api/expenses/{expense_id}/split-invite", headers=headers, json=payload)
+    assert retry.status_code == 200, retry.json()
+    assert retry.json()["public_id"] != public_id
 
 
 @pytest.mark.skipif(

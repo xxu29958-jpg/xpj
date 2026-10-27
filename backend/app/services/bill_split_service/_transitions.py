@@ -414,6 +414,28 @@ def _settle_expiry_before_transition(
 
 def _mark_expired(db: Session, inv: BillSplitInvitation) -> bool:
     """Best-effort expiry flip; false means a peer settled the row first."""
+    if not _stage_expired(db, inv):
+        db.rollback()
+        return False
+    db.commit()
+    return True
+
+
+def settle_expired_source_invitations(db: Session, expense: Expense) -> None:
+    """Release expired reservations while the caller holds the source Expense lock."""
+    invitations = list(db.scalars(select(BillSplitInvitation).where(
+        BillSplitInvitation.sender_ledger_id == expense.tenant_id,
+        BillSplitInvitation.sender_expense_id == expense.id,
+        BillSplitInvitation.status == "invited",
+        BillSplitInvitation.expires_at <= now_utc(),
+    ).order_by(BillSplitInvitation.created_at, BillSplitInvitation.id)
+        .with_for_update().execution_options(populate_existing=True)))
+    for invitation in invitations:
+        _stage_expired(db, invitation)
+
+
+def _stage_expired(db: Session, inv: BillSplitInvitation) -> bool:
+    """Stage the guarded transition and its audit in the owning command transaction."""
     resolve_write_capability(db)
     rowcount = db.execute(
         update(BillSplitInvitation)
@@ -423,7 +445,6 @@ def _mark_expired(db: Session, inv: BillSplitInvitation) -> bool:
         .execution_options(synchronize_session=False)
     ).rowcount
     if rowcount != 1:
-        db.rollback()
         return False
     _audit(
         db,
@@ -433,5 +454,4 @@ def _mark_expired(db: Session, inv: BillSplitInvitation) -> bool:
         target_account_id=inv.receiver_account_id,
         invitation_public_id=inv.public_id,
     )
-    db.commit()
     return True
