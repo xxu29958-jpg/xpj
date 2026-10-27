@@ -212,8 +212,10 @@ def _thumbnail_cleanup_missing() -> list[str]:
             cleanup_service,
             (
                 'execute_attachment_cleanup(db, expense, reason="after_confirm", settings_provider=get_settings)',
-                'execute_attachment_cleanup(db, expense, reason=f"{status}_retention", settings_provider=get_settings)',
-                "run_orphan_cleanup(db, tenant_id, settings=get_settings(), dry_run=dry_run)",
+                'db, expense, reason=f"{status}_retention", settings_provider=get_settings,',
+                "actor_account_id=auth.account_id if auth else None,",
+                "run_orphan_cleanup(db, tenant_id, settings=get_settings(), dry_run=dry_run,",
+                "authorize=lambda: _authorize_cleanup(db, tenant_id, auth)",
             ),
         ),
         *_require_tokens(

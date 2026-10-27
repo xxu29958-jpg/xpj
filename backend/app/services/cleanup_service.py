@@ -7,6 +7,7 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.errors import AppError
 from app.models import (
     CategoryPreference,
     CategoryRule,
@@ -17,6 +18,8 @@ from app.models import (
     TagMutationUndoGroup,
     TagMutationUndoItem,
 )
+from app.services import permission_service
+from app.services.admin_scope_service import lock_and_resolve_mutation_ledger_ids
 from app.services.attachment_cleanup_service import execute_attachment_cleanup
 from app.services.currency_binding_service import (
     authorize_currency_metadata_write,
@@ -24,6 +27,7 @@ from app.services.currency_binding_service import (
 from app.services.orphan_upload_service import OrphanCleanupResult, run_orphan_cleanup
 from app.services.soft_delete_policy import recycle_bin_retention_days
 from app.services.time_service import now_utc
+from app.tenants import AuthContext
 
 
 @dataclass(frozen=True)
@@ -47,7 +51,23 @@ def cleanup_after_confirm(db: Session, expense: Expense) -> bool:
     return execute_attachment_cleanup(db, expense, reason="after_confirm", settings_provider=get_settings).changed
 
 
-def _cleanup_retained_images(db: Session, tenant_id: str, *, status: str) -> CleanupResult:
+def _authorize_cleanup(db: Session, tenant_id: str, auth: AuthContext | None) -> None:
+    # None is reserved for trusted internal maintenance. Network callers keep
+    # their credential through every commit, including the pre-unlink check.
+    if auth is None:
+        return
+    permission_service.require_admin_maintenance(auth)
+    ledger_ids = lock_and_resolve_mutation_ledger_ids(
+        db, auth=auth, actor_account_id=auth.account_id, requested_ledger_ids={tenant_id},
+    )
+    if ledger_ids is None or tenant_id not in ledger_ids:
+        raise AppError("permission_denied", status_code=403)
+
+
+def _cleanup_retained_images(
+    db: Session, tenant_id: str, *, status: str, auth: AuthContext | None,
+) -> CleanupResult:
+    _authorize_cleanup(db, tenant_id, auth)
     settings = get_settings()
     days = settings.delete_image_after_days if status == "confirmed" else settings.delete_rejected_after_days
     original_time = Expense.confirmed_at if status == "confirmed" else Expense.rejected_at
@@ -60,22 +80,29 @@ def _cleanup_retained_images(db: Session, tenant_id: str, *, status: str) -> Cle
     )))
     deleted_images = deleted_thumbnails = 0
     for expense in expenses:
-        result = execute_attachment_cleanup(db, expense, reason=f"{status}_retention", settings_provider=get_settings)
+        result = execute_attachment_cleanup(
+            db, expense, reason=f"{status}_retention", settings_provider=get_settings,
+            actor_account_id=auth.account_id if auth else None,
+            authorize=lambda: _authorize_cleanup(db, tenant_id, auth),
+        )
         deleted_images += result.deleted_images
         deleted_thumbnails += result.deleted_thumbnails
     return CleanupResult(days > 0, days, len(expenses), deleted_images, deleted_thumbnails)
 
 
-def cleanup_confirmed_images(db: Session, tenant_id: str) -> CleanupResult:
-    return _cleanup_retained_images(db, tenant_id, status="confirmed")
+def cleanup_confirmed_images(db: Session, tenant_id: str, *, auth: AuthContext | None = None) -> CleanupResult:
+    return _cleanup_retained_images(db, tenant_id, status="confirmed", auth=auth)
 
 
-def cleanup_rejected_images(db: Session, tenant_id: str) -> CleanupResult:
-    return _cleanup_retained_images(db, tenant_id, status="rejected")
+def cleanup_rejected_images(db: Session, tenant_id: str, *, auth: AuthContext | None = None) -> CleanupResult:
+    return _cleanup_retained_images(db, tenant_id, status="rejected", auth=auth)
 
 
-def cleanup_orphan_uploads(db: Session, tenant_id: str, *, dry_run: bool = True) -> OrphanCleanupResult:
-    return run_orphan_cleanup(db, tenant_id, settings=get_settings(), dry_run=dry_run)
+def cleanup_orphan_uploads(
+    db: Session, tenant_id: str, *, dry_run: bool = True, auth: AuthContext | None = None,
+) -> OrphanCleanupResult:
+    return run_orphan_cleanup(db, tenant_id, settings=get_settings(), dry_run=dry_run,
+                              authorize=lambda: _authorize_cleanup(db, tenant_id, auth))
 
 
 def purge_expired_soft_deletes(

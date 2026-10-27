@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_filter, ledger_scoped_select
-from app.models import CategoryRule, Expense, OcrFact, RuleApplicationChange
+from app.models import CategoryRule, Expense, RuleApplicationChange
 from app.services.category_service import normalize_category
 from app.services.expense_revision_service import (
     prepare_correction_revision,
@@ -87,58 +87,6 @@ def _iso_or_none(value: object) -> str | None:
     if callable(isoformat):
         return str(isoformat())
     return str(value)
-
-
-def _ocr_text_by_expense_id(
-    db: Session,
-    *,
-    tenant_id: str,
-    expenses: list[Expense],
-) -> dict[int, str]:
-    """Bulk variant of read_ocr_text for rule preview/apply scans.
-
-    Mirrors the single-expense ``read_ocr_text`` contract: the latest
-    fact's ``raw_text`` is the only source. After v1.2 step 4 the
-    legacy ``expense.raw_text`` column is **not** consulted, so an
-    expense with no fact (or whose latest fact carries empty
-    ``raw_text``) maps to ``""``. Step 3's backfill guarantees this
-    matches what the single-expense path returns for the same row.
-    """
-
-    result: dict[int, str] = {}
-    expense_ids: list[int] = []
-    for expense in expenses:
-        expense_id = expense.id
-        if expense_id is None:
-            continue
-        expense_id = int(expense_id)
-        result[expense_id] = ""
-        if expense.tenant_id != tenant_id:
-            continue
-        expense_ids.append(expense_id)
-
-    if not expense_ids:
-        return result
-
-    rows = db.execute(
-        select(OcrFact.expense_id, OcrFact.raw_text)
-        .where(OcrFact.tenant_id == tenant_id)
-        .where(OcrFact.expense_id.in_(expense_ids))
-        .order_by(
-            OcrFact.expense_id.asc(),
-            OcrFact.extracted_at.desc(),
-            OcrFact.id.desc(),
-        )
-    )
-    seen: set[int] = set()
-    for expense_id, raw_text in rows:
-        expense_id = int(expense_id)
-        if expense_id in seen:
-            continue
-        seen.add(expense_id)
-        if raw_text:
-            result[expense_id] = raw_text
-    return result
 
 
 def _rule_application_preview_token(

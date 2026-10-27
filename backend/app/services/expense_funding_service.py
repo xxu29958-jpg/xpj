@@ -23,11 +23,11 @@ from app.services.credit_allocation_service import allocate_credit
 from app.services.funds_commands import movement
 from app.services.funds_fact_service import (
     lock_reviewed_accounts,
+    refresh_credit_debt,
     reverse_movements,
     unreversed_movements,
     validate_movement_date,
 )
-from app.services.funds_query import account_balance
 from app.services.time_service import now_utc
 
 
@@ -73,9 +73,7 @@ def publish_expense_funding(db: Session, *, expense: Expense, parts: list[Fundin
         debt = debts.get(row.id)
         if debt is not None:
             allocate_credit(db, row)
-            debt.row_version += 1
-            debt.status = "cleared" if account_balance(db, row) >= 0 else "open"
-            debt.updated_at = now_utc()
+            refresh_credit_debt(db, row, debt)
     db.flush()
 
 
