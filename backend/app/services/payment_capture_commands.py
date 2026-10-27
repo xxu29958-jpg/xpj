@@ -163,7 +163,10 @@ def repayment_as_expense(db, *, auth, public_id, payload, idempotency_key) -> Pa
     return _commit(db, capture, claim, fx_task)
 
 
-def _correct_confirmed_capture(db, auth, draft, capture, payload, key, claim):
+def _correct_confirmed_capture(db, auth, draft, capture, payload, key, claim) -> PaymentCaptureResponse:
+    from app.models import AccountMovement
+    from app.services.expense_funding_service import expense_funding_account_ids
+    from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
     from app.services.repayment_capture_correction import restore_misclassified_repayment
 
     if (payload.correction_versions and payload.correction_versions.funds_account_versions
@@ -181,4 +184,8 @@ def _correct_confirmed_capture(db, auth, draft, capture, payload, key, claim):
             currency=payload.expense_currency or repayment.original_currency_code or draft.home_currency_code,
             amount=payload.expense_amount_minor or repayment.original_amount_minor or repayment.amount_cents, merchant=capture.merchant)
     append_decision(capture, kind="expense", reason=payload.reason.strip(), actor_account_id=auth.account_id)
+    account_ids = set(db.scalars(select(AccountMovement.account_id).where(AccountMovement.repayment_id == repayment.id)))
+    if source is not None:
+        account_ids.update(expense_funding_account_ids(db, source.id))
+    stage_debt_goal_achievements(db, debt_ids=[repayment.debt_id], account_ids=account_ids)
     return _commit(db, capture, claim, fx_task)

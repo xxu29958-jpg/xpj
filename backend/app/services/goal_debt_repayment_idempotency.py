@@ -21,8 +21,9 @@ from app.services.goal_debt_repayment_commands import (
 )
 from app.services.goal_debt_repayment_core import (
     _debt_goal_response,
-    _evaluate_and_maybe_latch,
+    _evaluate_goal,
     _require_debt_repayment_goal,
+    stage_locked_goal_achievement,
 )
 from app.services.idempotency import (
     IdempotencyOutcomeKind,
@@ -91,11 +92,9 @@ def _finish_goal_mutation(
         tenant_id=tenant_id,
         public_id=public_id,
     )
-    evaluation, _ = _evaluate_and_maybe_latch(
-        db,
-        goal,
-        persist=persist_achievement,
-    )
+    if persist_achievement:
+        stage_locked_goal_achievement(db, goal)
+    evaluation = _evaluate_goal(db, goal)
     db.flush()
     response = _debt_goal_response(goal, evaluation)
     mark_idempotency_succeeded(
@@ -205,7 +204,7 @@ def remove_voided_debt_goal_links_idempotently(
         tenant_id=tenant_id,
         public_id=public_id,
     )
-    evaluation, _ = _evaluate_and_maybe_latch(db, goal, persist=False)
+    evaluation = _evaluate_goal(db, goal)
     keep = [link.debt_public_id for link in evaluation.linked_debts if link.status != "voided"]
     if not evaluation.needs_review:
         raise AppError(

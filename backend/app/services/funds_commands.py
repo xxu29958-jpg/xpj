@@ -12,6 +12,7 @@ from app.services.credit_history_adoption import adopt_existing_debt
 from app.services.currency_binding_service import require_runtime_home_currency_code, resolve_write_capability
 from app.services.funds_money import valuation
 from app.services.funds_query import account_view, get_account
+from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.ledger_calendar_service import current_ledger_date
 from app.services.permission_service import require_write_expense
@@ -64,8 +65,8 @@ def funds_request_is_unpublished(db, auth, key):
         ApiIdempotencyKey.idempotency_key == key)) is None
 
 
-def finish_funds(db, auth, claim, account):
-    db.flush()
+def finish_funds(db, auth, claim, account, *, affected_account_ids=()):
+    stage_debt_goal_achievements(db, account_ids={account.id, *affected_account_ids})
     summary = account_view(db, account, actor_account_id=auth.account_id, ledger_id=auth.ledger_id)
     # History belongs to GET, not every accepted command. The original scalar
     # result remains replayable even after later edits, reversals or archiving.
@@ -144,7 +145,7 @@ def edit_account(db, *, auth, public_id, payload, key):
         apply_credit_terms(db, row, payload.credit_terms)
     row.archived_at = now_utc() if payload.archived else None
     row.row_version += 1
-    debt = db.scalar(select(Debt).join(CreditFacility, CreditFacility.debt_id == Debt.id).where(CreditFacility.account_id == row.id))
+    debt = db.scalar(select(Debt).join(CreditFacility, CreditFacility.debt_id == Debt.id).where(CreditFacility.account_id == row.id).with_for_update(of=Debt))
     if debt is not None:
         debt.counterparty_label = row.name
         debt.row_version += 1

@@ -22,6 +22,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import CsvImportBatch, CsvImportEvent, CsvImportRow, Expense, ExpenseOffsetFact
 from app.schemas import CsvImportBatchResponse, CsvImportRowResponse
+from app.services.expense_offset_service import expense_fact_bundle
 
 __all__ = [
     "build_csv_import_batch_response", "get_csv_import_batch",
@@ -48,6 +49,27 @@ def list_imported_expenses(db: Session, *, tenant_id: str, expense_ids: list[int
     if not expense_ids:
         return []
     return list(db.scalars(ledger_scoped_select(Expense, tenant_id).where(Expense.id.in_(expense_ids))))
+
+
+def preview_csv_offset_net(
+    db: Session, *, tenant_id: str, row: CsvImportRowResponse, root: Expense | None,
+) -> int | None:
+    """Project a saved event against one current fact bundle without accepting it."""
+    if (root is None or root.status != "confirmed" or row.entry_kind != "offset"
+            or row.status not in {"review", "valid"}
+            or any(value is None for value in (row.exchange_rate_to_cny, row.exchange_rate_date,
+                                               row.exchange_rate_source, row.amount_cents, row.original_amount_minor))):
+        return None
+    bundle = expense_fact_bundle(db, tenant_id=tenant_id, expense_id=root.id)
+    summary = bundle.financial_summary
+    if (bundle.root.row_version != root.row_version or row.original_currency_code != bundle.root.original_currency_code
+            or row.home_currency_code != bundle.root.home_currency or summary.status == "reversed"):
+        return None
+    if row.offset_kind == "reversal":
+        return None if bundle.active_offsets else 0
+    if row.offset_kind in {"refund", "chargeback"} and 0 < row.original_amount_minor <= summary.remaining_refundable_original_minor:
+        return summary.lineage_home_net_cents - row.amount_cents
+    return None
 
 
 @dataclass(frozen=True)

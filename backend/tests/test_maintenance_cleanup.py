@@ -4,19 +4,202 @@ import importlib.util
 import logging.config
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
+from threading import Event
+from types import SimpleNamespace
 
+import pytest
 from api_contract_helpers import reject_expense_api
 from fastapi.testclient import TestClient
+from sqlalchemy import event, select, text
+from sqlalchemy.exc import OperationalError
 
 from app.database import SessionLocal
-from app.models import Expense
+from app.models import Account, AuthToken, Device, Expense, Ledger, LedgerMember
 from app.services.currency_binding_service import authorize_currency_metadata_write
+from app.services.identity_service import authenticate_session_token, hash_secret, new_session_token
+from app.services.invitation_service import transfer_ledger_owner
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import BACKEND_ROOT, TEST_UPLOAD_DIR
+from tests.original_test_support import _bill, _financial_snapshot
+
+
+def _cleanup_owner_case(client, identity, monkeypatch, external_upload_dir, entry):
+    from app.services import cleanup_service
+
+    settings = replace(cleanup_service.get_settings(), upload_dir=external_upload_dir,
+                       delete_image_after_days=1, delete_rejected_after_days=1, orphan_upload_grace_hours=1)
+    monkeypatch.setattr(cleanup_service, "get_settings", lambda: settings)
+    expense_id = None
+    if entry == "images":
+        expense_id, _saved, original = _bill(client, identity)
+    elif entry == "rejected":
+        from app.services.file_service import resolve_upload_path_for_tenant
+
+        expense_id = _upload_png(client, identity=identity)
+        assert reject_expense_api(client, expense_id, headers=identity.app_headers).status_code == 200
+        original = resolve_upload_path_for_tenant(_expense(expense_id).image_path, "owner")
+    else:
+        original = external_upload_dir / "owner" / "2026" / "01" / "old-orphan.png"
+        original.parent.mkdir(parents=True, exist_ok=True)
+        original.write_bytes(PNG_BYTES)
+        old = (now_utc() - timedelta(days=3)).timestamp()
+        os.utime(original, (old, old))
+    assert original.is_file()
+    with SessionLocal() as db:
+        if expense_id is not None:
+            authorize_currency_metadata_write(db)
+            row = db.get(Expense, expense_id)
+            setattr(row, "confirmed_at" if entry == "images" else "rejected_at", now_utc() - timedelta(days=3))
+        owner_id = db.scalar(select(Ledger.owner_account_id).where(Ledger.ledger_id == "owner"))
+        target = Account(display_name="next cleanup owner")
+        db.add(target)
+        db.flush()
+        member = LedgerMember(ledger_id="owner", account_id=target.id, role="member")
+        device = Device(account_id=target.id, device_name="cleanup admin", platform="test")
+        db.add_all([member, device])
+        db.flush()
+        target_token = new_session_token()
+        db.add(AuthToken(token_hash=hash_secret(target_token), account_id=target.id,
+                         device_id=device.id, ledger_id="owner", scope="admin"))
+        db.commit()
+        member_id = member.id
+    path = f"/api/maintenance/cleanup-{entry}" + ("?dry_run=false" if entry == "orphans" else "")
+    return SimpleNamespace(original=original, expense_id=expense_id, owner_id=owner_id,
+                           member_id=member_id, path=path, target_token=target_token)
+
+
+def _transfer_cleanup_owner(case):
+    with SessionLocal() as db:
+        transfer_ledger_owner(db, ledger_id="owner", member_id=case.member_id,
+                              requester_account_id=case.owner_id, auth=None)
+
+
+@pytest.mark.parametrize("entry", ["images", "rejected", "orphans"])
+def test_cleanup_after_owner_transfer_refuses_live_former_owner_token(
+    client, identity, monkeypatch, external_upload_dir, entry,
+):
+    case = _cleanup_owner_case(client, identity, monkeypatch, external_upload_dir, entry)
+    _transfer_cleanup_owner(case)
+    with SessionLocal() as db:
+        auth = authenticate_session_token(db, identity.admin_token, {"admin"})
+        assert auth.role == "member"
+        token = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(identity.admin_token)))
+        assert token.revoked_at is None
+
+    response = client.post(case.path, headers=identity.admin_headers)
+
+    assert response.status_code == 403, response.text
+    assert response.json()["error"] == "permission_denied"
+    assert case.original.is_file()
+    if case.expense_id is not None:
+        assert _expense(case.expense_id).image_deleted_at is None
+    accepted = client.post(case.path, headers={"Authorization": f"Bearer {case.target_token}"})
+    assert accepted.status_code == 200, accepted.text
+    assert not case.original.exists()
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize(("entry", "deleted_before_transfer"), [
+    ("images", 0), ("rejected", 0), ("orphans", 0), ("orphans", 1),
+])
+def test_cleanup_rechecks_owner_after_commit_before_remaining_deletion(
+    client, identity, monkeypatch, external_upload_dir, entry, deleted_before_transfer,
+):
+    from app.routes import maintenance
+    from app.services import orphan_upload_service
+
+    case = _cleanup_owner_case(client, identity, monkeypatch, external_upload_dir, entry)
+    originals = [case.original]
+    if deleted_before_transfer:
+        second = case.original.with_name("second-orphan.png")
+        second.write_bytes(PNG_BYTES)
+        old = case.original.stat().st_mtime
+        os.utime(second, (old, old))
+        originals.append(second)
+        monkeypatch.setattr(orphan_upload_service, "CHUNK_SIZE", 1)
+    before = _financial_snapshot(case.expense_id) if case.expense_id else None
+    paused, proceed = Event(), Event()
+    command_name = {"images": "cleanup_confirmed_images", "rejected": "cleanup_rejected_images",
+                    "orphans": "cleanup_orphan_uploads"}[entry]
+    command = getattr(maintenance, command_name)
+
+    def after_commit(_db):
+        if not paused.is_set() and sum(not item.exists() for item in originals) == deleted_before_transfer:
+            paused.set()
+            assert proceed.wait(timeout=10)
+
+    def observed_command(db, *args, **kwargs):
+        event.listen(db, "after_commit", after_commit)
+        try:
+            return command(db, *args, **kwargs)
+        finally:
+            event.remove(db, "after_commit", after_commit)
+
+    monkeypatch.setattr(maintenance, command_name, observed_command)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        request = pool.submit(client.post, case.path, headers=identity.admin_headers)
+        try:
+            assert paused.wait(timeout=10)
+            _transfer_cleanup_owner(case)
+        finally:
+            proceed.set()
+        response = request.result(timeout=10)
+    assert response.status_code == 403, response.text
+    assert response.json()["error"] == "permission_denied"
+    assert sum(not item.exists() for item in originals) == deleted_before_transfer
+    if case.expense_id is not None:
+        expense = _expense(case.expense_id)
+        assert expense.attachment_cleanup_request is not None
+        assert expense.image_deleted_at is None
+        assert _financial_snapshot(case.expense_id) == before
+
+    accepted = client.post(case.path, headers={"Authorization": f"Bearer {case.target_token}"})
+    assert accepted.status_code == 200, accepted.text
+    assert all(not item.exists() for item in originals)
+    if case.expense_id is not None:
+        assert _expense(case.expense_id).attachment_cleanup_request is None
+        assert _financial_snapshot(case.expense_id) == before
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize("entry", ["images", "orphans"])
+def test_cleanup_holds_owner_authority_until_file_deletion_commits(
+    client, identity, monkeypatch, external_upload_dir, entry,
+):
+    case = _cleanup_owner_case(client, identity, monkeypatch, external_upload_dir, entry)
+    paused, proceed = Event(), Event()
+    unlink = Path.unlink
+
+    def paused_unlink(path, *args, **kwargs):
+        if path == case.original:
+            paused.set()
+            assert proceed.wait(timeout=10)
+        return unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", paused_unlink)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        request = pool.submit(client.post, case.path, headers=identity.admin_headers)
+        try:
+            assert paused.wait(timeout=10)
+            with SessionLocal() as db:
+                db.execute(text("SET LOCAL lock_timeout = '150ms'"))
+                with pytest.raises(OperationalError) as caught:
+                    transfer_ledger_owner(db, ledger_id="owner", member_id=case.member_id,
+                                          requester_account_id=case.owner_id, auth=None)
+                assert caught.value.orig.sqlstate == "55P03"
+                db.rollback()
+            assert case.original.is_file()
+        finally:
+            proceed.set()
+        response = request.result(timeout=10)
+    assert response.status_code == 200, response.text
+    assert not case.original.exists()
+    _transfer_cleanup_owner(case)
 
 
 def _upload_png(client: TestClient, *, identity) -> int:
