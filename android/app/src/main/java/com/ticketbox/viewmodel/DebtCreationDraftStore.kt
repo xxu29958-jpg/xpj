@@ -7,7 +7,9 @@ import com.squareup.moshi.Types
 import com.ticketbox.R
 import com.ticketbox.data.repository.DebtCreationReceipt
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.LocalRepositoryFailure
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.logNetworkWarning
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.UiText
 import java.util.UUID
@@ -78,7 +80,9 @@ internal class DebtCreationDraftStore(private val state: SavedStateHandle) {
     } catch (cancelled: kotlinx.coroutines.CancellationException) {
         throw cancelled
     } catch (error: Exception) {
-        Result.failure(error)
+        logNetworkWarning("operation=Debt bill original draft persistence", error)
+        Result.failure(RepositoryException("Original input persistence unverified",
+            localFailure = LocalRepositoryFailure.FactInputNotSaved, cause = error))
     }
 
     fun restore(raw: String, binding: LogicalSessionBinding): DebtCreationDraft =
@@ -89,8 +93,8 @@ internal class DebtCreationDraftStore(private val state: SavedStateHandle) {
         }
 
     fun resume(input: com.ticketbox.data.repository.DebtBillInput, current: DebtCreationDraft?): DebtCreationDraft {
-        require(current?.hasInput != true || current.creationKey == input.payload.creationKey) {
-            "请先保存或放弃当前原稿，再继续另一张账单。"
+        if (current?.hasInput == true && current.creationKey != input.payload.creationKey) {
+            throw RepositoryException("请先保存或放弃当前原稿，再继续另一张账单。")
         }
         return restore(input.original.draftJson, input.binding)
     }

@@ -10,6 +10,8 @@ import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.logNetworkWarning
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
@@ -349,7 +351,7 @@ class DebtListViewModel(
                 runDebtBillTask(sources, input, action)
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
-            } catch (error: Exception) { Result.failure(error) }
+            } catch (error: Exception) { Result.failure(debtBillTaskFailure(error)) }
             if (generation != draftGeneration || binding != creation.currentAccess()?.binding) return@launch
             val completed = result.getOrNull()
             val adopted = completed?.source?.adoptedDebtPublicId != null
@@ -405,6 +407,12 @@ class DebtListViewModel(
     fun dismissFlash() {
         _state.update { it.copy(flashMessage = null, billPreview = null) }
     }
+}
+
+private fun debtBillTaskFailure(error: Exception): RepositoryException {
+    if (error is RepositoryException) return error
+    logNetworkWarning("operation=Debt bill task unverified", error)
+    return RepositoryException("原稿暂时未能读取，请保留当前输入后重试。", cause = error)
 }
 
 private data class DebtModelTemplate(

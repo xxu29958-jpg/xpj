@@ -108,6 +108,11 @@ internal class ExpenseCorrectionConnectedFixture(
             else -> error("Unexpected settings: $method")
         }
     }) {
+        override fun notificationCaptureFailure(scope: String) = readSettings.notificationCaptureFailure(scope)
+        override fun observeNotificationCaptureFailures() = readSettings.observeNotificationCaptureFailures()
+        override fun recordNotificationCaptureFailure(scope: String) = readSettings.recordNotificationCaptureFailure(scope)
+        override fun acknowledgeNotificationCaptureFailure(scope: String, expectedToken: String) =
+            readSettings.acknowledgeNotificationCaptureFailure(scope, expectedToken)
         override fun recentSearches(): List<String> = readSettings.recentSearches()
         override fun saveRecentSearches(queries: List<String>) = readSettings.saveRecentSearches(queries)
         override fun snapshotReadAccessDenial(bindingKey: String, monthlyBindingKey: String): Int? =
