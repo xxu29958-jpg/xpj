@@ -9,6 +9,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RecurringItem
+import java.time.LocalDate
 
 /** The one presentation owner for an open recurring editor and its OCC-bound draft. */
 internal sealed interface RecurringEditorTarget {
@@ -33,10 +34,10 @@ internal class RecurringEditorHostState internal constructor(
     var replacement by mutableStateOf<RecurringEditorState?>(null)
         private set
 
-    fun openCreate(currency: CurrencyCode) {
+    fun openCreate(currency: CurrencyCode, ledgerToday: LocalDate? = null) {
         open(RecurringEditorState(
             target = RecurringEditorTarget.Create,
-            session = newRecurringEditorSession(baseline = null, currency = currency),
+            session = newRecurringEditorSession(baseline = null, currency = currency, ledgerToday = ledgerToday),
         ))
     }
 

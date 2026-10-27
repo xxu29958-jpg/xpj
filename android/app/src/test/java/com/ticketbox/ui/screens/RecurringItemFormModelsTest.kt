@@ -1,6 +1,8 @@
 package com.ticketbox.ui.screens
 
 import com.ticketbox.data.repository.RecurringDateEdit
+import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.ui.screens.recurring.newRecurringEditorSession
 import com.ticketbox.ui.screens.recurring.buildRecurringItemPatch
 import com.ticketbox.ui.screens.recurring.recurringDefaultNextDate
 import com.ticketbox.ui.screens.recurring.recurringDisplayDate
@@ -14,6 +16,13 @@ import kotlin.test.assertNull
 
 /** 行 meta 语义（manual 计划 vs 观察来源）与编辑器表单模型（日期、patch）。 */
 class RecurringItemFormModelsTest {
+
+    @Test
+    fun unknownLedgerDayAndExistingUnsetReminderStayUnset() {
+        assertNull(newRecurringEditorSession(null, CurrencyCode.CNY).dateIso)
+        val existing = recurringItem { nextExpectedDate = null }
+        assertNull(newRecurringEditorSession(existing, CurrencyCode.CNY).dateIso)
+    }
 
     @Test
     fun manualItemWithoutOccurrencesExposesNoObservedMeta() {

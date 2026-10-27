@@ -75,8 +75,6 @@ from app.services.recurring_service import (
     restore_recurring_item,
     resume_recurring_item,
 )
-from app.services.spending_contract_service import accounting_zone
-from app.services.time_service import now_utc
 
 logger = logging.getLogger(__name__)
 
@@ -212,12 +210,12 @@ def _render_recurring(
     )
     ctx["hero"] = _recurring_hero(db, selected_id=selected_id, items=all_items, currency_code=currency_code, due_dates=due_dates)
     # A due date before today means this period still has no linked payment (paid periods are skipped).
-    ctx["recurring_today"] = current_ledger_date(db, ledger_id=selected_id).isoformat()
+    today = current_ledger_date(db, ledger_id=selected_id)
+    ctx["recurring_today"] = today.isoformat()
     ctx["status_filter"] = status or ""
     ctx["flash_message"] = flash_message
     ctx["error_message"] = error_message
     ctx["error_guidance"] = error_guidance
-    today = now_utc().astimezone(accounting_zone()).date()
     ctx["suggested_next_date"] = suggest_next_expected_date(today).isoformat()
     scope = browser_draft_scope(db, request)
     if scope is not None and draft is not None and not draft.get("draft_scope"):

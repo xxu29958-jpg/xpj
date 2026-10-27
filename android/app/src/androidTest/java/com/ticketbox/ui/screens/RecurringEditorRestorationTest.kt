@@ -19,6 +19,7 @@ import org.junit.Test
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
+import java.time.LocalDate
 
 class RecurringEditorRestorationTest {
     @get:Rule
@@ -49,15 +50,19 @@ class RecurringEditorRestorationTest {
     @Test
     fun cnyCreateEntryKeepsSelectedJpyAmountAfterRestoration() {
         val restorationTester = StateRestorationTester(composeRule)
+        var ledgerToday = LocalDate.parse("2026-08-31")
         lateinit var openAndFill: () -> Unit
+        lateinit var reopen: () -> Unit
         restorationTester.setContent {
             val host = rememberRecurringEditorHostState(editorEpoch = 7L, runtimeId = "runtime-create-fx")
             openAndFill = {
-                host.openCreate(CurrencyCode.CNY)
+                host.openCreate(CurrencyCode.CNY, ledgerToday)
                 checkNotNull(host.editor).session.apply {
                     selectCurrency(CurrencyCode.JPY)
                     merchant = "交通月票"
                     amountText = "1200"
+                    dateIso = "2026-09-17"
+                    dateTouched = true
                 }
                 val original = host.editor
                 host.keepDraft()
@@ -67,20 +72,24 @@ class RecurringEditorRestorationTest {
                 assertNotNull(host.replacement)
                 host.cancelSwitch()
             }
+            reopen = { host.openCreate(CurrencyCode.CNY, ledgerToday) }
             val session = host.editor?.session
             BasicText(
-                listOf(host.editor?.target, session?.homeCurrencyCode, session?.merchant, session?.amountText)
+                listOf(host.editor?.target, session?.homeCurrencyCode, session?.merchant, session?.amountText, session?.dateIso)
                     .joinToString("|"),
                 Modifier.testTag(EDITOR_STATE_TAG),
             )
             BasicText(host.visible.toString(), Modifier.testTag("editor-visible"))
         }
         composeRule.runOnIdle(openAndFill)
-        composeRule.onNodeWithTag(EDITOR_STATE_TAG).assertTextEquals("Create|JPY|交通月票|1200")
+        composeRule.onNodeWithTag(EDITOR_STATE_TAG).assertTextEquals("Create|JPY|交通月票|1200|2026-09-17")
         composeRule.onNodeWithTag("editor-visible").assertTextEquals("false")
         restorationTester.emulateSavedInstanceStateRestore()
-        composeRule.onNodeWithTag(EDITOR_STATE_TAG).assertTextEquals("Create|JPY|交通月票|1200")
+        composeRule.onNodeWithTag(EDITOR_STATE_TAG).assertTextEquals("Create|JPY|交通月票|1200|2026-09-17")
         composeRule.onNodeWithTag("editor-visible").assertTextEquals("false")
+        ledgerToday = LocalDate.parse("2026-10-20")
+        composeRule.runOnIdle(reopen)
+        composeRule.onNodeWithTag(EDITOR_STATE_TAG).assertTextEquals("Create|JPY|交通月票|1200|2026-09-17")
     }
 
     @Test
