@@ -23,8 +23,8 @@ from app.services.funds_payment_correction import void_credit_payment_facts
 
 def restore_misclassified_repayment(db: Session, *, draft: RepaymentDraft,
         versions: RepaymentCorrectionVersions | None, actor_account_id: int, reason: str, key: str) -> tuple[Expense | None, Repayment]:
-    # Same order as confirmation: original Expense, then parent Debt. The capture
-    # command already owns its draft lock and publishes the single final receipt.
+    # Like confirmation, lock the source Expense and all funding Accounts before
+    # the parent Debt. The capture command owns its draft and final receipt.
     if draft.source_expense_public_id:
         db.scalar(select(Expense).where(Expense.tenant_id == draft.tenant_id,
             Expense.public_id == draft.source_expense_public_id).with_for_update())
@@ -35,7 +35,7 @@ def restore_misclassified_repayment(db: Session, *, draft: RepaymentDraft,
         Repayment.public_id == draft.committed_repayment_public_id))
     if repayment is None:
         raise AppError("repayment_not_found", status_code=404)
-    _, fees = correction_funds(db, draft, repayment, lock=True) if repayment.settlement_kind == "credit" else ([], [])
+    _, fees = correction_funds(db, draft, repayment, lock=True)
     debt = correction_debt(db, draft, lock=True)
     if versions is None or versions != repayment_correction_versions(db, draft):
         raise AppError("state_conflict", "还款、付款账户或来源流水已变化，请重新核对更正影响；原输入仍保留。", status_code=409)

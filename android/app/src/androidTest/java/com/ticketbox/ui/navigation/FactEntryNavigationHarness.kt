@@ -19,7 +19,15 @@ import kotlinx.coroutines.flow.first
 internal class FactEntryNavigationHarness(private val context: Context,
     wrapApi: (com.ticketbox.data.remote.ApiService) -> com.ticketbox.data.remote.ApiService = { it },
 ) : Closeable {
-    val fixture = ExpenseCorrectionConnectedFixture(context, wrapApi)
+    val fixture = ExpenseCorrectionConnectedFixture(context) { delegate ->
+        wrapApi(object : com.ticketbox.data.remote.ApiService by delegate {
+            override suspend fun runtimeCompatibility() = delegate.runtimeCompatibility().let {
+                it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = 1))
+            }
+            override suspend fun ledgerCalendar(ledgerId: String, revision: Long?) =
+                com.ticketbox.domain.model.LedgerCalendar(ledgerId, revision ?: 1, "UTC", "explicit", "2026-01-01T00:00:00Z")
+        })
+    }
     private var graph = fixture.reopen()
     val shell = MainShellState()
     val models = object : ViewModelStoreOwner {
@@ -52,6 +60,7 @@ internal class FactEntryNavigationHarness(private val context: Context,
             categoryPreferenceRepository = graph.categoryPreferenceRepository,
             portableExports = graph.portableExports,
             accountProfile = graph.accountProfileRepository,
+            ledgerCalendarRepository = fixture.ledgerCalendarRepository,
         ),
         MainScreenViewModelFactories(
             settingsViewModelFactory = settingsViewModelFactory(graph.expenseRepository, fixture.settingsStore,

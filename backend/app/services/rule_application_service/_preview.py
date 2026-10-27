@@ -11,6 +11,7 @@ from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import Expense
 from app.services.category_service import normalize_category
+from app.services.learning_service import read_ocr_texts
 from app.services.merchant_alias_service import enabled_merchant_alias_map
 from app.services.rule_application_service._common import (
     _clamp_rule_application_scan_limit,
@@ -18,7 +19,6 @@ from app.services.rule_application_service._common import (
     _haystack_for,
     _matching_rule_category,
     _non_auto_fillable_category_count,
-    _ocr_text_by_expense_id,
     _rule_application_candidates,
     _rule_application_preview_token,
 )
@@ -58,7 +58,7 @@ def preview_rule_for_pending(
         ocr_text_by_id: dict[int, str] = {}
     else:
         pending = list(pending_rows)
-        ocr_text_by_id = _ocr_text_by_expense_id(
+        ocr_text_by_id = read_ocr_texts(
             db, tenant_id=tenant_id, expenses=pending
         )
     matched: list[dict] = []
@@ -173,7 +173,7 @@ def _preview_apply_rules_to_status(
     )
     rules = _enabled_rules(db, tenant_id=tenant_id)
     alias_map = enabled_merchant_alias_map(db, tenant_id=tenant_id)
-    ocr_text_by_id = _ocr_text_by_expense_id(
+    ocr_text_by_id = read_ocr_texts(
         db, tenant_id=tenant_id, expenses=expenses
     )
     capped = max(1, min(int(limit or 20), 50))

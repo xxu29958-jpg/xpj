@@ -347,7 +347,11 @@ def test_replenishment_renews_retention_without_changing_financial_time(cleanup_
 
 @pytest.fixture
 def confirmation_publication(monkeypatch):
-    from app.services import learning_service
+    from app.services import expense_funding_service, learning_service
+
+    # This cleanup fixture has no reviewed payment source. Keep its Expense-only
+    # scalar double out of the financial command's funding lookup.
+    monkeypatch.setattr(expense_funding_service, "expense_funding_account_ids", lambda *_a: set())
 
     monkeypatch.setattr(_update, "refresh_legacy_expense_time", lambda *_a: None)
     monkeypatch.setattr(_update, "sync_expense_tags", lambda *_a: None)

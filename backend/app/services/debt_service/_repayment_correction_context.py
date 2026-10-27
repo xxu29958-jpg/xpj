@@ -47,10 +47,14 @@ def correction_funds(db: Session, draft: RepaymentDraft, repayment: Repayment, *
         fees = list(db.scalars(select(Expense).where(Expense.tenant_id == draft.tenant_id,
             Expense.id.in_([fee.id for fee in fees])).order_by(Expense.id).with_for_update().execution_options(populate_existing=True)))
     identifiers = set(db.scalars(select(AccountMovement.account_id).where(AccountMovement.repayment_id == repayment.id)))
-    if draft.source_expense_public_id:
-        identifiers.update(db.scalars(select(ExpenseFunding.account_id).join(Expense, Expense.id == ExpenseFunding.expense_id)
-            .where(ExpenseFunding.tenant_id == draft.tenant_id, Expense.tenant_id == draft.tenant_id,
-                Expense.public_id == draft.source_expense_public_id)))
+    source, offset = repayment_source_rows(db, draft)
+    if source is not None:
+        identifiers.update(db.scalars(select(ExpenseFunding.account_id).where(
+            ExpenseFunding.tenant_id == draft.tenant_id, ExpenseFunding.expense_id == source.id,
+            ExpenseFunding.voided_at.is_(None))))
+    if offset is not None and offset.status == "active":
+        # Restore only this capture's reversal, not funding superseded before it.
+        identifiers.update(db.scalars(select(AccountMovement.account_id).where(AccountMovement.offset_id == offset.id)))
     query = account_query(draft.tenant_id, draft.created_by_account_id).where(FinancialAccount.id.in_(identifiers)).order_by(FinancialAccount.public_id)
     accounts = list(db.scalars(query.with_for_update(of=FinancialAccount).execution_options(populate_existing=True) if lock else query))
     if len(accounts) != len(identifiers):
