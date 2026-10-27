@@ -10,7 +10,7 @@ import java.util.TimeZone
 interface RecurringQueryActions {
     val readAccessDenials: Flow<SnapshotAccessDenial>
     suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
-        Result<ReadSnapshot<com.ticketbox.data.remote.dto.RecurringHistoryPageDto>>
+        Result<ReadSnapshot<com.ticketbox.domain.model.RecurringHistoryPage>>
     fun canModifyLedger(): Boolean
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     suspend fun items(

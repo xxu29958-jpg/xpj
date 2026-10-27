@@ -24,7 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingCategoryRuleSubmission
 import com.ticketbox.data.repository.PendingRuleApplication
@@ -36,7 +36,7 @@ import com.ticketbox.domain.model.RuleApplyConfirmedResult
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.design.AppSpacing
-import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
+import com.ticketbox.viewmodel.CategoryRuleDraftForm
 import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleList
 import com.ticketbox.ui.screens.settings.categoryrules.ConfirmedRuleApplyPanel
 import com.ticketbox.ui.screens.settings.categoryrules.ConfirmedRuleApplyActions
@@ -100,7 +100,7 @@ data class CategoryRuleDefinitionActions(
     val onBegin: (CategoryRuleDraftForm) -> Unit,
     val onOpen: (RuleDefinitionDraft) -> Unit,
     val onChange: (RuleDefinitionDraft) -> Unit,
-    val onSubmit: (RuleDefinitionDraft, CategoryRuleRequest) -> Unit,
+    val onSubmit: (RuleDefinitionDraft, CategoryRuleDefinition) -> Unit,
     val onClose: () -> Unit,
     val onReviewBinding: () -> Unit,
     val onReload: () -> Unit,

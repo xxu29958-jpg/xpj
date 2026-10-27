@@ -8,7 +8,7 @@ import com.ticketbox.domain.model.ExpenseOffsetDraft
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.StreamOffsetKind
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.parseAmountCents
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 import kotlinx.coroutines.flow.update

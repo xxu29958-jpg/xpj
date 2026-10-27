@@ -20,7 +20,7 @@ import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.AppPrimaryButton
-import com.ticketbox.ui.components.displayTime
+import com.ticketbox.presentation.displayTime
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputState

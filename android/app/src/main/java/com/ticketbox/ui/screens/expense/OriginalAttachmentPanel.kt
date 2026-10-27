@@ -33,7 +33,7 @@ import com.ticketbox.ui.components.AppAsyncImageLayout
 import com.ticketbox.ui.components.AppAsyncImagePresentation
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.displayTime
+import com.ticketbox.presentation.displayTime
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.SettingsEntryRow
 import com.ticketbox.viewmodel.OriginalAttachmentUiState

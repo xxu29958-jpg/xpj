@@ -235,11 +235,11 @@ internal class ExpenseRepositoryCore(
         )
     }
 
+    val receiptPublication = ExpenseReceiptPublication(expenseDao) { ledgerId -> onConfirmedCommitted(ledgerId) }
+
     suspend fun cacheServerExpense(dto: ExpenseDto, bound: BoundLedgerRequest): ExpenseDto {
         val accepted = withActiveBindingCommit(bound) {
-            val accepted = expenseDao.applyServerExpense(bound.ledgerId, dto.toEntity(bound.ledgerId))
-            if (accepted && dto.status == "confirmed") notifyConfirmedExpenseWrite(bound.ledgerId, onConfirmedCommitted)
-            accepted
+            receiptPublication.publishSnapshot(bound.ledgerId, dto)
         }
         if (accepted && dto.status != "confirmed") acknowledgeExpenseRefresh(bound, mapOf(dto.id to dto.rowVersion))
         return dto

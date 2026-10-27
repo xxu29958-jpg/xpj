@@ -6,7 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import com.ticketbox.data.remote.dto.ExpenseConfirmationReceiptDto
+import com.ticketbox.domain.model.ExpenseConfirmationReceipt
 import com.ticketbox.ui.screens.expense.ExpenseConfirmationScreen
 import com.ticketbox.viewmodel.ExpenseEditUiState
 import com.ticketbox.viewmodel.ExpenseEditViewModel
@@ -31,7 +31,7 @@ internal fun ExpenseEditViewModel.ExpenseEditorCompletion(state: ExpenseEditUiSt
 /** The original result remains on its command; opening the bill reads the current fact owner. */
 @Composable
 internal fun ExpenseConfirmationRoute(
-    receipt: ExpenseConfirmationReceiptDto,
+    receipt: ExpenseConfirmationReceipt,
     factory: MainScreenFactory,
     related: ExpenseFactNavigation,
     financialDataRevision: Int,

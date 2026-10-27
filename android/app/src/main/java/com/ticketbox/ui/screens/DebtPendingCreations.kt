@@ -17,7 +17,7 @@ import com.ticketbox.data.repository.PendingDebtCreation
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppSectionGroup
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
 

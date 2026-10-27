@@ -6,9 +6,9 @@ import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RecurringActions
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.SnapshotAccessDenial
-import com.ticketbox.data.remote.dto.RecurringDefinitionDto
-import com.ticketbox.data.remote.dto.RecurringHistoryPageDto
-import com.ticketbox.data.remote.dto.RecurringRevisionDto
+import com.ticketbox.domain.model.RecurringDefinition
+import com.ticketbox.domain.model.RecurringHistoryPage
+import com.ticketbox.domain.model.RecurringRevision
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.screens.recurringItem
@@ -44,7 +44,7 @@ class RecurringHistoryTaskTest {
             vm.historyTask.open(actions.item)
             runCurrent()
             assertEquals(listOf(9L), vm.uiState.value.history.items.map { it.rowVersion })
-            val lateHistory = CompletableDeferred<Result<RecurringHistoryPageDto>>()
+            val lateHistory = CompletableDeferred<Result<RecurringHistoryPage>>()
             val lateItems = CompletableDeferred<Result<List<RecurringItem>>>()
             actions.pendingHistory = lateHistory
             actions.pendingItems = lateItems
@@ -77,7 +77,7 @@ class RecurringHistoryTaskTest {
             val originalEpoch = vm.uiState.value.editorEpoch
             val originalRuntime = vm.uiState.value.editorRuntimeId
             val lateItems = CompletableDeferred<Result<List<RecurringItem>>>()
-            val lateHistory = CompletableDeferred<Result<RecurringHistoryPageDto>>()
+            val lateHistory = CompletableDeferred<Result<RecurringHistoryPage>>()
             actions.pendingItems = lateItems
             actions.pendingHistory = lateHistory
             vm.refresh()
@@ -195,12 +195,12 @@ private class HistoryActions : RecurringActions by unsupportedHistoryActions() {
     var itemFailure: Throwable? = null
     var itemCalls = 0
     var pendingItems: CompletableDeferred<Result<List<RecurringItem>>>? = null
-    var pendingHistory: CompletableDeferred<Result<RecurringHistoryPageDto>>? = null
+    var pendingHistory: CompletableDeferred<Result<RecurringHistoryPage>>? = null
     override fun canModifyLedger() = true
     override fun observeActiveLedgerAccess() = access
     override fun observePendingIntents() = flowOf(emptyList<com.ticketbox.data.repository.RecurringPendingIntent>())
     override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
-        Result<com.ticketbox.data.repository.ReadSnapshot<RecurringHistoryPageDto>> {
+        Result<com.ticketbox.data.repository.ReadSnapshot<RecurringHistoryPage>> {
         cursors += beforeVersion
         return (pendingHistory?.await() ?: result).map { com.ticketbox.data.repository.ReadSnapshot(it, fetchedAt, fromCache) }
     }
@@ -213,9 +213,9 @@ private class HistoryActions : RecurringActions by unsupportedHistoryActions() {
     override suspend fun candidates(expectedBinding: LogicalSessionBinding) = Result.success(emptyList<RecurringCandidate>())
 }
 
-private fun historyPage(version: Long, next: Long?) = RecurringHistoryPageDto("owner", "rec-1",
-    listOf(RecurringRevisionDto(version, "edit", "2026-09-19T00:00:00Z", null,
-        RecurringDefinitionDto("原计划", "original", "monthly", "JPY", 1200, null, "active", "candidate"))), next)
+private fun historyPage(version: Long, next: Long?) = RecurringHistoryPage("owner", "rec-1",
+    listOf(RecurringRevision(version, "edit", "2026-09-19T00:00:00Z", null,
+        RecurringDefinition("原计划", "original", "monthly", "JPY", 1200, null, "active", "candidate"))), next)
 
 private fun unsupportedHistoryActions(): RecurringActions = Proxy.newProxyInstance(RecurringActions::class.java.classLoader,
     arrayOf(RecurringActions::class.java)) { _, method, _ -> error("Unexpected history action: ${method.name}") } as RecurringActions

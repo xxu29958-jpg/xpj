@@ -8,7 +8,7 @@ import com.ticketbox.domain.model.ExpenseItems
 import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.parseAmountCents
 import kotlin.math.abs
 
 /**
@@ -31,7 +31,7 @@ internal fun buildCorrectionSplitDrafts(
                 displayName = member.displayName,
                 included = existing != null,
                 amountText = existing?.amountCents?.let { cents ->
-                    com.ticketbox.ui.components.formatMinorAmountInput(abs(cents), displayCurrency)
+                    com.ticketbox.presentation.formatMinorAmountInput(abs(cents), displayCurrency)
                 }.orEmpty(),
                 note = existing?.note,
                 baselineAmountCents = existing?.amountCents,
@@ -40,7 +40,7 @@ internal fun buildCorrectionSplitDrafts(
                 memberId = member.memberId,
                 displayName = member.displayName,
                 included = true,
-                amountText = com.ticketbox.ui.components.formatMinorAmountInput(
+                amountText = com.ticketbox.presentation.formatMinorAmountInput(
                     abs(existing.amountCents),
                     displayCurrency,
                 ),
@@ -59,7 +59,7 @@ internal fun buildCorrectionSplitDrafts(
                 memberId = split.memberId,
                 displayName = split.accountName.ifBlank { "未命名成员" },
                 included = true,
-                amountText = com.ticketbox.ui.components.formatMinorAmountInput(
+                amountText = com.ticketbox.presentation.formatMinorAmountInput(
                     abs(split.amountCents),
                     displayCurrency,
                 ),

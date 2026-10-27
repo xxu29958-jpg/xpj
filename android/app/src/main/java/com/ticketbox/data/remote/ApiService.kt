@@ -1,50 +1,50 @@
 package com.ticketbox.data.remote
 
 import com.ticketbox.data.remote.api.AuthApi
-import com.ticketbox.data.remote.api.ExpenseListApi
-import com.ticketbox.data.remote.api.CategoryPreferenceApi
-import com.ticketbox.data.remote.api.ExpenseDetailApi
-import com.ticketbox.data.remote.api.ExpenseCorrectionApi
-import com.ticketbox.data.remote.api.BillSplitApi
-import com.ticketbox.data.remote.api.ExpenseStateApi
-import com.ticketbox.data.remote.api.ExpenseMediaApi
-import com.ticketbox.data.remote.api.CategoryRuleApi
-import com.ticketbox.data.remote.api.MerchantApi
-import com.ticketbox.data.remote.api.SavedViewApi
-import com.ticketbox.data.remote.api.TagApi
-import com.ticketbox.data.remote.api.ServerSettingsApi
-import com.ticketbox.data.remote.api.RuntimeCompatibilityApi
-import com.ticketbox.data.remote.api.ReportsApi
-import com.ticketbox.data.remote.api.GoalsApi
-import com.ticketbox.data.remote.api.DebtApi
-import com.ticketbox.data.remote.api.DebtRepaymentApi
-import com.ticketbox.data.remote.api.DebtProposalApi
-import com.ticketbox.data.remote.api.RepaymentDraftApi
-import com.ticketbox.data.remote.api.DashboardApi
-import com.ticketbox.data.remote.api.BudgetApi
-import com.ticketbox.data.remote.api.IncomePlanApi
-import com.ticketbox.data.remote.api.RecurringApi
-import com.ticketbox.data.remote.api.LedgerApi
-import com.ticketbox.data.remote.api.InvitationApi
-import com.ticketbox.data.remote.api.LedgerDeviceApi
-import com.ticketbox.data.remote.api.RecycleBinApi
 import com.ticketbox.data.remote.api.BackgroundTaskApi
-import com.ticketbox.data.remote.dto.PaginatedExpensesDto
+import com.ticketbox.data.remote.api.BillSplitApi
+import com.ticketbox.data.remote.api.BudgetApi
+import com.ticketbox.data.remote.api.CategoryPreferenceApi
+import com.ticketbox.data.remote.api.CategoryRuleApi
+import com.ticketbox.data.remote.api.DashboardApi
+import com.ticketbox.data.remote.api.DebtApi
+import com.ticketbox.data.remote.api.DebtProposalApi
+import com.ticketbox.data.remote.api.DebtRepaymentApi
+import com.ticketbox.data.remote.api.ExpenseCorrectionApi
+import com.ticketbox.data.remote.api.ExpenseDetailApi
+import com.ticketbox.data.remote.api.ExpenseListApi
+import com.ticketbox.data.remote.api.ExpenseMediaApi
+import com.ticketbox.data.remote.api.ExpenseStateApi
+import com.ticketbox.data.remote.api.GoalsApi
+import com.ticketbox.data.remote.api.IncomePlanApi
+import com.ticketbox.data.remote.api.InvitationApi
+import com.ticketbox.data.remote.api.LedgerApi
+import com.ticketbox.data.remote.api.LedgerDeviceApi
+import com.ticketbox.data.remote.api.MerchantApi
+import com.ticketbox.data.remote.api.RecurringApi
+import com.ticketbox.data.remote.api.RecycleBinApi
+import com.ticketbox.data.remote.api.RepaymentDraftApi
+import com.ticketbox.data.remote.api.ReportsApi
+import com.ticketbox.data.remote.api.RuntimeCompatibilityApi
+import com.ticketbox.data.remote.api.SavedViewApi
+import com.ticketbox.data.remote.api.ServerSettingsApi
+import com.ticketbox.data.remote.api.TagApi
 import com.ticketbox.data.remote.dto.OriginalCleanupRequestDto
-import com.ticketbox.data.remote.dto.OriginalCommandReceiptDto
-import com.ticketbox.data.remote.dto.OriginalHealthDto
 import com.ticketbox.data.remote.dto.OriginalVerificationRequestDto
+import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.ReportsOverviewDto
+import com.ticketbox.domain.model.OriginalCommandReceipt
+import com.ticketbox.domain.model.OriginalHealth
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
-import retrofit2.http.GET
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Multipart
+import retrofit2.http.POST
 import retrofit2.http.Part
 import retrofit2.http.Path
-import retrofit2.http.POST
 import retrofit2.http.Query
 import retrofit2.http.QueryMap
 import retrofit2.http.Streaming
@@ -84,14 +84,14 @@ interface ApiService :
     BackgroundTaskApi,
     RuntimeCompatibilityApi {
     @GET("api/expenses/{id}/original")
-    suspend fun originalHealth(@Path("id") id: Long): OriginalHealthDto
+    suspend fun originalHealth(@Path("id") id: Long): OriginalHealth
 
     @POST("api/expenses/{id}/original/verify")
     suspend fun verifyOriginal(
         @Path("id") id: Long,
         @Body body: OriginalVerificationRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String,
-    ): OriginalCommandReceiptDto
+    ): OriginalCommandReceipt
 
     @Multipart
     @POST("api/expenses/{id}/original/attach")
@@ -100,7 +100,7 @@ interface ApiService :
         @Part file: MultipartBody.Part,
         @Query("expected_row_version") expectedRowVersion: Long,
         @Header("Idempotency-Key") idempotencyKey: String,
-    ): OriginalCommandReceiptDto
+    ): OriginalCommandReceipt
 
     @Multipart
     @POST("api/expenses/{id}/original/replenish")
@@ -110,21 +110,21 @@ interface ApiService :
         @Query("expected_row_version") expectedRowVersion: Long,
         @Query("expected_sha256") expectedSha256: String,
         @Header("Idempotency-Key") idempotencyKey: String,
-    ): OriginalCommandReceiptDto
+    ): OriginalCommandReceipt
 
     @POST("api/expenses/{id}/original/cleanup/retry")
     suspend fun retryOriginalCleanup(
         @Path("id") id: Long,
         @Body body: OriginalCleanupRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String,
-    ): OriginalCommandReceiptDto
+    ): OriginalCommandReceipt
 
     @POST("api/expenses/{id}/original/cleanup/cancel")
     suspend fun cancelOriginalCleanup(
         @Path("id") id: Long,
         @Body body: OriginalCleanupRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String,
-    ): OriginalCommandReceiptDto
+    ): OriginalCommandReceipt
 
     @GET("api/expenses/confirmed")
     suspend fun confirmedExpenses(

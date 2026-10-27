@@ -8,10 +8,14 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.*
 import com.ticketbox.data.repository.*
+import com.ticketbox.domain.model.MonthlyArrangement
+import com.ticketbox.domain.model.MonthlyArrangementChange
+import com.ticketbox.domain.model.MonthlyArrangementResponse
+import kotlin.test.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runCurrent
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -19,7 +23,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.SQLiteMode
-import kotlin.test.*
 
 @RunWith(RobolectricTestRunner::class)
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -120,9 +123,9 @@ private class RoomDraftFixture {
         .allowMainThreadQueries().setQueryExecutor { it.run() }.setTransactionExecutor { it.run() }.build()
     val session = TestSessionFixture().apply { saveToken("synthetic-arrangement-session") }
     val adapters = OutboxAdapterGraph()
-    private val receipt = MonthlyArrangementDto("owner", "2026-09", "JPY", 1200, 300, 1, "2026-09-27T00:00:00Z")
+    private val receipt = MonthlyArrangement("owner", "2026-09", "JPY", 1200, 300, 1, "2026-09-27T00:00:00Z")
     private val api: ApiService = object : ApiService by FakeApiService(mutableListOf(), 0) {
-        override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponseDto(binding().ledgerId, month, receipt)
+        override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponse(binding().ledgerId, month, receipt)
     }
     private val provider = testApiServiceProvider(object : ApiServiceFactory {
         override fun create(baseUrl: String, tokenProvider: () -> String?) = api
@@ -139,7 +142,7 @@ private class RoomDraftFixture {
         com.ticketbox.data.repository.testSnapshotCoordinator(provider, outbox, db.expenseDao()))
     fun binding(): LogicalSessionBinding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
     fun confirmed(): PendingMonthlyArrangement {
-        val intent = MonthlyArrangementPayload(1, receipt.month, MonthlyArrangementSaveRequest("JPY", 1200, 300))
+        val intent = MonthlyArrangementSubmission(1, receipt.month, MonthlyArrangementChange("JPY", 1200, 300))
         val row = OutboxRow(1, binding().serverUrl, "owner", binding().ownerKey, PendingMutationType.SaveMonthlyArrangement,
             "monthly_arrangement:${receipt.month}", adapters.budget.arrangementSaveAdapter.toJson(intent), 0, PendingMutationStatus.Done,
             0, null, receipt.updatedAt, receipt.updatedAt, receipt.updatedAt, "original-key", adapters.budget.arrangementReceiptAdapter.toJson(receipt))

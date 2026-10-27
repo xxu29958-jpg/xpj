@@ -9,7 +9,7 @@ import androidx.compose.runtime.setValue
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RecurringItem
-import com.ticketbox.ui.components.formatAmountInput
+import com.ticketbox.presentation.formatAmountInput
 import com.ticketbox.ui.screens.RecurringItemActions
 import com.ticketbox.viewmodel.RecurringListLoadState
 import com.ticketbox.viewmodel.RecurringManualSaveFeedback

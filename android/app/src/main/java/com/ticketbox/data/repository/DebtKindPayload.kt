@@ -5,7 +5,7 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.DebtDto
-import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
+import com.ticketbox.domain.model.DebtKindSetRequest
 import com.ticketbox.domain.model.DebtKinds
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -17,10 +17,10 @@ data class DebtKindPayload(
     override val subject: DebtWriteSubject,
     override val originSessionGeneration: String,
     override val originBindingRevision: String,
-    val request: DebtKindSetRequestDto,
+    val request: DebtKindSetRequest,
 ) : DebtWriteIntent { override val expectedRowVersion: Long get() = request.expectedRowVersion }
 
-internal fun OutboxRow.describeDebtKind(adapter: JsonAdapter<DebtKindPayload>): PendingDebtWrite {
+internal fun OutboxRow.readOriginalDebtKind(adapter: JsonAdapter<DebtKindPayload>): DebtKindPayload? {
     val parsed = try { adapter.fromJson(payloadJson) }
         catch (_: JsonDataException) { null } catch (_: IOException) { null }
     val intent = parsed?.takeIf {
@@ -30,7 +30,7 @@ internal fun OutboxRow.describeDebtKind(adapter: JsonAdapter<DebtKindPayload>): 
             it.expectedRowVersion == expectedRowVersion && targetId == debtWriteTarget(it.subject.publicId) &&
             !idempotencyKey.isNullOrBlank()
     }
-    return PendingDebtWrite(this, intent)
+    return intent
 }
 
 /** Classification has no monetary input; the original receipt is separate from current debt facts. */
@@ -38,7 +38,7 @@ class SetDebtKindDispatcher internal constructor(private val guard: LedgerReques
     private val adapter: JsonAdapter<DebtKindPayload>, private val receiptAdapter: JsonAdapter<DebtDto>) : OutboxMutationDispatcher {
     override val type = PendingMutationType.SetDebtKind
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val intent = row.describeDebtKind(adapter).kind
+        val intent = row.readOriginalDebtKind(adapter)
             ?: return DispatchResult.Failure("debt_kind_payload_unsupported", definitelyRejected = true)
         return try {
             val result = guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalDebtWrite(row, intent)
@@ -63,3 +63,6 @@ private fun DebtDto.matchesOriginalKind(intent: DebtKindPayload, row: OutboxRow)
     publicId == intent.subject.publicId && ledgerId == row.ledgerId &&
         homeCurrencyCode == intent.subject.homeCurrencyCode && rowVersion == intent.expectedRowVersion + 1 &&
         debtKind == intent.request.debtKind
+
+internal fun OutboxRow.describeDebtKind(adapter: JsonAdapter<DebtKindPayload>): PendingDebtWrite =
+    PendingDebtWrite(this, readOriginalDebtKind(adapter)?.toView())

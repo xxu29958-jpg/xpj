@@ -2,16 +2,16 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
+import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtAdjustmentCreateRequest
+import com.ticketbox.domain.model.DebtKindSetRequest
 import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.ExpenseTimeInput
-import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import java.util.UUID
 import java.time.Clock
-import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
+import java.util.UUID
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -103,7 +103,7 @@ class DebtWriteRepository internal constructor(
                 subject = DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
                 originSessionGeneration = binding.sessionGeneration,
                 originBindingRevision = binding.bindingRevision,
-                request = DebtAdjustmentCreateRequestDto(amountCents, cleanReason, debt.rowVersion),
+                request = DebtAdjustmentCreateRequest(amountCents, cleanReason, debt.rowVersion),
             )
             publish(binding, debt, type = PendingMutationType.RecordDebtAdjustment, payload = adapters.debtAdjustmentAdapter.toJson(payload))
         }
@@ -125,7 +125,7 @@ class DebtWriteRepository internal constructor(
         require(isDebtAdjustmentReasonValid(cleanReason)) { "请填写作废原因，最多 500 个字符。" }
         val payload = DebtVoidPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
             binding.sessionGeneration, binding.bindingRevision,
-            com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto(cleanReason, debt.rowVersion))
+            com.ticketbox.domain.model.DebtVoidCreateRequest(cleanReason, debt.rowVersion))
         publish(binding, debt, type = PendingMutationType.VoidDebt, payload = adapters.debtVoidAdapter.toJson(payload))
     }
 
@@ -135,14 +135,14 @@ class DebtWriteRepository internal constructor(
         require(repaymentPublicId.isNotBlank() && isDebtAdjustmentReasonValid(cleanReason)) { "请核对原还款并填写作废原因，最多 500 个字符。" }
         val payload = DebtRepaymentVoidPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
             binding.sessionGeneration, binding.bindingRevision,
-            com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto(repaymentPublicId, cleanReason, debt.rowVersion))
+            com.ticketbox.domain.model.RepaymentVoidCreateRequest(repaymentPublicId, cleanReason, debt.rowVersion))
         publish(binding, debt, type = PendingMutationType.VoidDebtRepayment, payload = adapters.debtRepaymentVoidAdapter.toJson(payload))
     }
 
     override suspend fun saveKind(binding: LogicalSessionBinding, debt: Debt, kind: String): Result<Long> = errors.safeCall {
         require(kind in DebtKinds.ORDERED) { "请选择当前支持的偿还方式。" }
         val payload = DebtKindPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
-            binding.sessionGeneration, binding.bindingRevision, DebtKindSetRequestDto(kind, debt.rowVersion))
+            binding.sessionGeneration, binding.bindingRevision, DebtKindSetRequest(kind, debt.rowVersion))
         publish(binding, debt, type = PendingMutationType.SetDebtKind, payload = adapters.debtKindAdapter.toJson(payload))
     }
 

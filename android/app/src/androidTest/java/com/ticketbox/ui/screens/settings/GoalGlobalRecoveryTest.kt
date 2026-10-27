@@ -10,8 +10,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.data.repository.ExpenseCorrectionObservation
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -22,6 +20,8 @@ import com.ticketbox.data.repository.PendingGoalEdit
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.GoalCreateRequest
+import com.ticketbox.domain.model.GoalUpdateRequest
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.OutboxStatusUiState
@@ -79,10 +79,10 @@ class GoalGlobalRecoveryTest {
             correctionObservation = ExpenseCorrectionObservation(LedgerAccessContext(binding, true), emptyList()),
             status = OutboxStatus(0, emptyList(), listOf(row)),
             goalCreations = if (create) mapOf(row.id to PendingGoalCreation(row,
-                if (debt) GoalCreateRequestDto("清偿原欠款", goalType = "debt_repayment", debtPublicIds = listOf("original-debt"))
-                else GoalCreateRequestDto("交通", month = "2026-09", targetAmountCents = 1200, homeCurrencyCode = currency), null)) else emptyMap(),
+                if (debt) GoalCreateRequest("清偿原欠款", goalType = "debt_repayment", debtPublicIds = listOf("original-debt"))
+                else GoalCreateRequest("交通", month = "2026-09", targetAmountCents = 1200, homeCurrencyCode = currency), null)) else emptyMap(),
             goalEdits = if (create) emptyMap() else mapOf(row.id to PendingGoalEdit(row,
-                GoalUpdateRequestDto(2, "交通", "2026-09", targetAmountCents = 1200, homeCurrencyCode = currency), null)))
+                GoalUpdateRequest(2, "交通", "2026-09", targetAmountCents = 1200, homeCurrencyCode = currency), null)))
         compose.setContent { TicketboxTheme(skin = AppSkin.Default) {
             CompositionLocalProvider(LocalCurrencyDisplay provides CurrencyDisplay(CurrencyCode.CNY)) {
                 SyncStatusScreenContent(state, SyncStatusActions(onRefreshAcceptedResult = {}, onRepairCorrectionRate = { _, _ -> }, onOpenRateSubmission = {}, onOpenIncomeSubmission = {}, onOpenRuleSubmission = {}, onOpenGoalEdit = { opened = it.row.targetId },

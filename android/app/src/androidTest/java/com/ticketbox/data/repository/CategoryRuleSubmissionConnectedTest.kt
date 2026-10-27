@@ -3,11 +3,11 @@ package com.ticketbox.data.repository
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -18,18 +18,18 @@ import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.CategoryRuleDto
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.ui.screens.settings.CategoryRulesScreen
-import com.ticketbox.ui.screens.settings.CategoryRulesScreenState
-import com.ticketbox.ui.screens.settings.CategoryRulesRuleListState
-import com.ticketbox.ui.screens.settings.CategoryRulesInteractionState
-import com.ticketbox.ui.screens.settings.CategoryRulesStatusState
-import com.ticketbox.ui.screens.settings.CategoryRulesApplicationState
-import com.ticketbox.ui.screens.settings.CategoryRulesScreenActions
-import com.ticketbox.ui.screens.settings.CategoryRulesRuleActions
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import com.ticketbox.ui.screens.settings.CategoryRulesApplicationActions
+import com.ticketbox.ui.screens.settings.CategoryRulesApplicationState
+import com.ticketbox.ui.screens.settings.CategoryRulesInteractionState
+import com.ticketbox.ui.screens.settings.CategoryRulesRuleActions
+import com.ticketbox.ui.screens.settings.CategoryRulesRuleListState
+import com.ticketbox.ui.screens.settings.CategoryRulesScreen
+import com.ticketbox.ui.screens.settings.CategoryRulesScreenActions
+import com.ticketbox.ui.screens.settings.CategoryRulesScreenState
+import com.ticketbox.ui.screens.settings.CategoryRulesStatusState
 import com.ticketbox.ui.screens.settings.CategoryRulesUndoActions
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.CategoryRulesViewModel
@@ -47,14 +47,14 @@ class CategoryRuleSubmissionConnectedTest {
     private val network = DebtAdjustmentConnectedNetwork()
     private var loseAck = true
     private val keys = mutableListOf<String>()
-    private val requests = mutableListOf<CategoryRuleRequest>()
+    private val requests = mutableListOf<CategoryRuleDefinition>()
     private val response = CategoryRuleDto(7, "旅行", "交通", true, 10, 1200, null,
         createdAt = "2026-09-09T00:00:00Z", updatedAt = "2026-09-09T00:00:00Z", rowVersion = 1,
         homeCurrencyCode = "JPY")
     private val api = object : ApiService by network.service {
         override suspend fun categoryRules(): List<CategoryRuleDto> = emptyList()
         override suspend fun ruleApplications(limit: Int) = RuleApplicationListDto(emptyList())
-        override suspend fun createCategoryRule(request: CategoryRuleRequest, idempotencyKey: String): CategoryRuleDto {
+        override suspend fun createCategoryRule(request: CategoryRuleDefinition, idempotencyKey: String): CategoryRuleDto {
             keys += idempotencyKey
             requests += request
             if (loseAck) throw IOException("Synthetic lost acknowledgement")

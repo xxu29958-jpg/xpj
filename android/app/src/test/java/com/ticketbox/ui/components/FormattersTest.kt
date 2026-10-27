@@ -1,5 +1,18 @@
 package com.ticketbox.ui.components
 
+import com.ticketbox.presentation.displayCalendarDay
+import com.ticketbox.presentation.displayTime
+import com.ticketbox.presentation.parseAmountCentsForDisplay
+import com.ticketbox.presentation.parseAmountCents
+import com.ticketbox.presentation.formatAmountInput
+import com.ticketbox.presentation.parseMinorAmount
+import com.ticketbox.presentation.sanitizeMinorAmountInput
+import com.ticketbox.presentation.formatMinorAmountInput
+import com.ticketbox.presentation.formatExpenseExchangeMeta
+import com.ticketbox.presentation.formatExpensePrimaryAmount
+import com.ticketbox.presentation.formatMinorAmount
+import com.ticketbox.presentation.formatDisplayAmount
+import com.ticketbox.presentation.formatAmount
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.Expense
@@ -329,7 +342,7 @@ class FormattersTest {
 
     @Test
     fun updatesDateWithoutLosingExistingTime() {
-        val original = com.ticketbox.ui.screens.expense.ExpenseTimeForm.initial(
+        val original = com.ticketbox.viewmodel.ExpenseTimeForm.initial(
             "2026-05-03T04:20:00Z", null, null, ZoneOffset.UTC,
         )
         assertEquals("2026-05-04T04:20:00Z", original.copy(date = "2026-05-04", changed = true).resolve().instant)
@@ -337,7 +350,7 @@ class FormattersTest {
 
     @Test
     fun updatesTimeWithoutLosingExistingDate() {
-        val original = com.ticketbox.ui.screens.expense.ExpenseTimeForm.initial(
+        val original = com.ticketbox.viewmodel.ExpenseTimeForm.initial(
             "2026-05-03T04:20:00Z", null, null, ZoneOffset.UTC,
         )
         assertEquals("2026-05-03T08:45:00Z", original.copy(time = "08:45", changed = true).resolve().instant)

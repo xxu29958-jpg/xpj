@@ -1,5 +1,7 @@
 package com.ticketbox.ui.components
 
+import com.ticketbox.presentation.displayDateTime
+import com.ticketbox.presentation.formatDisplayAmount
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope

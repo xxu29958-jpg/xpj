@@ -43,9 +43,9 @@ internal fun expenseAcceptanceReceiptSnapshot(row: OutboxRow): ExpenseDto? {
     return snapshot.takeIf { receipt.expenseId == it.id && validExpenseAcceptanceSnapshot(row, it) }
 }
 
-internal fun expenseConfirmationReceiptSnapshot(row: OutboxRow): ExpenseConfirmationReceiptDto? {
+internal fun expenseConfirmationReceiptSnapshot(row: OutboxRow): com.ticketbox.domain.model.ExpenseConfirmationReceipt? {
     val receipt = readExpenseAcceptanceReceipt(row) ?: return null
-    return receipt.confirmationReceipt?.takeIf { it.id == receipt.expenseId && validExpenseConfirmationReceipt(row, it) }
+    return receipt.confirmationReceipt?.takeIf { it.id == receipt.expenseId && validExpenseConfirmationReceipt(row, it) }?.toDomain()
 }
 
 private fun readExpenseAcceptanceReceipt(row: OutboxRow): ExpenseAcceptanceReceipt? =

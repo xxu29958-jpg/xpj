@@ -3,6 +3,7 @@ package com.ticketbox.data.remote.dto
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.repository.toDomain
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -14,7 +15,7 @@ class CategoryRuleDtoContractTest {
 
     @Test
     fun newDefinitionClearsTextConditionsWithoutChangingTheOriginalLegacyReplayBody() {
-        val request = CategoryRuleRequest("早餐", "餐饮", true, 10)
+        val request = CategoryRuleDefinition("早餐", "餐饮", true, 10)
         val legacy = com.ticketbox.data.repository.CategoryRuleSubmissionPayload(expectedRowVersion = 7, request = request)
         val adapter = moshi.adapter(CategoryRuleUpdateRequest::class.java)
         assertEquals("""{"expected_row_version":7,"keyword":"早餐","category":"餐饮","enabled":true,"priority":10}""",

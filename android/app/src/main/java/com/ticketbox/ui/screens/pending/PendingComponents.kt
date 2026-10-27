@@ -27,7 +27,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppPrimaryButton
-import com.ticketbox.ui.components.formatExpensePrimaryAmount
+import com.ticketbox.presentation.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppAdaptiveBreakpoints
 import com.ticketbox.ui.design.AppSpacing

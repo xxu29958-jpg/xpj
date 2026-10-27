@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.repository.changesAdvisorPayloadAgainst
 import com.ticketbox.data.repository.RepositoryException
-import com.ticketbox.data.repository.toRequest
+import com.ticketbox.data.repository.requireAdmissible
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.UiText
@@ -169,7 +169,7 @@ internal fun ExpenseFactViewModel.buildCorrectionDraftOrMessage(): ExpenseCorrec
         return rejectCorrection(R.string.error_expense_split_total_exceeds_parent)
     }
     try {
-        draft.toRequest(expense.rowVersion)
+        draft.requireAdmissible(expense.rowVersion)
     } catch (error: RepositoryException) {
         _uiState.update { it.copy(correction = it.correction.copy(submitError = error.toUiText(R.string.expense_correction_failed))) }
         return null

@@ -20,7 +20,7 @@ import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.friendlyLastError
 
@@ -115,7 +115,7 @@ private fun CorrectionSubmissionFields(pending: PendingExpenseCorrection) {
 }
 
 @Composable
-private fun CorrectionScalarFields(request: com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto, clear: String) {
+private fun CorrectionScalarFields(request: com.ticketbox.domain.model.ExpenseCorrectionSubmission, clear: String) {
     request.merchant?.let { CorrectionField(R.string.correction_field_merchant, it.ifEmpty { clear }) }
     request.category?.let { CorrectionField(R.string.correction_field_category, it.ifEmpty { clear }) }
     request.note?.let { CorrectionField(R.string.correction_field_note, it.ifEmpty { clear }) }
@@ -127,7 +127,7 @@ private fun CorrectionScalarFields(request: com.ticketbox.data.remote.dto.Expens
 }
 
 @Composable
-private fun CorrectionCollectionFields(request: com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto, homeCurrency: String?) {
+private fun CorrectionCollectionFields(request: com.ticketbox.domain.model.ExpenseCorrectionSubmission, homeCurrency: String?) {
     request.items?.let { items ->
         CorrectionField(R.string.correction_field_items, items.size.toString())
         items.forEach { item ->

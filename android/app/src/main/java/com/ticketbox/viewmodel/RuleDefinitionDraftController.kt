@@ -1,12 +1,12 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RuleDefinitionDraft
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
+import com.ticketbox.viewmodel.CategoryRuleDraftForm
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -103,7 +103,7 @@ class RuleDefinitionDraftController(
         return result.isSuccess
     }
 
-    fun submit(draft: RuleDefinitionDraft, request: CategoryRuleRequest) {
+    fun submit(draft: RuleDefinitionDraft, request: CategoryRuleDefinition) {
         val current = _state.value
         if (!current.canModify || current.busy || draft.binding != current.binding || draft !in current.drafts) return
         _state.value = current.copy(busy = true, error = null)

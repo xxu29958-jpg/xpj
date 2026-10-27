@@ -4,21 +4,21 @@ import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.GoalDto
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.Goal
-import com.ticketbox.domain.model.GoalUpdate
-import com.ticketbox.domain.model.GoalEditInput
+import com.ticketbox.domain.model.DebtGoalComposition
 import com.ticketbox.domain.model.DebtGoalLinksUpdate
 import com.ticketbox.domain.model.DebtGoalTargetDateUpdate
-import com.ticketbox.domain.model.DebtGoalComposition
+import com.ticketbox.domain.model.Goal
+import com.ticketbox.domain.model.GoalCreateRequest
+import com.ticketbox.domain.model.GoalEditInput
+import com.ticketbox.domain.model.GoalUpdate
+import com.ticketbox.domain.model.GoalUpdateRequest
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.CancellationException
 
 interface GoalEditActions {
     fun currentAccess(): LedgerAccessContext?
@@ -28,17 +28,19 @@ interface GoalEditActions {
     fun observeEdits(binding: LogicalSessionBinding, publicId: String): Flow<List<PendingGoalEdit>>
     suspend fun save(binding: LogicalSessionBinding, goal: Goal, update: GoalEditInput): Result<Long>
     suspend fun recover(binding: LogicalSessionBinding, pending: PendingGoalEdit, drop: Boolean): Result<Unit>
-    suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequestDto, creationKey: String): Result<Long>
+    suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequest, creationKey: String): Result<Long>
     fun describeCreation(row: OutboxRow): PendingGoalCreation?
     fun observeCreations(binding: LogicalSessionBinding, originalKey: String? = null,
         goalType: String = "spending_limit", originalId: Long? = null): Flow<List<PendingGoalCreation>>
     suspend fun recoverCreation(binding: LogicalSessionBinding, pending: PendingGoalCreation, drop: Boolean): Result<Unit>
 }
 
-data class PendingGoalEdit(val row: OutboxRow, val request: GoalUpdateRequestDto?, val confirmed: Goal?,
-    val debtEdit: DebtGoalEditPayload? = null) {
+data class PendingGoalEdit(val row: OutboxRow, val request: com.ticketbox.domain.model.GoalUpdateRequest?, val confirmed: Goal?,
+    val debtEdit: DebtGoalEditSubmission?, private val capturedCurrency: Boolean) {
+    internal constructor(row: OutboxRow, request: GoalUpdateRequest?, confirmed: Goal?, debtEdit: DebtGoalEditPayload? = null) :
+        this(row, request, confirmed, debtEdit?.toView(), request?.hasCapturedGoalCurrency() == true)
     val isDone: Boolean get() = row.status == PendingMutationStatus.Done
-    val canRetry: Boolean get() = (request?.hasCapturedGoalCurrency() == true || debtEdit != null) &&
+    val canRetry: Boolean get() = (capturedCurrency || debtEdit != null) &&
         row.status == PendingMutationStatus.Failed && (row.lastError?.startsWith("max_attempts_exceeded(") == true ||
         row.lastError in setOf("client_upgrade_required", "runtime_version_mismatch"))
     val canDrop: Boolean get() = row.status == PendingMutationStatus.Failed || row.status == PendingMutationStatus.Conflict
@@ -49,9 +51,9 @@ data class PendingGoalEdit(val row: OutboxRow, val request: GoalUpdateRequestDto
 class GoalEditRepository(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
-    private val requestAdapter: JsonAdapter<GoalUpdateRequestDto>,
+    private val requestAdapter: JsonAdapter<GoalUpdateRequest>,
     private val receiptAdapter: JsonAdapter<GoalDto>,
-    private val createAdapter: JsonAdapter<GoalCreateRequestDto>,
+    private val createAdapter: JsonAdapter<GoalCreateRequest>,
     private val debtEditAdapter: JsonAdapter<DebtGoalEditPayload>,
 ) : GoalEditActions {
     private val guard = LedgerRequestGuard(apiProvider)
@@ -114,7 +116,7 @@ class GoalEditRepository(
                     "请至少选择一笔关联欠款。"
                 }
                 val original = DebtGoalEditPayload(goal.name,
-                    com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto(goal.rowVersion, update.selectedLabels.keys.toList()),
+                    com.ticketbox.domain.model.DebtGoalLinksReplaceRequest(goal.rowVersion, update.selectedLabels.keys.toList()),
                     update.selectedLabels)
                 PendingMutationIntent(PendingMutationType.ReplaceGoalDebtLinks, target, debtEditAdapter.toJson(original), goal.rowVersion, key)
             }
@@ -124,7 +126,7 @@ class GoalEditRepository(
                 }
                 update.targetDate?.let { require(java.time.LocalDate.parse(it).toString() == it) { "请选择正确的还清日期。" } }
                 val original = DebtGoalEditPayload(goal.name,
-                    dateRequest = com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto(goal.rowVersion, update.targetDate),
+                    dateRequest = com.ticketbox.domain.model.DebtGoalTargetDateRequest(goal.rowVersion, update.targetDate),
                     goalVersion = goal.debtRepayment.goalVersion)
                 PendingMutationIntent(PendingMutationType.SetGoalTargetDate, target, debtEditAdapter.toJson(original), goal.rowVersion, key)
             }
@@ -142,7 +144,7 @@ class GoalEditRepository(
             }
         }
 
-    override suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequestDto, creationKey: String): Result<Long> = errors.safeCall {
+    override suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequest, creationKey: String): Result<Long> = errors.safeCall {
         val bound = guard.bindExact(binding)
         require(currentAccess()?.canModify == true) { "当前角色为只读，无法修改账本。" }
         require(creationKey.isNotBlank() && creationKey.length <= 64) { "原创建标识无法确认，请保留草稿并重新打开。" }
@@ -179,7 +181,7 @@ class GoalEditRepository(
             if (drop && createAdapter.readGoalCreation(pending.row)?.goalType == "debt_repayment") {
                 val current = currentGoalSubmission(outbox, bound, pending.row) { row ->
                     val original = describeCreation(row)
-                    original != null && original.request?.let { it.goalType == "debt_repayment" && it.isSupportedGoalCreation(row) } == true &&
+                    original != null && original.request?.let { it.goalType == "debt_repayment" && original.hasSupportedIntent } == true &&
                         original.canDrop
                 }
                 check(outbox.abandonOriginalCommand(bound, current)) { "提交状态已变化，请重新核对。" }

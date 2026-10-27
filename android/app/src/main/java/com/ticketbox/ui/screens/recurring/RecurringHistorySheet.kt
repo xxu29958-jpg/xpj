@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.recurring
 
+import com.ticketbox.presentation.displayDateTime
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -8,7 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.RecurringDefinitionDto
+import com.ticketbox.domain.model.RecurringDefinition
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.*
 import com.ticketbox.ui.design.tabularNum
@@ -57,7 +58,7 @@ internal fun RecurringHistorySheet(state: RecurringHistoryState, retry: () -> Un
 }
 
 @Composable
-private fun RecurringHistoryChanges(before: RecurringDefinitionDto, after: RecurringDefinitionDto) {
+private fun RecurringHistoryChanges(before: RecurringDefinition, after: RecurringDefinition) {
     if (before.merchant != after.merchant) AppHistoryField(stringResource(R.string.plan_history_name), before.merchant, after.merchant)
     if (before.nextExpectedDate != after.nextExpectedDate) AppHistoryField(stringResource(R.string.plan_history_schedule),
         before.nextExpectedDate?.let(::recurringDisplayDate) ?: stringResource(R.string.occurrence_no_reminder),
@@ -74,7 +75,7 @@ private fun recurringHistoryStatus(status: String): String = stringResource(when
 })
 
 @Composable
-internal fun RecurringDefinitionContent(plan: RecurringDefinitionDto) {
+internal fun RecurringDefinitionContent(plan: RecurringDefinition) {
     Text(plan.merchant, style = MaterialTheme.typography.titleMedium)
     Text(stringResource(R.string.recurring_history_monthly_amount,
         recurringRecordedAmountText(plan.baselineAmountCents, plan.homeCurrencyCode)),

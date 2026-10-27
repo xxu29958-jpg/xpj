@@ -3,7 +3,7 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.ExpenseEntity
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
-import com.ticketbox.ui.components.formatExpensePrimaryAmount
+import com.ticketbox.presentation.formatExpensePrimaryAmount
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

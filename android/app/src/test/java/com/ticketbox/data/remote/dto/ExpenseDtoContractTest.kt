@@ -2,6 +2,7 @@ package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.domain.model.RecognitionTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -223,7 +224,7 @@ class ExpenseDtoContractTest {
 
     @Test
     fun timeEvidenceCarriesEachSourceThroughJsonAndDomainMapping() {
-        val evidence = requireNotNull(moshi.adapter(RecognitionTimeDto::class.java).fromJson("""
+        val evidence = requireNotNull(moshi.adapter(RecognitionTime::class.java).fromJson("""
             {"evidence_public_id":"fact","source":"multiple","parser_version":"mixed","status":"ambiguous",
              "candidates":[
               {"id":"same-value-id","label":"图片 · 交易日期","explanation":"只有日期","original_text":"2025-12-31",
@@ -232,7 +233,7 @@ class ExpenseDtoContractTest {
               {"id":"same-value-id","label":"通知 · 交易日期","explanation":"只有日期","original_text":"2026-01-01",
                "local_value":"2026-01-01","precision":"date_only","source_timezone":null,"source_utc_offset_seconds":null,
                "can_apply":true,"evidence_public_id":"capture","source":"notification","parser_version":"receipt-fields-v3","role":"payment"}]}
-        """.trimIndent())).toDomain()
+        """.trimIndent()))
         assertEquals(listOf("fact", "capture"), evidence.candidates.map { it.evidencePublicId })
         assertEquals(listOf("image", "notification"), evidence.candidates.map { it.source })
         assertEquals(listOf("receipt-fields-v2", "receipt-fields-v3"), evidence.candidates.map { it.parserVersion })

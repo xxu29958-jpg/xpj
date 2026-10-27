@@ -24,12 +24,12 @@ sealed interface DebtWriteIntent {
 
 sealed interface DebtAmountIntent : DebtWriteIntent { val amountCents: Long }
 
-data class PendingDebtWrite(val row: OutboxRow, val intent: DebtWriteIntent?, val originalBindingChanged: Boolean = false) {
-    val adjustment: DebtAdjustmentPayload? get() = intent as? DebtAdjustmentPayload
-    val repayment: DebtRepaymentPayload? get() = intent as? DebtRepaymentPayload
-    val debtVoid: DebtVoidPayload? get() = intent as? DebtVoidPayload
-    val repaymentVoid: DebtRepaymentVoidPayload? get() = intent as? DebtRepaymentVoidPayload
-    val kind: DebtKindPayload? get() = intent as? DebtKindPayload
+data class PendingDebtWrite(val row: OutboxRow, val intent: DebtWriteSubmission?, val originalBindingChanged: Boolean = false) {
+    val adjustment: DebtAdjustmentSubmission? get() = intent as? DebtAdjustmentSubmission
+    val repayment: DebtRepaymentSubmission? get() = intent as? DebtRepaymentSubmission
+    val debtVoid: DebtVoidSubmission? get() = intent as? DebtVoidSubmission
+    val repaymentVoid: DebtRepaymentVoidSubmission? get() = intent as? DebtRepaymentVoidSubmission
+    val kind: DebtKindSubmission? get() = intent as? DebtKindSubmission
     val isVoid: Boolean get() = row.type in setOf(PendingMutationType.VoidDebt, PendingMutationType.VoidDebtRepayment)
     val legacyVoidAccepted: Boolean get() = isVoid && row.lastError == DEBT_VOID_ORIGINAL_REQUIRES_REVIEW
     val legacyKindAccepted: Boolean get() = row.type == PendingMutationType.SetDebtKind && row.lastError == DEBT_KIND_ORIGINAL_REQUIRES_REVIEW

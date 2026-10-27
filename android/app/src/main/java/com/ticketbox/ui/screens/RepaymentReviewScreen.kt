@@ -101,7 +101,7 @@ private fun RepaymentReviewSource(capture: RepaymentDraft) {
             verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
         ) {
             Text(stringResource(R.string.repayment_draft_original_money), style = MaterialTheme.typography.labelMedium, color = muted)
-            Text("${capture.originalCurrencyCode} ${com.ticketbox.ui.components.formatMinorAmount(capture.originalAmountMinor,
+            Text("${capture.originalCurrencyCode} ${com.ticketbox.presentation.formatMinorAmount(capture.originalAmountMinor,
                 CurrencyCode.fromStorageKey(capture.originalCurrencyCode))}",
                 style = MaterialTheme.typography.titleMedium.tabularNum(), fontWeight = FontWeight.SemiBold)
             capture.merchantLabel?.takeIf { it.isNotBlank() }?.let {

@@ -1,5 +1,8 @@
 package com.ticketbox.ui.screens.expense
 
+import com.ticketbox.viewmodel.readExpenseTimeForm
+import com.ticketbox.viewmodel.toSavedJson
+import com.ticketbox.viewmodel.ExpenseTimeForm
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -26,7 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.LedgerCalendarDto
+import com.ticketbox.domain.model.LedgerCalendar
 import com.ticketbox.data.repository.LedgerCalendarRepository
 import com.ticketbox.domain.model.ExpenseAccountingTime
 import com.ticketbox.ui.components.AppTextInput
@@ -53,7 +56,7 @@ internal fun rememberLedgerCalendar(revision: Long? = null): CalendarRuleLoading
     return CalendarRuleLoading(rule) { attempt++ }
 }
 
-internal data class CalendarRuleLoading(val rule: LedgerCalendarDto?, val retry: () -> Unit)
+internal data class CalendarRuleLoading(val rule: LedgerCalendar?, val retry: () -> Unit)
 
 @Composable
 internal fun rememberExpenseTimeForm(

@@ -22,7 +22,7 @@ internal suspend fun ApiService.submitCatalogDraft(draft: MerchantDraft): Mercha
             (receipt.createdAliasPublicId != null) == (policy == MerchantCatalogAliasPolicy.CreateSourceAlias)) {
             "返回的原商家合并回执无法核对。"
         }
-        return draft.copy(phase = "accepted", mergeReceipt = receipt, error = null)
+        return draft.copy(phase = "accepted", mergeReceipt = receipt.toDomain(), error = null)
     }
     val receipt = when (draft.kind) {
         MerchantDraftKind.Rename -> updateMerchantCatalog(source.publicId,
@@ -35,7 +35,7 @@ internal suspend fun ApiService.submitCatalogDraft(draft: MerchantDraft): Mercha
     requireCatalogSnapshot(receipt, source)
     check(draft.kind != MerchantDraftKind.Delete || receipt.deletedAt != null) { "返回的原删除回执无法核对。" }
     check(draft.kind != MerchantDraftKind.Visibility || receipt.status == draft.nextStatus) { "返回的原显示设置无法核对。" }
-    return draft.copy(phase = "accepted", catalogReceipt = receipt, error = null)
+    return draft.copy(phase = "accepted", catalogReceipt = receipt.toDomain(), error = null)
 }
 
 private fun requireCatalogSnapshot(receipt: MerchantCatalogDto, original: MerchantCatalog) {

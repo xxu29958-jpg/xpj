@@ -3,8 +3,8 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
-import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
+import com.ticketbox.domain.model.RecurringOccurrence
+import com.ticketbox.domain.model.RecurringOccurrencePaymentRequest
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -12,16 +12,18 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 data class OccurrencePaymentDraft(
-    val occurrence: RecurringOccurrenceDto,
+    val occurrence: RecurringOccurrence,
     val seriesLabel: String,
-    val request: RecurringOccurrencePaymentRequestDto,
+    val request: RecurringOccurrencePaymentRequest,
     val paymentLabel: String?,
     val paymentAmountCents: Long?,
     val paymentCurrencyCode: String?,
 )
 
-data class PendingOccurrencePayment(val row: OutboxRow, val intent: RecurringOccurrencePayload?) {
-    val canRetry: Boolean get() = intent?.matchesOriginal(row) == true && row.status == PendingMutationStatus.Failed &&
+data class PendingOccurrencePayment(val row: OutboxRow,
+    val intent: RecurringOccurrenceSubmission?) {
+    private val supported: Boolean get() = intent?.matchesOriginal(row) == true
+    val canRetry: Boolean get() = supported && row.status == PendingMutationStatus.Failed &&
         (row.lastError?.startsWith("max_attempts_exceeded(") == true ||
             row.lastError in setOf("client_upgrade_required", "runtime_version_mismatch"))
 }
@@ -32,7 +34,7 @@ interface RecurringOccurrenceActions {
     fun observeAccess(): Flow<LedgerAccessContext?>
     fun describe(row: OutboxRow): PendingOccurrencePayment?
     fun observeQueue(binding: LogicalSessionBinding): Flow<List<PendingOccurrencePayment>>
-    suspend fun fetch(binding: LogicalSessionBinding, seriesId: String, period: String): Result<ReadSnapshot<RecurringOccurrenceDto>>
+    suspend fun fetch(binding: LogicalSessionBinding, seriesId: String, period: String): Result<ReadSnapshot<RecurringOccurrence>>
     suspend fun enqueue(binding: LogicalSessionBinding, draft: OccurrencePaymentDraft): Result<Long>
     suspend fun recover(binding: LogicalSessionBinding, row: OutboxRow, drop: Boolean): Result<Unit>
 }
@@ -41,7 +43,7 @@ interface RecurringOccurrenceActions {
 class RecurringOccurrenceRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
-    private val adapter: JsonAdapter<RecurringOccurrencePayload>,
+    private val adapter: JsonAdapter<RecurringOccurrenceSubmission>,
     private val queryReader: RecurringQueryReader,
 ) : RecurringOccurrenceActions {
     private val guard = LedgerRequestGuard(apiProvider)
@@ -89,7 +91,7 @@ class RecurringOccurrenceRepository internal constructor(
         binding: LogicalSessionBinding,
         seriesId: String,
         period: String,
-    ): Result<ReadSnapshot<RecurringOccurrenceDto>> = queryReader.occurrence(binding, seriesId, period)
+    ): Result<ReadSnapshot<RecurringOccurrence>> = queryReader.occurrence(binding, seriesId, period)
 
     override suspend fun enqueue(binding: LogicalSessionBinding, draft: OccurrencePaymentDraft): Result<Long> = try {
         val bound = guard.bindExact(binding)
@@ -117,7 +119,7 @@ class RecurringOccurrenceRepository internal constructor(
     }
 }
 
-private fun OccurrencePaymentDraft.toPayload(binding: LogicalSessionBinding) = RecurringOccurrencePayload(
+private fun OccurrencePaymentDraft.toPayload(binding: LogicalSessionBinding) = RecurringOccurrenceSubmission(
     revision = RECURRING_OCCURRENCE_PAYLOAD_REVISION,
     seriesPublicId = occurrence.seriesPublicId,
     seriesLabel = seriesLabel,

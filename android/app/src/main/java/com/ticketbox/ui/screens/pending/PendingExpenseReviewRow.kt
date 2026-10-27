@@ -51,8 +51,8 @@ import com.ticketbox.ui.components.AppAsyncImagePresentation
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
 import com.ticketbox.ui.components.appTapWithoutDrag
-import com.ticketbox.ui.components.formatExpenseExchangeMeta
-import com.ticketbox.ui.components.formatExpensePrimaryAmount
+import com.ticketbox.presentation.formatExpenseExchangeMeta
+import com.ticketbox.presentation.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppDensity

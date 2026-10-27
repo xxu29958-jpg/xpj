@@ -8,7 +8,7 @@ import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.canInitiateBillSplit
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.parseAmountCents
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 

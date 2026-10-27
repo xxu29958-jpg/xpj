@@ -2,6 +2,8 @@ package com.ticketbox.data.repository
 
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.RepositoryGraph
@@ -12,31 +14,29 @@ import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.dto.DebtActivityListDto
 import com.ticketbox.data.remote.dto.DebtDto
-import com.ticketbox.data.remote.dto.GoalListResponseDto
-import com.ticketbox.data.remote.dto.GoalDto
-import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
 import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
-import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
-import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
+import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
 import com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto
+import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
-import com.ticketbox.data.remote.dto.DebtActivityListDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.ticketbox.viewmodel.CreateDebtGoalViewModel
-import com.ticketbox.viewmodel.DebtGoalViewModel
-import com.ticketbox.viewmodel.DebtListViewModel
-import com.ticketbox.viewmodel.ReceivablesViewModel
-import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
+import com.ticketbox.domain.model.DebtAdjustmentCreateRequest
+import com.ticketbox.domain.model.DebtKindSetRequest
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
 import com.ticketbox.security.SessionCredentialAdapter
 import com.ticketbox.security.StoredSessionToken
+import com.ticketbox.viewmodel.CreateDebtGoalViewModel
+import com.ticketbox.viewmodel.DebtGoalViewModel
+import com.ticketbox.viewmodel.DebtListViewModel
+import com.ticketbox.viewmodel.ReceivablesViewModel
+import com.ticketbox.viewmodel.RepaymentDraftInboxViewModel
 import java.io.IOException
 import java.lang.reflect.Proxy
 import java.time.Clock
@@ -67,7 +67,6 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
     lateinit var outbox: OutboxRepository
     lateinit var graph: RepositoryGraph
         private set
-
 
     fun reopen(): RepositoryGraph {
         database?.close()
@@ -134,11 +133,11 @@ internal class DebtAdjustmentConnectedNetwork {
     var kindResponse: DebtDto? = null
     var repaymentResponse: DebtRepaymentReceiptDto? = null
     var activityResponse = DebtActivityListDto("debt-original", "CNY", emptyList(), 1, 20, 0)
-    val calls = mutableListOf<Triple<String, DebtAdjustmentCreateRequestDto, String?>>()
-    val kindCalls = mutableListOf<Triple<String, DebtKindSetRequestDto, String?>>()
+    val calls = mutableListOf<Triple<String, DebtAdjustmentCreateRequest, String?>>()
+    val kindCalls = mutableListOf<Triple<String, DebtKindSetRequest, String?>>()
     val repaymentCalls = mutableListOf<Triple<String, RepaymentCreateRequestDto, String?>>()
     val service = object : ApiService by debtAdjustmentProxy<ApiService>({ error("Unexpected remote method: $it") }) {
-        override suspend fun setDebtKind(publicId: String, request: DebtKindSetRequestDto, idempotencyKey: String?): DebtDto {
+        override suspend fun setDebtKind(publicId: String, request: DebtKindSetRequest, idempotencyKey: String?): DebtDto {
             kindCalls += Triple(publicId, request, idempotencyKey)
             if (failReads) throw IOException("Synthetic offline classification write")
             val response = requireNotNull(kindResponse) { "Declare the accepted classification response" }
@@ -182,7 +181,7 @@ internal class DebtAdjustmentConnectedNetwork {
                 suggestedDebtPublicId = current.publicId, createdAt = current.createdAt),
         ))
 
-        override suspend fun recordDebtAdjustment(publicId: String, request: DebtAdjustmentCreateRequestDto,
+        override suspend fun recordDebtAdjustment(publicId: String, request: DebtAdjustmentCreateRequest,
             idempotencyKey: String?): DebtDto {
             calls += Triple(publicId, request, idempotencyKey)
             val response = requireNotNull(adjustmentResponse) { "Declare the accepted adjustment response" }

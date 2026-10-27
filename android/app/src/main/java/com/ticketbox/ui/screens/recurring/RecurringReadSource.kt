@@ -7,7 +7,7 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.DataAuthorityTone
-import com.ticketbox.ui.components.displayDateTime
+import com.ticketbox.presentation.displayDateTime
 
 @Composable
 internal fun RecurringReadSource(fetchedAt: String?, fromCache: Boolean, loading: Boolean = false) {

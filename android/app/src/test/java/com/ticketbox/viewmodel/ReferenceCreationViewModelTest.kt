@@ -1,7 +1,7 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.SavedStateHandle
-import com.ticketbox.data.remote.dto.ReferenceCreatedDto
+import com.ticketbox.domain.model.ReferenceCreated
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.ReferenceCreationActions
@@ -125,11 +125,11 @@ class ReferenceCreationViewModelTest {
     private inner class Remote(override val kind: ReferenceKind = ReferenceKind.Tag) : ReferenceCreationActions {
         val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(original, true))
         val calls = mutableListOf<Triple<LogicalSessionBinding, String, String>>()
-        var response = ReferenceCreatedDto(kind.wire, "00000000-0000-0000-0000-000000000001", "暑期旅行", 1)
+        var response = ReferenceCreated(kind.wire, "00000000-0000-0000-0000-000000000001", "暑期旅行", 1)
         var loseReply = true
         var refuse = false
         override fun observeAccess() = access
-        override suspend fun create(binding: LogicalSessionBinding, name: String, key: String): Result<ReferenceCreatedDto> {
+        override suspend fun create(binding: LogicalSessionBinding, name: String, key: String): Result<ReferenceCreated> {
             calls += Triple(binding, name, key)
             if (refuse) return Result.failure(RepositoryException("已有同名对象", errorCode = "reference_name_conflict"))
             if (loseReply) {

@@ -8,7 +8,7 @@ private val agreementReadAdapter = Moshi.Builder().add(KotlinJsonAdapterFactory(
     .adapter(BillSplitAgreementDto::class.java)
 
 /** Canonical facts use the existing Debt read owner; input-dependent previews never enter its cache. */
-internal suspend fun DebtQueryReader.agreement(task: DebtTask): Result<ReadSnapshot<BillSplitAgreementDto>> =
+internal suspend fun DebtQueryReader.agreement(task: DebtTask): Result<ReadSnapshot<com.ticketbox.domain.model.BillSplitAgreement>> =
     read(task.binding, DebtQueryScope(debtScope(task.binding, "debt_agreement", task.debtPublicId), task.debtPublicId),
         DebtReadSpec(agreementReadAdapter, { splitAgreement(task.debtPublicId, null) },
             validate = { value ->
@@ -27,6 +27,10 @@ internal suspend fun DebtQueryReader.agreement(task: DebtTask): Result<ReadSnaps
                 value
             },
             publicIds = BillSplitAgreementDto::debtPublicIds))
+        .map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }
 
 internal fun BillSplitAgreementDto.debtPublicIds(): Set<String> =
+    setOfNotNull(originalDebt.publicId, returnDebt?.publicId)
+
+internal fun com.ticketbox.domain.model.BillSplitAgreement.debtPublicIds(): Set<String> =
     setOfNotNull(originalDebt.publicId, returnDebt?.publicId)

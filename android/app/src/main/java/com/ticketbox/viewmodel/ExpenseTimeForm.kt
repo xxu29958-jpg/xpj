@@ -1,9 +1,9 @@
-package com.ticketbox.ui.screens.expense
+package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
-import com.ticketbox.data.remote.dto.LedgerCalendarDto
+import com.ticketbox.domain.model.LedgerCalendar
 import com.ticketbox.domain.model.ExpenseAccountingTime
 import com.ticketbox.domain.model.ExpenseTimeInput
 import java.time.Instant
@@ -58,7 +58,7 @@ data class ExpenseTimeForm(
     fun resolveEdit(originalInstant: String?): ExpenseTimeResolution =
         if (changed) resolve() else ExpenseTimeResolution(instant = originalInstant)
 
-    fun withPrecision(value: String, rule: LedgerCalendarDto?): ExpenseTimeForm = copy(
+    fun withPrecision(value: String, rule: LedgerCalendar?): ExpenseTimeForm = copy(
         precision = value, changed = true,
         calendarRevision = calendarRevision ?: rule?.revision,
         calendarZone = calendarZone ?: rule?.timezoneName,
@@ -70,7 +70,7 @@ data class ExpenseTimeForm(
             offsetSeconds = null, originalInstant = null, calendarRevision = calendarRevision, calendarZone = calendarZone,
         )
 
-        fun initial(instant: String?, evidence: ExpenseAccountingTime?, rule: LedgerCalendarDto?, zone: ZoneId): ExpenseTimeForm {
+        fun initial(instant: String?, evidence: ExpenseAccountingTime?, rule: LedgerCalendar?, zone: ZoneId): ExpenseTimeForm {
             val source = evidence?.sourceTimezone?.let(ZoneId::of)
                 ?: evidence?.sourceUtcOffsetSeconds?.let(ZoneOffset::ofTotalSeconds) ?: zone
             val known = evidence?.instantUtc ?: instant

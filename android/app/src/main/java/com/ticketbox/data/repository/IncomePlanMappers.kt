@@ -2,10 +2,10 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto
 import com.ticketbox.data.remote.dto.IncomePlanDto
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
-import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeFrequency
+import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomePlanStatus
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
 import com.ticketbox.domain.model.IncomeSourceType
 
 fun IncomePlanDto.toDomain(): IncomePlan = IncomePlan(
@@ -58,8 +58,8 @@ data class IncomePlanPatch(
     val payDay: Int? = null,
 )
 
-fun IncomePlanPatch.toUpdateRequest(): IncomePlanUpdateRequestDto =
-    IncomePlanUpdateRequestDto(
+fun IncomePlanPatch.toUpdateRequest(): IncomePlanUpdateRequest =
+    IncomePlanUpdateRequest(
         intentMonth = intentMonth,
         expectedRowVersion = expectedRowVersion,
         label = label?.trim(),
@@ -72,3 +72,6 @@ fun IncomePlanPatch.toUpdateRequest(): IncomePlanUpdateRequestDto =
 
 private fun IncomePlanDraft.incomeMonthForWire(): String? =
     if (frequency == IncomeFrequency.ONE_TIME) incomeMonth?.trim() else null
+
+internal fun IncomePlanPatch.matchesSubmittedRequest(original: com.ticketbox.domain.model.IncomePlanUpdateRequest): Boolean =
+    toUpdateRequest().copy(expectedRowVersion = 0) == original

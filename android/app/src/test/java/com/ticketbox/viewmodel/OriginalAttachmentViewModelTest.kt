@@ -12,7 +12,7 @@ import com.ticketbox.data.repository.PendingOriginalCommand
 import com.ticketbox.data.repository.originalPayloadAdapter
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.OriginalHealthDto
+import com.ticketbox.domain.model.OriginalHealth
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
 import java.io.IOException
@@ -273,7 +273,7 @@ private class OriginalActionsFake : OriginalAttachmentActions, com.ticketbox.dat
     override fun observeOriginalCommands() = observations
     var healthFailure: Throwable? = null
     var healthState = "unverified"
-    override suspend fun fetchOriginalHealth(id: Long): Result<OriginalHealthDto> = healthFailure?.let { Result.failure(it) } ?: Result.success(OriginalHealthDto(id, "expense-$id", 4,
+    override suspend fun fetchOriginalHealth(id: Long): Result<OriginalHealth> = healthFailure?.let { Result.failure(it) } ?: Result.success(OriginalHealth(id, "expense-$id", 4,
         healthState, "2026-09-20T00:00:00Z", observedSha256 = "a".repeat(64)))
     override suspend fun submitOriginal(request: OriginalSubmission): Result<Long> {
         submissions += request

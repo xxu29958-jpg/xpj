@@ -3,25 +3,25 @@ package com.ticketbox.data.repository
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.ExchangeRateDto
 import com.ticketbox.data.remote.dto.ExchangeRateListDto
-import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
+import com.ticketbox.domain.model.ExchangeRate
+import com.ticketbox.domain.model.ExchangeRateRequest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class ManualExchangeRateContinuityTest {
     @Test fun everyReceiptFieldMustMatchTheOriginalAnd404NeverCompletes() = runTest {
         val f = ManualRateFixture()
         val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
         val pending = f.pending(id)
-        val intent = requireNotNull(pending.intent)
+        val intent = requireNotNull(f.adapters.budget.manualRateAdapter.fromJson(pending.row.payloadJson))
         val mismatches = listOf(f.latest.copy(publicId = ""), f.latest.copy(currencyCode = "USD"),
             f.latest.copy(homeCurrencyCode = "USD"), f.latest.copy(rateDate = "2026-09-02"),
             f.latest.copy(rateToHome = "0.06"), f.latest.copy(source = "automatic"), f.latest.copy(rowVersion = 2))
@@ -81,8 +81,8 @@ internal class ManualRateFixture {
     val adapters = OutboxAdapterGraph()
     val dao = FakePendingMutationDao()
     val outbox = testOutboxRepository(dao, bindingProvider = { session.sessionStore.currentSession().toOutboxBinding() })
-    val request = ExchangeRateRequestDto("JPY", "CNY", "2026-09-01", "0.05", "manual", 0)
-    var latest = ExchangeRateDto("manual-rate", "JPY", "CNY", "2026-09-01", "0.05", "manual",
+    val request = ExchangeRateRequest("JPY", "CNY", "2026-09-01", "0.05", "manual", 0)
+    var latest = ExchangeRate("manual-rate", "JPY", "CNY", "2026-09-01", "0.05", "manual",
         "2026-09-09T00:00:00Z", "2026-09-09T00:00:00Z", 1)
     val keys = mutableListOf<String>()
     var response = latest
@@ -90,7 +90,7 @@ internal class ManualRateFixture {
         override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int) =
             ExchangeRateListDto(listOf(latest))
         override suspend fun saveExchangeRate(currencyCode: String, rateDate: String,
-            request: ExchangeRateRequestDto, idempotencyKey: String): ExchangeRateDto {
+            request: ExchangeRateRequest, idempotencyKey: String): ExchangeRate {
             assertEquals(request.currencyCode, currencyCode)
             assertEquals(request.rateDate, rateDate)
             keys += idempotencyKey

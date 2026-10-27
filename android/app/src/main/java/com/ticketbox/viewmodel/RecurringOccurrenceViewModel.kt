@@ -9,8 +9,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
-import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
+import com.ticketbox.domain.model.RecurringOccurrence
+import com.ticketbox.domain.model.RecurringOccurrencePaymentRequest
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LedgerActions
@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
 data class RecurringOccurrenceUiState(
     val access: LedgerAccessContext? = null,
     val item: RecurringItem? = null,
-    val occurrence: RecurringOccurrenceDto? = null,
+    val occurrence: RecurringOccurrence? = null,
     val fetchedAt: String? = null,
     val fromCache: Boolean = false,
     val readDenied: Boolean = false,
@@ -142,7 +142,7 @@ class RecurringOccurrenceViewModel(
         mutableState.update { it.copy(choice = OccurrencePaymentDraft(
             occurrence = occurrence,
             seriesLabel = state.item?.merchant.orEmpty(),
-            request = RecurringOccurrencePaymentRequestDto(
+            request = RecurringOccurrencePaymentRequest(
                 action = if (payment == null) "clear" else "link",
                 expectedRowVersion = occurrence.rowVersion,
                 expectedSeriesRowVersion = occurrence.seriesRowVersion,
@@ -213,7 +213,7 @@ class RecurringOccurrenceViewModel(
         }
     }
 
-    private fun publishRead(result: Result<com.ticketbox.data.repository.ReadSnapshot<RecurringOccurrenceDto>>) {
+    private fun publishRead(result: Result<com.ticketbox.data.repository.ReadSnapshot<RecurringOccurrence>>) {
         val read = result.getOrNull()
         mutableState.update { it.copy(
             loading = false, occurrence = read?.value ?: it.occurrence,

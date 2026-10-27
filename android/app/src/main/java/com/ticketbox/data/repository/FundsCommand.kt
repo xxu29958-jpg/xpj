@@ -3,20 +3,20 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
-import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.AccountPostingDto
 import com.ticketbox.data.remote.dto.CreditPaymentDto
 import com.ticketbox.data.remote.dto.CreditPaymentVoidDto
+import com.ticketbox.data.remote.dto.ExpenseFundingCommandDto
 import com.ticketbox.data.remote.dto.FinancialAccountCreateDto
-import com.ticketbox.data.remote.dto.FinancialAccountReceiptDto
 import com.ticketbox.data.remote.dto.FinancialAccountDto
 import com.ticketbox.data.remote.dto.FinancialAccountEditDto
-import com.ticketbox.data.remote.dto.AccountPostingDto
-import com.ticketbox.data.remote.dto.FundsOverviewDto
-import com.ticketbox.data.remote.dto.ExpenseFundingViewDto
-import com.ticketbox.data.remote.dto.ExpenseFundingCommandDto
+import com.ticketbox.data.remote.dto.FinancialAccountReceiptDto
 import com.ticketbox.data.remote.dto.InstallmentCommandDto
-import com.ticketbox.data.remote.dto.InstallmentsDto
+import com.ticketbox.domain.model.ExpenseFundingView
+import com.ticketbox.domain.model.FundsOverview
+import com.ticketbox.domain.model.Installments
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
@@ -46,7 +46,7 @@ data class FundsInput(val binding: LogicalSessionBinding, val mode: String, val 
     val creditReviewId: String = "", val creditSourceLabel: String = "", val creditDrawLabel: String = "",
     val legacyRepayment: Boolean = false, val reviewedDebtAmount: String = "",
     val activityEventId: String = "", val activityLabel: String = "",
-    val activityParts: List<com.ticketbox.data.remote.dto.ActivityCorrectionPartDto> = emptyList())
+    val activityParts: List<com.ticketbox.domain.model.ActivityCorrectionPart> = emptyList())
 
 @JsonClass(generateAdapter = true)
 data class FundsCommand(val revision: Int = 1, val binding: LogicalSessionBinding, val accountId: String,
@@ -73,19 +73,18 @@ internal object FundsWire {
     val account = moshi.adapter(FinancialAccountDto::class.java)
     val accountReceipt = moshi.adapter(FinancialAccountReceiptDto::class.java)
     val envelopeReceipt = moshi.adapter(com.ticketbox.data.remote.dto.EnvelopeReceiptDto::class.java)
-    val envelopeHistory = moshi.adapter<List<com.ticketbox.data.remote.dto.EnvelopeRevisionDto>>(
-        Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.EnvelopeRevisionDto::class.java))
-    val overview = moshi.adapter(FundsOverviewDto::class.java)
-    val funding = moshi.adapter(ExpenseFundingViewDto::class.java)
-    val installments = moshi.adapter(InstallmentsDto::class.java)
-    val envelopes = moshi.adapter(com.ticketbox.data.remote.dto.EnvelopesDto::class.java)
+    val envelopeHistory = moshi.adapter<List<com.ticketbox.domain.model.EnvelopeRevision>>(
+        Types.newParameterizedType(List::class.java, com.ticketbox.domain.model.EnvelopeRevision::class.java))
+    val overview = moshi.adapter(FundsOverview::class.java)
+    val funding = moshi.adapter(ExpenseFundingView::class.java)
+    val installments = moshi.adapter(Installments::class.java)
+    val envelopes = moshi.adapter(com.ticketbox.domain.model.Envelopes::class.java)
     val listing = moshi.adapter<List<FinancialAccountDto>>(Types.newParameterizedType(List::class.java, FinancialAccountDto::class.java))
-    val choices = moshi.adapter<List<com.ticketbox.data.remote.dto.AccountChoiceDto>>(
-        Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.AccountChoiceDto::class.java))
-    val existingDebts = moshi.adapter<List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto>>(
-        Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.ExistingDebtChoiceDto::class.java))
+    val choices = moshi.adapter<List<com.ticketbox.domain.model.AccountChoice>>(
+        Types.newParameterizedType(List::class.java, com.ticketbox.domain.model.AccountChoice::class.java))
+    val existingDebts = moshi.adapter<List<com.ticketbox.domain.model.ExistingDebtChoice>>(
+        Types.newParameterizedType(List::class.java, com.ticketbox.domain.model.ExistingDebtChoice::class.java))
 }
-
 
 internal const val FUNDS_REFUSED = "资金请求未接受："
 

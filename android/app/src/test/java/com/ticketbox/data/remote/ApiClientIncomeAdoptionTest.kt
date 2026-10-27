@@ -2,10 +2,15 @@ package com.ticketbox.data.remote
 
 import com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto
 import com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto
 import com.ticketbox.data.repository.NetworkErrorHandler
 import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -13,11 +18,6 @@ import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class ApiClientIncomeAdoptionTest {
     @Test
@@ -108,7 +108,7 @@ private val incomeAdoptionCommands = listOf(
         api.createIncomePlan(IncomePlanCreateRequestDto("2026-09", "工资", "salary", amountCents = 10000, payDay = 15, homeCurrencyCode = "CNY"), "synthetic-income-create-key")
     },
     IncomeAdoptionCommand("edit") { api ->
-        api.updateIncomePlan("plan-1", IncomePlanUpdateRequestDto("2026-09", 7, amountCents = 12000), "original-key")
+        api.updateIncomePlan("plan-1", IncomePlanUpdateRequest("2026-09", 7, amountCents = 12000), "original-key")
     },
     IncomeAdoptionCommand("archive") { api ->
         api.archiveIncomePlan("plan-1", IncomePlanTokenRequestDto(7, "2026-09"))

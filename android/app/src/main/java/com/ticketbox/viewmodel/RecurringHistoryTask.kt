@@ -3,7 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RecurringQueryActions
-import com.ticketbox.data.remote.dto.RecurringRevisionDto
+import com.ticketbox.domain.model.RecurringRevision
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.CoroutineScope
@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 data class RecurringHistoryState(
     val publicId: String? = null,
     val merchant: String = "",
-    val items: List<RecurringRevisionDto> = emptyList(),
+    val items: List<RecurringRevision> = emptyList(),
     val nextBeforeVersion: Long? = null,
     val loading: Boolean = false,
     val error: UiText? = null,

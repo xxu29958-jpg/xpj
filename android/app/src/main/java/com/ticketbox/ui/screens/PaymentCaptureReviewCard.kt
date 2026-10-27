@@ -16,8 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto
-import com.ticketbox.data.remote.dto.PaymentCaptureDto
+import com.ticketbox.domain.model.PaymentCaptureDecision
+import com.ticketbox.domain.model.PaymentCapture
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.parseExactMoneyMinor
@@ -29,13 +29,13 @@ import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.components.formatMinorAmount
+import com.ticketbox.presentation.formatMinorAmount
 import com.ticketbox.ui.design.AppSpacing
 import java.util.UUID
 
 @Composable
-internal fun PaymentCaptureReviewCard(capture: PaymentCaptureDto, original: OutboxRow?, canModify: Boolean,
-    onSubmit: (PaymentCaptureDecisionDto, String) -> Unit, onRecover: (OutboxRow, Boolean) -> Unit) {
+internal fun PaymentCaptureReviewCard(capture: PaymentCapture, original: OutboxRow?, canModify: Boolean,
+    onSubmit: (PaymentCaptureDecision, String) -> Unit, onRecover: (OutboxRow, Boolean) -> Unit) {
     var kind by rememberSaveable(capture.publicId) { mutableStateOf("") }
     var amount by rememberSaveable(capture.publicId) { mutableStateOf("") }
     var reason by rememberSaveable(capture.publicId) { mutableStateOf("") }
@@ -47,7 +47,7 @@ internal fun PaymentCaptureReviewCard(capture: PaymentCaptureDto, original: Outb
             Text(stringResource(R.string.payment_capture_review_title), style = MaterialTheme.typography.titleMedium)
             Text("${capture.merchant.orEmpty()} · ${capture.capturedAt.take(10)}", style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.payment_capture_review_body), style = MaterialTheme.typography.bodyMedium)
-            com.ticketbox.ui.screens.expense.RecognizedTimeChoices(capture.recognitionTime?.toDomain(), enabled = false)
+            com.ticketbox.ui.screens.expense.RecognizedTimeChoices(capture.recognitionTime, enabled = false)
             capture.candidates.filter { it.amountMinor != null }.distinctBy { it.kind to it.amountMinor }.forEach { candidate ->
                 TextButton(onClick = { amount = formatMinorAmount(requireNotNull(candidate.amountMinor), currency) }, enabled = editable) {
                     Text("${stringResource(paymentKindLabel(candidate.kind))} · ${formatMinorAmount(requireNotNull(candidate.amountMinor), currency)} ${currency.storageKey}")
@@ -65,7 +65,7 @@ internal fun PaymentCaptureReviewCard(capture: PaymentCaptureDto, original: Outb
                     AppTextInputActions({ reason = it }))
                 val minor = parseExactMoneyMinor(amount, currency)
                 AppPrimaryButton(stringResource(R.string.payment_capture_submit), onClick = {
-                    onSubmit(PaymentCaptureDecisionDto(capture.rowVersion, kind, capture.originalCurrency,
+                    onSubmit(PaymentCaptureDecision(capture.rowVersion, kind, capture.originalCurrency,
                         minor.takeUnless { kind == "dismissed" }, capture.merchant, reason.trim()), key)
                 }, enabled = editable && kind.isNotBlank() && reason.isNotBlank() && (kind == "dismissed" || (minor ?: 0) > 0))
             } else {
@@ -84,7 +84,7 @@ internal fun PaymentCaptureReviewCard(capture: PaymentCaptureDto, original: Outb
 }
 
 @Composable
-internal fun PaymentCaptureReceiptCard(receipt: PaymentCaptureDto, onOpenExpense: (Long) -> Unit,
+internal fun PaymentCaptureReceiptCard(receipt: PaymentCapture, onOpenExpense: (Long) -> Unit,
     onOpenRepayment: (String) -> Unit) {
     AppPaperCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(AppSpacing.cardPadding), verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {

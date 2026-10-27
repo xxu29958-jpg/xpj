@@ -1,12 +1,12 @@
 package com.ticketbox.data.remote.api
 
 import com.ticketbox.data.remote.dto.DebtGoalIntegrityReviewRequestDto
-import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
-import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
+import com.ticketbox.domain.model.DebtGoalLinksReplaceRequest
+import com.ticketbox.domain.model.DebtGoalTargetDateRequest
+import com.ticketbox.domain.model.GoalCreateRequest
+import com.ticketbox.domain.model.GoalUpdateRequest
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -35,7 +35,7 @@ interface GoalsApi {
 
     @POST("api/goals")
     suspend fun createGoal(
-        @Body request: GoalCreateRequestDto,
+        @Body request: GoalCreateRequest,
         @Query("timezone") timezone: String? = null,
         @Header("Idempotency-Key") idempotencyKey: String? = null,
     ): GoalDto
@@ -49,7 +49,7 @@ interface GoalsApi {
     @PATCH("api/goals/{publicId}")
     suspend fun updateGoal(
         @Path("publicId") publicId: String,
-        @Body request: GoalUpdateRequestDto,
+        @Body request: GoalUpdateRequest,
         // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
         // for Retrofit ergonomics; the repository always supplies a UUID.
         @Header("Idempotency-Key") idempotencyKey: String?,
@@ -68,7 +68,7 @@ interface GoalsApi {
     @POST("api/goals/{publicId}/debt-links")
     suspend fun replaceGoalDebtLinks(
         @Path("publicId") publicId: String,
-        @Body request: DebtGoalLinksReplaceRequestDto,
+        @Body request: DebtGoalLinksReplaceRequest,
         @Header("Idempotency-Key") idempotencyKey: String?,
         @Query("timezone") timezone: String? = null,
     ): GoalDto
@@ -90,7 +90,7 @@ interface GoalsApi {
     @POST("api/goals/{publicId}/target-date")
     suspend fun setGoalTargetDate(
         @Path("publicId") publicId: String,
-        @Body request: DebtGoalTargetDateRequestDto,
+        @Body request: DebtGoalTargetDateRequest,
         @Header("Idempotency-Key") idempotencyKey: String?,
         @Query("timezone") timezone: String? = null,
     ): GoalDto

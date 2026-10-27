@@ -20,7 +20,7 @@ import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.SkeletonBlock
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.ExpenseFactUiState
 import com.ticketbox.viewmodel.currentCorrectionItems

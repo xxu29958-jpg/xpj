@@ -54,8 +54,8 @@ import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.displayDate
-import com.ticketbox.ui.components.displayTime
+import com.ticketbox.presentation.displayDate
+import com.ticketbox.presentation.displayTime
 import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing

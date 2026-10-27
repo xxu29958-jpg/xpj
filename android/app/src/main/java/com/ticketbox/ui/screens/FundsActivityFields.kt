@@ -14,7 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import com.ticketbox.data.remote.dto.FinancialAccountDto
+import com.ticketbox.domain.model.FinancialAccount
 import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.AppSecondaryButton
@@ -23,7 +23,7 @@ import com.ticketbox.viewmodel.FundsViewModel
 import com.ticketbox.viewmodel.choosePayer
 
 @Composable
-internal fun FundsActivityFields(input: FundsInput, accounts: List<FinancialAccountDto>, enabled: Boolean, vm: FundsViewModel) {
+internal fun FundsActivityFields(input: FundsInput, accounts: List<FinancialAccount>, enabled: Boolean, vm: FundsViewModel) {
     Text(when (input.mode) {
         "income" -> stringResource(R.string.funds_income_note)
         "loan" -> stringResource(R.string.funds_loan_note)
@@ -56,7 +56,7 @@ internal fun FundsActivityFields(input: FundsInput, accounts: List<FinancialAcco
 }
 
 @Composable
-private fun FundsTransferFields(input: FundsInput, accounts: List<FinancialAccountDto>, enabled: Boolean, vm: FundsViewModel) {
+private fun FundsTransferFields(input: FundsInput, accounts: List<FinancialAccount>, enabled: Boolean, vm: FundsViewModel) {
     var choosing by rememberSaveable { mutableStateOf(false) }
     AppSecondaryButton(input.payerName.ifBlank { stringResource(R.string.funds_choose_receiver) }, enabled = enabled) { choosing = true }
     if (choosing) AlertDialog(onDismissRequest = { choosing = false }, title = { Text(stringResource(R.string.funds_receiver_account)) },

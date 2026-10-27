@@ -1,10 +1,10 @@
-package com.ticketbox.data.remote.dto
+package com.ticketbox.domain.model
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
-data class RecurringOccurrenceDto(
+data class RecurringOccurrence(
     @param:Json(name = "series_public_id") val seriesPublicId: String,
     val period: String,
     @param:Json(name = "series_row_version") val seriesRowVersion: Long,
@@ -18,13 +18,12 @@ data class RecurringOccurrenceDto(
     @param:Json(name = "expense_id") val expenseId: Long? = null,
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
     @param:Json(name = "paid_home_currency_code") val paidHomeCurrencyCode: String? = null,
-    @param:Json(name = "recorded_definition") val recordedDefinition: RecurringRecordedDefinitionDto? = null,
+    @param:Json(name = "recorded_definition") val recordedDefinition: RecurringRecordedDefinition? = null,
     @param:Json(name = "payment_review_reason") val paymentReviewReason: String? = null,
 )
 
-/** Explicit action is mandatory: a missing payment field must never mean "clear". */
 @JsonClass(generateAdapter = true)
-data class RecurringOccurrencePaymentRequestDto(
+data class RecurringOccurrencePaymentRequest(
     val action: String,
     @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
     @param:Json(name = "expected_series_row_version") val expectedSeriesRowVersion: Long,

@@ -85,51 +85,6 @@ data class ReportsOverviewDto(
     val undatedExpenseCount: Int? = null,
 )
 
-/**
- * POST /api/goals body. One DTO serves both goal types (the backend has a single
- * GoalCreateRequest schema with additionalProperties=false). spending_limit sends
- * [month] + [targetAmountCents]; ADR-0049 §6 debt_repayment sends [goalType] =
- * "debt_repayment" + [debtPublicIds] and leaves the spend-shape fields null —
- * Moshi omits nulls, so the wire body carries only the fields that goal type
- * needs (the backend 422s a debt goal that carries month/category/target, and a
- * spending goal that carries debt_public_ids). Built by GoalDraft.toRequest (spending)
- * and GoalEditActions.createDebtGoal (debt); both use the original outbox command owner.
- */
-@JsonClass(generateAdapter = true)
-data class GoalCreateRequestDto(
-    val name: String,
-    @param:Json(name = "goal_type")
-    val goalType: String = "spending_limit",
-    val period: String = "monthly",
-    val month: String? = null,
-    @param:Json(name = "target_amount_cents")
-    val targetAmountCents: Long? = null,
-    val category: String? = null,
-    @param:Json(name = "debt_public_ids")
-    val debtPublicIds: List<String>? = null,
-    @param:Json(name = "home_currency_code")
-    val homeCurrencyCode: String? = null,
-)
-
-/**
- * ADR-0041: PATCH /api/goals/{publicId} body. ``expectedRowVersion``
- * is the client's last-seen ``row_version`` token; server returns 409 on
- * stale snapshot.
- */
-@JsonClass(generateAdapter = true)
-data class GoalUpdateRequestDto(
-    @param:Json(name = "expected_row_version")
-    val expectedRowVersion: Long,
-    val name: String? = null,
-    val month: String? = null,
-    val category: String? = null,
-    @param:Json(name = "target_amount_cents")
-    val targetAmountCents: Long? = null,
-    // Nullable only for reading an older durable submission; the writer validates it.
-    @param:Json(name = "home_currency_code")
-    val homeCurrencyCode: String? = null,
-)
-
 @JsonClass(generateAdapter = true)
 data class GoalDto(
     @param:Json(name = "public_id")

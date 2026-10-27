@@ -66,14 +66,14 @@ class MerchantRepository(
                         require(draft.displayName.isNotBlank()) { "请输入商家名称。" }
                         val receipt = api.createMerchantCatalog(MerchantCatalogCreateRequest(displayName = draft.displayName), draft.key)
                         check(receipt.rowVersion == 1L && receipt.publicId.isNotBlank()) { "返回的原添加回执无法核对。" }
-                        draft.copy(phase = "accepted", catalogReceipt = receipt, error = null)
+                        draft.copy(phase = "accepted", catalogReceipt = receipt.toDomain(), error = null)
                     }
                     MerchantDraftKind.Alias -> {
                         require(draft.canonicalMerchant.isNotBlank() && draft.alias.isNotBlank()) { "请输入标准商家和别名。" }
                         val receipt = api.createMerchantAlias(MerchantAliasRequest(canonicalMerchant = draft.canonicalMerchant,
                             alias = draft.alias, enabled = true), draft.key)
                         check(receipt.rowVersion == 1L && receipt.publicId.isNotBlank()) { "返回的原添加回执无法核对。" }
-                        draft.copy(phase = "accepted", aliasReceipt = receipt, error = null)
+                        draft.copy(phase = "accepted", aliasReceipt = receipt.toDomain(), error = null)
                     }
                     else -> api.submitCatalogDraft(draft)
                 }

@@ -1,14 +1,14 @@
 package com.ticketbox.viewmodel
 
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.MonthlyArrangementDto
+import com.ticketbox.domain.model.MonthlyArrangement
 import com.ticketbox.data.repository.MonthlyArrangementDraft
 import com.ticketbox.data.repository.MonthlyArrangementHistoryRead
 import com.ticketbox.data.repository.MonthlyArrangementRead
 import com.ticketbox.domain.model.CurrencyCode
 import java.math.BigDecimal
 
-internal fun MonthlyArrangementDto.draft() = MonthlyArrangementDraft(homeCurrencyCode,
+internal fun MonthlyArrangement.draft() = MonthlyArrangementDraft(homeCurrencyCode,
     BigDecimal.valueOf(savingsTargetCents, requireNotNull(CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)).minorUnitDigits).toPlainString(),
     BigDecimal.valueOf(reservedBufferCents, requireNotNull(CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)).minorUnitDigits).toPlainString(), rowVersion)
 

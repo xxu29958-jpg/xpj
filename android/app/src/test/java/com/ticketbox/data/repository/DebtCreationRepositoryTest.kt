@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.domain.model.ExpenseTimeInput
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.ApiService
@@ -104,7 +105,7 @@ class DebtCreationRepositoryTest {
     @Test
     fun aReceiptWithAnotherDateKeepsTheOriginalKeyAndInput() = runTest {
         val fixture = DebtCreationFixture()
-        val time = com.ticketbox.data.remote.dto.ExpenseTimeInputDto("date_only", 3L, "2026-01-31")
+        val time = com.ticketbox.domain.model.ExpenseTimeInput("date_only", 3L, "2026-01-31")
         val receipt = fixture.save(time).getOrThrow()
         val original = fixture.dao.rows.getValue(receipt.intentId)
 
@@ -234,7 +235,7 @@ internal class DebtCreationFixture(role: String = "owner") {
     val adapters = OutboxAdapterGraph()
     val repository = DebtCreationRepository(provider, outbox, adapters.debt.debtCreateAdapter)
 
-    suspend fun save(time: com.ticketbox.data.remote.dto.ExpenseTimeInputDto? = null,
+    suspend fun save(time: com.ticketbox.domain.model.ExpenseTimeInput? = null,
         creationKey: String = java.util.UUID.randomUUID().toString()) = repository.createDebt(
         expectedBinding = binding,
         draft = DebtDraft(

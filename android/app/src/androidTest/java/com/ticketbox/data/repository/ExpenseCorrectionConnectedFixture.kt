@@ -2,52 +2,52 @@ package com.ticketbox.data.repository
 
 import android.content.Context
 import android.content.ContextWrapper
-import com.ticketbox.data.local.LocalSettingsStore
 import android.graphics.Bitmap
 import androidx.room.Room
-import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.NotificationRuntimeDependencies
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.RepositoryGraph
 import com.ticketbox.RepositoryGraphDependencies
 import com.ticketbox.RepositoryGraphOutbox
 import com.ticketbox.data.local.AppDatabase
+import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.dto.BillSplitSentListResponseDto
+import com.ticketbox.data.remote.dto.CategoriesDto
+import com.ticketbox.data.remote.dto.ConfirmedExpenseStreamItemDto
+import com.ticketbox.data.remote.dto.ConfirmedStreamEntryKindDto
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseCorrectionResponseDto
 import com.ticketbox.data.remote.dto.ExpenseDto
-import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
-import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
-import com.ticketbox.data.remote.dto.ExpenseRevisionDto
-import com.ticketbox.data.remote.dto.ExpenseRevisionPageDto
-import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
-import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
 import com.ticketbox.data.remote.dto.ExpenseFinancialSummaryDto
+import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseLineageStatusDto
-import com.ticketbox.data.remote.dto.CategoriesDto
+import com.ticketbox.data.remote.dto.ExpenseRevisionDto
+import com.ticketbox.data.remote.dto.ExpenseRevisionPageDto
+import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
+import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
+import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
-import com.ticketbox.data.remote.dto.BillSplitSentListResponseDto
-import com.ticketbox.data.remote.dto.ConfirmedExpenseStreamItemDto
-import com.ticketbox.data.remote.dto.ConfirmedStreamEntryKindDto
 import com.ticketbox.data.remote.dto.PaginatedExpensesDto
 import com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.NotificationPreferences
+import com.ticketbox.domain.model.RecurringOccurrence
 import com.ticketbox.security.LocalSessionBindingUpdate
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
 import com.ticketbox.security.SessionCredentialAdapter
 import com.ticketbox.security.StoredSessionToken
-import java.io.IOException
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.lang.reflect.Proxy
 import java.time.Clock
 import java.time.Instant
@@ -57,10 +57,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.ResponseBody
-import retrofit2.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
+import retrofit2.Response
 
 /** Real disk Room and repository graph; only remote transport and session storage are synthetic. */
 internal class ExpenseCorrectionConnectedFixture(
@@ -79,7 +79,7 @@ internal class ExpenseCorrectionConnectedFixture(
     val clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
     private val session = MutableStateFlow(correctionSession())
     val network = CorrectionConnectedNetwork()
-    private val adapters = OutboxAdapterGraph()
+    val adapters = OutboxAdapterGraph()
     lateinit var outbox: OutboxRepository
     lateinit var graph: RepositoryGraph
     lateinit var apiProvider: ApiServiceProvider
@@ -316,11 +316,11 @@ internal class CorrectionConnectedNetwork {
         }
         override suspend fun expenseThumbnail(id: Long): Response<ResponseBody> = Response.error(404,
             """{"error":"not_found","message":"图片不存在。"}""".toResponseBody("application/json".toMediaType()))
-        override suspend fun originalHealth(id: Long): com.ticketbox.data.remote.dto.OriginalHealthDto {
+        override suspend fun originalHealth(id: Long): com.ticketbox.domain.model.OriginalHealth {
             readable()
             originalHealthReads += id
             beforeOriginalHealthResponse?.invoke()
-            return com.ticketbox.data.remote.dto.OriginalHealthDto(expenseId = current.id, publicId = requireNotNull(current.publicId),
+            return com.ticketbox.domain.model.OriginalHealth(expenseId = current.id, publicId = requireNotNull(current.publicId),
                 rowVersion = current.rowVersion, state = if (originalMissing) "missing" else if (current.imagePath == null) "none"
                     else if (current.imageHash != null) "verified" else "unverified",
                 expectedSha256 = if (originalMissing) "b".repeat(64) else current.imageHash,
@@ -349,11 +349,11 @@ internal class CorrectionConnectedNetwork {
         override suspend fun recurringItems(status: String?, includeArchived: Boolean, month: String?, timezone: String?) =
             RecurringItemListResponseDto(listOf(correctionRecurringItem()))
         override suspend fun recurringCandidates(timezone: String?) = RecurringCandidatesResponseDto(emptyList())
-        override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+        override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrence {
             check(publicId == correctionRecurringItem().publicId)
             occurrenceReads += publicId to month
             val period = if (month == "current") "2026-09" else month
-            return RecurringOccurrenceDto(publicId, period, 2, 1, "fulfilled", 1000, 0,
+            return RecurringOccurrence(publicId, period, 2, 1, "fulfilled", 1000, 0,
                 current.publicId, 1000, null, expenseId = current.id)
         }
         override suspend fun categories() = CategoriesDto(listOf("餐饮", "购物"))

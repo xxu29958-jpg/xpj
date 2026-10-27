@@ -128,7 +128,7 @@ internal class ExpenseFactViewModelBillSplitTest : ExpenseFactViewModelTestBase(
         val row = com.ticketbox.data.repository.OutboxRow(11L, binding.serverUrl, binding.ledgerId, binding.ownerKey,
             com.ticketbox.data.local.PendingMutationType.CreateBillSplitInvitation, "expense:7", "original-payload", 1L,
             PendingMutationStatus.Done, 1, null, "2026-09-06T00:00:00Z", null, "2026-09-06T00:01:00Z", "original-key")
-        fake.billSplitSubmissions.value = listOf(com.ticketbox.data.repository.PendingBillSplitCreation(row, null,
+        fake.billSplitSubmissions.value = listOf(com.ticketbox.data.repository.PendingBillSplitCreation(row, null as com.ticketbox.data.repository.BillSplitSubmission?,
             fake.sentInvite(publicId = "new")))
         advanceUntilIdle()
 

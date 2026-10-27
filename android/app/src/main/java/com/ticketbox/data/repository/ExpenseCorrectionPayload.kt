@@ -25,10 +25,12 @@ data class ExpenseCorrectionPayload(
 
 data class PendingExpenseCorrection(
     val row: OutboxRow,
-    val intent: ExpenseCorrectionPayload?,
+    val intent: ExpenseCorrectionOriginal?,
     /** Original decoded but inadmissible input is display-only; never a source for replay or new OCC. */
-    val legacyRequest: ExpenseCorrectionRequestDto? = null,
+    val legacyRequest: com.ticketbox.domain.model.ExpenseCorrectionSubmission?,
 ) {
+    internal constructor(row: OutboxRow, intent: ExpenseCorrectionPayload?, legacyRequest: ExpenseCorrectionRequestDto? = null) :
+        this(row, intent?.toView(), legacyRequest?.toDomain())
     val hasSupportedIntent: Boolean get() = intent != null
     val exchangeRatePending: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Failed &&
         row.lastError?.substringBefore(':') == CORRECTION_RATE_PENDING
@@ -73,3 +75,31 @@ internal fun <T> JsonAdapter<T>.readCorrectionJson(json: String): T? = try {
 } catch (_: IOException) {
     null
 }
+
+data class ExpenseCorrectionOriginal(
+    val revision: Int,
+    val expenseId: Long,
+    val originalMerchant: String?,
+    val originalCurrencyCode: String,
+    val originalAmountMinor: Long?,
+    val homeCurrencyCode: String,
+    val ownerKey: String,
+    val ledgerId: String,
+    val originSessionGeneration: String,
+    val originBindingRevision: String,
+    val request: com.ticketbox.domain.model.ExpenseCorrectionSubmission,
+)
+
+internal fun ExpenseCorrectionPayload.toView() = ExpenseCorrectionOriginal(
+    revision = revision,
+    expenseId = expenseId,
+    originalMerchant = originalMerchant,
+    originalCurrencyCode = originalCurrencyCode,
+    originalAmountMinor = originalAmountMinor,
+    homeCurrencyCode = homeCurrencyCode,
+    ownerKey = ownerKey,
+    ledgerId = ledgerId,
+    originSessionGeneration = originSessionGeneration,
+    originBindingRevision = originBindingRevision,
+    request = request.toDomain(),
+)

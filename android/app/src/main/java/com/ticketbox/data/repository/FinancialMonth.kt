@@ -1,6 +1,6 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.dto.LedgerCalendarDto
+import com.ticketbox.domain.model.LedgerCalendar
 import java.time.Clock
 import java.time.LocalDate
 import java.time.YearMonth
@@ -8,8 +8,8 @@ import java.time.ZoneId
 
 interface LedgerCalendarReader {
     fun currentBinding(): LogicalSessionBinding?
-    fun cached(binding: LogicalSessionBinding, revision: Long? = null): LedgerCalendarDto?
-    suspend fun refresh(binding: LogicalSessionBinding, revision: Long? = null): Result<LedgerCalendarDto?>
+    fun cached(binding: LogicalSessionBinding, revision: Long? = null): LedgerCalendar?
+    suspend fun refresh(binding: LogicalSessionBinding, revision: Long? = null): Result<LedgerCalendar?>
 }
 
 /** Capture once for a new task. Selected months and durable command bodies never call this. */
@@ -47,7 +47,7 @@ suspend fun LedgerCalendarReader?.refreshedLedgerDate(
 /** Return the same verified rule for both the displayed day and its next midnight. */
 suspend fun LedgerCalendarReader?.refreshedLedgerCalendar(
     binding: LogicalSessionBinding? = this?.currentBinding(),
-): Result<LedgerCalendarDto?> {
+): Result<LedgerCalendar?> {
     if (this == null || binding == null || currentBinding() != binding) return Result.success(null)
     return refresh(binding).recoverCatching { error -> cached(binding) ?: throw error }.mapCatching { rule ->
         rule?.takeIf { it.ledgerId == binding.ledgerId && currentBinding() == binding }

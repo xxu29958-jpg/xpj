@@ -3,11 +3,11 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto
 import com.ticketbox.data.remote.dto.IncomePlanDto
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
+import com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.IncomePlan
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
@@ -46,7 +46,7 @@ data class IncomePlanListing(
 class IncomePlanRepository(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
-    private val incomePlanSubmissionAdapter: JsonAdapter<IncomePlanSubmissionPayload>,
+    private val incomePlanSubmissionAdapter: JsonAdapter<IncomePlanSubmission>,
     private val incomePlanReceiptAdapter: JsonAdapter<IncomePlanDto>,
     internal val reads: IncomePlanReadRepository,
 ) : IncomePlanActions, IncomePlanReads by reads {
@@ -114,9 +114,9 @@ class IncomePlanRepository(
         require(creationKey.isNotBlank()) { "收入创建标识无法确认，请重新打开创建任务。" }
         val bound = guard.bindExact(expectedBinding)
         val request = draft.toCreateRequest()
-        val payload = IncomePlanSubmissionPayload(INCOME_PLAN_CREATE_PAYLOAD_REVISION, "", request.label,
+        val payload = IncomePlanSubmission(INCOME_PLAN_CREATE_PAYLOAD_REVISION, "", request.label,
             request.amountCents, request.homeCurrencyCode, expectedBinding.sessionGeneration, expectedBinding.bindingRevision,
-            IncomePlanUpdateRequestDto(request.intentMonth, 0, request.label, request.sourceType, request.frequency,
+            IncomePlanUpdateRequest(request.intentMonth, 0, request.label, request.sourceType, request.frequency,
                 request.incomeMonth, request.amountCents, request.payDay))
         outbox.enqueueOriginalCreation(bound, payload.toMutationIntent(incomePlanSubmissionAdapter, 0, creationKey))
     }
@@ -131,7 +131,7 @@ class IncomePlanRepository(
         }
         if (patch.expectedRowVersion != baseline.rowVersion) throw RepositoryException("请刷新计划后重新核对修改。")
         if (baseline.homeCurrencyCode != currency.storageKey) throw RepositoryException("计划币种还无法确认，请刷新计划后核对金额。")
-        val payload = IncomePlanSubmissionPayload(INCOME_PLAN_EDIT_PAYLOAD_REVISION, baseline.publicId, baseline.label,
+        val payload = IncomePlanSubmission(INCOME_PLAN_EDIT_PAYLOAD_REVISION, baseline.publicId, baseline.label,
             baseline.amountCents, currency.storageKey, expectedBinding.sessionGeneration, expectedBinding.bindingRevision,
             patch.toUpdateRequest().copy(expectedRowVersion = 0))
         outbox.enqueue(boundRequest = bound, intent = payload.toMutationIntent(incomePlanSubmissionAdapter,

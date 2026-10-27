@@ -21,7 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import com.ticketbox.ui.screens.expense.toSavedJson
+import com.ticketbox.viewmodel.toSavedJson
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DuplicateStatusValues
@@ -40,9 +40,9 @@ import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.asString
 import androidx.compose.material3.Text
-import com.ticketbox.ui.components.formatExpenseExchangeMeta
-import com.ticketbox.ui.components.parseMinorAmount
-import com.ticketbox.ui.components.sanitizeMinorAmountInput
+import com.ticketbox.presentation.formatExpenseExchangeMeta
+import com.ticketbox.presentation.parseMinorAmount
+import com.ticketbox.presentation.sanitizeMinorAmountInput
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppAdaptivePaneTokens
 import com.ticketbox.ui.design.AppSpacing
@@ -89,7 +89,7 @@ import com.ticketbox.ui.screens.expense.SplitsEditorSheetState
 import com.ticketbox.viewmodel.ExpenseEditUiState
 import com.ticketbox.ui.screens.settings.SettingsDetailRow
 import androidx.compose.ui.platform.testTag
-import com.ticketbox.ui.screens.expense.summary
+import com.ticketbox.viewmodel.summary
 
 data class ExpenseEditScreenState(
     val expense: Expense,
@@ -263,7 +263,7 @@ fun ExpenseEditScreen(
         currentExpense.expenseTime, currentExpense.accountingTime,
     )
     val baselineTimeFormJson = rememberSaveable(formIdentity) {
-        com.ticketbox.ui.screens.expense.ExpenseTimeForm.initial(
+        com.ticketbox.viewmodel.ExpenseTimeForm.initial(
             currentExpense.expenseTime, currentExpense.accountingTime, null, java.time.ZoneId.of(timeForm.sourceZone),
         ).toSavedJson()
     }
@@ -486,7 +486,7 @@ fun ExpenseEditScreen(
                 manualExchangeRateIsError = false
             }
             currency = code
-            amountText = com.ticketbox.ui.components.formatMinorAmountInput(minor, code)
+            amountText = com.ticketbox.presentation.formatMinorAmountInput(minor, code)
         } else merchant = candidate.value
         fieldChoicesJson = updateFieldChoice(fieldChoicesJson, candidate.field, candidate.choice())
     }
@@ -584,7 +584,7 @@ fun ExpenseEditScreen(
             com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, !readOnly, showTitle = false)
         }
         if (timeForm.changed) androidx.compose.material3.TextButton(enabled = !readOnly, onClick = {
-            com.ticketbox.ui.screens.expense.readExpenseTimeForm(baselineTimeFormJson)?.let(setTimeForm)
+            com.ticketbox.viewmodel.readExpenseTimeForm(baselineTimeFormJson)?.let(setTimeForm)
         }) { androidx.compose.material3.Text(stringResource(R.string.expense_edit_undo_change_button)) }
         // 来源 quiet meta：单栏按定稿跟在时间行后；宽屏由证据辅列承载，
         // 主列不再重复（否则 1440 同行信息出现两次）。

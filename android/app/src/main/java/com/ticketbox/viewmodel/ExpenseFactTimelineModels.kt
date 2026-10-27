@@ -6,8 +6,8 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseRevision
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.displayDateTime
-import com.ticketbox.ui.components.formatMinorAmountInput
+import com.ticketbox.presentation.displayDateTime
+import com.ticketbox.presentation.formatMinorAmountInput
 
 /**
  * A1 时间线展示模型与 mapper（Compose 只负责渲染，不再懂快照结构）。

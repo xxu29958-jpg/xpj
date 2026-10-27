@@ -7,7 +7,7 @@ import com.squareup.moshi.Types
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingDebtWrite
 import com.ticketbox.domain.model.Debt
-import com.ticketbox.ui.screens.expense.ExpenseTimeForm
+import com.ticketbox.viewmodel.ExpenseTimeForm
 import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId

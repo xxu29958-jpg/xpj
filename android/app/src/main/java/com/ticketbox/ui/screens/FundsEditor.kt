@@ -32,7 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.remote.dto.FinancialAccountDto
+import com.ticketbox.domain.model.FinancialAccount
 import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.ui.components.AppPrimaryButton
@@ -103,7 +103,7 @@ private fun AccountEditorFields(state: FundsUiState, input: FundsInput, enabled:
 }
 
 @Composable
-private fun ExistingDebtField(input: FundsInput, choices: List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto>, enabled: Boolean, vm: FundsViewModel) {
+private fun ExistingDebtField(input: FundsInput, choices: List<com.ticketbox.domain.model.ExistingDebtChoice>, enabled: Boolean, vm: FundsViewModel) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val reviewed = choices.firstOrNull { it.publicId == input.existingDebtId && it.rowVersion == input.existingDebtVersion }
     val label = reviewed?.let { stringResource(R.string.funds_old_debt_label, it.name, money(it.remainingHomeMinor, it.homeCurrencyCode)) }
@@ -156,7 +156,7 @@ private fun FundsAccountFields(input: FundsInput, enabled: Boolean, vm: FundsVie
 }
 
 @Composable
-private fun FundsPaymentFields(input: FundsInput, accounts: List<FinancialAccountDto>, enabled: Boolean, vm: FundsViewModel) {
+private fun FundsPaymentFields(input: FundsInput, accounts: List<FinancialAccount>, enabled: Boolean, vm: FundsViewModel) {
     var choosing by rememberSaveable { mutableStateOf(false) }
     Text(stringResource(R.string.funds_payment_note, input.name))
     AppSecondaryButton(input.payerName.ifBlank { stringResource(R.string.funds_choose_payer) }, enabled = enabled) { choosing = true }

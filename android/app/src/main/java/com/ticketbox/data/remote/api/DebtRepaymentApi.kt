@@ -1,7 +1,7 @@
 package com.ticketbox.data.remote.api
 
 import com.ticketbox.data.remote.dto.DebtDto
-import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
+import com.ticketbox.domain.model.RepaymentVoidCreateRequest
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -21,7 +21,7 @@ interface DebtRepaymentApi {
     @POST("api/debts/{publicId}/repayment-voids")
     suspend fun voidDebtRepayment(
         @Path("publicId") publicId: String,
-        @Body request: RepaymentVoidCreateRequestDto,
+        @Body request: RepaymentVoidCreateRequest,
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): DebtDto
 }

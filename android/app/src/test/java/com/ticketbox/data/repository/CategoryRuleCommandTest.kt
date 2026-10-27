@@ -4,18 +4,18 @@ import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.CategoryRuleDto
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
-import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
+import com.ticketbox.data.remote.dto.CategoryRuleDto
+import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.StatusDto
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import java.io.IOException
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 
 class CategoryRuleCommandTest {
     @Test fun createAndEditEnterRoomBeforeHttpAndKeepConfirmedFacts() = runTest {
@@ -117,7 +117,7 @@ internal class CategoryRuleCommandFixture {
     var response = current
     val requests = mutableListOf<Any>()
     val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
-        override suspend fun createCategoryRule(request: CategoryRuleRequest, idempotencyKey: String): CategoryRuleDto =
+        override suspend fun createCategoryRule(request: CategoryRuleDefinition, idempotencyKey: String): CategoryRuleDto =
             accept(idempotencyKey, request)
         override suspend fun updateCategoryRule(id: Long, request: CategoryRuleUpdateRequest, idempotencyKey: String?,): CategoryRuleDto =
             accept(requireNotNull(idempotencyKey), request)

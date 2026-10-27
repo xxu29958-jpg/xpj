@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.domain.model.repaymentVoidActionAllowed
 import com.ticketbox.R
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtCounterpartyTypes

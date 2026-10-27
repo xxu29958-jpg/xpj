@@ -6,10 +6,15 @@ import com.ticketbox.data.remote.dto.*
 import com.ticketbox.data.repository.*
 import com.ticketbox.domain.model.BudgetAdvice
 import com.ticketbox.domain.model.BudgetAdviceResult
+import com.ticketbox.domain.model.MonthlyArrangement
+import com.ticketbox.domain.model.MonthlyArrangementChange
+import com.ticketbox.domain.model.MonthlyArrangementHistory
+import com.ticketbox.domain.model.MonthlyArrangementHistoryItem
+import com.ticketbox.domain.model.MonthlyArrangementResponse
+import kotlin.test.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlin.test.*
 
 class MonthlyArrangementReadRefusalTest {
     @Test fun refusedReadClearsQueriesButKeepsTheUnsentOriginalAndAcceptedSubmission() = budgetTest {
@@ -79,8 +84,8 @@ class MonthlyArrangementReadRefusalTest {
 
 private class ArrangementReadFixture {
     private val base = FakeBudgetActions(budget())
-    private val fact = MonthlyArrangementDto("owner", "2026-09", "JPY", 1200, 300, 1, "2026-09-27T00:00:00Z")
-    val read = MonthlyArrangementRead(MonthlyArrangementResponseDto("owner", "2026-09", fact))
+    private val fact = MonthlyArrangement("owner", "2026-09", "JPY", 1200, 300, 1, "2026-09-27T00:00:00Z")
+    val read = MonthlyArrangementRead(MonthlyArrangementResponse("owner", "2026-09", fact))
     var draft: MonthlyArrangementDraft? = null
     var readFailure: Throwable? = null
     var historyFailure: Throwable? = null
@@ -92,14 +97,14 @@ private class ArrangementReadFixture {
         retryCount = 0, lastError = null, createdAt = fact.updatedAt, attemptedAt = fact.updatedAt,
         completedAt = fact.updatedAt, idempotencyKey = "original-key", receiptJson = "original receipt")
     val pending = MutableStateFlow(listOf(PendingMonthlyArrangement(row,
-        MonthlyArrangementPayload(1, fact.month, MonthlyArrangementSaveRequest("JPY", 1200, 300)), fact)))
+        MonthlyArrangementSubmission(1, fact.month, MonthlyArrangementChange("JPY", 1200, 300)), fact)))
     val repository: BudgetActions = object : BudgetActions by base {
         override suspend fun arrangement(binding: LogicalSessionBinding, month: String): Result<MonthlyArrangementRead> =
             delayedRead?.await() ?: readFailure?.let { Result.failure(it) } ?: Result.success(read)
         override suspend fun arrangementHistory(binding: LogicalSessionBinding, month: String, beforeVersion: Long?): Result<MonthlyArrangementHistoryRead> =
             historyFailure?.let { Result.failure(it) } ?: Result.success(MonthlyArrangementHistoryRead(
-                MonthlyArrangementHistoryDto(binding.ledgerId, month,
-                    listOf(MonthlyArrangementHistoryItemDto(1, fact.updatedAt, "JPY", 1200, 300)), null)))
+                MonthlyArrangementHistory(binding.ledgerId, month,
+                    listOf(MonthlyArrangementHistoryItem(1, fact.updatedAt, "JPY", 1200, 300)), null)))
         override suspend fun arrangementDraft(binding: LogicalSessionBinding, month: String) = draft
         override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft) {
             this@ArrangementReadFixture.draft = draft

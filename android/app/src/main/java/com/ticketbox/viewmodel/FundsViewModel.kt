@@ -4,10 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.data.remote.dto.FinancialAccountDto
-import com.ticketbox.data.remote.dto.FundsOverviewDto
-import com.ticketbox.data.remote.dto.ExpenseFundingViewDto
-import com.ticketbox.data.remote.dto.InstallmentsDto
+import com.ticketbox.domain.model.FinancialAccount
+import com.ticketbox.domain.model.FundsOverview
+import com.ticketbox.domain.model.ExpenseFundingView
+import com.ticketbox.domain.model.Installments
 import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.data.repository.FundsInputState
 import com.ticketbox.data.repository.FundsRepository
@@ -21,17 +21,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-data class FundsUiState(val access: LedgerAccessContext? = null, val accounts: List<FinancialAccountDto> = emptyList(),
-    val detail: FinancialAccountDto? = null, val task: FundsInputState = FundsInputState(null),
+data class FundsUiState(val access: LedgerAccessContext? = null, val accounts: List<FinancialAccount> = emptyList(),
+    val detail: FinancialAccount? = null, val task: FundsInputState = FundsInputState(null),
     val editing: Boolean = false, val loading: Boolean = false, val busy: Boolean = false,
-    val fromCache: Boolean = false, val error: UiText? = null, val overview: FundsOverviewDto? = null,
-    val funding: ExpenseFundingViewDto? = null, val fundingPage: Boolean = false, val installments: InstallmentsDto? = null,
-    val accountChoices: List<com.ticketbox.data.remote.dto.AccountChoiceDto> = emptyList(),
-    val existingDebts: List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto> = emptyList(),
+    val fromCache: Boolean = false, val error: UiText? = null, val overview: FundsOverview? = null,
+    val funding: ExpenseFundingView? = null, val fundingPage: Boolean = false, val installments: Installments? = null,
+    val accountChoices: List<com.ticketbox.domain.model.AccountChoice> = emptyList(),
+    val existingDebts: List<com.ticketbox.domain.model.ExistingDebtChoice> = emptyList(),
     val captureRequested: Boolean = false,
     val repaymentCapture: com.ticketbox.domain.model.RepaymentDraft? = null,
-    val envelopeMonth: String? = null, val envelopes: com.ticketbox.data.remote.dto.EnvelopesDto? = null,
-    val envelopeHistory: List<com.ticketbox.data.remote.dto.EnvelopeRevisionDto>? = null,
+    val envelopeMonth: String? = null, val envelopes: com.ticketbox.domain.model.Envelopes? = null,
+    val envelopeHistory: List<com.ticketbox.domain.model.EnvelopeRevision>? = null,
     val envelopeHistoryBusy: Boolean = false, val envelopeHistoryMore: Boolean = false)
 
 class FundsViewModel(internal val repository: FundsRepository, internal val expenseId: Long? = null,

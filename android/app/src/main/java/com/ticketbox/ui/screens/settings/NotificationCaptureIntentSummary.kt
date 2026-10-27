@@ -8,7 +8,7 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.notificationCapture
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 
 /** Shows the saved original payment, not an inferred home-currency expense or a confirmation. */
 @Composable

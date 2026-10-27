@@ -4,21 +4,21 @@ import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
-import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
+import com.ticketbox.domain.model.RecurringOccurrence
+import com.ticketbox.domain.model.RecurringOccurrencePaymentRequest
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
-import kotlinx.coroutines.test.runTest
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.ResponseBody.Companion.toResponseBody
-import retrofit2.HttpException
-import retrofit2.Response
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runTest
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
+import retrofit2.HttpException
+import retrofit2.Response
 
 class RecurringOccurrenceRepositoryTest {
     @Test
@@ -138,22 +138,22 @@ private class OccurrenceFixture(role: String = "owner") {
     val repository = RecurringOccurrenceRepository(provider, outbox, adapter,
         RecurringQueryReader(provider, readCache, testSnapshotCoordinator(provider, outbox, readCache)))
     val draft = OccurrencePaymentDraft(occurrenceFixture(), "房租",
-        RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-1", 3), "房租付款", 10_000, "CNY")
+        RecurringOccurrencePaymentRequest("link", 0, 7, "payment-1", 3), "房租付款", 10_000, "CNY")
 
     fun engine(outbox: OutboxRepository, clock: Clock) = OutboxDrainEngine(outbox,
         listOf(RecurringOccurrenceDispatcher({ api }, adapter)), now = clock::millis)
 }
 
 private class OccurrenceApiProbe : ApiService by FakeApiService(mutableListOf(), 0) {
-    val calls = mutableListOf<Pair<RecurringOccurrencePaymentRequestDto, String>>()
+    val calls = mutableListOf<Pair<RecurringOccurrencePaymentRequest, String>>()
     private val reply = occurrenceFixture().copy(rowVersion = 1, state = "fulfilled", reservedAmountCents = 0,
         expensePublicId = "payment-1", paidAmountCents = 10_000, nextDueDate = "2026-10-05")
     var refusalCode: String? = null
     var returnAnotherPeriod = false
 
     override suspend fun setRecurringOccurrencePayment(
-        publicId: String, month: String, request: RecurringOccurrencePaymentRequestDto, idempotencyKey: String,
-    ): RecurringOccurrenceDto {
+        publicId: String, month: String, request: RecurringOccurrencePaymentRequest, idempotencyKey: String,
+    ): RecurringOccurrence {
         assertEquals("recurring-1", publicId)
         assertEquals("2026-09", month)
         calls += request to idempotencyKey
@@ -165,5 +165,5 @@ private class OccurrenceApiProbe : ApiService by FakeApiService(mutableListOf(),
     }
 }
 
-private fun occurrenceFixture() = RecurringOccurrenceDto("recurring-1", "2026-09", 7, 0, "unfulfilled",
+private fun occurrenceFixture() = RecurringOccurrence("recurring-1", "2026-09", 7, 0, "unfulfilled",
     10_000, 10_000, null, null, "2026-09-05")

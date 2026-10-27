@@ -1,9 +1,9 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.dto.FinancialAccountDto
+import com.ticketbox.domain.model.FinancialAccount
 
 /** Refresh reviewed versions only; the raw money and original publication stay with their owners. */
-internal suspend fun FundsQueries.reviewFundsInput(old: FundsInput, accounts: List<FinancialAccountDto>): FundsInput = when (old.mode) {
+internal suspend fun FundsQueries.reviewFundsInput(old: FundsInput, accounts: List<FinancialAccount>): FundsInput = when (old.mode) {
     "create" -> reviewCreation(old)
     "envelopes" -> reviewEnvelopes(old)
     "funding" -> reviewFunding(old, accounts)
@@ -36,7 +36,7 @@ private suspend fun FundsQueries.reviewEnvelopes(old: FundsInput): FundsInput {
         envelopeAccountVersions = read.value.accounts.associate { it.publicId to it.rowVersion })
 }
 
-private suspend fun FundsQueries.reviewFunding(old: FundsInput, accounts: List<FinancialAccountDto>): FundsInput {
+private suspend fun FundsQueries.reviewFunding(old: FundsInput, accounts: List<FinancialAccount>): FundsInput {
     val read = funding(old.binding, requireNotNull(old.expenseId)).getOrThrow()
     require(!read.fromCache && read.value.currencyCode == old.currency && read.value.canEdit) { "请联网核对消费及付款权限；原输入保留。" }
     val parts = requireNotNull(fundingInputAdapter.fromJson(old.fundingJson)).map { part ->
@@ -47,7 +47,7 @@ private suspend fun FundsQueries.reviewFunding(old: FundsInput, accounts: List<F
     return old.copy(version = read.value.expenseRowVersion, fundingJson = fundingInputAdapter.toJson(parts))
 }
 
-private fun reviewAccount(old: FundsInput, accounts: List<FinancialAccountDto>): FundsInput {
+private fun reviewAccount(old: FundsInput, accounts: List<FinancialAccount>): FundsInput {
     val target = accounts.firstOrNull { it.publicId == old.accountId }
     val payer = accounts.firstOrNull { it.publicId == old.payerId }
     require(old.mode == "create" || target != null) { "账户当前不可用，原输入保留。" }

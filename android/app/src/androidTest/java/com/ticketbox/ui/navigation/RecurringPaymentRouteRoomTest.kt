@@ -26,7 +26,6 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.ExpenseDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.RecurringPaymentOrigin
 import com.ticketbox.data.repository.RecurringPaymentOriginAdopt
@@ -38,6 +37,7 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.domain.model.RecurringOccurrence
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 import kotlinx.coroutines.flow.first
@@ -64,11 +64,11 @@ class RecurringPaymentRouteRoomTest {
             sends++
             error("Only the worker may send the persisted original")
         }
-        override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+        override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrence {
             occurrenceReads++
             check(!failOccurrenceReads) { "offline" }
             if (publicId != "rec-1") return api.recurringOccurrence(publicId, month)
-            return RecurringOccurrenceDto(
+            return RecurringOccurrence(
                 seriesPublicId = publicId,
                 period = month,
                 seriesRowVersion = 7,
@@ -1007,7 +1007,7 @@ class RecurringPaymentRouteRoomTest {
             nextDueDate = "2026-08-15",
             homeCurrencyCode = "JPY",
         ),
-        occurrence = RecurringOccurrenceDto(
+        occurrence = com.ticketbox.domain.model.RecurringOccurrence(
             seriesPublicId = task.seriesPublicId,
             period = task.period,
             seriesRowVersion = 7L,

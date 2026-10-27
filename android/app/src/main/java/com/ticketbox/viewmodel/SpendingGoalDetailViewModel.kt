@@ -13,8 +13,8 @@ import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.formatAmountInput
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.formatAmountInput
+import com.ticketbox.presentation.parseAmountCents
 import java.time.YearMonth
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow

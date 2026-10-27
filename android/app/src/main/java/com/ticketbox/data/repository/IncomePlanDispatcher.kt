@@ -12,7 +12,7 @@ import retrofit2.HttpException
 class IncomePlanDispatcher(
     override val type: PendingMutationType,
     private val apiProvider: (OutboxRow) -> ApiService,
-    private val payloadAdapter: JsonAdapter<IncomePlanSubmissionPayload>,
+    private val payloadAdapter: JsonAdapter<IncomePlanSubmission>,
     private val receiptAdapter: JsonAdapter<IncomePlanDto>,
 ) : OutboxMutationDispatcher {
     override suspend fun dispatch(row: OutboxRow): DispatchResult {

@@ -4,9 +4,9 @@ import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
-import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.domain.model.DebtGoalLinksReplaceRequest
+import com.ticketbox.domain.model.DebtGoalTargetDateRequest
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
@@ -15,9 +15,9 @@ import retrofit2.HttpException
 @JsonClass(generateAdapter = true)
 data class DebtGoalEditPayload(
     val goalName: String,
-    val request: DebtGoalLinksReplaceRequestDto? = null,
+    val request: DebtGoalLinksReplaceRequest? = null,
     val selectedLabels: Map<String, String> = emptyMap(),
-    val dateRequest: DebtGoalTargetDateRequestDto? = null,
+    val dateRequest: DebtGoalTargetDateRequest? = null,
     val goalVersion: Int? = null,
 )
 
@@ -90,3 +90,19 @@ class DebtGoalEditDispatcher(
         }
     }
 }
+
+data class DebtGoalEditSubmission(
+    val goalName: String,
+    val request: com.ticketbox.domain.model.DebtGoalLinksReplaceRequest? = null,
+    val selectedLabels: Map<String, String> = emptyMap(),
+    val dateRequest: com.ticketbox.domain.model.DebtGoalTargetDateRequest? = null,
+    val goalVersion: Int? = null,
+)
+
+internal fun DebtGoalEditPayload.toView() = DebtGoalEditSubmission(
+    goalName = goalName,
+    request = request,
+    selectedLabels = selectedLabels,
+    dateRequest = dateRequest,
+    goalVersion = goalVersion,
+)

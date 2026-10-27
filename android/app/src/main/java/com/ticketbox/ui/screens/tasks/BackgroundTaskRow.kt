@@ -23,7 +23,7 @@ import androidx.compose.ui.res.vectorResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.shouldGeneralizeTaskError
-import com.ticketbox.ui.components.displayTime
+import com.ticketbox.presentation.displayTime
 import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppRadius

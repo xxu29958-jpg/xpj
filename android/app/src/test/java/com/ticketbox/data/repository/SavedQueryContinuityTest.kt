@@ -4,14 +4,19 @@ import com.ticketbox.data.local.SavedQueryInputDao
 import com.ticketbox.data.local.SavedQueryInputEntity
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto
 import com.ticketbox.data.remote.dto.SavedViewDeleteRequestDto
-import com.ticketbox.data.remote.dto.SavedViewDeletionReceiptDto
-import com.ticketbox.data.remote.dto.SavedViewDto
 import com.ticketbox.data.remote.dto.SavedViewListDto
 import com.ticketbox.data.remote.dto.SavedViewUpdateRequestDto
+import com.ticketbox.domain.model.SavedView
+import com.ticketbox.domain.model.SavedViewDefinitionRequest
+import com.ticketbox.domain.model.SavedViewDeletionReceipt
 import com.ticketbox.viewmodel.SavedQueryDraftController
 import java.io.IOException
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -19,11 +24,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SavedQueryContinuityTest {
@@ -125,12 +125,12 @@ class SavedQueryContinuityTest {
 }
 
 private class QueryCommandFixture {
-    val original = SavedViewDto("query-1", "原名称", 7, "fixed", "2026-10", "", null, null, "JPY", null, "便利店", "购物")
-    var current: SavedViewDto? = original
+    val original = SavedView("query-1", "原名称", 7, "fixed", "2026-10", "", null, null, "JPY", null, "便利店", "购物")
+    var current: SavedView? = original
     var rejectFirst = false
     private val createResponse = original.copy(name = "原保存输入", rowVersion = 1)
     var updateResponse = original.copy(name = "原保存输入", rowVersion = 8)
-    private val deletionResponse = SavedViewDeletionReceiptDto("query-1", 7, "原名称")
+    private val deletionResponse = SavedViewDeletionReceipt("query-1", 7, "原名称")
     val keys = mutableListOf<String>()
     val requests = mutableListOf<Any>()
     val inputs = QueryInputDao()
@@ -138,11 +138,11 @@ private class QueryCommandFixture {
     private val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun savedViews() = SavedViewListDto(listOfNotNull(current))
         override suspend fun savedView(publicId: String) = requireNotNull(current)
-        override suspend fun createSavedView(request: SavedViewDefinitionRequestDto, idempotencyKey: String): SavedViewDto =
+        override suspend fun createSavedView(request: SavedViewDefinitionRequest, idempotencyKey: String): SavedView =
             accept(idempotencyKey, request, createResponse)
-        override suspend fun updateSavedView(publicId: String, request: SavedViewUpdateRequestDto, idempotencyKey: String): SavedViewDto =
+        override suspend fun updateSavedView(publicId: String, request: SavedViewUpdateRequestDto, idempotencyKey: String): SavedView =
             accept(idempotencyKey, request, updateResponse)
-        override suspend fun deleteSavedView(publicId: String, request: SavedViewDeleteRequestDto, idempotencyKey: String): SavedViewDeletionReceiptDto =
+        override suspend fun deleteSavedView(publicId: String, request: SavedViewDeleteRequestDto, idempotencyKey: String): SavedViewDeletionReceipt =
             accept(idempotencyKey, request, deletionResponse)
     }
     val repository = SavedQueryRepository(testApiServiceProvider(object : ApiServiceFactory {

@@ -16,8 +16,8 @@ import com.ticketbox.domain.model.BudgetAdviceInputs
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.displayMonthLabel
-import com.ticketbox.ui.components.displayTime
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.displayTime
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 

@@ -2,20 +2,20 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
-import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.RuleApplicationRollbackRequestDto
-import com.ticketbox.domain.model.RuleApplicationRollbackPreview
-import com.ticketbox.domain.model.RuleRollbackSkippedItem
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.domain.model.CategoryRule
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplicationRollback
+import com.ticketbox.domain.model.RuleApplicationRollbackPreview
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
+import com.ticketbox.domain.model.RuleRollbackSkippedItem
 import com.ticketbox.domain.model.ledgerRoleCanModify
+import com.ticketbox.domain.model.normalizeExpenseCategory
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import com.ticketbox.domain.model.normalizeExpenseCategory
 
 /**
  * Category-rule CRUD and bulk rule application over confirmed expenses.
@@ -68,7 +68,7 @@ class RuleRepository(
             if (currentAccess()?.binding != expected) emptyList() else rows.mapNotNull(::describeSubmission)
         }
 
-    suspend fun createCategoryRule(expected: LogicalSessionBinding, request: CategoryRuleRequest,
+    suspend fun createCategoryRule(expected: LogicalSessionBinding, request: com.ticketbox.domain.model.CategoryRuleDefinition,
         input: RuleDefinitionDraft? = null): Result<Long> =
         errorHandler.safeCall {
             val bound = ledgerRequestGuard.bindExact(expected)
@@ -83,7 +83,7 @@ class RuleRepository(
         }
 
     suspend fun updateCategoryRule(expected: LogicalSessionBinding, baseline: CategoryRule,
-        request: CategoryRuleRequest, input: RuleDefinitionDraft? = null): Result<Long> = errorHandler.safeCall {
+        request: com.ticketbox.domain.model.CategoryRuleDefinition, input: RuleDefinitionDraft? = null): Result<Long> = errorHandler.safeCall {
         val bound = ledgerRequestGuard.bindExact(expected)
         require(canModifyLedger()) { "当前角色为只读，无法修改规则。" }
         val clean = request.cleanRule()
@@ -182,7 +182,7 @@ class RuleRepository(
         val original = runCatching { requireNotNull(offlineMutations.applicationAdapter).fromJson(row.payloadJson) }.getOrNull()
         val receipt = row.receiptJson?.let { runCatching { requireNotNull(offlineMutations.applicationReceiptAdapter).fromJson(it) }.getOrNull() }
             ?.takeIf { original?.accepts(row, it) == true }
-        return PendingRuleApplication(row, original, receipt)
+        return PendingRuleApplication(row, original, receipt?.toDomain())
     }
 
     fun observeApplications(expected: LogicalSessionBinding): Flow<List<PendingRuleApplication>> =
@@ -248,7 +248,7 @@ class RuleRepository(
 private val RULE_MUTATIONS = setOf(PendingMutationType.CreateCategoryRule,
     PendingMutationType.UpdateCategoryRule, PendingMutationType.DeleteCategoryRule)
 
-private fun CategoryRuleRequest.cleanRule(): CategoryRuleRequest = copy(
+private fun CategoryRuleDefinition.cleanRule(): CategoryRuleDefinition = copy(
     keyword = keyword?.trim(), category = category?.trim()?.let(::normalizeExpenseCategory),
     sourceContains = sourceContains?.trim()?.takeIf { it.isNotBlank() },
     tagContains = tagContains?.trim()?.takeIf { it.isNotBlank() },

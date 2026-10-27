@@ -14,7 +14,6 @@ import com.ticketbox.data.repository.UploadBatchRequest
 import com.ticketbox.data.repository.UploadIntentActions
 import com.ticketbox.data.repository.UploadIntentObservation
 import com.ticketbox.data.repository.LogicalSessionBinding
-import com.ticketbox.data.repository.toPendingUploadReceipt
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
@@ -224,7 +223,7 @@ class PendingViewModel(
         val newlyCompleted = completed.filter { observedUploadReceipts.add(it.row.id) }
         newlyCompleted.forEach {
             onDataChanged()
-            enrichmentObserver()?.track(requireNotNull(it.receipt).toPendingUploadReceipt())
+            enrichmentObserver()?.track(requireNotNull(it.receipt))
         }
         if (newlyCompleted.isNotEmpty()) refresh()
     }
@@ -424,7 +423,7 @@ class PendingViewModel(
         }
         uploadObservation?.uploads.orEmpty()
             .filter { it.row.status == PendingMutationStatus.Done }
-            .mapNotNull { it.receipt?.toPendingUploadReceipt() }
+            .mapNotNull { it.receipt }
             .filter { it.expenseId == expenseId }
             .forEach { enrichmentObserver()?.track(it) }
     }
@@ -442,7 +441,7 @@ class PendingViewModel(
         val pendingIds = expenses.map { it.id }.toSet()
         val receipts = uploadObservation?.uploads.orEmpty()
             .filter { it.row.status == PendingMutationStatus.Done }
-            .mapNotNull { it.receipt?.toPendingUploadReceipt() }
+            .mapNotNull { it.receipt }
             .filter { it.expenseId in pendingIds }
         enrichmentObserver()?.restore(receipts)
     }

@@ -9,17 +9,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -37,30 +37,30 @@ import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.BillSplitAgreementDto
-import com.ticketbox.data.remote.dto.BillSplitChangeProposalDto
-import com.ticketbox.data.remote.dto.BillSplitSettlementPreviewDto
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.ui.screens.SplitAgreementSection
+import com.ticketbox.domain.model.BillSplitChangeProposal
+import com.ticketbox.domain.model.BillSplitSettlementPreview
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.SplitAgreementDetailPanel
 import com.ticketbox.ui.screens.SplitAgreementPanel
+import com.ticketbox.ui.screens.SplitAgreementSection
 import com.ticketbox.ui.theme.TicketboxTheme
-import com.ticketbox.ui.saveConsumerArtPreview
-import com.ticketbox.viewmodel.SplitAgreementViewModel
 import com.ticketbox.viewmodel.DebtDetailUiState
 import com.ticketbox.viewmodel.MemberProposalUiState
+import com.ticketbox.viewmodel.SplitAgreementViewModel
 import com.ticketbox.viewmodel.splitAgreementViewModelFactory
 import java.net.ConnectException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import okhttp3.ResponseBody.Companion.toResponseBody
-import retrofit2.HttpException
-import retrofit2.Response
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import retrofit2.HttpException
+import retrofit2.Response
 
 /** Actual form and saved-state factory with disk Room; only session and server transport are synthetic. */
 class SplitAgreementDraftConnectedTest {
@@ -75,7 +75,7 @@ class SplitAgreementDraftConnectedTest {
         paidAmountCents = 0, status = "open", rowVersion = 8)
     private var failReads = false
     private var missingReturn = false
-    private var pendingProposal: BillSplitChangeProposalDto? = null
+    private var pendingProposal: BillSplitChangeProposal? = null
     private val service = object : ApiService by network.service {
         override suspend fun splitAgreement(publicId: String, newShareAmountCents: Long?): BillSplitAgreementDto {
             check(publicId in setOf(original.publicId, returned.publicId))
@@ -86,7 +86,7 @@ class SplitAgreementDraftConnectedTest {
             return BillSplitAgreementDto("agreement-invitation", "CNY", 4000, 2000, original, returned, true,
                 3000, 0, 1000, 0, -1000,
                 pendingProposal = pendingProposal,
-                preview = BillSplitSettlementPreviewDto(newShareAmountCents ?: 2000, -1000, -1000, true))
+                preview = BillSplitSettlementPreview(newShareAmountCents ?: 2000, -1000, -1000, true))
         }
     }
     private val fixture = DebtAdjustmentConnectedFixture(context, service)
@@ -180,7 +180,7 @@ class SplitAgreementDraftConnectedTest {
         assertTrue(fixture.stored().isEmpty())
         assertEquals(0, fixture.scheduleCalls)
         closeEditor()
-        pendingProposal = BillSplitChangeProposalDto(publicId = "replacement-predecessor",
+        pendingProposal = BillSplitChangeProposal(publicId = "replacement-predecessor",
             originalDebtPublicId = original.publicId, returnDebtPublicId = returned.publicId,
             status = "pending", proposedByYou = false, shareBeforeAmountCents = 2000, newShareAmountCents = 1100,
             settlementBeforeNetAmountCents = -1000, settlementNetAmountCents = -400,

@@ -2,6 +2,8 @@ package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.domain.model.GoalCreateRequest
+import com.ticketbox.domain.model.GoalUpdateRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -42,8 +44,8 @@ class GoalDtoContractTest {
                 """.trimIndent(),
             ),
         )
-        val createJson = moshi.adapter(GoalCreateRequestDto::class.java).toJson(
-            GoalCreateRequestDto(
+        val createJson = moshi.adapter(GoalCreateRequest::class.java).toJson(
+            GoalCreateRequest(
                 name = "本月餐饮",
                 month = "2026-05",
                 category = "餐饮",
@@ -51,8 +53,8 @@ class GoalDtoContractTest {
                 homeCurrencyCode = "JPY",
             ),
         )
-        val updateJson = moshi.adapter(GoalUpdateRequestDto::class.java).toJson(
-            GoalUpdateRequestDto(
+        val updateJson = moshi.adapter(GoalUpdateRequest::class.java).toJson(
+            GoalUpdateRequest(
                 expectedRowVersion = 1L,
                 targetAmountCents = 90000,
                 homeCurrencyCode = "JPY",
@@ -80,8 +82,8 @@ class GoalDtoContractTest {
         // ADR-0049 §6 (slice 8b): the debt-goal create wire body — goal_type=debt_repayment +
         // debt_public_ids, with month/target/category omitted (the backend 422s a debt goal
         // carrying them). Moshi serializes in constructor order and drops nulls.
-        val debtCreateJson = moshi.adapter(GoalCreateRequestDto::class.java).toJson(
-            GoalCreateRequestDto(
+        val debtCreateJson = moshi.adapter(GoalCreateRequest::class.java).toJson(
+            GoalCreateRequest(
                 name = "还清欠款",
                 goalType = "debt_repayment",
                 debtPublicIds = listOf("debt-a", "debt-b"),

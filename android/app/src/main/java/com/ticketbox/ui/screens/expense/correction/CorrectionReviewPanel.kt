@@ -24,7 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppSectionHeader
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.viewmodel.ExpenseFactUiState
 import com.ticketbox.viewmodel.FactCorrectionReview

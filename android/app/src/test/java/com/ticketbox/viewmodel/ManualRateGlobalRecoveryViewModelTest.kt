@@ -3,17 +3,18 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.job
+import com.ticketbox.data.repository.toDomain
+import com.ticketbox.domain.model.ExchangeRateRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 
 class ManualRateGlobalRecoveryViewModelTest {
-    private val request = ExchangeRateRequestDto("JPY", "USD", "2026-09-01", "0.0069", "manual", 0)
+    private val request = ExchangeRateRequest("JPY", "USD", "2026-09-01", "0.0069", "manual", 0)
 
     @Test fun globalRetryUsesTheOwnerAndRetainsOriginalPairDateAmountKeyAndOcc() = budgetTest {
         val harness = outboxStatusHarness()

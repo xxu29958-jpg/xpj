@@ -9,11 +9,14 @@ import com.ticketbox.data.remote.TICKETBOX_API_VERSION_HEADER
 import com.ticketbox.data.remote.TICKETBOX_CURRENCY_BINDING_HEADER
 import com.ticketbox.data.remote.buildApiHttpClient
 import com.ticketbox.data.remote.buildApiService
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
@@ -23,9 +26,6 @@ import okio.Buffer
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /** Real negotiation, Retrofit, dispatcher and drain; only transport and the DAO are fakes. */
 @RunWith(Parameterized::class)
@@ -35,9 +35,9 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
         val clock = Clock.fixed(Instant.parse("2026-09-30T23:55:00Z"), ZoneOffset.UTC)
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao, clock)
-        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(IncomePlanSubmissionPayload::class.java)
-        val payload = IncomePlanSubmissionPayload(1, "plan-1", "工资", 10000, "CNY", "session", "binding",
-            IncomePlanUpdateRequestDto("2026-09", 0, amountCents = 12000))
+        val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(IncomePlanSubmission::class.java)
+        val payload = IncomePlanSubmission(1, "plan-1", "工资", 10000, "CNY", "session", "binding",
+            IncomePlanUpdateRequest("2026-09", 0, amountCents = 12000))
         val id = outbox.enqueue(PendingMutationType.UpdateIncomePlan, "income_plan:plan-1", adapter.toJson(payload), 7, "original-key")
         val original = dao.rows.getValue(id)
         val transport = RefusalTransport(refusal)
@@ -93,7 +93,7 @@ class OutboxProtocolRefusalTest(private val refusal: String) {
     }
 
     private val adapterRequest = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-        .adapter(IncomePlanUpdateRequestDto::class.java)
+        .adapter(IncomePlanUpdateRequest::class.java)
 
     companion object {
         @JvmStatic

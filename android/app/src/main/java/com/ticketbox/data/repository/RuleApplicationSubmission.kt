@@ -32,7 +32,7 @@ data class RuleApplicationPayload(
 data class PendingRuleApplication(
     val row: OutboxRow,
     val original: RuleApplicationPayload?,
-    val receipt: RuleApplyConfirmedResponseDto?,
+    val receipt: com.ticketbox.domain.model.RuleApplyConfirmedResult?,
 ) {
     val supported: Boolean get() = original?.supports(row) == true
     val isDone: Boolean get() = row.status == PendingMutationStatus.Done

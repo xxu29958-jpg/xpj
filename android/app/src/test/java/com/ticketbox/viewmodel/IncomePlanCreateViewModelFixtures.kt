@@ -2,12 +2,11 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.IncomePlanDraft
 import com.ticketbox.data.repository.IncomePlanListing
 import com.ticketbox.data.repository.IncomePlanPatch
-import com.ticketbox.data.repository.IncomePlanSubmissionPayload
+import com.ticketbox.data.repository.IncomePlanSubmission
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OutboxRow
@@ -15,6 +14,7 @@ import com.ticketbox.data.repository.PendingIncomePlanSubmission
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomePlanStatus
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 
@@ -79,9 +79,9 @@ internal class FakeIncomePlanCreateRepository(
 internal fun createSubmission(call: IncomePlanCreateCall, rowId: Long = 1,
     status: PendingMutationStatus = PendingMutationStatus.Pending): PendingIncomePlanSubmission {
     val draft = call.draft
-    val intent = IncomePlanSubmissionPayload(2, "", draft.label, draft.amountCents, draft.homeCurrencyCode,
+    val intent = IncomePlanSubmission(2, "", draft.label, draft.amountCents, draft.homeCurrencyCode,
         call.binding.sessionGeneration, call.binding.bindingRevision,
-        IncomePlanUpdateRequestDto(draft.intentMonth, 0, draft.label, draft.sourceType.wireValue,
+        IncomePlanUpdateRequest(draft.intentMonth, 0, draft.label, draft.sourceType.wireValue,
             draft.frequency.wireValue, draft.incomeMonth, draft.amountCents, draft.payDay))
     val row = OutboxRow(rowId, call.binding.serverUrl, call.binding.ledgerId, call.binding.ownerKey,
         PendingMutationType.CreateIncomePlan, "income_plan_create:${call.creationKey}", "original-json", 0,

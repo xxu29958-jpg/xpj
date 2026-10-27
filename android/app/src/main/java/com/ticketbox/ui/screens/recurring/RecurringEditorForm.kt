@@ -41,8 +41,8 @@ import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
-import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.components.selectedDateMillisFromIso
+import com.ticketbox.presentation.formatDisplayAmount
+import com.ticketbox.presentation.selectedDateMillisFromIso
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyChoices
 

@@ -11,16 +11,15 @@ import com.ticketbox.data.repository.DebtTask
 import com.ticketbox.data.repository.MemberSettlementCommand
 import com.ticketbox.data.repository.MemberSettlementResult
 import com.ticketbox.data.repository.RepositoryException
-import com.ticketbox.data.repository.toRequest
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.formatMinorAmountInput
-import com.ticketbox.ui.components.parseAmountCents
-import com.ticketbox.ui.screens.expense.ExpenseTimeForm
+import com.ticketbox.presentation.formatMinorAmountInput
+import com.ticketbox.presentation.parseAmountCents
+import com.ticketbox.viewmodel.ExpenseTimeForm
 import java.time.Clock
 import java.time.ZoneId
 import java.util.UUID
@@ -228,7 +227,7 @@ class MemberRepaymentProposalViewModel(
         }
         val command = when (form) {
             ProposalForm.Propose -> MemberSettlementCommand.Propose(requireNotNull(amount), current.noteInput.trim().ifBlank { null },
-                timeInput = time?.input?.toRequest())
+                timeInput = time?.input)
             ProposalForm.Confirm -> MemberSettlementCommand.Confirm(current.targetProposalPublicId.orEmpty(), current.formRowVersion ?: expectedRowVersion,
                 amount.takeIf { it != current.formProposedAmount })
         }
@@ -345,7 +344,7 @@ private fun proposalValidationError(
     form: ProposalForm,
     amountCents: Long?,
     proposedAmountCents: Long?,
-    time: com.ticketbox.ui.screens.expense.ExpenseTimeResolution?,
+    time: com.ticketbox.viewmodel.ExpenseTimeResolution?,
 ): Int? = when {
     amountCents == null || amountCents <= 0L -> R.string.debt_proposal_amount_validation
     // 部分确认不得超过对方提出的金额（后端也会 422，这里给即时反馈）。

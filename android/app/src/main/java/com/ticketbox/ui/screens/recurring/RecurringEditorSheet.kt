@@ -13,7 +13,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.parseAmountCents
 import com.ticketbox.ui.screens.RecurringItemActions
 import com.ticketbox.viewmodel.RecurringListLoadState
 import com.ticketbox.viewmodel.RecurringManualSaveFeedback

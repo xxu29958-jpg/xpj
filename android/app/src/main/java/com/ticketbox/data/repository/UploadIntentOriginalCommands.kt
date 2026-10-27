@@ -2,15 +2,15 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.OriginalHealthDto
+import com.ticketbox.domain.model.OriginalHealth
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 private val originalErrors = NetworkErrorHandler(serverUrlProvider = { null }, context = "Original")
 
@@ -24,7 +24,7 @@ internal fun UploadIntentRepository.observeOriginalAttachmentCommands() = apiPro
     }
 }
 
-internal suspend fun UploadIntentRepository.readOriginalHealth(id: Long): Result<OriginalHealthDto> =
+internal suspend fun UploadIntentRepository.readOriginalHealth(id: Long): Result<com.ticketbox.domain.model.OriginalHealth> =
     originalErrors.safeCall { guard.bind().call { it.originalHealth(id) } }
 
 internal suspend fun UploadIntentRepository.acceptOriginalAttachment(request: OriginalSubmission): Result<Long> = originalErrors.safeCall {

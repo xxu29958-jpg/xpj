@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.domain.model.ExpenseTimeInput
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -184,7 +185,7 @@ class DebtCreationRoomContinuityTest {
         counterpartyLabel = "小王",
         principalAmountCents = 12_345L,
         note = "出差垫付车费",
-        timeInput = com.ticketbox.data.remote.dto.ExpenseTimeInputDto("date_only", 3L, "2026-01-31"),
+        timeInput = com.ticketbox.domain.model.ExpenseTimeInput("date_only", 3L, "2026-01-31"),
     )
 
     private fun sessionRecord(role: String) = LocalSessionRecord(

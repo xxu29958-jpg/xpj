@@ -70,7 +70,7 @@ internal class BudgetAdviceCallStore(
         binding: LogicalSessionBinding,
         month: String,
         homeCurrencyCode: String?,
-        trial: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest? = null,
+        trial: com.ticketbox.domain.model.MonthlyArrangementChange? = null,
     ): Result<BudgetAdviceResult> {
         val (key, deferred, isOwner) = synchronized(lock) {
             val key = AdviceRequestKey(
@@ -139,7 +139,7 @@ internal class BudgetAdviceCallStore(
      *  null-advice results leave the cache absent. Nothing is persisted; an
      *  app restart simply starts cold. The binding is part of the lookup key,
      *  so a re-paired household never sees a previous binding's entry. */
-    fun cached(binding: LogicalSessionBinding, month: String, homeCurrencyCode: String?, trial: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest? = null): BudgetAdviceResult? =
+    fun cached(binding: LogicalSessionBinding, month: String, homeCurrencyCode: String?, trial: com.ticketbox.domain.model.MonthlyArrangementChange? = null): BudgetAdviceResult? =
         synchronized(lock) {
             lastSuccess[
                 AdviceRequestKey(
@@ -197,7 +197,7 @@ private data class AdviceRequestKey(
     val homeCurrencyCode: String?,
     val timezone: String,
     val dataGeneration: Int,
-    val trial: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest? = null,
+    val trial: com.ticketbox.domain.model.MonthlyArrangementChange? = null,
 )
 
 private fun verifyAdviceBasis(result: BudgetAdviceResult, key: AdviceRequestKey) {
@@ -214,7 +214,7 @@ private fun verifyAdviceBasis(result: BudgetAdviceResult, key: AdviceRequestKey)
 }
 
 private fun verifyTrialAmounts(basis: com.ticketbox.domain.model.BudgetAdviceInputs,
-    trial: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest) {
+    trial: com.ticketbox.domain.model.MonthlyArrangementChange) {
     // Cross-currency projection belongs to the server; raw equality only holds in the original currency.
     if (trial.homeCurrencyCode != basis.homeCurrencyCode) {
         if (basis.arrangementCurrencyCode != trial.homeCurrencyCode) throw unverifiedAdviceBasis()

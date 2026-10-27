@@ -25,7 +25,7 @@ import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.components.displayMonthLabel
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay

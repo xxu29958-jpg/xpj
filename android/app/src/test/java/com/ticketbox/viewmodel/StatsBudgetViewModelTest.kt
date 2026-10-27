@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.domain.model.MonthlyArrangementChange
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -170,8 +171,8 @@ private class FakeStatsBudgetActions(
 }
 
 private object UnusedStatsAdviceInputs : com.ticketbox.data.repository.BudgetAdviceInputsActions {
-    override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<com.ticketbox.domain.model.BudgetAdviceInputs> = error("Unexpected trial read")
-    override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceResult> = error("Unexpected trial AI call")
+    override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: com.ticketbox.domain.model.MonthlyArrangementChange, reportingHomeCurrencyCode: String?): Result<com.ticketbox.domain.model.BudgetAdviceInputs> = error("Unexpected trial read")
+    override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: com.ticketbox.domain.model.MonthlyArrangementChange, reportingHomeCurrencyCode: String?): Result<BudgetAdviceResult> = error("Unexpected trial AI call")
     override suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String, homeCurrencyCode: String?): Result<com.ticketbox.domain.model.BudgetAdviceInputs> = Result.failure(UnsupportedOperationException())
 }
 

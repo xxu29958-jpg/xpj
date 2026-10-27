@@ -5,8 +5,8 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseRevision
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.displayDateTime
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.displayDateTime
+import com.ticketbox.presentation.formatDisplayAmount
 
 /** Readable evidence from immutable monetary snapshots, separate from today's summary. */
 internal fun historicalAmount(snapshot: Map<String, Any?>): UiText? {

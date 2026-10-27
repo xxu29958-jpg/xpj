@@ -22,7 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import com.ticketbox.ui.screens.expense.toSavedJson
+import com.ticketbox.viewmodel.toSavedJson
 import com.ticketbox.R
 import com.ticketbox.ui.asString
 import com.ticketbox.domain.model.MessageTone
@@ -424,7 +424,7 @@ private fun CorrectionTimeSection(
     val (initial, setInitial) = com.ticketbox.ui.screens.expense.rememberExpenseTimeForm(
         expense.id, expense.expenseTime, expense.accountingTime, form.timeFormJson,
     )
-    val captured = com.ticketbox.ui.screens.expense.readExpenseTimeForm(form.timeFormJson) ?: initial
+    val captured = com.ticketbox.viewmodel.readExpenseTimeForm(form.timeFormJson) ?: initial
     com.ticketbox.ui.screens.expense.ExpenseTimeEditor(captured, {
         setInitial(it)
         actions.onTimeFormChange(it.toSavedJson())

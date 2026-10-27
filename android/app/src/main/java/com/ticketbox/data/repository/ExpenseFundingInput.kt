@@ -25,7 +25,7 @@ internal fun readExpenseFunding(json: String, currency: CurrencyCode): List<Expe
             row.expenseCurrency, row.accountCurrency)
     }
 
-internal fun fundingInputs(view: com.ticketbox.data.remote.dto.ExpenseFundingViewDto): String =
+internal fun fundingInputs(view: com.ticketbox.domain.model.ExpenseFundingView): String =
     fundingInputAdapter.toJson(view.parts.filter { it.accountPublicId != null }.map { row ->
         fun text(value: Long, code: String) = java.math.BigDecimal.valueOf(value,
             requireNotNull(CurrencyCode.fromStorageKeyOrNull(code)).minorUnitDigits).toPlainString()
@@ -44,7 +44,7 @@ internal fun OutboxRow.canReviewFunding(): Boolean = runCatching {
 }.getOrDefault(false)
 
 /** Currency travels with the original minor units; recovery must never reinterpret them in today's currency. */
-internal fun reviewedFundingInputs(row: OutboxRow, accounts: List<com.ticketbox.data.remote.dto.FinancialAccountDto>): String =
+internal fun reviewedFundingInputs(row: OutboxRow, accounts: List<com.ticketbox.domain.model.FinancialAccount>): String =
     fundingInputAdapter.toJson(row.confirmationFunding().map { part ->
         val currency = requireNotNull(CurrencyCode.fromStorageKeyOrNull(part.expenseCurrencyCode)) { "原消费币种无法核对，请保留原提交。" }
         val native = requireNotNull(CurrencyCode.fromStorageKeyOrNull(part.accountCurrencyCode)) { "原付款币种无法核对，请保留原提交。" }

@@ -3,8 +3,8 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
-import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
-import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
+import com.ticketbox.domain.model.DebtVoidCreateRequest
+import com.ticketbox.domain.model.RepaymentVoidCreateRequest
 import java.io.IOException
 
 @JsonClass(generateAdapter = true)
@@ -13,7 +13,7 @@ data class DebtVoidPayload(
     override val subject: DebtWriteSubject,
     override val originSessionGeneration: String,
     override val originBindingRevision: String,
-    val request: DebtVoidCreateRequestDto,
+    val request: DebtVoidCreateRequest,
 ) : DebtWriteIntent { override val expectedRowVersion: Long get() = request.expectedRowVersion }
 
 @JsonClass(generateAdapter = true)
@@ -22,22 +22,22 @@ data class DebtRepaymentVoidPayload(
     override val subject: DebtWriteSubject,
     override val originSessionGeneration: String,
     override val originBindingRevision: String,
-    val request: RepaymentVoidCreateRequestDto,
+    val request: RepaymentVoidCreateRequest,
 ) : DebtWriteIntent { override val expectedRowVersion: Long get() = request.expectedRowVersion }
 
-internal fun OutboxRow.describeDebtVoid(adapter: JsonAdapter<DebtVoidPayload>): PendingDebtWrite {
+internal fun OutboxRow.readOriginalDebtVoid(adapter: JsonAdapter<DebtVoidPayload>): DebtVoidPayload? {
     val payload = adapter.readVoidPayload(payloadJson)?.takeIf {
         validVoid(it, it.revision, it.originSessionGeneration, it.originBindingRevision, it.request.reason)
     }
-    return PendingDebtWrite(this, payload)
+    return payload
 }
 
-internal fun OutboxRow.describeRepaymentVoid(adapter: JsonAdapter<DebtRepaymentVoidPayload>): PendingDebtWrite {
+internal fun OutboxRow.readOriginalRepaymentVoid(adapter: JsonAdapter<DebtRepaymentVoidPayload>): DebtRepaymentVoidPayload? {
     val payload = adapter.readVoidPayload(payloadJson)?.takeIf {
         it.request.repaymentPublicId.isNotBlank() && validVoid(it, it.revision,
             it.originSessionGeneration, it.originBindingRevision, it.request.reason)
     }
-    return PendingDebtWrite(this, payload)
+    return payload
 }
 
 private fun OutboxRow.validVoid(intent: DebtWriteIntent, revision: Int, session: String, binding: String,
@@ -48,3 +48,9 @@ private fun OutboxRow.validVoid(intent: DebtWriteIntent, revision: Int, session:
 
 private fun <T> JsonAdapter<T>.readVoidPayload(json: String): T? = try { fromJson(json) }
     catch (_: JsonDataException) { null } catch (_: IOException) { null }
+
+internal fun OutboxRow.describeDebtVoid(adapter: JsonAdapter<DebtVoidPayload>): PendingDebtWrite =
+    PendingDebtWrite(this, readOriginalDebtVoid(adapter)?.toView())
+
+internal fun OutboxRow.describeRepaymentVoid(adapter: JsonAdapter<DebtRepaymentVoidPayload>): PendingDebtWrite =
+    PendingDebtWrite(this, readOriginalRepaymentVoid(adapter)?.toView())

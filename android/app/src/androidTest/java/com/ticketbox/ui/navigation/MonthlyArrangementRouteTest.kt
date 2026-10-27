@@ -15,19 +15,19 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.ExchangeRateDto
 import com.ticketbox.data.remote.dto.DiscretionaryResponseDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementHistoryItemDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.design.LocalCurrencyDisplay
-import com.ticketbox.ui.theme.TicketboxTheme
-import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.domain.model.ExchangeRate
+import com.ticketbox.domain.model.MonthlyArrangement
+import com.ticketbox.domain.model.MonthlyArrangementChange
+import com.ticketbox.domain.model.MonthlyArrangementHistoryItem
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.RealKeyboard
+import com.ticketbox.ui.design.LocalCurrencyDisplay
+import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.theme.TicketboxTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -50,13 +50,13 @@ class MonthlyArrangementRouteTest {
     }
 
     @Test fun trialIsNotSavedAndExplicitSaveSurvivesReopenAlongsideANewerDraft() {
-        fixture.latest = ExchangeRateDto("rate", "CNY", "JPY", fixture.rateDate, "20", "manual",
+        fixture.latest = ExchangeRate("rate", "CNY", "JPY", fixture.rateDate, "20", "manual",
             "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1)
         fixture.inputReply = fixture.inputReply.copy(
             breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000, 0),
             missingRates = emptyList(), plannedTotalCents = 4000)
         val month = fixture.inputReply.month
-        val first = MonthlyArrangementDto("rate-ledger", month, "JPY", 3000, 500, 1, "2026-09-27T00:00:00Z")
+        val first = MonthlyArrangement("rate-ledger", month, "JPY", 3000, 500, 1, "2026-09-27T00:00:00Z")
         val second = first.copy(savingsTargetCents = 8000, rowVersion = 2)
         show()
         waitForInput()
@@ -80,10 +80,10 @@ class MonthlyArrangementRouteTest {
         assertEquals(0L, row.expectedRowVersion)
         assertNull(fixture.arrangement)
         fixture.arrangementReply = first
-        fixture.historyItems = listOf(MonthlyArrangementHistoryItemDto(1, first.updatedAt, "JPY", 3000, 500))
+        fixture.historyItems = listOf(MonthlyArrangementHistoryItem(1, first.updatedAt, "JPY", 3000, 500))
         fixture.inputReply = requireNotNull(fixture.trialReply).copy(isTrial = false)
         assertEquals(1, runBlocking { fixture.drain().done })
-        assertEquals(Triple(month, MonthlyArrangementSaveRequest("JPY", 3000, 500, null), row.idempotencyKey),
+        assertEquals(Triple(month, MonthlyArrangementChange("JPY", 3000, 500, null), row.idempotencyKey),
             fixture.arrangementWrites.single())
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.arrangement_confirmed))).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(3000L, fixture.arrangement?.savingsTargetCents)
@@ -115,10 +115,10 @@ class MonthlyArrangementRouteTest {
         assertEquals(1L, next.expectedRowVersion)
         assertNotEquals(row.idempotencyKey, next.idempotencyKey)
         fixture.arrangementReply = second
-        fixture.historyItems = listOf(MonthlyArrangementHistoryItemDto(2, second.updatedAt, "JPY", 8000, 500)) + fixture.historyItems
+        fixture.historyItems = listOf(MonthlyArrangementHistoryItem(2, second.updatedAt, "JPY", 8000, 500)) + fixture.historyItems
         fixture.inputReply = requireNotNull(fixture.trialReply).copy(isTrial = false)
         assertEquals(1, runBlocking { fixture.drain().done })
-        assertEquals(Triple(month, MonthlyArrangementSaveRequest("JPY", 8000, 500, 1), next.idempotencyKey),
+        assertEquals(Triple(month, MonthlyArrangementChange("JPY", 8000, 500, 1), next.idempotencyKey),
             fixture.arrangementWrites.last())
         assertEquals(8000L, fixture.arrangement?.savingsTargetCents)
         assertEquals(2L, fixture.arrangement?.rowVersion)

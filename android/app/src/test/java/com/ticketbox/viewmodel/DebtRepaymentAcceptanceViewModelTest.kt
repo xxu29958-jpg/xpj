@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.toView
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
@@ -184,5 +185,5 @@ private fun confirmedRepayment(call: RepaymentSaveCall): com.ticketbox.data.repo
         payloadJson = com.ticketbox.OutboxAdapterGraph().debt.debtRepaymentAdapter.toJson(payload),
         status = com.ticketbox.data.local.PendingMutationStatus.Done,
         idempotencyKey = call.key, completedAt = "2026-09-01T00:01:00Z",
-    ), intent = payload)
+    ), intent = payload.toView())
 }

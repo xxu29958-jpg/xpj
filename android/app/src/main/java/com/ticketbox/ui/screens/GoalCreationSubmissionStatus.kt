@@ -13,14 +13,13 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingGoalCreation
-import com.ticketbox.data.repository.isSupportedGoalCreation
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.ui.components.AppStatusBanner
 
 internal val PendingGoalCreation.needsRetainedDraft: Boolean
-    get() = request?.isSupportedGoalCreation(row) != true ||
+    get() = !hasSupportedIntent ||
         row.status in setOf(PendingMutationStatus.Unknown, PendingMutationStatus.Abandoned)
 
 @Composable

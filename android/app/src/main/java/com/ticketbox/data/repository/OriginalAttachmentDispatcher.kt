@@ -3,8 +3,8 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.OriginalCleanupRequestDto
-import com.ticketbox.data.remote.dto.OriginalCommandReceiptDto
 import com.ticketbox.data.remote.dto.OriginalVerificationRequestDto
+import com.ticketbox.domain.model.OriginalCommandReceipt
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -37,7 +37,7 @@ class OriginalAttachmentDispatcher(private val apiProvider: (OutboxRow) -> ApiSe
         }
     }
 
-    private suspend fun send(api: ApiService, payload: OriginalAttachmentPayload, key: String): OriginalCommandReceiptDto =
+    private suspend fun send(api: ApiService, payload: OriginalAttachmentPayload, key: String): OriginalCommandReceipt =
         when (payload.operation) {
             "verify_original" -> api.verifyOriginal(payload.expenseId,
                 OriginalVerificationRequestDto(payload.expectedRowVersion, requireNotNull(payload.sha256)), key)
@@ -77,7 +77,7 @@ class OriginalAttachmentDispatcher(private val apiProvider: (OutboxRow) -> ApiSe
     }
 }
 
-private fun OriginalCommandReceiptDto.matches(payload: OriginalAttachmentPayload): Boolean =
+private fun OriginalCommandReceipt.matches(payload: OriginalAttachmentPayload): Boolean =
     operation == payload.operation && expenseId == payload.expenseId && publicId == payload.publicId && rowVersion > 0 &&
         (payload.operation != "attach_original" || sha256.isOriginalDigest()) &&
         (payload.cleanupRequestId == null || cleanupRequestId == payload.cleanupRequestId) &&

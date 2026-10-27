@@ -28,7 +28,7 @@ import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.expenseSourceLabelRes
-import com.ticketbox.ui.components.sanitizeMinorAmountInput
+import com.ticketbox.presentation.sanitizeMinorAmountInput
 import com.ticketbox.ui.design.AppSpacing
 
 @Immutable

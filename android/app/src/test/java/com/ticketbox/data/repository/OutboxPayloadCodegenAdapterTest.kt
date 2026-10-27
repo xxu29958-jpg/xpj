@@ -11,10 +11,10 @@ import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
+import com.ticketbox.domain.model.GoalUpdateRequest
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -50,8 +50,8 @@ class OutboxPayloadCodegenAdapterTest {
         assertEquals(12L, roundTrip(CategoryRuleDeleteRequest(expectedRowVersion = 12L)).expectedRowVersion)
         assertEquals("alias", roundTrip(MerchantAliasUpdateRequest(12L, "canonical", "alias", true)).alias)
         assertEquals(12L, roundTrip(MerchantAliasDeleteRequest(expectedRowVersion = 12L)).expectedRowVersion)
-        assertEquals("goal", roundTrip(GoalUpdateRequestDto(12L, name = "goal")).name)
-        assertEquals("salary", roundTrip(IncomePlanUpdateRequestDto(intentMonth = "2026-09", expectedRowVersion = 12L, label = "salary")).label)
+        assertEquals("goal", roundTrip(GoalUpdateRequest(12L, name = "goal")).name)
+        assertEquals("salary", roundTrip(IncomePlanUpdateRequest(intentMonth = "2026-09", expectedRowVersion = 12L, label = "salary")).label)
     }
 
     private inline fun <reified T : Any> roundTrip(value: T): T {

@@ -4,9 +4,14 @@ import android.app.Application
 import android.content.Context
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.LedgerCalendarDto
+import com.ticketbox.domain.model.LedgerCalendar
 import com.ticketbox.security.SessionCredentialAdapter
 import java.io.IOException
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -18,11 +23,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLog
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertSame
-import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
@@ -41,10 +41,10 @@ class LedgerCalendarRepositoryTest {
                     it.copy(capabilities = it.capabilities.copy(
                         accountingTimeInputVersion = if (unsupported && compatibilityReads > 1) null else 1))
                 }
-                override suspend fun ledgerCalendar(ledgerId: String, revision: Long?): LedgerCalendarDto {
+                override suspend fun ledgerCalendar(ledgerId: String, revision: Long?): LedgerCalendar {
                     val capturedRevision = ++ruleReads
                     if (capturedRevision == 1) firstResponse.await()
-                    return LedgerCalendarDto(ledgerId, capturedRevision.toLong(),
+                    return LedgerCalendar(ledgerId, capturedRevision.toLong(),
                         if (capturedRevision == 1) "Asia/Shanghai" else "America/Los_Angeles",
                         "explicit", "2026-09-20T00:00:00Z")
                 }
@@ -82,7 +82,7 @@ class LedgerCalendarRepositoryTest {
                 it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = if (supported) 1 else null))
             }
             override suspend fun ledgerCalendar(ledgerId: String, revision: Long?) =
-                LedgerCalendarDto(ledgerId, revision ?: currentRevision, "Asia/Shanghai", "explicit", "2026-09-20T00:00:00Z")
+                LedgerCalendar(ledgerId, revision ?: currentRevision, "Asia/Shanghai", "explicit", "2026-09-20T00:00:00Z")
         }
         val provider = ApiServiceProvider(object : ApiServiceFactory {
             override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = api

@@ -5,32 +5,35 @@ import com.squareup.moshi.Moshi
 import com.ticketbox.data.local.*
 import com.ticketbox.data.remote.dto.*
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.MonthlyArrangementHistory
+import com.ticketbox.domain.model.MonthlyArrangementHistoryItem
+import com.ticketbox.domain.model.MonthlyArrangementResponse
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.first
-import retrofit2.HttpException
 import java.time.Instant
 import java.util.UUID
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import retrofit2.HttpException
 
 @JsonClass(generateAdapter = true)
 data class MonthlyArrangementDraft(val homeCurrencyCode: String, val savings: String, val buffer: String,
     val expectedRowVersion: Long?, val edited: Boolean = false) {
-    fun request(): MonthlyArrangementSaveRequest {
+    fun request(): com.ticketbox.domain.model.MonthlyArrangementChange {
         val currency = requireNotNull(CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)) { "安排币种无法确认。" }
         fun amount(value: String): Long = requireNotNull(com.ticketbox.domain.model.parseExactMoneyMinor(value, currency)) {
             "请输入非负金额，并符合币种精度和金额上限。"
         }
-        return MonthlyArrangementSaveRequest(homeCurrencyCode, amount(savings), amount(buffer), expectedRowVersion)
+        return com.ticketbox.domain.model.MonthlyArrangementChange(homeCurrencyCode, amount(savings), amount(buffer), expectedRowVersion)
     }
 }
-data class MonthlyArrangementRead(val response: MonthlyArrangementResponseDto, val fromCache: Boolean = false)
-data class MonthlyArrangementHistoryRead(val response: MonthlyArrangementHistoryDto, val fromCache: Boolean = false,
+data class MonthlyArrangementRead(val response: com.ticketbox.domain.model.MonthlyArrangementResponse, val fromCache: Boolean = false)
+data class MonthlyArrangementHistoryRead(val response: com.ticketbox.domain.model.MonthlyArrangementHistory, val fromCache: Boolean = false,
     val fetchedAt: Instant? = null, val receiptVersions: Set<Long> = emptySet())
 /** Legacy raw pages remain readable; absent metadata never becomes a new read time. */
 @JsonClass(generateAdapter = true)
-internal data class MonthlyArrangementHistoryCache(val response: MonthlyArrangementHistoryDto? = null,
-    val fetchedAt: String? = null, val receipts: List<MonthlyArrangementHistoryItemDto> = emptyList())
+internal data class MonthlyArrangementHistoryCache(val response: MonthlyArrangementHistory? = null,
+    val fetchedAt: String? = null, val receipts: List<MonthlyArrangementHistoryItem> = emptyList())
 interface MonthlyArrangementActions {
     suspend fun arrangement(binding: LogicalSessionBinding, month: String): Result<MonthlyArrangementRead>
     suspend fun arrangementHistory(binding: LogicalSessionBinding, month: String, beforeVersion: Long? = null): Result<MonthlyArrangementHistoryRead>
@@ -39,7 +42,7 @@ interface MonthlyArrangementActions {
     suspend fun consumeArrangementDraft(binding: LogicalSessionBinding, month: String, queuedDraft: MonthlyArrangementDraft)
     fun observeArrangements(binding: LogicalSessionBinding): Flow<List<PendingMonthlyArrangement>>
     fun describeArrangement(row: OutboxRow): PendingMonthlyArrangement?
-    suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest): Result<Long>
+    suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: com.ticketbox.domain.model.MonthlyArrangementChange): Result<Long>
     suspend fun recoverArrangement(binding: LogicalSessionBinding, pending: PendingMonthlyArrangement, drop: Boolean): Result<Unit>
 }
 
@@ -52,8 +55,8 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "MonthlyArrangement")
     private val moshi = Moshi.Builder().build()
-    private val saved = moshi.adapter(MonthlyArrangementResponseDto::class.java).serializeNulls()
-    private val history = moshi.adapter(MonthlyArrangementHistoryDto::class.java)
+    private val saved = moshi.adapter(MonthlyArrangementResponse::class.java).serializeNulls()
+    private val history = moshi.adapter(MonthlyArrangementHistory::class.java)
     private val historyCache = moshi.adapter(MonthlyArrangementHistoryCache::class.java)
     private val drafts = moshi.adapter(MonthlyArrangementDraft::class.java).serializeNulls()
     override suspend fun arrangement(binding: LogicalSessionBinding, month: String) = errors.safeCall {
@@ -75,7 +78,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
                 val local = dao.read(key, clean, "saved")?.let { saved.fromJson(it.json) } ?: throw error
                 verifyArrangementResponse(local, binding, clean)
                 val projection = if (receipt != null && receipt.rowVersion > (local.arrangement?.rowVersion ?: 0)) {
-                    MonthlyArrangementResponseDto(binding.ledgerId, clean, receipt)
+                    MonthlyArrangementResponse(binding.ledgerId, clean, receipt)
                 } else local
                 verifyArrangementResponse(projection, binding, clean)
                 dao.write(MonthlyArrangementCacheEntity(key, clean, "saved", saved.toJson(projection)))
@@ -92,7 +95,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
             MonthlyArrangementRead(response)
         }
     }
-    private fun verifyArrangementResponse(response: MonthlyArrangementResponseDto, binding: LogicalSessionBinding, month: String) {
+    private fun verifyArrangementResponse(response: MonthlyArrangementResponse, binding: LogicalSessionBinding, month: String) {
         require(response.ledgerId == binding.ledgerId && response.month == month)
         response.arrangement?.let { require(it.ledgerId == binding.ledgerId && it.month == month && it.rowVersion > 0 &&
             CurrencyCode.fromStorageKeyOrNull(it.homeCurrencyCode)?.storageKey == it.homeCurrencyCode &&
@@ -112,7 +115,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
         } catch (error: Exception) {
             if (!error.isReadTransportUnavailable()) throw error
             val receipts = observeArrangements(binding).first().filter { it.isConfirmed && it.receipt?.month == clean }
-                .mapNotNull { it.receipt }.map { MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
+                .mapNotNull { it.receipt }.map { MonthlyArrangementHistoryItem(it.rowVersion, it.updatedAt,
                     it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents) }
             return@safeCall coordinator.acceptSnapshotRead(ticket, bound, fromCache = true) {
                 val json = dao.read(key, clean, kind)?.json ?: throw error
@@ -138,7 +141,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
             MonthlyArrangementHistoryRead(response, fetchedAt = fetchedAt)
         }
     }
-    private fun verifyArrangementHistory(response: MonthlyArrangementHistoryDto, binding: LogicalSessionBinding, clean: String) {
+    private fun verifyArrangementHistory(response: MonthlyArrangementHistory, binding: LogicalSessionBinding, clean: String) {
         require(response.ledgerId == binding.ledgerId && response.month == clean)
         require(response.items.all { it.rowVersion > 0 && it.savingsTargetCents in 0..com.ticketbox.domain.model.MONEY_MINOR_MAX && it.reservedBufferCents in 0..com.ticketbox.domain.model.MONEY_MINOR_MAX &&
             CurrencyCode.fromStorageKeyOrNull(it.homeCurrencyCode)?.storageKey == it.homeCurrencyCode })
@@ -167,14 +170,14 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
         }
         return PendingMonthlyArrangement(row, intent, receipt)
     }
-    override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest) = errors.safeCall {
+    override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: com.ticketbox.domain.model.MonthlyArrangementChange) = errors.safeCall {
         check(ledgerRoleCanModify(apiProvider.currentLedgerRole())) { "当前角色为只读。" }
         val bound = guard.bindExact(binding)
         val clean = validatedBudgetMonth(month).getOrThrow()
         require(CurrencyCode.fromStorageKeyOrNull(request.homeCurrencyCode)?.storageKey == request.homeCurrencyCode &&
             request.savingsTargetCents in 0..com.ticketbox.domain.model.MONEY_MINOR_MAX && request.reservedBufferCents in 0..com.ticketbox.domain.model.MONEY_MINOR_MAX && (request.expectedRowVersion == null || request.expectedRowVersion > 0))
         outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(PendingMutationType.SaveMonthlyArrangement,
-            "monthly_arrangement:$clean", payloadAdapter.toJson(MonthlyArrangementPayload(1, clean, request.copy(expectedRowVersion = null))),
+            "monthly_arrangement:$clean", payloadAdapter.toJson(MonthlyArrangementSubmission(1, clean, request.copy(expectedRowVersion = null))),
             request.expectedRowVersion ?: 0, UUID.randomUUID().toString()), validateTargetRows = { rows ->
             check(rows.all { it.status == PendingMutationStatus.Done }) { "这月安排有待处理的保存，请先核对原提交。" }
         })
@@ -195,7 +198,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
 
 internal val logicalBindingAdapter = Moshi.Builder().build().adapter(LogicalSessionBinding::class.java)
 
-private fun MonthlyArrangementHistoryDto.withNewerReceipts(receipts: List<MonthlyArrangementHistoryItemDto>, beforeVersion: Long?): MonthlyArrangementHistoryDto {
+private fun MonthlyArrangementHistory.withNewerReceipts(receipts: List<MonthlyArrangementHistoryItem>, beforeVersion: Long?): MonthlyArrangementHistory {
     val latest = items.maxOfOrNull { it.rowVersion } ?: 0
     val newer = receipts.filter { it.rowVersion > latest && (beforeVersion == null || it.rowVersion < beforeVersion) }
     if (newer.isEmpty()) return this

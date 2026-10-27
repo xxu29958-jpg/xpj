@@ -3,6 +3,34 @@ package com.ticketbox.data.remote.dto
 import com.squareup.moshi.Json
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.domain.model.BillSplitChangeAcceptRequest
+import com.ticketbox.domain.model.BillSplitChangeCreateRequest
+import com.ticketbox.domain.model.BillSplitChangeProposal
+import com.ticketbox.domain.model.BillSplitInviteRequest
+import com.ticketbox.domain.model.BillSplitSettlementPreview
+import com.ticketbox.domain.model.DebtAdjustmentCreateRequest
+import com.ticketbox.domain.model.DebtGoalLinksReplaceRequest
+import com.ticketbox.domain.model.DebtGoalTargetDateRequest
+import com.ticketbox.domain.model.DebtKindSetRequest
+import com.ticketbox.domain.model.DebtVoidCreateRequest
+import com.ticketbox.domain.model.ExchangeRate
+import com.ticketbox.domain.model.ExchangeRateRequest
+import com.ticketbox.domain.model.GoalCreateRequest
+import com.ticketbox.domain.model.GoalUpdateRequest
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
+import com.ticketbox.domain.model.MonthlyArrangement
+import com.ticketbox.domain.model.MonthlyArrangementChange
+import com.ticketbox.domain.model.MonthlyArrangementHistory
+import com.ticketbox.domain.model.MonthlyArrangementHistoryItem
+import com.ticketbox.domain.model.MonthlyArrangementResponse
+import com.ticketbox.domain.model.PaymentCandidate
+import com.ticketbox.domain.model.RecognitionTime
+import com.ticketbox.domain.model.RecognitionTimeCandidate
+import com.ticketbox.domain.model.ReferenceCreated
+import com.ticketbox.domain.model.RepaymentVoidCreateRequest
+import com.ticketbox.domain.model.SavedView
+import com.ticketbox.domain.model.SavedViewDefinitionRequest
+import com.ticketbox.domain.model.SavedViewDeletionReceipt
 import java.io.File
 import kotlin.reflect.KClass
 import kotlin.reflect.full.primaryConstructor
@@ -38,12 +66,12 @@ class OpenApiContractGateTest {
 
     private val pairs = listOf(
         Pairing(ErrorDto::class, "ErrorResponse"),
-        Pairing(SavedViewDto::class, "SavedViewDetail"),
+        Pairing(SavedView::class, "SavedViewDetail"),
         Pairing(SavedViewListDto::class, "SavedViewListResponse"),
-        Pairing(SavedViewDefinitionRequestDto::class, "SavedViewDefinitionRequest"),
+        Pairing(SavedViewDefinitionRequest::class, "SavedViewDefinitionRequest"),
         Pairing(SavedViewUpdateRequestDto::class, "SavedViewUpdateRequest"),
         Pairing(SavedViewDeleteRequestDto::class, "SavedViewDeleteRequest"),
-        Pairing(SavedViewDeletionReceiptDto::class, "SavedViewDeletionReceipt"),
+        Pairing(SavedViewDeletionReceipt::class, "SavedViewDeletionReceipt"),
         Pairing(SavedViewResultsDto::class, "SavedViewResultsResponse"),
         Pairing(SavedViewResultRowDto::class, "SavedViewResultRow"),
         Pairing(CategoryReferenceDto::class, "CategoryReferenceResponse"),
@@ -67,15 +95,15 @@ class OpenApiContractGateTest {
         Pairing(IncomePlanDto::class, "IncomePlanResponse"),
         Pairing(IncomePlanListResponseDto::class, "IncomePlanListResponse"),
         Pairing(IncomePlanCreateRequestDto::class, "IncomePlanCreateRequest"),
-        Pairing(IncomePlanUpdateRequestDto::class, "IncomePlanUpdateRequest"),
+        Pairing(IncomePlanUpdateRequest::class, "IncomePlanUpdateRequest"),
         Pairing(IncomePlanTokenRequestDto::class, "IncomePlanTokenRequest"),
-        Pairing(BillSplitChangeCreateRequestDto::class, "BillSplitChangeCreateRequest"),
-        Pairing(BillSplitChangeAcceptRequestDto::class, "BillSplitChangeAcceptRequest"),
-        Pairing(BillSplitChangeProposalDto::class, "BillSplitChangeProposalResponse"),
+        Pairing(BillSplitChangeCreateRequest::class, "BillSplitChangeCreateRequest"),
+        Pairing(BillSplitChangeAcceptRequest::class, "BillSplitChangeAcceptRequest"),
+        Pairing(BillSplitChangeProposal::class, "BillSplitChangeProposalResponse"),
         Pairing(BillSplitAgreementDto::class, "BillSplitAgreementResponse"),
-        Pairing(BillSplitSettlementPreviewDto::class, "BillSplitSettlementPreviewResponse"),
+        Pairing(BillSplitSettlementPreview::class, "BillSplitSettlementPreviewResponse"),
         Pairing(AcceptedInvitationImpactDto::class, "AcceptedInvitationImpact"),
-        Pairing(BillSplitInviteRequestDto::class, "BillSplitInviteRequest"),
+        Pairing(BillSplitInviteRequest::class, "BillSplitInviteRequest"),
         Pairing(BillSplitAcceptRequestDto::class, "BillSplitAcceptRequest"),
         Pairing(BillSplitSentDto::class, "BillSplitSentResponse"),
         Pairing(BillSplitInboxDto::class, "BillSplitInboxResponse"),
@@ -94,15 +122,15 @@ class OpenApiContractGateTest {
         Pairing(ReportCategoryComparisonDto::class, "ReportCategoryComparisonResponse"),
         Pairing(DiscretionaryResponseDto::class, "DiscretionaryResponse"),
         Pairing(BudgetAdviceInputsDto::class, "BudgetInputsResponse"),
-        Pairing(MonthlyArrangementDto::class, "MonthlyArrangementDto"),
-        Pairing(MonthlyArrangementSaveRequest::class, "MonthlyArrangementSaveRequest"),
-        Pairing(MonthlyArrangementResponseDto::class, "MonthlyArrangementState"),
-        Pairing(MonthlyArrangementHistoryItemDto::class, "MonthlyArrangementRevisionDto"),
-        Pairing(MonthlyArrangementHistoryDto::class, "MonthlyArrangementHistory"),
+        Pairing(MonthlyArrangement::class, "MonthlyArrangementDto"),
+        Pairing(MonthlyArrangementChange::class, "MonthlyArrangementSaveRequest"),
+        Pairing(MonthlyArrangementResponse::class, "MonthlyArrangementState"),
+        Pairing(MonthlyArrangementHistoryItem::class, "MonthlyArrangementRevisionDto"),
+        Pairing(MonthlyArrangementHistory::class, "MonthlyArrangementHistory"),
         Pairing(MissingExchangeRateDto::class, "ProjectionGapDto"),
         Pairing(ProjectionReferenceDto::class, "ProjectionReferenceDto"),
-        Pairing(ExchangeRateRequestDto::class, "ExchangeRateRequest"),
-        Pairing(ExchangeRateDto::class, "ExchangeRateResponse"),
+        Pairing(ExchangeRateRequest::class, "ExchangeRateRequest"),
+        Pairing(ExchangeRate::class, "ExchangeRateResponse"),
         Pairing(ExchangeRateListDto::class, "ExchangeRateListResponse"),
         Pairing(BudgetAdviseRequestDto::class, "BudgetAdviseRequest"),
         Pairing(BudgetSuggestionDto::class, "BudgetSuggestionDto"),
@@ -113,7 +141,7 @@ class OpenApiContractGateTest {
         Pairing(DataQualitySummaryDto::class, "DataQualitySummaryResponse"),
         Pairing(TagListItemDto::class, "TagListItem"),
         Pairing(ReferenceCreateRequestDto::class, "ReferenceCreateRequest"),
-        Pairing(ReferenceCreatedDto::class, "ReferenceCreatedResponse"),
+        Pairing(ReferenceCreated::class, "ReferenceCreatedResponse"),
         Pairing(TagManagementListDto::class, "TagManagementListResponse"),
         Pairing(TagDetailDto::class, "TagDetailResponse"),
         Pairing(TagMutationDto::class, "TagMutationResponse"),
@@ -172,20 +200,20 @@ class OpenApiContractGateTest {
         // additionalProperties=false (forward check = forbid protection: a debt-shape field
         // the backend doesn't declare would 422), and the debt fields (goal_type /
         // debt_public_ids) must exist in the schema for the debt-goal create to deserialize.
-        Pairing(GoalCreateRequestDto::class, "GoalCreateRequest"),
+        Pairing(GoalCreateRequest::class, "GoalCreateRequest"),
         // ADR-0041 (slice 8f / #246 detail-edit flow) PATCH body — OCC setter body:
         // expected_row_version is the only schema-required field (modeled non-null),
         // the rest are optional setters; additionalProperties=false → the forward
         // check is the forbid protection.
-        Pairing(GoalUpdateRequestDto::class, "GoalUpdateRequest"),
+        Pairing(GoalUpdateRequest::class, "GoalUpdateRequest"),
         Pairing(DebtRepaymentEvaluationDto::class, "DebtRepaymentEvaluation"),
         Pairing(DebtGoalLinkViewDto::class, "DebtGoalLinkView"),
-        Pairing(DebtGoalLinksReplaceRequestDto::class, "DebtGoalLinksReplaceRequest"),
+        Pairing(DebtGoalLinksReplaceRequest::class, "DebtGoalLinksReplaceRequest"),
         Pairing(DebtGoalIntegrityReviewRequestDto::class, "DebtGoalIntegrityReviewRequest"),
         // ADR-0049 §7.0 (slice 8e-6c) payoff-deadline setter body. additionalProperties=false →
         // the forward check is the forbid protection; target_date is optional on the wire (a
         // setter: omitted == clear), so the reverse check only requires expected_row_version.
-        Pairing(DebtGoalTargetDateRequestDto::class, "DebtGoalTargetDateRequest"),
+        Pairing(DebtGoalTargetDateRequest::class, "DebtGoalTargetDateRequest"),
         // ADR-0049 §2 (slice 8) Debt entity surface. DebtDto models all 22 DebtResponse
         // properties (reverse check needs every required field; +is_forgiven in slice 8e-3); the
         // create body is additionalProperties=false → the forward check is the forbid protection.
@@ -205,9 +233,9 @@ class OpenApiContractGateTest {
         Pairing(DebtActivityDto::class, "DebtActivityResponse"),
         Pairing(DebtActivityListDto::class, "DebtActivityListResponse"),
         Pairing(RepaymentVoidFactDto::class, "RepaymentVoidFactResponse"),
-        Pairing(RepaymentVoidCreateRequestDto::class, "RepaymentVoidCreateRequest"),
-        Pairing(DebtAdjustmentCreateRequestDto::class, "DebtAdjustmentCreateRequest"),
-        Pairing(DebtVoidCreateRequestDto::class, "DebtVoidCreateRequest"),
+        Pairing(RepaymentVoidCreateRequest::class, "RepaymentVoidCreateRequest"),
+        Pairing(DebtAdjustmentCreateRequest::class, "DebtAdjustmentCreateRequest"),
+        Pairing(DebtVoidCreateRequest::class, "DebtVoidCreateRequest"),
         // ADR-0049 §3.7 / §4 (slice 8e-3) creditor-forgive body (expected_row_version only),
         // additionalProperties=false → forward check is the forbid protection.
         Pairing(DebtForgiveCreateRequestDto::class, "DebtForgiveCreateRequest"),
@@ -216,7 +244,7 @@ class OpenApiContractGateTest {
         // backend-`required`, so the reverse check needs them modeled (they are). DebtDto +
         // DebtCreateRequestDto adopting debt_kind is silent here (DebtResponse/DebtCreateRequest both
         // default it → not `required`, no reverse pressure; it IS a declared property → forward OK).
-        Pairing(DebtKindSetRequestDto::class, "DebtKindSetRequest"),
+        Pairing(DebtKindSetRequest::class, "DebtKindSetRequest"),
         // ADR-0049 §3.2 (slice 8d) member repayment-proposal surface. The response models all 15
         // MemberRepaymentProposalResponse properties (reverse check needs every required field); the
         // request bodies are additionalProperties=false → the forward check is the forbid protection,
@@ -235,12 +263,12 @@ class OpenApiContractGateTest {
         // home-currency-only create DTO omits the original-currency surface (it does not exist —
         // the capture is CNY-only). Dismiss is a no-field body (the backend requires an empty {}).
         Pairing(RepaymentDraftDto::class, "RepaymentDraftResponse"),
-        Pairing(RecognitionTimeDto::class, "RecognitionTimeResponse"),
-        Pairing(RecognitionTimeCandidateDto::class, "RecognitionTimeCandidate"),
+        Pairing(RecognitionTime::class, "RecognitionTimeResponse"),
+        Pairing(RecognitionTimeCandidate::class, "RecognitionTimeCandidate"),
         Pairing(NotificationTimeEvidenceDto::class, "NotificationTimeEvidence"),
         Pairing(NotificationTimeFragmentDto::class, "NotificationTimeFragment"),
         Pairing(PaymentCaptureCreateDto::class, "PaymentCaptureCreate"),
-        Pairing(PaymentCandidateDto::class, "PaymentCandidate"),
+        Pairing(PaymentCandidate::class, "PaymentCandidate"),
         Pairing(RepaymentDraftListResponseDto::class, "RepaymentDraftListResponse"),
         Pairing(RepaymentDraftCreateRequestDto::class, "RepaymentDraftCreateRequest"),
         Pairing(ExpenseRepaymentDraftCreateRequestDto::class, "ExpenseRepaymentDraftCreateRequest"),

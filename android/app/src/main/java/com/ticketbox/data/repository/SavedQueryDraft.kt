@@ -5,9 +5,9 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.SavedQueryInputDao
 import com.ticketbox.data.local.SavedQueryInputEntity
-import com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto
-import com.ticketbox.data.remote.dto.SavedViewDeletionReceiptDto
-import com.ticketbox.data.remote.dto.SavedViewDto
+import com.ticketbox.domain.model.SavedView
+import com.ticketbox.domain.model.SavedViewDefinitionRequest
+import com.ticketbox.domain.model.SavedViewDeletionReceipt
 
 @JsonClass(generateAdapter = false)
 enum class SavedQueryCommand { Create, Edit, Delete }
@@ -17,17 +17,17 @@ data class SavedQueryDraft(
     val binding: LogicalSessionBinding,
     val key: String,
     val command: SavedQueryCommand,
-    val definition: SavedViewDefinitionRequestDto,
-    val baseline: SavedViewDto? = null,
+    val definition: com.ticketbox.domain.model.SavedViewDefinitionRequest,
+    val baseline: com.ticketbox.domain.model.SavedView? = null,
     val phase: String = "editing",
-    val receipt: SavedViewDto? = null,
-    val deletionReceipt: SavedViewDeletionReceiptDto? = null,
+    val receipt: com.ticketbox.domain.model.SavedView? = null,
+    val deletionReceipt: com.ticketbox.domain.model.SavedViewDeletionReceipt? = null,
     val error: String? = null,
 ) {
     val slot: String get() = if (command == SavedQueryCommand.Create) "create" else "${command.name}:${requireNotNull(baseline).publicId}"
 }
 
-fun SavedViewDto.queryDefinition() = SavedViewDefinitionRequestDto(
+fun com.ticketbox.domain.model.SavedView.queryDefinition() = com.ticketbox.domain.model.SavedViewDefinitionRequest(
     name, monthMode, month, filter, tagPublicId, homeCurrencyCode, queryText, category,
 )
 

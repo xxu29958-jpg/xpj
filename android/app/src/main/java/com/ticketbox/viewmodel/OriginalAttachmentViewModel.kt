@@ -4,7 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.OriginalHealthDto
+import com.ticketbox.domain.model.OriginalHealth
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OriginalAttachmentActions
@@ -28,7 +28,7 @@ class OriginalImageSelection(val source: PreparedUploadImage) {
 
 data class OriginalAttachmentUiState(
     val access: LedgerAccessContext? = null,
-    val health: OriginalHealthDto? = null,
+    val health: OriginalHealth? = null,
     val checking: Boolean = false,
     val stale: Boolean = true,
     val image: ProtectedImage? = null,

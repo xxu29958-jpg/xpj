@@ -12,7 +12,7 @@ import com.ticketbox.domain.model.Goal
 import com.ticketbox.ui.components.AppProgressBar
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
 

@@ -34,7 +34,7 @@ import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputDecorations
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.ScanQrButton
-import com.ticketbox.ui.components.displayDateTime
+import com.ticketbox.presentation.displayDateTime
 import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ServerUrlEntryConfig

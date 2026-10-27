@@ -1,11 +1,11 @@
-package com.ticketbox.viewmodel
+package com.ticketbox.data.repository
 
 import androidx.lifecycle.SavedStateHandle
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
-import com.ticketbox.data.remote.dto.ReferenceCreatedDto
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.domain.model.ReferenceCreated
 
 /** The raw name, original command key and complete identity survive navigation/process restoration. */
 @JsonClass(generateAdapter = true)
@@ -14,7 +14,7 @@ data class ReferenceCreationDraft(
     val key: String,
     val name: String = "",
     val phase: String = "editing",
-    val receipt: ReferenceCreatedDto? = null,
+    val receipt: ReferenceCreated? = null,
     val error: String? = null,
 )
 
@@ -31,7 +31,7 @@ internal class ReferenceCreationDraftStore(private val state: SavedStateHandle) 
         drafts.lastOrNull { it.binding.sameReferenceOwner(binding) }
 
     fun write(draft: ReferenceCreationDraft) {
-        state[KEY] = adapter.toJson(drafts.filterNot { it.key == draft.key } + draft)
+        state[KEY] = adapter.toJson((drafts.filterNot { it.key == draft.key } + draft))
     }
 
     fun remove(key: String) { state[KEY] = adapter.toJson(drafts.filterNot { it.key == key }) }

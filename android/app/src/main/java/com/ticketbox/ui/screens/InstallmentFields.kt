@@ -10,14 +10,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import com.ticketbox.data.remote.dto.InstallmentsDto
+import com.ticketbox.domain.model.Installments
 import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.data.repository.InstallmentInputWire
 import com.ticketbox.data.repository.InstallmentPeriodInput
 import com.ticketbox.data.repository.CreditAllocationInput
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.FundsViewModel
 import com.ticketbox.viewmodel.start
@@ -26,7 +26,7 @@ import com.ticketbox.viewmodel.reviseAgreement
 private fun amount(value: Long, currency: String) = formatDisplayAmount(value, CurrencyDisplay.forRecord(currency))
 
 @Composable
-internal fun InstallmentFields(input: FundsInput, data: InstallmentsDto?, enabled: Boolean, vm: FundsViewModel) {
+internal fun InstallmentFields(input: FundsInput, data: Installments?, enabled: Boolean, vm: FundsViewModel) {
     Text(stringResource(R.string.funds_installment_note))
     FundsField(stringResource(R.string.funds_agreement_name), input.name, enabled) { value -> vm.edit { it.copy(name = value) } }
     FundsField(stringResource(R.string.funds_agreement_source), input.source, enabled) { value -> vm.edit { it.copy(source = value) } }
@@ -56,7 +56,7 @@ internal fun InstallmentFields(input: FundsInput, data: InstallmentsDto?, enable
 }
 
 @Composable
-internal fun InstallmentPaymentFields(input: FundsInput, data: InstallmentsDto?, enabled: Boolean, vm: FundsViewModel) {
+internal fun InstallmentPaymentFields(input: FundsInput, data: Installments?, enabled: Boolean, vm: FundsViewModel) {
     val allocations = InstallmentInputWire.allocations.fromJson(input.allocationJson).orEmpty()
     fun put(value: CreditAllocationInput) = vm.edit { it.copy(allocationJson = InstallmentInputWire.allocations.toJson(
         allocations.filter { row -> row.id != value.id } + value)) }
@@ -89,7 +89,7 @@ internal fun InstallmentPaymentFields(input: FundsInput, data: InstallmentsDto?,
 }
 
 @Composable
-internal fun InstallmentHistory(data: InstallmentsDto?, canModify: Boolean, vm: FundsViewModel) {
+internal fun InstallmentHistory(data: Installments?, canModify: Boolean, vm: FundsViewModel) {
     Text(stringResource(R.string.funds_installment_title), style = MaterialTheme.typography.titleMedium)
     if (canModify) AppSecondaryButton(stringResource(R.string.funds_add_agreement)) { vm.start("installments") }
     data?.agreements.orEmpty().forEach { agreement ->

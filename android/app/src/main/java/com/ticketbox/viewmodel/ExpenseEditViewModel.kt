@@ -21,7 +21,7 @@ import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.formatMinorAmountInput
+import com.ticketbox.presentation.formatMinorAmountInput
 import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -93,7 +93,7 @@ data class ExpenseEditUiState(
     val fundingReviewAvailable: Boolean = false,
     val commandRowIds: List<Long> = emptyList(),
     val commandsCompleted: Boolean = false,
-    val confirmationReceipt: com.ticketbox.data.remote.dto.ExpenseConfirmationReceiptDto? = null,
+    val confirmationReceipt: com.ticketbox.domain.model.ExpenseConfirmationReceipt? = null,
     val thumbnail: ProtectedImage? = null,
     val fullImage: ProtectedImage? = null,
     val categories: List<String> = DEFAULT_EXPENSE_CATEGORIES,

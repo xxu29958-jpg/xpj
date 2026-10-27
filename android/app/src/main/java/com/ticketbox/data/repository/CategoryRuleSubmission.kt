@@ -5,16 +5,16 @@ import com.squareup.moshi.JsonClass
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.CategoryRuleDto
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.domain.model.CategoryRule
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import com.ticketbox.domain.model.CurrencyCode
 
 @JsonClass(generateAdapter = true)
 data class CategoryRuleSubmissionPayload(
     val version: Int = 1,
     val expectedRowVersion: Long,
-    val request: CategoryRuleRequest,
+    val request: CategoryRuleDefinition,
     val originalInput: Map<String, String>? = null,
 ) {
     fun supports(row: OutboxRow): Boolean = supportsFormat() && expectedRowVersion == row.expectedRowVersion &&
@@ -47,7 +47,7 @@ data class CategoryRuleSubmissionPayload(
 
 data class PendingCategoryRuleSubmission(
     val row: OutboxRow,
-    val request: CategoryRuleRequest?,
+    val request: com.ticketbox.domain.model.CategoryRuleDefinition?,
     val confirmed: CategoryRule?,
     val supported: Boolean,
     val originalInput: Map<String, String>? = null,
@@ -69,7 +69,7 @@ internal fun describeCategoryRuleSubmission(
     val payload = runCatching { payloadAdapter.fromJson(row.payloadJson) }.getOrNull()
     val legacy = if (payload == null) runCatching { legacyAdapter.fromJson(row.payloadJson) }.getOrNull() else null
     val request = payload?.request ?: legacy?.let {
-        CategoryRuleRequest(it.keyword, it.category, it.enabled, it.priority, it.amountMinCents,
+        CategoryRuleDefinition(it.keyword, it.category, it.enabled, it.priority, it.amountMinCents,
             it.amountMaxCents, it.sourceContains, it.tagContains, it.homeCurrencyCode)
     }
     val receipt = row.receiptJson?.let { runCatching { receiptAdapter.fromJson(it) }.getOrNull() }
@@ -80,10 +80,10 @@ internal fun describeCategoryRuleSubmission(
 internal fun OutboxRow.ruleId(): Long? = targetId.takeIf { it.startsWith("category_rule:") }
     ?.removePrefix("category_rule:")?.toLongOrNull()?.takeIf { it > 0 }
 
-internal fun CategoryRuleRequest.isCompleteRule(): Boolean =
+internal fun CategoryRuleDefinition.isCompleteRule(): Boolean =
     !keyword.isNullOrBlank() && !category.isNullOrBlank() && enabled != null && priority != null && hasValidAmountCondition()
 
-private fun CategoryRuleRequest.hasValidAmountCondition(): Boolean {
+private fun CategoryRuleDefinition.hasValidAmountCondition(): Boolean {
     val currencyKnown = if (homeCurrencyCode == null) amountMinCents == null && amountMaxCents == null
         else CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)?.storageKey == homeCurrencyCode
     val lower = amountMinCents ?: 0L
@@ -91,10 +91,10 @@ private fun CategoryRuleRequest.hasValidAmountCondition(): Boolean {
     return currencyKnown && lower >= 0 && upper >= lower
 }
 
-internal fun CategoryRule.asRequest(): CategoryRuleRequest = CategoryRuleRequest(
+internal fun CategoryRule.asRequest(): com.ticketbox.domain.model.CategoryRuleDefinition = com.ticketbox.domain.model.CategoryRuleDefinition(
     keyword, category, enabled, priority, amountMinCents, amountMaxCents, sourceContains, tagContains, homeCurrencyCode,
 )
 
-internal fun CategoryRuleDto.asRequest(): CategoryRuleRequest = CategoryRuleRequest(
+internal fun CategoryRuleDto.asRequest(): CategoryRuleDefinition = CategoryRuleDefinition(
     keyword, category, enabled, priority, amountMinCents, amountMaxCents, sourceContains, tagContains, homeCurrencyCode,
 )

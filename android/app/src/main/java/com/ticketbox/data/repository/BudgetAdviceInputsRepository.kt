@@ -1,7 +1,7 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.domain.model.BudgetAdviceInputs
-import com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest
+import com.ticketbox.domain.model.MonthlyArrangementChange
 import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -10,9 +10,9 @@ interface BudgetAdviceInputsActions {
     suspend fun adviceInputs(expectedBinding: LogicalSessionBinding, month: String,
         homeCurrencyCode: String? = null): Result<BudgetAdviceInputs>
     suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String,
-        request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String? = null): Result<BudgetAdviceInputs>
+        request: MonthlyArrangementChange, reportingHomeCurrencyCode: String? = null): Result<BudgetAdviceInputs>
     suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String,
-        request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String? = null): Result<BudgetAdviceResult>
+        request: MonthlyArrangementChange, reportingHomeCurrencyCode: String? = null): Result<BudgetAdviceResult>
 }
 
 /** Reads advice premises and routes explicit trial AI to the same freshness owner as saved advice. */
@@ -35,7 +35,7 @@ internal class BudgetAdviceInputsRepository(
         }
     }
     override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String,
-        request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?) = errors.safeCall {
+        request: MonthlyArrangementChange, reportingHomeCurrencyCode: String?) = errors.safeCall {
         val clean = validatedBudgetMonth(month).getOrThrow()
         val home = reportingHomeCurrencyCode ?: request.homeCurrencyCode
         val query = mutableMapOf("home_currency_code" to home, "savings_target_cents" to request.savingsTargetCents.toString(),
@@ -51,7 +51,7 @@ internal class BudgetAdviceInputsRepository(
         }
     }
     override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String,
-        request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceResult> {
+        request: MonthlyArrangementChange, reportingHomeCurrencyCode: String?): Result<BudgetAdviceResult> {
         if (!ledgerRoleCanModify(apiProvider.currentLedgerRole())) return Result.failure(RepositoryException("当前角色为只读。"))
         return adviceCallStore.attachOrRequest(binding, validatedBudgetMonth(month).getOrElse { return Result.failure(it) },
             reportingHomeCurrencyCode ?: request.homeCurrencyCode, request)

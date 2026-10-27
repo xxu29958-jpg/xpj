@@ -1,5 +1,7 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.domain.model.PaymentCaptureDecision
+import com.ticketbox.domain.model.PaymentCapture
 import com.ticketbox.data.repository.LogicalSessionBinding
 
 import com.ticketbox.data.repository.DebtActions
@@ -650,7 +652,7 @@ private class FakeRepaymentDraftActions(
     var dismissResult: Result<RepaymentDraft> = Result.success(draft("d1", status = RepaymentDraftStatuses.DISMISSED)),
 ) : RepaymentDraftActions {
     override suspend fun readCaptures(binding: com.ticketbox.data.repository.LogicalSessionBinding) =
-        Result.success(ReadSnapshot(emptyList<com.ticketbox.data.remote.dto.PaymentCaptureDto>(), "2026-10-18T00:00:00Z", false))
+        Result.success(ReadSnapshot(emptyList<com.ticketbox.domain.model.PaymentCapture>(), "2026-10-18T00:00:00Z", false))
     var listCalls = 0
     val confirmCalls = mutableListOf<ConfirmCall>()
     val targetEdits = mutableListOf<com.ticketbox.data.repository.RepaymentReviewChange.TargetDebt>()
@@ -675,7 +677,7 @@ private class FakeRepaymentDraftActions(
         override fun observeResolutions() = kotlinx.coroutines.flow.flowOf(emptyList<com.ticketbox.data.repository.OutboxRow>())
         override suspend fun correctAsExpense(binding: com.ticketbox.data.repository.LogicalSessionBinding, draft: RepaymentDraft, reason: String): Result<Long> = error("Not configured")
         override suspend fun resolveCapture(binding: com.ticketbox.data.repository.LogicalSessionBinding, captureId: String,
-            decision: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String): Result<Long> = error("Not configured")
+            decision: com.ticketbox.domain.model.PaymentCaptureDecision, key: String): Result<Long> = error("Not configured")
         private val selected = mutableMapOf<String, Debt>()
         override fun observe(binding: com.ticketbox.data.repository.LogicalSessionBinding, draftId: String) =
             kotlinx.coroutines.flow.flowOf(com.ticketbox.data.repository.RepaymentReviewState(null))

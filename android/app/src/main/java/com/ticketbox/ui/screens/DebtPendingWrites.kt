@@ -19,7 +19,7 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingDebtWrite
-import com.ticketbox.data.repository.DebtAmountIntent
+import com.ticketbox.data.repository.DebtAmountSubmission
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
@@ -34,7 +34,7 @@ import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.components.timeInputLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppAmountRole
@@ -53,7 +53,7 @@ internal fun DebtWriteIntentSummary(pending: PendingDebtWrite) {
         return
     }
     Text(intent.subject.label ?: stringResource(R.string.debt_detail_title))
-    (intent as? DebtAmountIntent)?.let { amount ->
+    (intent as? DebtAmountSubmission)?.let { amount ->
         Text(stringResource(if (pending.repayment != null) R.string.debt_repayment_pending_amount else R.string.debt_adjustment_original_amount,
             formatDisplayAmount(amount.amountCents, CurrencyDisplay.forRecord(intent.subject.homeCurrencyCode))))
     }
@@ -74,8 +74,8 @@ internal fun DebtWriteIntentSummary(pending: PendingDebtWrite) {
 }
 
 @Composable
-private fun RepaymentReviewIntentSummary(intent: com.ticketbox.data.repository.DebtWriteIntent) {
-    val review = intent as? com.ticketbox.data.repository.RepaymentReviewPayload ?: return
+private fun RepaymentReviewIntentSummary(intent: com.ticketbox.data.repository.DebtWriteSubmission) {
+    val review = intent as? com.ticketbox.data.repository.RepaymentReviewSubmission ?: return
     Text(stringResource(R.string.repayment_review_confirm))
     Text("${review.reviewedCurrency} ${review.reviewedAmount}")
 }

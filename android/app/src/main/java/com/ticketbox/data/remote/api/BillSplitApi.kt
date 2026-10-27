@@ -12,7 +12,7 @@ interface BillSplitApi {
     @POST("api/expenses/{id}/split-invite")
     suspend fun createBillSplitInvitation(
         @Path("id") id: Long,
-        @Body request: com.ticketbox.data.remote.dto.BillSplitInviteRequestDto,
+        @Body request: com.ticketbox.domain.model.BillSplitInviteRequest,
         @Header("Idempotency-Key") idempotencyKey: String,
     ): com.ticketbox.data.remote.dto.BillSplitSentDto
 

@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
-data class RepaymentReviewState(val input: RepaymentReviewInputEntity?, val original: OutboxRow? = null,
+data class RepaymentReviewState(val input: com.ticketbox.domain.model.RepaymentReviewInput?, val original: OutboxRow? = null,
     val bindingChanged: Boolean = false) {
     val canRetry: Boolean get() = original?.status == PendingMutationStatus.Failed && !bindingChanged &&
         original.lastError?.startsWith("outbox_row_expired") != true
@@ -42,7 +42,7 @@ interface RepaymentReviewActions {
     suspend fun reviewAgain(binding: LogicalSessionBinding, draftId: String): Result<Unit>
     suspend fun correctAsExpense(binding: LogicalSessionBinding, draft: RepaymentDraft, reason: String): Result<Long>
     suspend fun resolveCapture(binding: LogicalSessionBinding, captureId: String,
-        decision: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String): Result<Long>
+        decision: com.ticketbox.domain.model.PaymentCaptureDecision, key: String): Result<Long>
     fun observeResolutions(): Flow<List<OutboxRow>>
 }
 
@@ -108,7 +108,7 @@ class RepaymentReviewRepository internal constructor(
     }
 
     override suspend fun resolveCapture(binding: LogicalSessionBinding, captureId: String,
-        decision: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String): Result<Long> = errors.safeCall {
+        decision: com.ticketbox.domain.model.PaymentCaptureDecision, key: String): Result<Long> = errors.safeCall {
         require(ledgerRoleCanModify(provider.currentLedgerRole()) && decision.reason.isNotBlank())
         val payload = PaymentCaptureResolution(binding = binding, publicId = captureId, decision = decision)
         outbox.enqueue(guard.bindExact(binding), PendingMutationIntent(PendingMutationType.ResolvePaymentCapture,
@@ -121,9 +121,9 @@ class RepaymentReviewRepository internal constructor(
         inputs.observe(binding.ownerKey, binding.ledgerId, draftId).flatMapLatest { input ->
             val action = input?.submittedAction
             val changed = input?.matches(binding) == false
-            if (action == null) flowOf(RepaymentReviewState(input, bindingChanged = changed))
+            if (action == null) flowOf(RepaymentReviewState(input?.toDomain(), bindingChanged = changed))
             else outbox.observeOriginalCommand(PendingMutationType.fromWire(action), input.originalKey)
-                .map { RepaymentReviewState(input, it.singleOrNull(), changed) }
+                .map { RepaymentReviewState(input?.toDomain(), it.singleOrNull(), changed) }
         }
 
     override suspend fun open(binding: LogicalSessionBinding, draft: RepaymentDraft, suggested: Debt?): Result<Unit> = errors.safeCall {
@@ -179,10 +179,10 @@ class RepaymentReviewRepository internal constructor(
         val bound = guard.bindExact(binding)
         val state = observe(binding, draftId).first()
         val row = requireNotNull(state.original) { "请先读取原提交。" }
-        val input = requireNotNull(state.input)
+        requireNotNull(state.input)
         val canStop = row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict) ||
-            row.status == PendingMutationStatus.Pending && !input.matches(binding)
-        require(if (stop) canStop else row.status == PendingMutationStatus.Failed && input.matches(binding) &&
+            row.status == PendingMutationStatus.Pending && state.bindingChanged
+        require(if (stop) canStop else row.status == PendingMutationStatus.Failed && !state.bindingChanged &&
             ledgerRoleCanModify(provider.currentLedgerRole())) { "原提交状态已变化，请重新核对。" }
         val changed = if (stop) outbox.abandonOriginalCommand(bound, row)
             else outbox.resolveFailed(row.id, FailedResolution.Retry(), bound)
@@ -216,7 +216,7 @@ class RepaymentReviewRepository internal constructor(
         outbox.withActiveBinding(bound) {
             database.withTransaction {
                 val retained = requireNotNull(inputs.get(binding.ownerKey, binding.ledgerId, draftId))
-                require(retained == old.input)
+                require(retained.toDomain() == old.input)
                 inputs.put(retained.copy(originalKey = UUID.randomUUID().toString(), submittedAction = null,
                     serverUrl = binding.serverUrl,
                     sessionGeneration = binding.sessionGeneration, bindingRevision = binding.bindingRevision,

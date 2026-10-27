@@ -1,6 +1,6 @@
 package com.ticketbox.ui.screens.ledger
 
-import com.ticketbox.ui.components.displayTime
+import com.ticketbox.presentation.displayTime
 import com.ticketbox.viewmodel.LedgerUiState
 
 internal enum class LedgerSyncEvidence {

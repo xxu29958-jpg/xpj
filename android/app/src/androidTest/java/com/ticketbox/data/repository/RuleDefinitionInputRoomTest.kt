@@ -1,9 +1,9 @@
 package com.ticketbox.data.repository
 
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.domain.model.CategoryRule
-import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
+import com.ticketbox.domain.model.CategoryRuleDefinition
+import com.ticketbox.viewmodel.CategoryRuleDraftForm
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -34,7 +34,7 @@ class RuleDefinitionInputRoomTest {
         assertTrue(requireNotNull(reopened.definitionInputs).read(binding.copy(serverUrl = "https://another.invalid")).isEmpty())
         fixture.switchAccount()
         assertTrue(reopened.updateCategoryRule(binding, baseline,
-            CategoryRuleRequest("原始关键词", "交通", false, 7, 1200, homeCurrencyCode = "JPY"), original).isFailure)
+            CategoryRuleDefinition("原始关键词", "交通", false, 7, 1200, homeCurrencyCode = "JPY"), original).isFailure)
         assertEquals(emptyList<Map<String, String?>>(), fixture.stored())
         assertEquals(setOf(original, creation), requireNotNull(reopened.definitionInputs).read(binding).toSet())
     }

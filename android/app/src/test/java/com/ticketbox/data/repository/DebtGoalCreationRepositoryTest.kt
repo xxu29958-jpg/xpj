@@ -6,17 +6,17 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
 import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.domain.model.GoalCreateRequest
 import java.io.IOException
 import java.util.UUID
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 
 class DebtGoalCreationRepositoryTest {
     @Test fun originalDebtSelectionIsDurableNonmonetaryAndIsolatedFromSpendingCreation() = runTest {
@@ -65,7 +65,7 @@ class DebtGoalCreationRepositoryTest {
 
     @Test fun theCommandOwnerRejectsMixedShapesBlankInputReadonlyAndReplacementBindings() = runTest {
         val f = DebtGoalCreationFixture()
-        val request = GoalCreateRequestDto("还清欠款", goalType = "debt_repayment", debtPublicIds = listOf("debt-a"))
+        val request = GoalCreateRequest("还清欠款", goalType = "debt_repayment", debtPublicIds = listOf("debt-a"))
         for (invalid in listOf(request.copy(month = "2026-09"), request.copy(category = "其他"),
             request.copy(targetAmountCents = 1), request.copy(homeCurrencyCode = "JPY"),
             request.copy(name = " "), request.copy(debtPublicIds = emptyList()), request.copy(period = "annual"))) {
@@ -109,7 +109,7 @@ private class DebtGoalCreationFixture {
     val dao = FakePendingMutationDao()
     val adapters = OutboxAdapterGraph()
     val outbox = testOutboxRepository(dao)
-    val calls = mutableListOf<Pair<GoalCreateRequestDto, String>>()
+    val calls = mutableListOf<Pair<GoalCreateRequest, String>>()
     val response = GoalDto(
         "created-debt-goal", "owner", "还清欠款", "debt_repayment", "monthly", null, null, null, null, null, null,
         "in_progress", "active", "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null,
@@ -122,7 +122,7 @@ private class DebtGoalCreationFixture {
     var loseAck = false
     var receiptMutation: (GoalDto) -> GoalDto = { it }
     private val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
-        override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto {
+        override suspend fun createGoal(request: GoalCreateRequest, timezone: String?, idempotencyKey: String?): GoalDto {
             val originalKey = requireNotNull(idempotencyKey)
             calls += request to originalKey
             if (loseAck) throw IOException("Synthetic response lost after remote creation")

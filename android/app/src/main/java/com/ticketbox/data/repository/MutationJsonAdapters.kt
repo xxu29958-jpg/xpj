@@ -10,12 +10,12 @@ import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
 // Each repository receives only the codecs for its own commands. The composition
 // root supplies the same lazily configured Moshi to writers and dispatchers.
 internal class BudgetMutationAdapters(private val moshi: () -> Moshi) {
-    val arrangementSaveAdapter: JsonAdapter<com.ticketbox.data.repository.MonthlyArrangementPayload> = lazyJsonAdapter {
-        moshi().adapter(com.ticketbox.data.repository.MonthlyArrangementPayload::class.java)
+    val arrangementSaveAdapter: JsonAdapter<com.ticketbox.data.repository.MonthlyArrangementSubmission> = lazyJsonAdapter {
+        moshi().adapter(com.ticketbox.data.repository.MonthlyArrangementSubmission::class.java)
     }
 
-    val arrangementReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.MonthlyArrangementDto> = lazyJsonAdapter {
-        moshi().adapter(com.ticketbox.data.remote.dto.MonthlyArrangementDto::class.java)
+    val arrangementReceiptAdapter: JsonAdapter<com.ticketbox.domain.model.MonthlyArrangement> = lazyJsonAdapter {
+        moshi().adapter(com.ticketbox.domain.model.MonthlyArrangement::class.java)
     }
 
     val budgetSaveAdapter: JsonAdapter<com.ticketbox.data.repository.BudgetSavePayload> = lazyJsonAdapter {
@@ -26,12 +26,12 @@ internal class BudgetMutationAdapters(private val moshi: () -> Moshi) {
         moshi().adapter(com.ticketbox.data.remote.dto.BudgetMonthlyDto::class.java)
     }
 
-    val manualRateAdapter: JsonAdapter<com.ticketbox.data.repository.ManualRatePayload> = lazyJsonAdapter {
-        moshi().adapter(com.ticketbox.data.repository.ManualRatePayload::class.java)
+    val manualRateAdapter: JsonAdapter<com.ticketbox.data.repository.ManualRateSubmission> = lazyJsonAdapter {
+        moshi().adapter(com.ticketbox.data.repository.ManualRateSubmission::class.java)
     }
 
-    val manualRateReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.ExchangeRateDto> = lazyJsonAdapter {
-        moshi().adapter(com.ticketbox.data.remote.dto.ExchangeRateDto::class.java)
+    val manualRateReceiptAdapter: JsonAdapter<com.ticketbox.domain.model.ExchangeRate> = lazyJsonAdapter {
+        moshi().adapter(com.ticketbox.domain.model.ExchangeRate::class.java)
     }
 }
 
@@ -48,8 +48,8 @@ internal class RecurringMutationAdapters(private val moshi: () -> Moshi) {
         moshi().adapter(RecurringItemUpdateRequestDto::class.java)
     }
 
-    val recurringOccurrenceAdapter: JsonAdapter<com.ticketbox.data.repository.RecurringOccurrencePayload> = lazyJsonAdapter {
-        moshi().adapter(com.ticketbox.data.repository.RecurringOccurrencePayload::class.java)
+    val recurringOccurrenceAdapter: JsonAdapter<com.ticketbox.data.repository.RecurringOccurrenceSubmission> = lazyJsonAdapter {
+        moshi().adapter(com.ticketbox.data.repository.RecurringOccurrenceSubmission::class.java)
     }
 }
 

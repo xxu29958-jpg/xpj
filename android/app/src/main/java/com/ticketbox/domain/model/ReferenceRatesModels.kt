@@ -1,17 +1,10 @@
-package com.ticketbox.data.remote.dto
+package com.ticketbox.domain.model
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
-data class ReferenceRateRequestDto(
-    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
-    @param:Json(name = "currency_code") val currencyCode: String? = null,
-    @param:Json(name = "rate_date") val rateDate: String? = null,
-)
-
-@JsonClass(generateAdapter = true)
-data class ReferenceRateDto(
+data class ReferenceRate(
     @param:Json(name = "currency_code") val currencyCode: String,
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
     @param:Json(name = "rate_date") val rateDate: String,
@@ -22,17 +15,18 @@ data class ReferenceRateDto(
 )
 
 @JsonClass(generateAdapter = true)
-data class ReferenceRatesDto(
+data class ReferenceRateRequest(
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
+    @param:Json(name = "currency_code") val currencyCode: String? = null,
+    @param:Json(name = "rate_date") val rateDate: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class ReferenceRates(
     val provider: String,
     @param:Json(name = "auto_enabled") val autoEnabled: Boolean,
     @param:Json(name = "sync_state") val syncState: String,
     @param:Json(name = "requested_date") val requestedDate: String? = null,
-    val effective: ReferenceRateDto? = null,
-    val items: List<ReferenceRateDto>,
-)
-
-@JsonClass(generateAdapter = true)
-data class AmountConversionDto(
-    @param:Json(name = "converted_amount") val convertedAmount: String?,
-    val references: List<ReferenceRateDto> = emptyList(),
+    val effective: ReferenceRate? = null,
+    val items: List<ReferenceRate>,
 )

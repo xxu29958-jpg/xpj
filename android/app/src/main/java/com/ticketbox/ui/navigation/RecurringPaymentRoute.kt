@@ -42,7 +42,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.ui.components.AppBusyGuardedSheet
-import com.ticketbox.ui.components.formatMinorAmountInput
+import com.ticketbox.presentation.formatMinorAmountInput
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.ManualExpenseSheet
 import com.ticketbox.ui.screens.ManualExpenseSheetActions

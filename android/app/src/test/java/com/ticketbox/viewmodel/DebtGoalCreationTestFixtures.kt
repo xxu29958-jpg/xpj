@@ -2,7 +2,6 @@ package com.ticketbox.viewmodel
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.repository.GoalEditActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -11,6 +10,7 @@ import com.ticketbox.data.repository.PendingGoalCreation
 import com.ticketbox.data.repository.PendingGoalEdit
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Goal
+import com.ticketbox.domain.model.GoalCreateRequest
 import com.ticketbox.domain.model.GoalUpdate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
@@ -45,7 +45,7 @@ internal class FakeCreateGoalEdits(
             } })
         }
 
-    override suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequestDto, creationKey: String): Result<Long> {
+    override suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequest, creationKey: String): Result<Long> {
         createDebtGoalCalls += CreateDebtGoalCall(request.name, request.debtPublicIds.orEmpty())
         createDebtGoalBindings += binding
         keys += creationKey

@@ -1,7 +1,7 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
+import com.ticketbox.domain.model.RecurringOccurrence
 import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.LedgerAccessContext
@@ -315,7 +315,7 @@ private class OccurrenceChoiceActions : RecurringOccurrenceActions {
     val access = LedgerAccessContext(
         LogicalSessionBinding("https://occurrence.example", "ledger-1", "owner", "session", "binding"), true,
     )
-    var occurrence = RecurringOccurrenceDto(
+    var occurrence = RecurringOccurrence(
         seriesPublicId = "rec-1", period = "2026-09", seriesRowVersion = 7L, rowVersion = 3L,
         state = "unfulfilled", plannedAmountCents = 12_000L, reservedAmountCents = 12_000L,
         expensePublicId = null, paidAmountCents = null, nextDueDate = "2026-09-15", homeCurrencyCode = "CNY",
@@ -327,7 +327,7 @@ private class OccurrenceChoiceActions : RecurringOccurrenceActions {
     override fun describe(row: OutboxRow): PendingOccurrencePayment? = null
     override fun observeQueue(binding: LogicalSessionBinding): Flow<List<PendingOccurrencePayment>> = flowOf(emptyList())
     override suspend fun fetch(binding: LogicalSessionBinding, seriesId: String, period: String):
-        Result<com.ticketbox.data.repository.ReadSnapshot<RecurringOccurrenceDto>> =
+        Result<com.ticketbox.data.repository.ReadSnapshot<RecurringOccurrence>> =
             failure?.let { Result.failure(it) } ?: Result.success(com.ticketbox.data.repository.ReadSnapshot(
                 if (period == "current") occurrence else occurrence.copy(period = period), "2026-09-27T10:00:00Z", fromCache))
 

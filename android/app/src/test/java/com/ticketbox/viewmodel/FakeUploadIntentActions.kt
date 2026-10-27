@@ -95,6 +95,6 @@ internal fun observedUpload(
             "2026-09-07T00:00:00Z", null, if (receipt != null) "2026-09-07T00:01:00Z" else null,
             key, blocksFollowing = lastError == "enrichment_capacity_full",
         ),
-        payload, receipt,
+        payload, receipt?.let { com.ticketbox.domain.model.PendingUploadReceipt(it.id, it.enrichmentTaskPublicId) },
     )
 }

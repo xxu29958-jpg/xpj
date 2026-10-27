@@ -7,11 +7,10 @@ import com.ticketbox.data.repository.create
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.newTaskMonth
 import com.ticketbox.data.repository.originalCreation
-import com.ticketbox.data.repository.isSupportedGoalCreation
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.formatAmountInput
+import com.ticketbox.presentation.formatAmountInput
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
@@ -156,7 +155,7 @@ internal fun CreateSpendingGoalViewModel.settleGoalFailure(original: SpendingGoa
 }
 
 private fun CreateSpendingGoalUiState.withGoalOriginal(original: PendingGoalCreation): CreateSpendingGoalUiState {
-    val request = original.request?.takeIf { it.goalType == "spending_limit" && it.isSupportedGoalCreation(original.row) &&
+    val request = original.request?.takeIf { it.goalType == "spending_limit" && original.hasSupportedIntent &&
         original.row.status !in setOf(PendingMutationStatus.Unknown, PendingMutationStatus.Abandoned) }
     val currency = CurrencyCode.fromStorageKeyOrNull(request?.homeCurrencyCode)
     return copy(pending = original, originalSubmissionId = original.row.id, monthReady = true,

@@ -4,9 +4,9 @@ import com.ticketbox.data.remote.dto.CreditApplicationCreateDto
 import com.ticketbox.data.remote.dto.CreditApplicationVoidDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.parseExactMoneyMinor
-import com.ticketbox.data.remote.dto.CreditApplicationsDto
+import com.ticketbox.domain.model.CreditApplications
 
-internal fun FundsInput.withCreditApplicationSuggestion(choices: CreditApplicationsDto?): FundsInput {
+internal fun FundsInput.withCreditApplicationSuggestion(choices: CreditApplications?): FundsInput {
     val source = choices?.credits?.singleOrNull()
     val target = choices?.obligations?.singleOrNull()
     val amount = if (source != null && target != null) java.math.BigDecimal.valueOf(

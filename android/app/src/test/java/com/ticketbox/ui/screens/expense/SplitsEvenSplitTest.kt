@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens.expense
 
+import com.ticketbox.domain.model.evenSplitActiveCents
+import com.ticketbox.domain.model.evenSplitCents
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -47,6 +47,36 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # Exact-symbol evidence, never a module/directory exemption or a handler registry.
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
+    (ANDROID + "data/repository/DebtKindPayload.kt", "dispatch"): {
+        "sha256": "31f712e15de8efa6659eabf0ea5e8ff536bad1a3e1046d070916a7010371407a",
+        "owner": "existing typed DispatchResult and durable Outbox failure/receipt owner",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/DebtKindIntentTest.kt",
+        "reason": "The dispatcher reads the original wire payload through the same admission validation used by its UI description. Only that accessor changed; every catch and result branch is unchanged. Cancellation propagates, transport interruption remains retryable, HTTP failures retain the existing mapper, and unverified responses produce the same static blocking failure stored by Outbox. No raw exception text, fresh key, refreshed OCC or success receipt is introduced. The existing replay/binding/refusal tests exercise the retained original consumer.",
+    },
+    (ANDROID + "data/repository/MonthlyArrangementRepository.kt", "arrangement"): {
+        "sha256": "8f2392cfbdd17f024dbf97fba0c34d332710045e0ad5290cb6315c0eb1de76eb",
+        "owner": "existing NetworkErrorHandler.safeCall and retained bound cache/read Result",
+        "test": "android/app/src/androidTest/java/com/ticketbox/data/repository/MonthlyArrangementRoomContinuityTest.kt",
+        "reason": "The saved arrangement and response now share canonical domain values with their original JSON fields; only identity copies disappear. The existing ledger/month/currency validation and snapshot gate still precede exposure. HTTP refusal withdraws access, only transport unavailability admits the already authorized cache, and malformed JSON, cancellation and publication failures still propagate through NetworkErrorHandler.safeCall.",
+    },
+    (ANDROID + "data/repository/OutboxDrainWorker.kt", "doWork"): {
+        "sha256": "321bf7e97e05fa81946e9899ec390d9115d79c2be0560a40c761b7160ecee876",
+        "owner": "existing WorkManager outcome and fixed Logcat boundary; per-row failures remain owned by Outbox",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/OutboxDrainWorkerTest.kt",
+        "reason": "The runtime compatibility provider moved from AppContainer to OutboxRuntimeCompatibility. Fixed startup/session warnings contain no private inputs; compatibility/drain exceptions now use the existing logNetworkWarning sanitizer instead of handing a raw throwable to Log.w. NetworkErrorReportingTest verifies this shared sink. The referenced worker tests cover failed compatibility, blocked writes, mixed outcomes and cancellation. WorkManager retry classification and original commands are unchanged.",
+    },
+    (ANDROID + "data/repository/RecordDebtAdjustmentDispatcher.kt", "dispatch"): {
+        "sha256": "c8b235102470554b761ab07aa715234b7509dcecea9a453c87997caee67ba71f",
+        "owner": "existing typed DispatchResult and durable Outbox failure/receipt owner",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/DebtAdjustmentRepositoryTest.kt",
+        "reason": "The dispatcher reads the original wire payload through the same admission validation used by its UI description. Only that accessor changed; every catch and result branch is unchanged. Cancellation propagates, transport interruption remains retryable, HTTP failures retain the existing mapper, and unverified responses produce the same static blocking failure stored by Outbox. No raw exception text, fresh key, refreshed OCC or success receipt is introduced. The existing replay/binding/refusal tests exercise the retained original consumer.",
+    },
+    (ANDROID + "data/repository/RecordDebtRepaymentDispatcher.kt", "dispatch"): {
+        "sha256": "b2ad7ce6131c54849d2615ef379f7aeb82a9e6d755e5cd9a994f54594e95faac",
+        "owner": "existing typed DispatchResult and durable Outbox failure/receipt owner",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/DirectRepaymentIntentTest.kt",
+        "reason": "The dispatcher reads the original wire payload through the same admission validation used by its UI description. Only that accessor changed; every catch and result branch is unchanged. Cancellation propagates, transport interruption remains retryable, HTTP failures retain the existing mapper, and unverified responses produce the same static blocking failure stored by Outbox. No raw exception text, fresh key, refreshed OCC or success receipt is introduced. The existing replay/binding/refusal tests exercise the retained original consumer.",
+    },
     ("desktop/backend_manager/connector_control.py", "ConnectorControl.start"): {
         "sha256": "7bd3df2bda00d8c3707dc6b698db8033ed6467052745441ae6432bcabf72ce45",
         "owner": "ConnectorControl._run and the existing Manager action status",
@@ -78,10 +108,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "The bounded coordinator moved from restore_cli to domain.restore and fences Backend through the shared domain.operation owner. Known lifecycle codes survive; unknown errors still become the static restore_incomplete result so recovery credentials cannot reach logs. The CLI writes that same private result and calls command_io.emit_failure exactly once. The regression proves the durable fence, retained candidate, one terminal report and absence of private input; no retry or new financial writer is introduced.",
     },
     (ANDROID + "data/repository/LedgerCalendarRepository.kt", "refresh"): {
-        "sha256": "2aadb35b46bcb202aefdb7dc9d083f4713b9847ce239627bf83d5c65f9157fa4",
+        "sha256": "4d5a6d5e55461db80af5e4b4d0081d26e04c5587264f7a3da83b2c22ee08fc04",
         "owner": "existing sanitized TicketboxNetwork output and unchanged read Result",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/LedgerCalendarRepositoryTest.kt::ruleSurvivesReopenAndOfflineWithoutCrossingLogicalBindings",
-        "reason": "Refresh serializes its reads and cache commits, reports failures through logNetworkWarning, and returns the original exception; cancellation while waiting or reading propagates. The test verifies one sanitized diagnostic without private response text, preserves the same failure, and proves bound cache/revision retention through offline reopen and unsupported capability. The overlapping-read regression also proves that delayed old rules cannot overwrite newer or unsupported current results. This read boundary neither retries financial work nor changes draft intents or user-facing error policy.",
+        "reason": "The calendar value now has one domain definition with the original JSON names; the redundant output copy is removed. Refresh still validates the exact ledger/revision/timezone under the same mutex, checks active binding before cache writes, propagates cancellation, logs through logNetworkWarning, and returns the original failure. The cache encoding and error owner are unchanged.",
     },
     (ANDROID + "viewmodel/FundsViewModel.kt", "runAction"): {
         "sha256": "f17605aa43a5316b882490fc49c3f35cd89b01ad14c80e2bfb582ade4ad10636",
@@ -108,10 +138,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "An accepted correction whose projection fails remains retryable with its original key; cancellation propagates and unexpected failures use logNetworkWarning. HTTP rejections retain their existing mapper. NetworkErrorReportingTest verifies the reused sanitized sink; no retry here changes financial facts or allocates another intent.",
     },
     (ANDROID + "data/repository/RepaymentReviewDispatchers.kt", "dispatch"): {
-        "sha256": "bdf9cd64bffc378fd29979824b7d4fc78d90905eadec975b8f421171005fee5f",
+        "sha256": "0b5bcf22e19496b1f7a4022d1b703d4473bafc7d9d40b2087a48ef0bdcac330c",
         "owner": "existing repayment delivery mapping, Outbox retry and sanitized TicketboxNetwork output",
         "test": "android/app/src/androidTest/java/com/ticketbox/data/repository/RepaymentReviewRoomTest.kt::rawInputAndOriginalReceiptSurviveReopenAndQueryCleanup",
-        "reason": "The added catch is only after repayment acceptance and preserves the same command until source-expense projection succeeds. Cancellation propagates, failures report through logNetworkWarning, and no Done receipt is published early. NetworkErrorReportingTest verifies the reused sanitized sink.",
+        "reason": "Dispatch now reads the same admitted original wire payload directly, while UI receives a separate domain projection; the existing delivery and post-acceptance publication error policy is unchanged. The added catch is only after repayment acceptance and preserves the same command until source-expense projection succeeds. Cancellation propagates, failures report through logNetworkWarning, and no Done receipt is published early. NetworkErrorReportingTest verifies the reused sanitized sink.",
     },
     ("backend/app/services/integration_settings_service.py", "discover_local_models"): {
         "sha256": "ae7785abaf829801ef941f40e489fc964fef12a1b9e18c41d2255c9186f69af6",
@@ -164,10 +194,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "The broad catch only selects authorized cached reads for transport unavailability. Other errors, cancellation and cache validation failures propagate to the enclosing safeCall; HTTP refusal uses httpFailure before revoking cached access. NetworkErrorReportingTest proves the existing sanitized sink. Alias publication adds no independent terminal owner, retry or user-facing raw exception.",
     },
     (ANDROID + "data/repository/MonthlyArrangementRepository.kt", "arrangementHistory"): {
-        "sha256": "5752f9b8685337808af462f7dd253b35fe3dc0cde570f5da1f019a5aeef49f7e",
+        "sha256": "a6ae4fbbd609560e48c5e5b5999fee965302e141bd4593969d98dc86e5a5e752",
         "owner": "existing NetworkErrorHandler.safeCall and sanitized TicketboxNetwork output",
         "test": "android/app/src/androidTest/java/com/ticketbox/data/repository/MonthlyArrangementRoomContinuityTest.kt::malformedJsonAndTlsFailureCannotBecomeCachedSuccess",
-        "reason": "Only transport unavailability selects the authorized cached query and separately retained receipt snapshots. HTTP refusal reports through httpFailure and withdraws query access; cancellation, malformed JSON, invalid metadata and storage failures propagate to the enclosing safeCall. Existing NetworkErrorReportingTest verifies the sanitized sink. No new output owner, command retry or exception suppression is introduced.",
+        "reason": "History and receipt snapshots now share canonical values with the original JSON fields; redundant input/output copies are removed. The existing exact binding, HTTP refusal withdrawal, transport-only cache fallback, receipt-version merge and snapshot publication rules are unchanged. No failure becomes a successful empty list, refreshed intent or new timestamp; NetworkErrorHandler.safeCall remains the reporting owner.",
     },
     (ANDROID + "data/repository/UpdateMerchantAliasDispatcher.kt", "dispatch"): {
         "sha256": "d044a4f8f66ecae3886b6d5b0cde72617fbee7e6f9798e8efc7492fa578b31e3",

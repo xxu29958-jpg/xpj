@@ -22,8 +22,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.FinancialAccountDto
-import com.ticketbox.data.remote.dto.FundMovementDto
+import com.ticketbox.domain.model.FinancialAccount
+import com.ticketbox.domain.model.FundMovement
 import com.ticketbox.ui.components.AppAdaptiveContentActionRow
 import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.SettingsEntryIcon
@@ -69,7 +69,7 @@ internal fun fundKindIcon(kind: String): Int = when (kind) {
 }
 
 @Composable
-internal fun FinancialAccountDto.balanceText(): String = when {
+internal fun FinancialAccount.balanceText(): String = when {
     balanceMinor == null -> stringResource(R.string.funds_unknown_balance)
     kind == "credit" && balanceMinor <= 0 -> stringResource(R.string.funds_debt_balance, money(-balanceMinor, currencyCode))
     kind == "credit" -> stringResource(R.string.funds_overpayment_balance, money(balanceMinor, currencyCode))
@@ -86,7 +86,7 @@ private val movementLabels = mapOf(
 
 /** What kind of change a movement was, in the same words as the web account page. */
 @Composable
-internal fun FundMovementDto.label(accountKind: String): String = stringResource(when (kind) {
+internal fun FundMovement.label(accountKind: String): String = stringResource(when (kind) {
     "transfer" -> if (amountMinor < 0) R.string.funds_movement_transfer_out else R.string.funds_movement_transfer_in
     "loan" -> if (accountKind == "credit") R.string.funds_movement_loan_principal else R.string.funds_movement_loan
     else -> movementLabels[kind] ?: R.string.funds_movement_other
@@ -98,14 +98,14 @@ internal fun signedMoney(value: Long, currency: String): String = (if (value > 0
 /** What a movement row can open or correct; a null action is not offered to this person. */
 internal data class FundsMovementActions(
     val openExpense: (Long) -> Unit,
-    val voidActivity: ((FundMovementDto) -> Unit)?,
+    val voidActivity: ((FundMovement) -> Unit)?,
     val voidPayment: ((String) -> Unit)?,
     val reconcile: (() -> Unit)?,
 )
 
 /** A recorded change to the account: what it was, when and why, the signed amount, and the corrections it allows. */
 @Composable
-internal fun FundsMovementRow(row: FundMovementDto, account: FinancialAccountDto, actions: FundsMovementActions) {
+internal fun FundsMovementRow(row: FundMovement, account: FinancialAccount, actions: FundsMovementActions) {
     FundsIconRow(FundsRowModel(
         icon = R.drawable.ic_lucide_receipt_text,
         title = row.label(account.kind),

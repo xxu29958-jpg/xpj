@@ -22,7 +22,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto
+import com.ticketbox.domain.model.SavedViewDefinitionRequest
 import com.ticketbox.data.repository.SavedQueryCommand
 import com.ticketbox.data.repository.SavedQueryDraft
 import com.ticketbox.domain.model.CurrencyCode
@@ -41,7 +41,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.SavedQueryDraftState
 
 data class SavedQueryEditorActions(
-    val change: (SavedViewDefinitionRequestDto) -> Unit,
+    val change: (SavedViewDefinitionRequest) -> Unit,
     val submit: () -> Unit,
     val review: () -> Unit,
     val acknowledge: () -> Unit,
@@ -108,7 +108,7 @@ private fun SavedQueryTaskStatus(draft: SavedQueryDraft, state: SavedQueryDraftS
 
 @Composable
 private fun SavedQueryCoreFields(draft: SavedQueryDraft, enabled: Boolean, context: SavedQueryEditorContext,
-    change: (SavedViewDefinitionRequestDto) -> Unit) {
+    change: (SavedViewDefinitionRequest) -> Unit) {
     val fields = draft.definition
     AppTextInput(AppTextInputState(stringResource(R.string.saved_query_name), fields.name, enabled = enabled),
         AppTextInputActions(onValueChange = { change(fields.copy(name = it)) }))
@@ -139,8 +139,8 @@ private fun SavedQueryCoreFields(draft: SavedQueryDraft, enabled: Boolean, conte
 }
 
 @Composable
-private fun SavedQueryAdditionalFields(fields: SavedViewDefinitionRequestDto, enabled: Boolean,
-    change: (SavedViewDefinitionRequestDto) -> Unit) {
+private fun SavedQueryAdditionalFields(fields: SavedViewDefinitionRequest, enabled: Boolean,
+    change: (SavedViewDefinitionRequest) -> Unit) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     // 低频条件收在一行文字折叠里：箭头说明它会展开，而不是一个会提交什么的按钮。
     TextButton(onClick = { expanded = !expanded }) {

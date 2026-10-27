@@ -4,10 +4,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -25,7 +25,6 @@ import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.domain.model.RecurringItem
-import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.navigation.RecurringExpenseNavigation
 import com.ticketbox.ui.navigation.RecurringOccurrenceHost
 import com.ticketbox.ui.navigation.RecurringPaymentDraft
@@ -33,6 +32,7 @@ import com.ticketbox.ui.navigation.RecurringPaymentDraftStore
 import com.ticketbox.ui.navigation.RecurringPaymentRestore
 import com.ticketbox.ui.navigation.RecurringPaymentTask
 import com.ticketbox.ui.navigation.recurringPaymentTaskJson
+import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.recurring.OccurrencePaymentGuard
 import com.ticketbox.ui.screens.recurring.OccurrenceSheetActions
 import com.ticketbox.ui.screens.recurring.RecurringOccurrenceSheet
@@ -102,7 +102,7 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals("2026-09", intent.period)
         assertEquals("JPY", intent.paymentCurrencyCode)
         assertTrue(!requireNotNull(original["payload"]).contains("\"homeCurrencyCode\""))
-        assertEquals(com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-1", 3), intent.request)
+        assertEquals(com.ticketbox.domain.model.RecurringOccurrencePaymentRequest("link", 0, 7, "payment-1", 3), intent.request)
         assertEquals(listOf(1), fixture.enqueuedDepths)
         assertEquals(0, fixture.network.calls.size)
         assertEquals("set_recurring_occurrence_payment", original["type"])
@@ -141,7 +141,7 @@ class RecurringOccurrenceRoomContinuityTest {
         compose.waitUntil(10_000) { host.model.value?.uiState?.value?.occurrence?.state == "unfulfilled" }
         assertEquals(10_000L, host.model.value?.uiState?.value?.occurrence?.reservedAmountCents)
         assertEquals("2026-09-05", host.model.value?.uiState?.value?.occurrence?.nextDueDate)
-        assertEquals(com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("clear", 1, 7),
+        assertEquals(com.ticketbox.domain.model.RecurringOccurrencePaymentRequest("clear", 1, 7),
             fixture.network.calls.last().first)
     }
 
@@ -534,7 +534,7 @@ class RecurringOccurrenceRoomContinuityTest {
             paidAmountCents = 9_800, paidHomeCurrencyCode = "CNY", nextDueDate = "2026-09-05")
         runBlocking {
             actions.enqueue(binding, OccurrencePaymentDraft(prior, "八月房租",
-                com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-august", 2),
+                com.ticketbox.domain.model.RecurringOccurrencePaymentRequest("link", 0, 7, "payment-august", 2),
                 "八月完整付款", 9_800, "CNY")).getOrThrow()
         }
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
@@ -566,7 +566,7 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals(2, fixture.network.calls.size)
         assertEquals(fixture.network.calls.first(), fixture.network.calls.last())
         assertEquals(originalKey, fixture.network.calls.last().second)
-        assertEquals(com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-august", 2),
+        assertEquals(com.ticketbox.domain.model.RecurringOccurrencePaymentRequest("link", 0, 7, "payment-august", 2),
             fixture.network.calls.last().first)
     }
 

@@ -1,7 +1,11 @@
 package com.ticketbox.ui.screens.expense
 
-import com.ticketbox.data.remote.dto.LedgerCalendarDto
+import com.ticketbox.domain.model.LedgerCalendar
 import com.ticketbox.domain.model.RecognitionTimeCandidate
+import com.ticketbox.viewmodel.ExpenseTimeForm
+import com.ticketbox.viewmodel.readExpenseTimeForm
+import com.ticketbox.viewmodel.summary
+import com.ticketbox.viewmodel.toSavedJson
 import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -10,12 +14,12 @@ import kotlin.test.assertNull
 
 class ExpenseTimeFormTest {
     @Test fun yearCompletionPreservesPrintedPartsAndIdentityThroughDraftRestore() {
-        val adapter = com.squareup.moshi.Moshi.Builder().build().adapter(com.ticketbox.data.remote.dto.RecognitionTimeCandidateDto::class.java)
+        val adapter = com.squareup.moshi.Moshi.Builder().build().adapter(com.ticketbox.domain.model.RecognitionTimeCandidate::class.java)
         val candidate = requireNotNull(adapter.fromJson("""{"id":"partial","label":"支付时间","explanation":"缺少年份",
             "original_text":"02月29日23:04:05 +07:00","local_value":"02月29日23:04:05 +07:00","precision":"second",
             "source_timezone":null,"source_utc_offset_seconds":25200,"can_apply":false,"evidence_public_id":"fact",
             "source":"image","parser_version":"receipt-fields-v5","requires_year":true,
-            "components":{"month":2,"day":29,"hour":23,"minute":4,"second":5}}""")).toDomain()
+            "components":{"month":2,"day":29,"hour":23,"minute":4,"second":5}}"""))
         assertNull(candidate.withYear(""))
         assertNull(candidate.withYear("2023"))
         val chosen = form().withRecognizedTime(requireNotNull(candidate.withYear("2024")))
@@ -26,7 +30,7 @@ class ExpenseTimeFormTest {
         assertEquals("partial", restored.recognitionChoice?.candidateId)
         assertEquals("fact", restored.recognitionChoice?.evidencePublicId)
     }
-    private val rule = LedgerCalendarDto("owner", 2, "Asia/Shanghai", "explicit", "2026-09-20T00:00:00Z")
+    private val rule = LedgerCalendar("owner", 2, "Asia/Shanghai", "explicit", "2026-09-20T00:00:00Z")
     private fun form(instant: String = "2026-11-01T06:30:00Z") =
         ExpenseTimeForm.initial(instant, null, rule, ZoneId.of("America/New_York"))
 

@@ -33,8 +33,11 @@ import com.ticketbox.data.repository.*
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.ExchangeRate
+import com.ticketbox.domain.model.ExchangeRateRequest
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ReferenceRates
 import com.ticketbox.ui.theme.TicketboxTheme
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.flow.first
@@ -54,10 +57,10 @@ class HistoricalCorrectionRateRecoveryTest {
     @get:Rule val compose = createComposeRule()
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val adapters = OutboxAdapterGraph()
-    private var currentRate: ExchangeRateDto? = null
+    private var currentRate: ExchangeRate? = null
     private var correctionConflict = false
     private val correctionCalls = CopyOnWriteArrayList<Pair<ExpenseCorrectionRequestDto, String>>()
-    private val rateCalls = CopyOnWriteArrayList<Pair<ExchangeRateRequestDto, String>>()
+    private val rateCalls = CopyOnWriteArrayList<Pair<ExchangeRateRequest, String>>()
     private val providerCalls = CopyOnWriteArrayList<BudgetAdviseRequestDto>()
     private lateinit var sender: ApiService
     private val harness: FactEntryNavigationHarness = FactEntryNavigationHarness(context) { api ->
@@ -86,13 +89,13 @@ class HistoricalCorrectionRateRecoveryTest {
                 ExchangeRateListDto(listOfNotNull(currentRate).filter { (currencyCode == null || it.currencyCode == currencyCode) &&
                     (homeCurrencyCode == null || it.homeCurrencyCode == homeCurrencyCode) && (rateDate == null || it.rateDate == rateDate) })
             override suspend fun referenceRates(homeCurrencyCode: String, currencyCode: String?, rateDate: String?) =
-                ReferenceRatesDto("frankfurter", true, "waiting", rateDate, items = emptyList())
-            override suspend fun saveExchangeRate(currencyCode: String, rateDate: String, request: ExchangeRateRequestDto,
-                idempotencyKey: String): ExchangeRateDto {
+                ReferenceRates("frankfurter", true, "waiting", rateDate, items = emptyList())
+            override suspend fun saveExchangeRate(currencyCode: String, rateDate: String, request: ExchangeRateRequest,
+                idempotencyKey: String): ExchangeRate {
                 assertEquals("JPY", currencyCode)
                 assertEquals("2025-12-03", rateDate)
                 rateCalls += request to idempotencyKey
-                return ExchangeRateDto("historical-rate", "JPY", "CNY", "2025-12-03", "0.05",
+                return ExchangeRate("historical-rate", "JPY", "CNY", "2025-12-03", "0.05",
                     "manual", "2026-09-09T00:00:00Z", "2026-09-09T00:00:00Z", 1).also { currentRate = it }
             }
         }.also { sender = it }
@@ -117,7 +120,7 @@ class HistoricalCorrectionRateRecoveryTest {
         val rateRow = harness.fixture.stored().single { it["type"] == "save_manual_exchange_rate" }
         val payload = requireNotNull(adapters.budget.manualRateAdapter.fromJson(requireNotNull(rateRow["payload"])))
         assertEquals("2025-12", payload.month)
-        assertEquals(ExchangeRateRequestDto("JPY", "CNY", "2025-12-03", "0.05", "manual", 0), payload.request)
+        assertEquals(ExchangeRateRequest("JPY", "CNY", "2025-12-03", "0.05", "manual", 0), payload.request)
         assertEquals(1, correctionCalls.size)
         assertTrue(rateCalls.isEmpty())
         assertEquals(1, runBlocking { drain().done })

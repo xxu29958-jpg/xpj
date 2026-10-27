@@ -18,7 +18,7 @@ internal class ConfirmRepaymentDraftDispatcher(
     override val type = PendingMutationType.ConfirmRepaymentDraft
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val original = row.describeRepaymentReview(payload).intent as? RepaymentReviewPayload
+        val original = row.readOriginalRepaymentReview(payload)
             ?: return DispatchResult.Failure("repayment_review_payload_unsupported", definitelyRejected = true)
         return deliverRepaymentReview(original.subject.publicId) {
             val bound = guard.bind(expectedLedgerId = row.ledgerId)

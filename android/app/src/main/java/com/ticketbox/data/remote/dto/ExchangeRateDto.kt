@@ -2,32 +2,11 @@ package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import com.ticketbox.domain.model.ExchangeRate
+import com.ticketbox.domain.model.MonthlyArrangement
 
 @JsonClass(generateAdapter = true)
-data class ExchangeRateRequestDto(
-    @param:Json(name = "currency_code") val currencyCode: String,
-    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
-    @param:Json(name = "rate_date") val rateDate: String,
-    @param:Json(name = "rate_to_cny") val rateToHome: String,
-    val source: String,
-    @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
-)
-
-@JsonClass(generateAdapter = true)
-data class ExchangeRateDto(
-    @param:Json(name = "public_id") val publicId: String,
-    @param:Json(name = "currency_code") val currencyCode: String,
-    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
-    @param:Json(name = "rate_date") val rateDate: String,
-    @param:Json(name = "rate_to_cny") val rateToHome: String,
-    val source: String,
-    @param:Json(name = "created_at") val createdAt: String,
-    @param:Json(name = "updated_at") val updatedAt: String,
-    @param:Json(name = "row_version") val rowVersion: Long,
-)
-
-@JsonClass(generateAdapter = true)
-data class ExchangeRateListDto(val items: List<ExchangeRateDto>)
+data class ExchangeRateListDto(val items: List<ExchangeRate>)
 
 @JsonClass(generateAdapter = true)
 data class BudgetAdviceInputsDto(
@@ -39,7 +18,7 @@ data class BudgetAdviceInputsDto(
     @param:Json(name = "inputs_fingerprint") val inputsFingerprint: String? = null,
     @param:Json(name = "undated_expense_count")
     val undatedExpenseCount: Int? = null,
-    @param:Json(name = "saved_arrangement") val savedArrangement: MonthlyArrangementDto? = null,
+    @param:Json(name = "saved_arrangement") val savedArrangement: MonthlyArrangement? = null,
     @param:Json(name = "is_trial") val isTrial: Boolean = false,
     @param:Json(name = "arrangement_currency_code") val arrangementCurrencyCode: String? = null,
     @param:Json(name = "budget_definition") val budgetDefinition: BudgetPlanDefinitionDto? = null,

@@ -1,27 +1,26 @@
 package com.ticketbox.ui.navigation
 
-import android.content.Context
-import android.net.Uri
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
-import androidx.core.app.ActivityOptionsCompat
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -32,40 +31,41 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
+import androidx.core.app.ActivityOptionsCompat
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ticketbox.ui.saveConsumerArtPreview
-import com.ticketbox.ui.RealKeyboard
-import com.ticketbox.ui.components.displayTime
-import com.ticketbox.ui.screens.expense.TAG_TAGS_FIELD
-import com.ticketbox.R
-import com.ticketbox.OutboxAdapterGraph
-import com.ticketbox.BuildConfig
-import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.repository.originalPayloadAdapter
-import com.ticketbox.data.repository.originalReceiptAdapter
-import com.ticketbox.data.repository.UploadIntentFileStore
-import com.ticketbox.data.repository.withConfirmationReceipt
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.BuildConfig
+import com.ticketbox.OutboxAdapterGraph
+import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.BackgroundTaskListResponseDto
-import com.ticketbox.data.remote.dto.OriginalCommandReceiptDto
+import com.ticketbox.data.repository.UploadIntentFileStore
+import com.ticketbox.data.repository.originalPayloadAdapter
+import com.ticketbox.data.repository.originalReceiptAdapter
+import com.ticketbox.data.repository.withConfirmationReceipt
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.OriginalCommandReceipt
+import com.ticketbox.presentation.displayTime
+import com.ticketbox.ui.RealKeyboard
+import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.screens.expense.TAG_TAGS_FIELD
 import com.ticketbox.ui.theme.TicketboxTheme
-import kotlinx.coroutines.runBlocking
+import java.io.File
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runBlocking
 import org.junit.After
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import java.io.File
 
 /** The outer and inner controllers, route callbacks and detail factories are all production code. */
 class FactEntryNavigationTest {
@@ -374,7 +374,7 @@ class FactEntryNavigationTest {
         harness.fixture.network.current = before.copy(imagePath = "owner/retained-original.png",
             imageHash = requireNotNull(payload.file).sha256, rowVersion = before.rowVersion + 1)
         harness.fixture.network.originalImageOverride = displayedBytes
-        val receipt = OriginalCommandReceiptDto(operation = payload.operation, expenseId = payload.expenseId,
+        val receipt = OriginalCommandReceipt(operation = payload.operation, expenseId = payload.expenseId,
             publicId = payload.publicId, rowVersion = before.rowVersion + 1, acceptedAt = acceptedAt,
             sha256 = requireNotNull(payload.file).sha256)
         runBlocking { harness.fixture.outbox.markDone(requireNotNull(row["id"]).toLong(),
@@ -456,7 +456,7 @@ class FactEntryNavigationTest {
             imageHash = requireNotNull(payload.file).sha256, rowVersion = before.rowVersion + 1,
             updatedAt = "2026-09-20T01:00:00Z")
         network.originalImageOverride = bytes
-        val receipt = OriginalCommandReceiptDto(payload.operation, payload.expenseId, payload.publicId,
+        val receipt = OriginalCommandReceipt(payload.operation, payload.expenseId, payload.publicId,
             network.current.rowVersion, "2026-09-20T01:00:00Z", sha256 = requireNotNull(payload.file).sha256)
         runBlocking { harness.fixture.outbox.markDone(requireNotNull(original["id"]).toLong(),
             receiptJson = originalReceiptAdapter.toJson(receipt)) }

@@ -21,7 +21,7 @@ import com.ticketbox.domain.model.Debt
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppSheetScaffold
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.RepaymentDraftInboxUiState

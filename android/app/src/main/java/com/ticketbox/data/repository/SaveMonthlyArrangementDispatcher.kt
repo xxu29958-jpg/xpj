@@ -3,15 +3,15 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.MonthlyArrangementDto
+import com.ticketbox.domain.model.MonthlyArrangement
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
 /** Sends only the durable original; HTTP success without a matching receipt is not confirmation. */
 class SaveMonthlyArrangementDispatcher(private val apiProvider: (OutboxRow) -> ApiService,
-    private val payloadAdapter: JsonAdapter<MonthlyArrangementPayload>,
-    private val receiptAdapter: JsonAdapter<MonthlyArrangementDto>) : OutboxMutationDispatcher {
+    private val payloadAdapter: JsonAdapter<MonthlyArrangementSubmission>,
+    private val receiptAdapter: JsonAdapter<MonthlyArrangement>) : OutboxMutationDispatcher {
     override val type = PendingMutationType.SaveMonthlyArrangement
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val payload = payloadAdapter.readArrangement(row.payloadJson)?.takeIf { it.supports(row) }

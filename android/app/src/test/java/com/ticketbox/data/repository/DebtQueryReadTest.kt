@@ -1,20 +1,26 @@
 package com.ticketbox.data.repository
 
+import android.database.sqlite.SQLiteException
+import com.ticketbox.OutboxAdapterGraph
+import com.ticketbox.data.local.ExpenseDao
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.StatsProjectionCacheEntity
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
-import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
-import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
-import com.ticketbox.OutboxAdapterGraph
-import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalListResponseDto
-import com.ticketbox.data.local.StatsProjectionCacheEntity
-import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.Debt
-import android.database.sqlite.SQLiteException
-import com.ticketbox.data.local.ExpenseDao
+import com.ticketbox.domain.model.DebtAdjustmentCreateRequest
+import com.ticketbox.domain.model.DebtKindSetRequest
+import com.ticketbox.domain.model.DebtListLens
+import com.ticketbox.domain.model.ExistingDebtChoice
+import com.ticketbox.domain.model.FundsOverview
 import java.net.ConnectException
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
@@ -22,17 +28,13 @@ import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class DebtQueryReadTest {
     @Test fun oldDebtReviewUsesFreshAuthorizedVersionAndKeepsOriginalMoney() = runTest {
         var offline = false
-        var choices = listOf(com.ticketbox.data.remote.dto.ExistingDebtChoiceDto("old-debt", 5, "旧花呗", 9000, "CNY", "2026-09-01"))
+        var choices = listOf(com.ticketbox.domain.model.ExistingDebtChoice("old-debt", 5, "旧花呗", 9000, "CNY", "2026-09-01"))
         val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
-            override suspend fun existingFundDebts(): List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto> {
+            override suspend fun existingFundDebts(): List<com.ticketbox.domain.model.ExistingDebtChoice> {
                 if (offline) throw ConnectException("offline")
                 return choices
             }
@@ -61,7 +63,7 @@ class DebtQueryReadTest {
         val account = com.ticketbox.data.remote.dto.FinancialAccountDto(
             "funds-one", "共享银行卡", "owner", 1, "bank", "JPY", "ledger", null, null,
             1, false, 1200, 1200, "2026-09-01", "已核对", null, false)
-        val summary = com.ticketbox.data.remote.dto.FundsOverviewDto("JPY", "2026-09-01", 1200, 0, 1200, 1, 0, 0)
+        val summary = com.ticketbox.domain.model.FundsOverview("JPY", "2026-09-01", 1200, 0, 1200, 1, 0, 0)
         fun online() { if (offline) throw ConnectException("offline") }
         val api = object : ApiService by FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0) {
             override suspend fun fundsAccounts(): List<com.ticketbox.data.remote.dto.FinancialAccountDto> {
@@ -72,7 +74,7 @@ class DebtQueryReadTest {
                 if (hidden) throw HttpException(Response.error<Any>(404, """{"error":"fund_account_not_found"}""".toResponseBody()))
                 return if (foreignLedger) account.copy(ledgerId = "family") else account
             }
-            override suspend fun fundsOverview(): com.ticketbox.data.remote.dto.FundsOverviewDto {
+            override suspend fun fundsOverview(): com.ticketbox.domain.model.FundsOverview {
                 online(); return if (hidden) summary.copy(assetsMinor = 0, netWorthMinor = 0, includedAccounts = 0) else summary
             }
         }
@@ -204,7 +206,7 @@ class DebtQueryReadTest {
             assertEquals(original.payload, retained.payload)
             assertEquals(original.idempotencyKey, retained.idempotencyKey)
             assertEquals(original.expectedRowVersion, retained.expectedRowVersion)
-            assertEquals(AdjustmentCall("jpy-debt", DebtAdjustmentCreateRequestDto(30, "补记日元借款", 4), original.idempotencyKey), api.adjustmentCall)
+            assertEquals(AdjustmentCall("jpy-debt", DebtAdjustmentCreateRequest(30, "补记日元借款", 4), original.idempotencyKey), api.adjustmentCall)
             assertEquals(null, fixture.coordinator.snapshotAccessDenials.value)
             api.offline = true
             assertEquals(otherDebt.copy(fromCache = true), reader().detail(fixture.binding, "other-debt").getOrThrow())
@@ -716,12 +718,12 @@ private class DebtReadApi(memberDebt: Boolean = false) : ApiService by FakeApiSe
     var acceptBeforeFailure = false
     var commandReplyGate: (suspend () -> Unit)? = null
     var adjustmentCall: AdjustmentCall? = null
-    override suspend fun recordDebtAdjustment(publicId: String, request: DebtAdjustmentCreateRequestDto, idempotencyKey: String?): DebtDto {
+    override suspend fun recordDebtAdjustment(publicId: String, request: DebtAdjustmentCreateRequest, idempotencyKey: String?): DebtDto {
         commands++
         adjustmentCall = AdjustmentCall(publicId, request, idempotencyKey)
         throw requireNotNull(commandFailure)
     }
-    override suspend fun setDebtKind(publicId: String, request: DebtKindSetRequestDto, idempotencyKey: String?): DebtDto {
+    override suspend fun setDebtKind(publicId: String, request: DebtKindSetRequest, idempotencyKey: String?): DebtDto {
         commands++
         assertEquals("jpy-debt", publicId)
         assertEquals(4L, request.expectedRowVersion)

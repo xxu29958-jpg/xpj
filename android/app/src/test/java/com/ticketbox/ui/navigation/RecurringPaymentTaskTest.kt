@@ -1,9 +1,9 @@
 package com.ticketbox.ui.navigation
 
 import androidx.lifecycle.SavedStateHandle
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.domain.model.RecurringOccurrence
 import com.ticketbox.ui.screens.recurringItem
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 import kotlin.test.Test
@@ -384,7 +384,6 @@ class RecurringPaymentTaskTest {
         assertEquals(3L, kept.occurrenceRowVersion)
     }
 
-
     @Test
     fun aLaterOccurrenceGenerationDoesNotKeepThePreviousClientRef() {
         val first = assertNotNull(recurringPaymentTask(loaded("JPY", 1200)))
@@ -414,7 +413,7 @@ class RecurringPaymentTaskTest {
     private fun loaded(currency: String?, planned: Long) = RecurringOccurrenceUiState(
         access = access,
         item = recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = currency, merchant = "日元订阅"),
-        occurrence = RecurringOccurrenceDto(
+        occurrence = com.ticketbox.domain.model.RecurringOccurrence(
             seriesPublicId = "rec-1", period = "2026-08", seriesRowVersion = 7L, rowVersion = 3L,
             state = "unfulfilled", plannedAmountCents = planned, reservedAmountCents = planned,
             expensePublicId = null, paidAmountCents = null, nextDueDate = "2026-08-15", homeCurrencyCode = currency,

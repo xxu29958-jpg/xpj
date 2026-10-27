@@ -3,8 +3,8 @@ package com.ticketbox.ui.screens.expense
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.FxContract
-import com.ticketbox.ui.components.formatMinorAmountInput
-import com.ticketbox.ui.components.parseMinorAmount
+import com.ticketbox.presentation.formatMinorAmountInput
+import com.ticketbox.presentation.parseMinorAmount
 import com.ticketbox.ui.screens.editInitialCategory
 
 /** Raw field values, so a new server review cannot discard incomplete or invalid input. */

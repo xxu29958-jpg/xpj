@@ -8,13 +8,13 @@ import com.ticketbox.R
 import com.ticketbox.data.repository.IncomePlanActions
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingIncomePlanSubmission
-import com.ticketbox.data.repository.toUpdateRequest
+import com.ticketbox.data.repository.matchesSubmittedRequest
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.IncomeFrequency
 import com.ticketbox.domain.model.IncomePlan
 import com.ticketbox.domain.model.IncomeSourceType
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.formatAmountInput
+import com.ticketbox.presentation.formatAmountInput
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,7 +50,7 @@ data class IncomePlanEditSession(
             intent.originSessionGeneration == binding.sessionGeneration && intent.originBindingRevision == binding.bindingRevision &&
             intent.originalLabel == baseline.label && intent.originalAmountCents == baseline.amountCents &&
             intent.homeCurrencyCode == draft.homeCurrency?.storageKey &&
-            intent.request == patch.toUpdateRequest().copy(expectedRowVersion = 0)
+            patch.matchesSubmittedRequest(intent.request)
     }
 
     /** Resolve only the recorded baseline currency, never a later financial version. */

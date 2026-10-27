@@ -4,7 +4,7 @@ import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
+import com.ticketbox.domain.model.DebtAdjustmentCreateRequest
 import java.io.IOException
 
 private const val DEBT_ADJUSTMENT_REVISION = 1
@@ -17,7 +17,7 @@ data class DebtAdjustmentPayload(
     override val subject: DebtWriteSubject,
     override val originSessionGeneration: String,
     override val originBindingRevision: String,
-    val request: DebtAdjustmentCreateRequestDto,
+    val request: DebtAdjustmentCreateRequest,
 ) : DebtAmountIntent {
     override val amountCents: Long get() = request.amountCents
     override val expectedRowVersion: Long get() = request.expectedRowVersion
@@ -37,12 +37,12 @@ internal fun JsonAdapter<DebtAdjustmentPayload>.readSupportedDebtAdjustment(json
         null
     }
 
-internal fun OutboxRow.describeDebtAdjustment(adapter: JsonAdapter<DebtAdjustmentPayload>): PendingDebtWrite {
+internal fun OutboxRow.readOriginalDebtAdjustment(adapter: JsonAdapter<DebtAdjustmentPayload>): DebtAdjustmentPayload? {
     val payload = adapter.readSupportedDebtAdjustment(payloadJson)?.takeIf {
         targetId == debtWriteTarget(it.subject.publicId) && expectedRowVersion == it.request.expectedRowVersion &&
             !idempotencyKey.isNullOrBlank()
     }
-    return PendingDebtWrite(this, payload)
+    return payload
 }
 
 /** The backend strips Python whitespace after validating the wire string's code-point length. */
@@ -54,3 +54,6 @@ internal fun isDebtAdjustmentReasonValid(reason: String): Boolean =
 /** Compare the decrease against a known nonnegative balance without adding signed money. */
 internal fun isDebtAdjustmentWithinBalance(amountCents: Long, remainingAmountCents: Long): Boolean =
     amountCents >= 0L || (remainingAmountCents >= 0L && amountCents >= -remainingAmountCents)
+
+internal fun OutboxRow.describeDebtAdjustment(adapter: JsonAdapter<DebtAdjustmentPayload>): PendingDebtWrite =
+    PendingDebtWrite(this, readOriginalDebtAdjustment(adapter)?.toView())

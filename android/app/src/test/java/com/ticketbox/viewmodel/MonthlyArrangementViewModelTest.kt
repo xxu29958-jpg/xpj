@@ -1,5 +1,10 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.domain.model.MonthlyArrangementChange
+import com.ticketbox.domain.model.MonthlyArrangementResponse
+import com.ticketbox.domain.model.MonthlyArrangementHistoryItem
+import com.ticketbox.domain.model.MonthlyArrangementHistory
+import com.ticketbox.domain.model.MonthlyArrangement
 import com.ticketbox.data.repository.*
 import com.ticketbox.data.remote.dto.*
 import com.ticketbox.domain.model.BudgetAdviceInputs
@@ -18,12 +23,12 @@ class MonthlyArrangementViewModelTest {
         val earlierRead = java.time.Instant.parse("2026-09-27T00:00:00Z")
         val laterRead = earlierRead.plusSeconds(3600)
         val versions = listOf(3L, 2L, 1L).map { version ->
-            MonthlyArrangementHistoryItemDto(version, "2026-09-27T00:00:00Z", "JPY", version * 1000, 300)
+            MonthlyArrangementHistoryItem(version, "2026-09-27T00:00:00Z", "JPY", version * 1000, 300)
         }
         val repository = object : BudgetActions by base {
             override suspend fun arrangementHistory(binding: LogicalSessionBinding, month: String, beforeVersion: Long?) =
                 if (beforeVersion != null && !online) Result.failure(java.net.ConnectException("offline"))
-                else Result.success(MonthlyArrangementHistoryRead(MonthlyArrangementHistoryDto(binding.ledgerId, month,
+                else Result.success(MonthlyArrangementHistoryRead(MonthlyArrangementHistory(binding.ledgerId, month,
                     if (beforeVersion != null) versions.drop(1) else if (online) versions else listOf(versions[0], versions[2]),
                     if (beforeVersion == null && !online) 3 else null), fromCache = beforeVersion == null && !online,
                     fetchedAt = if (online) laterRead else earlierRead, receiptVersions = if (online) emptySet() else setOf(3)))
@@ -69,7 +74,7 @@ class MonthlyArrangementViewModelTest {
     }
 
     @Test fun anUntimedOldPageDoesNotBorrowTheReadTimeOfANewerPage() {
-        val response = MonthlyArrangementHistoryDto("owner", "2026-09", emptyList(), null)
+        val response = MonthlyArrangementHistory("owner", "2026-09", emptyList(), null)
         val older = BudgetAdviceUiState().arrangementHistoryRefreshed(
             Result.success(MonthlyArrangementHistoryRead(response, fromCache = true)), more = false)
         val fresh = MonthlyArrangementHistoryRead(response, fetchedAt = java.time.Instant.parse("2026-09-28T00:00:00Z"))
@@ -86,9 +91,9 @@ class MonthlyArrangementViewModelTest {
         var income = 10000L
         val response = CompletableDeferred<Result<BudgetAdviceResult>>()
         val repository = object : BudgetActions by base {
-            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?) =
+            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementChange, reportingHomeCurrencyCode: String?) =
                 Result.success(trialInputs(month, request, income))
-            override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?) = response.await()
+            override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementChange, reportingHomeCurrencyCode: String?) = response.await()
         }
         val vm = BudgetAdviceViewModel(repository, initialMonth = "2026-09")
         advanceUntilIdle()
@@ -112,11 +117,11 @@ class MonthlyArrangementViewModelTest {
     @Test fun viewerCanEditAndTrialButCannotSaveOrRequestAi() = budgetTest {
         val base = FakeBudgetActions(budget(), canModify = false)
         val repository = object : BudgetActions by base {
-            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?) =
+            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementChange, reportingHomeCurrencyCode: String?) =
                 Result.success(trialInputs(month, request, 10000))
-            override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest): Result<Long> =
+            override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementChange): Result<Long> =
                 error("Viewer must never reach the writer")
-            override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceResult> =
+            override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementChange, reportingHomeCurrencyCode: String?): Result<BudgetAdviceResult> =
                 error("Viewer must never reach AI")
         }
         val vm = BudgetAdviceViewModel(repository, initialMonth = "2026-09")
@@ -141,9 +146,9 @@ class MonthlyArrangementViewModelTest {
         val base = FakeBudgetActions(budget())
         var income = 10000L
         val repository = object : BudgetActions by base {
-            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?) =
+            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementChange, reportingHomeCurrencyCode: String?) =
                 Result.success(trialInputs(month, request, income))
-            override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?) =
+            override suspend fun requestTrialAdvice(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementChange, reportingHomeCurrencyCode: String?) =
                 Result.success(BudgetAdviceResult(BudgetAdvice("Based on the returned inputs", emptyList(), null), request.homeCurrencyCode,
                     "fixture", null, trialInputs(month, request, income)))
         }
@@ -174,11 +179,11 @@ class MonthlyArrangementViewModelTest {
         val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(binding, true))
         val base = FakeBudgetActions(budget(), activeAccessFlow = access)
         val drafts = mutableMapOf<Pair<LogicalSessionBinding, String>, MonthlyArrangementDraft>()
-        val queued = mutableListOf<MonthlyArrangementSaveRequest>()
-        val trials = mutableListOf<MonthlyArrangementSaveRequest>()
+        val queued = mutableListOf<MonthlyArrangementChange>()
+        val trials = mutableListOf<MonthlyArrangementChange>()
         val repository = object : BudgetActions by base {
             override suspend fun arrangement(binding: LogicalSessionBinding, month: String) = Result.success(MonthlyArrangementRead(
-                MonthlyArrangementResponseDto(binding.ledgerId, month, MonthlyArrangementDto(binding.ledgerId, month, "JPY", 1000, 300, 4, "now"))))
+                MonthlyArrangementResponse(binding.ledgerId, month, MonthlyArrangement(binding.ledgerId, month, "JPY", 1000, 300, 4, "now"))))
             override suspend fun arrangementDraft(binding: LogicalSessionBinding, month: String) = drafts[binding to month]
             override suspend fun storeArrangementDraft(binding: LogicalSessionBinding, month: String, draft: MonthlyArrangementDraft) {
                 drafts[binding to month] = draft
@@ -186,10 +191,10 @@ class MonthlyArrangementViewModelTest {
             override suspend fun consumeArrangementDraft(binding: LogicalSessionBinding, month: String, queuedDraft: MonthlyArrangementDraft) {
                 if (drafts[binding to month] == queuedDraft) drafts.remove(binding to month)
             }
-            override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest): Result<Long> {
+            override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementChange): Result<Long> {
                 queued += request; return Result.success(1L)
             }
-            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest, reportingHomeCurrencyCode: String?): Result<BudgetAdviceInputs> {
+            override suspend fun trialAdviceInputs(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementChange, reportingHomeCurrencyCode: String?): Result<BudgetAdviceInputs> {
                 trials += request
                 return Result.success(BudgetAdviceInputs(month, request.homeCurrencyCode,
                     BudgetAdviceBreakdown(10000, 1000, 2000, request.savingsTargetCents, request.reservedBufferCents,
@@ -223,7 +228,7 @@ class MonthlyArrangementViewModelTest {
     }
 }
 
-private fun trialInputs(month: String, request: MonthlyArrangementSaveRequest, income: Long) = BudgetAdviceInputs(
+private fun trialInputs(month: String, request: MonthlyArrangementChange, income: Long) = BudgetAdviceInputs(
     month, request.homeCurrencyCode, BudgetAdviceBreakdown(income, 1000, 2000, request.savingsTargetCents,
         request.reservedBufferCents, income - 3000 - request.savingsTargetCents - request.reservedBufferCents, 0),
     emptyList(), isTrial = true)

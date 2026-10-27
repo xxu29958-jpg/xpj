@@ -51,23 +51,6 @@ data class IncomePlanCreateRequestDto(
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
 )
 
-/**
- * ADR-0041: PATCH /api/income-plans/{publicId} body. ``expectedRowVersion``
- * is the client's last-seen ``row_version`` token; server returns 409
- * on stale snapshot.
- */
-@JsonClass(generateAdapter = true)
-data class IncomePlanUpdateRequestDto(
-    @param:Json(name = "intent_month") val intentMonth: String,
-    @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
-    val label: String? = null,
-    @param:Json(name = "source_type") val sourceType: String? = null,
-    val frequency: String? = null,
-    @param:Json(name = "income_month") val incomeMonth: String? = null,
-    @param:Json(name = "amount_cents") val amountCents: Long? = null,
-    @param:Json(name = "pay_day") val payDay: Int? = null,
-)
-
 /** Archive/restore retain the displayed month and the current OCC token. */
 data class IncomePlanTokenRequestDto(
     @param:Json(name = "expected_row_version") val expectedRowVersion: Long,

@@ -11,8 +11,8 @@ import com.ticketbox.ui.components.AppDataAuthorityStrip
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.displayDateTime
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.displayDateTime
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.viewmodel.DebtDetailUiState
 
 @Composable

@@ -22,9 +22,9 @@ import com.ticketbox.notification.budget.BudgetOverspendDispatchOutcome
 import com.ticketbox.notification.budget.BudgetOverspendDecision
 import com.ticketbox.notification.recurring.RecurringReminderDispatchOutcome
 import com.ticketbox.notification.recurring.RecurringReminderDecision
-import com.ticketbox.ui.components.formatAmount
-import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.components.formatMinorAmount
+import com.ticketbox.presentation.formatAmount
+import com.ticketbox.presentation.formatDisplayAmount
+import com.ticketbox.presentation.formatMinorAmount
 
 /**
  * 草稿创建通知的决策结果。单一枚举返回值本身就是「不双响」保证：

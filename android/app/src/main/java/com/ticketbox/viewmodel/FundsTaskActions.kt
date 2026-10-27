@@ -1,7 +1,7 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.data.remote.dto.FinancialAccountDto
-import com.ticketbox.data.remote.dto.InstallmentViewDto
+import com.ticketbox.domain.model.FinancialAccount
+import com.ticketbox.domain.model.InstallmentView
 import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.data.repository.FundsInputState
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -32,7 +32,7 @@ fun FundsViewModel.start(mode: String) {
     save(value)
 }
 
-fun FundsViewModel.choosePayer(account: FinancialAccountDto) = edit { it.copy(payerId = account.publicId, payerName = account.name,
+fun FundsViewModel.choosePayer(account: FinancialAccount) = edit { it.copy(payerId = account.publicId, payerName = account.name,
     payerCurrency = account.currencyCode, payerVersion = account.rowVersion) }
 
 fun FundsViewModel.voidPayment(id: String) {
@@ -47,14 +47,14 @@ fun FundsViewModel.voidCreditApplication(id: String) {
     edit { it.copy(creditReviewId = id) }
 }
 
-fun FundsViewModel.voidActivity(row: com.ticketbox.data.remote.dto.FundMovementDto) {
+fun FundsViewModel.voidActivity(row: com.ticketbox.domain.model.FundMovement) {
     if (state.value.task.input != null) { resume(); return }
     if (row.correctionParts.isEmpty()) return
     start("void_activity")
     edit { it.copy(activityEventId = row.eventPublicId, activityLabel = row.note, activityParts = row.correctionParts) }
 }
 
-fun FundsViewModel.reviseAgreement(agreement: InstallmentViewDto) {
+fun FundsViewModel.reviseAgreement(agreement: InstallmentView) {
     if (state.value.task.input != null) { resume(); return }
     start("installments")
     val current = state.value
@@ -91,7 +91,7 @@ private fun FundsUiState.accountInput(binding: LogicalSessionBinding, mode: Stri
     }
 }
 
-private fun FundsInput.withCreditTerms(terms: com.ticketbox.data.remote.dto.CreditTermsDto?): FundsInput {
+private fun FundsInput.withCreditTerms(terms: com.ticketbox.domain.model.CreditTerms?): FundsInput {
     if (terms == null) return this
     val digits = com.ticketbox.domain.model.CurrencyCode.fromStorageKeyOrNull(currency)?.minorUnitDigits ?: return this
     fun amount(value: Long?) = value?.let { java.math.BigDecimal.valueOf(it, digits).toPlainString() }.orEmpty()

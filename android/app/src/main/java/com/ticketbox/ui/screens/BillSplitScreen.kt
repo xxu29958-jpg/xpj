@@ -50,9 +50,9 @@ import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.components.accountingTimeDateText
-import com.ticketbox.ui.components.displayDateTime
+import com.ticketbox.presentation.formatDisplayAmount
+import com.ticketbox.presentation.accountingTimeDateText
+import com.ticketbox.presentation.displayDateTime
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens

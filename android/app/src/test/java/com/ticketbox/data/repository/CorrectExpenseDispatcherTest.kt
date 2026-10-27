@@ -6,17 +6,19 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseCorrectionResponseDto
 import com.ticketbox.data.remote.dto.ExpenseRevisionDto
+import com.ticketbox.domain.model.CorrectionIntChange
+import com.ticketbox.domain.model.CorrectionStringChange
 import com.ticketbox.notification.budget.CheckerHarness
 import java.io.IOException
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertSame
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.test.runTest
 
 internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBase() {
     private val originalRevision = ExpenseRevisionDto(
@@ -179,11 +181,11 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         for (request in listOf(ExpenseCorrectionRequestDto(7, "Clear note", note = ""),
                 ExpenseCorrectionRequestDto(7, "Clear items", items = emptyList()),
                 ExpenseCorrectionRequestDto(7, "Clear time", expenseTime =
-                    com.ticketbox.data.remote.dto.CorrectionOptionalString.changed(null)),
+                    com.ticketbox.domain.model.CorrectionStringChange.changed(null)),
                 ExpenseCorrectionRequestDto(7, "Legal boundaries", originalCurrencyCode = "CNY",
                     originalAmountMinor = com.ticketbox.domain.model.MONEY_MINOR_MAX,
-                    valueScore = com.ticketbox.data.remote.dto.CorrectionOptionalInt.changed(1),
-                    regretScore = com.ticketbox.data.remote.dto.CorrectionOptionalInt.changed(5),
+                    valueScore = com.ticketbox.domain.model.CorrectionIntChange.changed(1),
+                    regretScore = com.ticketbox.domain.model.CorrectionIntChange.changed(5),
                     items = listOf(com.ticketbox.data.remote.dto.ExpenseItemRequestDto("Item", "discount",
                         quantityText = "x".repeat(64), unitPriceCents = 0, amountCents = -com.ticketbox.domain.model.MONEY_MINOR_MAX,
                         category = "x".repeat(64), rawText = "x".repeat(1000), confidence = 0.0)),
@@ -239,8 +241,8 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
             request.copy(items = listOf(item.copy(confidence = 1.1))),
             request.copy(amountCents = -1), request.copy(originalAmountMinor = maximum + 1),
             request.copy(originalCurrencyCode = "CN"),
-            request.copy(valueScore = com.ticketbox.data.remote.dto.CorrectionOptionalInt.changed(0)),
-            request.copy(regretScore = com.ticketbox.data.remote.dto.CorrectionOptionalInt.changed(6)),
+            request.copy(valueScore = com.ticketbox.domain.model.CorrectionIntChange.changed(0)),
+            request.copy(regretScore = com.ticketbox.domain.model.CorrectionIntChange.changed(6)),
         )
         val stub = Stub(StubResult.Success(ExpenseCorrectionResponseDto(successExpenseDto(), originalRevision)))
         val dispatcher = CorrectExpenseDispatcher({ stub }, adapter, { _, _ -> }, {})

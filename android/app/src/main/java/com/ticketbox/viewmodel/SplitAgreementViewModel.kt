@@ -5,13 +5,13 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.remote.dto.BillSplitAgreementDto
-import com.ticketbox.data.remote.dto.BillSplitChangeAcceptRequestDto
-import com.ticketbox.data.remote.dto.BillSplitChangeCreateRequestDto
+import com.ticketbox.domain.model.BillSplitAgreement
+import com.ticketbox.domain.model.BillSplitChangeAcceptRequest
+import com.ticketbox.domain.model.BillSplitChangeCreateRequest
 import com.ticketbox.data.repository.DebtTask
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.SplitAgreementActions
-import com.ticketbox.data.repository.SplitAgreementPayload
+import com.ticketbox.data.repository.SplitAgreementSubmission
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.debtPublicIds
@@ -21,8 +21,8 @@ import com.ticketbox.data.repository.SPLIT_REJECT
 import com.ticketbox.data.repository.SPLIT_WITHDRAW
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.formatAmountInput
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.formatAmountInput
+import com.ticketbox.presentation.parseAmountCents
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
 data class SplitAgreementUiState(
     val task: DebtTask? = null,
     val canModify: Boolean = false,
-    val agreement: BillSplitAgreementDto? = null,
+    val agreement: BillSplitAgreement? = null,
     val fetchedAt: String? = null,
     val fromCache: Boolean = false,
     val shareInput: String = "",
@@ -49,7 +49,7 @@ data class SplitAgreementUiState(
     val error: UiText? = null,
     val message: UiText? = null,
     val rows: List<OutboxRow> = emptyList(),
-    val intents: Map<Long, SplitAgreementPayload> = emptyMap(),
+    val intents: Map<Long, SplitAgreementSubmission> = emptyMap(),
     val acknowledgedRevision: Long = 0,
     val agreementRevision: Long = 0,
 ) {
@@ -208,8 +208,8 @@ class SplitAgreementViewModel(
             _state.update { it.copy(error = UiText.res(R.string.split_agreement_error_invalid_settlement)) }
             return
         }
-        submit(SplitAgreementPayload(operation = SPLIT_CREATE, originalDebtPublicId = agreement.originalDebt.publicId,
-            returnDebtPublicId = agreement.returnDebt?.publicId, create = BillSplitChangeCreateRequestDto(share, settlement, reason,
+        submit(SplitAgreementSubmission(operation = SPLIT_CREATE, originalDebtPublicId = agreement.originalDebt.publicId,
+            returnDebtPublicId = agreement.returnDebt?.publicId, create = BillSplitChangeCreateRequest(share, settlement, reason,
                 agreement.originalDebt.rowVersion, agreement.returnDebt?.rowVersion, state.replacingProposalPublicId)))
     }
 
@@ -221,12 +221,12 @@ class SplitAgreementViewModel(
         if (accept && (!state.confirmed || proposal.proposedByYou || !state.previewReady ||
                 agreement.pendingRepaymentDebtPublicIds.isNotEmpty())) return
         val operation = if (accept) SPLIT_ACCEPT else if (proposal.proposedByYou) SPLIT_WITHDRAW else SPLIT_REJECT
-        submit(SplitAgreementPayload(operation = operation, originalDebtPublicId = agreement.originalDebt.publicId,
-            proposalPublicId = proposal.publicId, returnDebtPublicId = agreement.returnDebt?.publicId, accept = if (accept) BillSplitChangeAcceptRequestDto(
+        submit(SplitAgreementSubmission(operation = operation, originalDebtPublicId = agreement.originalDebt.publicId,
+            proposalPublicId = proposal.publicId, returnDebtPublicId = agreement.returnDebt?.publicId, accept = if (accept) BillSplitChangeAcceptRequest(
                 agreement.originalDebt.rowVersion, agreement.returnDebt?.rowVersion) else null))
     }
 
-    private fun submit(intent: SplitAgreementPayload) {
+    private fun submit(intent: SplitAgreementSubmission) {
         val task = _state.value.task ?: return
         if (_state.value.busy) return
         _state.update { it.copy(submitting = true, error = null) }
@@ -279,7 +279,7 @@ private fun SplitAgreementUiState.canRecover(row: OutboxRow, drop: Boolean): Boo
 private fun SplitAgreementUiState.withoutRead() = copy(agreement = null, fetchedAt = null, fromCache = false,
     loading = false, previewReady = false, confirmed = false, error = UiText.res(R.string.split_agreement_error_load_failed))
 
-private fun SplitAgreementUiState.refreshedAgreement(snapshot: ReadSnapshot<BillSplitAgreementDto>, invalidShare: Boolean,
+private fun SplitAgreementUiState.refreshedAgreement(snapshot: ReadSnapshot<BillSplitAgreement>, invalidShare: Boolean,
     needsPreview: Boolean = false): SplitAgreementUiState {
     val value = snapshot.value
     val currency = CurrencyCode.fromStorageKeyOrNull(value.homeCurrencyCode)
@@ -307,7 +307,7 @@ private fun SplitAgreementUiState.applyPreviewDefaults(currency: CurrencyCode?):
 
 private fun restorableCreateDraft(
     state: SplitAgreementUiState,
-    intent: SplitAgreementPayload?,
+    intent: SplitAgreementSubmission?,
 ): Triple<String, String, String>? {
     val create = intent?.takeIf { it.operation == SPLIT_CREATE }?.create ?: return null
     val currency = state.agreement?.homeCurrencyCode?.let(CurrencyCode::fromStorageKeyOrNull) ?: return null
@@ -330,5 +330,5 @@ private fun splitSubmissionMessage(rows: List<OutboxRow>): UiText? = when {
     else -> null
 }
 
-private fun ReadSnapshot<BillSplitAgreementDto>.needsPreview(share: Long?, invalidShare: Boolean): Boolean =
+private fun ReadSnapshot<BillSplitAgreement>.needsPreview(share: Long?, invalidShare: Boolean): Boolean =
     !fromCache && !invalidShare && share != null && share != value.preview.newShareAmountCents

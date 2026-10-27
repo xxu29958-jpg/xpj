@@ -1,8 +1,10 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.sameReferenceOwner
+
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto
-import com.ticketbox.data.remote.dto.SavedViewDto
+import com.ticketbox.domain.model.SavedViewDefinitionRequest
+import com.ticketbox.domain.model.SavedView
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RepositoryException
@@ -72,7 +74,7 @@ class SavedQueryDraftController(
             canModify = sameOwner && current?.canModify == true, drafts = if (sameOwner) retained else emptyList())
     }
 
-    fun begin(definition: SavedViewDefinitionRequestDto, baseline: SavedViewDto? = null, delete: Boolean = false): String? {
+    fun begin(definition: SavedViewDefinitionRequest, baseline: SavedView? = null, delete: Boolean = false): String? {
         val current = _state.value
         if (!current.ready || !current.canModify || current.busy) return null
         val command = if (delete) SavedQueryCommand.Delete else if (baseline == null) SavedQueryCommand.Create else SavedQueryCommand.Edit
@@ -81,7 +83,7 @@ class SavedQueryDraftController(
         return draft.slot
     }
 
-    fun change(slot: String, definition: SavedViewDefinitionRequestDto) {
+    fun change(slot: String, definition: SavedViewDefinitionRequest) {
         val draft = _state.value.drafts.find { it.slot == slot } ?: return
         if (_state.value.canEdit(draft)) saveEdit(draft.copy(definition = definition, error = null))
     }

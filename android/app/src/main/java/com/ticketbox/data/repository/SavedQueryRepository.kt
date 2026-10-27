@@ -16,7 +16,7 @@ class SavedQueryRepository(
     fun captureBinding() = guard.captureLogicalBinding()
     fun observeAccess() = apiProvider.observeActiveLedgerAccess()
     suspend fun catalog(binding: LogicalSessionBinding) = errors.safeCall {
-        guard.bindExact(binding).call { it.savedViews().items }
+        guard.bindExact(binding).call { it.savedViews().items.map { row -> row } }
     }
     suspend fun read(binding: LogicalSessionBinding, publicId: String) = errors.safeCall {
         guard.bindExact(binding).call { it.savedView(publicId) }
@@ -26,7 +26,7 @@ class SavedQueryRepository(
             api.savedViewResults(publicId, page).also { result ->
                 require(result.conditions["ledger_id"] == binding.ledgerId)
                 result.items.forEach { it.entry.toConfirmedStreamCacheItem(binding.ledgerId) }
-            }
+            }.toDomain()
         }
     }
     suspend fun readDrafts(binding: LogicalSessionBinding) = errors.safeCall { drafts.read(binding) }

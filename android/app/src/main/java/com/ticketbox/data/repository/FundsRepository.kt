@@ -5,7 +5,7 @@ import com.ticketbox.data.local.AppDatabase
 import com.ticketbox.data.local.FundsInputEntity
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.FinancialAccountDto
+import com.ticketbox.domain.model.FinancialAccount
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -94,7 +94,7 @@ class FundsRepository internal constructor(private val provider: ApiServiceProvi
         } }
     }
 
-    suspend fun review(binding: LogicalSessionBinding, accounts: List<FinancialAccountDto>) = errors.safeCall {
+    suspend fun review(binding: LogicalSessionBinding, accounts: List<FinancialAccount>) = errors.safeCall {
         val state = input(binding).first()
         val old = requireNotNull(state.input)
         val row = requireNotNull(state.original)

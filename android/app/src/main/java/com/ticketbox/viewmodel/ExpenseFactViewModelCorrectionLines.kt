@@ -24,7 +24,7 @@ fun ExpenseFactViewModel.openCorrectionItemsEditor() {
         EditableItem(
             name = item.name,
             amountText = item.amountCents?.let { cents ->
-                com.ticketbox.ui.components.formatMinorAmountInput(kotlin.math.abs(cents), displayCurrency)
+                com.ticketbox.presentation.formatMinorAmountInput(kotlin.math.abs(cents), displayCurrency)
             }.orEmpty(),
             kind = item.kind,
             quantityText = item.quantityText,
@@ -149,8 +149,8 @@ fun ExpenseFactViewModel.evenCorrectionSplitAmounts() {
         val currency = correctionBaseline.editDisplayParseCurrency()
         val fixedDisabledTotal = state.splitDrafts
             .filter { it.disabled }
-            .sumOf { com.ticketbox.ui.components.parseAmountCents(it.amountText, currency) ?: 0L }
-        val shares = com.ticketbox.ui.screens.expense.evenSplitActiveCents(parent, fixedDisabledTotal, checked.size)
+            .sumOf { com.ticketbox.presentation.parseAmountCents(it.amountText, currency) ?: 0L }
+        val shares = com.ticketbox.domain.model.evenSplitActiveCents(parent, fixedDisabledTotal, checked.size)
         val shareByMember = checked.mapIndexed { index, draft -> draft.memberId to shares[index] }.toMap()
         state.copy(
             splitDrafts = state.splitDrafts.map { draft ->
@@ -159,7 +159,7 @@ fun ExpenseFactViewModel.evenCorrectionSplitAmounts() {
                     draft
                 } else {
                     draft.copy(
-                        amountText = com.ticketbox.ui.components.formatMinorAmountInput(share, currency),
+                        amountText = com.ticketbox.presentation.formatMinorAmountInput(share, currency),
                     )
                 }
             },

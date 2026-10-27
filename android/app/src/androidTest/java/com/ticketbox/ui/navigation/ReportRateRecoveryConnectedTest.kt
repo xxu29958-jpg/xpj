@@ -3,20 +3,20 @@ package com.ticketbox.ui.navigation
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.isDialog
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
@@ -27,15 +27,16 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
-import com.ticketbox.data.remote.dto.ReferenceRateDto
 import com.ticketbox.data.repository.LedgerRequestGuard
+import com.ticketbox.data.repository.toDomain
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.ExchangeRateRequest
+import com.ticketbox.domain.model.ReferenceRate
 import com.ticketbox.ui.design.LocalCurrencyDisplay
-import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.theme.TicketboxTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -51,7 +52,7 @@ class ReportRateRecoveryConnectedTest {
     private val mounted = mutableStateOf(true)
     private val models = object : ViewModelStoreOwner { override val viewModelStore = ViewModelStore() }
     private val report = ReportRateContext(fixture.binding, "2026-09", "JPY", "CNY", "2026-08-05")
-    private val request = ExchangeRateRequestDto("CNY", "JPY", "2026-08-05", "20", "manual", 0)
+    private val request = ExchangeRateRequest("CNY", "JPY", "2026-08-05", "20", "manual", 0)
 
     @After fun close() {
         compose.runOnIdle { mounted.value = false; models.viewModelStore.clear() }
@@ -122,7 +123,7 @@ class ReportRateRecoveryConnectedTest {
     }
 
     @Test fun reportAcquiresConfiguredReferenceWithRetryWithoutManualEntryOrFinancialSubmission() {
-        fixture.referenceReply = ReferenceRateDto("CNY", "JPY", "2026-08-05", "20", "ecb")
+        fixture.referenceReply = ReferenceRate("CNY", "JPY", "2026-08-05", "20", "ecb")
         fixture.referenceUnavailable = true
         show()
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.advice_reference_fetch_date))).fetchSemanticsNodes().isNotEmpty() }
@@ -135,7 +136,7 @@ class ReportRateRecoveryConnectedTest {
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(context.getString(R.string.advice_reference_ready))).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(context.getString(R.string.advice_reference_ready)).performScrollTo().assertIsDisplayed()
         assertEquals(2, fixture.referenceRequests.size)
-        assertEquals(com.ticketbox.data.remote.dto.ReferenceRateRequestDto("JPY", "CNY", "2026-08-05"), fixture.referenceRequests.last())
+        assertEquals(com.ticketbox.domain.model.ReferenceRateRequest("JPY", "CNY", "2026-08-05"), fixture.referenceRequests.last())
         assertTrue(runBlocking { fixture.rows().isEmpty() })
         assertTrue(fixture.writes.isEmpty())
         assertTrue(fixture.adviceCalls.isEmpty())
@@ -143,7 +144,7 @@ class ReportRateRecoveryConnectedTest {
     }
 
     @Test fun reportDirectoryFindsExpandedCurrencyAndKeepsOriginalMonthWithoutCreatingFinancialIntent() {
-        fixture.referenceReply = ReferenceRateDto("TWD", "JPY", "2026-09-30", "20", "ecb")
+        fixture.referenceReply = ReferenceRate("TWD", "JPY", "2026-09-30", "20", "ecb")
         show(report.copy(sourceCurrencyCode = null, rateDate = null))
         val choice = "USD · 美元"
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(choice)).fetchSemanticsNodes().isNotEmpty() }
@@ -161,7 +162,7 @@ class ReportRateRecoveryConnectedTest {
         compose.waitUntil(5_000) { compose.onAllNodes(hasText(ready)).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText(ready).performScrollTo().assertIsDisplayed()
         saveConsumerArtPreview("currency-reference-ready", compose.onRoot().captureToImage().asAndroidBitmap())
-        assertEquals(com.ticketbox.data.remote.dto.ReferenceRateRequestDto("JPY", "TWD", "2026-09-30"), fixture.referenceRequests.single())
+        assertEquals(com.ticketbox.domain.model.ReferenceRateRequest("JPY", "TWD", "2026-09-30"), fixture.referenceRequests.single())
         assertEquals(report.month to report.homeCurrencyCode, fixture.inputReads.last())
         assertTrue(runBlocking { fixture.rows().isEmpty() })
         assertTrue(fixture.writes.isEmpty())

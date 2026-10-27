@@ -5,7 +5,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.normalizeExpenseCategory
-import com.ticketbox.ui.components.parseMinorAmount
+import com.ticketbox.presentation.parseMinorAmount
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -91,7 +91,7 @@ private fun initialCorrectionAmountText(expense: Expense): String {
     return if (currency == null) {
         abs(minor).toString()
     } else {
-        com.ticketbox.ui.components.formatMinorAmountInput(abs(minor), currency)
+        com.ticketbox.presentation.formatMinorAmountInput(abs(minor), currency)
     }
 }
 
@@ -181,7 +181,7 @@ internal fun initialCorrectionFormState(expense: Expense, zoneId: ZoneId): Corre
 }
 
 private fun correctionTimeChanges(expense: Expense, form: CorrectionFormState, zone: ZoneId): ScalarCorrectionChanges {
-    val captured = com.ticketbox.ui.screens.expense.readExpenseTimeForm(form.timeFormJson)
+    val captured = com.ticketbox.viewmodel.readExpenseTimeForm(form.timeFormJson)
     if (captured != null) {
         if (!captured.changed) return ScalarCorrectionChanges()
         val result = captured.resolve()

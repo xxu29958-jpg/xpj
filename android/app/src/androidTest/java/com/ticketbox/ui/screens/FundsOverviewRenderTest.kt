@@ -21,9 +21,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import com.ticketbox.data.remote.dto.FinancialAccountDto
-import com.ticketbox.data.remote.dto.FundMovementDto
-import com.ticketbox.data.remote.dto.FundsOverviewDto
+import com.ticketbox.domain.model.FinancialAccount
+import com.ticketbox.domain.model.FundMovement
+import com.ticketbox.domain.model.FundsOverview
 import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -131,7 +131,7 @@ class FundsOverviewRenderTest {
     }
 
     private fun overviewState() = FundsUiState(
-        overview = FundsOverviewDto("CNY", "2026-10-19", 1_362_210, 3_790, 1_358_420, 4, 1, 0),
+        overview = FundsOverview("CNY", "2026-10-19", 1_362_210, 3_790, 1_358_420, 4, 1, 0),
         accounts = listOf(
             account("bank", "招商银行", "bank", 1_276_210, tail = "8821"),
             account("cash", "现金", "cash", 86_000),
@@ -143,10 +143,10 @@ class FundsOverviewRenderTest {
     )
 
     private fun account(id: String, name: String, kind: String, balance: Long?, tail: String? = null, archived: Boolean = false) =
-        FinancialAccountDto(publicId = id, name = name, ledgerId = "family", calendarRevision = 1, kind = kind, currencyCode = "CNY",
+        FinancialAccount(publicId = id, name = name, ledgerId = "family", calendarRevision = 1, kind = kind, currencyCode = "CNY",
             visibility = "ledger", institution = null, tail = tail, rowVersion = 1, archived = archived, balanceMinor = balance,
             recordedChangeMinor = 0, openingDate = "2026-10-01", openingSource = "本人核对", debtPublicId = null, canEdit = true)
 
-    private fun movement(id: String, kind: String, amount: Long, note: String) = FundMovementDto(publicId = id, eventPublicId = "event-$id",
+    private fun movement(id: String, kind: String, amount: Long, note: String) = FundMovement(publicId = id, eventPublicId = "event-$id",
         kind = kind, amountMinor = amount, occurredOn = "2026-10-18", note = note, expenseId = null, repaymentPublicId = null)
 }

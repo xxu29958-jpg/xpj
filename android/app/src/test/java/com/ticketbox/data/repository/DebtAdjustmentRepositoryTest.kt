@@ -4,33 +4,33 @@ import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.security.StoredSessionToken
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.RepaymentCalendarDto
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtAdjustmentCreateRequest
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtSourceTypes
+import com.ticketbox.security.StoredSessionToken
 import java.io.IOException
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class DebtAdjustmentRepositoryTest {
     @Test fun changedBindingPendingAdjustmentCanBeStoppedOfflineBeforeAnyDelivery() = runTest {
@@ -170,7 +170,7 @@ class DebtAdjustmentRepositoryTest {
         assertEquals(fixture.binding.bindingRevision, payload.originBindingRevision)
         assertEquals(1, payload.revision)
         assertEquals(DebtWriteSubject("d1", "房东", "CNY"), payload.subject)
-        assertEquals(DebtAdjustmentCreateRequestDto(-5_000L, "减免部分", 2L), payload.request)
+        assertEquals(DebtAdjustmentCreateRequest(-5_000L, "减免部分", 2L), payload.request)
         assertEquals(2L, stored.expectedRowVersion)
         assertTrue(!stored.idempotencyKey.isNullOrBlank())
         assertEquals(PendingMutationStatus.Pending.wireValue, stored.status)
@@ -194,7 +194,7 @@ class DebtAdjustmentRepositoryTest {
             type = PendingMutationType.RecordDebtAdjustment,
             targetId = original.targetId,
             payloadJson = fixture.adapters.debt.debtAdjustmentAdapter.toJson(payload.copy(
-                request = DebtAdjustmentCreateRequestDto(7_000L, "另一笔调整", 7L),
+                request = DebtAdjustmentCreateRequest(7_000L, "另一笔调整", 7L),
             )),
             expectedRowVersion = 7L,
             idempotencyKey = "synthetic-following-adjustment",
@@ -490,7 +490,7 @@ internal class DebtAdjustmentFixture(role: String = "owner") {
 
 }
 
-internal data class AdjustmentCall(val publicId: String, val request: DebtAdjustmentCreateRequestDto, val idempotencyKey: String?)
+internal data class AdjustmentCall(val publicId: String, val request: DebtAdjustmentCreateRequest, val idempotencyKey: String?)
 
 internal class DebtAdjustmentApiProbe : ApiService by FakeApiService(mutableListOf(), 0) {
     val calls = mutableListOf<AdjustmentCall>()
@@ -501,7 +501,7 @@ internal class DebtAdjustmentApiProbe : ApiService by FakeApiService(mutableList
 
     override suspend fun recordDebtAdjustment(
         publicId: String,
-        request: DebtAdjustmentCreateRequestDto,
+        request: DebtAdjustmentCreateRequest,
         idempotencyKey: String?,
     ): DebtDto {
         calls += AdjustmentCall(publicId, request, idempotencyKey)

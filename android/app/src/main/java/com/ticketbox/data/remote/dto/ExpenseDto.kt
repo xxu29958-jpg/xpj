@@ -2,6 +2,7 @@ package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import com.ticketbox.domain.model.RecognitionTime
 
 @JsonClass(generateAdapter = true)
 data class UploadResponseDto(
@@ -138,7 +139,7 @@ data class ExpenseDto(
     @param:Json(name = "confirmation_receipt")
     val confirmationReceipt: ExpenseConfirmationReceiptDto? = null,
     @param:Json(name = "recognition_time")
-    val recognitionTime: RecognitionTimeDto? = null,
+    val recognitionTime: RecognitionTime? = null,
     @param:Json(name = "recognition_notes")
     val recognitionNotes: List<String> = emptyList(),
     @param:Json(name = "recognition_fields")

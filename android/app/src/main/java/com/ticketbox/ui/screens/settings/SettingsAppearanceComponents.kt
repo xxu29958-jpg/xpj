@@ -47,7 +47,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.ThemeVisuals
 import com.ticketbox.ui.design.SettingsColors
 import com.ticketbox.ui.components.AppAmountText
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.presentation.formatAmount
 
 @Composable
 internal fun ThemeMoodPreview(

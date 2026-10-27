@@ -12,13 +12,13 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
-import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
 import com.ticketbox.domain.model.ConfirmedStreamItem
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.domain.model.RecurringOccurrence
+import com.ticketbox.domain.model.RecurringOccurrencePaymentRequest
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
@@ -100,9 +100,9 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
 }
 
 internal class OccurrenceConnectedNetwork {
-    var current = RecurringOccurrenceDto("recurring-1", "2026-09", 7, 0, "unfulfilled", 10_000, 10_000, null, null, "2026-09-05",
+    var current = RecurringOccurrence("recurring-1", "2026-09", 7, 0, "unfulfilled", 10_000, 10_000, null, null, "2026-09-05",
         homeCurrencyCode = "CNY")
-    val calls = mutableListOf<Pair<RecurringOccurrencePaymentRequestDto, String>>()
+    val calls = mutableListOf<Pair<RecurringOccurrencePaymentRequest, String>>()
     // Each scenario declares its peer reply; PostgreSQL owns OCC, money and replay.
     var reply = current.copy(rowVersion = 1, state = "fulfilled", reservedAmountCents = 0,
         expensePublicId = "payment-1", paidAmountCents = 12_345, nextDueDate = "2026-10-05",
@@ -110,13 +110,13 @@ internal class OccurrenceConnectedNetwork {
     var loseResponse = true
     var failReads = false
     val service = object : ApiService by occurrenceProxy<ApiService>({ method, _ -> error("Unexpected remote method: $method") }) {
-        override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+        override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrence {
             if (failReads) throw IOException("Synthetic unavailable period read")
             return current
         }
         override suspend fun setRecurringOccurrencePayment(
-            publicId: String, month: String, request: RecurringOccurrencePaymentRequestDto, idempotencyKey: String,
-        ): RecurringOccurrenceDto {
+            publicId: String, month: String, request: RecurringOccurrencePaymentRequest, idempotencyKey: String,
+        ): RecurringOccurrence {
             check(publicId == current.seriesPublicId && month == current.period)
             calls += request to idempotencyKey
             val response = reply

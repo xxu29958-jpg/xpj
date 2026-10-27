@@ -3,9 +3,9 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
-import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
 import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
 import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.domain.model.DebtGoalTargetDateRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -195,12 +195,12 @@ class DebtGoalMappersTest {
         // serializeNulls — ApiClient) omits nulls; pin it so a future Moshi config change can't silently
         // break the clear case. (Set case: target_date present.)
         val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-            .adapter(DebtGoalTargetDateRequestDto::class.java)
+            .adapter(DebtGoalTargetDateRequest::class.java)
 
-        val setJson = adapter.toJson(DebtGoalTargetDateRequestDto(expectedRowVersion = 7L, targetDate = "2026-12-01"))
+        val setJson = adapter.toJson(DebtGoalTargetDateRequest(expectedRowVersion = 7L, targetDate = "2026-12-01"))
         assertTrue(setJson.contains("\"target_date\":\"2026-12-01\""))
 
-        val clearJson = adapter.toJson(DebtGoalTargetDateRequestDto(expectedRowVersion = 7L, targetDate = null))
+        val clearJson = adapter.toJson(DebtGoalTargetDateRequest(expectedRowVersion = 7L, targetDate = null))
         assertTrue(clearJson.contains("\"expected_row_version\":7"))
         assertFalse(clearJson.contains("target_date"))
     }

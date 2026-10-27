@@ -1,11 +1,11 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.dto.BillSplitInviteRequestDto
-import com.ticketbox.domain.model.BillSplitInbox
-import com.ticketbox.domain.model.BillSplitSent
-import com.ticketbox.domain.model.Expense
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.domain.model.BillSplitInbox
+import com.ticketbox.domain.model.BillSplitInviteRequest
+import com.ticketbox.domain.model.BillSplitSent
+import com.ticketbox.domain.model.Expense
 import java.util.UUID
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -42,8 +42,8 @@ internal class ExpenseBillSplitRepository(
             throw RepositoryException("请先核对已确认账单。")
         }
         val currency = expense.homeCurrencyCode ?: throw RepositoryException("账单币种不可核对。")
-        val payload = BillSplitCreatePayload(1, expense.id, expense.merchant, receiverName, currency,
-            BillSplitInviteRequestDto(receiverAccountId, amountCents, expense.rowVersion))
+        val payload = BillSplitSubmission(1, expense.id, expense.merchant, receiverName, currency,
+            BillSplitInviteRequest(receiverAccountId, amountCents, expense.rowVersion))
         outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(
             type = PendingMutationType.CreateBillSplitInvitation, targetId = "expense:${expense.id}",
             payloadJson = adapter.toJson(payload), expectedRowVersion = expense.rowVersion,

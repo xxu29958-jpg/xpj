@@ -11,14 +11,14 @@ import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.IncomePlanDto
-import com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto
-import com.ticketbox.data.remote.dto.IncomePlanListResponseDto
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
-import com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto
-import com.ticketbox.data.remote.dto.IncomeHistoryResponseDto
-import com.ticketbox.data.remote.dto.IncomeRevisionDto
 import com.ticketbox.data.remote.dto.IncomeDefinitionDto
+import com.ticketbox.data.remote.dto.IncomeHistoryResponseDto
+import com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto
+import com.ticketbox.data.remote.dto.IncomePlanDto
+import com.ticketbox.data.remote.dto.IncomePlanListResponseDto
+import com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto
+import com.ticketbox.data.remote.dto.IncomeRevisionDto
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
@@ -107,7 +107,7 @@ internal class IncomeConnectedNetwork {
     private val restored = current.copy(rowVersion = 5)
     var creationReply = IncomePlanDto("created-income", "旅行补贴", "salary", "one_time", "2026-09",
         1200, 10, "active", "2026-09-30T00:00:00Z", "2026-09-30T00:00:00Z", 1, null, "JPY")
-    val calls = mutableListOf<Pair<IncomePlanUpdateRequestDto, String>>()
+    val calls = mutableListOf<Pair<IncomePlanUpdateRequest, String>>()
     val creationCalls = mutableListOf<Pair<IncomePlanCreateRequestDto, String>>()
     val statusCalls = mutableListOf<Pair<String, IncomePlanTokenRequestDto>>()
     val historyCalls = mutableListOf<String>()
@@ -149,7 +149,7 @@ internal class IncomeConnectedNetwork {
             return creationReply
         }
 
-        override suspend fun updateIncomePlan(publicId: String, request: IncomePlanUpdateRequestDto,
+        override suspend fun updateIncomePlan(publicId: String, request: IncomePlanUpdateRequest,
             idempotencyKey: String?): IncomePlanDto {
             check(publicId == current.publicId)
             calls += request to requireNotNull(idempotencyKey)

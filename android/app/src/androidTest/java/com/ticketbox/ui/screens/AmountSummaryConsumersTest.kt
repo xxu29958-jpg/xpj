@@ -27,7 +27,7 @@ import com.ticketbox.domain.model.MONEY_MINOR_MAX
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.MonthComparison
 import com.ticketbox.domain.model.ReportGranularity
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.budget.BudgetSummarySection
 import com.ticketbox.ui.screens.recurring.RecurringHeroModel

@@ -113,7 +113,7 @@ internal fun OutboxRow.toPendingDebtCreation(adapter: JsonAdapter<DebtCreateOutb
             installmentCount = request.installmentCount?.toInt(),
             installmentPeriodMonths = request.installmentPeriodMonths?.toInt(),
             note = request.note,
-            timeInput = request.timeInput,
+            timeInput = request.timeInput?.toDomain(),
         ),
         homeCurrency = CurrencyCode.fromStorageKeyOrNull(payload.homeCurrencyCode),
     )

@@ -4,17 +4,19 @@ import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.GoalDto
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.DebtGoalLinksReplaceRequest
+import com.ticketbox.domain.model.DebtGoalTargetDateRequest
 import com.ticketbox.domain.model.GoalUpdate
+import com.ticketbox.domain.model.GoalUpdateRequest
 import java.io.IOException
-import okhttp3.ResponseBody.Companion.toResponseBody
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import okhttp3.ResponseBody.Companion.toResponseBody
 
 class GoalEditRepositoryTest {
     @Test fun dateSetAndClearRetainTheirOwnOriginalKeyOccAndFirstReceipt() = runTest {
@@ -52,9 +54,9 @@ class GoalEditRepositoryTest {
         assertTrue(f.dao.rows.getValue(clearId).idempotencyKey != original.idempotencyKey)
         assertEquals(listOf("goal-1", "goal-1", "goal-1"), f.calls.map { it.first })
         assertEquals(listOf(
-            com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto(1, "2028-03-01"),
-            com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto(1, "2028-03-01"),
-            com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto(3, null),
+            com.ticketbox.domain.model.DebtGoalTargetDateRequest(1, "2028-03-01"),
+            com.ticketbox.domain.model.DebtGoalTargetDateRequest(1, "2028-03-01"),
+            com.ticketbox.domain.model.DebtGoalTargetDateRequest(3, null),
         ), f.calls.map { it.second })
     }
 
@@ -199,14 +201,14 @@ private class GoalEditFixture {
     var response = current.copy(targetAmountCents = 35000, remainingAmountCents = 27000, category = null, rowVersion = 2)
     private val api = object : com.ticketbox.data.remote.ApiService by FakeApiService(mutableListOf(), 0) {
         override suspend fun setGoalTargetDate(publicId: String,
-            request: com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto, idempotencyKey: String?, timezone: String?): GoalDto {
+            request: com.ticketbox.domain.model.DebtGoalTargetDateRequest, idempotencyKey: String?, timezone: String?): GoalDto {
             calls += Triple(publicId, request, idempotencyKey)
             replyFailure?.let { throw it }
             if (loseAck) throw IOException("lost synthetic date reply")
             return response
         }
         override suspend fun replaceGoalDebtLinks(publicId: String,
-            request: com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto,
+            request: com.ticketbox.domain.model.DebtGoalLinksReplaceRequest,
             idempotencyKey: String?, timezone: String?): GoalDto {
             calls += Triple(publicId, request, idempotencyKey)
             replyFailure?.let { throw it }
@@ -216,7 +218,7 @@ private class GoalEditFixture {
             com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION, "compatible",
             com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto(
                 com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto("1:1:JPY", "JPY", 0, "compatible")))
-        override suspend fun updateGoal(publicId: String, request: GoalUpdateRequestDto,
+        override suspend fun updateGoal(publicId: String, request: GoalUpdateRequest,
             idempotencyKey: String?, timezone: String?): GoalDto {
             calls += Triple(publicId, request, idempotencyKey)
             return response

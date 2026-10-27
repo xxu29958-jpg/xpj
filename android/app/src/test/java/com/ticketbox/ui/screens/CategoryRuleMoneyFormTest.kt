@@ -1,6 +1,6 @@
 package com.ticketbox.ui.screens
 
-import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
+import com.ticketbox.viewmodel.CategoryRuleDraftForm
 import com.ticketbox.domain.model.CategoryRule
 import kotlin.test.Test
 import kotlin.test.assertEquals

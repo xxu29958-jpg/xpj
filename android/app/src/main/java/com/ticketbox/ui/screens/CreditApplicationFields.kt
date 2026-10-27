@@ -12,9 +12,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.CreditApplicationChoiceDto
-import com.ticketbox.data.remote.dto.CreditApplicationHistoryDto
-import com.ticketbox.data.remote.dto.FinancialAccountDto
+import com.ticketbox.domain.model.CreditApplicationChoice
+import com.ticketbox.domain.model.CreditApplicationHistory
+import com.ticketbox.domain.model.FinancialAccount
 import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.viewmodel.FundsUiState
 import com.ticketbox.viewmodel.FundsViewModel
@@ -42,8 +42,8 @@ internal fun CreditApplicationFields(state: FundsUiState, input: FundsInput, ena
 }
 
 @Composable
-private fun CreditApplicationChoice(source: Boolean, input: FundsInput, choices: List<CreditApplicationChoiceDto>,
-    enabled: Boolean, choose: (CreditApplicationChoiceDto, String) -> Unit) {
+private fun CreditApplicationChoice(source: Boolean, input: FundsInput, choices: List<CreditApplicationChoice>,
+    enabled: Boolean, choose: (CreditApplicationChoice, String) -> Unit) {
     val title = stringResource(if (source) R.string.funds_application_source else R.string.funds_credit_target)
     val saved = if (source) input.creditSourceLabel else input.creditDrawLabel
     val id = if (source) input.creditSourceId else input.creditDrawId
@@ -62,7 +62,7 @@ private fun CreditApplicationChoice(source: Boolean, input: FundsInput, choices:
 }
 
 @Composable
-internal fun CreditApplicationsRead(detail: FinancialAccountDto, canModify: Boolean, vm: FundsViewModel) {
+internal fun CreditApplicationsRead(detail: FinancialAccount, canModify: Boolean, vm: FundsViewModel) {
     val data = detail.creditApplications ?: return
     val currency = detail.currencyCode
     if (data.history.isEmpty()) return
@@ -78,7 +78,7 @@ internal fun CreditApplicationsRead(detail: FinancialAccountDto, canModify: Bool
 }
 
 @Composable
-private fun CreditApplicationSummary(row: CreditApplicationHistoryDto, currency: String) {
+private fun CreditApplicationSummary(row: CreditApplicationHistory, currency: String) {
     Text("${row.creditNote} → ${row.drawNote}")
     Text(stringResource(R.string.funds_credit_applied, money(row.amountMinor, currency), money(row.appliedMinor, currency)))
     Text(row.reason, style = MaterialTheme.typography.bodySmall)

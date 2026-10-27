@@ -4,9 +4,9 @@ import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonDataException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.GoalUpdateRequest
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
@@ -14,7 +14,7 @@ import retrofit2.HttpException
 /** Replays the original goal edit and accepts only its matching committed receipt. */
 class UpdateGoalDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
-    private val payloadAdapter: JsonAdapter<GoalUpdateRequestDto>,
+    private val payloadAdapter: JsonAdapter<GoalUpdateRequest>,
     private val receiptAdapter: JsonAdapter<GoalDto>,
     private val onAccepted: suspend (OutboxRow) -> Unit,
 ) : OutboxMutationDispatcher {
@@ -64,7 +64,7 @@ class UpdateGoalDispatcher(
 }
 
 /** Reads existing flat payloads without changing their durable body or original OCC. */
-internal fun JsonAdapter<GoalUpdateRequestDto>.readGoalUpdate(row: OutboxRow): GoalUpdateRequestDto? =
+internal fun JsonAdapter<GoalUpdateRequest>.readGoalUpdate(row: OutboxRow): GoalUpdateRequest? =
     try {
         fromJson(row.payloadJson)?.takeIf { row.expectedRowVersion > 0 && !row.idempotencyKey.isNullOrBlank() &&
             (it.expectedRowVersion == 0L || it.expectedRowVersion == row.expectedRowVersion) }
@@ -75,10 +75,10 @@ internal fun JsonAdapter<GoalUpdateRequestDto>.readGoalUpdate(row: OutboxRow): G
         null
     }
 
-internal fun GoalUpdateRequestDto.hasCapturedGoalCurrency(): Boolean =
+internal fun GoalUpdateRequest.hasCapturedGoalCurrency(): Boolean =
     homeCurrencyCode != null && CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)?.storageKey == homeCurrencyCode
 
-internal fun GoalUpdateRequestDto.acceptsGoalReceipt(row: OutboxRow, receipt: GoalDto): Boolean {
+internal fun GoalUpdateRequest.acceptsGoalReceipt(row: OutboxRow, receipt: GoalDto): Boolean {
     val requestedFields = listOf(name to receipt.name, month to receipt.month,
         targetAmountCents to receipt.targetAmountCents, category to receipt.category.orEmpty())
     return hasCapturedGoalCurrency() && receipt.ledgerId == row.ledgerId && row.targetId == "goal:${receipt.publicId}" &&

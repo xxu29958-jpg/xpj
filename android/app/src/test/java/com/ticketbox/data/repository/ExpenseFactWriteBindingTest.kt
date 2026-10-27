@@ -2,21 +2,21 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.BillSplitInviteRequestDto
 import com.ticketbox.data.remote.dto.BillSplitSentDto
 import com.ticketbox.data.remote.dto.ExpenseRepaymentDraftCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.flow.first
+import com.ticketbox.domain.model.BillSplitInviteRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class ExpenseFactWriteBindingTest {
@@ -62,8 +62,8 @@ internal class ExpenseFactWriteBindingTest {
         val repayment = fixture.repository.createRepaymentDraftFromExpense(original, fixture.expense)
         val split = fixture.repository.createBillSplitInvitation(original, fixture.expense, 22L, "Receiver", 400L)
 
-        assertTrue(repayment.isSuccess)
-        assertTrue(split.isSuccess)
+        assertTrue(repayment.isSuccess, repayment.exceptionOrNull()?.toString())
+        assertTrue(split.isSuccess, split.exceptionOrNull()?.toString())
         val originalRow = fixture.repository.observeBillSplitCreations().first().submissions.single()
         assertEquals(fixture.expense.rowVersion, originalRow.row.expectedRowVersion)
         assertEquals(400L, originalRow.payload?.request?.amountCents)
@@ -107,7 +107,7 @@ private class FactWriteBindingFixture {
 
             override suspend fun createBillSplitInvitation(
                 id: Long,
-                request: BillSplitInviteRequestDto,
+                request: BillSplitInviteRequest,
                 idempotencyKey: String,
             ): BillSplitSentDto {
                 calls += "$baseUrl:split:$id:${request.receiverAccountId}:${request.amountCents}"

@@ -20,8 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.FinancialAccountDto
-import com.ticketbox.data.remote.dto.FundsOverviewDto
+import com.ticketbox.domain.model.FinancialAccount
+import com.ticketbox.domain.model.FundsOverview
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppEmptyStateCard
 import com.ticketbox.ui.components.AppPrimaryButton
@@ -66,7 +66,7 @@ internal fun LazyListScope.fundsOverview(state: FundsUiState, actions: FundsOver
 }
 
 @Composable
-private fun FundsNetWorthCard(summary: FundsOverviewDto) {
+private fun FundsNetWorthCard(summary: FundsOverview) {
     FundsHeroCard(
         label = stringResource(R.string.funds_summary_label, summary.valuationDate),
         amount = money(summary.netWorthMinor, summary.homeCurrencyCode),
@@ -103,7 +103,7 @@ private fun FundsGroupTitle(title: String) {
 }
 
 @Composable
-internal fun FundsAccountRow(account: FinancialAccountDto, onClick: () -> Unit) {
+internal fun FundsAccountRow(account: FinancialAccount, onClick: () -> Unit) {
     val visibility = stringResource(if (account.visibility == "private") R.string.funds_private_visibility else R.string.funds_ledger_visibility)
     FundsIconRow(FundsRowModel(
         icon = fundKindIcon(account.kind),
@@ -115,7 +115,7 @@ internal fun FundsAccountRow(account: FinancialAccountDto, onClick: () -> Unit) 
 }
 
 @Composable
-private fun FundsArchivedAccounts(archived: List<FinancialAccountDto>, open: (String) -> Unit) {
+private fun FundsArchivedAccounts(archived: List<FinancialAccount>, open: (String) -> Unit) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     Column {
         TextButton(onClick = { expanded = !expanded }) {

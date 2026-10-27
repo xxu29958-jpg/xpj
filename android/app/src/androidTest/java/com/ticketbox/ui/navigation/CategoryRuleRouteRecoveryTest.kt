@@ -25,10 +25,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.CategoryRulesViewModel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -161,7 +161,7 @@ class CategoryRuleRouteRecoveryTest {
         assertEquals(original, runBlocking { requireNotNull(owner.definitionInputs).read(binding).single() })
         assertEquals(emptyList<Map<String, String?>>(), harness.fixture.stored())
         org.junit.Assert.assertTrue(runBlocking { owner.createCategoryRule(binding,
-            CategoryRuleRequest("只读后仍保留的规则", "餐饮", true, 10), original).isFailure })
+            CategoryRuleDefinition("只读后仍保留的规则", "餐饮", true, 10), original).isFailure })
     }
 
     @Test fun renewedSessionNeedsExplicitIdentityReviewBeforeTheOriginalInputCanBeSubmitted() {
@@ -195,7 +195,7 @@ class CategoryRuleRouteRecoveryTest {
     private fun createFailedRule(): Map<String, String?> = runBlocking {
         val owner = harness.screenFactory.ruleRepository
         val id = owner.createCategoryRule(requireNotNull(owner.currentAccess()).binding,
-            CategoryRuleRequest("原日元月票", "交通", true, 10, amountMinCents = 1200, homeCurrencyCode = "JPY")).getOrThrow()
+            CategoryRuleDefinition("原日元月票", "交通", true, 10, amountMinCents = 1200, homeCurrencyCode = "JPY")).getOrThrow()
         harness.fixture.outbox.markFailed(id, "client_upgrade_required")
         harness.fixture.stored().single()
     }

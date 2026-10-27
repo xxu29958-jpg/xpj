@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.settings.categoryrules
 
+import com.ticketbox.viewmodel.CategoryRuleDraftForm
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions

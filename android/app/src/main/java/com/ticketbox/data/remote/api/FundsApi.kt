@@ -1,17 +1,17 @@
 package com.ticketbox.data.remote.api
 
+import com.ticketbox.data.remote.dto.AccountPostingDto
 import com.ticketbox.data.remote.dto.CreditPaymentDto
 import com.ticketbox.data.remote.dto.CreditPaymentVoidDto
+import com.ticketbox.data.remote.dto.ExpenseFundingCommandDto
 import com.ticketbox.data.remote.dto.FinancialAccountCreateDto
+import com.ticketbox.data.remote.dto.FinancialAccountDto
 import com.ticketbox.data.remote.dto.FinancialAccountEditDto
 import com.ticketbox.data.remote.dto.FinancialAccountReceiptDto
-import com.ticketbox.data.remote.dto.FinancialAccountDto
-import com.ticketbox.data.remote.dto.AccountPostingDto
-import com.ticketbox.data.remote.dto.FundsOverviewDto
-import com.ticketbox.data.remote.dto.ExpenseFundingViewDto
-import com.ticketbox.data.remote.dto.ExpenseFundingCommandDto
 import com.ticketbox.data.remote.dto.InstallmentCommandDto
-import com.ticketbox.data.remote.dto.InstallmentsDto
+import com.ticketbox.domain.model.ExpenseFundingView
+import com.ticketbox.domain.model.FundsOverview
+import com.ticketbox.domain.model.Installments
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -24,19 +24,19 @@ interface FundsApi : FundsReadApi, FundsWriteApi
 
 interface FundsReadApi {
     @GET("api/budget/envelopes/history/list")
-    suspend fun envelopeHistory(@retrofit2.http.Query("before_version") beforeVersion: Long?): List<com.ticketbox.data.remote.dto.EnvelopeRevisionDto>
+    suspend fun envelopeHistory(@retrofit2.http.Query("before_version") beforeVersion: Long?): List<com.ticketbox.domain.model.EnvelopeRevision>
     @GET("api/budget/envelopes/{month}")
-    suspend fun envelopes(@Path("month") month: String): com.ticketbox.data.remote.dto.EnvelopesDto
+    suspend fun envelopes(@Path("month") month: String): com.ticketbox.domain.model.Envelopes
     @GET("api/funds/accounts/existing-debts/list")
-    suspend fun existingFundDebts(): List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto>
+    suspend fun existingFundDebts(): List<com.ticketbox.domain.model.ExistingDebtChoice>
     @GET("api/funds/accounts/templates/list")
-    suspend fun fundsAccountChoices(): List<com.ticketbox.data.remote.dto.AccountChoiceDto>
+    suspend fun fundsAccountChoices(): List<com.ticketbox.domain.model.AccountChoice>
     @GET("api/funds/accounts/{id}/installments")
-    suspend fun installments(@Path("id") id: String): InstallmentsDto
+    suspend fun installments(@Path("id") id: String): Installments
     @GET("api/expenses/{id}/funding")
-    suspend fun expenseFunding(@Path("id") id: Long): ExpenseFundingViewDto
+    suspend fun expenseFunding(@Path("id") id: Long): ExpenseFundingView
     @GET("api/funds/accounts/summary/net-worth")
-    suspend fun fundsOverview(): FundsOverviewDto
+    suspend fun fundsOverview(): FundsOverview
     @GET("api/funds/accounts")
     suspend fun fundsAccounts(): List<FinancialAccountDto>
     @GET("api/funds/accounts/{id}")
@@ -59,7 +59,7 @@ interface FundsWriteApi : FundsCorrectionApi {
         @Header("Idempotency-Key") key: String): FinancialAccountReceiptDto
     @POST("api/expenses/{id}/funding")
     suspend fun saveExpenseFunding(@Path("id") id: Long, @Body body: ExpenseFundingCommandDto,
-        @Header("Idempotency-Key") key: String): ExpenseFundingViewDto
+        @Header("Idempotency-Key") key: String): ExpenseFundingView
     @POST("api/funds/accounts")
     suspend fun createFundsAccount(@Body body: FinancialAccountCreateDto, @Header("Idempotency-Key") key: String): FinancialAccountReceiptDto
     @PATCH("api/funds/accounts/{id}")

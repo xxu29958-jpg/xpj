@@ -6,6 +6,8 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonReader
 import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.Moshi
+import com.ticketbox.domain.model.CorrectionIntChange
+import com.ticketbox.domain.model.CorrectionStringChange
 import java.lang.reflect.Type
 
 data class CorrectionOptionalTimeInput(val changed: Boolean, val value: ExpenseTimeInputDto?) {
@@ -39,58 +41,31 @@ private class CorrectionOptionalTimeInputJsonAdapter(
     }
 }
 
-/**
- * A correction field has three wire states: absent (unchanged), a concrete
- * value, or explicit JSON null (clear). Moshi normally omits nullable values,
- * so a plain `Int?`/`String?` cannot preserve that distinction through the
- * offline outbox. These tiny carriers keep the existing backend contract
- * (`model_fields_set`) without inventing a second persistent state machine.
- */
-data class CorrectionOptionalInt(
-    val changed: Boolean,
-    val value: Int?,
-) {
-    companion object {
-        fun unchanged(): CorrectionOptionalInt = CorrectionOptionalInt(changed = false, value = null)
-        fun changed(value: Int?): CorrectionOptionalInt = CorrectionOptionalInt(changed = true, value = value)
-    }
-}
-
-data class CorrectionOptionalString(
-    val changed: Boolean,
-    val value: String?,
-) {
-    companion object {
-        fun unchanged(): CorrectionOptionalString = CorrectionOptionalString(changed = false, value = null)
-        fun changed(value: String?): CorrectionOptionalString = CorrectionOptionalString(changed = true, value = value)
-    }
-}
-
-class CorrectionOptionalIntJsonAdapter : JsonAdapter<CorrectionOptionalInt>() {
-    override fun fromJson(reader: JsonReader): CorrectionOptionalInt =
+class CorrectionOptionalIntJsonAdapter : JsonAdapter<CorrectionIntChange>() {
+    override fun fromJson(reader: JsonReader): CorrectionIntChange =
         if (reader.peek() == JsonReader.Token.NULL) {
             reader.nextNull<Unit>()
-            CorrectionOptionalInt.changed(null)
+            CorrectionIntChange.changed(null)
         } else {
-            CorrectionOptionalInt.changed(reader.nextInt())
+            CorrectionIntChange.changed(reader.nextInt())
         }
 
-    override fun toJson(writer: JsonWriter, value: CorrectionOptionalInt?) {
+    override fun toJson(writer: JsonWriter, value: CorrectionIntChange?) {
         val field = requireNotNull(value)
         writeOptionalNull(writer, changed = field.changed, value = field.value) { writer.value(it) }
     }
 }
 
-class CorrectionOptionalStringJsonAdapter : JsonAdapter<CorrectionOptionalString>() {
-    override fun fromJson(reader: JsonReader): CorrectionOptionalString =
+class CorrectionOptionalStringJsonAdapter : JsonAdapter<CorrectionStringChange>() {
+    override fun fromJson(reader: JsonReader): CorrectionStringChange =
         if (reader.peek() == JsonReader.Token.NULL) {
             reader.nextNull<Unit>()
-            CorrectionOptionalString.changed(null)
+            CorrectionStringChange.changed(null)
         } else {
-            CorrectionOptionalString.changed(reader.nextString())
+            CorrectionStringChange.changed(reader.nextString())
         }
 
-    override fun toJson(writer: JsonWriter, value: CorrectionOptionalString?) {
+    override fun toJson(writer: JsonWriter, value: CorrectionStringChange?) {
         val field = requireNotNull(value)
         writeOptionalNull(writer, changed = field.changed, value = field.value) { writer.value(it) }
     }
@@ -116,8 +91,8 @@ private inline fun <T> writeOptionalNull(
 }
 
 fun Moshi.Builder.addExpenseCorrectionWireAdapters(): Moshi.Builder =
-    add(CorrectionOptionalInt::class.java, CorrectionOptionalIntJsonAdapter())
-        .add(CorrectionOptionalString::class.java, CorrectionOptionalStringJsonAdapter())
+    add(CorrectionIntChange::class.java, CorrectionOptionalIntJsonAdapter())
+        .add(CorrectionStringChange::class.java, CorrectionOptionalStringJsonAdapter())
         .add(CorrectionOptionalTimeInputJsonAdapter.Factory)
 
 @JsonClass(generateAdapter = true)
@@ -137,12 +112,12 @@ data class ExpenseCorrectionRequestDto(
     val categoryChoice: String? = null,
     val note: String? = null,
     @param:Json(name = "expense_time")
-    val expenseTime: CorrectionOptionalString = CorrectionOptionalString.unchanged(),
+    val expenseTime: CorrectionStringChange = CorrectionStringChange.unchanged(),
     val tags: String? = null,
     @param:Json(name = "value_score")
-    val valueScore: CorrectionOptionalInt = CorrectionOptionalInt.unchanged(),
+    val valueScore: CorrectionIntChange = CorrectionIntChange.unchanged(),
     @param:Json(name = "regret_score")
-    val regretScore: CorrectionOptionalInt = CorrectionOptionalInt.unchanged(),
+    val regretScore: CorrectionIntChange = CorrectionIntChange.unchanged(),
     val items: List<ExpenseItemRequestDto>? = null,
     val splits: List<ExpenseSplitRequestDto>? = null,
     @param:Json(name = "time_input")

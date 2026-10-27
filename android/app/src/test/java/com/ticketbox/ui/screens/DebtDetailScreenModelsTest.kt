@@ -12,12 +12,12 @@ class DebtDetailScreenModelsTest {
         val agreement = com.ticketbox.data.repository.splitTestAgreement().copy(settlementNetAmountCents = 0)
         val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://example.test", "ledger", "owner", "session", "revision")
         val state = com.ticketbox.viewmodel.SplitAgreementUiState(
-            task = com.ticketbox.data.repository.DebtTask(binding, "original"), agreement = agreement)
+            task = com.ticketbox.data.repository.DebtTask(binding, "original"), agreement = agreement.toDomain())
         val debt = agreement.originalDebt.toDomain()
         kotlin.test.assertTrue(splitRelationSettled(debt, binding, state))
         kotlin.test.assertFalse(splitRelationSettled(debt.copy(rowVersion = 8), binding, state))
         kotlin.test.assertFalse(splitRelationSettled(debt, binding.copy(bindingRevision = "new"), state))
-        kotlin.test.assertFalse(splitRelationSettled(debt, binding, state.copy(agreement = agreement.copy(settlementNetAmountCents = -1000))))
+        kotlin.test.assertFalse(splitRelationSettled(debt, binding, state.copy(agreement = agreement.copy(settlementNetAmountCents = -1000).toDomain())))
     }
 
 

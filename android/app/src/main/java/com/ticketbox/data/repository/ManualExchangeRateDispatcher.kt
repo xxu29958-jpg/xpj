@@ -3,13 +3,13 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.ExchangeRateDto
+import com.ticketbox.domain.model.ExchangeRate
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
-import java.io.IOException
 
 class ManualExchangeRateDispatcher(private val apiProvider: (OutboxRow) -> ApiService,
-    private val payloadAdapter: JsonAdapter<ManualRatePayload>, private val receiptAdapter: JsonAdapter<ExchangeRateDto>) : OutboxMutationDispatcher {
+    private val payloadAdapter: JsonAdapter<ManualRateSubmission>, private val receiptAdapter: JsonAdapter<ExchangeRate>) : OutboxMutationDispatcher {
     override val type = PendingMutationType.SaveManualExchangeRate
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
         val payload = runCatching { payloadAdapter.fromJson(row.payloadJson) }.getOrNull()

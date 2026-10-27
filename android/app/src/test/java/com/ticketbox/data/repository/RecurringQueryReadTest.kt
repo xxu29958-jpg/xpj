@@ -1,35 +1,35 @@
 package com.ticketbox.data.repository
 
 import android.database.sqlite.SQLiteException
-import com.ticketbox.data.local.ExpenseDao
-import com.ticketbox.data.local.StatsProjectionCacheEntity
-import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
-import com.ticketbox.data.remote.dto.ExpenseDto
-import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
 import com.ticketbox.OutboxAdapterGraph
-import com.ticketbox.data.remote.dto.RecurringDefinitionDto
-import com.ticketbox.data.remote.dto.RecurringHistoryPageDto
+import com.ticketbox.data.local.ExpenseDao
+import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.local.StatsProjectionCacheEntity
+import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
-import com.ticketbox.data.remote.dto.RecurringRevisionDto
+import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
+import com.ticketbox.domain.model.RecurringDefinition
+import com.ticketbox.domain.model.RecurringHistoryPage
+import com.ticketbox.domain.model.RecurringOccurrence
+import com.ticketbox.domain.model.RecurringRevision
 import java.net.ConnectException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.TimeZone
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase() {
     private val readClock = Clock.fixed(Instant.parse("2026-10-10T01:00:00Z"), ZoneOffset.UTC)
@@ -248,14 +248,14 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
             lateinit var api: RecurringReadProbe
             val initiallyInvalid = mutationType in setOf(PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
                 PendingMutationType.VoidExpenseOffset)
-            var period = RecurringOccurrenceDto("recurring", "2026-09", 9, 1,
+            var period = RecurringOccurrence("recurring", "2026-09", 9, 1,
                 if (initiallyInvalid) "needs_review" else "fulfilled", 2400, if (initiallyInvalid) 2400 else 0,
                 "payment-original", if (initiallyInvalid) null else 2400,
                 if (initiallyInvalid) "2026-09-09" else "2026-10-09", expenseId = 1, homeCurrencyCode = "JPY", paidHomeCurrencyCode = if (initiallyInvalid) null else "JPY")
             val fixture = GoalReadFixture(decorate = { delegate ->
                 api = RecurringReadProbe(delegate)
                 object : ApiService by api {
-                    override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+                    override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrence {
                         api.failure?.let { throw it }
                         return period
                     }
@@ -533,10 +533,10 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
 
     @Test fun currentAndExplicitMonthKeepLatestReadAtTheSameInstantWhenReopenedOffline() = runTest {
         var offline = false
-        var response = RecurringOccurrenceDto("recurring", "2026-09", 9, 0, "unfulfilled", 2400, 2400, null, null, null,
+        var response = RecurringOccurrence("recurring", "2026-09", 9, 0, "unfulfilled", 2400, 2400, null, null, null,
             homeCurrencyCode = "JPY")
         val fixture = GoalReadFixture(decorate = { delegate -> object : ApiService by delegate {
-            override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+            override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrence {
                 if (offline) throw ConnectException("offline period")
                 return response
             }
@@ -575,11 +575,11 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
             val started = CompletableDeferred<Unit>()
             val release = CompletableDeferred<Unit>()
             var offline = false
-            val earlier = RecurringOccurrenceDto("recurring", "2026-09", 9, 1, "fulfilled", 2400, 0,
+            val earlier = RecurringOccurrence("recurring", "2026-09", 9, 1, "fulfilled", 2400, 0,
                 "paid-original", 2400, null, homeCurrencyCode = "JPY", paidHomeCurrencyCode = "JPY")
             val newer = earlier.copy(seriesRowVersion = if (advanceVersion) 10 else 9, state = "needs_review")
             val fixture = GoalReadFixture(decorate = { delegate -> object : ApiService by delegate {
-                override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+                override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrence {
                     if (offline) throw ConnectException("offline period")
                     if (month != oldPeriod) return newer
                     started.complete(Unit)
@@ -615,15 +615,15 @@ internal class RecurringReadProbe(delegate: ApiService) : ApiService by delegate
         release?.await()
         return RecurringItemListResponseDto(listOf(item))
     }
-    override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?): RecurringHistoryPageDto {
+    override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?): RecurringHistoryPage {
         failure?.let { throw it }
-        return RecurringHistoryPageDto("owner", publicId, listOf(RecurringRevisionDto(9, "edit", "2026-09-19T12:30:00Z", null, definition())), 9)
+        return RecurringHistoryPage("owner", publicId, listOf(RecurringRevision(9, "edit", "2026-09-19T12:30:00Z", null, definition())), 9)
     }
-    override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrenceDto {
+    override suspend fun recurringOccurrence(publicId: String, month: String): RecurringOccurrence {
         failure?.let { throw it }
-        return RecurringOccurrenceDto(publicId, "2026-09", 9, 0, "unfulfilled", 2400, 2400, null, null, "2026-10-09", homeCurrencyCode = "JPY")
+        return RecurringOccurrence(publicId, "2026-09", 9, 0, "unfulfilled", 2400, 2400, null, null, "2026-10-09", homeCurrencyCode = "JPY")
     }
-    private fun definition() = RecurringDefinitionDto("原安排", "original", "monthly", "JPY", 1200, "2026-09-09", "active", "manual")
+    private fun definition() = RecurringDefinition("原安排", "original", "monthly", "JPY", 1200, "2026-09-09", "active", "manual")
 }
 
 internal fun recurringReadItem() = RecurringItemDto(publicId = "recurring", ledgerId = "owner", merchant = "原计划",

@@ -29,7 +29,7 @@ data class UploadIntentObservation(val access: LedgerAccessContext?, val uploads
 data class PendingUploadIntent(
     val row: OutboxRow,
     val payload: UploadScreenshotPayload?,
-    val receipt: UploadResponseDto?,
+    val receipt: com.ticketbox.domain.model.PendingUploadReceipt?,
 ) {
     val canRetry: Boolean
         get() = row.status == PendingMutationStatus.Failed && payload?.file != null &&

@@ -32,8 +32,8 @@ import com.ticketbox.ui.components.AppAdaptiveFieldPairRow
 import com.ticketbox.ui.components.AppAdaptiveFieldPairWeights
 import com.ticketbox.ui.components.AppSegmentedControl
 import com.ticketbox.ui.components.AppSegmentedItem
-import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.components.parseAmountCentsForDisplay
+import com.ticketbox.presentation.formatDisplayAmount
+import com.ticketbox.presentation.parseAmountCentsForDisplay
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.EditableItem
 import com.ticketbox.ui.components.AppSheetActionFeedbackState
