@@ -24,6 +24,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
+import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
 import com.ticketbox.data.remote.buildApiService
 import com.ticketbox.data.repository.RecurringItemPatch
 import com.ticketbox.domain.model.AppSkin
@@ -61,6 +62,7 @@ class RecurringOfflineReadingConnectedTest {
     private val releaseLate = CountDownLatch(1)
     @Volatile private var offline = false
     @Volatile private var holdReads = false
+    @Volatile private var calendarSupported = true
     @Volatile private var occurrenceState = "fulfilled"
     private val wire = buildApiService("https://recurring-offline.example.test/", OkHttpClient.Builder().addInterceptor { chain ->
         val request = chain.request()
@@ -85,6 +87,8 @@ class RecurringOfflineReadingConnectedTest {
     }
 
     @Test fun coldOfflineListStillOpensReadOriginalCurrencyOccurrenceAndHistoryButNeverInventsUnreadPages() {
+        // This unknown-day journey must not depend on the emulator's wall clock.
+        calendarSupported = false
         mount()
         val repository = harness.screenFactory.recurringRepository
         val binding = runBlocking { requireNotNull(repository.observeActiveLedgerAccess().first()).binding }
@@ -106,8 +110,10 @@ class RecurringOfflineReadingConnectedTest {
         selectTab(R.string.recurring_tab_active)
         val originalList = runBlocking { repository.items(binding, includeArchived = true).getOrThrow() }
         val originalHistory = runBlocking { repository.history(binding, "offline-active", null).getOrThrow() }
+        assertNull(harness.fixture.ledgerCalendarRepository.cached(binding))
         offline = true
         restart()
+        assertNull(harness.fixture.ledgerCalendarRepository.cached(binding))
         // This is the first missing business postcondition on the frozen production source.
         waitForText(context.getString(R.string.recurring_read_cached_title))
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("原日元固定支出"))
@@ -266,6 +272,13 @@ class RecurringOfflineReadingConnectedTest {
     }
 
     private fun responseJson(request: Request): String = when {
+        request.url.encodedPath == "/api/system/runtime-compatibility" ->
+            """{"api_version":"$CURRENT_TICKETBOX_API_VERSION","write_compatibility":"compatible",
+                "capabilities":{"currency":{"request_binding":"1:1:CNY"},"upload_original_receipt_version":1,
+                "accounting_time_input_version":${if (calendarSupported) "1" else "null"}}}"""
+        request.url.encodedPath == "/api/ledgers/correction-ledger/calendar" ->
+            """{"ledger_id":"correction-ledger","revision":${request.url.queryParameter("revision") ?: "1"},
+                "timezone_name":"UTC","basis":"explicit","adopted_at":"2026-01-01T00:00:00Z"}"""
         request.url.encodedPath.endsWith("/history") -> historyJson(request.url.pathSegments[3], request.url.queryParameter("before_version"))
         "/occurrences/" in request.url.encodedPath -> occurrenceJson()
         request.url.encodedPath == "/api/recurring/items" -> """{"items":[${itemJson(false)},${itemJson(true)}]}"""
