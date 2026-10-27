@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens.recurring
 
+import com.ticketbox.domain.model.isEligibleRecurringPayment
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Arrangement
@@ -332,8 +334,7 @@ internal fun occurrencePaymentChoices(
 ): List<ConfirmedStreamItem.ExpenseRow> {
     val eligible = filterConfirmedStreamItems(rows, ExpenseFilterCriteria(month = "", query = ""))
         .filterIsInstance<ConfirmedStreamItem.ExpenseRow>().filter {
-            it.root.id > 0 && !it.root.pendingSync && it.root.status == "confirmed" &&
-                it.root.amountCents?.let { amount -> amount >= 0 } == true && it.lineageStatus != ExpenseLineageStatus.Reversed
+            it.isEligibleRecurringPayment()
         }
     val preferred = eligible.filter { it.root.id == preferredExpenseId }
     val ordinary = filterConfirmedStreamItems(eligible, ExpenseFilterCriteria(month = month, query = query))

@@ -3,6 +3,11 @@ package com.ticketbox.domain.model
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
+/** Local candidate eligibility; the server validates the selected fact again on payment. */
+fun ConfirmedStreamItem.ExpenseRow.isEligibleRecurringPayment(): Boolean =
+    root.id > 0 && !root.pendingSync && root.status == "confirmed" &&
+        root.amountCents?.let { it >= 0 } == true && lineageStatus != ExpenseLineageStatus.Reversed
+
 @JsonClass(generateAdapter = true)
 data class RecurringOccurrence(
     @param:Json(name = "series_public_id") val seriesPublicId: String,
