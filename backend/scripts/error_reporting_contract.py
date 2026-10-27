@@ -47,6 +47,12 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # Exact-symbol evidence, never a module/directory exemption or a handler registry.
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
+    (ANDROID + "data/local/LocalSettingsStore.kt", "writeNotificationCaptureFailure"): {
+        "sha256": "10cca1fad66747bdc446bf9fa13edcdba54908ad8061bce2c6fea35349c12f8e",
+        "owner": "existing sanitized TicketboxNetwork output and Settings persistence-failure state",
+        "test": "android/app/src/test/java/com/ticketbox/notification/NotificationAdmissionFailureTest.kt::failedPreferenceCommitRemainsVisibleInProcessAndDiagnosticsContainNoCaptureContent",
+        "reason": "Synchronous preference write failures report through logNetworkWarning with a fixed operation label and the original authority's SHA-256 scope. The shared sink excludes raw exception messages and private notification contents. Returning false keeps an in-process persistence-failed reminder, and failed acknowledgement retains the original reminder; neither path claims durable success or changes the admitted Outbox intent. The existing failure and acknowledgement tests verify these outcomes and the sanitized diagnostic.",
+    },
     (ANDROID + "data/repository/DebtKindPayload.kt", "dispatch"): {
         "sha256": "31f712e15de8efa6659eabf0ea5e8ff536bad1a3e1046d070916a7010371407a",
         "owner": "existing typed DispatchResult and durable Outbox failure/receipt owner",
