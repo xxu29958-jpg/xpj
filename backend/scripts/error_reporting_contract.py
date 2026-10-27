@@ -200,13 +200,13 @@ REVIEWED_BOUNDARIES = {
         "reason": "A ContentResolver preparation fault reports a fixed operation label without provider messages, then settles only the original attempt through the existing binding/generation check. The real shared launcher tests preserve draft, selected bytes and lack of financial acceptance. Normal cancellation clears its own busy state, propagates and emits no diagnostic.",
     },
     (ANDROID + "viewmodel/DebtCreationDraftStore.kt", "persistBillDraft"): {
-        "sha256": "74817eef8ee2dfdcfbcf28872f07df5a27e3e984fb697f8bf8a57ca311eb7ca5",
+        "sha256": "ce1a0cbd2c835008bde7d69375bd0aa49d83e5b4a395f83f370244d62b9de50a",
         "owner": "existing sanitized TicketboxNetwork output and FactInputNotSaved presentation",
         "test": "android/app/src/test/java/com/ticketbox/viewmodel/DebtBillDraftContinuityTest.kt::failedOriginalDraftWriteBlocksCreateAndRetryKeepsTheSameSourceBodyAndKey",
         "reason": "Unexpected draft encoding or Room-write faults report through logNetworkWarning and retain their cause in a classified RepositoryException. The UI resolves FactInputNotSaved instead of raw SQL, local paths or private exception text. A failed original write prevents Debt admission; retry preserves the source, body and creation key. Cancellation propagates without reporting.",
     },
     (ANDROID + "viewmodel/DebtListDraftActions.kt", "runDebtBillTask"): {
-        "sha256": "7355959438f26a0509c3e0f1989e25bd4103eb9a0880034f31b24acb26f14005",
+        "sha256": "db95240fe52d11546c040af24ad44bc526569187d9f5e78f9ef0f5f30805ce1e",
         "owner": "existing DebtBillRepository NetworkErrorHandler.safeCall and original Result",
         "test": "android/app/src/test/java/com/ticketbox/viewmodel/DebtBillDraftContinuityTest.kt::editsBeforeCaptureAdmissionSurviveAColdEditorAndResumeTheOriginalTask",
         "reason": "Every production source operation already returns the shared safeCall Result. This composition preserves that same failure without a second log or retry; its only local absence refusal is fixed user text. Cancellation propagates, and no failed refresh/parse/discard becomes an ended source or accepted Debt. The existing continuation test verifies handled failure identity and quiet cancellation through this real function.",
