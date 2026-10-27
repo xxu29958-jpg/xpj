@@ -182,10 +182,34 @@ REVIEWED_BOUNDARIES = {
         "reason": "Unexpected create replay failures report through logNetworkWarning before a blocking Failure retains the original payload and key. Receipt mismatches emit a static diagnostic. Cancellation propagates; transport retries keep their existing owner, and no raw exception text or unverified acceptance reaches the user.",
     },
     (ANDROID + "data/repository/DebtCreationRepository.kt", "createDebt"): {
-        "sha256": "8a3c0e7c61ef07d639bc723d8ada1114aa4156cd9b6d40318bcc82e531fa39f1",
+        "sha256": "3d213c522598d6931abce01013202f6a7c5292df893b779d6ae90b3229b471b0",
         "owner": "existing sanitized TicketboxNetwork output and local acceptance Result",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::debtLocalPublicationFailureReportsWithoutInventingAcceptance",
         "reason": "Unexpected storage or encoding errors report through logNetworkWarning before returning unverified local acceptance. Cancellation propagates and existing RepositoryException is preserved. No network call, new creation key, raw exception text or invented Debt receipt is introduced by the reporting boundary.",
+    },
+    (ANDROID + "ui/navigation/StatsRoutes.kt", "rememberDebtBillImageLauncher"): {
+        "sha256": "4ef79b17f836f6bb070153ff4b187a113d0aed05cae1a9f208d8d3a58111f505",
+        "owner": "existing sanitized TicketboxNetwork output and original preparation attempt",
+        "test": "android/app/src/test/java/com/ticketbox/ui/navigation/DebtBillLauncherPreparationTest.kt",
+        "reason": "A ContentResolver preparation fault reports a fixed operation label without provider messages, then settles only the original attempt through the existing binding/generation check. The real shared launcher tests preserve draft, selected bytes and lack of financial acceptance. Normal cancellation clears its own busy state, propagates and emits no diagnostic.",
+    },
+    (ANDROID + "viewmodel/DebtCreationDraftStore.kt", "persistBillDraft"): {
+        "sha256": "74817eef8ee2dfdcfbcf28872f07df5a27e3e984fb697f8bf8a57ca311eb7ca5",
+        "owner": "existing sanitized TicketboxNetwork output and FactInputNotSaved presentation",
+        "test": "android/app/src/test/java/com/ticketbox/viewmodel/DebtBillDraftContinuityTest.kt::failedOriginalDraftWriteBlocksCreateAndRetryKeepsTheSameSourceBodyAndKey",
+        "reason": "Unexpected draft encoding or Room-write faults report through logNetworkWarning and retain their cause in a classified RepositoryException. The UI resolves FactInputNotSaved instead of raw SQL, local paths or private exception text. A failed original write prevents Debt admission; retry preserves the source, body and creation key. Cancellation propagates without reporting.",
+    },
+    (ANDROID + "viewmodel/DebtListDraftActions.kt", "runDebtBillTask"): {
+        "sha256": "7355959438f26a0509c3e0f1989e25bd4103eb9a0880034f31b24acb26f14005",
+        "owner": "existing DebtBillRepository NetworkErrorHandler.safeCall and original Result",
+        "test": "android/app/src/test/java/com/ticketbox/viewmodel/DebtBillDraftContinuityTest.kt::editsBeforeCaptureAdmissionSurviveAColdEditorAndResumeTheOriginalTask",
+        "reason": "Every production source operation already returns the shared safeCall Result. This composition preserves that same failure without a second log or retry; its only local absence refusal is fixed user text. Cancellation propagates, and no failed refresh/parse/discard becomes an ended source or accepted Debt. The existing continuation test verifies handled failure identity and quiet cancellation through this real function.",
+    },
+    (ANDROID + "viewmodel/DebtListViewModel.kt", "billTask"): {
+        "sha256": "4833f47f04606c19c92e753f9191689b01b230f5deaee7e99a67c203481918b3",
+        "owner": "existing shared repository errors and sanitized local draft recovery output",
+        "test": "android/app/src/test/java/com/ticketbox/viewmodel/DebtBillDraftContinuityTest.kt",
+        "reason": "Already classified RepositoryException results and expected current-draft refusals retain their existing objects/text without duplicate diagnostics. Unexpected local draft decode/recovery faults use logNetworkWarning and a fixed recovery message; malformed private fields cannot enter UI or Logcat. The original source and creation payload survive retry, and binding/generation guards plus cancellation behavior remain unchanged.",
     },
     (ANDROID + "data/repository/RecurringQueryReader.kt", "read"): {
         "sha256": "3fc23c76b1cb3b718259f815af0ee814205430e6d62836aa44ddd71352c34840",

@@ -1,10 +1,15 @@
 package com.ticketbox.viewmodel
 
 import androidx.lifecycle.SavedStateHandle
+import com.ticketbox.BuildConfig
+import com.ticketbox.R
+import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.UiText
 import com.ticketbox.upload.PreparedUploadImage
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -16,14 +21,23 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 
 /** Real editor/draft owner; the source boundary controls Room admission and write failures. */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], manifest = Config.NONE)
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DebtBillDraftContinuityTest {
     private val dispatcher = StandardTestDispatcher()
-    @BeforeTest fun setUp() { Dispatchers.setMain(dispatcher) }
+    @BeforeTest fun setUp() { Dispatchers.setMain(dispatcher); ShadowLog.clear() }
     @AfterTest fun tearDown() { Dispatchers.resetMain() }
 
     @Test fun editsBeforeCaptureAdmissionSurviveAColdEditorAndResumeTheOriginalTask() = runTest(dispatcher) {
@@ -49,11 +63,28 @@ class DebtBillDraftContinuityTest {
         assertTrue(repo.parseBillCalls.isEmpty(), "Editing retires the in-flight automatic prefill, not its retained source")
         val reopened = DebtListViewModel(repo, repo.creation, repo.writes, savedStateHandle = SavedStateHandle())
         advanceUntilIdle()
+        sources.inputs.value = listOf(original.copy(original = original.original.copy(draftJson =
+            original.original.draftJson.replace("\"input\":{", "\"input\":{\"calendarRevision\":\"private-draft-secret\","))))
+        reopened.billTask(original.captureKey, DebtBillTaskAction.Resume)
+        advanceUntilIdle()
+        assertEquals(UiText.raw("原稿暂时未能读取，请保留当前输入后重试。"), reopened.state.value.error)
+        assertEquals(original.payload, sources.inputs.value.single().payload)
+        assertTrue(repo.creation.createDrafts.isEmpty())
+        assertSanitizedDiagnostic("private-draft-secret", "Debt bill task unverified")
+        sources.inputs.value = listOf(original)
         reopened.billTask(original.captureKey, DebtBillTaskAction.Resume)
         advanceUntilIdle()
         assertEquals(stored.input, reopened.state.value.addDraft)
         assertEquals(original.captureKey, reopened.state.value.activeBillCaptureKey)
         assertTrue(reopened.state.value.canSubmitCreation)
+        ShadowLog.clear()
+        val handled = RepositoryException("已处理的原建议拒绝", "permission_denied")
+        repo.parseBillResult = Result.failure(handled)
+        assertSame(handled, runDebtBillTask(sources, original, DebtBillTaskAction.Parse).exceptionOrNull())
+        val cancelled = CancellationException("original cancelled")
+        repo.parseBillResult = Result.failure(cancelled)
+        assertSame(cancelled, assertFailsWith<CancellationException> { runDebtBillTask(sources, original, DebtBillTaskAction.Parse) })
+        assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").isEmpty())
     }
 
     @Test fun sourceCreateFreezesTheOriginalDraftBeforeLocalAdmissionAndAdoptedResumeEndsIt() = runTest(dispatcher) {
@@ -80,6 +111,14 @@ class DebtBillDraftContinuityTest {
             status = "confirmed", adoptedDebtPublicId = "created-debt")))
         val reopened = DebtListViewModel(repo, repo.creation, repo.writes, savedStateHandle = SavedStateHandle())
         advanceUntilIdle()
+        reopened.updateDraftCounterparty("另一张原稿")
+        reopened.billTask(input.captureKey, DebtBillTaskAction.Resume)
+        advanceUntilIdle()
+        assertEquals(UiText.raw("请先保存或放弃当前原稿，再继续另一张账单。"), reopened.state.value.error)
+        assertEquals("另一张原稿", reopened.state.value.addDraft.counterpartyLabel)
+        assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").isEmpty())
+        reopened.discardDraft()
+        advanceUntilIdle()
         reopened.billTask(input.captureKey, DebtBillTaskAction.Resume)
         advanceUntilIdle()
         assertFalse(reopened.state.value.publicationUnverified)
@@ -97,13 +136,16 @@ class DebtBillDraftContinuityTest {
         model.parseDebtBillImage(requireNotNull(model.markBillParsePreparing()), image())
         advanceUntilIdle()
         val input = sources.inputs.value.single()
-        sources.draftWriteFailure = IOException("Room write failed")
+        val privateFailure = "SELECT private_bank_statement FROM C:/private-bank/secret.db password=private-draft-secret"
+        sources.draftWriteFailure = IOException(privateFailure)
         model.submitDraft()
         advanceUntilIdle()
         assertTrue(repo.creation.createDrafts.isEmpty())
         assertFalse(model.state.value.isSubmitting)
         assertTrue(model.state.value.publicationUnverified)
         assertNotNull(model.state.value.addDraft.validationError)
+        assertEquals(UiText.res(R.string.expense_fact_input_save_failed), model.state.value.addDraft.validationError)
+        assertSanitizedDiagnostic(privateFailure, "Debt bill original draft persistence")
         sources.draftWriteFailure = null
         model.submitDraft()
         advanceUntilIdle()
@@ -113,6 +155,16 @@ class DebtBillDraftContinuityTest {
     }
 
     private fun image() = PreparedUploadImage("bank.png", "image/png", byteArrayOf(1), 1)
+
+    private fun assertSanitizedDiagnostic(privateDetail: String, operation: String) {
+        val logs = ShadowLog.getLogsForTag("TicketboxNetwork")
+        assertTrue(logs.isNotEmpty())
+        val output = logs.joinToString("\n") { it.msg }
+        assertTrue(output.contains("operation=$operation"))
+        assertTrue(output.contains("source_tree_sha256=${BuildConfig.SOURCE_FINGERPRINT}"))
+        assertFalse(output.contains(privateDetail) || output.contains("private-bank") || output.contains("private-draft-secret"))
+        assertTrue(logs.all { it.throwable == null })
+    }
 
     @Test fun failedLocalCaptureRetriesItsOriginalKeyAndDraft() = runTest(dispatcher) {
         val repo = FakeDebtActions().apply { listCapability = "CNY" }

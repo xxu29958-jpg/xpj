@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ticketbox.data.repository.logNetworkWarning
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.mascot.rememberMascotController
@@ -361,7 +362,8 @@ internal fun rememberDebtBillImageLauncher(
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 viewModel.parseDebtBillImage(attempt, null, cancelled = true)
                 throw cancelled
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                logNetworkWarning("operation=Debt bill image preparation", error)
                 viewModel.parseDebtBillImage(attempt, null)
                 return@launch
             }

@@ -60,6 +60,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
+import org.robolectric.shadows.ShadowLog
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -87,6 +88,7 @@ class DebtBillLauncherPreparationTest {
 
     @BeforeTest fun setUp() {
         Dispatchers.setMain(dispatcher)
+        ShadowLog.clear()
         directory = Files.createTempDirectory("debt-bill-launcher").toFile()
         selectedFile = File(directory, "original.jpg").apply { writeText("selected original remains owned by provider") }
         val cache = File(directory, "cache").apply { mkdir() }
@@ -139,6 +141,11 @@ class DebtBillLauncherPreparationTest {
             assertTrue(repository.creation.createDrafts.isEmpty())
             assertFalse(viewModel.state.value.isParsingBill, "The actual launcher must settle a failed preparation")
             assertNotNull(viewModel.state.value.error)
+            val logs = ShadowLog.getLogsForTag("TicketboxNetwork")
+            assertTrue(logs.any { it.msg.contains("operation=Debt bill image preparation") })
+            assertTrue(logs.any { it.msg.contains("FileNotFoundException") && it.msg.contains("StatsRoutes.kt:") })
+            assertTrue(logs.none { it.msg.contains("private-provider-secret") || it.throwable != null })
+            assertFalse(viewModel.state.value.error.toString().contains("private-provider-secret"))
         } finally {
             provider.release.countDown()
             preparation?.join()
@@ -178,6 +185,7 @@ class DebtBillLauncherPreparationTest {
             assertTrue(repository.creation.createDrafts.isEmpty())
             assertFalse(viewModel.state.value.isParsingBill, "Disposal must not strand the retained ViewModel in busy state")
             assertNull(viewModel.state.value.error)
+            assertTrue(ShadowLog.getLogsForTag("TicketboxNetwork").isEmpty())
         } finally {
             provider.release.countDown()
             preparation?.join()
@@ -203,7 +211,7 @@ private class BillPreparationProvider(private val selected: File) : ContentProvi
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
         entered.countDown()
         check(release.await(10, TimeUnit.SECONDS)) { "Test did not release the provider read" }
-        if (failRead) throw FileNotFoundException("Test provider refuses its selected original")
+        if (failRead) throw FileNotFoundException("C:/private-provider-secret/bank.jpg password=private-provider-secret")
         // The disposal case returns from I/O normally. Actual scope cancellation must still win.
         return null
     }
