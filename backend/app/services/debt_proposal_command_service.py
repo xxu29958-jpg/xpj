@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from hashlib import sha256
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.models import Debt
 from app.money_contract import MoneySign, ensure_money_minor
 from app.schemas import (
     DebtResponse,
@@ -35,6 +37,7 @@ from app.services.exchange_rate_service import (
     amount_major_to_minor,
     default_rate_date,
 )
+from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
 from app.services.idempotency import (
     IdempotencyOutcomeKind,
     claim_idempotency_key,
@@ -309,6 +312,7 @@ def confirm_repayment_proposal_idempotently(
         resource_type=_DEBT_TARGET_TYPE,
         resource_id=public_id,
     )
+    stage_debt_goal_achievements(db, debt_ids=db.scalars(select(Debt.id).where(Debt.public_id == public_id)))
     db.commit()
     db.expire_all()
     return get_participant_debt_response(

@@ -7,6 +7,7 @@ from app.schemas import ExpenseCorrectionRequest
 from app.schemas.funds import ExpenseFundingView, FundingViewPart
 from app.services.funds_commands import claim_funds
 from app.services.funds_query import account_scope
+from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
 from app.services.idempotency import mark_idempotency_succeeded
 
 
@@ -38,12 +39,14 @@ def save_expense_funding(db, *, auth, expense_id, payload, key):
     if claim is None:
         return replay_expense_funding(db, auth=auth, key=key)
     from app.services.expense_correction_service import correct_expense
-    correct_expense(db, tenant_id=auth.tenant_id, expense_id=expense_id,
+    from app.services.expense_revision_service import correction_funding_account_ids
+    _, revision = correct_expense(db, tenant_id=auth.tenant_id, expense_id=expense_id,
         payload=ExpenseCorrectionRequest(expected_row_version=payload.expected_row_version,
             reason=payload.reason, funding=payload.parts), actor_account_id=auth.account_id,
         actor_device_id=auth.device_id, idempotency_key=key, commit=False)
     result = expense_funding_view(db, ledger_id=auth.tenant_id, actor_account_id=auth.account_id, expense_id=expense_id)
     mark_idempotency_succeeded(db, claim, resource_type="expense", resource_id=str(expense_id), response_body=result.model_dump(mode="json"))
+    stage_debt_goal_achievements(db, account_ids=correction_funding_account_ids(db, revision))
     db.commit()
     return result
 

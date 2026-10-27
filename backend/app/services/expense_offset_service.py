@@ -42,6 +42,7 @@ from app.services.expense_offset_summary import expense_financial_summary
 from app.services.expense_response_service import expense_to_response
 from app.services.expense_service import get_expense
 from app.services.funds_refund_service import apply_offset_funds
+from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.ledger_calendar_service import calendar_revision, current_calendar
 from app.services.optimistic_concurrency import claim_row_with_token
@@ -377,6 +378,7 @@ def _commit_offset_creation(
     claim: ApiIdempotencyKey,
     offset: ExpenseOffsetFact,
     result: ExpenseFactBundleResponse,
+    affected_account_ids: set[int],
     commit: bool,
 ) -> ExpenseFactBundleResponse:
     mark_idempotency_succeeded(
@@ -390,6 +392,7 @@ def _commit_offset_creation(
         response_body=result.model_dump(mode="json", exclude_computed_fields=True),
     )
     if commit:
+        stage_debt_goal_achievements(db, account_ids=affected_account_ids)
         db.commit()
     return result
 
@@ -456,7 +459,7 @@ def create_expense_offset(
         category=imported.category if imported is not None else None,
         time_values=time_values,
     )
-    apply_offset_funds(db, expense=expense, offset=offset, destinations=payload.destinations, actor_account_id=actor_account_id)
+    affected_account_ids = apply_offset_funds(db, expense=expense, offset=offset, destinations=payload.destinations, actor_account_id=actor_account_id)
     reason_code = source_relationship_reason(payload.kind)
     relationship_result = settle_source_financial_change(
         db,
@@ -478,5 +481,6 @@ def create_expense_offset(
         claim=claim,
         offset=offset,
         result=result,
+        affected_account_ids=affected_account_ids,
         commit=commit,
     )

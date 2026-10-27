@@ -1,8 +1,8 @@
 """Debt-repayment goal evaluation, response projection, and read queries.
 
 The current ``goal_version`` owns a frozen debt-link set. Evaluation derives each
-linked debt's live fold without mutating debt state, and achievement is latched
-only when the caller explicitly enables persistence.
+linked debt's live fold without mutating business state. Command finishers own
+the sticky achievement latch.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import Debt, DebtGoalLink, Goal
+from app.models import CreditFacility, Debt, DebtGoalLink, FinancialAccount, Goal
 from app.money_contract import projection_sum_to_int
 from app.schemas import (
     DebtGoalLinkView,
@@ -70,10 +70,18 @@ def _resolve_linked_debts(
             cleaned.append(public_id)
     if not cleaned:
         _require_at_least_one_debt()
-    # Ledger goals are shared facts: linking must not publish another member's private account balance.
-    rows = list(db.scalars(ledger_scoped_select(Debt, tenant_id).where(Debt.public_id.in_(cleaned),
+    # Funds commands acquire their complete Account set before touching credit
+    # Debts. Keep that order when a goal mixes credit and ordinary Debts too.
+    list(db.scalars(select(FinancialAccount).join(CreditFacility, CreditFacility.account_id == FinancialAccount.id)
+        .join(Debt, Debt.id == CreditFacility.debt_id).where(Debt.tenant_id == tenant_id, Debt.public_id.in_(cleaned))
+        .order_by(FinancialAccount.public_id).with_for_update(of=FinancialAccount)))
+    rows = list(db.scalars(ledger_scoped_select(Debt, tenant_id).where(Debt.public_id.in_(cleaned))
+        .order_by(Debt.id).with_for_update().execution_options(populate_existing=True)))
+    # Re-read eligibility after any lock wait, using a fresh statement snapshot.
+    # Ledger goals must not publish another member's private account balance.
+    visible = set(db.scalars(select(Debt.id).where(Debt.id.in_([debt.id for debt in rows]),
         credit_visible(tenant_id, None), credit_projection_available())))
-    by_public_id = {debt.public_id: debt for debt in rows}
+    by_public_id = {debt.public_id: debt for debt in rows if debt.id in visible}
     for public_id in cleaned:
         if public_id not in by_public_id:
             raise AppError("debt_not_found", status_code=404)
@@ -101,6 +109,7 @@ def _current_version_debts(db: Session, goal: Goal) -> list[Debt]:
         .where(DebtGoalLink.goal_id == goal.id)
         .where(DebtGoalLink.goal_version == goal.goal_version)
         .order_by(DebtGoalLink.id.asc())
+        .execution_options(populate_existing=True)
     )
     return list(db.scalars(statement))
 
@@ -156,13 +165,24 @@ def _evaluate_links(
     )
 
 
-def _evaluate_and_maybe_latch(
-    db: Session,
-    goal: Goal,
-    *,
-    persist: bool,
-) -> tuple[DebtRepaymentEvaluation, bool]:
-    """Evaluate the current link set and optionally latch a fresh achievement."""
+def stage_locked_goal_achievement(db: Session, goal: Goal) -> None:
+    """Evaluate a goal whose current links and Goal row are already serialized.
+
+    Creation/link replacement locks the selected Debts before publishing the
+    Goal version. Financial commands acquire the affected Debts, then Goals.
+    Never acquire peer Debt locks here: two payments may hold different Debts
+    of the same goal while waiting for its Goal lock.
+    """
+    if goal.achieved_version == goal.goal_version:
+        return
+    _, _, _, _, all_cleared, _ = _evaluate_links(db, goal)
+    if all_cleared:
+        goal.achieved_at = now_utc()
+        goal.achieved_version = goal.goal_version
+
+
+def _evaluate_goal(db: Session, goal: Goal) -> DebtRepaymentEvaluation:
+    """Read the current link set and any achievement committed by a command."""
     now = now_utc()
     (
         link_views,
@@ -183,12 +203,6 @@ def _evaluate_and_maybe_latch(
         state = "achieved"
     else:
         state = "in_progress"
-
-    latched = False
-    if persist and state == "achieved" and not already_latched:
-        goal.achieved_at = now
-        goal.achieved_version = goal.goal_version
-        latched = True
 
     integrity_acknowledged = goal.integrity_reviewed_version == goal.goal_version
     needs_review = any_unavailable or (any_voided and not (state == "achieved" and integrity_acknowledged))
@@ -214,7 +228,7 @@ def _evaluate_and_maybe_latch(
         three_state=kpi.three_state,
         days_since_last_activity=kpi.days_since_last_activity,
     )
-    return evaluation, latched
+    return evaluation
 
 
 def _debt_goal_response(
@@ -244,27 +258,9 @@ def _debt_goal_response(
     )
 
 
-def build_debt_repayment_goal_response(
-    db: Session,
-    goal: Goal,
-    *,
-    persist_achievement: bool,
-) -> GoalResponse:
-    """Evaluate, optionally persist a fresh latch, and serialize one goal."""
-    evaluation, _ = _evaluate_and_maybe_latch(db, goal, persist=False)
-    latch_required = (
-        persist_achievement
-        and evaluation.evaluation_state == "achieved"
-        and goal.achieved_version != goal.goal_version
-    )
-    if latch_required:
-        resolve_write_capability(db)
-        evaluation, latched = _evaluate_and_maybe_latch(db, goal, persist=True)
-    else:
-        latched = False
-    if latched:
-        db.commit()
-    return _debt_goal_response(goal, evaluation)
+def build_debt_repayment_goal_response(db: Session, goal: Goal) -> GoalResponse:
+    """Serialize a debt goal without advancing business state."""
+    return _debt_goal_response(goal, _evaluate_goal(db, goal))
 
 
 def _canonical_debt_goal_response(
@@ -279,7 +275,7 @@ def _canonical_debt_goal_response(
         tenant_id=tenant_id,
         public_id=public_id,
     )
-    evaluation, _ = _evaluate_and_maybe_latch(db, goal, persist=False)
+    evaluation = _evaluate_goal(db, goal)
     return _debt_goal_response(goal, evaluation)
 
 
@@ -346,7 +342,8 @@ def create_debt_repayment_goal(
         tenant_id=tenant_id,
         payload=payload,
     )
-    evaluation, _ = _evaluate_and_maybe_latch(db, goal, persist=True)
+    stage_locked_goal_achievement(db, goal)
+    evaluation = _evaluate_goal(db, goal)
     db.commit()
     db.expire_all()
     current = _require_debt_repayment_goal(
@@ -431,7 +428,8 @@ def create_debt_repayment_goal_idempotently(
         tenant_id=tenant_id,
         payload=payload,
     )
-    evaluation, _ = _evaluate_and_maybe_latch(db, goal, persist=True)
+    stage_locked_goal_achievement(db, goal)
+    evaluation = _evaluate_goal(db, goal)
     db.flush()
     response = _debt_goal_response(goal, evaluation)
     mark_idempotency_succeeded(
@@ -450,7 +448,6 @@ def list_debt_repayment_goals(
     *,
     tenant_id: str,
     include_archived: bool = False,
-    persist_achievement: bool = False,
 ) -> list[GoalResponse]:
     """List one ledger's debt-repayment goals."""
     statement = ledger_scoped_select(Goal, tenant_id).where(Goal.goal_type == GOAL_TYPE)
@@ -466,7 +463,6 @@ def list_debt_repayment_goals(
         build_debt_repayment_goal_response(
             db,
             goal,
-            persist_achievement=persist_achievement,
         )
         for goal in goals
     ]

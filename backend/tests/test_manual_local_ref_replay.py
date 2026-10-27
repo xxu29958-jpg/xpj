@@ -42,6 +42,7 @@ def _rejection_expense(*, status="pending", row_version=3) -> Expense:
 @pytest.mark.parametrize("operation", ["patch", "confirm", "reject"])
 def test_accepted_local_operation_replays_when_legacy_creation_receipt_is_missing(monkeypatch, operation):
     db = Mock(spec=Session)
+    db.scalars.return_value = []  # This expense has no funding source.
     auth = SimpleNamespace(tenant_id="owner", account_id=1, device_id=7)
     expense = _rejection_expense() if operation in {"confirm", "reject"} else SimpleNamespace(
         id=42, row_version=3, source="手动记账", status="pending")
