@@ -21,7 +21,7 @@ import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppAsyncImage
 import com.ticketbox.ui.components.AppAsyncImageLayout
 import com.ticketbox.ui.components.expenseTimeLabel
-import com.ticketbox.ui.components.formatExpensePrimaryAmount
+import com.ticketbox.presentation.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.tabularNum

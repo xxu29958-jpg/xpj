@@ -23,7 +23,7 @@ import com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.ui.saveConsumerArtPreview

@@ -6,12 +6,12 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import com.ticketbox.data.remote.dto.LedgerCalendarDto
+import com.ticketbox.domain.model.LedgerCalendar
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
-import com.ticketbox.ui.screens.expense.ExpenseTimeForm
-import com.ticketbox.ui.screens.expense.toSavedJson
+import com.ticketbox.viewmodel.ExpenseTimeForm
+import com.ticketbox.viewmodel.toSavedJson
 import com.ticketbox.ui.theme.TicketboxTheme
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
@@ -24,7 +24,7 @@ class ManualExpenseAccountingTimeTest {
 
     @Test fun dateOnlySurvivesRecreationAndSubmitsTheCapturedRuleWithoutMidnight() {
         val restoration = StateRestorationTester(compose)
-        val rule = LedgerCalendarDto("owner", 2, "Asia/Shanghai", "explicit", "2026-09-20T00:00:00Z")
+        val rule = LedgerCalendar("owner", 2, "Asia/Shanghai", "explicit", "2026-09-20T00:00:00Z")
         val captured = ExpenseTimeForm.initial("2026-04-30T16:30:00Z", null, rule, ZoneId.of("Asia/Shanghai"))
         var submitted: ExpenseDraft? = null
         restoration.setContent {

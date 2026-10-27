@@ -13,7 +13,7 @@ class RecordDebtAdjustmentDispatcher internal constructor(
     override val type = PendingMutationType.RecordDebtAdjustment
 
     override suspend fun dispatch(row: OutboxRow): DispatchResult {
-        val intent = row.describeDebtAdjustment(adapter).adjustment
+        val intent = row.readOriginalDebtAdjustment(adapter)
             ?: return DispatchResult.Failure("debt_adjustment_payload_unsupported", definitelyRejected = true)
         return try {
             guard.bind(expectedLedgerId = row.ledgerId).serviceForOriginalDebtWrite(row, intent).recordDebtAdjustment(intent.subject.publicId, intent.request, row.idempotencyKey)

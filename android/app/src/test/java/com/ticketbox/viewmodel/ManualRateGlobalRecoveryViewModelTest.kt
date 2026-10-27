@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.toDomain
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
@@ -18,13 +19,13 @@ class ManualRateGlobalRecoveryViewModelTest {
     @Test fun globalRetryUsesTheOwnerAndRetainsOriginalPairDateAmountKeyAndOcc() = budgetTest {
         val harness = outboxStatusHarness()
         val binding = requireNotNull(harness.expenseRepository.captureDeferredLedgerBinding())
-        val id = harness.budgetSaves.enqueueRate(binding, "2026-09", request, null).getOrThrow()
+        val id = harness.budgetSaves.enqueueRate(binding, "2026-09", request.toDomain(), null).getOrThrow()
         harness.outbox.markFailed(id, "client_upgrade_required")
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = harness.rateGlobalViewModel()
         try {
             val state = vm.uiState.first { it.bindingReady && it.manualRates[id]?.canRetry == true }
-            assertEquals(request, state.manualRates[id]?.intent?.request)
+            assertEquals(request.toDomain(), state.manualRates[id]?.intent?.request)
             assertTrue(state.offersRetry(original))
             vm.keepMine(original)
             assertEquals(original, harness.outbox.observeStatus().first().failed.single())
@@ -40,7 +41,7 @@ class ManualRateGlobalRecoveryViewModelTest {
     @Test fun unverifiedDoneCannotReportSuccessOrRetryAndCanBeStoppedLocally() = budgetTest {
         val harness = outboxStatusHarness()
         val binding = requireNotNull(harness.expenseRepository.captureDeferredLedgerBinding())
-        val id = harness.budgetSaves.enqueueRate(binding, "2026-09", request, null).getOrThrow()
+        val id = harness.budgetSaves.enqueueRate(binding, "2026-09", request.toDomain(), null).getOrThrow()
         harness.outbox.markDone(id)
         val vm = harness.rateGlobalViewModel()
         try {

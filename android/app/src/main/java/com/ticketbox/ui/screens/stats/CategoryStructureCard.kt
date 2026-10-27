@@ -32,7 +32,7 @@ import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.TagStats
 import com.ticketbox.ui.components.AppEndAlignedAmountText
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius

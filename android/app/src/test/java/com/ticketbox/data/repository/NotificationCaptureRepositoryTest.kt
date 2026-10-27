@@ -165,6 +165,7 @@ private class CaptureFixture {
     val clock: Clock = Clock.fixed(Instant.parse("2026-09-30T08:00:00Z"), ZoneOffset.UTC)
     val scheduledDepths = mutableListOf<Int>()
     val published = mutableListOf<String>()
+    val expenseSnapshots = mutableListOf<Long>()
     val outbox = newOutbox()
     val repository = NotificationCaptureRepository(provider, outbox)
     val expense = PaymentNotificationResult.Expense(NotificationDraft(NotificationDraftSource.WeChat, 2680, "星巴克", "餐饮", "2026-09-30T08:00:00Z"),
@@ -178,7 +179,13 @@ private class CaptureFixture {
         bindingProvider = { provider.currentSession().toOutboxBinding() }, onEnqueued = { scheduledDepths += dao.rows.size })
     fun engine(queue: OutboxRepository = outbox, at: Clock = clock) = OutboxDrainEngine(queue,
         listOf(NotificationCaptureDispatcher(LedgerRequestGuard(provider),
-            { _, result -> published += "expense:${result.status}" }, { _, result -> published += "repayment:${result.status}" }, { _, _ -> published += "review" })), now = at::millis)
+            publishExpense = { _, result -> expenseSnapshots += result.id },
+            onExpense = { _, result ->
+                assertEquals(result.id, expenseSnapshots.last(), "Cache publication must precede the notification")
+                published += "expense:${result.status}"
+            },
+            onRepayment = { _, result -> published += "repayment:${result.status}" },
+            onReview = { _, _ -> published += "review" })), now = at::millis)
 }
 
 private class CaptureResponseProbe : ApiService by FakeApiService(mutableListOf(), 0) {

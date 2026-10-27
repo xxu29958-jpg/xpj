@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.plan
 
+import com.ticketbox.presentation.formatDisplayAmount
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,7 +21,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.ExchangeRateDto
+import com.ticketbox.domain.model.ExchangeRate
 import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.data.repository.PendingManualRateSubmission
 import com.ticketbox.domain.model.CurrencyDisplay
@@ -34,7 +35,7 @@ import com.ticketbox.viewmodel.BudgetAdviceUiState
 
 internal data class BudgetAdviceActions(val onGenerate: () -> Unit, val onRefreshInputs: () -> Unit,
     val onShiftMonth: (Long) -> Unit, val onOpenRate: (CurrencyProjectionGap) -> Unit,
-    val onEditRate: (ExchangeRateDto) -> Unit, val onRateValue: (String) -> Unit,
+    val onEditRate: (ExchangeRate) -> Unit, val onRateValue: (String) -> Unit,
     val onSaveRate: () -> Unit, val onCloseRate: () -> Unit,
     val onReviewRate: (PendingManualRateSubmission) -> Unit,
     val onRecoverRate: (PendingManualRateSubmission, Boolean) -> Unit,

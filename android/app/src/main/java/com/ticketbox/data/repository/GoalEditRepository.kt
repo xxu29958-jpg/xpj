@@ -35,10 +35,12 @@ interface GoalEditActions {
     suspend fun recoverCreation(binding: LogicalSessionBinding, pending: PendingGoalCreation, drop: Boolean): Result<Unit>
 }
 
-data class PendingGoalEdit(val row: OutboxRow, val request: GoalUpdateRequestDto?, val confirmed: Goal?,
-    val debtEdit: DebtGoalEditPayload? = null) {
+data class PendingGoalEdit(val row: OutboxRow, val request: com.ticketbox.domain.model.GoalUpdateRequest?, val confirmed: Goal?,
+    val debtEdit: DebtGoalEditSubmission?, private val capturedCurrency: Boolean) {
+    internal constructor(row: OutboxRow, request: GoalUpdateRequestDto?, confirmed: Goal?, debtEdit: DebtGoalEditPayload? = null) :
+        this(row, request?.toDomain(), confirmed, debtEdit?.toView(), request?.hasCapturedGoalCurrency() == true)
     val isDone: Boolean get() = row.status == PendingMutationStatus.Done
-    val canRetry: Boolean get() = (request?.hasCapturedGoalCurrency() == true || debtEdit != null) &&
+    val canRetry: Boolean get() = (capturedCurrency || debtEdit != null) &&
         row.status == PendingMutationStatus.Failed && (row.lastError?.startsWith("max_attempts_exceeded(") == true ||
         row.lastError in setOf("client_upgrade_required", "runtime_version_mismatch"))
     val canDrop: Boolean get() = row.status == PendingMutationStatus.Failed || row.status == PendingMutationStatus.Conflict
@@ -179,7 +181,7 @@ class GoalEditRepository(
             if (drop && createAdapter.readGoalCreation(pending.row)?.goalType == "debt_repayment") {
                 val current = currentGoalSubmission(outbox, bound, pending.row) { row ->
                     val original = describeCreation(row)
-                    original != null && original.request?.let { it.goalType == "debt_repayment" && it.isSupportedGoalCreation(row) } == true &&
+                    original != null && original.request?.let { it.goalType == "debt_repayment" && original.hasSupportedIntent } == true &&
                         original.canDrop
                 }
                 check(outbox.abandonOriginalCommand(bound, current)) { "提交状态已变化，请重新核对。" }

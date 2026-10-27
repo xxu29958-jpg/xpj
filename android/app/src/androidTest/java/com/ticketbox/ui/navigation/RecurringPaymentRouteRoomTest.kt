@@ -1007,7 +1007,7 @@ class RecurringPaymentRouteRoomTest {
             nextDueDate = "2026-08-15",
             homeCurrencyCode = "JPY",
         ),
-        occurrence = RecurringOccurrenceDto(
+        occurrence = com.ticketbox.domain.model.RecurringOccurrence(
             seriesPublicId = task.seriesPublicId,
             period = task.period,
             seriesRowVersion = 7L,

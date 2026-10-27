@@ -13,10 +13,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.EnvelopePurposeDto
+import com.ticketbox.domain.model.EnvelopePurpose
 import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.ui.components.AppHistoryRecord
-import com.ticketbox.ui.components.displayDateTime
+import com.ticketbox.presentation.displayDateTime
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSwitch
@@ -63,7 +63,7 @@ internal fun EnvelopeOverview(state: FundsUiState, vm: FundsViewModel) {
 }
 
 @Composable
-private fun EnvelopePurpose(row: EnvelopePurposeDto, currency: String) {
+private fun EnvelopePurpose(row: EnvelopePurpose, currency: String) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Text(row.label, style = MaterialTheme.typography.titleMedium)
         Text(row.plannedMinor?.let { stringResource(R.string.envelopes_plan, money(it, currency)) }

@@ -1,5 +1,9 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.ReferenceCreationDraftStore
+
+import com.ticketbox.data.repository.ReferenceCreationDraft
+
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider

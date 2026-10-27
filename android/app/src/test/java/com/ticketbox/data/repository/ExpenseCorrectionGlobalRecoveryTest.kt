@@ -296,7 +296,7 @@ internal class ExpenseCorrectionGlobalRecoveryTest {
         advanceUntilIdle()
         val pending = fixture.vm.uiState.value.correctionObservation.corrections.single()
         assertFalse(pending.hasSupportedIntent)
-        assertEquals(original, pending.legacyRequest)
+        assertEquals(original.toDomain(), pending.legacyRequest)
 
         fixture.startRecovery { fixture.vm.dropFailed(pending.row) }.join()
         advanceUntilIdle()

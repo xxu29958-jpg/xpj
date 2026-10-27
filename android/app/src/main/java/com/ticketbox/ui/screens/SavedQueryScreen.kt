@@ -15,9 +15,9 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyProjectionGap
-import com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto
-import com.ticketbox.data.remote.dto.SavedViewDto
-import com.ticketbox.data.remote.dto.SavedViewResultRowDto
+import com.ticketbox.domain.model.SavedViewDefinitionRequest
+import com.ticketbox.domain.model.SavedView
+import com.ticketbox.domain.model.SavedViewResultRow
 import com.ticketbox.data.repository.toDomain
 import com.ticketbox.data.repository.SavedQueryDraft
 import com.ticketbox.data.repository.queryDefinition
@@ -33,7 +33,7 @@ import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryScrollableColumn
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.SettingsEntryIcon
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.SavedQueryDraftState
 import com.ticketbox.viewmodel.SavedQueryUiState
@@ -42,7 +42,7 @@ data class SavedQueryActions(
     val back: () -> Unit,
     val create: () -> Unit,
     val open: (String, Int) -> Unit,
-    val edit: (SavedViewDto, Boolean) -> Unit,
+    val edit: (SavedView, Boolean) -> Unit,
     val resume: (SavedQueryDraft) -> Unit,
     val refresh: () -> Unit,
     val openExpense: (Long) -> Unit,
@@ -103,7 +103,7 @@ private fun SavedQueryDirectory(state: SavedQueryUiState, drafts: SavedQueryDraf
 }
 
 @Composable
-private fun SavedQueryResults(state: SavedQueryUiState, canModify: Boolean, selected: SavedViewDto?, actions: SavedQueryActions) {
+private fun SavedQueryResults(state: SavedQueryUiState, canModify: Boolean, selected: SavedView?, actions: SavedQueryActions) {
     if (selected != null) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             AppSecondaryButton(stringResource(R.string.saved_query_edit), enabled = canModify, onClick = { actions.edit(selected, false) })
@@ -124,10 +124,11 @@ private fun SavedQueryResults(state: SavedQueryUiState, canModify: Boolean, sele
 }
 
 @Composable
-private fun SavedQueryResult(row: SavedViewResultRowDto, currency: String, canModify: Boolean, actions: SavedQueryActions) {
+private fun SavedQueryResult(row: SavedViewResultRow, currency: String, canModify: Boolean, actions: SavedQueryActions) {
     val entry = row.entry
-    val originalMinor = entry.offset?.originalAmountMinor ?: entry.root.originalAmountMinor
-    val originalCurrency = entry.offset?.originalCurrencyCode ?: entry.root.originalCurrencyCode
+    val offset = (entry as? com.ticketbox.domain.model.ConfirmedStreamItem.OffsetRow)?.offset
+    val originalMinor = offset?.originalAmountMinor ?: entry.root.originalAmountMinor
+    val originalCurrency = offset?.originalCurrencyCode ?: entry.root.originalCurrencyCode.storageKey
     AppListRow(onClick = { actions.openExpense(entry.root.id) }) {
         SettingsEntryIcon(ImageVector.vectorResource(R.drawable.ic_lucide_receipt_text))
         Spacer(Modifier.width(AppSpacing.contentGap))
@@ -136,12 +137,12 @@ private fun SavedQueryResult(row: SavedViewResultRowDto, currency: String, canMo
                 style = AppAdaptiveAmountRowStyle(trailingWeight = AppAdaptiveAmountRowDefaults.listTrailingWeight)) {
                 Text(entry.root.merchant ?: entry.root.category, style = MaterialTheme.typography.titleMedium)
             }
-            Text(listOfNotNull(entry.streamDate, entry.offset?.category ?: entry.root.category).joinToString(" · "),
+            Text(listOfNotNull(entry.streamDate, offset?.category ?: entry.root.category).joinToString(" · "),
                 color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            if (entry.offset != null) Text(stringResource(R.string.saved_query_offset))
+            if (offset != null) Text(stringResource(R.string.saved_query_offset))
             if (originalMinor != null && originalCurrency != null) Text(stringResource(R.string.saved_query_original,
                 "${formatDisplayAmount(originalMinor, CurrencyDisplay.forRecord(originalCurrency))} $originalCurrency"))
-            row.projectionGap?.toDomain()?.let { gap ->
+            row.projectionGap?.let { gap ->
                 Text(stringResource(R.string.saved_query_projection_missing))
                 if (canModify && gap.canEnterManualRate()) AppSecondaryButton(stringResource(R.string.saved_query_rate_repair),
                     onClick = { actions.repairRate(gap) })
@@ -151,7 +152,7 @@ private fun SavedQueryResult(row: SavedViewResultRowDto, currency: String, canMo
 }
 
 @Composable
-internal fun savedQueryConditions(query: SavedViewDefinitionRequestDto, tagName: String?): String = listOfNotNull(
+internal fun savedQueryConditions(query: SavedViewDefinitionRequest, tagName: String?): String = listOfNotNull(
     if (query.filter.isEmpty()) {
         if (query.monthMode == "current") stringResource(R.string.saved_query_current) else query.month
     } else queryScopeLabel(query.filter), query.queryText, query.category, tagName, query.homeCurrencyCode,

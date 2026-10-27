@@ -148,7 +148,7 @@ class UploadIntentRepository internal constructor(
 
 
     private fun describe(row: OutboxRow): PendingUploadIntent = PendingUploadIntent(
-        row, payloadAdapter.readSupportedUpload(row), row.receiptJson?.let(receiptAdapter::readUploadJsonOrNull),
+        row, payloadAdapter.readSupportedUpload(row), row.receiptJson?.let(receiptAdapter::readUploadJsonOrNull)?.toPendingUploadReceipt(),
     )
 
 

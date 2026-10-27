@@ -513,7 +513,7 @@ class ExpenseEditScreenContractTest {
         composeRule.onNodeWithText("保存").assertIsDisplayed()
         composeRule.onNodeWithText("忽略").assertIsDisplayed()
         capture("review-header")
-        composeRule.onNodeWithText(com.ticketbox.ui.components.formatAmountInput(amount,
+        composeRule.onNodeWithText(com.ticketbox.presentation.formatAmountInput(amount,
             com.ticketbox.domain.model.CurrencyCode.Default))
             .performScrollTo().assertIsDisplayed()
         capture("review-amount")

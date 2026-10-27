@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.domain.model.repaymentVoidActionAllowed
 import androidx.compose.material3.Text
 
 import androidx.compose.foundation.layout.Arrangement

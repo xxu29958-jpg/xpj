@@ -24,7 +24,7 @@ data class RepaymentReviewPayload(
 @JsonClass(generateAdapter = true)
 data class RepaymentDismissPayload(val revision: Int, val draftPublicId: String, val binding: LogicalSessionBinding)
 
-internal fun OutboxRow.describeRepaymentReview(adapter: JsonAdapter<RepaymentReviewPayload>): PendingDebtWrite {
+internal fun OutboxRow.readOriginalRepaymentReview(adapter: JsonAdapter<RepaymentReviewPayload>): RepaymentReviewPayload? {
     val intent = try {
         adapter.fromJson(payloadJson)?.takeIf {
             it.revision == 1 && it.draftPublicId.isNotBlank() && it.subject.publicId == it.request.targetDebtPublicId &&
@@ -37,5 +37,8 @@ internal fun OutboxRow.describeRepaymentReview(adapter: JsonAdapter<RepaymentRev
     } catch (_: IOException) {
         null
     }
-    return PendingDebtWrite(this, intent)
+    return intent
 }
+
+internal fun OutboxRow.describeRepaymentReview(adapter: JsonAdapter<RepaymentReviewPayload>): PendingDebtWrite =
+    PendingDebtWrite(this, readOriginalRepaymentReview(adapter)?.toView())

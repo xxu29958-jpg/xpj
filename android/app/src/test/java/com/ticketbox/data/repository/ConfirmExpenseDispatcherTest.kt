@@ -67,7 +67,7 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         val row = confirmRow(idempotencyKey = "original-confirm")
         val result = dispatcherFor(stub).dispatch(row) as DispatchResult.Success
         val retained = expenseConfirmationReceiptSnapshot(row.copy(status = PendingMutationStatus.Done, receiptJson = result.receiptJson))
-        assertEquals(original.confirmationReceipt, retained)
+        assertEquals(original.confirmationReceipt?.toDomain(), retained)
         assertEquals(current, published.single().second)
         assertEquals(9L, result.newRowVersion)
     }

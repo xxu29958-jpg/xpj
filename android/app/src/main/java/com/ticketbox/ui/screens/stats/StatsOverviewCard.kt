@@ -27,7 +27,7 @@ import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppAdaptiveMetricGrid
 import com.ticketbox.ui.components.AppAdaptiveMetricGridCompactMinWidth
 import com.ticketbox.ui.components.displayMonthLabel
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius

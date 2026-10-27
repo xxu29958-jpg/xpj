@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.domain.model.RecurringHistoryPage
 import com.ticketbox.R
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -958,7 +959,7 @@ private class FakeRecurringQueryActions(
     ): Result<com.ticketbox.data.repository.ReadSnapshot<List<RecurringItem>>> = items(status, includeArchived, month)
         .map { com.ticketbox.data.repository.ReadSnapshot(it, "2026-09-27T10:00:00Z", false) }
     override suspend fun history(binding: LogicalSessionBinding, publicId: String, beforeVersion: Long?):
-        Result<com.ticketbox.data.repository.ReadSnapshot<com.ticketbox.data.remote.dto.RecurringHistoryPageDto>> =
+        Result<com.ticketbox.data.repository.ReadSnapshot<com.ticketbox.domain.model.RecurringHistoryPage>> =
             error("Unused recurring definition history")
     override suspend fun candidates(
         expectedBinding: LogicalSessionBinding,

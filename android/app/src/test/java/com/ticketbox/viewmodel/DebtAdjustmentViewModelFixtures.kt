@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.toView
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
@@ -149,7 +150,7 @@ internal fun pendingAdjustment(
             completedAt = if (status == PendingMutationStatus.Done) "2026-09-06T08:01:00Z" else null,
             idempotencyKey = "original-adjustment-$id",
         ),
-        intent = payload,
+        intent = payload.toView(),
     )
 }
 
@@ -160,7 +161,7 @@ internal fun pendingKind(debt: Debt, kind: String, status: PendingMutationStatus
     val original = pendingAdjustment(status = status, binding = binding).row
     return PendingDebtWrite(original.copy(type = PendingMutationType.SetDebtKind, targetId = "debt:${debt.publicId}",
         payloadJson = com.ticketbox.OutboxAdapterGraph().debt.debtKindAdapter.toJson(intent),
-        expectedRowVersion = debt.rowVersion, idempotencyKey = "original-kind-1"), intent)
+        expectedRowVersion = debt.rowVersion, idempotencyKey = "original-kind-1"), intent.toView())
 }
 
 internal class AdjustmentDetailActions : DebtActions by FakeDebtActions() {

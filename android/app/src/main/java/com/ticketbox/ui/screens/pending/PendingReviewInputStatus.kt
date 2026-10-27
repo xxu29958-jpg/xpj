@@ -17,7 +17,7 @@ import com.ticketbox.R
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.expenseTimeLabel
-import com.ticketbox.ui.components.formatExpensePrimaryAmount
+import com.ticketbox.presentation.formatExpensePrimaryAmount
 import com.ticketbox.viewmodel.PendingReviewTask
 
 @Composable

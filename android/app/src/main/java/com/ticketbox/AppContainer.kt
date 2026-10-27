@@ -1,6 +1,5 @@
 package com.ticketbox
 
-import com.ticketbox.data.repository.toDomain
 
 import com.ticketbox.data.local.PendingMutationType
 
@@ -29,7 +28,6 @@ import com.ticketbox.data.repository.OutboxMutationDispatcher
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxScheduler
-import com.ticketbox.data.repository.OutboxWriteBlock
 import com.ticketbox.data.repository.UploadIntentFileStore
 import com.ticketbox.data.repository.UploadIntentRepository
 import com.ticketbox.data.repository.UploadScreenshotDispatcher
@@ -46,22 +44,13 @@ import com.ticketbox.data.repository.IncomePlanDispatcher
 import com.ticketbox.data.repository.UpdateMerchantAliasDispatcher
 import com.ticketbox.data.repository.UpdateRecurringItemDispatcher
 import com.ticketbox.data.repository.VoidExpenseOffsetDispatcher
-import com.ticketbox.data.repository.bindingOrNull
-import com.ticketbox.data.repository.notifyConfirmedExpenseWrite
 import com.ticketbox.data.repository.reconcileLocalSession
-import com.ticketbox.data.repository.toEntity
-import com.ticketbox.data.remote.dto.ExpenseDto
-import com.ticketbox.data.repository.toCacheProjection
-import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
-import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
-import com.ticketbox.data.remote.dto.toWriteCompatibility
 import com.ticketbox.data.repository.toOutboxBinding
 import com.ticketbox.security.SecureSessionStore
 import com.ticketbox.security.SessionCredentialAdapter
 import com.ticketbox.security.isBusinessReady
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 
 class AppContainer(context: Context) {
@@ -93,7 +82,7 @@ class AppContainer(context: Context) {
     )
     private val outboxAdapters = OutboxAdapterGraph()
     private val uploadFiles = UploadIntentFileStore(appContext)
-    private val outboxWriteBlock = MutableStateFlow<OutboxWriteBlock?>(null)
+    internal val outboxCompatibility = com.ticketbox.data.repository.OutboxRuntimeCompatibility(outboxRequestGuard)
 
     val outboxScheduler = OutboxScheduler()
 
@@ -126,13 +115,13 @@ class AppContainer(context: Context) {
         // Re-arm right here so the periodic tick survives the
         // session boundary.
         onClearAll = {
-            outboxWriteBlock.value = null
+            outboxCompatibility.clearSession()
             outboxScheduler.cancel(appContext)
             if (sessionStore.currentSession().isBusinessReady()) {
                 outboxScheduler.ensurePeriodic(appContext)
             }
         },
-        writeBlock = outboxWriteBlock,
+        writeBlock = outboxCompatibility.writeBlock,
         onRowsDeleted = { uploadIntentRepository.collectOrphans() },
     )
 
@@ -141,42 +130,7 @@ class AppContainer(context: Context) {
         outboxAdapters.upload, settingsStore, database.expenseDao(),
     )
 
-    private fun outboxApi(row: OutboxRow) = outboxRequestGuard
-        .bind(expectedLedgerId = row.ledgerId)
-        .serviceFor(
-            row.bindingOrNull()
-                ?: throw IllegalStateException("Outbox row has no verified owner binding."),
-        )
-
     internal val notificationCaptureRepository = com.ticketbox.data.repository.NotificationCaptureRepository(apiServiceProvider, outboxRepository)
-
-    internal suspend fun outboxWriteCompatibility(): RuntimeWriteCompatibility =
-        outboxRequestGuard.guardedCall { api ->
-            api.runtimeCompatibility().toWriteCompatibility().also { compatibility ->
-                outboxWriteBlock.value = if (compatibility.conclusion == "owner_action_required") {
-                    OutboxWriteBlock.CURRENCY_ADOPTION_REQUIRED
-                } else {
-                    null
-                }
-            }
-        }
-
-    private suspend fun publishExpenseSnapshot(ledgerId: String, expense: ExpenseDto) {
-        val accepted = database.expenseDao().applyServerExpense(ledgerId, expense.toEntity(ledgerId))
-        if (accepted && expense.status == "confirmed") {
-            notifyConfirmedExpenseWrite(ledgerId, expenseRepository.onConfirmedCommitted)
-        }
-    }
-
-    private suspend fun publishExpenseFactBundle(ledgerId: String, bundle: ExpenseFactBundleDto) {
-        val projection = bundle.toCacheProjection(ledgerId)
-        val accepted = database.expenseDao().applyExpenseFactBundle(
-            ledgerId = ledgerId,
-            root = projection.root,
-            activeOffsets = projection.activeOffsets,
-        )
-        if (accepted) notifyConfirmedExpenseWrite(ledgerId, expenseRepository.onConfirmedCommitted)
-    }
 
     /**
      * Registered dispatchers. PR-2g.2 wired the first dispatcher
@@ -202,20 +156,20 @@ class AppContainer(context: Context) {
      */
     private val outboxDispatchers: List<OutboxMutationDispatcher> by lazy {
         listOf(
-            com.ticketbox.data.repository.OriginalAttachmentDispatcher(::outboxApi, uploadFiles::read),
+            com.ticketbox.data.repository.OriginalAttachmentDispatcher(outboxRequestGuard::serviceForOutbox, uploadFiles::read),
             UploadScreenshotDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.upload.uploadPayloadAdapter,
                 receiptAdapter = outboxAdapters.upload.uploadReceiptAdapter,
                 readOriginal = uploadFiles::read,
             ),
             PatchExpenseDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.patchExpenseAdapter,
-                publishExpense = ::publishExpenseSnapshot,
+                publishExpense = expenseRepository.receiptPublication::publishSnapshot,
             ),
             CorrectExpenseDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.correctionAdapter,
                 publishAuthoritativeProjection = { row, expense -> expenseRepository.publishDeliveredCorrection(row, expense) },
                 onConfirmedCommitted = { ledgerId -> expenseRepository.onConfirmedCommitted(ledgerId) },
@@ -225,142 +179,137 @@ class AppContainer(context: Context) {
             // back onto the optimistic local row (resolved by clientRef) so its domain
             // id flips from the negative local stand-in to the real server id.
             CreateExpenseDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.manualCreateAdapter,
                 originAdapter = outboxAdapters.recurringPaymentCreateAdapter,
-                applyServerIdentity = { ledgerId, clientRef, created ->
-                    database.expenseDao().applyLocalCreateServerIdentity(
-                        ledgerId,
-                        created.toEntity(ledgerId).copy(clientRef = clientRef),
-                    )
-                },
+                applyServerIdentity = expenseRepository.receiptPublication::applyServerIdentity,
             ),
             CreateExpenseOffsetDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.offsetCreateAdapter,
-                publishBundle = ::publishExpenseFactBundle,
+                publishBundle = expenseRepository.receiptPublication::publishBundle,
             ),
             VoidExpenseOffsetDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.offsetVoidAdapter,
-                publishBundle = ::publishExpenseFactBundle,
+                publishBundle = expenseRepository.receiptPublication::publishBundle,
             ),
-            CategoryRuleDispatcher(PendingMutationType.CreateCategoryRule, ::outboxApi,
+            CategoryRuleDispatcher(PendingMutationType.CreateCategoryRule, outboxRequestGuard::serviceForOutbox,
                 outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
-            CategoryRuleDispatcher(PendingMutationType.UpdateCategoryRule, ::outboxApi,
+            CategoryRuleDispatcher(PendingMutationType.UpdateCategoryRule, outboxRequestGuard::serviceForOutbox,
                 outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
-            CategoryRuleDispatcher(PendingMutationType.DeleteCategoryRule, ::outboxApi,
+            CategoryRuleDispatcher(PendingMutationType.DeleteCategoryRule, outboxRequestGuard::serviceForOutbox,
                 outboxAdapters.categoryRuleSubmissionAdapter, outboxAdapters.categoryRuleReceiptAdapter),
-            com.ticketbox.data.repository.ApplyConfirmedRulesDispatcher(::outboxApi,
+            com.ticketbox.data.repository.ApplyConfirmedRulesDispatcher(outboxRequestGuard::serviceForOutbox,
                 outboxAdapters.ruleApplicationAdapter, outboxAdapters.ruleApplicationReceiptAdapter,
                 refreshConfirmed = { row -> ruleRepository.refreshAcceptedApplication(row).getOrThrow() }),
             // PR-2g.5: DELETE /api/merchants/aliases/{publicId} via outbox.
             DeleteMerchantAliasDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.merchantAliasDeleteAdapter,
             ),
             // PR-2g.6: PATCH /api/merchants/aliases/{publicId} via outbox.
             UpdateMerchantAliasDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.merchantAliasUpdateAdapter,
             ),
             // PR-2g.7: POST /api/expenses/{id}/confirm via outbox.
             ConfirmExpenseDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.expenseStateTokenAdapter,
-                publishExpense = ::publishExpenseSnapshot,
+                publishExpense = expenseRepository.receiptPublication::publishSnapshot,
             ),
             // PR-2g.7: POST /api/expenses/{id}/reject via outbox.
             RejectExpenseDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.expenseStateTokenAdapter,
-                publishExpense = ::publishExpenseSnapshot,
+                publishExpense = expenseRepository.receiptPublication::publishSnapshot,
             ),
             UndoExpenseDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.expenseStateTokenAdapter,
-                publishExpense = ::publishExpenseSnapshot,
+                publishExpense = expenseRepository.receiptPublication::publishSnapshot,
             ),
             // PR-2g.8: POST /api/expenses/{id}/mark-not-duplicate via outbox.
             MarkNotDuplicateDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.expenseStateTokenAdapter,
-                publishExpense = ::publishExpenseSnapshot,
+                publishExpense = expenseRepository.receiptPublication::publishSnapshot,
             ),
             // PR-2g.8: POST /api/expenses/{id}/ocr/retry via outbox.
             RetryOcrDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.expenseStateTokenAdapter,
-                publishExpense = ::publishExpenseSnapshot,
+                publishExpense = expenseRepository.receiptPublication::publishSnapshot,
             ),
             // PR-2g.9: POST /api/expenses/{id}/items/acknowledge-mismatch via outbox.
             AcknowledgeItemsMismatchDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.expenseStateTokenAdapter,
             ),
             // PR-D: PUT /api/expenses/{id}/items via outbox (offline items editor).
             ReplaceItemsDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.replaceItemsAdapter,
             ),
             // ADR-0042 Slice E-1: PUT /api/expenses/{id}/splits via outbox
             // (offline splits editor).
             ReplaceSplitsDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.replaceSplitsAdapter,
             ),
             // ADR-0042 Slice E-2: POST /api/expenses/{id}/recognize-text via outbox
             // (offline "粘贴文字识别").
             RecognizeTextDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.recognizeTextAdapter,
-                publishExpense = ::publishExpenseSnapshot,
+                publishExpense = expenseRepository.receiptPublication::publishSnapshot,
             ),
             com.ticketbox.data.repository.CreateGoalDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.goalCreateAdapter,
                 receiptAdapter = outboxAdapters.goalReceiptAdapter,
                 onAccepted = reportsRepository::invalidateGoalReadsAfterDelivery,
             ),
             // ADR-0042 Slice F: PATCH /api/goals/{publicId} via outbox.
             UpdateGoalDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.goalUpdateAdapter,
                 receiptAdapter = outboxAdapters.goalReceiptAdapter,
                 onAccepted = reportsRepository::invalidateGoalReadsAfterDelivery,
             ),
-            com.ticketbox.data.repository.DebtGoalEditDispatcher(::outboxApi,
+            com.ticketbox.data.repository.DebtGoalEditDispatcher(outboxRequestGuard::serviceForOutbox,
                 outboxAdapters.goalDebtEditAdapter, outboxAdapters.goalReceiptAdapter,
                 type = PendingMutationType.ReplaceGoalDebtLinks, onAccepted = reportsRepository::invalidateGoalReadsAfterDelivery),
-            com.ticketbox.data.repository.DebtGoalEditDispatcher(::outboxApi,
+            com.ticketbox.data.repository.DebtGoalEditDispatcher(outboxRequestGuard::serviceForOutbox,
                 outboxAdapters.goalDebtEditAdapter, outboxAdapters.goalReceiptAdapter,
                 type = PendingMutationType.SetGoalTargetDate,
                 onAccepted = reportsRepository::invalidateGoalReadsAfterDelivery),
             // ADR-0042 Slice F: PATCH /api/income-plans/{publicId} via outbox.
-            IncomePlanDispatcher(PendingMutationType.CreateIncomePlan, ::outboxApi,
+            IncomePlanDispatcher(PendingMutationType.CreateIncomePlan, outboxRequestGuard::serviceForOutbox,
                 outboxAdapters.incomePlanSubmissionAdapter, outboxAdapters.incomePlanReceiptAdapter),
-            IncomePlanDispatcher(PendingMutationType.UpdateIncomePlan, ::outboxApi,
+            IncomePlanDispatcher(PendingMutationType.UpdateIncomePlan, outboxRequestGuard::serviceForOutbox,
                 outboxAdapters.incomePlanSubmissionAdapter, outboxAdapters.incomePlanReceiptAdapter),
             com.ticketbox.data.repository.SaveMonthlyBudgetDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.budget.budgetSaveAdapter,
                 receiptAdapter = outboxAdapters.budget.budgetReceiptAdapter,
                 onAccepted = budgetRepository.invalidateBudgetReadsAfterDelivery,
             ),
-            com.ticketbox.data.repository.SaveMonthlyArrangementDispatcher(::outboxApi,
+            com.ticketbox.data.repository.SaveMonthlyArrangementDispatcher(outboxRequestGuard::serviceForOutbox,
                 outboxAdapters.budget.arrangementSaveAdapter, outboxAdapters.budget.arrangementReceiptAdapter),
-            com.ticketbox.data.repository.ManualExchangeRateDispatcher(::outboxApi,
+            com.ticketbox.data.repository.ManualExchangeRateDispatcher(outboxRequestGuard::serviceForOutbox,
                 outboxAdapters.budget.manualRateAdapter, outboxAdapters.budget.manualRateReceiptAdapter),
             com.ticketbox.data.repository.ConfirmRecurringCandidateDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.recurring.recurringCandidateAdapter,
             ),
             CreateRecurringItemDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.recurring.recurringCreateAdapter,
             ),
             com.ticketbox.data.repository.SplitAgreementDispatcher(
-                ::outboxApi, outboxAdapters.splitAgreementAdapter, outboxAdapters.splitAgreementReceiptAdapter,
+                outboxRequestGuard::serviceForOutbox, outboxAdapters.splitAgreementAdapter, outboxAdapters.splitAgreementReceiptAdapter,
             ),
             com.ticketbox.data.repository.RecordDebtAdjustmentDispatcher(
                 guard = outboxRequestGuard,
@@ -375,11 +324,11 @@ class AppContainer(context: Context) {
             ),
             com.ticketbox.data.repository.ConfirmRepaymentDraftDispatcher(outboxRequestGuard,
                 outboxAdapters.debt.repaymentReviewAdapter, outboxAdapters.debt.repaymentDraftReceiptAdapter,
-                ::publishExpenseFactBundle),
+                expenseRepository.receiptPublication::publishBundle),
             com.ticketbox.data.repository.DismissRepaymentDraftDispatcher(outboxRequestGuard,
                 outboxAdapters.debt.repaymentDismissAdapter, outboxAdapters.debt.repaymentDraftReceiptAdapter),
             com.ticketbox.data.repository.PaymentCaptureResolutionDispatcher(outboxRequestGuard,
-                { binding, expense -> publishExpenseSnapshot(binding.ledgerId, expense) }),
+                { binding, expense -> expenseRepository.receiptPublication.publishSnapshot(binding.ledgerId, expense) }),
             com.ticketbox.data.repository.FundsCommandDispatcher(outboxRequestGuard),
             com.ticketbox.data.repository.VoidDebtRepaymentDispatcher(
                 outboxRequestGuard, outboxAdapters.debt.debtRepaymentVoidAdapter, outboxAdapters.debt.debtVoidReceiptAdapter,
@@ -388,32 +337,30 @@ class AppContainer(context: Context) {
                 outboxRequestGuard, outboxAdapters.debt.debtKindAdapter, outboxAdapters.debt.debtVoidReceiptAdapter,
             ),
             CreateDebtDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.debt.debtCreateAdapter,
             ),
             com.ticketbox.data.repository.NotificationCaptureDispatcher(outboxRequestGuard,
-                    onExpense = { binding, created ->
-                        publishExpenseSnapshot(binding.ledgerId, created)
-                        notifier.onDraftCreated(created.toDomain(), binding)
-                    },
-                    onRepayment = { binding, created -> notifier.onRepaymentDraftCreated(created.toDomain(), binding) },
+                    publishExpense = expenseRepository.receiptPublication::publishSnapshot,
+                    onExpense = { binding, created -> notifier.onDraftCreated(created, binding) },
+                    onRepayment = { binding, created -> notifier.onRepaymentDraftCreated(created, binding) },
                     onReview = { binding, id -> notifier.onPaymentReviewCreated(id, binding) }),
             com.ticketbox.data.repository.CreateBillSplitDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.billSplitCreateAdapter,
                 receiptAdapter = outboxAdapters.billSplitReceiptAdapter,
             ),
             com.ticketbox.data.repository.AcceptBillSplitDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.billSplitAcceptAdapter,
                 receiptAdapter = outboxAdapters.billSplitAcceptedAdapter,
             ),
             com.ticketbox.data.repository.RecurringOccurrenceDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.recurring.recurringOccurrenceAdapter,
             ),
             UpdateRecurringItemDispatcher(
-                apiProvider = ::outboxApi,
+                apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.recurring.recurringUpdateAdapter,
             ),
         )

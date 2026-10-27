@@ -15,7 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.ticketbox.data.remote.dto.FinancialAccountDto
+import com.ticketbox.domain.model.FinancialAccount
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppPageRole
@@ -25,7 +25,7 @@ import com.ticketbox.ui.components.AppSecondaryPageChrome
 import com.ticketbox.ui.components.AppSecondaryPageSlots
 import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.viewmodel.FundsUiState
@@ -105,7 +105,7 @@ private fun fundsBottomAction(state: FundsUiState, viewModel: FundsViewModel): (
     return { AppFloatingActionBar { AppPrimaryButton(stringResource(R.string.funds_add_account), modifier = Modifier.fillMaxWidth()) { viewModel.start("create") } } }
 }
 
-private fun LazyListScope.accountDetail(state: FundsUiState, detail: FinancialAccountDto, viewModel: FundsViewModel, onExpense: (Long) -> Unit) {
+private fun LazyListScope.accountDetail(state: FundsUiState, detail: FinancialAccount, viewModel: FundsViewModel, onExpense: (Long) -> Unit) {
     val canModify = state.access?.canModify == true
     item { AccountDetailHeader(state, detail, viewModel) }
     if (detail.feeObligations.isNotEmpty()) item {
@@ -133,7 +133,7 @@ private fun LazyListScope.accountDetail(state: FundsUiState, detail: FinancialAc
 }
 
 @Composable
-private fun AccountDetailHeader(state: FundsUiState, detail: FinancialAccountDto, viewModel: FundsViewModel) {
+private fun AccountDetailHeader(state: FundsUiState, detail: FinancialAccount, viewModel: FundsViewModel) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         FundsHeroCard(label = stringResource(detail.balanceLabelRes()), amount = detail.balanceText()) {
             Text(stringResource(R.string.funds_account_meta, fundKinds()[detail.kind].orEmpty(), detail.currencyCode,
@@ -152,7 +152,7 @@ private fun AccountDetailHeader(state: FundsUiState, detail: FinancialAccountDto
 }
 
 @Composable
-private fun AccountDetailRecords(state: FundsUiState, detail: FinancialAccountDto, viewModel: FundsViewModel) {
+private fun AccountDetailRecords(state: FundsUiState, detail: FinancialAccount, viewModel: FundsViewModel) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         CreditApplicationsRead(detail, state.access?.canModify == true, viewModel)
         FundsPriorRepayments(detail, state.access?.canModify == true, viewModel)
@@ -163,7 +163,7 @@ private fun AccountDetailRecords(state: FundsUiState, detail: FinancialAccountDt
     }
 }
 
-private fun FinancialAccountDto.balanceLabelRes(): Int = when {
+private fun FinancialAccount.balanceLabelRes(): Int = when {
     kind != "credit" -> R.string.funds_balance_current
     balanceMinor != null && balanceMinor > 0 -> R.string.funds_balance_surplus
     else -> R.string.funds_balance_debt

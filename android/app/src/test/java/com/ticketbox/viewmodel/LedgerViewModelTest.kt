@@ -1107,7 +1107,7 @@ class LedgerViewModelCurrencyRelatchTest {
             override fun cached(binding: com.ticketbox.data.repository.LogicalSessionBinding, revision: Long?) =
                 null
             override suspend fun refresh(binding: com.ticketbox.data.repository.LogicalSessionBinding, revision: Long?) =
-                Result.success<com.ticketbox.data.remote.dto.LedgerCalendarDto?>(null)
+                Result.success<com.ticketbox.domain.model.LedgerCalendar?>(null)
         }
         val debts = DeferredLedgerDebtActions()
         val vm = LedgerViewModel(FakeLedgerActions(expenses = emptyList()), debts, calendars = calendars)

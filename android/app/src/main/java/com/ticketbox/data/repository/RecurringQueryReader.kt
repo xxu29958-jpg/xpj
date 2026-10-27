@@ -213,21 +213,23 @@ internal class RecurringQueryReader(
         }.map { ReadSnapshot(it.value.items.map { row -> row.toDomain() }, it.fetchedAt, it.fromCache) }.getOrThrow()
     }
 
-    suspend fun history(binding: LogicalSessionBinding, publicId: String, before: Long?): Result<ReadSnapshot<RecurringHistoryPageDto>> =
+    suspend fun history(binding: LogicalSessionBinding, publicId: String, before: Long?): Result<ReadSnapshot<com.ticketbox.domain.model.RecurringHistoryPage>> =
         errors.safeCall {
             require(publicId.isNotBlank() && (before == null || before > 0)) { "固定支出历史范围不正确。" }
             read(binding, recurringScope(binding, "recurring_history", "", "$publicId:50:$before", "UTC"), historyAdapter,
-                { recurringHistory(publicId, 50, before) }) { it.validateHistory(binding, publicId, before) }.getOrThrow()
+                { recurringHistory(publicId, 50, before) }) { it.validateHistory(binding, publicId, before) }
+                .map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }.getOrThrow()
         }
 
-    suspend fun occurrence(binding: LogicalSessionBinding, publicId: String, period: String): Result<ReadSnapshot<RecurringOccurrenceDto>> =
+    suspend fun occurrence(binding: LogicalSessionBinding, publicId: String, period: String): Result<ReadSnapshot<com.ticketbox.domain.model.RecurringOccurrence>> =
         errors.safeCall {
             require(publicId.isNotBlank() && (period == "current" || YearMonth.parse(period).toString() == period)) {
                 "固定支出期次范围不正确。"
             }
             // A current read retains the server's actual period, never a locally guessed month.
             read(binding, recurringScope(binding, "recurring_occurrence", period, publicId, "UTC"), occurrenceAdapter,
-                { recurringOccurrence(publicId, period) }) { it.validateOccurrence(publicId, period) }.getOrThrow()
+                { recurringOccurrence(publicId, period) }) { it.validateOccurrence(publicId, period) }
+                .map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }.getOrThrow()
         }
 
     private suspend fun <T> read(binding: LogicalSessionBinding, query: StatsProjectionCacheEntity, adapter: JsonAdapter<T>,

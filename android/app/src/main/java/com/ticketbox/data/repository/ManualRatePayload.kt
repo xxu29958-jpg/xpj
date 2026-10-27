@@ -32,9 +32,12 @@ data class ManualRatePayload(val revision: Int, val month: String,
         receipt.rateToHome.toBigDecimalOrNull()?.compareTo(request.rateToHome.toBigDecimal()) == 0
 }
 
-data class PendingManualRateSubmission(val row: OutboxRow, val intent: ManualRatePayload?, val receipt: ExchangeRateDto?) {
+data class PendingManualRateSubmission(val row: OutboxRow,
+    val intent: ManualRateSubmission?, val receipt: com.ticketbox.domain.model.ExchangeRate?, val supported: Boolean) {
+    internal constructor(row: OutboxRow, intent: ManualRatePayload?, receipt: ExchangeRateDto?) :
+        this(row, intent?.toView(), receipt?.toDomain(), intent?.supports(row) == true)
     val isConfirmed: Boolean get() = row.status == PendingMutationStatus.Done && receipt != null
-    val canRetry: Boolean get() = intent?.supports(row) == true && row.status == PendingMutationStatus.Failed &&
+    val canRetry: Boolean get() = supported && row.status == PendingMutationStatus.Failed &&
         (row.lastError?.startsWith("max_attempts_exceeded(") == true ||
             row.lastError in setOf("client_upgrade_required", "runtime_version_mismatch"))
     val canDrop: Boolean get() = row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict) ||
@@ -43,3 +46,13 @@ data class PendingManualRateSubmission(val row: OutboxRow, val intent: ManualRat
 
 internal fun manualRateTarget(request: ExchangeRateRequestDto) =
     "manual_rate:${request.currencyCode}:${request.homeCurrencyCode}:${request.rateDate}"
+
+data class ManualRateSubmission(val revision: Int, val month: String,
+    val originalPublicId: String?, val request: com.ticketbox.domain.model.ExchangeRateRequest)
+
+internal fun ManualRatePayload.toView() = ManualRateSubmission(
+    revision = revision,
+    month = month,
+    originalPublicId = originalPublicId,
+    request = request.toDomain(),
+)

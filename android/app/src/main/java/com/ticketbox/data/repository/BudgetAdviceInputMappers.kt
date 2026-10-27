@@ -2,7 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
 import com.ticketbox.data.remote.dto.MissingExchangeRateDto
-import com.ticketbox.domain.model.BudgetAdviceArrangement
+import com.ticketbox.domain.model.MonthlyArrangement
 import com.ticketbox.domain.model.BudgetAdviceBreakdown
 import com.ticketbox.domain.model.BudgetAdviceDataScope
 import com.ticketbox.domain.model.BudgetAdviceInputs
@@ -18,8 +18,7 @@ fun BudgetAdviceInputsDto.toDomain() = BudgetAdviceInputs(
     referenceRates = referenceRates.map { it.toDomain() },
     inputsFingerprint = inputsFingerprint,
     undatedExpenseCount = undatedExpenseCount,
-    savedArrangement = savedArrangement?.let { BudgetAdviceArrangement(it.ledgerId, it.month, it.homeCurrencyCode,
-        it.savingsTargetCents, it.reservedBufferCents, it.rowVersion, it.updatedAt) },
+    savedArrangement = savedArrangement?.toDomain(),
     isTrial = isTrial,
     arrangementCurrencyCode = arrangementCurrencyCode,
     budgetDefinition = budgetDefinition?.let { BudgetPlanDefinition(it.homeCurrencyCode, it.totalAmountCents,

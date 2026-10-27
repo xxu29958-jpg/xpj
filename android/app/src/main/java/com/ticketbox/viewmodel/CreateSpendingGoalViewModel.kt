@@ -10,7 +10,7 @@ import com.ticketbox.data.repository.PendingGoalCreation
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.parseAmountCents
 import java.time.YearMonth
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow

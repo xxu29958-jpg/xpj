@@ -18,7 +18,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto
+import com.ticketbox.domain.model.SavedViewDefinitionRequest
 import com.ticketbox.data.repository.queryDefinition
 import com.ticketbox.ui.components.AppBusyGuardedSheet
 import com.ticketbox.ui.design.LocalCurrencyCode
@@ -52,7 +52,7 @@ private fun SavedQueryRoute(entry: NavBackStackEntry, dependencies: MainProductR
     var initialHandled by rememberSaveable { mutableStateOf(false) }
     val create = {
         val month = entry.arguments?.getString("month").orEmpty()
-        slot = model.drafts.begin(SavedViewDefinitionRequestDto("", if (month.isBlank()) "current" else "fixed",
+        slot = model.drafts.begin(SavedViewDefinitionRequest("", if (month.isBlank()) "current" else "fixed",
             month.ifBlank { null }, "", null, currency, entry.arguments?.getString("q").orEmpty(), entry.arguments?.getString("category").orEmpty()))
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {

@@ -70,8 +70,8 @@ class OutboxDrainWorker(
             return Result.success()
         }
         val outcome = runCompatibleDrain(
-            logWarning = { message, error -> Log.w(TAG, message, error) },
-            compatibility = container::outboxWriteCompatibility,
+            logWarning = ::logNetworkWarning,
+            compatibility = container.outboxCompatibility::refresh,
         ) { container.outboxDrainEngine.drainOnce() }
         return when (outcome) {
             DrainOutcome.SUCCESS -> Result.success()

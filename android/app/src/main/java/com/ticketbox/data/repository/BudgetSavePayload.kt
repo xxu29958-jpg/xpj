@@ -21,11 +21,13 @@ data class BudgetSavePayload(
 
 data class PendingBudgetSave(
     val row: OutboxRow,
-    val intent: BudgetSavePayload?,
+    val intent: BudgetSaveSubmission?,
     val receipt: com.ticketbox.domain.model.BudgetMonthly?,
+    val hasSupportedIntent: Boolean,
 ) {
+    internal constructor(row: OutboxRow, intent: BudgetSavePayload?, receipt: com.ticketbox.domain.model.BudgetMonthly?) :
+        this(row, intent?.toView(), receipt, intent?.matches(row) == true)
     val requiresReadRefresh: Boolean get() = row.requiresBudgetReadRefresh()
-    val hasSupportedIntent: Boolean get() = intent?.matches(row) == true
     val canRetry: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Failed &&
         row.lastError != BUDGET_CURRENCY_CONFLICT && row.lastError?.startsWith("outbox_row_expired") != true
 }
@@ -54,3 +56,17 @@ private fun BudgetSavePayload.isSupported(): Boolean = revision == 1 && request.
         ZoneId.of(timezone)
         YearMonth.parse(month).toString() == month
     }.getOrDefault(false)
+
+data class BudgetSaveSubmission(
+    val revision: Int,
+    val month: String,
+    val timezone: String,
+    val request: com.ticketbox.domain.model.BudgetMonthlyUpdate,
+)
+
+internal fun BudgetSavePayload.toView() = BudgetSaveSubmission(
+    revision = revision,
+    month = month,
+    timezone = timezone,
+    request = request.toDomain(),
+)

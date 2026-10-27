@@ -74,7 +74,7 @@ data class DebtDraft(
     val installmentCount: Int? = null,
     val installmentPeriodMonths: Int? = null,
     val note: String? = null,
-    val timeInput: com.ticketbox.data.remote.dto.ExpenseTimeInputDto? = null,
+    val timeInput: com.ticketbox.domain.model.ExpenseTimeInput? = null,
 )
 
 fun DebtDraft.toOutboxRequest(): DebtCreateOutboxRequest = DebtCreateOutboxRequest(
@@ -83,7 +83,7 @@ fun DebtDraft.toOutboxRequest(): DebtCreateOutboxRequest = DebtCreateOutboxReque
     counterpartyType = DebtCounterpartyTypes.EXTERNAL,
     counterpartyLabel = counterpartyLabel.trim(),
     note = note?.trim()?.ifBlank { null },
-    timeInput = timeInput,
+    timeInput = timeInput?.toRequest(),
     principalAmountCents = principalAmountCents,
     sourceType = DebtSourceTypes.MANUAL,
     debtKind = debtKind,

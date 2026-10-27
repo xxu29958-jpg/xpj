@@ -9,7 +9,7 @@ import com.ticketbox.domain.model.ExpenseItemDraft
 import com.ticketbox.domain.model.ExpenseItemKind
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.parseAmountCents
 import kotlin.math.abs
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch

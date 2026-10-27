@@ -39,7 +39,7 @@ import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.HandoffQrCode
-import com.ticketbox.ui.components.displayTime
+import com.ticketbox.presentation.displayTime
 import com.ticketbox.ui.components.ledgerRoleLabelText
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.FamilyMembersUiState

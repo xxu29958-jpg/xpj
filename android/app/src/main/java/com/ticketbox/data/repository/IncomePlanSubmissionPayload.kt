@@ -83,9 +83,10 @@ data class IncomePlanSubmissionPayload(
         }
 }
 
-data class PendingIncomePlanSubmission(val row: OutboxRow, val intent: IncomePlanSubmissionPayload?,
-    val confirmed: IncomePlan? = null) {
-    val hasSupportedIntent: Boolean get() = intent?.supports(row) == true
+data class PendingIncomePlanSubmission(val row: OutboxRow, val intent: IncomePlanSubmission?,
+    val confirmed: IncomePlan?, val hasSupportedIntent: Boolean) {
+    internal constructor(row: OutboxRow, intent: IncomePlanSubmissionPayload?, confirmed: IncomePlan? = null) :
+        this(row, intent?.toView(), confirmed, intent?.supports(row) == true)
     val isConfirmed: Boolean get() = row.status == PendingMutationStatus.Done && confirmed != null
     val requiresReview: Boolean get() = row.status == PendingMutationStatus.Done && !isConfirmed
     val canRetry: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Failed &&
@@ -108,3 +109,25 @@ private fun validIncomeFields(request: IncomePlanUpdateRequestDto): Boolean =
         (request.sourceType == null || IncomeSourceType.entries.any { it.wireValue == request.sourceType }) &&
         (request.frequency == null || request.frequency in setOf("monthly", "one_time")) &&
         (request.incomeMonth == null || validMonth(request.incomeMonth))
+
+data class IncomePlanSubmission(
+    val revision: Int,
+    val planPublicId: String,
+    val originalLabel: String,
+    val originalAmountCents: Long,
+    val homeCurrencyCode: String,
+    val originSessionGeneration: String,
+    val originBindingRevision: String,
+    val request: com.ticketbox.domain.model.IncomePlanUpdateRequest,
+)
+
+internal fun IncomePlanSubmissionPayload.toView() = IncomePlanSubmission(
+    revision = revision,
+    planPublicId = planPublicId,
+    originalLabel = originalLabel,
+    originalAmountCents = originalAmountCents,
+    homeCurrencyCode = homeCurrencyCode,
+    originSessionGeneration = originSessionGeneration,
+    originBindingRevision = originBindingRevision,
+    request = request.toDomain(),
+)

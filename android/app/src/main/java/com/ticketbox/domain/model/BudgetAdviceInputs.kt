@@ -9,7 +9,7 @@ data class BudgetAdviceInputs(
     val referenceRates: List<CurrencyReferenceRate> = emptyList(),
     val inputsFingerprint: String? = null,
     val undatedExpenseCount: Int? = null,
-    val savedArrangement: BudgetAdviceArrangement? = null,
+    val savedArrangement: MonthlyArrangement? = null,
     val isTrial: Boolean = false,
     val arrangementCurrencyCode: String? = null,
     val budgetDefinition: BudgetPlanDefinition? = null,
@@ -34,7 +34,7 @@ data class BudgetAdviceBreakdown(
     val shortfallCents: Long? = null,
 )
 
-data class BudgetAdviceArrangement(
+data class MonthlyArrangement(
     val ledgerId: String,
     val month: String,
     val homeCurrencyCode: String,

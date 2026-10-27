@@ -44,3 +44,35 @@ private fun SplitAgreementPayload.hasSupportedCommand(): Boolean = when (operati
 
 private fun validCreate(request: BillSplitChangeCreateRequestDto): Boolean =
     request.expectedRowVersion > 0 && request.newShareAmountCents >= 0 && isDebtAdjustmentReasonValid(request.reason)
+
+data class SplitAgreementSubmission(
+    val revision: Int = 1,
+    val operation: String,
+    val originalDebtPublicId: String,
+    val proposalPublicId: String? = null,
+    val returnDebtPublicId: String? = null,
+    val create: com.ticketbox.domain.model.BillSplitChangeCreateRequest? = null,
+    val accept: com.ticketbox.domain.model.BillSplitChangeAcceptRequest? = null,
+) {
+    val expectedRowVersion: Long get() = create?.expectedRowVersion ?: accept?.expectedRowVersion ?: 0L
+}
+
+internal fun SplitAgreementPayload.toView() = SplitAgreementSubmission(
+    revision = revision,
+    operation = operation,
+    originalDebtPublicId = originalDebtPublicId,
+    proposalPublicId = proposalPublicId,
+    returnDebtPublicId = returnDebtPublicId,
+    create = create?.toDomain(),
+    accept = accept?.toDomain(),
+)
+
+internal fun SplitAgreementSubmission.toWire() = SplitAgreementPayload(
+    revision = revision,
+    operation = operation,
+    originalDebtPublicId = originalDebtPublicId,
+    proposalPublicId = proposalPublicId,
+    returnDebtPublicId = returnDebtPublicId,
+    create = create?.toDto(),
+    accept = accept?.toDto(),
+)

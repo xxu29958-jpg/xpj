@@ -23,11 +23,11 @@ internal fun StatsProjectionNotice(state: StatsUiState, onRepair: (CurrencyProje
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
         Text(stringResource(R.string.stats_projection_currency, stats.homeCurrencyCode), style = MaterialTheme.typography.bodySmall)
         if (state.statsSource == StatsSource.CachedSnapshot) {
-            Text(stringResource(R.string.stats_snapshot_updated, displayMonthLabel(stats.month), com.ticketbox.ui.components.displayDateTime(state.statsFetchedAt)),
+            Text(stringResource(R.string.stats_snapshot_updated, displayMonthLabel(stats.month), com.ticketbox.presentation.displayDateTime(state.statsFetchedAt)),
                 modifier = Modifier.testTag("stats-cached-snapshot"), style = MaterialTheme.typography.bodySmall)
         }
         if (lifestyle != null && state.lifestyleFromCache) {
-            Text(stringResource(R.string.stats_lifestyle_snapshot_updated, com.ticketbox.ui.components.displayDateTime(state.lifestyleFetchedAt)),
+            Text(stringResource(R.string.stats_lifestyle_snapshot_updated, com.ticketbox.presentation.displayDateTime(state.lifestyleFetchedAt)),
                 style = MaterialTheme.typography.bodySmall)
         }
         com.ticketbox.ui.components.AccountingDateNotice(listOfNotNull(stats.undatedExpenseCount, lifestyle?.undatedExpenseCount).maxOrNull())
@@ -37,7 +37,7 @@ internal fun StatsProjectionNotice(state: StatsUiState, onRepair: (CurrencyProje
 
 @Composable
 internal fun projectionAmountText(amount: Long?, currency: com.ticketbox.domain.model.CurrencyDisplay): String =
-    amount?.let { com.ticketbox.ui.components.formatDisplayAmount(it, currency) }
+    amount?.let { com.ticketbox.presentation.formatDisplayAmount(it, currency) }
         ?: stringResource(R.string.reports_amount_unavailable)
 
 internal fun lifestyleRecordCurrency(expense: com.ticketbox.domain.model.Expense): com.ticketbox.domain.model.CurrencyDisplay =

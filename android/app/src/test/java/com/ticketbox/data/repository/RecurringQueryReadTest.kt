@@ -296,7 +296,7 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
             assertTrue(cold.occurrence(fixture.binding, "recurring", "2026-09").isFailure)
             api.failure = null
             val verified = cold.occurrence(fixture.binding, "recurring", "current").getOrThrow()
-            assertEquals(period, verified.value, "The new period is read from GET, not seeded by a command receipt")
+            assertEquals(period.toDomain(), verified.value, "The new period is read from GET, not seeded by a command receipt")
             api.failure = ConnectException("offline after verified period")
             assertEquals(verified.copy(fromCache = true), cold.occurrence(fixture.binding, "recurring", "current").getOrThrow())
         }

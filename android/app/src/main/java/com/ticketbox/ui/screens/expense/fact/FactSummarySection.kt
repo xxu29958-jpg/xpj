@@ -19,8 +19,8 @@ import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.StatusPill
-import com.ticketbox.ui.components.displayDateTime
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.displayDateTime
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.components.expenseSourceLabelRes
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing

@@ -20,12 +20,12 @@ internal fun UploadIntentRepository.observeOriginalAttachmentCommands() = apiPro
     else outbox.observeActiveByTypes(setOf(PendingMutationType.OriginalAttachment), includeCompleted = true).map { rows ->
         if (guard.captureLogicalBinding() != access.binding) OriginalCommandObservation(null, emptyList())
         else OriginalCommandObservation(access, rows.map { row -> PendingOriginalCommand(row, readOriginalPayload(row),
-            row.receiptJson?.let { runCatching { originalReceiptAdapter.fromJson(it) }.getOrNull() }) })
+            row.receiptJson?.let { runCatching { originalReceiptAdapter.fromJson(it)?.toDomain() }.getOrNull() }) })
     }
 }
 
-internal suspend fun UploadIntentRepository.readOriginalHealth(id: Long): Result<OriginalHealthDto> =
-    originalErrors.safeCall { guard.bind().call { it.originalHealth(id) } }
+internal suspend fun UploadIntentRepository.readOriginalHealth(id: Long): Result<com.ticketbox.domain.model.OriginalHealth> =
+    originalErrors.safeCall { guard.bind().call { it.originalHealth(id) }.toDomain() }
 
 internal suspend fun UploadIntentRepository.acceptOriginalAttachment(request: OriginalSubmission): Result<Long> = originalErrors.safeCall {
     require(isUploadIntentFileKey(request.key))

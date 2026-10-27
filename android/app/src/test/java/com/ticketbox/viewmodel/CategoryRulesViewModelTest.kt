@@ -23,7 +23,7 @@ import com.ticketbox.data.repository.FakeTicketboxSettingsStore
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.data.repository.RuleRepository
 import com.ticketbox.data.repository.RuleDefinitionDraftStore
-import com.ticketbox.ui.screens.settings.categoryrules.CategoryRuleDraftForm
+import com.ticketbox.viewmodel.CategoryRuleDraftForm
 import com.ticketbox.data.repository.testServerSessionBinding
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText

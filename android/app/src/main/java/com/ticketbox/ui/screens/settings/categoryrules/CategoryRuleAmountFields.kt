@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.settings.categoryrules
 
+import com.ticketbox.viewmodel.CategoryRuleDraftForm
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable

@@ -39,7 +39,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.RealKeyboard
-import com.ticketbox.ui.components.displayTime
+import com.ticketbox.presentation.displayTime
 import com.ticketbox.ui.screens.expense.TAG_TAGS_FIELD
 import com.ticketbox.R
 import com.ticketbox.OutboxAdapterGraph

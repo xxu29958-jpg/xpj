@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens.settings
 
+import com.ticketbox.data.repository.toDomain
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -88,7 +90,7 @@ class CategoryRuleGlobalRecoveryTest {
             if (create) "category_rule_create:original-rule-key" else "category_rule:17", "{}", if (create) 0 else 3,
             PendingMutationStatus.Failed, 1, "client_upgrade_required", "2026-09-09T00:00:00Z", null, null, "original-rule-key")
         val pending = PendingCategoryRuleSubmission(row,
-            CategoryRuleRequest("交通月票", "transport", true, 0, amountMinCents = 1200, homeCurrencyCode = currency),
+            CategoryRuleDefinition("交通月票", "transport", true, 0, amountMinCents = 1200, homeCurrencyCode = currency),
             null, supported = currency != null)
         val state = OutboxStatusUiState(binding = binding, bindingReady = true,
             correctionObservation = ExpenseCorrectionObservation(LedgerAccessContext(binding, true), emptyList()),
@@ -105,7 +107,7 @@ class CategoryRuleGlobalRecoveryTest {
             null, null, "original-application-key", receiptJson = if (accepted) "{}" else null)
         val pending = PendingRuleApplication(row, RuleApplicationPayload(previewToken = "original-preview", maxScan = 500,
             scanned = 9, expectedChanges = 1), if (accepted) RuleApplyConfirmedResponseDto(false, 9, 1,
-            commandKey = row.idempotencyKey, applicationPublicId = "original-batch", scanLimit = 500) else null)
+            commandKey = row.idempotencyKey, applicationPublicId = "original-batch", scanLimit = 500).toDomain() else null)
         showState(OutboxStatusUiState(binding = binding, bindingReady = true,
             correctionObservation = ExpenseCorrectionObservation(LedgerAccessContext(binding, !accepted), emptyList()),
             status = OutboxStatus(0, emptyList(), if (accepted) emptyList() else listOf(row),

@@ -159,7 +159,7 @@ class DirectRepaymentIntentTest {
             assertEquals(listOf(1), fixture.publishedDepths)
             assertTrue(fixture.api.calls.isEmpty())
             assertEquals(if (paymentTime == null) "2026-09-30T15:59:00Z" else null, fixture.pending().repayment?.request?.paidAt)
-            assertEquals(paymentTime?.toRequest(), fixture.pending().repayment?.request?.timeInput)
+            assertEquals(paymentTime, fixture.pending().repayment?.request?.timeInput)
             fixture.dao.runnableBatches += listOf(fixture.dao.rows.keys.single())
             assertEquals(1, fixture.engine().drainOnce().failures)
 

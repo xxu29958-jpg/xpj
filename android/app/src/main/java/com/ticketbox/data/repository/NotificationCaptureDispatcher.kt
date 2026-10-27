@@ -3,7 +3,6 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseDto
-import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
@@ -11,8 +10,9 @@ import retrofit2.HttpException
 /** Draft APIs keep their own fact owners and body idempotency. This dispatcher never confirms a draft. */
 internal class NotificationCaptureDispatcher(
     private val guard: LedgerRequestGuard,
-    private val onExpense: suspend (LogicalSessionBinding, ExpenseDto) -> Unit,
-    private val onRepayment: (LogicalSessionBinding, RepaymentDraftDto) -> Unit,
+    private val publishExpense: suspend (String, ExpenseDto) -> Unit,
+    private val onExpense: (LogicalSessionBinding, com.ticketbox.domain.model.Expense) -> Unit,
+    private val onRepayment: (LogicalSessionBinding, com.ticketbox.domain.model.RepaymentDraft) -> Unit,
     private val onReview: (LogicalSessionBinding, String) -> Unit,
 ) : OutboxMutationDispatcher {
     override val type = PendingMutationType.CapturePaymentNotification
@@ -59,7 +59,8 @@ internal class NotificationCaptureDispatcher(
         bound.requireStillActive()
         // An idempotent replay may return an already reviewed draft. Publish its current projection,
         // but never recreate a pending state or overwrite its human correction with the captured amount.
-        onExpense(bound.logicalBinding, created)
+        publishExpense(bound.ledgerId, created)
+        onExpense(bound.logicalBinding, created.toDomain())
         return NotificationCaptureReceipt(expenseId = created.id)
     }
 
@@ -67,7 +68,7 @@ internal class NotificationCaptureDispatcher(
         val created = api.repaymentDraft(id)
         require(created.publicId.isNotBlank())
         bound.requireStillActive()
-        onRepayment(bound.logicalBinding, created)
+        onRepayment(bound.logicalBinding, created.toDomain())
         return NotificationCaptureReceipt(repaymentPublicId = created.publicId)
     }
 

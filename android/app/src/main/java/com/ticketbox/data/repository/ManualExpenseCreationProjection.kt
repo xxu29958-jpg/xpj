@@ -7,9 +7,12 @@ import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 /** A read projection of the existing original row; it never creates or changes an intent. */
 data class ManualExpenseCreationProjection(
     val row: OutboxRow,
-    val request: ExpenseManualCreateRequestDto?,
-    val acceptedExpenseId: Long? = null,
-)
+    val request: com.ticketbox.domain.model.ManualExpenseSubmission?,
+    val acceptedExpenseId: Long?,
+) {
+    internal constructor(row: OutboxRow, request: ExpenseManualCreateRequestDto?, acceptedExpenseId: Long? = null) :
+        this(row, request?.toDomain(), acceptedExpenseId)
+}
 
 internal fun ManualExpenseCreationProjection.admittedClientRef(): String? {
     request?.clientRef?.takeIf { it.isNotBlank() }?.let { return it }

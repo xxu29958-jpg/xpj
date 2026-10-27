@@ -68,12 +68,12 @@ class RuleRepository(
             if (currentAccess()?.binding != expected) emptyList() else rows.mapNotNull(::describeSubmission)
         }
 
-    suspend fun createCategoryRule(expected: LogicalSessionBinding, request: CategoryRuleRequest,
+    suspend fun createCategoryRule(expected: LogicalSessionBinding, request: com.ticketbox.domain.model.CategoryRuleDefinition,
         input: RuleDefinitionDraft? = null): Result<Long> =
         errorHandler.safeCall {
             val bound = ledgerRequestGuard.bindExact(expected)
             require(canModifyLedger()) { "当前角色为只读，无法修改规则。" }
-            val clean = request.cleanRule()
+            val clean = request.toDto().cleanRule()
             require(input == null || input.binding == expected && input.baseline == null)
             val key = input?.key ?: UUID.randomUUID().toString()
             val payload = CategoryRuleSubmissionPayload(version = if (input == null) 1 else 2,
@@ -83,10 +83,10 @@ class RuleRepository(
         }
 
     suspend fun updateCategoryRule(expected: LogicalSessionBinding, baseline: CategoryRule,
-        request: CategoryRuleRequest, input: RuleDefinitionDraft? = null): Result<Long> = errorHandler.safeCall {
+        request: com.ticketbox.domain.model.CategoryRuleDefinition, input: RuleDefinitionDraft? = null): Result<Long> = errorHandler.safeCall {
         val bound = ledgerRequestGuard.bindExact(expected)
         require(canModifyLedger()) { "当前角色为只读，无法修改规则。" }
-        val clean = request.cleanRule()
+        val clean = request.toDto().cleanRule()
         require(input == null || input.binding == expected && input.baseline == baseline)
         require(baseline.id > 0 && baseline.rowVersion > 0) { "请重新打开原规则。" }
         require(baseline.homeCurrencyCode == null || clean.homeCurrencyCode == baseline.homeCurrencyCode) { "原规则币种不能改贴，请核对。" }
@@ -104,7 +104,7 @@ class RuleRepository(
         val bound = ledgerRequestGuard.bindExact(expected)
         require(canModifyLedger()) { "当前角色为只读，无法修改规则。" }
         require(rule.id > 0 && rule.rowVersion > 0) { "请重新打开原规则。" }
-        val payload = CategoryRuleSubmissionPayload(expectedRowVersion = rule.rowVersion, request = rule.asRequest())
+        val payload = CategoryRuleSubmissionPayload(expectedRowVersion = rule.rowVersion, request = rule.asRequest().toDto())
         enqueue(bound, PendingMutationIntent(PendingMutationType.DeleteCategoryRule, "category_rule:${rule.id}",
             requireNotNull(offlineMutations.submissionAdapter).toJson(payload), rule.rowVersion, UUID.randomUUID().toString()))
     }
@@ -182,7 +182,7 @@ class RuleRepository(
         val original = runCatching { requireNotNull(offlineMutations.applicationAdapter).fromJson(row.payloadJson) }.getOrNull()
         val receipt = row.receiptJson?.let { runCatching { requireNotNull(offlineMutations.applicationReceiptAdapter).fromJson(it) }.getOrNull() }
             ?.takeIf { original?.accepts(row, it) == true }
-        return PendingRuleApplication(row, original, receipt)
+        return PendingRuleApplication(row, original, receipt?.toDomain())
     }
 
     fun observeApplications(expected: LogicalSessionBinding): Flow<List<PendingRuleApplication>> =

@@ -14,7 +14,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
+import com.ticketbox.domain.model.ManualExpenseSubmission
 import com.ticketbox.data.repository.ManualExpenseCreateAdmission
 import com.ticketbox.data.repository.ManualExpenseCreationProjection
 import com.ticketbox.data.repository.RecurringPaymentAdmissionBlock
@@ -112,7 +112,7 @@ private fun RecurringPaymentReviewCandidate(
 }
 
 @Composable
-private fun RecurringPaymentReviewOriginalFacts(request: ExpenseManualCreateRequestDto?) {
+private fun RecurringPaymentReviewOriginalFacts(request: ManualExpenseSubmission?) {
     if (request == null) {
         Text(stringResource(R.string.manual_submission_unknown))
         return
@@ -153,7 +153,7 @@ internal fun recurringPaymentReviewStatusRes(status: PendingMutationStatus): Int
     PendingMutationStatus.Unknown -> R.string.manual_submission_unknown
 }
 
-private fun originalSubmissionAmount(request: ExpenseManualCreateRequestDto): String? {
+private fun originalSubmissionAmount(request: ManualExpenseSubmission): String? {
     val currency = request.originalCurrency?.takeIf { it.isNotBlank() }
     val amount = request.originalAmount?.takeIf { it.isNotBlank() }
     return if (currency != null && amount != null) "$currency $amount" else null

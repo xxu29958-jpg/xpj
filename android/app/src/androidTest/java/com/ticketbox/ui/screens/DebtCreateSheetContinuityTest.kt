@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.domain.model.LedgerCalendar
 import androidx.compose.runtime.remember
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
@@ -91,7 +92,7 @@ class DebtCreateSheetContinuityTest {
             viewModel.refresh(object : com.ticketbox.data.repository.LedgerCalendarReader {
                 override fun currentBinding() = creation.currentAccess().binding
                 override fun cached(binding: LogicalSessionBinding, revision: Long?) =
-                    com.ticketbox.data.remote.dto.LedgerCalendarDto(binding.ledgerId, 3L, "Asia/Shanghai", "adopted", "2026-01-01T00:00:00Z")
+                    com.ticketbox.domain.model.LedgerCalendar(binding.ledgerId, 3L, "Asia/Shanghai", "adopted", "2026-01-01T00:00:00Z")
                 override suspend fun refresh(binding: LogicalSessionBinding, revision: Long?) = Result.success(cached(binding, revision))
             })
         }

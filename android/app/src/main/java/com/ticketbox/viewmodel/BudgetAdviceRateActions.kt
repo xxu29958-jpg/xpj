@@ -2,10 +2,10 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.ExchangeRateDto
-import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
+import com.ticketbox.domain.model.ExchangeRate
+import com.ticketbox.domain.model.ExchangeRateRequest
 import com.ticketbox.domain.model.CurrencyProjectionGap
-import com.ticketbox.data.remote.dto.ReferenceRateRequestDto
+import com.ticketbox.domain.model.ReferenceRateRequest
 import com.ticketbox.data.repository.PendingManualRateSubmission
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.canonicalManualExchangeRateOrNull
@@ -20,7 +20,7 @@ fun BudgetAdviceViewModel.openRate(gap: CurrencyProjectionGap, original: Pending
     _state.update { it.copy(rateBusy = true, rateMessage = null) }
     viewModelScope.launch {
         val response = repository.exchangeRates(binding, gap.sourceCurrencyCode, gap.homeCurrencyCode, gap.rateDate)
-        val reference = repository.referenceRates(binding, ReferenceRateRequestDto(gap.homeCurrencyCode, gap.sourceCurrencyCode, gap.rateDate))
+        val reference = repository.referenceRates(binding, ReferenceRateRequest(gap.homeCurrencyCode, gap.sourceCurrencyCode, gap.rateDate))
         if (_state.value.binding != binding) return@launch
         if (_state.value.month != month) {
             _state.update { it.copy(rateBusy = false) }
@@ -52,7 +52,7 @@ fun BudgetAdviceViewModel.fetchReferenceRates() {
     if (snapshot.rateBusy || !snapshot.canRequest) return
     _state.update { it.copy(rateBusy = true, referenceError = null) }
     viewModelScope.launch {
-        val result = repository.referenceRates(binding, ReferenceRateRequestDto(home, editor?.currencyCode, editor?.rateDate), fetch = true)
+        val result = repository.referenceRates(binding, ReferenceRateRequest(home, editor?.currencyCode, editor?.rateDate), fetch = true)
         if (_state.value.binding != binding || _state.value.month != snapshot.month) return@launch
         if (result.exceptionOrNull()?.isReadAccessDenied() == true) {
             rejectArrangementRead(requireNotNull(result.exceptionOrNull()))
@@ -66,7 +66,7 @@ fun BudgetAdviceViewModel.fetchReferenceRates() {
     }
 }
 
-fun BudgetAdviceViewModel.editRate(rate: ExchangeRateDto) =
+fun BudgetAdviceViewModel.editRate(rate: ExchangeRate) =
     openRate(CurrencyProjectionGap(rate.currencyCode, rate.homeCurrencyCode, rate.rateDate))
 
 fun BudgetAdviceViewModel.updateRateInput(value: String) {
@@ -89,7 +89,7 @@ fun BudgetAdviceViewModel.saveRate() {
     }
     _state.update { it.copy(rateBusy = true, rateMessage = null) }
     viewModelScope.launch {
-        val request = ExchangeRateRequestDto(editor.currencyCode, editor.homeCurrencyCode, editor.rateDate,
+        val request = ExchangeRateRequest(editor.currencyCode, editor.homeCurrencyCode, editor.rateDate,
             value, "manual", editor.current?.rowVersion ?: 0)
         val result = repository.enqueueRate(editor.binding, snapshot.month, request, editor.current?.publicId)
         if (_state.value.binding != editor.binding) return@launch
@@ -112,7 +112,7 @@ fun BudgetAdviceViewModel.recoverRate(pending: PendingManualRateSubmission, drop
 }
 
 fun BudgetAdviceViewModel.reviewRate(pending: PendingManualRateSubmission) {
-    val request = pending.intent?.takeIf { it.supports(pending.row) }?.request ?: return
+    val request = pending.intent?.takeIf { pending.supported }?.request ?: return
     openRate(CurrencyProjectionGap(request.currencyCode, request.homeCurrencyCode, request.rateDate), pending)
 }
 

@@ -24,7 +24,7 @@ import com.ticketbox.domain.model.RuleApplyPreviewItem
 import com.ticketbox.ui.components.AppFloatingActionBar
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppPaperCard
-import com.ticketbox.ui.components.displayTime
+import com.ticketbox.presentation.displayTime
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.AppTextInputActions

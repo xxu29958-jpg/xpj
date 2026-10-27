@@ -10,7 +10,7 @@ enum class ReferenceKind(val wire: String) { Category("category"), Tag("tag") }
 interface ReferenceCreationActions {
     val kind: ReferenceKind
     fun observeAccess(): Flow<LedgerAccessContext?>
-    suspend fun create(binding: LogicalSessionBinding, name: String, key: String): Result<ReferenceCreatedDto>
+    suspend fun create(binding: LogicalSessionBinding, name: String, key: String): Result<com.ticketbox.domain.model.ReferenceCreated>
 }
 
 /** Online library creation; retries keep the original body/key and never enter the financial Outbox. */
@@ -24,7 +24,7 @@ class ReferenceCreationRepository(
 
     override fun observeAccess(): Flow<LedgerAccessContext?> = apiProvider.observeActiveLedgerAccess()
 
-    override suspend fun create(binding: LogicalSessionBinding, name: String, key: String): Result<ReferenceCreatedDto> =
+    override suspend fun create(binding: LogicalSessionBinding, name: String, key: String): Result<com.ticketbox.domain.model.ReferenceCreated> =
         errors.safeCall {
             guard.bindExact(binding).call { api ->
                 val request = ReferenceCreateRequestDto(name)
@@ -34,7 +34,7 @@ class ReferenceCreationRepository(
                 }
                 check(receipt.kind == kind.wire && receipt.rowVersion > 0) { "返回的添加结果不匹配，请核实原提交。" }
                 UUID.fromString(receipt.publicId)
-                receipt
+                receipt.toDomain()
             }
         }
 }

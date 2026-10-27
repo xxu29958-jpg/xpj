@@ -414,7 +414,7 @@ class RecurringPaymentTaskTest {
     private fun loaded(currency: String?, planned: Long) = RecurringOccurrenceUiState(
         access = access,
         item = recurringItem { rowVersion = 7L }.copy(homeCurrencyCode = currency, merchant = "日元订阅"),
-        occurrence = RecurringOccurrenceDto(
+        occurrence = com.ticketbox.domain.model.RecurringOccurrence(
             seriesPublicId = "rec-1", period = "2026-08", seriesRowVersion = 7L, rowVersion = 3L,
             state = "unfulfilled", plannedAmountCents = planned, reservedAmountCents = planned,
             expensePublicId = null, paidAmountCents = null, nextDueDate = "2026-08-15", homeCurrencyCode = currency,

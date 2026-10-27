@@ -4,7 +4,6 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingGoalCreation
-import com.ticketbox.data.repository.isSupportedGoalCreation
 import com.ticketbox.data.repository.originalCreation
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
@@ -68,7 +67,7 @@ internal fun CreateDebtGoalViewModel.applyDebtGoalOriginal(original: DebtGoalCre
     task = saved
     val request = pending.request?.takeIf { it.goalType == "debt_repayment" }
     val confirmed = pending.confirmed?.takeIf {
-        pending.isDone && request?.isSupportedGoalCreation(pending.row) == true && it.isDebtRepayment
+        pending.isDone && request != null && pending.hasSupportedIntent && it.isDebtRepayment
     }
     _state.update { it.withDebtDraft(saved, edits.currentAccess()?.canModify == true, pending).copy(
         checkingOriginal = false, acceptanceUncertain = false, createdPublicId = confirmed?.publicId,
@@ -78,7 +77,7 @@ internal fun CreateDebtGoalViewModel.applyDebtGoalOriginal(original: DebtGoalCre
 private fun DebtGoalCreationDraft.needsAcceptedDefinition(pending: PendingGoalCreation): Boolean {
     if (viewingOriginalId != null) return true
     val request = pending.request?.takeIf { it.goalType == "debt_repayment" } ?: return false
-    return request.isSupportedGoalCreation(pending.row) &&
+    return pending.hasSupportedIntent &&
         pending.row.status !in setOf(PendingMutationStatus.Unknown, PendingMutationStatus.Abandoned) &&
         (name.trim() != request.name || selectedIds.toSet() != request.debtPublicIds?.toSet())
 }

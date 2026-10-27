@@ -533,8 +533,8 @@ class RecurringOccurrenceRoomContinuityTest {
         fixture.network.reply = fixture.network.reply.copy(period = "2026-08", expensePublicId = "payment-august",
             paidAmountCents = 9_800, paidHomeCurrencyCode = "CNY", nextDueDate = "2026-09-05")
         runBlocking {
-            actions.enqueue(binding, OccurrencePaymentDraft(prior, "八月房租",
-                com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-august", 2),
+            actions.enqueue(binding, OccurrencePaymentDraft(prior.toDomain(), "八月房租",
+                com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-august", 2).toDomain(),
                 "八月完整付款", 9_800, "CNY")).getOrThrow()
         }
         assertEquals(1, runBlocking { fixture.drain(maxAttempts = 1) }.failures)
@@ -566,7 +566,7 @@ class RecurringOccurrenceRoomContinuityTest {
         assertEquals(2, fixture.network.calls.size)
         assertEquals(fixture.network.calls.first(), fixture.network.calls.last())
         assertEquals(originalKey, fixture.network.calls.last().second)
-        assertEquals(com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-august", 2),
+        assertEquals(com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-august", 2).toDomain(),
             fixture.network.calls.last().first)
     }
 

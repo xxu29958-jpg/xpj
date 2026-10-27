@@ -150,7 +150,7 @@ class CategoryRulesViewModel(
         deliveredApplicationIds = rows.filter { it.isDone && it.receipt != null }.map { it.row.id }.toSet()
         _uiState.update { state ->
             val updated = state.copy(pendingApplications = rows)
-            received.lastOrNull()?.receipt?.let { updated.afterRuleApplication(it.toDomain()) } ?: updated
+            received.lastOrNull()?.receipt?.let { updated.afterRuleApplication(it) } ?: updated
         }
         if (received.isNotEmpty()) loadRuleApplications(clearMessage = false)
     }

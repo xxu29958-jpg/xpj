@@ -1,5 +1,6 @@
 package com.ticketbox.ui.navigation
 
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -161,7 +162,7 @@ class CategoryRuleRouteRecoveryTest {
         assertEquals(original, runBlocking { requireNotNull(owner.definitionInputs).read(binding).single() })
         assertEquals(emptyList<Map<String, String?>>(), harness.fixture.stored())
         org.junit.Assert.assertTrue(runBlocking { owner.createCategoryRule(binding,
-            CategoryRuleRequest("只读后仍保留的规则", "餐饮", true, 10), original).isFailure })
+            CategoryRuleDefinition("只读后仍保留的规则", "餐饮", true, 10), original).isFailure })
     }
 
     @Test fun renewedSessionNeedsExplicitIdentityReviewBeforeTheOriginalInputCanBeSubmitted() {
@@ -195,7 +196,7 @@ class CategoryRuleRouteRecoveryTest {
     private fun createFailedRule(): Map<String, String?> = runBlocking {
         val owner = harness.screenFactory.ruleRepository
         val id = owner.createCategoryRule(requireNotNull(owner.currentAccess()).binding,
-            CategoryRuleRequest("原日元月票", "交通", true, 10, amountMinCents = 1200, homeCurrencyCode = "JPY")).getOrThrow()
+            CategoryRuleDefinition("原日元月票", "交通", true, 10, amountMinCents = 1200, homeCurrencyCode = "JPY")).getOrThrow()
         harness.fixture.outbox.markFailed(id, "client_upgrade_required")
         harness.fixture.stored().single()
     }

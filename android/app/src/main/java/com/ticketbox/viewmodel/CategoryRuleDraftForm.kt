@@ -1,12 +1,12 @@
-package com.ticketbox.ui.screens.settings.categoryrules
+package com.ticketbox.viewmodel
 
 import com.ticketbox.R
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import com.ticketbox.domain.model.CategoryRule
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.ui.components.formatAmountInput
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.formatAmountInput
+import com.ticketbox.presentation.parseAmountCents
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RuleDefinitionDraft
 
@@ -27,14 +27,14 @@ data class CategoryRuleDraftForm(
         (it.amountMinCents != null || it.amountMaxCents != null) && CurrencyCode.fromStorageKeyOrNull(it.homeCurrencyCode) == null
     } == true
 
-    fun toRequest(): Result<CategoryRuleRequest> = runCatching {
+    fun toRequest(): Result<CategoryRuleDefinition> = runCatching {
         requireInput(keyword.isNotBlank() && category.isNotBlank(), R.string.category_rule_validation_fields)
         val priority = priorityText.toIntOrNull() ?: throw CategoryRuleInputError(R.string.category_rule_validation_priority)
         requireInput(!hasUnconfirmedOriginalAmount, R.string.category_rule_currency_review)
         val min = parseBound(minimumAmount)
         val max = parseBound(maximumAmount)
         requireInput(min == null || max == null || min <= max, R.string.category_rule_validation_range)
-        CategoryRuleRequest(keyword.trim(), category.trim(), editingRule?.enabled ?: true, priority,
+        CategoryRuleDefinition(keyword.trim(), category.trim(), editingRule?.enabled ?: true, priority,
             min, max, sourceContains.trim().takeIf { it.isNotEmpty() }, tagContains.trim().takeIf { it.isNotEmpty() },
             homeCurrencyCode = homeCurrencyCode.takeIf { min != null || max != null || editingRule?.homeCurrencyCode != null })
     }

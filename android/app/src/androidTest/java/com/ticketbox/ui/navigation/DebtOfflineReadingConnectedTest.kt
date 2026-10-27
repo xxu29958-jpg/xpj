@@ -29,7 +29,7 @@ import com.ticketbox.data.repository.DebtTask
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.ui.components.displayDateTime
+import com.ticketbox.presentation.displayDateTime
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import java.net.ConnectException

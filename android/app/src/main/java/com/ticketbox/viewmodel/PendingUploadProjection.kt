@@ -48,7 +48,7 @@ internal fun UploadIntentObservation.toPendingUploadUiState(
         showSummary = pending.isNotEmpty() || group.any { it.row.id !in acknowledgedReceipts },
         message = if (pending.isEmpty()) null else uploadGroupMessage(pending, failures),
         originals = group.mapIndexed { index, intent ->
-            PendingUploadOriginalUi(index + 1, intent.payload?.file?.metadata?.fileName, intent.row.status, intent.receipt?.id)
+            PendingUploadOriginalUi(index + 1, intent.payload?.file?.metadata?.fileName, intent.row.status, intent.receipt?.expenseId)
         },
     )
 }

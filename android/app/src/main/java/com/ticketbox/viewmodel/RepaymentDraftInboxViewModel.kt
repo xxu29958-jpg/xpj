@@ -54,7 +54,7 @@ data class RepaymentDraftInboxUiState(
     val flashMessage: UiText? = null,
     val reviewId: String? = null,
     val review: RepaymentReviewState = RepaymentReviewState(null),
-    val uncertainCaptures: List<com.ticketbox.data.remote.dto.PaymentCaptureDto> = emptyList(),
+    val uncertainCaptures: List<com.ticketbox.domain.model.PaymentCapture> = emptyList(),
     val resolutions: List<com.ticketbox.data.repository.OutboxRow> = emptyList(),
     val captureReadError: UiText? = null,
 )
@@ -285,7 +285,7 @@ class RepaymentDraftInboxViewModel(
         }
     }
 
-    fun resolveCapture(captureId: String, decision: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String) {
+    fun resolveCapture(captureId: String, decision: com.ticketbox.domain.model.PaymentCaptureDecision, key: String) {
         val binding = adjustmentBinding ?: return
         viewModelScope.launch {
             val result = reviews.resolveCapture(binding, captureId, decision, key)

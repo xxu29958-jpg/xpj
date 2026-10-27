@@ -1,5 +1,6 @@
 package com.ticketbox.ui.navigation
 
+import com.ticketbox.domain.model.MonthlyArrangementChange
 import android.content.Context
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
@@ -42,7 +43,7 @@ import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.ui.saveConsumerArtPreview
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.domain.model.CurrencyDisplay
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasAnyAncestor
@@ -97,7 +98,7 @@ class BudgetRecoveryNavigationRouteTest {
         val binding = runBlocking {
             val binding = requireNotNull(harness.fixture.graph.expenseRepository.captureDeferredLedgerBinding())
             val id = repository.enqueueArrangement(binding, originalMonth,
-                MonthlyArrangementSaveRequest("JPY", 3000, 500, 1)).getOrThrow()
+                MonthlyArrangementChange("JPY", 3000, 500, 1)).getOrThrow()
             harness.fixture.outbox.markConflict(id, "monthly_arrangement_row_version_conflict")
             repository.storeArrangementDraft(binding, originalMonth, draft)
             binding

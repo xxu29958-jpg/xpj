@@ -17,8 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
-import com.ticketbox.ui.components.displayDateTime
+import com.ticketbox.domain.model.RecurringOccurrence
+import com.ticketbox.presentation.displayDateTime
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.components.AppPaperCard
@@ -27,7 +27,7 @@ import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 
 @Composable
-internal fun OccurrenceCurrentSummary(occurrence: RecurringOccurrenceDto) {
+internal fun OccurrenceCurrentSummary(occurrence: RecurringOccurrence) {
     val tones = LocalStateTokens.current
     val palette = when (occurrence.state) {
         "fulfilled" -> tones.success
@@ -70,7 +70,7 @@ internal fun OccurrenceCurrentSummary(occurrence: RecurringOccurrenceDto) {
 }
 
 @Composable
-internal fun OccurrenceDefinitionBasis(occurrence: RecurringOccurrenceDto) {
+internal fun OccurrenceDefinitionBasis(occurrence: RecurringOccurrence) {
     HorizontalDivider()
     var expanded by rememberSaveable(occurrence.seriesPublicId, occurrence.period) { mutableStateOf(false) }
     TextButton(onClick = { expanded = !expanded }) {

@@ -3,7 +3,7 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetAdviceInputs
-import com.ticketbox.data.remote.dto.ExchangeRateDto
+import com.ticketbox.domain.model.ExchangeRate
 import com.ticketbox.data.repository.LogicalSessionBinding
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
@@ -11,9 +11,9 @@ import kotlinx.coroutines.launch
 import java.time.YearMonth
 
 data class ManualRateEditor(val binding: LogicalSessionBinding, val currencyCode: String,
-    val homeCurrencyCode: String, val rateDate: String, val current: ExchangeRateDto?,
+    val homeCurrencyCode: String, val rateDate: String, val current: ExchangeRate?,
     val value: String, val reviewSubmissionId: Long? = null,
-    val reference: com.ticketbox.data.remote.dto.ReferenceRatesDto? = null,
+    val reference: com.ticketbox.domain.model.ReferenceRates? = null,
     val manualEditing: Boolean = false)
 
 internal fun BudgetAdviceViewModel.observeAdviceAccess() {
@@ -78,7 +78,7 @@ fun BudgetAdviceViewModel.refreshInputs() {
         val rates = repository.exchangeRates(binding)
         val home = inputs.getOrNull()?.homeCurrencyCode ?: snapshot.reportingHomeCurrencyCode
         val reference = home?.let { repository.referenceRates(binding,
-            com.ticketbox.data.remote.dto.ReferenceRateRequestDto(it)) }
+            com.ticketbox.domain.model.ReferenceRateRequest(it)) }
         if (_state.value.binding != binding || _state.value.month != snapshot.month || generation != inputGeneration) return@launch
         acceptAdviceInputs(inputs, rates, snapshot.inputs)
         if (reference?.exceptionOrNull()?.isReadAccessDenied() == true) {
@@ -90,7 +90,7 @@ fun BudgetAdviceViewModel.refreshInputs() {
 
 private fun BudgetAdviceViewModel.acceptAdviceInputs(
     inputs: Result<BudgetAdviceInputs>,
-    rates: Result<List<ExchangeRateDto>>,
+    rates: Result<List<ExchangeRate>>,
     requestedInputs: BudgetAdviceInputs?,
 ) {
     val denied = listOfNotNull(inputs.exceptionOrNull(), rates.exceptionOrNull()).firstOrNull { it.isReadAccessDenied() }
@@ -109,7 +109,7 @@ private fun BudgetAdviceViewModel.acceptAdviceInputs(
 
 private fun BudgetAdviceUiState.inputsRefreshed(
     read: Result<BudgetAdviceInputs>,
-    rateRead: Result<List<ExchangeRateDto>>,
+    rateRead: Result<List<ExchangeRate>>,
     adviceBasisChanged: Boolean,
 ): BudgetAdviceUiState = copy(inputsLoading = false,
     inputs = read.getOrNull(), rates = rateRead.getOrNull() ?: rates,
@@ -136,7 +136,7 @@ fun BudgetAdviceViewModel.openRateSubmission(id: Long) {
     monthSelected = true
     _state.update { it.copy(selectedRateSubmissionId = id) }
     val original = _state.value.rateSubmissions.firstOrNull { it.row.id == id } ?: return
-    val intent = original.intent?.takeIf { it.supports(original.row) } ?: return
+    val intent = original.intent?.takeIf { original.supported } ?: return
     val month = intent.month
     val home = intent.request.homeCurrencyCode
     if (_state.value.month != month || _state.value.reportingHomeCurrencyCode != home) {

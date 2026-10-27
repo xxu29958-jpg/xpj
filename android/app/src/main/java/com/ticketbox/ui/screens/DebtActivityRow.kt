@@ -22,10 +22,10 @@ import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.displayDateTime
+import com.ticketbox.presentation.displayDateTime
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.accountingTimeDateText
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.accountingTimeDateText
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 
 internal data class DebtActivityRowState(

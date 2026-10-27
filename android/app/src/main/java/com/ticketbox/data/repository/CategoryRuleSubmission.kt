@@ -47,7 +47,7 @@ data class CategoryRuleSubmissionPayload(
 
 data class PendingCategoryRuleSubmission(
     val row: OutboxRow,
-    val request: CategoryRuleRequest?,
+    val request: com.ticketbox.domain.model.CategoryRuleDefinition?,
     val confirmed: CategoryRule?,
     val supported: Boolean,
     val originalInput: Map<String, String>? = null,
@@ -74,7 +74,7 @@ internal fun describeCategoryRuleSubmission(
     }
     val receipt = row.receiptJson?.let { runCatching { receiptAdapter.fromJson(it) }.getOrNull() }
     val confirmed = receipt?.takeIf { payload?.acceptsReceipt(row, it) == true }?.toDomain()
-    return PendingCategoryRuleSubmission(row, request, confirmed, payload?.supports(row) == true, payload?.originalInput)
+    return PendingCategoryRuleSubmission(row, request?.toDomain(), confirmed, payload?.supports(row) == true, payload?.originalInput)
 }
 
 internal fun OutboxRow.ruleId(): Long? = targetId.takeIf { it.startsWith("category_rule:") }
@@ -91,7 +91,7 @@ private fun CategoryRuleRequest.hasValidAmountCondition(): Boolean {
     return currencyKnown && lower >= 0 && upper >= lower
 }
 
-internal fun CategoryRule.asRequest(): CategoryRuleRequest = CategoryRuleRequest(
+internal fun CategoryRule.asRequest(): com.ticketbox.domain.model.CategoryRuleDefinition = com.ticketbox.domain.model.CategoryRuleDefinition(
     keyword, category, enabled, priority, amountMinCents, amountMaxCents, sourceContains, tagContains, homeCurrencyCode,
 )
 

@@ -36,7 +36,7 @@ import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.AppStatusBanner
-import com.ticketbox.ui.components.formatExpensePrimaryAmount
+import com.ticketbox.presentation.formatExpensePrimaryAmount
 import com.ticketbox.ui.components.expenseTimeLabel
 import com.ticketbox.ui.components.AppAdaptiveContentActionStateRow
 import com.ticketbox.ui.components.AppButtonIcons

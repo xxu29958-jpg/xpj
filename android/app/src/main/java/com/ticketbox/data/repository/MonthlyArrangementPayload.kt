@@ -18,9 +18,20 @@ data class MonthlyArrangementPayload(val revision: Int, val month: String, val r
 }
 internal fun JsonAdapter<MonthlyArrangementPayload>.readArrangement(json: String): MonthlyArrangementPayload? =
     runCatching { fromJson(json) }.getOrNull()
-data class PendingMonthlyArrangement(val row: OutboxRow, val intent: MonthlyArrangementPayload?, val receipt: MonthlyArrangementDto?) {
+data class PendingMonthlyArrangement(val row: OutboxRow,
+    val intent: MonthlyArrangementSubmission?, val receipt: com.ticketbox.domain.model.MonthlyArrangement?, val supported: Boolean) {
+    internal constructor(row: OutboxRow, intent: MonthlyArrangementPayload?, receipt: MonthlyArrangementDto?) :
+        this(row, intent?.toView(), receipt?.toDomain(), intent?.supports(row) == true)
     val isConfirmed: Boolean get() = row.status == PendingMutationStatus.Done && receipt != null
-    val canRetry: Boolean get() = intent?.supports(row) == true && row.status == PendingMutationStatus.Failed &&
+    val canRetry: Boolean get() = supported && row.status == PendingMutationStatus.Failed &&
         row.lastError?.startsWith("outbox_row_expired") != true
     val canDrop: Boolean get() = row.status == PendingMutationStatus.Failed || row.status == PendingMutationStatus.Conflict
 }
+
+data class MonthlyArrangementSubmission(val revision: Int, val month: String, val request: com.ticketbox.domain.model.MonthlyArrangementChange)
+
+internal fun MonthlyArrangementPayload.toView() = MonthlyArrangementSubmission(
+    revision = revision,
+    month = month,
+    request = request.toDomain(),
+)

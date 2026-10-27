@@ -1,6 +1,6 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.data.remote.dto.LedgerCalendarDto
+import com.ticketbox.domain.model.LedgerCalendar
 import com.ticketbox.data.repository.LedgerCalendarReader
 import com.ticketbox.data.repository.LogicalSessionBinding
 import java.time.Clock
@@ -17,11 +17,11 @@ internal class RecurringLedgerDay(
     private val clock: Clock,
     private val onDay: (LocalDate) -> Unit,
 ) {
-    private val calendar = MutableStateFlow<Pair<LogicalSessionBinding, LedgerCalendarDto>?>(null)
+    private val calendar = MutableStateFlow<Pair<LogicalSessionBinding, LedgerCalendar>?>(null)
 
     fun clear() { calendar.value = null }
 
-    fun update(binding: LogicalSessionBinding, rule: LedgerCalendarDto?): LocalDate? {
+    fun update(binding: LogicalSessionBinding, rule: LedgerCalendar?): LocalDate? {
         calendar.value = rule?.let { binding to it }
         return rule?.let { clock.instant().atZone(ZoneId.of(it.timezoneName)).toLocalDate() }
     }

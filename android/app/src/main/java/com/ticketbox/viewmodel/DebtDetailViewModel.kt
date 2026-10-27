@@ -21,9 +21,9 @@ import com.ticketbox.domain.model.DebtLinkStatuses
 import com.ticketbox.domain.model.DebtRepayment
 import com.ticketbox.domain.model.ExpenseTimeInput
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.parseAmountCents
-import com.ticketbox.ui.screens.repaymentVoidActionAllowed
-import com.ticketbox.ui.screens.expense.ExpenseTimeResolution
+import com.ticketbox.presentation.parseAmountCents
+import com.ticketbox.domain.model.repaymentVoidActionAllowed
+import com.ticketbox.viewmodel.ExpenseTimeResolution
 import java.time.Clock
 import java.util.UUID
 import kotlinx.coroutines.Job

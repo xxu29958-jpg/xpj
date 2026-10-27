@@ -6,13 +6,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.FinancialAccountDto
+import com.ticketbox.domain.model.FinancialAccount
 import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.viewmodel.FundsViewModel
 import com.ticketbox.viewmodel.voidPayment
 
 @Composable
-internal fun FundsPriorRepayments(detail: FinancialAccountDto, canModify: Boolean, vm: FundsViewModel) {
+internal fun FundsPriorRepayments(detail: FinancialAccount, canModify: Boolean, vm: FundsViewModel) {
     val prior = detail.priorRepayments?.takeIf { it.items.isNotEmpty() } ?: return
     Text(stringResource(R.string.funds_prior_repayments), style = MaterialTheme.typography.titleMedium)
     prior.items.forEach { row ->

@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.toDomain
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.repository.ExpenseCorrectionObservation
@@ -97,7 +98,7 @@ class CategoryRuleGlobalRecoveryViewModelTest {
         try {
             val ready = vm.uiState.first { it.categoryRules.containsKey(id) }
             assertTrue(ready.offersRetry(original))
-            assertEquals(request, ready.categoryRules[id]?.request)
+            assertEquals(request.toDomain(), ready.categoryRules[id]?.request)
             val access = requireNotNull(ready.correctionObservation.access)
             assertFalse(ready.copy(correctionObservation = ExpenseCorrectionObservation(access.copy(canModify = false), emptyList())).offersRetry(original))
             assertNull(harness.rules.describeSubmission(original.copy(serverUrl = "https://foreign.test")))

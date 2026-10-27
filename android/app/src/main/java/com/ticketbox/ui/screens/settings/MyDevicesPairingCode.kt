@@ -20,7 +20,7 @@ import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.domain.model.DevicePairingCode
 import com.ticketbox.ui.components.HandoffQrCode
-import com.ticketbox.ui.components.displayTime
+import com.ticketbox.presentation.displayTime
 import com.ticketbox.ui.design.AppSpacing
 import kotlinx.coroutines.launch
 

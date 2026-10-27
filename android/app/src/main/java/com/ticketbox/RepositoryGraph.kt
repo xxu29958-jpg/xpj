@@ -1,9 +1,6 @@
 package com.ticketbox
 
 import com.ticketbox.data.local.AppDatabase
-import com.ticketbox.data.repository.directWrite
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.remote.ApiClient
 import com.ticketbox.data.repository.ApiServiceProvider
@@ -204,19 +201,9 @@ internal class RepositoryGraph(
     )
 
     init {
-        ledgerRepository.restoreWithReadProtection = { binding, item, restore ->
-            when (item.kind) {
-                "monthly_budget" -> budgetQueries.directMutation(binding, item.resourceId) { restore() }
-                "recurring_item" -> recurringQueries.directMutation(binding) { restore() }
-                "income_plan" -> incomePlanRepository.reads.queries.directWrite(binding) { restore() }
-                "goal" -> {
-                    val result = restore()
-                    withContext(NonCancellable) { reportsRepository.goalQueries.invalidate(binding) }
-                    result
-                }
-                else -> restore()
-            }
-        }
+        ledgerRepository.restoreWithReadProtection = com.ticketbox.data.repository.RecycleBinReadProtection(
+            budgetQueries, recurringQueries, incomePlanRepository.reads.queries, reportsRepository.goalQueries,
+        )::restore
     }
 
     val savedQueryRepository = com.ticketbox.data.repository.SavedQueryRepository(

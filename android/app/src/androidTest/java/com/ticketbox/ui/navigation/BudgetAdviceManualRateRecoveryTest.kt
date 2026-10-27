@@ -1,5 +1,6 @@
 package com.ticketbox.ui.navigation
 
+import com.ticketbox.data.repository.toDomain
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -129,7 +130,7 @@ class BudgetAdviceManualRateRecoveryTest {
     }
 
     @Test fun originalRouteReopensRoomAndReplaysOriginalReceiptWithoutOverwritingLaterCanonicalRate() {
-        val id = runBlocking { fixture.repository.enqueueRate(fixture.binding, fixture.originalMonth, fixture.request, null).getOrThrow() }
+        val id = runBlocking { fixture.repository.enqueueRate(fixture.binding, fixture.originalMonth, fixture.request.toDomain(), null).getOrThrow() }
         val original = runBlocking { fixture.rows().single() }
         fixture.latest = fixture.rateReply
         fixture.loseAck = true
@@ -168,7 +169,7 @@ class BudgetAdviceManualRateRecoveryTest {
     }
 
     @Test fun bindingReplacementClosesRateEditorAndStopConfirmationWithoutChangingOriginalSubmission() {
-        val id = runBlocking { fixture.repository.enqueueRate(fixture.binding, fixture.originalMonth, fixture.request, null).getOrThrow() }
+        val id = runBlocking { fixture.repository.enqueueRate(fixture.binding, fixture.originalMonth, fixture.request.toDomain(), null).getOrThrow() }
         runBlocking { fixture.outbox.markFailed(id, "client_upgrade_required") }
         val original = runBlocking { fixture.rows().single() }
         show(id)
@@ -190,7 +191,7 @@ class BudgetAdviceManualRateRecoveryTest {
         compose.onNodeWithText(stopBody).assertDoesNotExist()
         compose.onNodeWithText(context.getString(R.string.advice_rate_original_month, fixture.originalMonth)).assertDoesNotExist()
         compose.onNodeWithTag("advice_rate_save").assertDoesNotExist()
-        val staleSave = runBlocking { fixture.repository.enqueueRate(fixture.binding, fixture.originalMonth, fixture.request, null) }
+        val staleSave = runBlocking { fixture.repository.enqueueRate(fixture.binding, fixture.originalMonth, fixture.request.toDomain(), null) }
         assertEquals(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE, staleSave.exceptionOrNull()?.message)
         val retained = runBlocking { fixture.rows().single() }
         assertEquals(original.id, retained.id)

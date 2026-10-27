@@ -1,15 +1,16 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.toDomain
 import androidx.lifecycle.SavedStateHandle
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.BillSplitAgreementDto
-import com.ticketbox.data.remote.dto.BillSplitChangeCreateRequestDto
+import com.ticketbox.domain.model.BillSplitAgreement
+import com.ticketbox.domain.model.BillSplitChangeCreateRequest
 import com.ticketbox.data.repository.DebtTask
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.SplitAgreementActions
-import com.ticketbox.data.repository.SplitAgreementPayload
+import com.ticketbox.data.repository.SplitAgreementSubmission
 import com.ticketbox.data.repository.SPLIT_ACCEPT
 import com.ticketbox.data.repository.SPLIT_CREATE
 import com.ticketbox.data.repository.splitTestAgreement
@@ -324,9 +325,9 @@ class SplitAgreementViewModelTest {
         val row = OutboxRow(1, task.binding.serverUrl, task.binding.ledgerId,
             task.binding.ownerKey, PendingMutationType.SplitAgreement, "debt:original", "{}", 7,
             PendingMutationStatus.Conflict, 0, "state_conflict", "2026-09-20", null, "2026-09-20", "key", null)
-        repo.intents[row.id] = SplitAgreementPayload(operation = SPLIT_CREATE,
+        repo.intents[row.id] = SplitAgreementSubmission(operation = SPLIT_CREATE,
             originalDebtPublicId = "original", returnDebtPublicId = "return",
-            create = BillSplitChangeCreateRequestDto(1200, -300, "保留重启前草稿", 7, 8, "proposal-old"))
+            create = BillSplitChangeCreateRequest(1200, -300, "保留重启前草稿", 7, 8, "proposal-old"))
         repo.rows.value = listOf(row)
         val model = SplitAgreementViewModel(repo)
         model.loadAsWriter(task); advanceUntilIdle()
@@ -395,20 +396,20 @@ private class SplitProbe : SplitAgreementActions {
     var fail = false
     var gate: CompletableDeferred<Unit>? = null
     val rows = MutableStateFlow<List<OutboxRow>>(emptyList())
-    val intents = mutableMapOf<Long, SplitAgreementPayload>()
+    val intents = mutableMapOf<Long, SplitAgreementSubmission>()
     val recoveries = mutableListOf<Pair<Long, Boolean>>()
-    val commands = mutableListOf<SplitAgreementPayload>()
+    val commands = mutableListOf<SplitAgreementSubmission>()
     var submittedTask: DebtTask? = null
-    override suspend fun load(task: DebtTask, share: Long?): Result<BillSplitAgreementDto> {
+    override suspend fun load(task: DebtTask, share: Long?): Result<BillSplitAgreement> {
         gate?.await()
         return if (fail) Result.failure(IOException("offline")) else Result.success(value.copy(
-            preview = value.preview.copy(newShareAmountCents = share ?: value.agreedShareAmountCents)))
+            preview = value.preview.copy(newShareAmountCents = share ?: value.agreedShareAmountCents)).toDomain())
     }
-    override suspend fun submit(task: DebtTask, intent: SplitAgreementPayload): Result<Long> {
+    override suspend fun submit(task: DebtTask, intent: SplitAgreementSubmission): Result<Long> {
         submittedTask = task; commands += intent
         return Result.success(1)
     }
-    override fun describe(row: OutboxRow): SplitAgreementPayload? = intents[row.id]
+    override fun describe(row: OutboxRow): SplitAgreementSubmission? = intents[row.id]
     override fun observe(task: DebtTask) = rows
     override suspend fun recover(task: DebtTask, row: OutboxRow, drop: Boolean): Result<Unit> {
         recoveries += row.id to drop

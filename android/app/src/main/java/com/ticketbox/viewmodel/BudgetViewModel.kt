@@ -14,7 +14,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.BudgetActions
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingBudgetSave
-import com.ticketbox.data.repository.toRequest
+import com.ticketbox.data.repository.matchesSubmittedRequest
 import com.ticketbox.domain.model.BudgetCategoryDraft
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
@@ -319,9 +319,9 @@ private fun PendingBudgetSave.matches(form: BudgetFormState): Boolean {
     if (!hasSupportedIntent) return false
     val payload = intent ?: return false
     val currency = CurrencyCode.fromStorageKeyOrNull(form.homeCurrencyCode) ?: return false
-    val request = parseBudgetUpdate(form, currency).getOrNull()?.toRequest() ?: return false
+    val request = parseBudgetUpdate(form, currency).getOrNull() ?: return false
     return row.expectedRowVersion == (form.expectedRowVersion ?: 0L) &&
-        payload.request == request.copy(expectedRowVersion = null)
+        request.matchesSubmittedRequest(payload.request)
 }
 
 internal fun PendingBudgetSave.originalForm(): BudgetFormState? {

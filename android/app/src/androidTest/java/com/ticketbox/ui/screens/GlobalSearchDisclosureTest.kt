@@ -17,7 +17,7 @@ import com.ticketbox.data.repository.toDomain
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.CurrencyDisplay
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.GlobalSearchUiState
 import com.ticketbox.viewmodel.GlobalSearchResultUi

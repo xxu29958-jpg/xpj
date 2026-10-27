@@ -61,6 +61,7 @@ class ExpenseRepository internal constructor(
         sessionCoordinator = sessionCoordinator,
         offlineMutations = offlineMutations,
     )
+    internal val receiptPublication get() = core.receiptPublication
     internal val manualCreation = ExpenseManualCreation(core)
     internal val pendingEnrichmentTasks: PendingEnrichmentTaskReader =
         ExpensePendingEnrichmentRepository(core)

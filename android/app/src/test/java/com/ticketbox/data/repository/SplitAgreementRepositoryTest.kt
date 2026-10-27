@@ -34,7 +34,7 @@ class SplitAgreementRepositoryTest {
         assertEquals(f.binding.ownerKey, stored.ownerKey)
         assertEquals(listOf(1), f.queueDepthAtSchedule)
         assertTrue(f.api.calls.isEmpty())
-        assertEquals(create(), f.adapters.splitAgreementAdapter.fromJson(stored.payload))
+        assertEquals(create(), f.adapters.splitAgreementAdapter.fromJson(stored.payload)?.toView())
         assertFalse(repo.submit(task, create()).isSuccess)
         assertFalse(repo.submit(task.copy(binding = f.binding.copy(bindingRevision = "stale")), create()).isSuccess)
         assertEquals(1, f.dao.rows.size)
@@ -162,6 +162,6 @@ class SplitAgreementRepositoryTest {
 
     private fun repository(f: DebtAdjustmentFixture, outbox: OutboxRepository = f.outbox) =
         SplitAgreementRepository(f.provider, outbox, f.adapters.splitAgreementAdapter, debtReaderFixture(f.provider, f.session))
-    private fun create() = SplitAgreementPayload(operation = SPLIT_CREATE, originalDebtPublicId = "original",
-        create = BillSplitChangeCreateRequestDto(2000, -1000, "退款后双方重议", 7, 8))
+    private fun create() = SplitAgreementSubmission(operation = SPLIT_CREATE, originalDebtPublicId = "original",
+        create = com.ticketbox.domain.model.BillSplitChangeCreateRequest(2000, -1000, "退款后双方重议", 7, 8))
 }

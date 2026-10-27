@@ -1,10 +1,12 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.repository.sameReferenceOwner
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.SavedViewDto
-import com.ticketbox.data.remote.dto.SavedViewResultsDto
+import com.ticketbox.domain.model.SavedView
+import com.ticketbox.domain.model.SavedViewResults
 import com.ticketbox.data.repository.SavedQueryRepository
 import com.ticketbox.data.repository.TagActions
 import com.ticketbox.domain.model.ManagedTag
@@ -14,11 +16,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class SavedQueryUiState(
-    val catalog: List<SavedViewDto>? = null,
+    val catalog: List<SavedView>? = null,
     val tags: List<ManagedTag> = emptyList(),
     val tagError: UiText? = null,
     val selectedId: String? = null,
-    val results: SavedViewResultsDto? = null,
+    val results: SavedViewResults? = null,
     val loading: Boolean = false,
     val error: UiText? = null,
 )

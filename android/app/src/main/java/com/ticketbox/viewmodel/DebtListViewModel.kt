@@ -20,7 +20,7 @@ import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.upload.PreparedUploadImage
-import com.ticketbox.ui.components.formatMinorAmountInput
+import com.ticketbox.presentation.formatMinorAmountInput
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -359,7 +359,7 @@ private fun DebtDraftUi.toCreationDraft(amount: Long): DebtDraft = DebtDraft(
     installmentCount = parsedInstallmentCount(),
     installmentPeriodMonths = parsedInstallmentPeriod(),
     timeInput = principalDate.takeIf(String::isNotBlank)?.let {
-        com.ticketbox.data.remote.dto.ExpenseTimeInputDto(precision = "date_only",
+        com.ticketbox.domain.model.ExpenseTimeInput(precision = "date_only",
             userLocalDate = it, calendarRevision = requireNotNull(calendarRevision))
     },
 )

@@ -8,14 +8,14 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.R
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.PendingGoalEdit
-import com.ticketbox.data.repository.toRequest
+import com.ticketbox.data.repository.matchesSubmittedRequest
 import com.ticketbox.data.repository.validatedGoalUpdate
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalUpdate
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.parseAmountCents
-import com.ticketbox.ui.components.formatAmountInput
+import com.ticketbox.presentation.parseAmountCents
+import com.ticketbox.presentation.formatAmountInput
 
 /** Original editable input is separate from current reads and admitted Room commands. */
 internal data class SpendingGoalEditDraft(
@@ -36,9 +36,9 @@ internal data class SpendingGoalEditDraft(
         val currency = CurrencyCode.fromStorageKeyOrNull(original.homeCurrencyCode) ?: return false
         val cents = parseAmountCents(amount, currency) ?: return false
         val request = GoalUpdate(original.rowVersion, name, month, cents, category, currency.storageKey)
-            .validatedGoalUpdate().getOrNull()?.toRequest() ?: return false
+            .validatedGoalUpdate().getOrNull() ?: return false
         return pending.row.targetId == "goal:${original.publicId}" &&
-            pending.row.expectedRowVersion == original.rowVersion && pending.request == request
+            pending.row.expectedRowVersion == original.rowVersion && request.matchesSubmittedRequest(pending.request)
     }
 }
 

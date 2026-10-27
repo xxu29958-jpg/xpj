@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.domain.model.MonthlyArrangementChange
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
@@ -102,7 +103,7 @@ class BudgetAdviceInputsRepositoryTest {
     @Test fun trialValidationKeepsSameCurrencyAmountsStrictAndRejectsAnotherRateTargetBeforePublishingOrCaching() = runTest {
         val f = AdviceInputsFixture()
         f.inputs = f.inputs.copy(breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000), missingRates = emptyList())
-        val request = MonthlyArrangementSaveRequest("JPY", 1200, 300)
+        val request = MonthlyArrangementChange("JPY", 1200, 300)
         f.trialOverride = f.inputs.copy(isTrial = true, breakdown = f.inputs.breakdown.copy(savingsTargetCents = 12, reservedBufferCents = 300))
         assertTrue(f.repository.trialAdviceInputs(f.binding, "2026-09", request).isFailure)
         assertTrue(f.repository.requestTrialAdvice(f.binding, "2026-09", request).isFailure)
@@ -171,7 +172,7 @@ class BudgetAdviceInputsRepositoryTest {
             vm.uiState.first { !it.arrangementBusy }
             val row = f.dao.allRows().single()
             val saved = assertNotNull(com.ticketbox.OutboxAdapterGraph().budget.arrangementSaveAdapter.fromJson(row.payload))
-            assertEquals(trial.copy(expectedRowVersion = null), saved.request)
+            assertEquals(trial.copy(expectedRowVersion = null), saved.request.toDomain())
             assertEquals("JPY", saved.request.homeCurrencyCode)
             assertEquals(1L, row.expectedRowVersion)
         }
@@ -180,7 +181,7 @@ class BudgetAdviceInputsRepositoryTest {
     @Test fun savedAndDifferentTrialsDoNotShareAdviceBasisOrCacheAndReadNeverCallsAi() = runTest {
         val f = AdviceInputsFixture()
         f.inputs = f.inputs.copy(breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 1000, 500, 5500), missingRates = emptyList())
-        val first = MonthlyArrangementSaveRequest("JPY", 1200, 300)
+        val first = MonthlyArrangementChange("JPY", 1200, 300)
         val second = first.copy(savingsTargetCents = 2400)
         f.trialOverride = f.inputs.copy(isTrial = true, arrangementCurrencyCode = null,
             breakdown = f.inputs.breakdown.copy(savingsTargetCents = 1200, reservedBufferCents = 300))

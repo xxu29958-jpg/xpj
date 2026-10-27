@@ -16,16 +16,16 @@ import java.util.UUID
 @JsonClass(generateAdapter = true)
 data class MonthlyArrangementDraft(val homeCurrencyCode: String, val savings: String, val buffer: String,
     val expectedRowVersion: Long?, val edited: Boolean = false) {
-    fun request(): MonthlyArrangementSaveRequest {
+    fun request(): com.ticketbox.domain.model.MonthlyArrangementChange {
         val currency = requireNotNull(CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)) { "安排币种无法确认。" }
         fun amount(value: String): Long = requireNotNull(com.ticketbox.domain.model.parseExactMoneyMinor(value, currency)) {
             "请输入非负金额，并符合币种精度和金额上限。"
         }
-        return MonthlyArrangementSaveRequest(homeCurrencyCode, amount(savings), amount(buffer), expectedRowVersion)
+        return com.ticketbox.domain.model.MonthlyArrangementChange(homeCurrencyCode, amount(savings), amount(buffer), expectedRowVersion)
     }
 }
-data class MonthlyArrangementRead(val response: MonthlyArrangementResponseDto, val fromCache: Boolean = false)
-data class MonthlyArrangementHistoryRead(val response: MonthlyArrangementHistoryDto, val fromCache: Boolean = false,
+data class MonthlyArrangementRead(val response: com.ticketbox.domain.model.MonthlyArrangementResponse, val fromCache: Boolean = false)
+data class MonthlyArrangementHistoryRead(val response: com.ticketbox.domain.model.MonthlyArrangementHistory, val fromCache: Boolean = false,
     val fetchedAt: Instant? = null, val receiptVersions: Set<Long> = emptySet())
 /** Legacy raw pages remain readable; absent metadata never becomes a new read time. */
 @JsonClass(generateAdapter = true)
@@ -39,7 +39,7 @@ interface MonthlyArrangementActions {
     suspend fun consumeArrangementDraft(binding: LogicalSessionBinding, month: String, queuedDraft: MonthlyArrangementDraft)
     fun observeArrangements(binding: LogicalSessionBinding): Flow<List<PendingMonthlyArrangement>>
     fun describeArrangement(row: OutboxRow): PendingMonthlyArrangement?
-    suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest): Result<Long>
+    suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: com.ticketbox.domain.model.MonthlyArrangementChange): Result<Long>
     suspend fun recoverArrangement(binding: LogicalSessionBinding, pending: PendingMonthlyArrangement, drop: Boolean): Result<Unit>
 }
 
@@ -75,11 +75,11 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
                 val local = dao.read(key, clean, "saved")?.let { saved.fromJson(it.json) } ?: throw error
                 verifyArrangementResponse(local, binding, clean)
                 val projection = if (receipt != null && receipt.rowVersion > (local.arrangement?.rowVersion ?: 0)) {
-                    MonthlyArrangementResponseDto(binding.ledgerId, clean, receipt)
+                    MonthlyArrangementResponseDto(binding.ledgerId, clean, receipt.toDto())
                 } else local
                 verifyArrangementResponse(projection, binding, clean)
                 dao.write(MonthlyArrangementCacheEntity(key, clean, "saved", saved.toJson(projection)))
-                MonthlyArrangementRead(projection, fromCache = true)
+                MonthlyArrangementRead(projection.toDomain(), fromCache = true)
             }
         }
         verifyArrangementResponse(response, binding, clean)
@@ -89,7 +89,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
                 dao.write(MonthlyArrangementCacheEntity(key, clean, "saved", json))
             }
             onSnapshot("arrangement:$key:$clean", json)
-            MonthlyArrangementRead(response)
+            MonthlyArrangementRead(response.toDomain())
         }
     }
     private fun verifyArrangementResponse(response: MonthlyArrangementResponseDto, binding: LogicalSessionBinding, month: String) {
@@ -126,7 +126,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
                 // Keep the query intact; cached receipt snapshots survive normal completed-outbox retention.
                 if (retainedReceipts != cache.receipts) dao.write(MonthlyArrangementCacheEntity(key, clean, kind,
                     historyCache.toJson(cache.copy(response = local, receipts = retainedReceipts))))
-                MonthlyArrangementHistoryRead(projection, fromCache = true, fetchedAt = cache.fetchedAt?.let(Instant::parse),
+                MonthlyArrangementHistoryRead(projection.toDomain(), fromCache = true, fetchedAt = cache.fetchedAt?.let(Instant::parse),
                     receiptVersions = retainedReceipts.map { it.rowVersion }.toSet())
             }
         }
@@ -135,7 +135,7 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
         coordinator.acceptSnapshotRead(ticket, bound, fromCache = false) { cacheAllowed ->
             if (cacheAllowed) dao.write(MonthlyArrangementCacheEntity(key, clean, kind,
                 historyCache.toJson(MonthlyArrangementHistoryCache(response, fetchedAt.toString()))))
-            MonthlyArrangementHistoryRead(response, fetchedAt = fetchedAt)
+            MonthlyArrangementHistoryRead(response.toDomain(), fetchedAt = fetchedAt)
         }
     }
     private fun verifyArrangementHistory(response: MonthlyArrangementHistoryDto, binding: LogicalSessionBinding, clean: String) {
@@ -167,14 +167,14 @@ class MonthlyArrangementRepository internal constructor(private val apiProvider:
         }
         return PendingMonthlyArrangement(row, intent, receipt)
     }
-    override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: MonthlyArrangementSaveRequest) = errors.safeCall {
+    override suspend fun enqueueArrangement(binding: LogicalSessionBinding, month: String, request: com.ticketbox.domain.model.MonthlyArrangementChange) = errors.safeCall {
         check(ledgerRoleCanModify(apiProvider.currentLedgerRole())) { "当前角色为只读。" }
         val bound = guard.bindExact(binding)
         val clean = validatedBudgetMonth(month).getOrThrow()
         require(CurrencyCode.fromStorageKeyOrNull(request.homeCurrencyCode)?.storageKey == request.homeCurrencyCode &&
             request.savingsTargetCents in 0..com.ticketbox.domain.model.MONEY_MINOR_MAX && request.reservedBufferCents in 0..com.ticketbox.domain.model.MONEY_MINOR_MAX && (request.expectedRowVersion == null || request.expectedRowVersion > 0))
         outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(PendingMutationType.SaveMonthlyArrangement,
-            "monthly_arrangement:$clean", payloadAdapter.toJson(MonthlyArrangementPayload(1, clean, request.copy(expectedRowVersion = null))),
+            "monthly_arrangement:$clean", payloadAdapter.toJson(MonthlyArrangementPayload(1, clean, request.copy(expectedRowVersion = null).toDto())),
             request.expectedRowVersion ?: 0, UUID.randomUUID().toString()), validateTargetRows = { rows ->
             check(rows.all { it.status == PendingMutationStatus.Done }) { "这月安排有待处理的保存，请先核对原提交。" }
         })

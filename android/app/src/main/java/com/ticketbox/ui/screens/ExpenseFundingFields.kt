@@ -22,7 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
-import com.ticketbox.data.remote.dto.FinancialAccountDto
+import com.ticketbox.domain.model.FinancialAccount
 import com.ticketbox.data.repository.FundsRepository
 import com.ticketbox.data.repository.ExpenseFundingInput
 import com.ticketbox.data.repository.fundingInputAdapter
@@ -90,7 +90,7 @@ private fun FundingPartFields(row: ExpenseFundingInput, editable: Boolean, refun
 
 }
 
-private data class FundingAccountOptions(val accounts: List<FinancialAccountDto> = emptyList(), val message: String? = null)
+private data class FundingAccountOptions(val accounts: List<FinancialAccount> = emptyList(), val message: String? = null)
 
 @Composable
 private fun rememberFundingAccounts(repository: FundsRepository, refund: Boolean, attempt: Int): androidx.compose.runtime.State<FundingAccountOptions> {

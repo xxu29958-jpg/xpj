@@ -23,7 +23,7 @@ import com.ticketbox.ui.components.AppListRow
 import com.ticketbox.ui.components.SettingsEntryIcon
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.ui.components.expenseSourceLabelRes
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalStateTokens

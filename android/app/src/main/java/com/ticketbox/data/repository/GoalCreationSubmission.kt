@@ -57,9 +57,12 @@ suspend fun GoalEditActions.createDebtGoal(binding: LogicalSessionBinding, name:
     return create(binding, request, creationKey)
 }
 
-data class PendingGoalCreation(val row: OutboxRow, val request: GoalCreateRequestDto?, val confirmed: Goal?) {
+data class PendingGoalCreation(val row: OutboxRow, val request: com.ticketbox.domain.model.GoalCreateRequest?, val confirmed: Goal?,
+    val hasSupportedIntent: Boolean) {
+    internal constructor(row: OutboxRow, request: GoalCreateRequestDto?, confirmed: Goal?) :
+        this(row, request?.toDomain(), confirmed, request?.isSupportedGoalCreation(row) == true)
     val isDone: Boolean get() = row.status == PendingMutationStatus.Done
-    val canRetry: Boolean get() = request?.isSupportedGoalCreation(row) == true &&
+    val canRetry: Boolean get() = hasSupportedIntent &&
         row.status == PendingMutationStatus.Failed && (row.lastError?.startsWith("max_attempts_exceeded(") == true ||
         row.lastError in setOf("client_upgrade_required", "runtime_version_mismatch"))
     val canDrop: Boolean get() = row.status == PendingMutationStatus.Failed || row.status == PendingMutationStatus.Conflict

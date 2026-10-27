@@ -13,7 +13,7 @@ import com.ticketbox.viewmodel.OutboxStatusUiState
 internal fun ArrangementOriginalRecovery(row: OutboxRow, state: OutboxStatusUiState, actions: SyncStatusActions) {
     val pending = state.arrangements[row.id] ?: return
     MonthlyArrangementIntentSummary(pending)
-    val intent = pending.intent?.takeIf { it.supports(row) } ?: return
+    val intent = pending.intent?.takeIf { pending.supported } ?: return
     TextButton(onClick = { actions.onOpenArrangement(intent.month) }, enabled = state.busyRowId == null) {
         Text(stringResource(R.string.arrangement_open_month))
     }

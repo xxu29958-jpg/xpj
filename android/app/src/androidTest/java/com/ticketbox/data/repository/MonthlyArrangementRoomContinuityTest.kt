@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.domain.model.MonthlyArrangementChange
 import android.content.Context
 import android.content.ContextWrapper
 import com.ticketbox.data.local.LocalSettingsStore
@@ -119,7 +120,7 @@ class MonthlyArrangementRoomContinuityTest {
         loseAck = false
         val original = binding()
         var repository = reopen()
-        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementChange("JPY", 1200, 300)).getOrThrow()
         assertEquals(1, drain().done)
         repository.arrangement(original, "2026-09").getOrThrow()
         repository.arrangementHistory(original, "2026-09").getOrThrow()
@@ -166,7 +167,7 @@ class MonthlyArrangementRoomContinuityTest {
         loseAck = false
         val original = binding()
         val repository = reopen()
-        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementChange("JPY", 1200, 300)).getOrThrow()
         assertEquals(1, drain().done)
         repository.arrangement(original, "2026-09").getOrThrow()
         repository.arrangementHistory(original, "2026-09").getOrThrow()
@@ -269,7 +270,7 @@ class MonthlyArrangementRoomContinuityTest {
         loseAck = false
         val original = binding()
         var repository = reopen()
-        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementChange("JPY", 1200, 300)).getOrThrow()
         assertEquals(1, drain().done)
         offline = true
         repository = reopen()
@@ -333,18 +334,18 @@ class MonthlyArrangementRoomContinuityTest {
         val original = binding()
         var repository = reopen()
         val first = repository.enqueueArrangement(original, "2026-09",
-            MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+            MonthlyArrangementChange("JPY", 1200, 300)).getOrThrow()
         assertEquals(1, drain().done)
         val accepted = repository.observeArrangements(original).first().single { it.row.id == first }
         assertTrue(accepted.isConfirmed)
         repository = reopen()
         saveResponse = saveResponse.copy(savingsTargetCents = 1800, rowVersion = 2)
         val second = repository.enqueueArrangement(original, "2026-09",
-            MonthlyArrangementSaveRequest("JPY", 1800, 300, 1)).getOrThrow()
+            MonthlyArrangementChange("JPY", 1800, 300, 1)).getOrThrow()
         assertNotEquals(first, second)
         // The retained Done row permits a new version; its unresolved successor still blocks a third.
         assertTrue(repository.enqueueArrangement(original, "2026-09",
-            MonthlyArrangementSaveRequest("JPY", 2000, 300, 1)).isFailure)
+            MonthlyArrangementChange("JPY", 2000, 300, 1)).isFailure)
         assertEquals(1, drain().done)
         val rows = repository.observeArrangements(original).first()
         assertEquals(2, rows.size)
@@ -360,7 +361,7 @@ class MonthlyArrangementRoomContinuityTest {
         loseAck = false
         val original = binding()
         var repository = reopen()
-        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementChange("JPY", 1200, 300)).getOrThrow()
         assertEquals(1, drain().done)
         repository.arrangement(original, "2026-09").getOrThrow()
         val firstRead = repository.arrangementHistory(original, "2026-09").getOrThrow()
@@ -374,7 +375,7 @@ class MonthlyArrangementRoomContinuityTest {
         val firstResponse = saveResponse
         saveResponse = firstResponse.copy(savingsTargetCents = 1800, reservedBufferCents = 400, rowVersion = 2)
         historyResponse = historyOf(saveResponse, firstResponse)
-        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1800, 400, 1)).getOrThrow()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementChange("JPY", 1800, 400, 1)).getOrThrow()
         assertEquals(1, drain().done)
         val originalReceipts = requireNotNull(db).pendingMutationDao().allRows()
 
@@ -393,7 +394,7 @@ class MonthlyArrangementRoomContinuityTest {
         val cached = com.squareup.moshi.Moshi.Builder().build().adapter(MonthlyArrangementHistoryCache::class.java)
             .fromJson(requireNotNull(requireNotNull(db).monthlyArrangementCacheDao()
                 .read(monthlyArrangementPersistentBindingKey(original), "2026-09", "history:0")).json)!!
-        assertEquals("The saved query stays separate from receipt snapshots", firstRead.response, cached.response)
+        assertEquals("The saved query stays separate from receipt snapshots", firstRead.response, cached.response?.toDomain())
         assertEquals(firstRead.fetchedAt.toString(), cached.fetchedAt)
         assertEquals(listOf(2L), cached.receipts.map { it.rowVersion })
         repository = reopen()
@@ -404,7 +405,10 @@ class MonthlyArrangementRoomContinuityTest {
         assertEquals(history, repository.arrangementHistory(original, "2026-09").getOrThrow())
         // Earlier installations cached a raw response without read time or provenance.
         val legacyPage = com.squareup.moshi.Moshi.Builder().build().adapter(MonthlyArrangementHistoryDto::class.java)
-            .toJson(history.response)
+            .toJson(MonthlyArrangementHistoryDto(history.response.ledgerId, history.response.month,
+                history.response.items.map { item -> com.ticketbox.data.remote.dto.MonthlyArrangementHistoryItemDto(
+                    item.rowVersion, item.recordedAt, item.homeCurrencyCode, item.savingsTargetCents, item.reservedBufferCents) },
+                history.response.nextBeforeVersion))
         requireNotNull(db).monthlyArrangementCacheDao().write(requireNotNull(queriedPage).copy(json = legacyPage))
         repository = reopen()
         val legacy = repository.arrangementHistory(original, "2026-09").getOrThrow()
@@ -423,7 +427,7 @@ class MonthlyArrangementRoomContinuityTest {
         loseAck = false
         val original = binding()
         var repository = reopen()
-        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300)).getOrThrow()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementChange("JPY", 1200, 300)).getOrThrow()
         assertEquals(1, drain().done)
         repository.arrangementHistory(original, "2026-09").getOrThrow()
         // Another device saved v2: this device has neither that receipt nor a refreshed history page.
@@ -431,7 +435,7 @@ class MonthlyArrangementRoomContinuityTest {
         fact = remote
         historyPages[3] = historyOf(remote, saveResponse)
         saveResponse = saveResponse.copy(savingsTargetCents = 1800, reservedBufferCents = 400, rowVersion = 3)
-        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1800, 400, 2)).getOrThrow()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementChange("JPY", 1800, 400, 2)).getOrThrow()
         assertEquals(1, drain().done)
         val originalReceipts = requireNotNull(db).pendingMutationDao().allRows()
         offline = true
@@ -465,7 +469,7 @@ class MonthlyArrangementRoomContinuityTest {
         assertEquals(key, requireNotNull(db).pendingMutationDao().allRows().single().idempotencyKey)
         assertEquals(1, drain().done)
         assertEquals(calls.first(), calls.last())
-        assertEquals(MonthlyArrangementSaveRequest("JPY", 1200, 300), calls.first().first)
+        assertEquals(MonthlyArrangementChange("JPY", 1200, 300), calls.first().first)
         val completed = repository.observeArrangements(original).first().single { it.row.id == id }
         assertTrue(completed.isConfirmed)
         // Last successful GET was unconfigured; delivered original receipt must win after offline reopen.
@@ -486,7 +490,7 @@ class MonthlyArrangementRoomContinuityTest {
         val original = binding()
         var repository = reopen()
         conflict = true
-        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300, 4)).getOrThrow()
+        repository.enqueueArrangement(original, "2026-09", MonthlyArrangementChange("JPY", 1200, 300, 4)).getOrThrow()
         assertEquals(1, drain().conflicts)
         repository = reopen()
         val pending = repository.observeArrangements(original).first().single()

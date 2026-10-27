@@ -1,5 +1,6 @@
 package com.ticketbox.ui.navigation
 
+import com.ticketbox.domain.model.parseFamilyInvitationLink
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

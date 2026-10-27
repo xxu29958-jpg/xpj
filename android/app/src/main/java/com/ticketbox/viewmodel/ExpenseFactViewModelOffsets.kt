@@ -10,7 +10,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.StreamOffsetKind
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.canInitiateBillSplit
-import com.ticketbox.ui.components.formatAmountInput
+import com.ticketbox.presentation.formatAmountInput
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.flow.update

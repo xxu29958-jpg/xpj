@@ -14,7 +14,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.TagStats
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 
 /** Counts and independent amounts remain useful when a share cannot be established. */

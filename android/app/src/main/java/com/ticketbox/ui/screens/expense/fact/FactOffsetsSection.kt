@@ -24,8 +24,8 @@ import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.AppSectionHeader
 import com.ticketbox.ui.components.StatusPill
-import com.ticketbox.ui.components.displayDateTime
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.displayDateTime
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalStateTokens
 import com.ticketbox.viewmodel.ExpenseDetailDataLoadState

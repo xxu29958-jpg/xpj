@@ -11,7 +11,7 @@ import com.ticketbox.domain.model.DebtKinds
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.FxContract
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.parseAmountCents
 
 /**
  * ADR-0049 §2 (slice 8) 欠款列表 — Android 生活流：卡片列 → 页头 CTA → 底部抽屉新建外部欠款。

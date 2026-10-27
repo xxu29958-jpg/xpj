@@ -43,7 +43,7 @@ import com.ticketbox.domain.model.AccountDevice
 import com.ticketbox.domain.model.DevicePairingCode
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.SettingsEntryIcon
-import com.ticketbox.ui.components.displayDateTime
+import com.ticketbox.presentation.displayDateTime
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.MyDevicesUiState

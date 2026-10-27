@@ -90,7 +90,7 @@ fun ExpenseEditViewModel.reviewPendingFunding(funds: FundsRepository) {
 }
 
 private suspend fun ExpenseEditViewModel.readCurrentFunding(funds: FundsRepository,
-    binding: com.ticketbox.data.repository.LogicalSessionBinding, expenseId: Long): Pair<Expense, List<com.ticketbox.data.remote.dto.FinancialAccountDto>> {
+    binding: com.ticketbox.data.repository.LogicalSessionBinding, expenseId: Long): Pair<Expense, List<com.ticketbox.domain.model.FinancialAccount>> {
     val expense = repository.fetchExpenseForFxReview(binding, expenseId).getOrThrow()
     if (expense.status != "pending") throw CorrectionValidationError(R.string.funds_expense_no_longer_pending)
     val accounts = funds.reads.accounts(binding).getOrThrow()
@@ -114,7 +114,7 @@ internal suspend fun ExpenseEditViewModel.readyPendingFunding(draft: ExpenseDraf
     }
 }
 
-private fun refreshedPendingFunding(json: String, accounts: List<com.ticketbox.data.remote.dto.FinancialAccountDto>) =
+private fun refreshedPendingFunding(json: String, accounts: List<com.ticketbox.domain.model.FinancialAccount>) =
     fundingInputAdapter.toJson(requireNotNull(fundingInputAdapter.fromJson(json)).map { part ->
         val account = accounts.firstOrNull { it.publicId == part.accountId && !it.archived && it.currencyCode == part.accountCurrency }
         part.copy(accountVersion = account?.rowVersion ?: part.accountVersion, accountName = account?.name ?: part.accountName)

@@ -25,7 +25,7 @@ import com.ticketbox.domain.model.BudgetProgress
 import com.ticketbox.domain.model.BudgetProgressStatus
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.moneyPercent
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppAlpha
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing

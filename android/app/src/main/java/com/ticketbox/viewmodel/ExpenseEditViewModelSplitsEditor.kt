@@ -9,8 +9,8 @@ import com.ticketbox.domain.model.ExpenseSplitDraft
 import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.FamilyMember
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.parseAmountCents
-import com.ticketbox.ui.screens.expense.evenSplitActiveCents
+import com.ticketbox.presentation.parseAmountCents
+import com.ticketbox.domain.model.evenSplitActiveCents
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 

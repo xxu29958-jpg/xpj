@@ -62,3 +62,29 @@ private fun RecurringOccurrencePaymentRequestDto.hasSupportedAction(): Boolean =
     "clear" -> expensePublicId == null && expectedExpenseRowVersion == null
     else -> false
 }
+
+data class RecurringOccurrenceSubmission(
+    val revision: Int,
+    val seriesPublicId: String,
+    val seriesLabel: String,
+    val period: String,
+    val originSessionGeneration: String,
+    val originBindingRevision: String,
+    val paymentLabel: String?,
+    val paymentAmountCents: Long?,
+    val request: com.ticketbox.domain.model.RecurringOccurrencePaymentRequest,
+    val paymentCurrencyCode: String? = null,
+)
+
+internal fun RecurringOccurrencePayload.toView() = RecurringOccurrenceSubmission(
+    revision = revision,
+    seriesPublicId = seriesPublicId,
+    seriesLabel = seriesLabel,
+    period = period,
+    originSessionGeneration = originSessionGeneration,
+    originBindingRevision = originBindingRevision,
+    paymentLabel = paymentLabel,
+    paymentAmountCents = paymentAmountCents,
+    request = request.toDomain(),
+    paymentCurrencyCode = paymentCurrencyCode,
+)

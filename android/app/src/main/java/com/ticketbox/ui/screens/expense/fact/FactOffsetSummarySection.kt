@@ -12,7 +12,7 @@ import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.ui.components.AppAdaptiveMetricGrid
 import com.ticketbox.ui.components.AppAdaptiveMetricGridCompactMinWidth
 import com.ticketbox.ui.components.AppAmountText
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 
 /** Server-owned amounts below the original spend; the shared metric grid handles large type. */

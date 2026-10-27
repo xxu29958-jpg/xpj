@@ -72,3 +72,6 @@ fun IncomePlanPatch.toUpdateRequest(): IncomePlanUpdateRequestDto =
 
 private fun IncomePlanDraft.incomeMonthForWire(): String? =
     if (frequency == IncomeFrequency.ONE_TIME) incomeMonth?.trim() else null
+
+internal fun IncomePlanPatch.matchesSubmittedRequest(original: com.ticketbox.domain.model.IncomePlanUpdateRequest): Boolean =
+    toUpdateRequest().copy(expectedRowVersion = 0).toDomain() == original

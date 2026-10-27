@@ -16,17 +16,17 @@ class SavedQueryRepository(
     fun captureBinding() = guard.captureLogicalBinding()
     fun observeAccess() = apiProvider.observeActiveLedgerAccess()
     suspend fun catalog(binding: LogicalSessionBinding) = errors.safeCall {
-        guard.bindExact(binding).call { it.savedViews().items }
+        guard.bindExact(binding).call { it.savedViews().items.map { row -> row.toDomain() } }
     }
     suspend fun read(binding: LogicalSessionBinding, publicId: String) = errors.safeCall {
-        guard.bindExact(binding).call { it.savedView(publicId) }
+        guard.bindExact(binding).call { it.savedView(publicId).toDomain() }
     }
     suspend fun results(binding: LogicalSessionBinding, publicId: String, page: Int) = errors.safeCall {
         guard.bindExact(binding).call { api ->
             api.savedViewResults(publicId, page).also { result ->
                 require(result.conditions["ledger_id"] == binding.ledgerId)
                 result.items.forEach { it.entry.toConfirmedStreamCacheItem(binding.ledgerId) }
-            }
+            }.toDomain()
         }
     }
     suspend fun readDrafts(binding: LogicalSessionBinding) = errors.safeCall { drafts.read(binding) }
@@ -38,18 +38,18 @@ class SavedQueryRepository(
             val definition = draft.definition
             when (draft.command) {
                 SavedQueryCommand.Create -> draft.copy(phase = "accepted", error = null,
-                    receipt = api.createSavedView(definition, draft.key))
+                    receipt = api.createSavedView(definition.toDto(), draft.key).toDomain())
                 SavedQueryCommand.Edit -> {
                     val original = requireNotNull(draft.baseline)
                     val request = with(definition) { SavedViewUpdateRequestDto(original.rowVersion,
                         name, monthMode, month, filter, tagPublicId, homeCurrencyCode, queryText, category) }
                     draft.copy(phase = "accepted", error = null,
-                        receipt = api.updateSavedView(original.publicId, request, draft.key))
+                        receipt = api.updateSavedView(original.publicId, request, draft.key).toDomain())
                 }
                 SavedQueryCommand.Delete -> {
                     val original = requireNotNull(draft.baseline)
                     draft.copy(phase = "accepted", error = null, deletionReceipt = api.deleteSavedView(
-                        original.publicId, SavedViewDeleteRequestDto(original.rowVersion), draft.key))
+                        original.publicId, SavedViewDeleteRequestDto(original.rowVersion), draft.key).toDomain())
                 }
             }
         }

@@ -45,7 +45,7 @@ import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.components.appAdaptiveSupportingPaneContent
 import com.ticketbox.ui.components.rememberAppHaptics
 import com.ticketbox.ui.components.expenseAccountingDayLabel
-import com.ticketbox.ui.components.displayCalendarDay
+import com.ticketbox.presentation.displayCalendarDay
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy

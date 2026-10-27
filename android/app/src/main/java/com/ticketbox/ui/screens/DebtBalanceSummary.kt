@@ -25,8 +25,8 @@ import com.ticketbox.ui.components.AppAdaptiveContentActionStyle
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppPaperCard
 import com.ticketbox.ui.components.SettingsEntryIcon
-import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.formatDisplayAmount
+import com.ticketbox.presentation.parseAmountCents
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.LocalThemeVisuals

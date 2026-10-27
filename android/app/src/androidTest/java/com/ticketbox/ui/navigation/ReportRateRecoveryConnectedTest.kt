@@ -1,5 +1,6 @@
 package com.ticketbox.ui.navigation
 
+import com.ticketbox.data.repository.toDomain
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -96,7 +97,7 @@ class ReportRateRecoveryConnectedTest {
 
     @Test fun bindingReplacementRejectsTheOriginalReportContextAndPreservesTheQueuedBytes() {
         val id = runBlocking {
-            fixture.repository.enqueueRate(fixture.binding, report.month, request, null).getOrThrow()
+            fixture.repository.enqueueRate(fixture.binding, report.month, request.toDomain(), null).getOrThrow()
         }
         runBlocking { fixture.outbox.markFailed(id, "client_upgrade_required") }
         val original = runBlocking { fixture.rows().single() }
@@ -112,7 +113,7 @@ class ReportRateRecoveryConnectedTest {
         }
         compose.onNodeWithTag("advice_rate_save").assertDoesNotExist()
         val staleSave = runBlocking {
-            fixture.repository.enqueueRate(report.binding, report.month, request.copy(rateToHome = "21"), null)
+            fixture.repository.enqueueRate(report.binding, report.month, request.copy(rateToHome = "21").toDomain(), null)
         }
         assertEquals(LedgerRequestGuard.LEDGER_CHANGED_MESSAGE, staleSave.exceptionOrNull()?.message)
         val retained = runBlocking { fixture.rows().single() }

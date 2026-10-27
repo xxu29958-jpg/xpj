@@ -1,5 +1,6 @@
 package com.ticketbox.data.local
 
+import com.ticketbox.data.repository.toDomain
 import androidx.room.testing.MigrationTestHelper
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
@@ -129,7 +130,7 @@ class AppDatabaseMigrationTest {
             firstSource.copy(publicId = "target", status = "active", mergedIntoPublicId = null, rowVersion = 12), null)
         val merge = rename.copy(kind = com.ticketbox.data.repository.MerchantDraftKind.Merge, key = "original-merge-key",
             target = source.copy(publicId = "target", rowVersion = 11), aliasPolicy = com.ticketbox.domain.model.MerchantCatalogAliasPolicy.None,
-            parentRenameKey = rename.key, phase = "accepted", mergeReceipt = firstReceipt)
+            parentRenameKey = rename.key, phase = "accepted", mergeReceipt = firstReceipt.toDomain())
         val originals = setOf(input, rename, otherRename, merge)
         var room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
             .addMigrations(AppDatabase.Migration25To26, AppDatabase.Migration26To27, AppDatabase.Migration27To28,

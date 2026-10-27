@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.expense
 
+import com.ticketbox.viewmodel.summary
 import com.ticketbox.ui.screens.settings.SettingsEntryRowOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,7 +21,7 @@ import com.ticketbox.domain.model.ExpenseSplits
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.StatusPill
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.viewmodel.ExpenseDetailDataLoadState

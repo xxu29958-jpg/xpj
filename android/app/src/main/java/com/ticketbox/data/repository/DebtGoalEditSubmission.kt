@@ -90,3 +90,19 @@ class DebtGoalEditDispatcher(
         }
     }
 }
+
+data class DebtGoalEditSubmission(
+    val goalName: String,
+    val request: com.ticketbox.domain.model.DebtGoalLinksReplaceRequest? = null,
+    val selectedLabels: Map<String, String> = emptyMap(),
+    val dateRequest: com.ticketbox.domain.model.DebtGoalTargetDateRequest? = null,
+    val goalVersion: Int? = null,
+)
+
+internal fun DebtGoalEditPayload.toView() = DebtGoalEditSubmission(
+    goalName = goalName,
+    request = request?.toDomain(),
+    selectedLabels = selectedLabels,
+    dateRequest = dateRequest?.toDomain(),
+    goalVersion = goalVersion,
+)

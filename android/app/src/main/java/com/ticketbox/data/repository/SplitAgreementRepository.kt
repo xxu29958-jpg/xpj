@@ -3,18 +3,18 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.BillSplitAgreementDto
+import com.ticketbox.domain.model.BillSplitAgreement
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 interface SplitAgreementActions {
-    suspend fun read(task: DebtTask): Result<ReadSnapshot<BillSplitAgreementDto>>
-    suspend fun load(task: DebtTask, share: Long? = null): Result<BillSplitAgreementDto>
+    suspend fun read(task: DebtTask): Result<ReadSnapshot<BillSplitAgreement>>
+    suspend fun load(task: DebtTask, share: Long? = null): Result<BillSplitAgreement>
     fun observeReadAccessDenials(): Flow<SnapshotAccessDenial>
     fun observeResourceDenials(): Flow<DebtReadResourceDenial>
-    suspend fun submit(task: DebtTask, intent: SplitAgreementPayload): Result<Long>
-    fun describe(row: OutboxRow): SplitAgreementPayload?
+    suspend fun submit(task: DebtTask, intent: SplitAgreementSubmission): Result<Long>
+    fun describe(row: OutboxRow): SplitAgreementSubmission?
     fun observe(task: DebtTask): Flow<List<OutboxRow>>
     suspend fun recover(task: DebtTask, row: OutboxRow, drop: Boolean): Result<Unit>
 }
@@ -28,17 +28,17 @@ class SplitAgreementRepository internal constructor(
     private val guard = LedgerRequestGuard(apiProvider)
     private val errors = NetworkErrorHandler(serverUrlProvider = { null }, context = "SplitAgreement")
 
-    override suspend fun read(task: DebtTask): Result<ReadSnapshot<BillSplitAgreementDto>> = queryReader.agreement(task)
+    override suspend fun read(task: DebtTask): Result<ReadSnapshot<BillSplitAgreement>> = queryReader.agreement(task)
     override fun observeReadAccessDenials() = queryReader.readAccessDenials
     override fun observeResourceDenials() = queryReader.readResourceDenials
 
-    override suspend fun load(task: DebtTask, share: Long?): Result<BillSplitAgreementDto> =
-        queryReader.freshQuery(task) { splitAgreement(task.debtPublicId, share) }
+    override suspend fun load(task: DebtTask, share: Long?): Result<BillSplitAgreement> =
+        queryReader.freshQuery(task) { splitAgreement(task.debtPublicId, share) }.map { it.toDomain() }
 
-    override suspend fun submit(task: DebtTask, intent: SplitAgreementPayload): Result<Long> = errors.safeCall {
+    override suspend fun submit(task: DebtTask, intent: SplitAgreementSubmission): Result<Long> = errors.safeCall {
         val bound = guard.bindExact(task.binding)
         require(task.debtPublicId == intent.originalDebtPublicId) { "请回到原往来核对新约定。" }
-        val payload = adapter.toJson(intent)
+        val payload = adapter.toJson(intent.toWire())
         outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(
             PendingMutationType.SplitAgreement, debtWriteTarget(intent.originalDebtPublicId), payload,
             intent.expectedRowVersion, UUID.randomUUID().toString()), validateTargetRows = { rows ->
@@ -46,7 +46,7 @@ class SplitAgreementRepository internal constructor(
         })
     }
 
-    override fun describe(row: OutboxRow): SplitAgreementPayload? = adapter.readSplitAgreement(row)
+    override fun describe(row: OutboxRow): SplitAgreementSubmission? = adapter.readSplitAgreement(row)?.toView()
 
     override fun observe(task: DebtTask): Flow<List<OutboxRow>> = outbox.observeActiveByTypes(
         setOf(PendingMutationType.SplitAgreement), includeCompleted = true,

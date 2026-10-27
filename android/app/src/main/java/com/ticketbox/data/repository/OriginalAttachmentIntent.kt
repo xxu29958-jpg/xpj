@@ -28,7 +28,7 @@ data class OriginalSubmission(val key: String, val payload: OriginalAttachmentPa
     val prepare: (suspend () -> PreparedUploadImage?)? = null)
 
 data class PendingOriginalCommand(val row: OutboxRow, val payload: OriginalAttachmentPayload?,
-    val receipt: OriginalCommandReceiptDto?) {
+    val receipt: com.ticketbox.domain.model.OriginalCommandReceipt?) {
     val delivered: Boolean get() = row.status == PendingMutationStatus.Done && receipt != null
     val canRetry: Boolean get() = payload != null && row.status == PendingMutationStatus.Failed &&
         row.lastError?.substringBefore(':') !in ORIGINAL_REVIEW_ERRORS &&
@@ -41,7 +41,7 @@ data class OriginalCommandObservation(val access: LedgerAccessContext?, val comm
 interface OriginalAttachmentActions {
     fun currentOriginalBinding(): LogicalSessionBinding?
     fun observeOriginalCommands(): Flow<OriginalCommandObservation>
-    suspend fun fetchOriginalHealth(id: Long): Result<OriginalHealthDto>
+    suspend fun fetchOriginalHealth(id: Long): Result<com.ticketbox.domain.model.OriginalHealth>
     suspend fun submitOriginal(request: OriginalSubmission): Result<Long>
     suspend fun recoverOriginal(binding: LogicalSessionBinding, rowId: Long, drop: Boolean): Result<Unit>
     val originalSelections: OriginalSelectionActions

@@ -22,9 +22,9 @@ internal object PaymentCaptureWire {
     val receipt = moshi.adapter(PaymentCaptureDto::class.java)
 }
 
-fun OutboxRow.paymentCaptureReceipt(): PaymentCaptureDto? = runCatching {
+fun OutboxRow.paymentCaptureReceipt(): com.ticketbox.domain.model.PaymentCapture? = runCatching {
     require(type == PendingMutationType.ResolvePaymentCapture)
-    PaymentCaptureWire.receipt.fromJson(requireNotNull(receiptJson))
+    PaymentCaptureWire.receipt.fromJson(requireNotNull(receiptJson))?.toDomain()
 }.getOrNull()
 
 internal fun OutboxRow.paymentResolution(): PaymentCaptureResolution? = runCatching {

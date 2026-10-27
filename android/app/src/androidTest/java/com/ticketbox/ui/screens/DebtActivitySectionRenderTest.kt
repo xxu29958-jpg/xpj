@@ -19,7 +19,7 @@ import com.ticketbox.domain.model.DebtRepaymentStatuses
 import com.ticketbox.domain.model.DebtRepaymentVoid
 import com.ticketbox.domain.model.DebtSourceTypes
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.components.displayDate
+import com.ticketbox.presentation.displayDate
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.DebtActivityUiState
 import org.junit.Assert.assertEquals

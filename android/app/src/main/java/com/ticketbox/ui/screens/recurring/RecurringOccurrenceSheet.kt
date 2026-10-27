@@ -41,7 +41,7 @@ import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.SettingsEntryIcon
-import com.ticketbox.ui.components.displayCalendarDay
+import com.ticketbox.presentation.displayCalendarDay
 import com.ticketbox.ui.components.AppSheetScaffold
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum

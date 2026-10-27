@@ -1,6 +1,6 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.dto.LedgerCalendarDto
+import com.ticketbox.domain.model.LedgerCalendar
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
@@ -64,19 +64,19 @@ class FinancialMonthTest {
 }
 
 internal fun calendar(binding: LogicalSessionBinding, zone: String = "America/Los_Angeles") =
-    LedgerCalendarDto(binding.ledgerId, 1, zone, "explicit", "2026-01-01T00:00:00Z")
+    LedgerCalendar(binding.ledgerId, 1, zone, "explicit", "2026-01-01T00:00:00Z")
 
 internal class MonthCalendarFixture(
     var binding: LogicalSessionBinding,
-    var rule: LedgerCalendarDto? = null,
+    var rule: LedgerCalendar? = null,
 ) : LedgerCalendarReader {
     var refreshes = 0
-    var response: Result<LedgerCalendarDto?> = Result.success(null)
+    var response: Result<LedgerCalendar?> = Result.success(null)
     var gate: (suspend () -> Unit)? = null
     override fun currentBinding() = binding
-    override fun cached(binding: LogicalSessionBinding, revision: Long?): LedgerCalendarDto? =
+    override fun cached(binding: LogicalSessionBinding, revision: Long?): LedgerCalendar? =
         rule.takeIf { this.binding == binding }
-    override suspend fun refresh(binding: LogicalSessionBinding, revision: Long?): Result<LedgerCalendarDto?> {
+    override suspend fun refresh(binding: LogicalSessionBinding, revision: Long?): Result<LedgerCalendar?> {
         refreshes += 1
         gate?.invoke()
         return response

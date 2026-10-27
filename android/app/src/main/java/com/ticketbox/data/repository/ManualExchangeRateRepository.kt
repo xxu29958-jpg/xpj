@@ -15,14 +15,14 @@ import java.util.UUID
 
 interface ManualRateActions {
     suspend fun referenceRates(expectedBinding: LogicalSessionBinding,
-        request: ReferenceRateRequestDto, fetch: Boolean = false): Result<ReferenceRatesDto>
+        request: com.ticketbox.domain.model.ReferenceRateRequest, fetch: Boolean = false): Result<com.ticketbox.domain.model.ReferenceRates>
     fun describeRate(row: OutboxRow): PendingManualRateSubmission?
     fun observeRates(expectedBinding: LogicalSessionBinding): Flow<List<PendingManualRateSubmission>>
     suspend fun recoverRate(expectedBinding: LogicalSessionBinding, pending: PendingManualRateSubmission, drop: Boolean): Result<Unit>
     suspend fun enqueueRate(expectedBinding: LogicalSessionBinding, month: String,
-        request: ExchangeRateRequestDto, originalPublicId: String?): Result<Long>
+        request: com.ticketbox.domain.model.ExchangeRateRequest, originalPublicId: String?): Result<Long>
     suspend fun exchangeRates(expectedBinding: LogicalSessionBinding, currencyCode: String? = null,
-        homeCurrencyCode: String? = null, rateDate: String? = null): Result<List<ExchangeRateDto>>
+        homeCurrencyCode: String? = null, rateDate: String? = null): Result<List<com.ticketbox.domain.model.ExchangeRate>>
 }
 
 /** The existing server FX owner accepts one captured pair/date command from the shared queue. */
@@ -32,12 +32,12 @@ class ManualExchangeRateRepository(private val provider: ApiServiceProvider, pri
     private val errors = NetworkErrorHandler({ provider.currentSession()?.serverUrl }, "ManualExchangeRate")
 
     override suspend fun referenceRates(expectedBinding: LogicalSessionBinding,
-        request: ReferenceRateRequestDto, fetch: Boolean): Result<ReferenceRatesDto> = errors.safeCall {
+        request: com.ticketbox.domain.model.ReferenceRateRequest, fetch: Boolean): Result<com.ticketbox.domain.model.ReferenceRates> = errors.safeCall {
         if (fetch && !ledgerRoleCanModify(provider.currentLedgerRole())) throw RepositoryException("permission_denied", "permission_denied")
         guard.bindExact(expectedBinding).call {
-            if (fetch) it.acquireReferenceRates(request)
+            if (fetch) it.acquireReferenceRates(request.toDto())
             else it.referenceRates(request.homeCurrencyCode, request.currencyCode, request.rateDate)
-        }
+        }.toDomain()
     }
 
     override fun describeRate(row: OutboxRow): PendingManualRateSubmission? {
@@ -55,7 +55,7 @@ class ManualExchangeRateRepository(private val provider: ApiServiceProvider, pri
         }
 
     override suspend fun exchangeRates(expectedBinding: LogicalSessionBinding, currencyCode: String?,
-        homeCurrencyCode: String?, rateDate: String?): Result<List<ExchangeRateDto>> = errors.safeCall {
+        homeCurrencyCode: String?, rateDate: String?): Result<List<com.ticketbox.domain.model.ExchangeRate>> = errors.safeCall {
         guard.bindExact(expectedBinding).call { it.exchangeRates(currencyCode, homeCurrencyCode, rateDate, 365).items }.also { rows ->
             requireManualRate(rows.all { row -> validRateBaseline(row) &&
                 (currencyCode == null || row.currencyCode == currencyCode) &&
@@ -63,20 +63,20 @@ class ManualExchangeRateRepository(private val provider: ApiServiceProvider, pri
                 (rateDate == null || row.rateDate == rateDate) }, LocalRepositoryFailure.ManualRateChanged)
             requireManualRate(rows.distinctBy { Triple(it.currencyCode, it.homeCurrencyCode, it.rateDate) }.size == rows.size,
                 LocalRepositoryFailure.ManualRateChanged)
-        }
+        }.map { it.toDomain() }
     }
 
     override suspend fun enqueueRate(expectedBinding: LogicalSessionBinding, month: String,
-        request: ExchangeRateRequestDto, originalPublicId: String?): Result<Long> = errors.safeCall {
+        request: com.ticketbox.domain.model.ExchangeRateRequest, originalPublicId: String?): Result<Long> = errors.safeCall {
         if (!ledgerRoleCanModify(provider.currentLedgerRole())) throw RepositoryException("permission_denied", "permission_denied")
         val bound = guard.bindExact(expectedBinding)
-        val payload = ManualRatePayload(1, month, originalPublicId, request)
+        val payload = ManualRatePayload(1, month, originalPublicId, request.toDto())
         requireManualRate(payload.isSupported(), LocalRepositoryFailure.ManualRateReviewRequired)
         requireManualRate(observeRates(expectedBinding).first().none {
-            it.row.targetId == manualRateTarget(request) && !it.isConfirmed
+            it.row.targetId == manualRateTarget(request.toDto()) && !it.isConfirmed
         }, LocalRepositoryFailure.ManualRateUnresolved)
         outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(PendingMutationType.SaveManualExchangeRate,
-            manualRateTarget(request), payloadAdapter.toJson(payload), request.expectedRowVersion, UUID.randomUUID().toString()),
+            manualRateTarget(request.toDto()), payloadAdapter.toJson(payload), request.expectedRowVersion, UUID.randomUUID().toString()),
             validateTargetRows = { rows -> requireManualRate(rows.none { it.status != PendingMutationStatus.Done }, LocalRepositoryFailure.ManualRateUnresolved) })
     }
 

@@ -19,9 +19,9 @@ import kotlin.test.assertTrue
 class ManualExchangeRateContinuityTest {
     @Test fun everyReceiptFieldMustMatchTheOriginalAnd404NeverCompletes() = runTest {
         val f = ManualRateFixture()
-        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
+        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request.toDomain(), null).getOrThrow()
         val pending = f.pending(id)
-        val intent = requireNotNull(pending.intent)
+        val intent = requireNotNull(f.adapters.budget.manualRateAdapter.fromJson(pending.row.payloadJson))
         val mismatches = listOf(f.latest.copy(publicId = ""), f.latest.copy(currencyCode = "USD"),
             f.latest.copy(homeCurrencyCode = "USD"), f.latest.copy(rateDate = "2026-09-02"),
             f.latest.copy(rateToHome = "0.06"), f.latest.copy(source = "automatic"), f.latest.copy(rowVersion = 2))
@@ -34,14 +34,14 @@ class ManualExchangeRateContinuityTest {
 
     @Test fun rejectedOrUnverifiedRateKeepsOriginalAndRequiresReview() = runTest {
         val f = ManualRateFixture()
-        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
+        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request.toDomain(), null).getOrThrow()
         f.response = f.latest.copy(homeCurrencyCode = "USD")
         f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine.drainOnce().failures)
         assertEquals(0, f.adviceInvalidations)
         assertFalse(f.pending(id).isConfirmed)
         assertFalse(f.pending(id).canRetry)
-        assertTrue(f.repository.enqueueRate(f.binding, "2026-09", f.request, null).isFailure)
+        assertTrue(f.repository.enqueueRate(f.binding, "2026-09", f.request.toDomain(), null).isFailure)
         val pending = f.pending(id)
         assertTrue(f.dispatcher.dispatch(pending.row.copy(payloadJson = "{}")) is DispatchResult.Failure)
         assertEquals(1, f.keys.size)
@@ -49,25 +49,25 @@ class ManualExchangeRateContinuityTest {
 
     @Test fun conflictDoesNotChangeOriginalVersionAndNewCorrectionRequiresExplicitStopAndNewIntent() = runTest {
         val f = ManualRateFixture()
-        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
+        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request.toDomain(), null).getOrThrow()
         val original = f.dao.rows.getValue(id)
         f.outbox.markConflict(id, "state_conflict")
         assertFalse(f.pending(id).canRetry)
         assertTrue(f.repository.recoverRate(f.binding, f.pending(id), false).isFailure)
         f.repository.recoverRate(f.binding, f.pending(id), true).getOrThrow()
         val next = f.repository.enqueueRate(f.binding, "2026-09",
-            f.request.copy(expectedRowVersion = 1), f.latest.publicId).getOrThrow()
+            f.request.copy(expectedRowVersion = 1).toDomain(), f.latest.publicId).getOrThrow()
         assertTrue(original.idempotencyKey != f.dao.rows.getValue(next).idempotencyKey)
         assertEquals(1L, f.pending(next).row.expectedRowVersion)
     }
 
     @Test fun changedBindingCannotSaveOrStopTheOriginalRate() = runTest {
         val f = ManualRateFixture()
-        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
+        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request.toDomain(), null).getOrThrow()
         f.outbox.markFailed(id, "client_upgrade_required")
         val pending = f.pending(id)
         f.session.switchLedgerForFixture("other", "Other")
-        assertTrue(f.repository.enqueueRate(f.binding, "2026-09", f.request, null).isFailure)
+        assertTrue(f.repository.enqueueRate(f.binding, "2026-09", f.request.toDomain(), null).isFailure)
         assertTrue(f.repository.recoverRate(f.binding, pending, true).isFailure)
         assertEquals(null, f.repository.describeRate(pending.row))
         assertTrue(f.dao.rows.containsKey(id))

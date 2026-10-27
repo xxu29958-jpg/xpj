@@ -23,7 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.ExpenseConfirmationReceiptDto
+import com.ticketbox.domain.model.ExpenseConfirmationReceipt
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppBackButton
@@ -34,7 +34,7 @@ import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppScrollablePageChrome
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppAdaptiveContentWidth
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppRadius
@@ -43,7 +43,7 @@ import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.asTextStyle
 
 @Composable
-internal fun ExpenseConfirmationScreen(receipt: ExpenseConfirmationReceiptDto, ledgerName: String,
+internal fun ExpenseConfirmationScreen(receipt: ExpenseConfirmationReceipt, ledgerName: String,
     onOpenBill: () -> Unit, onCompleted: () -> Unit) {
     BackHandler(onBack = onCompleted)
     AppPageScrollableColumn(
@@ -76,7 +76,7 @@ internal fun ExpenseConfirmationScreen(receipt: ExpenseConfirmationReceiptDto, l
 }
 
 @Composable
-private fun ExpenseConfirmationAmount(receipt: ExpenseConfirmationReceiptDto) {
+private fun ExpenseConfirmationAmount(receipt: ExpenseConfirmationReceipt) {
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(AppRadius.hero), color = MaterialTheme.colorScheme.primaryContainer) {
         Column(Modifier.padding(AppSpacing.cardPadding), verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap)) {
             Text(stringResource(R.string.expense_confirmation_amount, receipt.homeCurrency), color = MaterialTheme.colorScheme.onSurfaceVariant)

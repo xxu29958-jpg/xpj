@@ -94,7 +94,7 @@ class MonthlyStatsSnapshotConnectedTest {
         compose.onNodeWithText(context.getString(R.string.stats_projection_currency, "JPY")).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("stats-cached-snapshot").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("stats-monthly-total").performScrollTo()
-            .assertTextEquals(com.ticketbox.ui.components.formatDisplayAmount(7000, CurrencyDisplay(CurrencyCode.JPY)))
+            .assertTextEquals(com.ticketbox.presentation.formatDisplayAmount(7000, CurrencyDisplay(CurrencyCode.JPY)))
         runBlocking { fixture.expenseDao.clearAllExpenseCaches() }
         assertEquals(before, fixture.stored())
         val repo = fixture.graph.expenseRepository

@@ -1,6 +1,10 @@
 package com.ticketbox.ui.screens.expense
 
-import com.ticketbox.data.remote.dto.LedgerCalendarDto
+import com.ticketbox.viewmodel.summary
+import com.ticketbox.viewmodel.readExpenseTimeForm
+import com.ticketbox.viewmodel.toSavedJson
+import com.ticketbox.viewmodel.ExpenseTimeForm
+import com.ticketbox.domain.model.LedgerCalendar
 import com.ticketbox.domain.model.RecognitionTimeCandidate
 import java.time.ZoneId
 import kotlin.test.Test
@@ -26,7 +30,7 @@ class ExpenseTimeFormTest {
         assertEquals("partial", restored.recognitionChoice?.candidateId)
         assertEquals("fact", restored.recognitionChoice?.evidencePublicId)
     }
-    private val rule = LedgerCalendarDto("owner", 2, "Asia/Shanghai", "explicit", "2026-09-20T00:00:00Z")
+    private val rule = LedgerCalendar("owner", 2, "Asia/Shanghai", "explicit", "2026-09-20T00:00:00Z")
     private fun form(instant: String = "2026-11-01T06:30:00Z") =
         ExpenseTimeForm.initial(instant, null, rule, ZoneId.of("America/New_York"))
 

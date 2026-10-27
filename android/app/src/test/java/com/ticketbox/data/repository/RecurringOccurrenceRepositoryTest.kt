@@ -115,7 +115,7 @@ class RecurringOccurrenceRepositoryTest {
         fixture.dao.runnableBatches += listOf(id)
         assertEquals(1, fixture.engine(fixture.outbox, fixture.clock).drainOnce().done)
         assertEquals(original.idempotencyKey, fixture.api.calls.single().second)
-        assertEquals(pending.intent?.request, fixture.api.calls.single().first)
+        assertEquals(pending.intent?.request, fixture.api.calls.single().first.toDomain())
     }
 }
 
@@ -137,8 +137,8 @@ private class OccurrenceFixture(role: String = "owner") {
     private val readCache = FakeExpenseDao()
     val repository = RecurringOccurrenceRepository(provider, outbox, adapter,
         RecurringQueryReader(provider, readCache, testSnapshotCoordinator(provider, outbox, readCache)))
-    val draft = OccurrencePaymentDraft(occurrenceFixture(), "房租",
-        RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-1", 3), "房租付款", 10_000, "CNY")
+    val draft = OccurrencePaymentDraft(occurrenceFixture().toDomain(), "房租",
+        RecurringOccurrencePaymentRequestDto("link", 0, 7, "payment-1", 3).toDomain(), "房租付款", 10_000, "CNY")
 
     fun engine(outbox: OutboxRepository, clock: Clock) = OutboxDrainEngine(outbox,
         listOf(RecurringOccurrenceDispatcher({ api }, adapter)), now = clock::millis)

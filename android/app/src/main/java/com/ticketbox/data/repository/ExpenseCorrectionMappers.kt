@@ -3,40 +3,13 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitRequestDto
-import com.ticketbox.data.remote.dto.ExpenseRevisionDto
-import com.ticketbox.data.remote.dto.ExpenseRevisionPageDto
 import com.ticketbox.data.remote.dto.CorrectionOptionalInt
 import com.ticketbox.data.remote.dto.CorrectionOptionalString
 import com.ticketbox.data.remote.dto.CorrectionOptionalTimeInput
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
-import com.ticketbox.domain.model.ExpenseRevision
-import com.ticketbox.domain.model.ExpenseRevisionPage
 import com.ticketbox.domain.model.MONEY_MINOR_MAX
 import java.util.Locale
-
-fun ExpenseRevisionDto.toDomain(): ExpenseRevision = ExpenseRevision(
-    publicId = publicId,
-    revisionNumber = revisionNumber,
-    changeKind = changeKind,
-    reason = reason,
-    changedFields = changedFields,
-    before = before,
-    after = after,
-    actorAccountName = actorAccountName,
-    actorDeviceName = actorDeviceName,
-    createdAt = createdAt,
-    offsetPublicId = offsetPublicId,
-)
-
-fun ExpenseRevisionPageDto.toDomain(): ExpenseRevisionPage = ExpenseRevisionPage(
-    items = items.map(ExpenseRevisionDto::toDomain),
-    page = page,
-    pageSize = pageSize,
-    total = total,
-    snapshotRevision = snapshotRevision,
-    offsetSnapshotId = requireNotNull(offsetSnapshotId),
-)
 
 fun ExpenseCorrectionDraft.toRequest(expectedRowVersion: Long): ExpenseCorrectionRequestDto {
     val cleanReason = reason.trim { it.isCorrectionWhitespace() }
@@ -161,3 +134,7 @@ fun ExpenseCorrectionDraft.changesAdvisorPayloadAgainst(baseline: Expense): Bool
             category != null ||
             expenseTimeChanged || timeInputChanged
         )
+
+internal fun ExpenseCorrectionDraft.requireAdmissible(expectedRowVersion: Long) {
+    toRequest(expectedRowVersion)
+}

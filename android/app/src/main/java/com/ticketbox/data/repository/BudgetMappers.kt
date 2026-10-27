@@ -102,3 +102,13 @@ fun BudgetAdviseResponseDto.toDomain(): BudgetAdviceResult {
         reasonCode = reasonCode,
     )
 }
+
+internal fun BudgetMonthlyUpdateRequestDto.toDomain() = BudgetMonthlyUpdate(
+    homeCurrencyCode = homeCurrencyCode, expectedRowVersion = expectedRowVersion,
+    totalAmountCents = totalAmountCents, nonMonthlyAmountCents = nonMonthlyAmountCents,
+    rolloverAmountCents = rolloverAmountCents, excludedCategories = excludedCategories,
+    categoryBudgets = categoryBudgets.map { com.ticketbox.domain.model.BudgetCategoryDraft(it.category, it.amountCents) },
+)
+
+internal fun BudgetMonthlyUpdate.matchesSubmittedRequest(original: BudgetMonthlyUpdate): Boolean =
+    toRequest().copy(expectedRowVersion = null).toDomain() == original

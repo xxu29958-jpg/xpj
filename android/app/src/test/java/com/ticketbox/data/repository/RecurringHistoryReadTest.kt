@@ -62,7 +62,7 @@ class RecurringHistoryReadTest {
         val originalTimezone = TimeZone.getDefault()
         try {
             TimeZone.setDefault(TimeZone.getTimeZone("Pacific/Honolulu"))
-            assertEquals(page(), repository.history(fixture.binding, "recurring", null).getOrThrow().value)
+            assertEquals(page().toDomain(), repository.history(fixture.binding, "recurring", null).getOrThrow().value)
         } finally { TimeZone.setDefault(originalTimezone) }
         val row = response.items.single()
         for (invalid in listOf(response.copy(ledgerId = "other"), response.copy(publicId = "other"),
@@ -74,7 +74,7 @@ class RecurringHistoryReadTest {
         assertTrue(repository.history(fixture.binding, "recurring", 9).isFailure)
         val legacy = definition().copy(homeCurrencyCode = null, baselineAmountCents = 0, source = "candidate")
         response = response.copy(items = listOf(row.copy(snapshot = legacy)))
-        assertEquals(legacy, repository.history(fixture.binding, "recurring", null).getOrThrow().value.items.single().snapshot)
+        assertEquals(legacy.toDomain(), repository.history(fixture.binding, "recurring", null).getOrThrow().value.items.single().snapshot)
     }
 
     @Test fun newLogicalSessionCannotAcceptALateOriginalHistoryResponse() = runTest {

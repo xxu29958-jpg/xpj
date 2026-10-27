@@ -1,9 +1,12 @@
 package com.ticketbox.ui.components
 
+import com.ticketbox.presentation.displayDateTime
+import com.ticketbox.presentation.displayCalendarDay
+import com.ticketbox.presentation.displayTime
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.data.remote.dto.ExpenseTimeInputDto
+import com.ticketbox.domain.model.ExpenseTimeInput
 
 /** A financial day and a known clock time are separate labels; confirmation is never purchase evidence. */
 fun expenseAccountingDayLabel(expense: Expense): String? = expense.accountingTime?.accountingDate
@@ -25,7 +28,7 @@ fun expenseClockLabel(expense: Expense): UiText = when {
     else -> UiText.res(R.string.calendar_clock_unknown)
 }
 
-fun timeInputLabel(input: ExpenseTimeInputDto?, legacyInstant: String? = null): UiText = when (input?.precision) {
+fun timeInputLabel(input: ExpenseTimeInput?, legacyInstant: String? = null): UiText = when (input?.precision) {
     null -> UiText.raw(displayDateTime(legacyInstant))
     "date_only" -> UiText.compound(listOf(UiText.raw(input.accountingDate ?: input.userLocalDate),
         UiText.res(R.string.calendar_date_only_label)), " · ")

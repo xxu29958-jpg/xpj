@@ -20,7 +20,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import com.ticketbox.ui.screens.expense.toSavedJson
+import com.ticketbox.viewmodel.toSavedJson
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
@@ -35,15 +35,15 @@ import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppSheetActionFeedback
 import com.ticketbox.ui.components.AppSheetActionFeedbackState
 import com.ticketbox.ui.components.AppSheetScaffold
-import com.ticketbox.ui.components.formatMinorAmountInput
-import com.ticketbox.ui.components.nowUtcIso
-import com.ticketbox.ui.components.parseMinorAmount
+import com.ticketbox.presentation.formatMinorAmountInput
+import com.ticketbox.presentation.nowUtcIso
+import com.ticketbox.presentation.parseMinorAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
 import com.ticketbox.ui.screens.expense.ExpenseEditTextField
 import com.ticketbox.ui.screens.expense.ExpenseEditTextFieldState
-import com.ticketbox.ui.screens.expense.summary
+import com.ticketbox.viewmodel.summary
 
 data class ManualExpenseSheetState(
     val categories: List<String>,

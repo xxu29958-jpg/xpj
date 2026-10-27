@@ -165,7 +165,7 @@ class ExpenseFactInputRoomTest {
         val account = com.ticketbox.data.remote.dto.FinancialAccountDto("credit-account", "原付款账户", original.binding.ledgerId,
             1, "credit", "KWD", "private", null, null, 4, false, -12345, -12345, "2026-09-01", "账单", null, true)
         val reviewed = original.copy(originalKey = "reviewed-funding", json = ExpenseFactInputCodec.encode(
-            ExpenseFactInputDraft(expense, fundingJson = reviewedFundingInputs(refused, listOf(account)))))
+            ExpenseFactInputDraft(expense, fundingJson = reviewedFundingInputs(refused, listOf(account.toDomain())))))
         // The rejected command and recovered input commit together; an existing editor wins over a stale recovery.
         cold.saveFactInput(null, reviewed.copy(originalKey = "other-editor")).getOrThrow()
         assertTrue(fixture.graph.fundsRepository.reopenExpenseConfirmation(original.binding, refused, reviewed, cold).isFailure)

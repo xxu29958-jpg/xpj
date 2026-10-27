@@ -13,7 +13,7 @@ import com.ticketbox.R
 import com.ticketbox.ui.asString
 import com.ticketbox.ui.components.AppContentCard
 import com.ticketbox.viewmodel.BudgetAdviceUiState
-import com.ticketbox.data.remote.dto.ReferenceRatesDto
+import com.ticketbox.domain.model.ReferenceRates
 
 @Composable
 internal fun AutomaticRateContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions) {
@@ -35,7 +35,7 @@ internal fun AutomaticRateContent(state: BudgetAdviceUiState, actions: BudgetAdv
 }
 
 @Composable
-private fun ReferenceQuotes(reference: ReferenceRatesDto, requestedDate: String?) {
+private fun ReferenceQuotes(reference: ReferenceRates, requestedDate: String?) {
     Text(stringResource(if (reference.autoEnabled) R.string.advice_reference_enabled else R.string.advice_reference_disabled))
     Text(stringResource(if (reference.provider == "frankfurter_v2") R.string.advice_reference_source_wide else R.string.advice_reference_source,
         if (reference.provider == "ecb") "ECB" else "Frankfurter"))
@@ -52,7 +52,7 @@ private fun ReferenceQuotes(reference: ReferenceRatesDto, requestedDate: String?
 }
 
 @Composable
-private fun ReferenceQuoteList(reference: ReferenceRatesDto) {
+private fun ReferenceQuoteList(reference: ReferenceRates) {
     var expanded by rememberSaveable(reference.requestedDate, reference.items.firstOrNull()?.homeCurrencyCode) { mutableStateOf(false) }
     TextButton(onClick = { expanded = !expanded }) {
         Text(stringResource(if (expanded) R.string.plan_history_collapse else R.string.advice_reference_show_quotes,

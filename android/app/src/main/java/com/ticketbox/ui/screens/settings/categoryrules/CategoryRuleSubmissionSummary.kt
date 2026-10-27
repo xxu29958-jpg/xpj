@@ -12,12 +12,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import com.ticketbox.data.repository.PendingCategoryRuleSubmission
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppContentCard
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 
 @Composable
 internal fun categoryRuleAmountText(amount: Long, code: String?): String {
@@ -62,7 +62,7 @@ private fun CategoryRuleOriginalInput(original: Map<String, String>) {
 }
 
 @Composable
-private fun CategoryRuleOriginalConditions(request: CategoryRuleRequest) {
+private fun CategoryRuleOriginalConditions(request: CategoryRuleDefinition) {
     request.category?.let { Text(it) }
     if (request.priority != null && request.enabled != null) Text(stringResource(
         R.string.category_rule_card_priority_status, request.priority,

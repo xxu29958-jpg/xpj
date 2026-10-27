@@ -20,9 +20,11 @@ data class BillSplitCreatePayload(
 
 data class PendingBillSplitCreation(
     val row: OutboxRow,
-    val payload: BillSplitCreatePayload?,
-    val invitation: com.ticketbox.domain.model.BillSplitSent? = null,
+    val payload: BillSplitSubmission?,
+    val invitation: com.ticketbox.domain.model.BillSplitSent?,
 ) {
+    internal constructor(row: OutboxRow, payload: BillSplitCreatePayload?, invitation: com.ticketbox.domain.model.BillSplitSent? = null) :
+        this(row, payload?.toView(), invitation)
     val delivered: Boolean get() = row.status == PendingMutationStatus.Done
     val canRetry: Boolean get() = payload != null && row.status == PendingMutationStatus.Failed &&
         row.lastError !in setOf("outbox_row_expired", "bill_split_requires_review", "bill_split_payload_unsupported", "bill_split_intent_invalid")
@@ -45,3 +47,21 @@ internal fun JsonAdapter<BillSplitCreatePayload>.readBillSplitIntent(row: Outbox
 } catch (_: IOException) {
     null
 }
+
+data class BillSplitSubmission(
+    val revision: Int,
+    val expenseId: Long,
+    val merchant: String?,
+    val receiverName: String,
+    val homeCurrencyCode: String,
+    val request: com.ticketbox.domain.model.BillSplitInviteRequest,
+)
+
+internal fun BillSplitCreatePayload.toView() = BillSplitSubmission(
+    revision = revision,
+    expenseId = expenseId,
+    merchant = merchant,
+    receiverName = receiverName,
+    homeCurrencyCode = homeCurrencyCode,
+    request = request.toDomain(),
+)

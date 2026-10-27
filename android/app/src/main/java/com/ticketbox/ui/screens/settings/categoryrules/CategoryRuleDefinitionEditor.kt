@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens.settings.categoryrules
 
+import com.ticketbox.viewmodel.CategoryRuleInputError
+import com.ticketbox.viewmodel.CategoryRuleDraftForm
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable

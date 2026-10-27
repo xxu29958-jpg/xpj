@@ -13,17 +13,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import com.ticketbox.data.remote.dto.AccountChoiceDto
-import com.ticketbox.data.remote.dto.CreditTermsDto
+import com.ticketbox.domain.model.AccountChoice
+import com.ticketbox.domain.model.CreditTerms
 import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.viewmodel.FundsViewModel
 
 
 @Composable
-internal fun FundsAccountChoices(choices: List<AccountChoiceDto>, enabled: Boolean, vm: FundsViewModel) {
+internal fun FundsAccountChoices(choices: List<AccountChoice>, enabled: Boolean, vm: FundsViewModel) {
     var choosing by rememberSaveable { mutableStateOf(false) }
     if (choices.isNotEmpty()) AppSecondaryButton(stringResource(R.string.funds_choose_preset), enabled = enabled) { choosing = true }
     if (choosing) AlertDialog(onDismissRequest = { choosing = false }, title = { Text(stringResource(R.string.funds_preset_title)) },
@@ -50,7 +50,7 @@ internal fun FundsCreditTermsFields(input: FundsInput, enabled: Boolean, vm: Fun
 }
 
 @Composable
-internal fun FundsCreditTermsRead(terms: CreditTermsDto, currency: String) {
+internal fun FundsCreditTermsRead(terms: CreditTerms, currency: String) {
     val unrecorded = stringResource(R.string.funds_unrecorded)
     fun amount(value: Long?) = value?.let { formatDisplayAmount(it, CurrencyDisplay.forRecord(currency)) } ?: unrecorded
     Text(stringResource(R.string.funds_credit_summary, amount(terms.creditLimitMinor), amount(terms.availableCreditMinor)))

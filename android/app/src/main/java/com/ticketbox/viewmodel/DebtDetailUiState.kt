@@ -30,7 +30,7 @@ data class DebtDetailUiState(
     val repaymentToVoid: DebtRepayment? = null,
     val amountInput: String = "",
     val reasonInput: String = "",
-    val paymentTime: com.ticketbox.ui.screens.expense.ExpenseTimeForm? = null,
+    val paymentTime: com.ticketbox.viewmodel.ExpenseTimeForm? = null,
     val repaymentKey: String? = null,
     val hasRepaymentDraft: Boolean = false,
     // Adjustment is a signed delta, but the decimal keyboard exposes no minus key, so the amount

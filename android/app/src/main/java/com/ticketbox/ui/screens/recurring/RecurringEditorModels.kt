@@ -4,7 +4,7 @@ import com.ticketbox.data.repository.RecurringItemDraft
 import com.ticketbox.data.repository.RecurringItemPatch
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.RecurringItem
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.parseAmountCents
 import com.ticketbox.viewmodel.RecurringManualSaveFeedback
 import com.ticketbox.viewmodel.RecurringManualSaveSettlement
 

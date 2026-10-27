@@ -22,7 +22,7 @@ import com.ticketbox.ui.components.AppCompactChips
 import com.ticketbox.ui.components.AppFilterChip
 import com.ticketbox.ui.components.AppFilterChipOptions
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.symbolAndCodeLabel
+import com.ticketbox.presentation.symbolAndCodeLabel
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 

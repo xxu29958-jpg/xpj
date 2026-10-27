@@ -30,7 +30,7 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.ExpenseSourceValues
 import com.ticketbox.domain.model.MONEY_MINOR_MAX
-import com.ticketbox.ui.components.formatAmount
+import com.ticketbox.presentation.formatAmount
 import com.ticketbox.ui.components.LocalAccountingDateReview
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.ledger.LedgerExpenseItemActions

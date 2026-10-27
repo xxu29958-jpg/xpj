@@ -1,5 +1,6 @@
 package com.ticketbox.ui.components
 
+import com.ticketbox.presentation.symbolAndCodeLabel
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.clickable

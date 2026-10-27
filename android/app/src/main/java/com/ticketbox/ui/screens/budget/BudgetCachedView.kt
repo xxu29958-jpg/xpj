@@ -29,7 +29,7 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.BudgetMonthly
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppSecondaryPageHeader
-import com.ticketbox.ui.components.displayDateTime
+import com.ticketbox.presentation.displayDateTime
 import com.ticketbox.ui.components.displayMonthLabel
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing

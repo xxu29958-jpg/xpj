@@ -14,7 +14,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.FinancialAccountDto
+import com.ticketbox.domain.model.FinancialAccount
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.viewmodel.FundsUiState
@@ -22,7 +22,7 @@ import com.ticketbox.viewmodel.FundsViewModel
 import com.ticketbox.viewmodel.start
 
 @Composable
-internal fun AccountActions(state: FundsUiState, detail: FinancialAccountDto, viewModel: FundsViewModel) {
+internal fun AccountActions(state: FundsUiState, detail: FinancialAccount, viewModel: FundsViewModel) {
     if (detail.archived || state.access?.canModify != true) return
     if (detail.kind == "credit") {
         AppPrimaryButton(stringResource(R.string.funds_record_actual_repayment), modifier = Modifier.fillMaxWidth()) { viewModel.start("repay") }
@@ -37,7 +37,7 @@ internal fun AccountActions(state: FundsUiState, detail: FinancialAccountDto, vi
 }
 
 @Composable
-internal fun AccountMore(state: FundsUiState, detail: FinancialAccountDto, viewModel: FundsViewModel) {
+internal fun AccountMore(state: FundsUiState, detail: FinancialAccount, viewModel: FundsViewModel) {
     var expanded by rememberSaveable(detail.publicId) { mutableStateOf(false) }
     val expansionLabel = stringResource(if (expanded) R.string.settings_account_toggle_collapse else R.string.settings_account_toggle_expand)
     TextButton(onClick = { expanded = !expanded }, modifier = Modifier.semantics { stateDescription = expansionLabel }) {

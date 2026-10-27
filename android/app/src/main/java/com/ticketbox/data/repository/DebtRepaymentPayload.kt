@@ -23,7 +23,7 @@ data class DebtRepaymentPayload(
     override val expectedRowVersion: Long get() = request.expectedRowVersion
 }
 
-internal fun OutboxRow.describeDebtRepayment(adapter: JsonAdapter<DebtRepaymentPayload>): PendingDebtWrite {
+internal fun OutboxRow.readOriginalDebtRepayment(adapter: JsonAdapter<DebtRepaymentPayload>): DebtRepaymentPayload? {
     val intent = try {
         adapter.fromJson(payloadJson)?.takeIf {
             it.revision == 1 && it.subject.publicId.isNotBlank() &&
@@ -41,7 +41,7 @@ internal fun OutboxRow.describeDebtRepayment(adapter: JsonAdapter<DebtRepaymentP
     } catch (_: DateTimeParseException) {
         null
     }
-    return PendingDebtWrite(this, intent)
+    return intent
 }
 
 /** Keep legacy instants readable; date-only intent must never acquire a fabricated instant. */
@@ -54,3 +54,6 @@ private fun RepaymentCreateRequestDto.hasSupportedPaymentTime(): Boolean {
         else -> false
     }
 }
+
+internal fun OutboxRow.describeDebtRepayment(adapter: JsonAdapter<DebtRepaymentPayload>): PendingDebtWrite =
+    PendingDebtWrite(this, readOriginalDebtRepayment(adapter)?.toView())

@@ -9,8 +9,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ticketbox.data.remote.dto.RecurringDefinitionDto
-import com.ticketbox.data.remote.dto.RecurringRevisionDto
+import com.ticketbox.domain.model.RecurringDefinition
+import com.ticketbox.domain.model.RecurringRevision
 import com.ticketbox.domain.model.*
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.budget.BudgetHistorySheet
@@ -111,6 +111,6 @@ class PlanHistoryPresentationTest {
         IncomeDefinition("家庭工作收入的完整计划名称", "salary", "monthly", null, amount(version), currency(version), 31, "active"))
     private fun goal(version: Long) = GoalRevision(version, kind(version), savedAt,
         GoalDefinition("家庭学习与交通的完整目标名称", "spending", "monthly", "2026-10", "日常交通", amount(version), currency(version), "active"))
-    private fun recurring(version: Long) = RecurringRevisionDto(version, kind(version), savedAt, null,
-        RecurringDefinitionDto("家庭宽带与通信服务的完整名称", "original", "monthly", currency(version), amount(version), "2026-10-09", "active", "manual"))
+    private fun recurring(version: Long) = RecurringRevision(version, kind(version), savedAt, null,
+        RecurringDefinition("家庭宽带与通信服务的完整名称", "original", "monthly", currency(version), amount(version), "2026-10-09", "active", "manual"))
 }

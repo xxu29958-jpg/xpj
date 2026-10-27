@@ -97,7 +97,7 @@ private fun moneyChanged(form: CorrectionFormState, before: CorrectionFormState)
     form.currencyTouched || form.amountText != before.amountText
 
 private fun timeChanged(form: CorrectionFormState, before: CorrectionFormState): Boolean =
-    com.ticketbox.ui.screens.expense.readExpenseTimeForm(form.timeFormJson)?.changed == true || form.expenseTimeText != before.expenseTimeText
+    com.ticketbox.viewmodel.readExpenseTimeForm(form.timeFormJson)?.changed == true || form.expenseTimeText != before.expenseTimeText
 
 internal fun correctionScalarComparisons(old: Expense, current: Expense, form: CorrectionFormState): List<CorrectionScalarComparison> {
     val zone = ZoneId.of(form.expenseTimeZoneId ?: "UTC")
@@ -105,9 +105,9 @@ internal fun correctionScalarComparisons(old: Expense, current: Expense, form: C
     val now = initialCorrectionFormState(current, zone)
     fun money(value: CorrectionFormState) = "${value.unsupportedCurrencyCode ?: value.currency.storageKey} ${value.amountText}"
     fun time(value: CorrectionFormState, expense: Expense): String {
-        val captured = com.ticketbox.ui.screens.expense.readExpenseTimeForm(value.timeFormJson)
+        val captured = com.ticketbox.viewmodel.readExpenseTimeForm(value.timeFormJson)
         if (captured == null && value.expenseTimeText != initialCorrectionFormState(expense, zone).expenseTimeText) return value.expenseTimeText
-        val displayed = captured ?: com.ticketbox.ui.screens.expense.ExpenseTimeForm.initial(expense.expenseTime, expense.accountingTime, null, zone)
+        val displayed = captured ?: com.ticketbox.viewmodel.ExpenseTimeForm.initial(expense.expenseTime, expense.accountingTime, null, zone)
         return if (displayed.precision == "date_only") displayed.date else listOf(displayed.date, displayed.time, displayed.sourceZone)
             .filter { it.isNotBlank() }.joinToString(" · ")
     }
@@ -143,11 +143,11 @@ private fun reviewedCorrectionCollections(form: CorrectionFormState, state: Expe
         if (current == null) draft else draft.copy(note = current.note, baselineAmountCents = current.amountCents,
             displayName = current.accountName, disabled = current.isDisabledMember,
             included = draft.included || current.isDisabledMember,
-            amountText = if (current.isDisabledMember) com.ticketbox.ui.components.formatMinorAmountInput(
+            amountText = if (current.isDisabledMember) com.ticketbox.presentation.formatMinorAmountInput(
                 kotlin.math.abs(current.amountCents), expense.editDisplayParseCurrency()) else draft.amountText)
     } + currentSplits.values.filter { it.isDisabledMember && form.splitDrafts.none { draft -> draft.memberId == it.memberId } }
         .map { EditableSplit(it.memberId, it.accountName, true,
-            com.ticketbox.ui.components.formatMinorAmountInput(kotlin.math.abs(it.amountCents), expense.editDisplayParseCurrency()),
+            com.ticketbox.presentation.formatMinorAmountInput(kotlin.math.abs(it.amountCents), expense.editDisplayParseCurrency()),
             disabled = true, note = it.note, baselineAmountCents = it.amountCents) }
     return form.copy(itemDrafts = if (keepItems == false) emptyList() else retainedItems,
         itemsTouched = keepItems != false && form.itemsTouched,

@@ -11,9 +11,9 @@ import com.ticketbox.domain.model.LEDGER_ROLE_OWNER
 import com.ticketbox.domain.model.LEDGER_ROLE_VIEWER
 import com.ticketbox.domain.model.LedgerSummary
 import com.ticketbox.domain.model.UiText
-import com.ticketbox.ui.navigation.FamilyInvitationLink
-import com.ticketbox.ui.navigation.parseFamilyInvitationLink
-import com.ticketbox.ui.navigation.parseFamilyInvitationToken
+import com.ticketbox.domain.model.FamilyInvitationLink
+import com.ticketbox.domain.model.parseFamilyInvitationLink
+import com.ticketbox.domain.model.parseFamilyInvitationToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

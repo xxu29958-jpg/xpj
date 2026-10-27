@@ -21,11 +21,11 @@ import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.domain.model.ExpenseFinancialSummary
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.asString
-import com.ticketbox.ui.components.formatAmountInput
+import com.ticketbox.presentation.formatAmountInput
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.AppPaperCard
-import com.ticketbox.ui.components.formatDisplayAmount
-import com.ticketbox.ui.components.parseMinorAmount
+import com.ticketbox.presentation.formatDisplayAmount
+import com.ticketbox.presentation.parseMinorAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.LocalThemeVisuals

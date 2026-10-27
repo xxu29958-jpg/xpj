@@ -33,8 +33,8 @@ class SavedQueryContinuityTest {
             val firstScope = CoroutineScope(coroutineContext + SupervisorJob())
             val first = SavedQueryDraftController(fixture.repository, firstScope) {}
             first.state.first { it.ready && it.canModify }
-            val slot = requireNotNull(first.begin(fixture.original.queryDefinition().copy(name = "  原保存输入  "),
-                fixture.original.takeUnless { command == SavedQueryCommand.Create }, command == SavedQueryCommand.Delete))
+            val slot = requireNotNull(first.begin(fixture.original.toDomain().queryDefinition().copy(name = "  原保存输入  "),
+                fixture.original.toDomain().takeUnless { command == SavedQueryCommand.Create }, command == SavedQueryCommand.Delete))
             first.submit(slot)
             first.state.first { !it.busy && it.drafts.single().phase == "unconfirmed" }
             val original = first.state.value.drafts.single()
@@ -68,7 +68,7 @@ class SavedQueryContinuityTest {
         val scope = CoroutineScope(coroutineContext + SupervisorJob())
         val controller = SavedQueryDraftController(fixture.repository, scope) {}
         controller.state.first { it.ready && it.canModify }
-        val slot = requireNotNull(controller.begin(fixture.original.queryDefinition().copy(name = "  我的新名字  ", queryText = "  原关键词  "), fixture.original))
+        val slot = requireNotNull(controller.begin(fixture.original.toDomain().queryDefinition().copy(name = "  我的新名字  ", queryText = "  原关键词  "), fixture.original.toDomain()))
         controller.submit(slot)
         controller.state.first { !it.busy && it.drafts.single().phase == "rejected" }
         val rejected = controller.state.value.drafts.single()
@@ -99,7 +99,7 @@ class SavedQueryContinuityTest {
         val controller = SavedQueryDraftController(fixture.repository, scope) {}
         controller.state.first { it.ready && it.canModify }
         fixture.inputs.failWrite = true
-        val slot = requireNotNull(controller.begin(fixture.original.queryDefinition()))
+        val slot = requireNotNull(controller.begin(fixture.original.toDomain().queryDefinition()))
         controller.state.first { it.error != null }
         controller.submit(slot); advanceUntilIdle()
         assertTrue(fixture.keys.isEmpty())

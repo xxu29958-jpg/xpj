@@ -6,7 +6,7 @@ import com.ticketbox.domain.model.ReportCategoryComparison
 import com.ticketbox.domain.model.ReportMerchantRanking
 import com.ticketbox.domain.model.ReportRankingMetric
 import com.ticketbox.domain.model.ReportTrendPoint
-import com.ticketbox.ui.components.formatDisplayAmount
+import com.ticketbox.presentation.formatDisplayAmount
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

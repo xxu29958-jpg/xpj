@@ -94,10 +94,10 @@ import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageRole
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.AppSecondaryButton
-import com.ticketbox.ui.components.displayTime
-import com.ticketbox.ui.components.formatAmount
-import com.ticketbox.ui.components.formatAmountInput
-import com.ticketbox.ui.components.parseAmountCents
+import com.ticketbox.presentation.displayTime
+import com.ticketbox.presentation.formatAmount
+import com.ticketbox.presentation.formatAmountInput
+import com.ticketbox.presentation.parseAmountCents
 import com.ticketbox.ui.design.AppElevation
 import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing

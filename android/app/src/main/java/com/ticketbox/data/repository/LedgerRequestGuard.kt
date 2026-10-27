@@ -23,6 +23,9 @@ internal class LedgerRequestGuard(
         return bindSnapshot(snapshot)
     }
 
+    fun serviceForOutbox(row: OutboxRow): ApiService = bind(expectedLedgerId = row.ledgerId)
+        .serviceFor(row.bindingOrNull() ?: throw IllegalStateException("Outbox row has no verified owner binding."))
+
     fun captureLogicalBinding(): LogicalSessionBinding? =
         currentSessionSnapshotOrNull()?.logicalBinding
 

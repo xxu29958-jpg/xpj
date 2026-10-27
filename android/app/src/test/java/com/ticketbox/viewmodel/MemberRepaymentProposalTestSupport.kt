@@ -1,5 +1,6 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.domain.model.ExpenseTimeInput
 import com.ticketbox.data.repository.DebtProposalActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -24,7 +25,7 @@ internal data class ProposalCreateCall(
     val proposedAmountCents: Long,
     val note: String?,
     val supersedesProposalPublicId: String?,
-    val timeInput: com.ticketbox.data.remote.dto.ExpenseTimeInputDto? = null,
+    val timeInput: com.ticketbox.domain.model.ExpenseTimeInput? = null,
 )
 
 internal data class ProposalConfirmCall(
