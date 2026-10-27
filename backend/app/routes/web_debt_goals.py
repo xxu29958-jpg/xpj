@@ -7,7 +7,7 @@
 ``composition``(Member/External/Mixed/Empty) **web 端从 ``linked_debts[].counterparty_type``
 派生**(后端不序列化该枚举，逐字镜像 Android ``DebtGoalComposition``，含 Empty 短路)；KPI 块
 gate ``== External``(用 ==External 而非 !=Member 以排除 Mixed)。成员债**永不 danger**(红线②)。
-读路径走 ``list_debt_repayment_goals``(``persist_achievement=False``，viewer 读永不锁存)；
+读路径走 ``list_debt_repayment_goals``（所有角色查询均不锁存）；
 写路径走 goal-debt 专属幂等命令（幂等 claim → OCC → 目标与成功记录同事务提交）。
 成员行文案复用 ``web_debts`` 的 ``_MEMBER_*`` 标签(扩而非重写)；目标级文案逐字镜像
 ``strings_stats_budget.xml`` 的 ``debt_plan_*`` / ``debt_kpi_payoff*`` / ``debt_three_state_*``。

@@ -236,6 +236,9 @@ def create_manual_expense(db: Session, payload: ExpenseManualCreateRequest, auth
         mark_idempotency_succeeded(db, claim.row, resource_type="expense", resource_id=str(receipt.id),
             response_body=receipt.model_dump(mode="json"))
         if commit:
+            from app.services.expense_funding_service import expense_funding_account_ids
+            from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
+            stage_debt_goal_achievements(db, account_ids=expense_funding_account_ids(db, expense.id))
             db.commit()
         if fx_task is not None and commit:
             submit_pending_expense_fx(db, fx_task)

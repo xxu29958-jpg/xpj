@@ -26,7 +26,7 @@ def void_account_activity(db, *, auth, public_id, payload, key):
     _require_reviewed_event(db, accounts, account, rows, payload)
     reverse_movements(db, ledger_id=auth.ledger_id, actor_account_id=auth.account_id, rows=rows,
         reason=payload.reason, occurred_on=payload.occurred_on)
-    return finish_funds(db, auth, claim, account)
+    return finish_funds(db, auth, claim, account, affected_account_ids=[row.id for row in accounts.values()])
 
 
 def _require_reviewed_event(db, accounts, account, rows, payload):

@@ -160,6 +160,9 @@ def submit_expense_rejection(
 def _commit_confirmation_and_cleanup(db: Session, expense: Expense) -> None:
     """Publish the financial state, then delegate GC transactions to its owner."""
 
+    from app.services.expense_funding_service import expense_funding_account_ids
+    from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
+    stage_debt_goal_achievements(db, account_ids=expense_funding_account_ids(db, expense.id))
     db.commit()
     db.refresh(expense)
     cleanup_after_confirm(db, expense)

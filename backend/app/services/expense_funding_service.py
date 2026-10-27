@@ -172,3 +172,9 @@ def apply_funding_correction(db, *, expense, before_money, payload, actor_accoun
 
 def funding_money_identity(expense):
     return (expense.original_currency_code, expense.original_amount_minor, expense.amount_cents, expense.accounting_date)
+
+
+def expense_funding_account_ids(db: Session, expense_id: int) -> set[int]:
+    """Return the current reviewed payment sources for a completed expense command."""
+    return set(db.scalars(select(ExpenseFunding.account_id).where(
+        ExpenseFunding.expense_id == expense_id, ExpenseFunding.voided_at.is_(None))))

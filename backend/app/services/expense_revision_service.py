@@ -335,3 +335,12 @@ def list_expense_revisions(
         total=total,
         snapshot_revision=effective_snapshot,
     )
+
+
+def correction_funding_account_ids(db: Session, revision: ExpenseRevision) -> set[int]:
+    """Use this correction's immutable before/after sources, including removed ones."""
+    if (revision.before_snapshot or {}).get("funding", []) == (revision.after_snapshot or {}).get("funding", []):
+        return set()
+    parts = {part["part_id"] for snapshot in (revision.before_snapshot, revision.after_snapshot)
+        for part in (snapshot or {}).get("funding", [])}
+    return set(db.scalars(select(ExpenseFunding.account_id).where(ExpenseFunding.id.in_(parts))))
