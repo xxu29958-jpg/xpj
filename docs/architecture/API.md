@@ -16,10 +16,10 @@ https://api.我的域名.com
 
 时间：
 
-- 数据库存 UTC。
-- API 返回 ISO 8601 字符串，例如 `2026-05-03T04:20:00Z`。
-- 统计优先按 `expense_time`，为空时按 `confirmed_at`。
-- `timezone` / `X-Timezone` 使用 IANA 时区名。未传 `timezone` 时使用服务端 `OCR_DEFAULT_TIMEZONE`；传入无效时区名时，当前查询边界按 UTC 降级，上传 OCR 草稿解析按服务端默认时区降级。
+- 审计时间和已知事件瞬时存 UTC，API 用 ISO 8601 表达；`accounting_date` / `stream_date` 是日期值，不因显示时区换日。
+- 账本、统计、预算、目标和导出的财务期间按已存账务日期及 confirmed stream 读取，不在查询时重算 `expense_time` / `confirmed_at`。
+- 接口需要当前月份且未显式指定时，由账本日历确定；显式月份和已捕获意图保持不变。
+- `timezone` / `X-Timezone` 保留相应展示或输入解析职责，不改变财务归月。`OCR_DEFAULT_TIMEZONE` 仍可用于 OCR 草稿解析，不是账本月份权威。
 
 金额：
 
@@ -182,7 +182,7 @@ Authorization: Bearer <admin_token>
 | `/api/imports/csv/{public_id}/apply` | POST | `backend/app/routes/imports.py` | 无 | `CsvImportApplyRequest` | `CsvImportApplyResponse` | Session Token，owner/member 写权限 | `backend/tests/test_csv_import_batches.py` | v1.0 分批写入待确认账单 |
 | `/api/imports/csv/{public_id}/errors.csv` | GET | `backend/app/routes/imports.py` | 无 | path `public_id` | streaming `text/csv` | Session Token | `backend/tests/test_csv_import_batches.py` | v1.0 下载导入错误行 |
 | `/api/expenses/manual` | POST | `backend/app/routes/expenses.py` | `createManualExpense(request)` | `ExpenseManualCreateRequest` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_expenses.py` | gray/internal |
-| `/api/expenses/notification-drafts` | POST | `backend/app/routes/expenses.py` | `createNotificationDraft(request)` | `NotificationDraftCreateRequest` / `NotificationDraftRequestDto` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_notification_drafts.py`, `ExpenseDtoContractTest`, `ExpenseRepositoryBindingTest` | v0.6；结构化草稿，不上传通知原文 |
+| `/api/expenses/notification-drafts` | POST | `backend/app/routes/expenses.py` | `createNotificationDraft(request)` | `NotificationDraftCreateRequest` / `NotificationDraftRequestDto` | `ExpenseDto` | Session Token，owner/member 写权限 | `backend/tests/test_notification_drafts.py`, `ExpenseDtoContractTest`, `ExpenseRepositoryBindingTest` | 兼容结构化草稿接口；当前 Android Listener 经 Outbox 调用 `/api/payment-captures` |
 | `/api/expenses/{id}/repayment-draft` | POST | `backend/app/routes/expenses.py` | `createRepaymentDraftFromExpense(id,request)` | `ExpenseRepaymentDraftCreateRequest` / `ExpenseRepaymentDraftCreateRequestDto` | `RepaymentDraftResponse` / `RepaymentDraftDto` | Session Token，owner/member 写权限 | `backend/tests/test_repayment_drafts.py`, `ExpenseEditViewModelTest` | 将已入账流水转入还款复核箱；创建时保留原 Expense；人工确认后在同一事务冲正原消费并记录还款 |
 | `/api/expenses/{id}` | GET | `backend/app/routes/expenses.py` | 无 | path `id` | `ExpenseDto` | Session Token | `backend/tests/test_expenses.py` | internal/debug 读取详情 |
 | `/api/expenses/{id}/items` | GET | `backend/app/routes/expenses.py` | `expenseItems(id)` | path `id` | `ExpenseItemsResponse` | Session Token | `backend/tests/test_expense_items.py` | v1.0 账单明细行；viewer 可读 |
@@ -682,7 +682,7 @@ file: 图片文件
 规则：
 
 - 与 iPhone 上传共用同一套文件校验、随机命名、hash、缩略图和 pending 创建流程。
-- 按当前 session token 所属账本写入对应目录。
+- 按原请求认证的账户、设备和账本写入对应目录。读取原件后重新校验该原身份的当前写权限，并在保存文件及提交账单、后台任务和回执期间保持该权限边界；撤权先完成时拒绝写入。原 key 重放仍校验当前权限，只返回已接受的原回执并续办原任务。
 - 仅 `owner` / `member` 可上传；`viewer` 返回 `permission_denied` + `当前角色为只读，无法修改账本。`。
 - `X-Timezone` 可选，Android 默认发送手机系统 IANA 时区；用于上传后 OCR 草稿时间解析。
 - Android 不保存、不发送 UploadLink。
@@ -777,7 +777,9 @@ Authorization: Bearer <session_token>
 Content-Type: application/json
 ```
 
-用于 v0.6 Android 通知监听后的结构化草稿创建。只允许上传解析后的结构化字段，不接受通知原文；创建结果固定为 `pending`，后续仍需用户确认入账。
+本接口保留结构化通知草稿创建兼容能力：只接受解析后的字段，不接受通知原文；创建结果固定为 `pending`，后续仍需用户确认入账。当前 Android 通知监听先将原采集意图写入既有 Outbox，再由 `NotificationCaptureDispatcher` 调用 `/api/payment-captures`。
+
+监听器的本地接纳失败由既有 Settings 保存原身份范围内的核对提醒，并在通知偏好页显示；普通忽略条件不产生失败提醒。后续成功和退出登录不会清除提醒，只有当前身份对所显示 token 的明确确认才能清除；持久化失败会明确显示，不能当作已保存或已清除。
 
 请求体：
 
@@ -798,7 +800,7 @@ Content-Type: application/json
 - `source` 仅支持 `wechat` / `alipay` / `bank_sms` / `bank_app` / `other`。
 - 请求体禁止 `raw_text` 等原文类字段；校验失败返回 `invalid_request`。
 - 请求体不得包含汇率字段；后端负责计算或标记 `fx_status=pending`。
-- 可选 `notification_key`：这条通知的**每次投递身份**——Android 客户端发送 `SHA-256(StatusBarNotification.key | postTime)` 的 64 位十六进制（**不是原始 key**：含 `postTime` 故个别 App 复用同一通知槽承载的不同事件各算一笔；定长 hash 永远落在长度上限内、原始 key 含 App 私有 tag 串不离开设备）。幂等键**以它为主轴** + 来源/商家/金额/30 分钟时间窗口为次轴：两条**不同投递身份**即便内容相同也各生成一条草稿（两笔真账各记一笔），**同一投递身份**重发返回同一条草稿。缺省（旧客户端 / 非通知来源）时回退到纯内容 + 时间窗口键（旧行为）。后端对该字段只做宽松 DoS 长度上限（512），值无论多长都会被 hash 进幂等材料，故长 key 绝不 422 让自动捕获静默失败。
+- 可选 `notification_key`：这条通知的**每次投递身份**——兼容调用方可发送 `SHA-256(StatusBarNotification.key | postTime)` 的 64 位十六进制（**不是原始 key**：含 `postTime` 故个别 App 复用同一通知槽承载的不同事件各算一笔；定长 hash 永远落在长度上限内、原始 key 含 App 私有 tag 串不离开设备）。幂等键**以它为主轴** + 来源/商家/金额/30 分钟时间窗口为次轴：两条**不同投递身份**即便内容相同也各生成一条草稿（两笔真账各记一笔），**同一投递身份**重发返回同一条草稿。缺省（旧客户端 / 非通知来源）时回退到纯内容 + 时间窗口键（旧行为）。后端对该字段只做宽松 DoS 长度上限（512），值无论多长都会被 hash 进幂等材料，故长 key 绝不 422 让自动捕获静默失败。
 - `viewer` 返回 `permission_denied`。
 - 不保存图片路径，不自动确认，不更新固定支出记录。
 
@@ -818,7 +820,7 @@ page_size: 默认 50，最大 200
 month: YYYY-MM，可选
 category: 分类，可选
 tag: 标签，可选
-timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传时使用服务端 OCR_DEFAULT_TIMEZONE
+timezone: IANA 时区名，可选；保留展示兼容用途，不改变已存账务日期或月份归属
 ```
 
 返回：
@@ -1014,10 +1016,10 @@ Authorization: Bearer <session_token>
 查询参数：
 
 ```text
-timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传时使用服务端 OCR_DEFAULT_TIMEZONE
+timezone: IANA 时区名，可选；保留展示兼容用途，不改变已存账务日期或月份归属
 ```
 
-返回已确认账单中出现过的月份，按新到旧排序。月份按 `timezone` 对应的本地自然月计算，统计和账本页可用它做月份快捷选择。
+返回已确认流水中出现过且不晚于账本当前月的财务月份，按新到旧排序。月份来自已存 `stream_date`，不随 `timezone` 重算，统计和账本页可用它做月份快捷选择。
 
 返回：
 
@@ -1041,7 +1043,7 @@ Authorization: Bearer <session_token>
 month: YYYY-MM，可选
 category: 分类，可选
 tag: 标签，可选
-timezone: IANA 时区名，可选；Android 默认传手机系统时区，未传时使用服务端 OCR_DEFAULT_TIMEZONE
+timezone: IANA 时区名，可选；保留展示兼容用途，不改变已存账务日期或月份归属
 ```
 
 返回 `text/csv`，用于导出已确认账单。导出接口只返回账单数据，不提供文件目录浏览或任意文件下载。
@@ -1945,8 +1947,8 @@ timezone=Asia/Shanghai
 规则：
 
 - 只统计当前账本的 `confirmed` 账单。
-- 统计时间口径与 `/api/stats/monthly` 一致：优先 `expense_time`，为空时使用 `confirmed_at`。
-- `day` / `week` 按指定 `timezone` 的本地自然日和自然周分桶；`month` 返回截至目标月的 6 个月趋势。
+- 统计财务日期口径与 `/api/stats/monthly` 一致：消费与偏移事实按各自已存账务日期读取，不以展示时区重新归月。
+- `day` / `week` 按已存 `stream_date` 的自然日和自然周分桶；`month` 返回截至目标月的 6 个月趋势。
 - 商家排行按当前月份聚合金额和笔数，并按已启用商家别名合并展示名；`merchant_category` 只过滤商家排行，`ranking_metric` 控制按金额或笔数排序。
 - 分类对比返回当前月、上月、去年同月、环比差额和同比差额；旧分类别名会按分类归一规则合并。
 - `viewer` 可读；接口不要求 writer 权限。
@@ -2100,9 +2102,11 @@ timezone=Asia/Shanghai
 
 - 只读取当前账本目标。
 - `viewer` 可读。
-- 默认返回 `spending_limit` 月度目标；`goal_type=debt_repayment` 返回无月份的还债目标及其 `debt_repayment` 评价块。`owner` / `member` 读取还债目标列表时会补写刚达成目标的 `achieved_version` latch；`viewer` 只计算响应、不写数据库。
+- 默认返回 `spending_limit` 月度目标；`goal_type=debt_repayment` 返回无月份的还债目标及其 `debt_repayment` 评价块。`owner`、`member` 和 `viewer` 的目标读取都只计算评价，不补写达成记录。
+- 会改变达成资格的财务或目标命令在最终业务状态准备 `achieved_at` / `achieved_version`，并与该命令同事务提交；更正过程中的暂时归零不是达成。
+- 历史未记录达成的目标可以实时显示 `achieved`，读取不会追补达成时间；同一 `goal_version` 已记录的达成保持。
 - 进度只统计当前账本、指定月份、`confirmed` 账单。
-- 统计时间口径与 `/api/stats/monthly` 一致：优先 `expense_time`，为空时使用 `confirmed_at`。
+- 统计财务日期口径与 `/api/stats/monthly` 一致：消费与偏移事实按各自已存账务日期读取，不以展示时区重新归月。
 - `category` 为空表示总支出目标；有值时只统计该分类，分类按现有归一规则处理。
 
 返回：
@@ -2246,7 +2250,7 @@ timezone=Asia/Shanghai
 口径：
 
 - `fixed_amount_cents` 来自当前账本 active/monthly 固定支出的 `baseline_amount_cents`。
-- `spent_amount_cents` 只统计当前账本、指定月份、confirmed 账单，时间口径与 `/api/stats/monthly` 一致：优先 `expense_time`，为空时使用 `confirmed_at`。
+- `spent_amount_cents` 使用当前账本、指定财务月份的 confirmed stream，按消费与偏移事实各自已存账务日期读取，口径与 `/api/stats/monthly` 一致。
 - `excluded_categories` 对应分类的 confirmed 金额进入 `excluded_amount_cents` / `excluded_breakdown`，不计入顶层 `spent_amount_cents`。
 - `remaining_amount_cents = total_amount_cents + rollover_amount_cents - spent_amount_cents`。
 - `flex_budget_cents = max(total_amount_cents + rollover_amount_cents - fixed_amount_cents - non_monthly_amount_cents, 0)`。
@@ -2373,7 +2377,9 @@ timezone=Asia/Shanghai，可选
 }
 ```
 
-同一账本、商家归一名和频率重复确认时返回既有记录，不重复创建。
+观察次数、最后观察时间和置信度取自服务端当前候选；请求中的同名字段仅作兼容。省略 `next_expected_date` 时，使用同一最后观察已存的 `accounting_date` 加一个自然月（月末按目标月末截断）；只有日期、没有事件瞬时的观察也适用。显式日期保持原值，显式 `null` 表示不设提醒；请求 `timezone` 不重新解释该账务日。
+
+请求必须带原 `Idempotency-Key`。同 key、同原请求返回首次已接受回执，不重算日期或改写历史；`timezone` 仍参与原请求指纹。同一账本、商家归一名和频率已存在时，用新 key 再次采用返回冲突，不把当前记录冒充该新请求的成功回执。
 
 异常金额检测只在读取 recurring items 时计算，不更新账单、不更新固定支出记录，也不自动生成 pending。当前口径：指定月份内该商家最新一笔金额比历史均值高 30% 或以上时，`anomaly_status = "higher_than_average"`。
 
@@ -2395,6 +2401,8 @@ archived 不允许恢复或暂停
 ```
 
 ## 维护
+
+下列三个附件清理入口要求本机 peer 与 Host、有效 admin scope 凭据，以及该凭据账户对目标账本的当前 Owner 权限。清理 owner 在接纳请求、提交后续办及实际文件删除检查点重新核对权限；转移 Owner 后，原管理凭据不能继续删除该账本原件。全局过期 AI 调用记录回收是另一个主机保留动作，不能把它的范围套用于附件命令。
 
 ### POST /api/maintenance/cleanup-images
 
@@ -2483,3 +2491,25 @@ Authorization: Bearer <admin_token>
   "deleted_bytes": 0
 }
 ```
+
+
+## 欠款账单的保留原件与建议
+
+有图欠款先保存 `DebtBillCapture` 的私有原件、归属、摘要及首次接纳回执，再按明确请求生成建议。它不是 Expense、还款复核项或新的后台任务。接口由 `backend/app/routes/debt_bills.py` 提供，精确字段见 [OpenAPI 契约](openapi_contract.json)。
+
+| 路径 | 方法 | 当前行为 |
+| --- | --- | --- |
+| `/api/debt-bills` | POST | multipart `file` + `creation_key`，以 `Idempotency-Key` 接纳原采集；返回固定首次回执 |
+| `/api/debt-bills` | GET | 当前账户、当前账本的私有来源；可按 `creation_key` 或 `debt_public_id` 查询 |
+| `/api/debt-bills/by-key/{capture_key}` | GET | 按原采集键核对已保存来源，支持丢回复后的恢复 |
+| `/api/debt-bills/{public_id}` | GET | 读取来源当前状态、版本、原件状态和采纳关系 |
+| `/api/debt-bills/{public_id}/original` | GET | 读取经过摘要核验的私有原件；禁止缓存 |
+| `/api/debt-bills/{public_id}/parse` | POST | `expected_row_version` + `Idempotency-Key`；同步生成并保存一次建议结果 |
+| `/api/debt-bills/{public_id}/parse-attempts/{attempt_key}` | GET | 只读核对原解析尝试的结果 |
+| `/api/debt-bills/{public_id}/discard` | POST | `expected_row_version` + `Idempotency-Key`；明确放弃尚未采纳的来源 |
+
+写操作要求当前写权限与协议能力，读操作要求来源属于当前账户和账本；能读取一笔 Debt 不会取得另一账户的私有来源。Web 详情的 `/web/debts/{debt_public_id}/bill-sources/{source_public_id}/original` 同时校验 Debt 可读性和来源归属。上述公网路径逐项登记在既有 allowlist 中，`uploads/` 不公开。
+
+`POST /api/debts` 可显式携带 `bill_source`（来源 `public_id` 与 `expected_row_version`）。来源须属于同一账户、账本和原创建任务；采纳来源、创建 Debt、写入反向引用及创建命令回执在同一事务完成。Debt 的经济来源字段和原创建响应不改装成附件容器。无图请求的原格式和键保持；已接受命令优先重放原回执。
+
+运行能力 `debt_bill_source_version=1` 只约束有来源的操作；缺失或未知能力保留原稿并提示升级。旧 `POST /api/debts/parse-bill` 已退役，返回 `409/client_upgrade_required`，不再接受无法保留原件的临时解析。

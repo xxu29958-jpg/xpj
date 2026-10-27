@@ -80,6 +80,7 @@ Android 离线写
 - PostgreSQL 是结构化事实、权限、状态机和引用关系的唯一在线数据库；Room confirmed 数据可删除重建。
 - outbox 是设备未提交意图，不是普通缓存；退出、升级和换账本不得静默清除。
 - 收据图是私有规范化 bytes，与 PG ownership/lifecycle/digest 共同构成有效附件；uploads 不静态公开。
+- 有图欠款由 `DebtBillCapture` 保存私有原件与建议来源；`CreateDebt` 命令在同一事务采纳来源并建立 Debt 反向引用。Android 原采集输入沿既有文件/Room/Outbox 接纳链持久保留，Debt 与 Web 详情读取同一私有来源；旧临时账单解析入口已拒绝。
 - OCR/AI 只写建议/provenance，用户修改和人工确认优先，provider 失败不阻断手工记账。
 - `/web` 使用应用 session；`/owner` 保持 loopback adapter；Cloudflare/loopback/OS admin 都不替代账本授权。
 - Windows SCM、注册表、Inno、PowerShell 和 ProgramData 只属于宿主 adapter。
@@ -285,9 +286,9 @@ amountCents: Long?
 
 ## 8. 时间规则
 
-所有时间使用 ISO 8601 字符串。
+已知事件瞬时和审计时间使用 UTC / ISO 8601；日期型财务事实保持日期精度。
 
-数据库保存 UTC 时间：
+UTC 时间字段：
 
 ```text
 created_at      上传/创建时间
@@ -297,14 +298,9 @@ confirmed_at    确认入账时间，可为空
 rejected_at     拒绝时间，可为空
 ```
 
-统计默认按：
+财务期间按已存 `accounting_date` 及 confirmed stream 的 `stream_date` 读取；消费和偏移事实各保留自己的日期。审计时间可用于排序，不能在查询时替代未知账务日期。
 
-```text
-expense_time 优先
-如果 expense_time 为空，则使用 confirmed_at
-```
-
-Android 展示时转本地时区。
+未显式选择的当前月份来自账本日历；Android 日历未知时保留未选择并允许明确选月，已填输入和原命令不重算。设备时区只用于已知瞬时的展示，不改变财务归月。详见[账务日历合同](../current/TICKETBOX_ACCOUNTING_CALENDAR_CONTRACT.md)。
 
 ## 9. Expense 数据模型
 
@@ -613,8 +609,7 @@ Authorization: Bearer <session_token>
 统计口径：
 
 - 只统计 `confirmed`。
-- 优先按 `expense_time` 归月。
-- 如果 `expense_time` 为空，则按 `confirmed_at` 归月。
+- 按消费与偏移事实各自已存账务日期归月；显示时区不改变财务月份。
 
 返回：
 
@@ -1001,7 +996,7 @@ api.我的域名.com -> http://127.0.0.1:8000
 3. Owner Bootstrap：初始化、生成凭证、绑定码管理。
 4. 上传闭环：上传图片、保存文件、计算 hash、创建 pending。
 5. 账单 API：pending、confirmed 分页、patch、confirm、reject、image。
-6. 统计 API：按 `expense_time` fallback `confirmed_at` 统计。
+6. 统计 API：按已存账务日期和 confirmed stream 统计。
 7. Android 绑定与认证：`POST /api/auth/pair`、Keystore、Biometric。
 8. Android pending、edit、confirm、reject。
 9. Android Room confirmed upsert 和账本离线缓存。

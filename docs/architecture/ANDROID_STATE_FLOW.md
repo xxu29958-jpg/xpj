@@ -68,45 +68,19 @@ confirmed
 
 ## 3. 时间口径
 
-后端数据库保存 UTC datetime。
+已知事件瞬时和审计时间使用 UTC datetime / ISO 8601；只有日期的事实保留日期精度，不伪造瞬时。`created_at`、`updated_at`、`confirmed_at`、`rejected_at` 记录各自动作时间；`expense_time` 只表达已有的事件时间证据。
 
-API 返回 ISO 8601 UTC 字符串，统一以 `Z` 结尾，例如：
+财务归属使用服务端已存 `accounting_date`，confirmed stream 中每笔消费或偏移事实使用自己的 `stream_date`。账本、统计、预算、目标、导出和 Room 投影共享该日期；不能在查询时重新用 `expense_time` / `confirmed_at` 或显示时区决定归月。日期未知时保留未知及既有待核对提示。
 
-```text
-2026-05-04T08:23:25Z
-```
-
-字段语义：
-
-- `created_at`：上传或创建时间。
-- `updated_at`：最近业务更新时间。
-- `expense_time`：实际消费时间。
-- `confirmed_at`：用户确认入账时间。
-- `rejected_at`：用户拒绝时间。
-
-统计时间使用：
-
-```text
-COALESCE(expense_time, confirmed_at)
-```
-
-`GET /api/stats/monthly?month=YYYY-MM` 的 `month` 表示服务端配置时区里的自然月。当前默认时区由 `OCR_DEFAULT_TIMEZONE` 控制，默认 `Asia/Shanghai`。
-
-后端查询时必须把本地自然月转换成 UTC 边界：
-
-```text
-2026-05 Asia/Shanghai
-  -> [2026-04-30T16:00:00Z, 2026-05-31T16:00:00Z)
-```
+`GET /api/stats/monthly?month=YYYY-MM` 的显式月份是财务月份。需要当前月份但未显式选择时使用账本日历；`OCR_DEFAULT_TIMEZONE` 只保留 OCR 草稿解析等既有职责。
 
 Android：
 
-- 展示时间时转设备本地时区。
-- 账本月份筛选按手机系统时区计算。
-- Room 本地趋势、月份筛选和统计补充也按手机系统时区。
-- Android 请求 confirmed、months、stats 和 export 时传手机系统 IANA 时区；后端未收到 `timezone` 时才回落到 `OCR_DEFAULT_TIMEZONE`，当前默认是 `Asia/Shanghai`。
-
-这样避免 UTC 月底账单在 Android 显示为下个月，但后端统计仍落在上个月。
+- 已知瞬时可按设备时区展示，日期型财务标签不随显示时区换日。
+- 新任务通过 `LedgerCalendarReader.newTaskMonth` 获取账本月份；缺少已知规则或读取失败时保持未选择，并提供既有明确选月入口，不回退设备月份。
+- 用户已选月份、已填日期、保留草稿和原命令不因后续日历读取或身份切换而重算。
+- Room 的月份筛选和趋势使用已存账务日期／`streamDate`，不从手机时区重建财务月份。
+- `timezone` 参数不授予客户端重新解释已确认日期的权威。完整语义见[账务日历合同](../current/TICKETBOX_ACCOUNTING_CALENDAR_CONTRACT.md)。
 
 ## 4. 上传失败补偿
 
@@ -120,7 +94,7 @@ Android：
 
 - 支持 `multipart/form-data` 和 raw image body。
 - raw 和 multipart 使用同一套最大大小限制。
-- 必须先校验 UploadLink 或 session token，再读取和保存文件。
+- 读取文件前先校验 UploadLink 或 session token；提交前仍须校验原身份及原账本的当前写权限。带 key 的 App/Web 原件上传在读取原件后、认领原 key 前取得既有身份锁，并保持到文件保存和业务提交完成；上传链接沿用其最终权限与配额校验。Web 无 session 的本机入口重新核对原账户仍是原账本的当前 Owner，不改投其他身份或账本。
 - 超限返回 `file_too_large`。
 - 不支持类型返回 `unsupported_file_type`。
 - 错误统一返回 `{ "error": "...", "message": "..." }`。
@@ -272,6 +246,18 @@ OCR 只填草稿，不自动入账。
 - 分类规则按账本隔离。
 - 避免因为自由文本导致统计分类爆炸。
 
+## 10.1 有图欠款的原采集与续办
+
+Debt 列表和往来入口共用原 `DebtListViewModel` 编辑器与图片准备入口。准备异常或取消结束忙态；异步建议回到原身份和编辑代次后才允许预填，手工输入优先。
+
+原件沿既有 `UploadIntentFileStore` 先持久保存，再由同一 Room 事务写入 `debt_bill_inputs` 和 `CaptureDebtBill` Outbox。Room 31→32 增加这项原输入；其中原创建键、采集键、文件描述和表单承担未提交意图职责，不是可随缓存清除的投影。捕获回执核对原任务与摘要后才进入同步建议请求。
+
+本地接纳结果不明时保留原采集键和原稿，重试先核对真实 Room 输入；明确放弃也只有成功核实不存在该输入时，才可清除未接纳的本地任务绑定。返回同一账户、账本和服务端时，按原归属发现保留输入，以当前操作绑定防止迟到回调，原 origin、key 和正文保持。
+
+继续原稿从已保留输入恢复原字段和创建键。提交前将原表单与采用的来源版本持久冻结；进入 `CreateDebt` Outbox 仅表示本机接纳，不能宣称 Debt 已确认，也不能据此删除原来源续办项。服务端采纳回读或明确放弃后才关闭来源续办；欠款详情从私有来源接口回读原件。
+
+原 `CreateDebt` 已冻结时，只有当前业务请求与原请求一致才复用原始 JSON bytes；不因当前绑定代次变化重编码原命令。无图原 `CreateDebt` revision 1 的 JSON 与原键保持。有来源的 revision 2 显式携带来源引用，并通过 typed Invocation 检查对应运行能力。缺失/未知能力、网络错误或捕获 404 保留原意图和原件；它们不是可标为完成的丢弃结果。原件 GC 同时扫描未关闭输入及仍在使用的 Outbox 引用，引用无法解码时不猜测删除。
+
 ## 11. 当前测试覆盖
 
 后端测试必须覆盖：
@@ -290,13 +276,13 @@ OCR 只填草稿，不自动入账。
 - confirm 后 pending 消失。
 - reject 后不出现在 pending。
 - mark-not-duplicate 不影响其他检测类型。
-- 月份筛选按配置本地时区。
+- 月份筛选按已存账务日期；省略当前月份时使用账本日历。
 - 图片清理后账单仍可展示。
 
 Android 测试必须覆盖：
 
 - confirmed 写入 Room 时按 `(ledgerId, serverId)` upsert。
 - pending / rejected 不进入 confirmed 缓存。
-- 账本本地月份筛选按手机系统时区。
+- 账本本地月份筛选使用已存账务日期；账本日历未知时不伪造设备月份，明确选择及原输入保持。
 - 远端失败时账本页不清空 Room 已有 confirmed 数据。
 - 图片路径缺失时域模型仍可展示账本数据。

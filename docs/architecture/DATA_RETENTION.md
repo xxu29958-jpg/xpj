@@ -17,7 +17,7 @@
    - uploads 不作为静态目录公开，只能通过受保护图片接口访问。
 
 3. Android Room
-   - 职责：confirmed 账本本地缓存和离线查看
+   - 职责：confirmed 账本本地缓存、离线查看，以及独立保留的未提交 Outbox 和欠款账单原输入；后两者不可按缓存清除。
    - 不是主库。
    - 远端同步成功后更新本地；远端失败时账本页才回退显示本地缓存。
 
@@ -37,6 +37,11 @@
 - 清理图片不删除 confirmed 账单数据。
 - 清理 rejected 图片不删除 rejected 行。
 - 孤儿文件清理只处理数据库没有引用的 uploads 文件。
+
+有图欠款来源单独保存于 `debt_bill_captures`，其原件、摘要、归属、解析结果和采纳关系不借用 Expense。confirmed/rejected 来源复用现有附件清理所有者：先提交持久清理请求，再实际删除字节；失败可按原请求续办，元数据和 Debt 反向引用保留。孤儿扫描同时保留来源当前路径与待清理请求中的路径。
+
+便携导出仅纳入当前账户在当前账本的私有欠款来源与回执；原件通过摘要核验并以包内引用导出，不泄露内部路径。Android 本地原输入即使捕获 Outbox 已交付仍需保留；只有明确结束来源且不再被真实输入或 Outbox 引用的文件，才可由既有 GC 回收。
+
 
 ## 配置项
 
@@ -67,7 +72,11 @@ ORPHAN_UPLOAD_GRACE_HOURS=24
 
 ## 维护接口
 
-维护接口只允许 admin scope token 调用，并只作用于当前 admin 上下文对应的账本：
+下列 confirmed、rejected 和 orphan 附件维护接口要求本机 peer 与 Host、有效 admin scope token，并且凭据账户仍是当前账本的 Owner。请求接纳、提交后续办和实际删除检查点均重新核对权限；Owner 转移后，旧管理凭据不能继续删除该账本原件。
+
+这些附件命令只作用于当前 admin 上下文账本。`cleanup-ai-advisor-audit` 则复用主机级保留策略，只回收所有账本中已超过各行既定保留期限的 AI 调用记录，不是任意账本原件删除入口。
+
+请求头：
 
 ```http
 Authorization: Bearer <admin_token>
