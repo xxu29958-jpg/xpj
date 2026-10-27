@@ -2,7 +2,6 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonReader
-import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
@@ -23,7 +22,7 @@ internal class RecurringMutationClient(
     private val errorHandler: NetworkErrorHandler,
     private val canModify: () -> Boolean,
     private val outbox: OutboxRepository?,
-    adapters: OutboxAdapterGraph?,
+    adapters: RecurringMutationAdapters?,
 ) : RecurringManualMutationActions {
     private val createAdapter = adapters?.recurringCreateAdapter
     private val updateAdapter = adapters?.recurringUpdateAdapter

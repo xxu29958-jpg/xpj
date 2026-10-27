@@ -80,7 +80,7 @@ class BudgetAdviceManualRateRecoveryTest {
         saveConsumerArtPreview("rate-original-editor", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.onNodeWithTag("advice_rate_save").performClick()
         val row = fixture.awaitSavedRow(compose)
-        val intent = requireNotNull(fixture.adapters.manualRateAdapter.fromJson(row.payload))
+        val intent = requireNotNull(fixture.adapters.budget.manualRateAdapter.fromJson(row.payload))
         assertEquals(fixture.originalMonth, intent.month)
         assertEquals(fixture.request, intent.request)
         assertEquals(0L, row.expectedRowVersion)

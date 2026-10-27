@@ -114,7 +114,7 @@ internal class DataQualityConnectedHarness : AutoCloseable {
                 com.ticketbox.data.repository.SavedQueryDraftStore(database.savedQueryInputDao())),
             accountProfile = com.ticketbox.data.repository.AccountProfileRepository(apiProvider, coordinator),
             uploadIntents = com.ticketbox.data.repository.UploadIntentRepository(apiProvider, outbox,
-                com.ticketbox.data.repository.UploadIntentFileStore(context), adapters, settingsStore, database.expenseDao()),
+                com.ticketbox.data.repository.UploadIntentFileStore(context), adapters.upload, settingsStore, database.expenseDao()),
             repository = ExpenseRepository(database.expenseDao(), binding, sessionCoordinator = coordinator, offlineMutations =
                 com.ticketbox.data.repository.ExpenseOfflineMutationWiring(outbox, adapters.correctionAdapter, adapters.legacyCorrectionAdapter,
                     adapters.billSplitCreateAdapter, adapters.billSplitReceiptAdapter, adapters.billSplitAcceptAdapter, adapters.billSplitAcceptedAdapter,
@@ -133,7 +133,7 @@ internal class DataQualityConnectedHarness : AutoCloseable {
             ),
             recurringRepository = RecurringRepository(apiProvider,
                 queryReader = com.ticketbox.data.repository.RecurringQueryReader(apiProvider, database.expenseDao(), coordinator)),
-            budgetRepository = BudgetRepository(apiProvider, outbox, adapters, com.ticketbox.data.repository.BudgetLocalStorage(
+            budgetRepository = BudgetRepository(apiProvider, outbox, adapters.budget, com.ticketbox.data.repository.BudgetLocalStorage(
                 database.monthlyArrangementCacheDao(), com.ticketbox.data.repository.BudgetQueryReader(apiProvider, database.expenseDao(), coordinator, outbox)), coordinator),
             reportsRepository = interfaceProxy<ReportsActions>(),
             goalEditRepository = com.ticketbox.data.repository.GoalEditRepository(apiProvider, outbox,
@@ -146,11 +146,11 @@ internal class DataQualityConnectedHarness : AutoCloseable {
                     database.incomeQueryCacheDao(), coordinator)),
             debtRepository = DebtRepository(apiProvider, debtQueries),
             fundsRepository = com.ticketbox.data.repository.FundsRepository(apiProvider, database, outbox, debtQueries),
-            debtCreationRepository = DebtCreationRepository(apiProvider, outbox, adapters.debtCreateAdapter),
+            debtCreationRepository = DebtCreationRepository(apiProvider, outbox, adapters.debt.debtCreateAdapter),
             debtWriteRepository = com.ticketbox.data.repository.DebtWriteRepository(apiProvider, outbox,
-                adapters),
+                adapters.debt),
             repaymentDraftRepository = RepaymentDraftRepository(apiProvider, debtQueries),
-            repaymentReviewRepository = com.ticketbox.data.repository.RepaymentReviewRepository(apiProvider, database, outbox, adapters),
+            repaymentReviewRepository = com.ticketbox.data.repository.RepaymentReviewRepository(apiProvider, database, outbox, adapters.debt),
             outboxRepository = outbox,
             tagRepository = TagRepository(apiProvider),
             categoryPreferenceRepository = CategoryPreferenceRepository(apiProvider),

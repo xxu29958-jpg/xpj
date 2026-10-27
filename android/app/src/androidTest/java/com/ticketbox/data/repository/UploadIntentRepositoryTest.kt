@@ -89,7 +89,7 @@ class UploadIntentRepositoryTest {
                 }
             }
             val engine = OutboxDrainEngine(fixture.outbox, listOf(UploadScreenshotDispatcher({ api },
-                fixture.adapters.uploadPayloadAdapter, fixture.adapters.uploadReceiptAdapter, fixture.fileStore::read)),
+                fixture.adapters.upload.uploadPayloadAdapter, fixture.adapters.upload.uploadReceiptAdapter, fixture.fileStore::read)),
                 now = { Instant.parse(UploadIntentRepositoryFixture.NOW).toEpochMilli() })
             assertEquals(1, engine.drainOnce().failures)
             fixture.repository.recoverUploadGroup(request.expectedBinding, accepted.groupId, drop = false).getOrThrow()
@@ -201,7 +201,7 @@ class UploadIntentRepositoryTest {
         UploadIntentRepositoryFixture().use { fixture ->
             val request = fixture.request()
             val accepted = fixture.repository.acceptUploadBatch(request).getOrThrow()
-            fixture.outbox.markDone(accepted.rowIds[0], receiptJson = fixture.adapters.uploadReceiptAdapter.toJson(UploadIntentRepositoryFixture.RECEIPT))
+            fixture.outbox.markDone(accepted.rowIds[0], receiptJson = fixture.adapters.upload.uploadReceiptAdapter.toJson(UploadIntentRepositoryFixture.RECEIPT))
             fixture.outbox.markFailed(accepted.rowIds[1], UPLOAD_CAPACITY_FULL)
             val original = fixture.dao.allRows()
             val reopened = fixture.reopen()
@@ -230,7 +230,7 @@ class UploadIntentRepositoryTest {
             assertEquals(original[0], retried[0])
             assertEquals(original[2], retried[2])
             for (row in retried) fixture.outbox.markDone(row.id,
-                receiptJson = fixture.adapters.uploadReceiptAdapter.toJson(UploadIntentRepositoryFixture.RECEIPT))
+                receiptJson = fixture.adapters.upload.uploadReceiptAdapter.toJson(UploadIntentRepositoryFixture.RECEIPT))
             val next = fixture.request(listOf("f.png"))
             assertEquals(next.id, reopened.acceptUploadBatch(next).getOrThrow().groupId)
         }
@@ -264,10 +264,10 @@ class UploadIntentRepositoryTest {
             assertEquals(unsupported, fixture.dao.allRows())
             assertEquals(0, fixture.repository.collectOrphans())
             assertTrue(fixture.original(requireNotNull(originals[2].idempotencyKey)).isFile)
-            val decoded = requireNotNull(fixture.adapters.uploadPayloadAdapter.fromJson(originals[0].payload))
+            val decoded = requireNotNull(fixture.adapters.upload.uploadPayloadAdapter.fromJson(originals[0].payload))
             val wrongOwner = decoded.copy(origin = decoded.origin.copy(ownerKey = "unproven-owner"))
             fixture.dao.clearAll()
-            fixture.dao.insert(originals[0].copy(payload = fixture.adapters.uploadPayloadAdapter.toJson(wrongOwner)))
+            fixture.dao.insert(originals[0].copy(payload = fixture.adapters.upload.uploadPayloadAdapter.toJson(wrongOwner)))
             assertEquals(0, fixture.repository.collectOrphans())
             assertTrue(fixture.original(requireNotNull(originals[2].idempotencyKey)).isFile)
         }
@@ -354,7 +354,7 @@ class UploadIntentRepositoryTest {
                     publicId = "expense-$name", enrichmentTaskPublicId = "task-$name")
             }
             val engine = OutboxDrainEngine(fixture.outbox, listOf(UploadScreenshotDispatcher({ api },
-                fixture.adapters.uploadPayloadAdapter, fixture.adapters.uploadReceiptAdapter, fixture.fileStore::read)),
+                fixture.adapters.upload.uploadPayloadAdapter, fixture.adapters.upload.uploadReceiptAdapter, fixture.fileStore::read)),
                 now = { Instant.parse(UploadIntentRepositoryFixture.NOW).toEpochMilli() })
 
             assertEquals(2, engine.drainOnce().failures)

@@ -177,7 +177,7 @@ class DirectRepaymentIntentTest {
                 lastError = delivered.lastError, attemptedAt = delivered.attemptedAt,
                 completedAt = delivered.completedAt, receiptJson = delivered.receiptJson), delivered)
             assertEquals(PendingMutationStatus.Done.wireValue, delivered.status)
-            val receipt = assertNotNull(fixture.adapters.debtRepaymentReceiptAdapter.fromJson(assertNotNull(delivered.receiptJson)))
+            val receipt = assertNotNull(fixture.adapters.debt.debtRepaymentReceiptAdapter.fromJson(assertNotNull(delivered.receiptJson)))
             assertEquals("repayment-original", receipt.repaymentPublicId)
             assertEquals(40_000L, DebtRepository(fixture.provider, debtReaderFixture(fixture.provider, fixture.session))
                 .getDebt("d1").getOrThrow().value.remainingAmountCents)

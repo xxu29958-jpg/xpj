@@ -162,5 +162,5 @@ class DebtCreationNavigationRoomTest {
     private fun field(resource: Int) = compose.onNode(hasSetTextAction() and hasText(text(resource)))
     private fun waitFor(value: String) = compose.waitUntil(5_000) { compose.onAllNodesWithText(value).fetchSemanticsNodes().isNotEmpty() }
     private suspend fun drain(now: Long = harness.fixture.clock.millis()) = OutboxDrainEngine(harness.fixture.outbox,
-        listOf(CreateDebtDispatcher({ api }, OutboxAdapterGraph().debtCreateAdapter)), now = { now }).drainOnce()
+        listOf(CreateDebtDispatcher({ api }, OutboxAdapterGraph().debt.debtCreateAdapter)), now = { now }).drainOnce()
 }

@@ -83,7 +83,7 @@ fun BudgetAdviseResponseDto.toDomain(): BudgetAdviceResult {
             errorCode = "server_upgrade_required",
         )
     return BudgetAdviceResult(
-        inputs = inputs,
+        inputs = inputs?.toDomain(),
         advice = advice?.let { response ->
             BudgetAdvice(
                 summary = response.summary,

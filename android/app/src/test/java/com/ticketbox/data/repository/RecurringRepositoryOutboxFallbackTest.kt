@@ -121,7 +121,7 @@ class RecurringRepositoryOutboxFallbackTest {
                 apiProvider = provider,
                 queryReader = RecurringQueryReader(provider, readCache, LocalLedgerSessionCoordinator(boundSettingsStore(), session.sessionStore, readCache, outbox)),
                 outbox = outbox,
-                adapters = com.ticketbox.OutboxAdapterGraph(),
+                adapters = com.ticketbox.OutboxAdapterGraph().recurring,
             ),
             binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding()),
         )

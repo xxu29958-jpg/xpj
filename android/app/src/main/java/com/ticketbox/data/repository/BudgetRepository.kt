@@ -1,6 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.MonthlyArrangementCacheDao
 import com.ticketbox.domain.model.BudgetAdviceResult
 import com.ticketbox.domain.model.BudgetMonthly
@@ -56,7 +55,7 @@ internal data class BudgetLocalStorage(val arrangementDao: MonthlyArrangementCac
 class BudgetRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     outbox: OutboxRepository,
-    adapters: OutboxAdapterGraph,
+    adapters: BudgetMutationAdapters,
     localStorage: BudgetLocalStorage,
     sessionCoordinator: LocalLedgerSessionCoordinator,
     internal val adviceCallStore: BudgetAdviceCallStore = BudgetAdviceCallStore(LedgerRequestGuard(apiProvider), budgetNetworkErrors(apiProvider)),

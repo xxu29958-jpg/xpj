@@ -31,8 +31,8 @@ class DebtCreationRecoveryProjectionTest {
     fun unsupportedPayloadDoesNotInventReadableDetailsOrCurrency() = runTest {
         val fixture = DebtCreationFixture()
         val row = failedRow(fixture)
-        val payload = requireNotNull(fixture.adapters.debtCreateAdapter.fromJson(row.payloadJson))
-        val unknown = row.copy(payloadJson = fixture.adapters.debtCreateAdapter.toJson(payload.copy(revision = 99)))
+        val payload = requireNotNull(fixture.adapters.debt.debtCreateAdapter.fromJson(row.payloadJson))
+        val unknown = row.copy(payloadJson = fixture.adapters.debt.debtCreateAdapter.toJson(payload.copy(revision = 99)))
 
         val summary = requireNotNull(fixture.repository.describePendingCreation(unknown))
 

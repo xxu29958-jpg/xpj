@@ -170,7 +170,7 @@ class BudgetAdviceInputsRepositoryTest {
             vm.saveArrangement()
             vm.uiState.first { !it.arrangementBusy }
             val row = f.dao.allRows().single()
-            val saved = assertNotNull(com.ticketbox.OutboxAdapterGraph().arrangementSaveAdapter.fromJson(row.payload))
+            val saved = assertNotNull(com.ticketbox.OutboxAdapterGraph().budget.arrangementSaveAdapter.fromJson(row.payload))
             assertEquals(trial.copy(expectedRowVersion = null), saved.request)
             assertEquals("JPY", saved.request.homeCurrencyCode)
             assertEquals(1L, row.expectedRowVersion)

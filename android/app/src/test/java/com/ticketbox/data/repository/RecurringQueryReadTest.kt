@@ -122,14 +122,14 @@ internal class RecurringQueryReadTest : ExpensePendingRepositoryOutboxTestBase()
             outbox.onRecurringDispatchFinished = reader::finishDispatch
             outbox.onRecurringAccepted = reader::invalidateAccepted
             val adapters = OutboxAdapterGraph()
-            val repository = RecurringRepository(fixture.provider, outbox, adapters, queryReader = reader)
+            val repository = RecurringRepository(fixture.provider, outbox, adapters.recurring, queryReader = reader)
             repository.updateAllowingOffline(fixture.binding, original.value.single(),
                 RecurringItemPatch(merchant = "原编辑", homeCurrencyCode = requireNotNull(original.value.single().homeCurrencyCode))).getOrThrow()
             val row = pending.allRows().single()
             val guard = LedgerRequestGuard(fixture.provider)
             val engine = OutboxDrainEngine(outbox, listOf(UpdateRecurringItemDispatcher({ request ->
                 guard.bind(expectedLedgerId = request.ledgerId).serviceFor(requireNotNull(request.bindingOrNull()))
-            }, adapters.recurringUpdateAdapter)))
+            }, adapters.recurring.recurringUpdateAdapter)))
             if (rebindBeforeResponse) beforeRefusal = {
                 fixture.session.rebindToDifferentServerForFixture("https://other.example.com", "other-session-token")
             }

@@ -21,7 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.ticketbox.R
 import com.ticketbox.data.remote.dto.ExchangeRateDto
-import com.ticketbox.data.remote.dto.MissingExchangeRateDto
+import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.data.repository.PendingManualRateSubmission
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.asString
@@ -33,7 +33,7 @@ import com.ticketbox.ui.screens.budget.MonthSwitcher
 import com.ticketbox.viewmodel.BudgetAdviceUiState
 
 internal data class BudgetAdviceActions(val onGenerate: () -> Unit, val onRefreshInputs: () -> Unit,
-    val onShiftMonth: (Long) -> Unit, val onOpenRate: (MissingExchangeRateDto) -> Unit,
+    val onShiftMonth: (Long) -> Unit, val onOpenRate: (CurrencyProjectionGap) -> Unit,
     val onEditRate: (ExchangeRateDto) -> Unit, val onRateValue: (String) -> Unit,
     val onSaveRate: () -> Unit, val onCloseRate: () -> Unit,
     val onReviewRate: (PendingManualRateSubmission) -> Unit,
@@ -105,7 +105,7 @@ internal fun BudgetAdviceReferenceContent(state: BudgetAdviceUiState, actions: B
                             ?: stringResource(R.string.advice_inputs_unknown), modifier = modifier, role = AppAmountRole.Compact)
                     })
             }
-            com.ticketbox.ui.components.CurrencyReferenceDates(inputs.referenceRates.map { it.toDomain() })
+            com.ticketbox.ui.components.CurrencyReferenceDates(inputs.referenceRates)
             MissingExchangeRates(inputs.missingRates, !state.rateBusy, actions.onOpenRate)
         }
         state.inputsError?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
@@ -115,8 +115,8 @@ internal fun BudgetAdviceReferenceContent(state: BudgetAdviceUiState, actions: B
 }
 
 @Composable
-private fun MissingExchangeRates(rates: List<MissingExchangeRateDto>, enabled: Boolean,
-    onOpenRate: (MissingExchangeRateDto) -> Unit) {
+private fun MissingExchangeRates(rates: List<CurrencyProjectionGap>, enabled: Boolean,
+    onOpenRate: (CurrencyProjectionGap) -> Unit) {
     if (rates.isNotEmpty()) Text(stringResource(R.string.advice_missing_rates))
     rates.forEach { gap ->
         if (!gap.canEnterManualRate()) Text(stringResource(R.string.advice_missing_fact))

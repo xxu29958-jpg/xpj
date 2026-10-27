@@ -133,7 +133,7 @@ private class OccurrenceFixture(role: String = "owner") {
     val clock: Clock = Clock.fixed(Instant.parse("2026-09-06T00:00:00Z"), ZoneOffset.UTC)
     val outbox = OutboxRepository(onRowsDeleted = {}, dao = dao, clock = clock,
         bindingProvider = { provider.currentSession().toOutboxBinding() })
-    val adapter = OutboxAdapterGraph().recurringOccurrenceAdapter
+    val adapter = OutboxAdapterGraph().recurring.recurringOccurrenceAdapter
     private val readCache = FakeExpenseDao()
     val repository = RecurringOccurrenceRepository(provider, outbox, adapter,
         RecurringQueryReader(provider, readCache, testSnapshotCoordinator(provider, outbox, readCache)))

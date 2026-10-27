@@ -163,7 +163,7 @@ class NetworkErrorReportingTest {
     fun debtCreateFailureReportsSafelyWithoutSettlingTheOriginal() = runTest {
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao = dao)
-        val adapter = com.ticketbox.OutboxAdapterGraph().debtCreateAdapter
+        val adapter = com.ticketbox.OutboxAdapterGraph().debt.debtCreateAdapter
         val payload = adapter.toJson(DebtCreateOutboxPayload(1, "CNY", "session", "binding",
             DebtCreateOutboxRequest("i_owe", "external", "对方", 12_345L)))
         val originalId = outbox.enqueue(PendingMutationType.CreateDebt, "debt_create:original-key", payload,

@@ -135,7 +135,7 @@ internal class CorrectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         val failed = originalRow.copy(status = PendingMutationStatus.Failed, lastError = result.message)
         val pending = PendingExpenseCorrection(failed, adapter.readSupportedCorrection(failed))
         assertTrue(pending.exchangeRatePending)
-        assertEquals(com.ticketbox.data.remote.dto.MissingExchangeRateDto("JPY", "CNY", "2025-12-03"), pending.missingExchangeRate)
+        assertEquals(com.ticketbox.domain.model.CurrencyProjectionGap("JPY", "CNY", "2025-12-03"), pending.missingExchangeRate)
         assertTrue(pending.canRetry, "Recheck remains an explicit replay, never an automatic loop")
         assertEquals(originalRow.payloadJson, failed.payloadJson)
         assertEquals(originalRow.idempotencyKey, stub.lastKey)

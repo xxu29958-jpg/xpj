@@ -188,12 +188,12 @@ class DebtQueryReadTest {
             outbox.onDebtDispatchPreparing = queries::prepareReadsBeforeDispatch
             outbox.onDebtDispatchFinished = queries::finishReadDispatch
             val adapters = OutboxAdapterGraph()
-            val writes = DebtWriteRepository(fixture.provider, outbox, adapters)
+            val writes = DebtWriteRepository(fixture.provider, outbox, adapters.debt)
             writes.save(fixture.binding, originalDebt.value, 30, "补记日元借款").getOrThrow()
             val original = pendingDao.rows.values.single()
             api.commandFailure = HttpException(Response.error<Any>(status, """{"error":"$code","message":"原提交未获确认"}""".toResponseBody()))
             val engine = OutboxDrainEngine(outbox, listOf(RecordDebtAdjustmentDispatcher(
-                LedgerRequestGuard(fixture.provider), adapters.debtAdjustmentAdapter)))
+                LedgerRequestGuard(fixture.provider), adapters.debt.debtAdjustmentAdapter)))
             pendingDao.runnableBatches += listOf(pendingDao.rows.keys.single())
             assertEquals(1, engine.drainOnce().failures)
             assertEquals(PendingMutationStatus.Failed.wireValue, pendingDao.rows.values.single().status)
@@ -772,14 +772,14 @@ private class DebtKindReadCommands(fixture: GoalReadFixture, queries: DebtReposi
         onDebtDispatchFinished = queries::finishReadDispatch
         onDebtAccepted = queries::invalidateReadsAfterAccepted
     }
-    val writes = DebtWriteRepository(provider, outbox, adapters)
+    val writes = DebtWriteRepository(provider, outbox, adapters.debt)
     private var originalId: Long? = null
     suspend fun save(debt: Debt) = writes.saveKind(binding, debt, "installment").getOrThrow().also { originalId = it }
     suspend fun pending(id: Long) = writes.observeWrites(binding, "jpy-debt").first().single { it.row.id == id }
     suspend fun dispatch(): DrainSummary {
         pendingDao.runnableBatches += listOf(requireNotNull(originalId))
         return OutboxDrainEngine(outbox, listOf(SetDebtKindDispatcher(LedgerRequestGuard(provider),
-        adapters.debtKindAdapter, adapters.debtVoidReceiptAdapter)), maxAttempts = 1).drainOnce()
+        adapters.debt.debtKindAdapter, adapters.debt.debtVoidReceiptAdapter)), maxAttempts = 1).drainOnce()
     }
 }
 

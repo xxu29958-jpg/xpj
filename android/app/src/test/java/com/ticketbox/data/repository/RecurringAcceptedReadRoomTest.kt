@@ -169,7 +169,7 @@ class RecurringAcceptedReadRoomTest {
             outbox.onRecurringDispatchFinished = reader::finishDispatch
             outbox.onRecurringAccepted = reader::invalidateAccepted
             val adapters = OutboxAdapterGraph()
-            val repository = RecurringRepository(fixture.provider, outbox, adapters, queryReader = reader)
+            val repository = RecurringRepository(fixture.provider, outbox, adapters.recurring, queryReader = reader)
             val baseline = repository.items(fixture.binding, includeArchived = true).getOrThrow().value.single()
             acceptedResult = api.item.copy(merchant = "已接受的原修改", rowVersion = 10)
             repository.updateAllowingOffline(fixture.binding, baseline, RecurringItemPatch(merchant = "已接受的原修改", homeCurrencyCode = "JPY")).getOrThrow()
@@ -177,7 +177,7 @@ class RecurringAcceptedReadRoomTest {
             val guard = LedgerRequestGuard(fixture.provider)
             val engine = OutboxDrainEngine(outbox, listOf(UpdateRecurringItemDispatcher({ row ->
                 guard.bind(expectedLedgerId = row.ledgerId).serviceFor(requireNotNull(row.bindingOrNull()))
-            }, adapters.recurringUpdateAdapter)))
+            }, adapters.recurring.recurringUpdateAdapter)))
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_recurring_protection BEFORE INSERT ON stats_projection_cache " +
                 "WHEN NEW.kind = 'recurring_outbox_read_barrier' BEGIN SELECT RAISE(ABORT, 'Read protection unavailable'); END")
             assertEquals(OutboxDrainWorker.DrainOutcome.RETRY, OutboxDrainWorker.runDrain { engine.drainOnce() })
@@ -308,11 +308,11 @@ class RecurringAcceptedReadRoomTest {
             outbox.onRecurringDispatchFinished = reader::finishDispatch
             outbox.onRecurringAccepted = reader::invalidateAccepted
             val adapters = OutboxAdapterGraph()
-            val repository = RecurringRepository(fixture.provider, outbox, adapters, queryReader = reader)
+            val repository = RecurringRepository(fixture.provider, outbox, adapters.recurring, queryReader = reader)
             val guard = LedgerRequestGuard(fixture.provider)
             val engine = OutboxDrainEngine(outbox, listOf(UpdateRecurringItemDispatcher({ row ->
                 guard.bind(expectedLedgerId = row.ledgerId).serviceFor(requireNotNull(row.bindingOrNull()))
-            }, adapters.recurringUpdateAdapter)))
+            }, adapters.recurring.recurringUpdateAdapter)))
             val invalidId = outbox.enqueue(PendingMutationType.UpdateRecurringItem, "recurring_item:recurring", "{}", 9, idempotencyKey = "invalid-original")
             assertEquals(1, engine.drainOnce().failures)
             assertEquals(0, updateCalls, "An unsupported original is rejected before any HTTP dispatch")
@@ -387,7 +387,7 @@ class RecurringAcceptedReadRoomTest {
             val baseline = reader.items(fixture.binding, null, true, null).getOrThrow()
             val outbox = testOutboxRepository(db.pendingMutationDao(), bindingProvider = { fixture.provider.currentSession().toOutboxBinding() })
             val adapters = OutboxAdapterGraph()
-            val repository = RecurringRepository(fixture.provider, outbox, adapters, queryReader = reader)
+            val repository = RecurringRepository(fixture.provider, outbox, adapters.recurring, queryReader = reader)
             val pending = async(Dispatchers.IO) { repository.pause(fixture.binding, baseline.value.single().publicId, baseline.value.single().rowVersion) }
             started.await()
             val key = logicalBindingAdapter.toJson(fixture.binding)

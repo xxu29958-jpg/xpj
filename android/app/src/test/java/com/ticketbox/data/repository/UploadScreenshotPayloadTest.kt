@@ -9,7 +9,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class UploadScreenshotPayloadTest {
-    private val adapter = OutboxAdapterGraph().uploadPayloadAdapter
+    private val adapter = OutboxAdapterGraph().upload.uploadPayloadAdapter
 
     @Test
     fun originalBatchFileAndCompleteBindingSurviveRealJsonRoundTrip() {

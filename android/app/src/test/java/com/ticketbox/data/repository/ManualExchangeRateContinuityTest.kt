@@ -27,7 +27,7 @@ class ManualExchangeRateContinuityTest {
             f.latest.copy(rateToHome = "0.06"), f.latest.copy(source = "automatic"), f.latest.copy(rowVersion = 2))
         assertTrue(mismatches.none { intent.accepts(pending.row, it) })
         val missing = ManualExchangeRateDispatcher({ throw HttpException(Response.error<Unit>(404, "{}".toResponseBody())) },
-            f.adapters.manualRateAdapter, f.adapters.manualRateReceiptAdapter)
+            f.adapters.budget.manualRateAdapter, f.adapters.budget.manualRateReceiptAdapter)
         assertTrue(missing.dispatch(pending.row) is DispatchResult.Failure)
         assertFalse(f.pending(id).isConfirmed)
     }
@@ -101,8 +101,8 @@ internal class ManualRateFixture {
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = api
     }, session)
     val binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
-    val repository = ManualExchangeRateRepository(provider, outbox, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter)
-    val dispatcher = ManualExchangeRateDispatcher({ api }, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter)
+    val repository = ManualExchangeRateRepository(provider, outbox, adapters.budget.manualRateAdapter, adapters.budget.manualRateReceiptAdapter)
+    val dispatcher = ManualExchangeRateDispatcher({ api }, adapters.budget.manualRateAdapter, adapters.budget.manualRateReceiptAdapter)
     var adviceInvalidations = 0
     val engine = OutboxDrainEngine(outbox, listOf(dispatcher), maxAttempts = 1).apply {
         onAdviceInputReplaySucceeded = { adviceInvalidations += 1 }

@@ -124,7 +124,7 @@ class DebtAdjustmentRoomContinuityTest {
         for (column in listOf("payload", "idempotencyKey", "expectedRowVersion", "ownerKey", "ledgerId")) {
             assertEquals(original[column], completed[column])
         }
-        val receipt = com.ticketbox.OutboxAdapterGraph().debtVoidReceiptAdapter.fromJson(requireNotNull(completed["receiptJson"]))
+        val receipt = com.ticketbox.OutboxAdapterGraph().debt.debtVoidReceiptAdapter.fromJson(requireNotNull(completed["receiptJson"]))
         assertEquals(accepted, receipt)
         assertEquals("debt-original", fixture.network.kindCalls.first().first)
         assertEquals(original["idempotencyKey"], fixture.network.kindCalls.first().third)

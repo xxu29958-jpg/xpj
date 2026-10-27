@@ -12,7 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
+import com.ticketbox.domain.model.BudgetAdviceInputs
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.AppAmountText
 import com.ticketbox.ui.components.displayMonthLabel
@@ -22,7 +22,7 @@ import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 
 @Composable
-internal fun MonthlyPlanBudget(inputs: BudgetAdviceInputsDto, onOpenBudget: (() -> Unit)?) {
+internal fun MonthlyPlanBudget(inputs: BudgetAdviceInputs, onOpenBudget: (() -> Unit)?) {
     var expanded by remember(inputs.month) { mutableStateOf(false) }
     val budget = inputs.budgetDefinition
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
@@ -50,7 +50,7 @@ internal fun MonthlyPlanBudget(inputs: BudgetAdviceInputsDto, onOpenBudget: (() 
 }
 
 @Composable
-internal fun MonthlyPlanExplanation(inputs: BudgetAdviceInputsDto) {
+internal fun MonthlyPlanExplanation(inputs: BudgetAdviceInputs) {
     if (inputs.plannedTotalCents != null) {
         Text(stringResource(R.string.arrangement_plan_total,
             formatDisplayAmount(inputs.plannedTotalCents, CurrencyDisplay.forRecord(inputs.homeCurrencyCode)), inputs.homeCurrencyCode))
@@ -59,7 +59,7 @@ internal fun MonthlyPlanExplanation(inputs: BudgetAdviceInputsDto) {
 }
 
 @Composable
-internal fun BudgetAdviceDataScope(inputs: BudgetAdviceInputsDto) {
+internal fun BudgetAdviceDataScope(inputs: BudgetAdviceInputs) {
     val scope = inputs.dataScope
     if (scope == null) Text(stringResource(R.string.advice_scope_unknown), style = MaterialTheme.typography.bodySmall)
     else Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {

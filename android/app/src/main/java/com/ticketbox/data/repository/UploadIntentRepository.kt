@@ -28,7 +28,7 @@ class UploadIntentRepository internal constructor(
     internal val apiProvider: ApiServiceProvider,
     internal val outbox: OutboxRepository,
     internal val files: UploadIntentFileStore,
-    adapters: com.ticketbox.OutboxAdapterGraph,
+    adapters: UploadMutationAdapters,
     internal val settingsStore: TicketboxSettingsStore,
     internal val originalInputs: com.ticketbox.data.local.ExpenseFactInputDao,
 ) : UploadIntentActions, OriginalAttachmentActions {

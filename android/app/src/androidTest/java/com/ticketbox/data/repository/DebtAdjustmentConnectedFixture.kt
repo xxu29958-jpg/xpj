@@ -107,11 +107,11 @@ internal class DebtAdjustmentConnectedFixture(private val context: Context, priv
     }
 
     suspend fun drain(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
-        listOf(RecordDebtAdjustmentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtAdjustmentAdapter),
-            RecordDebtRepaymentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter),
-            VoidDebtDispatcher(LedgerRequestGuard(apiProvider), adapters.debtVoidAdapter, adapters.debtVoidReceiptAdapter),
-            VoidDebtRepaymentDispatcher(LedgerRequestGuard(apiProvider), adapters.debtRepaymentVoidAdapter, adapters.debtVoidReceiptAdapter),
-            SetDebtKindDispatcher(LedgerRequestGuard(apiProvider), adapters.debtKindAdapter, adapters.debtVoidReceiptAdapter)),
+        listOf(RecordDebtAdjustmentDispatcher(LedgerRequestGuard(apiProvider), adapters.debt.debtAdjustmentAdapter),
+            RecordDebtRepaymentDispatcher(LedgerRequestGuard(apiProvider), adapters.debt.debtRepaymentAdapter, adapters.debt.debtRepaymentReceiptAdapter),
+            VoidDebtDispatcher(LedgerRequestGuard(apiProvider), adapters.debt.debtVoidAdapter, adapters.debt.debtVoidReceiptAdapter),
+            VoidDebtRepaymentDispatcher(LedgerRequestGuard(apiProvider), adapters.debt.debtRepaymentVoidAdapter, adapters.debt.debtVoidReceiptAdapter),
+            SetDebtKindDispatcher(LedgerRequestGuard(apiProvider), adapters.debt.debtKindAdapter, adapters.debt.debtVoidReceiptAdapter)),
         maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
     fun close() { database?.close(); context.deleteDatabase(name); readSettings.clear() }

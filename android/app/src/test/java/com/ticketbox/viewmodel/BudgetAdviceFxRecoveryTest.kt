@@ -1,8 +1,8 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
-import com.ticketbox.data.remote.dto.DiscretionaryResponseDto
-import com.ticketbox.data.remote.dto.MissingExchangeRateDto
+import com.ticketbox.domain.model.BudgetAdviceInputs
+import com.ticketbox.domain.model.BudgetAdviceBreakdown
+import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,9 +13,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BudgetAdviceFxRecoveryTest {
-    private val gap = MissingExchangeRateDto("JPY", "CNY", "2026-09-01")
-    private fun missingInputs() = BudgetAdviceInputsDto("2026-09", "CNY",
-        DiscretionaryResponseDto(10000, 1000, null, 0, 0, null), listOf(gap))
+    private val gap = CurrencyProjectionGap("JPY", "CNY", "2026-09-01")
+    private fun missingInputs() = BudgetAdviceInputs("2026-09", "CNY",
+        BudgetAdviceBreakdown(10000, 1000, null, 0, 0, null), listOf(gap))
 
     @Test fun queuedGenerationCannotReopenLoadingAfterBindingReplacement() = budgetTest {
         val binding = LogicalSessionBinding("https://example.test", "owner", "identity", "session", "revision")
@@ -45,7 +45,7 @@ class BudgetAdviceFxRecoveryTest {
         assertEquals("JPY", fake.rates.writes.single().second.currencyCode)
         assertEquals("2026-09-01", fake.rates.writes.single().second.rateDate)
         assertTrue(fake.adviceMonths.isEmpty())
-        fake.inputs.response = missingInputs().copy(breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 0, 0, 7000), missingRates = emptyList())
+        fake.inputs.response = missingInputs().copy(breakdown = BudgetAdviceBreakdown(10000, 1000, 2000, 0, 0, 7000), missingRates = emptyList())
         vm.refreshInputs()
         advanceUntilIdle()
         assertTrue(fake.inputs.months.all { it == "2026-09" })

@@ -18,16 +18,16 @@ import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.data.repository.LogicalSessionBinding
-import com.ticketbox.data.remote.dto.MissingExchangeRateDto
+import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.components.formatDisplayAmount
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.settings.friendlyLastError
 
 internal data class CorrectionSubmissionOptions(val canModify: Boolean, val busy: Boolean, val refreshPending: Boolean)
-typealias CorrectionRateAction = (LogicalSessionBinding, MissingExchangeRateDto) -> Unit
+typealias CorrectionRateAction = (LogicalSessionBinding, CurrencyProjectionGap) -> Unit
 internal data class CorrectionSubmissionActions(val recover: (Boolean) -> Unit, val reviewFact: (() -> Unit)? = null,
-    val repairRate: ((MissingExchangeRateDto) -> Unit)? = null)
+    val repairRate: ((CurrencyProjectionGap) -> Unit)? = null)
 
 /** The same original-submission consumer in detail and both global recovery entrances. */
 @Composable

@@ -135,7 +135,7 @@ class PlanningFinancialRefreshRouteTest {
         }
         val rows = runBlocking { harness.fixture.pendingDao.allRows() }
         val row = rows.single { it.type == PendingMutationType.SaveMonthlyBudget.wireValue }
-        val original = requireNotNull(OutboxAdapterGraph().budgetSaveAdapter.fromJson(row.payload))
+        val original = requireNotNull(OutboxAdapterGraph().budget.budgetSaveAdapter.fromJson(row.payload))
         assertEquals(1L, row.expectedRowVersion)
         assertEquals("JPY", original.request.homeCurrencyCode)
         assertEquals(3000L, original.request.totalAmountCents)

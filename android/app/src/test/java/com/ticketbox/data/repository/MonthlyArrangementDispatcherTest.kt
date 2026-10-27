@@ -17,7 +17,7 @@ class MonthlyArrangementDispatcherTest {
     private val receipt = MonthlyArrangementDto("owner", "2026-09", "JPY", 1200, 300, 1, "2026-09-27T00:00:00Z")
     private fun row() = OutboxRow(id = 1, serverUrl = "https://example.test", ledgerId = "owner",
         type = PendingMutationType.SaveMonthlyArrangement, targetId = "monthly_arrangement:2026-09",
-        payloadJson = adapters.arrangementSaveAdapter.toJson(MonthlyArrangementPayload(1, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300))),
+        payloadJson = adapters.budget.arrangementSaveAdapter.toJson(MonthlyArrangementPayload(1, "2026-09", MonthlyArrangementSaveRequest("JPY", 1200, 300))),
         expectedRowVersion = 0, status = PendingMutationStatus.InFlight, retryCount = 0, lastError = null,
         createdAt = "2026-09-27T00:00:00Z", attemptedAt = null, completedAt = null, idempotencyKey = "original-arrangement")
     @Test fun ackLossContinuesOriginalKeyCurrencyMinorUnitsAndOcc() = runTest {
@@ -30,7 +30,7 @@ class MonthlyArrangementDispatcherTest {
                 return receipt
             }
         }
-        val dispatcher = SaveMonthlyArrangementDispatcher({ api }, adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter)
+        val dispatcher = SaveMonthlyArrangementDispatcher({ api }, adapters.budget.arrangementSaveAdapter, adapters.budget.arrangementReceiptAdapter)
         assertIs<DispatchResult.RetryableFailure>(dispatcher.dispatch(row()))
         lose = false
         val success = assertIs<DispatchResult.Success>(dispatcher.dispatch(row()))
@@ -38,7 +38,7 @@ class MonthlyArrangementDispatcherTest {
         assertEquals(1200L, calls.last().first.savingsTargetCents)
         assertNull(calls.last().first.expectedRowVersion)
         assertNull(success.newRowVersion, "An ACK must not silently rebase another original")
-        assertEquals(receipt, adapters.arrangementReceiptAdapter.fromJson(assertNotNull(success.receiptJson)))
+        assertEquals(receipt, adapters.budget.arrangementReceiptAdapter.fromJson(assertNotNull(success.receiptJson)))
     }
     @Test fun wrongReceiptOrMissingRouteNeverProvesSaved() = runTest {
         for (wrong in listOf(receipt.copy(homeCurrencyCode = "CNY"), receipt.copy(month = "2026-08"),
@@ -46,8 +46,8 @@ class MonthlyArrangementDispatcherTest {
             val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
                 override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementSaveRequest, idempotencyKey: String) = wrong
             }
-            assertIs<DispatchResult.Failure>(SaveMonthlyArrangementDispatcher({ api }, adapters.arrangementSaveAdapter,
-                adapters.arrangementReceiptAdapter).dispatch(row()))
+            assertIs<DispatchResult.Failure>(SaveMonthlyArrangementDispatcher({ api }, adapters.budget.arrangementSaveAdapter,
+                adapters.budget.arrangementReceiptAdapter).dispatch(row()))
         }
     }
     @Test fun occConflictRemainsAnOriginalRequiringReview() = runTest {
@@ -57,8 +57,8 @@ class MonthlyArrangementDispatcherTest {
                     """{"error":"state_conflict","message":"另一端已修改安排。"}""".toResponseBody()))
             }
         }
-        assertIs<DispatchResult.Conflict>(SaveMonthlyArrangementDispatcher({ api }, adapters.arrangementSaveAdapter,
-            adapters.arrangementReceiptAdapter).dispatch(row()))
+        assertIs<DispatchResult.Conflict>(SaveMonthlyArrangementDispatcher({ api }, adapters.budget.arrangementSaveAdapter,
+            adapters.budget.arrangementReceiptAdapter).dispatch(row()))
     }
     @Test fun originalCurrencyPrecisionCannotBeReinterpretedAsNewHome() {
         assertEquals(1200L, MonthlyArrangementDraft("JPY", "1200", "300", null).request().savingsTargetCents)

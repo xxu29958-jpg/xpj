@@ -4,7 +4,7 @@ import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
 import com.ticketbox.data.remote.dto.ExchangeRateDto
 import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
-import com.ticketbox.data.remote.dto.MissingExchangeRateDto
+import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.data.remote.dto.ReferenceRateRequestDto
 import com.ticketbox.data.repository.PendingManualRateSubmission
 import com.ticketbox.domain.model.UiText
@@ -13,7 +13,7 @@ import com.ticketbox.domain.model.sanitizeManualExchangeRateInput
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-fun BudgetAdviceViewModel.openRate(gap: MissingExchangeRateDto, original: PendingManualRateSubmission? = null) {
+fun BudgetAdviceViewModel.openRate(gap: CurrencyProjectionGap, original: PendingManualRateSubmission? = null) {
     val binding = _state.value.binding ?: return
     val month = _state.value.month
     if (!gap.canEnterManualRate() || _state.value.rateBusy) return
@@ -67,7 +67,7 @@ fun BudgetAdviceViewModel.fetchReferenceRates() {
 }
 
 fun BudgetAdviceViewModel.editRate(rate: ExchangeRateDto) =
-    openRate(MissingExchangeRateDto(rate.currencyCode, rate.homeCurrencyCode, rate.rateDate))
+    openRate(CurrencyProjectionGap(rate.currencyCode, rate.homeCurrencyCode, rate.rateDate))
 
 fun BudgetAdviceViewModel.updateRateInput(value: String) {
     if (_state.value.rateBusy) return
@@ -113,6 +113,6 @@ fun BudgetAdviceViewModel.recoverRate(pending: PendingManualRateSubmission, drop
 
 fun BudgetAdviceViewModel.reviewRate(pending: PendingManualRateSubmission) {
     val request = pending.intent?.takeIf { it.supports(pending.row) }?.request ?: return
-    openRate(MissingExchangeRateDto(request.currencyCode, request.homeCurrencyCode, request.rateDate), pending)
+    openRate(CurrencyProjectionGap(request.currencyCode, request.homeCurrencyCode, request.rateDate), pending)
 }
 

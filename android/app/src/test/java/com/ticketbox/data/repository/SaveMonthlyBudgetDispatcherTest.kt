@@ -99,7 +99,7 @@ class SaveMonthlyBudgetDispatcherTest {
         ShadowLog.clear()
         val accepted = receipt()
         val stub = BudgetSaveStub(Result.success(accepted))
-        val writer = SaveMonthlyBudgetDispatcher({ stub }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
+        val writer = SaveMonthlyBudgetDispatcher({ stub }, adapters.budget.budgetSaveAdapter, adapters.budget.budgetReceiptAdapter,
             onAccepted = { _, revision ->
                 assertEquals(accepted.rowVersion, revision)
                 throw IllegalStateException("Local read cleanup failed after server acceptance")
@@ -107,7 +107,7 @@ class SaveMonthlyBudgetDispatcherTest {
 
         val result = assertIs<DispatchResult.Success>(writer.dispatch(row()))
 
-        assertEquals(accepted, adapters.budgetReceiptAdapter.fromJson(requireNotNull(result.receiptJson)))
+        assertEquals(accepted, adapters.budget.budgetReceiptAdapter.fromJson(requireNotNull(result.receiptJson)))
         assertNull(result.newRowVersion, "Local recovery cannot rebase any original budget command")
         assertEquals(1, stub.requests.size)
         assertEquals(listOf<String?>("original-budget-key"), stub.keys)
@@ -134,15 +134,15 @@ class SaveMonthlyBudgetDispatcherTest {
         assertEquals(null, logs.single().throwable)
     }
 
-    private fun dispatcher(api: ApiService) = SaveMonthlyBudgetDispatcher({ api }, adapters.budgetSaveAdapter,
-        adapters.budgetReceiptAdapter, onAccepted = { row, revision ->
+    private fun dispatcher(api: ApiService) = SaveMonthlyBudgetDispatcher({ api }, adapters.budget.budgetSaveAdapter,
+        adapters.budget.budgetReceiptAdapter, onAccepted = { row, revision ->
             acceptedRows += row
             acceptedRevisions += revision
         })
 
     private fun row(version: Long = 1) = OutboxRow(
         id = 1, serverUrl = "https://example.test", ledgerId = "owner", type = PendingMutationType.SaveMonthlyBudget,
-        targetId = "monthly_budget:2026-09", payloadJson = adapters.budgetSaveAdapter.toJson(BudgetSavePayload(1,
+        targetId = "monthly_budget:2026-09", payloadJson = adapters.budget.budgetSaveAdapter.toJson(BudgetSavePayload(1,
             "2026-09", "UTC", BudgetMonthlyUpdateRequestDto("JPY", null, 1200))),
         expectedRowVersion = version, status = PendingMutationStatus.InFlight, retryCount = 0, lastError = null,
         createdAt = "2026-09-08T00:00:00Z", attemptedAt = null, completedAt = null, idempotencyKey = "original-budget-key")

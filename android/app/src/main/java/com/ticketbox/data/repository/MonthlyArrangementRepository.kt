@@ -2,7 +2,6 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
-import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.*
 import com.ticketbox.data.remote.dto.*
 import com.ticketbox.domain.model.CurrencyCode
@@ -45,7 +44,7 @@ interface MonthlyArrangementActions {
 }
 
 class MonthlyArrangementRepository internal constructor(private val apiProvider: ApiServiceProvider, private val outbox: OutboxRepository,
-    private val dao: MonthlyArrangementCacheDao, adapters: OutboxAdapterGraph,
+    private val dao: MonthlyArrangementCacheDao, adapters: BudgetMutationAdapters,
     private val onSnapshot: (String, String) -> Unit,
     private val coordinator: LocalLedgerSessionCoordinator) : MonthlyArrangementActions {
     private val payloadAdapter = adapters.arrangementSaveAdapter
