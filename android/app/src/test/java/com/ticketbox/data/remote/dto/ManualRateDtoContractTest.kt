@@ -1,10 +1,10 @@
 package com.ticketbox.data.remote.dto
 
-import com.ticketbox.data.repository.toDomain
-
 import com.squareup.moshi.Moshi
 import com.ticketbox.OutboxAdapterGraph
-import com.ticketbox.data.repository.ManualRatePayload
+import com.ticketbox.data.repository.ManualRateSubmission
+import com.ticketbox.data.repository.toDomain
+import com.ticketbox.domain.model.ExchangeRateRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -14,8 +14,8 @@ import kotlin.test.assertTrue
 class ManualRateDtoContractTest {
     @Test fun generatedAdaptersPreserveOriginalPairDateDecimalAndOcc() {
         val graph = OutboxAdapterGraph()
-        val original = ManualRatePayload(1, "2026-09", "original-rate",
-            ExchangeRateRequestDto("JPY", "USD", "2026-09-02", "0.0069", "manual", 4))
+        val original = ManualRateSubmission(1, "2026-09", "original-rate",
+            ExchangeRateRequest("JPY", "USD", "2026-09-02", "0.0069", "manual", 4))
         val json = graph.budget.manualRateAdapter.toJson(original)
         assertTrue(json.contains("\"home_currency_code\":\"USD\""))
         assertTrue(json.contains("\"rate_to_cny\":\"0.0069\""))

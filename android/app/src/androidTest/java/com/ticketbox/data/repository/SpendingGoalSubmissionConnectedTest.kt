@@ -1,32 +1,32 @@
 package com.ticketbox.data.repository
 
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.R
-import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.GoalDto
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
+import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.data.remote.dto.RuntimeCompatibilityDto
+import com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto
+import com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.GoalUpdateRequest
 import com.ticketbox.ui.screens.plan.SpendingGoalDetailScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
-import com.ticketbox.viewmodel.SpendingGoalEditField
 import com.ticketbox.viewmodel.SpendingGoalEditDraftStore
+import com.ticketbox.viewmodel.SpendingGoalEditField
 import java.io.IOException
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
-import com.ticketbox.OutboxAdapterGraph
-import com.ticketbox.data.remote.dto.RuntimeCompatibilityDto
-import com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto
-import com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto
-import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -50,7 +50,7 @@ class SpendingGoalSubmissionConnectedTest {
     private var failRead = false
     private var canonical = original
     private val keys = mutableListOf<String?>()
-    private val requests = mutableListOf<Pair<String, GoalUpdateRequestDto>>()
+    private val requests = mutableListOf<Pair<String, GoalUpdateRequest>>()
     private val response = original.copy(targetAmountCents = 35_000, remainingAmountCents = 27_000, rowVersion = 3)
     private val service = object : ApiService by debtNetwork.service {
         override suspend fun runtimeCompatibility() = RuntimeCompatibilityDto(CURRENT_TICKETBOX_API_VERSION,
@@ -61,7 +61,7 @@ class SpendingGoalSubmissionConnectedTest {
             return canonical
         }
 
-        override suspend fun updateGoal(publicId: String, request: GoalUpdateRequestDto,
+        override suspend fun updateGoal(publicId: String, request: GoalUpdateRequest,
             idempotencyKey: String?, timezone: String?): GoalDto {
             remoteWrites += 1
             keys += idempotencyKey

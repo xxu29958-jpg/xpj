@@ -10,7 +10,7 @@ import retrofit2.HttpException
 /** The only network owner for creating a split invitation. */
 class CreateBillSplitDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
-    private val payloadAdapter: JsonAdapter<BillSplitCreatePayload>,
+    private val payloadAdapter: JsonAdapter<BillSplitSubmission>,
     private val receiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.BillSplitSentDto>,
 ) : OutboxMutationDispatcher {
     override val type = PendingMutationType.CreateBillSplitInvitation

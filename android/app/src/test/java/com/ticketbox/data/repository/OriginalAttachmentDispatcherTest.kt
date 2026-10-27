@@ -2,20 +2,20 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.OriginalCommandReceiptDto
+import com.ticketbox.domain.model.OriginalCommandReceipt
+import java.io.IOException
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
 import okio.ByteString.Companion.toByteString
 import org.junit.Test
-import java.io.IOException
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.test.assertNull
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
 
@@ -28,7 +28,7 @@ class OriginalAttachmentDispatcherTest {
             4, payload.file!!.key)
         val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
             override suspend fun replenishOriginal(id: Long, file: MultipartBody.Part, expectedRowVersion: Long,
-                expectedSha256: String, idempotencyKey: String): OriginalCommandReceiptDto {
+                expectedSha256: String, idempotencyKey: String): OriginalCommandReceipt {
                 throw HttpException(Response.error<Any>(409,
                     """{"error":"original_replenishment_not_needed","message":"原件完整"}""".toResponseBody("application/json".toMediaType())))
             }
@@ -55,18 +55,18 @@ class OriginalAttachmentDispatcherTest {
         val sends = mutableListOf<String>()
         val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
             override suspend fun replenishOriginal(id: Long, file: MultipartBody.Part, expectedRowVersion: Long,
-                expectedSha256: String, idempotencyKey: String): OriginalCommandReceiptDto {
+                expectedSha256: String, idempotencyKey: String): OriginalCommandReceipt {
                 assertEquals("replenish_original", operation)
                 assertEquals(payload.sha256, expectedSha256)
                 return accept(id, file, expectedRowVersion, idempotencyKey)
             }
             override suspend fun attachOriginal(id: Long, file: MultipartBody.Part, expectedRowVersion: Long,
-                idempotencyKey: String): OriginalCommandReceiptDto {
+                idempotencyKey: String): OriginalCommandReceipt {
                 assertEquals("attach_original", operation)
                 return accept(id, file, expectedRowVersion, idempotencyKey)
             }
             private fun accept(id: Long, file: MultipartBody.Part, expectedRowVersion: Long,
-                idempotencyKey: String): OriginalCommandReceiptDto {
+                idempotencyKey: String): OriginalCommandReceipt {
                 assertEquals(8L, id)
                 assertEquals(4L, expectedRowVersion)
                 assertEquals("admitted original", Buffer().also { file.body.writeTo(it) }.readUtf8())
@@ -116,6 +116,6 @@ class OriginalAttachmentDispatcherTest {
                 binding.ownerStorageKey, "session", "binding"), sha256 = file.sha256, file = file)
     }
 
-    private fun receipt() = OriginalCommandReceiptDto("replenish_original", 8, "expense-8", 5,
+    private fun receipt() = OriginalCommandReceipt("replenish_original", 8, "expense-8", 5,
         "2026-09-20T00:00:00Z", sha256 = payload().sha256)
 }

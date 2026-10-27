@@ -4,8 +4,8 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.OriginalCommandReceiptDto
-import com.ticketbox.data.remote.dto.OriginalHealthDto
+import com.ticketbox.domain.model.OriginalCommandReceipt
+import com.ticketbox.domain.model.OriginalHealth
 import com.ticketbox.upload.PreparedUploadImage
 import kotlinx.coroutines.flow.Flow
 
@@ -60,8 +60,8 @@ internal val ORIGINAL_REVIEW_ERRORS = setOf("image_replenishment_mismatch", "ori
     "original_receipt_invalid", "upload_original_unavailable", "expense_not_found", "image_not_found",
     "original_replenishment_not_needed", "original_already_associated")
 internal val originalPayloadAdapter = Moshi.Builder().build().adapter(OriginalAttachmentPayload::class.java)
-internal val originalReceiptAdapter = Moshi.Builder().build().adapter(OriginalCommandReceiptDto::class.java)
-internal val originalHealthAdapter = Moshi.Builder().build().adapter(OriginalHealthDto::class.java)
+internal val originalReceiptAdapter = Moshi.Builder().build().adapter(OriginalCommandReceipt::class.java)
+internal val originalHealthAdapter = Moshi.Builder().build().adapter(OriginalHealth::class.java)
 
 internal fun readOriginalPayload(row: OutboxRow): OriginalAttachmentPayload? =
     runCatching { originalPayloadAdapter.fromJson(row.payloadJson) }.getOrNull()?.takeIf {

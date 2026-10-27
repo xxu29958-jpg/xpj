@@ -1,15 +1,15 @@
 package com.ticketbox.data.remote.api
 
+import com.ticketbox.data.remote.dto.DataQualitySummaryDto
 import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
 import com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto
-import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
+import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
-import com.ticketbox.data.remote.dto.DataQualitySummaryDto
-import retrofit2.http.Header
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
@@ -21,7 +21,7 @@ interface RecurringApi : RecurringOccurrenceApi {
         @Path("publicId") publicId: String,
         @Query("limit") limit: Int,
         @Query("before_version") beforeVersion: Long?,
-    ): com.ticketbox.data.remote.dto.RecurringHistoryPageDto
+    ): com.ticketbox.domain.model.RecurringHistoryPage
 
     @GET("api/insights/recurring-candidates")
     suspend fun recurringCandidates(

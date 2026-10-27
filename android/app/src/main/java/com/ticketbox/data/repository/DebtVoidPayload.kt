@@ -3,8 +3,8 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
-import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
-import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
+import com.ticketbox.domain.model.DebtVoidCreateRequest
+import com.ticketbox.domain.model.RepaymentVoidCreateRequest
 import java.io.IOException
 
 @JsonClass(generateAdapter = true)
@@ -13,7 +13,7 @@ data class DebtVoidPayload(
     override val subject: DebtWriteSubject,
     override val originSessionGeneration: String,
     override val originBindingRevision: String,
-    val request: DebtVoidCreateRequestDto,
+    val request: DebtVoidCreateRequest,
 ) : DebtWriteIntent { override val expectedRowVersion: Long get() = request.expectedRowVersion }
 
 @JsonClass(generateAdapter = true)
@@ -22,7 +22,7 @@ data class DebtRepaymentVoidPayload(
     override val subject: DebtWriteSubject,
     override val originSessionGeneration: String,
     override val originBindingRevision: String,
-    val request: RepaymentVoidCreateRequestDto,
+    val request: RepaymentVoidCreateRequest,
 ) : DebtWriteIntent { override val expectedRowVersion: Long get() = request.expectedRowVersion }
 
 internal fun OutboxRow.readOriginalDebtVoid(adapter: JsonAdapter<DebtVoidPayload>): DebtVoidPayload? {

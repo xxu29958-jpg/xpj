@@ -3,10 +3,10 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Goal
+import com.ticketbox.domain.model.GoalCreateRequest
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.normalizeExpenseCategory
 import java.time.YearMonth
@@ -22,7 +22,7 @@ internal fun GoalDraft.validatedGoalDraft(): Result<GoalDraft> = runCatching {
         category = category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory))
 }
 
-internal fun GoalCreateRequestDto.validatedGoalCreation(): Result<GoalCreateRequestDto> = runCatching {
+internal fun GoalCreateRequest.validatedGoalCreation(): Result<GoalCreateRequest> = runCatching {
     require(period == "monthly") { "目标周期无法确认，请保留草稿并核对。" }
     when (goalType) {
         "spending_limit" -> {
@@ -52,15 +52,15 @@ suspend fun GoalEditActions.create(binding: LogicalSessionBinding, draft: GoalDr
 
 suspend fun GoalEditActions.createDebtGoal(binding: LogicalSessionBinding, name: String,
     debtPublicIds: List<String>, creationKey: String): Result<Long> {
-    val request = GoalCreateRequestDto(name = name, goalType = "debt_repayment", debtPublicIds = debtPublicIds)
+    val request = GoalCreateRequest(name = name, goalType = "debt_repayment", debtPublicIds = debtPublicIds)
         .validatedGoalCreation().getOrElse { return Result.failure(it) }
     return create(binding, request, creationKey)
 }
 
 data class PendingGoalCreation(val row: OutboxRow, val request: com.ticketbox.domain.model.GoalCreateRequest?, val confirmed: Goal?,
     val hasSupportedIntent: Boolean) {
-    internal constructor(row: OutboxRow, request: GoalCreateRequestDto?, confirmed: Goal?) :
-        this(row, request?.toDomain(), confirmed, request?.isSupportedGoalCreation(row) == true)
+    internal constructor(row: OutboxRow, request: GoalCreateRequest?, confirmed: Goal?) :
+        this(row, request, confirmed, request?.isSupportedGoalCreation(row) == true)
     val isDone: Boolean get() = row.status == PendingMutationStatus.Done
     val canRetry: Boolean get() = hasSupportedIntent &&
         row.status == PendingMutationStatus.Failed && (row.lastError?.startsWith("max_attempts_exceeded(") == true ||
@@ -68,10 +68,10 @@ data class PendingGoalCreation(val row: OutboxRow, val request: com.ticketbox.do
     val canDrop: Boolean get() = row.status == PendingMutationStatus.Failed || row.status == PendingMutationStatus.Conflict
 }
 
-internal fun JsonAdapter<GoalCreateRequestDto>.readGoalCreation(row: OutboxRow): GoalCreateRequestDto? =
+internal fun JsonAdapter<GoalCreateRequest>.readGoalCreation(row: OutboxRow): GoalCreateRequest? =
     runCatching { fromJson(row.payloadJson) }.getOrNull()
 
-internal fun GoalCreateRequestDto.isSupportedGoalCreation(row: OutboxRow): Boolean =
+internal fun GoalCreateRequest.isSupportedGoalCreation(row: OutboxRow): Boolean =
     row.type == PendingMutationType.CreateGoal && row.expectedRowVersion == 0L &&
         !row.idempotencyKey.isNullOrBlank() && row.idempotencyKey.length <= 64 &&
         row.targetId == "goal_create:${row.idempotencyKey}" && period == "monthly" && name.isNotBlank() &&
@@ -81,17 +81,17 @@ internal fun GoalCreateRequestDto.isSupportedGoalCreation(row: OutboxRow): Boole
             else -> false
         }
 
-private fun GoalCreateRequestDto.isSupportedSpendingCreation(): Boolean =
+private fun GoalCreateRequest.isSupportedSpendingCreation(): Boolean =
     (targetAmountCents ?: 0L) > 0 && debtPublicIds == null &&
         runCatching { YearMonth.parse(month) }.isSuccess &&
         homeCurrencyCode != null && CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)?.storageKey == homeCurrencyCode
 
-private fun GoalCreateRequestDto.isSupportedDebtCreation(): Boolean =
+private fun GoalCreateRequest.isSupportedDebtCreation(): Boolean =
     month == null && category == null && targetAmountCents == null && homeCurrencyCode == null && name.length <= 80 &&
         !debtPublicIds.isNullOrEmpty() && debtPublicIds.all { it.isNotBlank() && it == it.trim() } &&
         debtPublicIds.distinct().size == debtPublicIds.size
 
-internal fun GoalCreateRequestDto.acceptsGoalCreationReceipt(row: OutboxRow, receipt: GoalDto): Boolean =
+internal fun GoalCreateRequest.acceptsGoalCreationReceipt(row: OutboxRow, receipt: GoalDto): Boolean =
     isSupportedGoalCreation(row) && receipt.publicId.isNotBlank() && receipt.ledgerId == row.ledgerId &&
         receipt.goalType == goalType && receipt.period == period && receipt.status == "active" && receipt.rowVersion == 1L &&
         receipt.name == name && when (goalType) {
@@ -100,11 +100,11 @@ internal fun GoalCreateRequestDto.acceptsGoalCreationReceipt(row: OutboxRow, rec
             else -> false
         }
 
-private fun GoalCreateRequestDto.acceptsSpendingCreationReceipt(receipt: GoalDto): Boolean =
+private fun GoalCreateRequest.acceptsSpendingCreationReceipt(receipt: GoalDto): Boolean =
     receipt.homeCurrencyCode == homeCurrencyCode && receipt.month == month &&
         receipt.category.orEmpty() == category.orEmpty() && receipt.targetAmountCents == targetAmountCents
 
-private fun GoalCreateRequestDto.acceptsDebtCreationReceipt(receipt: GoalDto): Boolean {
+private fun GoalCreateRequest.acceptsDebtCreationReceipt(receipt: GoalDto): Boolean {
     val evaluation = receipt.debtRepayment ?: return false
     val ids = evaluation.linkedDebts.map { it.debtPublicId }
     return receipt.month == null && receipt.category == null && receipt.targetAmountCents == null &&

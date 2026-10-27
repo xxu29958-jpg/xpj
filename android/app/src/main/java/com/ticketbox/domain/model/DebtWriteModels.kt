@@ -1,18 +1,29 @@
 package com.ticketbox.domain.model
 
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
 data class DebtAdjustmentCreateRequest(
+    @param:Json(name = "amount_cents")
     val amountCents: Long,
     val reason: String,
+    @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
 )
 
+@JsonClass(generateAdapter = true)
 data class DebtKindSetRequest(
+    @param:Json(name = "debt_kind")
     val debtKind: String,
+    @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
 )
 
+@JsonClass(generateAdapter = true)
 data class DebtVoidCreateRequest(
     val reason: String,
+    @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
 )
 
@@ -32,8 +43,9 @@ data class RepaymentDraftConfirmRequest(
     val targetChoiceExplicit: Boolean? = null,
 )
 
+@JsonClass(generateAdapter = true)
 data class RepaymentVoidCreateRequest(
-    val repaymentPublicId: String,
+    @param:Json(name = "repayment_public_id") val repaymentPublicId: String,
     val reason: String,
-    val expectedRowVersion: Long,
+    @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
 )

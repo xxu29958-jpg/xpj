@@ -4,39 +4,39 @@ import android.content.Context
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDisplayed
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.CategoryPreferenceListResponseDto
 import com.ticketbox.data.remote.dto.CategoryPreferenceDto
+import com.ticketbox.data.remote.dto.CategoryPreferenceListResponseDto
 import com.ticketbox.data.remote.dto.ReferenceCreateRequestDto
-import com.ticketbox.data.remote.dto.ReferenceCreatedDto
 import com.ticketbox.data.remote.dto.TagListItemDto
 import com.ticketbox.data.remote.dto.TagManagementListDto
+import com.ticketbox.domain.model.ReferenceCreated
 import com.ticketbox.ui.RealKeyboard
+import java.util.concurrent.CopyOnWriteArrayList
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
-import retrofit2.HttpException
-import retrofit2.Response
-import org.junit.Assert.assertEquals
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
-import java.util.concurrent.CopyOnWriteArrayList
+import retrofit2.HttpException
+import retrofit2.Response
 
 /** Shipped library routes and repositories, with controlled remote replies. */
 class ReferenceCreationNavigationTest {
@@ -45,7 +45,7 @@ class ReferenceCreationNavigationTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val mounted = mutableStateOf(true)
     private var acceptedRead = false
-    private var response: ReferenceCreatedDto? = null
+    private var response: ReferenceCreated? = null
     private val readableReferences get() = if (acceptedRead) listOfNotNull(response) else emptyList()
     private val requests = CopyOnWriteArrayList<Triple<String, String, String>>()
     private var vocabularyChanges = 0
@@ -72,7 +72,7 @@ class ReferenceCreationNavigationTest {
     @Test fun unusedTagCreationSurvivesLibraryExitAndReplaysItsOriginalCommand() = createAndRecover("标签", TRANSACTIONS_LIBRARY_TAGS_ROUTE)
 
     private fun createAndRecover(label: String, route: String) {
-        response = ReferenceCreatedDto(if (label == "分类") "category" else "tag", "00000000-0000-4000-8000-000000000001", "暑期旅行", 1)
+        response = ReferenceCreated(if (label == "分类") "category" else "tag", "00000000-0000-4000-8000-000000000001", "暑期旅行", 1)
         compose.setContent {
             ReferenceLibraryTestTheme {
                 if (mounted.value) {
@@ -132,10 +132,10 @@ class ReferenceCreationNavigationTest {
         compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
     }
 
-    private fun accept(kind: String, key: String, request: ReferenceCreateRequestDto): ReferenceCreatedDto {
+    private fun accept(kind: String, key: String, request: ReferenceCreateRequestDto): ReferenceCreated {
         requests += Triple(kind, key, request.name)
         if (requests.size != 1) return requireNotNull(response)
-        throw HttpException(Response.error<ReferenceCreatedDto>(503,
+        throw HttpException(Response.error<ReferenceCreated>(503,
             """{"error":"service_unavailable","message":"回执暂时不可达"}""".toResponseBody("application/json".toMediaType())))
     }
 }

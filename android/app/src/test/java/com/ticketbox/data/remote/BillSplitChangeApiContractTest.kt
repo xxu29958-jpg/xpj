@@ -3,9 +3,14 @@ package com.ticketbox.data.remote
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.remote.dto.BillSplitAgreementDto
-import com.ticketbox.data.remote.dto.BillSplitChangeAcceptRequestDto
-import com.ticketbox.data.remote.dto.BillSplitChangeCreateRequestDto
 import com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto
+import com.ticketbox.domain.model.BillSplitChangeAcceptRequest
+import com.ticketbox.domain.model.BillSplitChangeCreateRequest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -14,11 +19,6 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class BillSplitChangeApiContractTest {
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
@@ -55,19 +55,19 @@ class BillSplitChangeApiContractTest {
     }
 
     @Test fun commandBodiesKeepBothVersionsSignedSettlementAndExplicitEmptyBody() {
-        val create = moshi.adapter(BillSplitChangeCreateRequestDto::class.java)
+        val create = moshi.adapter(BillSplitChangeCreateRequest::class.java)
         assertEquals(
             """{"new_share_amount_cents":0,"settlement_net_amount_cents":-5000000000,"reason":"双方重新约定","expected_row_version":4294967296,"expected_return_row_version":4294967297,"supersedes_proposal_public_id":"previous-1"}""",
-            create.toJson(BillSplitChangeCreateRequestDto(0, -5_000_000_000L, "双方重新约定",
+            create.toJson(BillSplitChangeCreateRequest(0, -5_000_000_000L, "双方重新约定",
                 4_294_967_296L, 4_294_967_297L, "previous-1")),
         )
         assertEquals(
             """{"new_share_amount_cents":0,"settlement_net_amount_cents":0,"reason":"取消承担","expected_row_version":7}""",
-            create.toJson(BillSplitChangeCreateRequestDto(0, 0, "取消承担", 7)),
+            create.toJson(BillSplitChangeCreateRequest(0, 0, "取消承担", 7)),
         )
-        val accept = moshi.adapter(BillSplitChangeAcceptRequestDto::class.java)
+        val accept = moshi.adapter(BillSplitChangeAcceptRequest::class.java)
         assertEquals("""{"expected_row_version":4294967296,"expected_return_row_version":4294967297}""",
-            accept.toJson(BillSplitChangeAcceptRequestDto(4_294_967_296L, 4_294_967_297L)))
+            accept.toJson(BillSplitChangeAcceptRequest(4_294_967_296L, 4_294_967_297L)))
         assertEquals("{}", moshi.adapter(BillSplitChangeEmptyRequestDto::class.java)
             .toJson(BillSplitChangeEmptyRequestDto()))
     }
@@ -95,9 +95,9 @@ class BillSplitChangeApiContractTest {
             if (request.url.encodedPath.endsWith("/accept")) agreementJson() else proposalJson()
         }
         assertEquals("change-1", api.createSplitChangeProposal("original-1",
-            BillSplitChangeCreateRequestDto(0, -5_000_000_000L, "新约定", 7), "create-key").publicId)
+            BillSplitChangeCreateRequest(0, -5_000_000_000L, "新约定", 7), "create-key").publicId)
         assertEquals("invitation-1", api.acceptSplitChangeProposal("original-1", "change-1",
-            BillSplitChangeAcceptRequestDto(7, 8), "accept-key").invitationPublicId)
+            BillSplitChangeAcceptRequest(7, 8), "accept-key").invitationPublicId)
         assertEquals("change-1", api.rejectSplitChangeProposal("original-1", "change-1",
             BillSplitChangeEmptyRequestDto(), "reject-key").publicId)
         assertEquals("change-1", api.withdrawSplitChangeProposal("original-1", "change-1",

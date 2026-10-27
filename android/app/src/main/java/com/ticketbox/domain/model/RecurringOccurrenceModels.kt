@@ -1,28 +1,32 @@
 package com.ticketbox.domain.model
 
-/** Values consumed by the product; wire names and persistence remain at the repository boundary. */
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
 data class RecurringOccurrence(
-    val seriesPublicId: String,
+    @param:Json(name = "series_public_id") val seriesPublicId: String,
     val period: String,
-    val seriesRowVersion: Long,
-    val rowVersion: Long,
+    @param:Json(name = "series_row_version") val seriesRowVersion: Long,
+    @param:Json(name = "row_version") val rowVersion: Long,
     val state: String,
-    val plannedAmountCents: Long,
-    val reservedAmountCents: Long,
-    val expensePublicId: String?,
-    val paidAmountCents: Long?,
-    val nextDueDate: String?,
-    val expenseId: Long? = null,
-    val homeCurrencyCode: String? = null,
-    val paidHomeCurrencyCode: String? = null,
-    val recordedDefinition: RecurringRecordedDefinition? = null,
-    val paymentReviewReason: String? = null,
+    @param:Json(name = "planned_amount_cents") val plannedAmountCents: Long,
+    @param:Json(name = "reserved_amount_cents") val reservedAmountCents: Long,
+    @param:Json(name = "expense_public_id") val expensePublicId: String?,
+    @param:Json(name = "paid_amount_cents") val paidAmountCents: Long?,
+    @param:Json(name = "next_due_date") val nextDueDate: String?,
+    @param:Json(name = "expense_id") val expenseId: Long? = null,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String? = null,
+    @param:Json(name = "paid_home_currency_code") val paidHomeCurrencyCode: String? = null,
+    @param:Json(name = "recorded_definition") val recordedDefinition: RecurringRecordedDefinition? = null,
+    @param:Json(name = "payment_review_reason") val paymentReviewReason: String? = null,
 )
 
+@JsonClass(generateAdapter = true)
 data class RecurringOccurrencePaymentRequest(
     val action: String,
-    val expectedRowVersion: Long,
-    val expectedSeriesRowVersion: Long,
-    val expensePublicId: String? = null,
-    val expectedExpenseRowVersion: Long? = null,
+    @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
+    @param:Json(name = "expected_series_row_version") val expectedSeriesRowVersion: Long,
+    @param:Json(name = "expense_public_id") val expensePublicId: String? = null,
+    @param:Json(name = "expected_expense_row_version") val expectedExpenseRowVersion: Long? = null,
 )

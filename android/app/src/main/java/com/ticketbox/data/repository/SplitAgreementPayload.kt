@@ -2,18 +2,18 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
-import com.ticketbox.data.remote.dto.BillSplitChangeAcceptRequestDto
-import com.ticketbox.data.remote.dto.BillSplitChangeCreateRequestDto
+import com.ticketbox.domain.model.BillSplitChangeAcceptRequest
+import com.ticketbox.domain.model.BillSplitChangeCreateRequest
 
 @JsonClass(generateAdapter = true)
-data class SplitAgreementPayload(
+data class SplitAgreementSubmission(
     val revision: Int = 1,
     val operation: String,
     val originalDebtPublicId: String,
     val proposalPublicId: String? = null,
     val returnDebtPublicId: String? = null,
-    val create: BillSplitChangeCreateRequestDto? = null,
-    val accept: BillSplitChangeAcceptRequestDto? = null,
+    val create: BillSplitChangeCreateRequest? = null,
+    val accept: BillSplitChangeAcceptRequest? = null,
 ) {
     val expectedRowVersion: Long get() = create?.expectedRowVersion ?: accept?.expectedRowVersion ?: 0L
 }
@@ -28,51 +28,19 @@ internal const val SPLIT_WITHDRAW = "withdraw_bill_split_change_proposal"
 @JsonClass(generateAdapter = true)
 data class SplitAgreementReceipt(val publicId: String, val status: String)
 
-internal fun JsonAdapter<SplitAgreementPayload>.readSplitAgreement(row: OutboxRow): SplitAgreementPayload? =
+internal fun JsonAdapter<SplitAgreementSubmission>.readSplitAgreement(row: OutboxRow): SplitAgreementSubmission? =
     runCatching { fromJson(row.payloadJson) }.getOrNull()?.takeIf {
         it.revision == 1 && it.originalDebtPublicId.isNotBlank() &&
             row.targetId == debtWriteTarget(it.originalDebtPublicId) && !row.idempotencyKey.isNullOrBlank() &&
             row.expectedRowVersion == it.expectedRowVersion && it.hasSupportedCommand()
     }
 
-private fun SplitAgreementPayload.hasSupportedCommand(): Boolean = when (operation) {
+private fun SplitAgreementSubmission.hasSupportedCommand(): Boolean = when (operation) {
     SPLIT_CREATE -> create != null && accept == null && proposalPublicId == null && validCreate(create)
     SPLIT_ACCEPT -> !proposalPublicId.isNullOrBlank() && accept != null && create == null && accept.expectedRowVersion > 0
     SPLIT_REJECT, SPLIT_WITHDRAW -> !proposalPublicId.isNullOrBlank() && create == null && accept == null
     else -> false
 }
 
-private fun validCreate(request: BillSplitChangeCreateRequestDto): Boolean =
+private fun validCreate(request: BillSplitChangeCreateRequest): Boolean =
     request.expectedRowVersion > 0 && request.newShareAmountCents >= 0 && isDebtAdjustmentReasonValid(request.reason)
-
-data class SplitAgreementSubmission(
-    val revision: Int = 1,
-    val operation: String,
-    val originalDebtPublicId: String,
-    val proposalPublicId: String? = null,
-    val returnDebtPublicId: String? = null,
-    val create: com.ticketbox.domain.model.BillSplitChangeCreateRequest? = null,
-    val accept: com.ticketbox.domain.model.BillSplitChangeAcceptRequest? = null,
-) {
-    val expectedRowVersion: Long get() = create?.expectedRowVersion ?: accept?.expectedRowVersion ?: 0L
-}
-
-internal fun SplitAgreementPayload.toView() = SplitAgreementSubmission(
-    revision = revision,
-    operation = operation,
-    originalDebtPublicId = originalDebtPublicId,
-    proposalPublicId = proposalPublicId,
-    returnDebtPublicId = returnDebtPublicId,
-    create = create?.toDomain(),
-    accept = accept?.toDomain(),
-)
-
-internal fun SplitAgreementSubmission.toWire() = SplitAgreementPayload(
-    revision = revision,
-    operation = operation,
-    originalDebtPublicId = originalDebtPublicId,
-    proposalPublicId = proposalPublicId,
-    returnDebtPublicId = returnDebtPublicId,
-    create = create?.toDto(),
-    accept = accept?.toDto(),
-)

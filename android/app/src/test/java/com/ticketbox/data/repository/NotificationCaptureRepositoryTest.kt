@@ -8,6 +8,7 @@ import com.ticketbox.data.remote.dto.RepaymentDraftCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.NotificationDraftSource
+import com.ticketbox.domain.model.PaymentCapture
 import com.ticketbox.domain.model.RepaymentDraftSource
 import com.ticketbox.domain.model.RepaymentNotificationDraft
 import com.ticketbox.notification.PaymentNotificationResult
@@ -15,6 +16,10 @@ import java.io.IOException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
@@ -22,10 +27,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 class NotificationCaptureRepositoryTest {
     @Test fun offlineNotificationKeepsItsOriginalCaptureForRecovery() = runTest {
@@ -196,12 +197,12 @@ private class CaptureResponseProbe : ApiService by FakeApiService(mutableListOf(
     val accepted = linkedSetOf<String>()
     val requests = linkedSetOf<com.ticketbox.data.remote.dto.PaymentCaptureCreateDto>()
     private val expenseApi = FakeApiService(mutableListOf(), 0)
-    override suspend fun capturePayment(request: com.ticketbox.data.remote.dto.PaymentCaptureCreateDto): com.ticketbox.data.remote.dto.PaymentCaptureDto {
+    override suspend fun capturePayment(request: com.ticketbox.data.remote.dto.PaymentCaptureCreateDto): com.ticketbox.domain.model.PaymentCapture {
         beforeRequest()
         accepted += request.notificationKey
         requests += request
         if (loseReply) throw IOException("reply lost after commit")
-        return com.ticketbox.data.remote.dto.PaymentCaptureDto("capture-${request.notificationKey}", 1, request.source,
+        return com.ticketbox.domain.model.PaymentCapture("capture-${request.notificationKey}", 1, request.source,
             request.capturedAt, request.originalCurrency, request.originalAmountMinor, request.merchant, request.suggestedKind,
             request.parserVersion, request.candidates, 12L.takeIf { request.suggestedKind == "expense" },
             "8f939f48-e646-4afb-b54f-7bb6b536d9ef".takeIf { request.suggestedKind == "expense" },

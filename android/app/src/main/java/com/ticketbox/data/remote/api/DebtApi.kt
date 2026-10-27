@@ -1,21 +1,21 @@
 package com.ticketbox.data.remote.api
 
-import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtBillParseResponseDto
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
-import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
-import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
+import com.ticketbox.domain.model.DebtAdjustmentCreateRequest
+import com.ticketbox.domain.model.DebtKindSetRequest
+import com.ticketbox.domain.model.DebtVoidCreateRequest
 import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Multipart
-import retrofit2.http.Part
 import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -62,14 +62,14 @@ interface DebtApi {
     @POST("api/debts/{publicId}/adjustments")
     suspend fun recordDebtAdjustment(
         @Path("publicId") publicId: String,
-        @Body request: DebtAdjustmentCreateRequestDto,
+        @Body request: DebtAdjustmentCreateRequest,
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): DebtDto
 
     @POST("api/debts/{publicId}/void")
     suspend fun voidDebt(
         @Path("publicId") publicId: String,
-        @Body request: DebtVoidCreateRequestDto,
+        @Body request: DebtVoidCreateRequest,
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): DebtDto
 
@@ -82,7 +82,7 @@ interface DebtApi {
     @POST("api/debts/{publicId}/kind")
     suspend fun setDebtKind(
         @Path("publicId") publicId: String,
-        @Body request: DebtKindSetRequestDto,
+        @Body request: DebtKindSetRequest,
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): DebtDto
 

@@ -3,14 +3,14 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.dto.NotificationFieldEvidenceDto
+import com.ticketbox.data.remote.dto.NotificationTimeEvidenceDto
+import com.ticketbox.data.remote.dto.toDto
 import com.ticketbox.domain.model.NotificationDraft
 import com.ticketbox.domain.model.NotificationDraftSource
 import com.ticketbox.domain.model.RepaymentDraftSource
 import com.ticketbox.domain.model.RepaymentNotificationDraft
 import com.ticketbox.notification.PaymentNotificationResult
-import com.ticketbox.data.remote.dto.NotificationTimeEvidenceDto
-import com.ticketbox.data.remote.dto.NotificationFieldEvidenceDto
-import com.ticketbox.data.remote.dto.toDto
 import java.time.Instant
 
 /** Only parsed payment fields enter Room. The original notification body and system key do not. */
@@ -26,7 +26,7 @@ data class NotificationCapturePayload(
     val category: String?,
     val capturedAt: String,
     val parserVersion: String = "legacy",
-    val candidates: List<com.ticketbox.data.remote.dto.PaymentCandidateDto> = emptyList(),
+    val candidates: List<com.ticketbox.domain.model.PaymentCandidate> = emptyList(),
     val timeEvidence: NotificationTimeEvidenceDto? = null,
     val fieldEvidence: NotificationFieldEvidenceDto? = null,
 ) {
@@ -66,7 +66,7 @@ internal fun PaymentNotificationResult.captureIntent(key: String): PendingMutati
     val payload = parsed.copy(revision = 4, parserVersion = com.ticketbox.notification.PaymentNotificationParser.VERSION,
         timeEvidence = timeEvidence?.toDto(),
         fieldEvidence = fieldEvidence?.toDto(),
-        candidates = candidates.map { com.ticketbox.data.remote.dto.PaymentCandidateDto(it.kind, it.amountMinor, it.field, it.evidence) })
+        candidates = candidates.map { com.ticketbox.domain.model.PaymentCandidate(it.kind, it.amountMinor, it.field, it.evidence) })
     require(payload.kind == "review" || (payload.originalAmountMinor ?: 0) > 0)
     Instant.parse(payload.capturedAt)
     return PendingMutationIntent(PendingMutationType.CapturePaymentNotification, "notification:$key", NotificationCaptureWire.payload.toJson(payload), 0, key)

@@ -6,7 +6,10 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.GoalDto
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
+import com.ticketbox.domain.model.GoalUpdateRequest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Protocol
@@ -14,9 +17,6 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * ADR-0042 Slice F: [UpdateGoalDispatcher] replay contract.
@@ -59,8 +59,8 @@ class UpdateGoalDispatcherTest {
         ledgerId = "owner",
         type = PendingMutationType.UpdateGoal,
         targetId = "goal:goal-1",
-        payloadJson = moshi().adapter(GoalUpdateRequestDto::class.java)
-            .toJson(GoalUpdateRequestDto(expectedRowVersion = 1L, targetAmountCents = 90000, homeCurrencyCode = "JPY")),
+        payloadJson = moshi().adapter(GoalUpdateRequest::class.java)
+            .toJson(GoalUpdateRequest(expectedRowVersion = 1L, targetAmountCents = 90000, homeCurrencyCode = "JPY")),
         expectedRowVersion = 1L,
         status = PendingMutationStatus.InFlight,
         retryCount = 0,
@@ -83,7 +83,7 @@ class UpdateGoalDispatcherTest {
 
         override suspend fun updateGoal(
             publicId: String,
-            request: GoalUpdateRequestDto,
+            request: GoalUpdateRequest,
             idempotencyKey: String?,
             timezone: String?,
         ): GoalDto {
@@ -94,7 +94,7 @@ class UpdateGoalDispatcherTest {
 
     private fun dispatcherFor(stub: ApiService) = UpdateGoalDispatcher(
         apiProvider = { stub },
-        payloadAdapter = moshi().adapter(GoalUpdateRequestDto::class.java),
+        payloadAdapter = moshi().adapter(GoalUpdateRequest::class.java),
         receiptAdapter = moshi().adapter(GoalDto::class.java),
         onAccepted = { acceptedRows += it },
     )

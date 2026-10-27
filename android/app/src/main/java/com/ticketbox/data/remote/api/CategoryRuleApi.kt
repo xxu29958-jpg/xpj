@@ -2,15 +2,15 @@ package com.ticketbox.data.remote.api
 
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleDto
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
 import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
-import com.ticketbox.data.remote.dto.RuleApplicationRollbackRequestDto
 import com.ticketbox.data.remote.dto.RuleApplicationRollbackPreviewDto
+import com.ticketbox.data.remote.dto.RuleApplicationRollbackRequestDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.data.remote.dto.StatusDto
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.HTTP
@@ -25,7 +25,7 @@ interface CategoryRuleApi {
     suspend fun categoryRules(): List<CategoryRuleDto>
 
     @POST("api/rules/categories")
-    suspend fun createCategoryRule(@Body request: CategoryRuleRequest,
+    suspend fun createCategoryRule(@Body request: CategoryRuleDefinition,
         @Header("Idempotency-Key") idempotencyKey: String): CategoryRuleDto
 
     @PATCH("api/rules/categories/{id}")

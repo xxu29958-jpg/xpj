@@ -32,7 +32,7 @@ interface IncomePlanApi {
     @PATCH("api/income-plans/{publicId}")
     suspend fun updateIncomePlan(
         @Path("publicId") publicId: String,
-        @Body request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto,
+        @Body request: com.ticketbox.domain.model.IncomePlanUpdateRequest,
         // ADR-0042: intent-time idempotency key (see updateExpense). Nullable
         // for Retrofit ergonomics; the repository always supplies a UUID.
         @Header("Idempotency-Key") idempotencyKey: String?,

@@ -22,7 +22,7 @@ interface SplitAgreementActions {
 class SplitAgreementRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
-    private val adapter: JsonAdapter<SplitAgreementPayload>,
+    private val adapter: JsonAdapter<SplitAgreementSubmission>,
     private val queryReader: DebtQueryReader,
 ) : SplitAgreementActions {
     private val guard = LedgerRequestGuard(apiProvider)
@@ -38,7 +38,7 @@ class SplitAgreementRepository internal constructor(
     override suspend fun submit(task: DebtTask, intent: SplitAgreementSubmission): Result<Long> = errors.safeCall {
         val bound = guard.bindExact(task.binding)
         require(task.debtPublicId == intent.originalDebtPublicId) { "请回到原往来核对新约定。" }
-        val payload = adapter.toJson(intent.toWire())
+        val payload = adapter.toJson(intent)
         outbox.enqueue(boundRequest = bound, intent = PendingMutationIntent(
             PendingMutationType.SplitAgreement, debtWriteTarget(intent.originalDebtPublicId), payload,
             intent.expectedRowVersion, UUID.randomUUID().toString()), validateTargetRows = { rows ->
@@ -46,7 +46,7 @@ class SplitAgreementRepository internal constructor(
         })
     }
 
-    override fun describe(row: OutboxRow): SplitAgreementSubmission? = adapter.readSplitAgreement(row)?.toView()
+    override fun describe(row: OutboxRow): SplitAgreementSubmission? = adapter.readSplitAgreement(row)
 
     override fun observe(task: DebtTask): Flow<List<OutboxRow>> = outbox.observeActiveByTypes(
         setOf(PendingMutationType.SplitAgreement), includeCompleted = true,

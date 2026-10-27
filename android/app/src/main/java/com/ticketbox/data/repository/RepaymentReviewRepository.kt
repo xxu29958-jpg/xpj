@@ -110,7 +110,7 @@ class RepaymentReviewRepository internal constructor(
     override suspend fun resolveCapture(binding: LogicalSessionBinding, captureId: String,
         decision: com.ticketbox.domain.model.PaymentCaptureDecision, key: String): Result<Long> = errors.safeCall {
         require(ledgerRoleCanModify(provider.currentLedgerRole()) && decision.reason.isNotBlank())
-        val payload = PaymentCaptureResolution(binding = binding, publicId = captureId, decision = decision.toDto())
+        val payload = PaymentCaptureResolution(binding = binding, publicId = captureId, decision = decision)
         outbox.enqueue(guard.bindExact(binding), PendingMutationIntent(PendingMutationType.ResolvePaymentCapture,
             "payment-capture:$captureId", PaymentCaptureWire.resolution.toJson(payload), decision.expectedRowVersion, key),
             validateTargetRows = { rows -> require(rows.none { it.status != PendingMutationStatus.Done }) { "请先核对原提交结果。" } })

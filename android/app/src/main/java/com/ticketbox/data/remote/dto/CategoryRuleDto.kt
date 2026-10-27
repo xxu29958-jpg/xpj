@@ -28,24 +28,6 @@ data class CategoryRuleDto(
     val homeCurrencyCode: String? = null,
 )
 
-@JsonClass(generateAdapter = true)
-data class CategoryRuleRequest(
-    val keyword: String?,
-    val category: String?,
-    val enabled: Boolean?,
-    val priority: Int?,
-    @param:Json(name = "amount_min_cents")
-    val amountMinCents: Long? = null,
-    @param:Json(name = "amount_max_cents")
-    val amountMaxCents: Long? = null,
-    @param:Json(name = "source_contains")
-    val sourceContains: String? = null,
-    @param:Json(name = "tag_contains")
-    val tagContains: String? = null,
-    @param:Json(name = "home_currency_code")
-    val homeCurrencyCode: String? = null,
-)
-
 /**
  * ADR-0041: PATCH /api/rules/categories/{id} body carries the
  * client's last-seen ``row_version`` so a peer edit between the read

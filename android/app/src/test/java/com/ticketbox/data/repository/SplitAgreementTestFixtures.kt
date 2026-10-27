@@ -1,9 +1,9 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.BillSplitAgreementDto
-import com.ticketbox.data.remote.dto.BillSplitChangeProposalDto
-import com.ticketbox.data.remote.dto.BillSplitSettlementPreviewDto
 import com.ticketbox.data.remote.dto.DebtDto
+import com.ticketbox.domain.model.BillSplitChangeProposal
+import com.ticketbox.domain.model.BillSplitSettlementPreview
 
 internal fun splitTestDebt(id: String = "original", version: Long = 7) = DebtDto(
     publicId = id, ledgerId = null, direction = "i_owe", counterpartyType = "member",
@@ -19,10 +19,10 @@ internal fun splitTestAgreement() = BillSplitAgreementDto(
     returnDebt = splitTestDebt("return", 8).copy(direction = "owed_to_me", sourceType = "bill_split_return"),
     viewerIsParty = true, originalPaidAmountCents = 3000, returnPaidAmountCents = 0,
     originalForgivenAmountCents = 1000, returnForgivenAmountCents = 0, settlementNetAmountCents = -1000,
-    preview = BillSplitSettlementPreviewDto(2000, -1000, -1000, true),
+    preview = BillSplitSettlementPreview(2000, -1000, -1000, true),
 )
 
-internal fun splitTestProposal() = BillSplitChangeProposalDto(
+internal fun splitTestProposal() = BillSplitChangeProposal(
     publicId = "proposal", originalDebtPublicId = "original", returnDebtPublicId = "return", status = "pending",
     proposedByYou = false, shareBeforeAmountCents = 4000, newShareAmountCents = 2000,
     settlementBeforeNetAmountCents = 0, settlementNetAmountCents = -1000,

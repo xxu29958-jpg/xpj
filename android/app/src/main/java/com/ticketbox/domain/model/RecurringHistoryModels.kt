@@ -1,27 +1,32 @@
 package com.ticketbox.domain.model
 
-/** Values consumed by the product; wire names and persistence remain at the repository boundary. */
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
 data class RecurringDefinition(
     val merchant: String,
-    val merchantKey: String,
+    @param:Json(name = "merchant_key") val merchantKey: String,
     val frequency: String,
-    val homeCurrencyCode: String?,
-    val baselineAmountCents: Long,
-    val nextExpectedDate: String?,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String?,
+    @param:Json(name = "baseline_amount_cents") val baselineAmountCents: Long,
+    @param:Json(name = "next_expected_date") val nextExpectedDate: String?,
     val status: String,
     val source: String,
 )
 
+@JsonClass(generateAdapter = true)
 data class RecurringRecordedDefinition(
-    val seriesRowVersion: Long,
-    val recordedAt: String,
+    @param:Json(name = "series_row_version") val seriesRowVersion: Long,
+    @param:Json(name = "recorded_at") val recordedAt: String,
     val snapshot: RecurringDefinition,
 )
 
+@JsonClass(generateAdapter = true)
 data class RecurringRevision(
-    val rowVersion: Long,
-    val changeKind: String,
-    val recordedAt: String,
-    val actorAccountId: Long?,
+    @param:Json(name = "row_version") val rowVersion: Long,
+    @param:Json(name = "change_kind") val changeKind: String,
+    @param:Json(name = "recorded_at") val recordedAt: String,
+    @param:Json(name = "actor_account_id") val actorAccountId: Long?,
     val snapshot: RecurringDefinition,
 )

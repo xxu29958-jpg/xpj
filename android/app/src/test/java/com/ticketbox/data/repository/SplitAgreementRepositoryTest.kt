@@ -3,24 +3,24 @@ package com.ticketbox.data.repository
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.BillSplitChangeAcceptRequestDto
-import com.ticketbox.data.remote.dto.BillSplitChangeCreateRequestDto
 import com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto
-import com.ticketbox.data.remote.dto.BillSplitChangeProposalDto
+import com.ticketbox.domain.model.BillSplitChangeAcceptRequest
+import com.ticketbox.domain.model.BillSplitChangeCreateRequest
+import com.ticketbox.domain.model.BillSplitChangeProposal
 import java.io.IOException
 import java.time.Clock
 import java.time.Duration
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 class SplitAgreementRepositoryTest {
     @Test fun publishBindsPrincipalAndPersistsBothVersionsBeforeSchedulingWithoutNetwork() = runTest {
@@ -34,7 +34,7 @@ class SplitAgreementRepositoryTest {
         assertEquals(f.binding.ownerKey, stored.ownerKey)
         assertEquals(listOf(1), f.queueDepthAtSchedule)
         assertTrue(f.api.calls.isEmpty())
-        assertEquals(create(), f.adapters.splitAgreementAdapter.fromJson(stored.payload)?.toView())
+        assertEquals(create(), f.adapters.splitAgreementAdapter.fromJson(stored.payload))
         assertFalse(repo.submit(task, create()).isSuccess)
         assertFalse(repo.submit(task.copy(binding = f.binding.copy(bindingRevision = "stale")), create()).isSuccess)
         assertEquals(1, f.dao.rows.size)
@@ -56,10 +56,10 @@ class SplitAgreementRepositoryTest {
         val task = DebtTask(f.binding, "original")
         val id = repository(f).submit(task, create()).getOrThrow()
         val original = f.dao.rows.getValue(id)
-        val calls = mutableListOf<Pair<BillSplitChangeCreateRequestDto, String?>>()
+        val calls = mutableListOf<Pair<BillSplitChangeCreateRequest, String?>>()
         val api = object : ApiService by f.api {
-            override suspend fun createSplitChangeProposal(publicId: String, request: BillSplitChangeCreateRequestDto,
-                idempotencyKey: String?): BillSplitChangeProposalDto {
+            override suspend fun createSplitChangeProposal(publicId: String, request: BillSplitChangeCreateRequest,
+                idempotencyKey: String?): BillSplitChangeProposal {
                 assertEquals("original", publicId)
                 calls += request to idempotencyKey
                 if (calls.size == 1) throw IOException("response lost after server acceptance")
@@ -89,8 +89,8 @@ class SplitAgreementRepositoryTest {
         val task = DebtTask(f.binding, "original")
         val id = repo.submit(task, create()).getOrThrow()
         val api = object : ApiService by f.api {
-            override suspend fun createSplitChangeProposal(publicId: String, request: BillSplitChangeCreateRequestDto,
-                idempotencyKey: String?): BillSplitChangeProposalDto = throw HttpException(Response.error<Any>(409,
+            override suspend fun createSplitChangeProposal(publicId: String, request: BillSplitChangeCreateRequest,
+                idempotencyKey: String?): BillSplitChangeProposal = throw HttpException(Response.error<Any>(409,
                 """{"error":"state_conflict","message":"已变化"}""".toResponseBody("application/json".toMediaType())))
         }
         val dispatcher = SplitAgreementDispatcher({ api }, f.adapters.splitAgreementAdapter, f.adapters.splitAgreementReceiptAdapter)
@@ -113,8 +113,8 @@ class SplitAgreementRepositoryTest {
         val id = repo.submit(task, create()).getOrThrow()
         val key = f.dao.rows.getValue(id).idempotencyKey
         val api = object : ApiService by f.api {
-            override suspend fun createSplitChangeProposal(publicId: String, request: BillSplitChangeCreateRequestDto,
-                idempotencyKey: String?): BillSplitChangeProposalDto = throw HttpException(Response.error<Any>(422,
+            override suspend fun createSplitChangeProposal(publicId: String, request: BillSplitChangeCreateRequest,
+                idempotencyKey: String?): BillSplitChangeProposal = throw HttpException(Response.error<Any>(422,
                 """{"error":"split_total_exceeds_parent","message":"超过原单"}""".toResponseBody("application/json".toMediaType())))
         }
         val dispatcher = SplitAgreementDispatcher({ api }, f.adapters.splitAgreementAdapter, f.adapters.splitAgreementReceiptAdapter)
@@ -136,8 +136,8 @@ class SplitAgreementRepositoryTest {
         val calls = mutableListOf<String>()
         val api = object : ApiService by f.api {
             override suspend fun acceptSplitChangeProposal(publicId: String, proposalPublicId: String,
-                request: BillSplitChangeAcceptRequestDto, idempotencyKey: String?) = splitTestAgreement().also {
-                assertEquals(BillSplitChangeAcceptRequestDto(7, 8), request); calls += "accept:$publicId:$proposalPublicId:$idempotencyKey"
+                request: BillSplitChangeAcceptRequest, idempotencyKey: String?) = splitTestAgreement().also {
+                assertEquals(BillSplitChangeAcceptRequest(7, 8), request); calls += "accept:$publicId:$proposalPublicId:$idempotencyKey"
             }
             override suspend fun rejectSplitChangeProposal(publicId: String, proposalPublicId: String,
                 request: BillSplitChangeEmptyRequestDto, idempotencyKey: String?) = splitTestProposal().copy(status = "rejected").also { calls += "reject" }
@@ -146,8 +146,8 @@ class SplitAgreementRepositoryTest {
         }
         val dispatcher = SplitAgreementDispatcher({ api }, f.adapters.splitAgreementAdapter, f.adapters.splitAgreementReceiptAdapter)
         for (operation in listOf(SPLIT_ACCEPT, SPLIT_REJECT, SPLIT_WITHDRAW)) {
-            val intent = SplitAgreementPayload(operation = operation, originalDebtPublicId = "original", proposalPublicId = "proposal",
-                accept = if (operation == SPLIT_ACCEPT) BillSplitChangeAcceptRequestDto(7, 8) else null)
+            val intent = SplitAgreementSubmission(operation = operation, originalDebtPublicId = "original", proposalPublicId = "proposal",
+                accept = if (operation == SPLIT_ACCEPT) BillSplitChangeAcceptRequest(7, 8) else null)
             val row = OutboxRow(1, "https://example.test", "owner", type = PendingMutationType.SplitAgreement,
                 targetId = "debt:original", payloadJson = f.adapters.splitAgreementAdapter.toJson(intent),
                 expectedRowVersion = intent.expectedRowVersion, status = PendingMutationStatus.Pending, retryCount = 0,

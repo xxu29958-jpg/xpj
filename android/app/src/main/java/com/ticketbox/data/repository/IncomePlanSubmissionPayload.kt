@@ -6,9 +6,9 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto
 import com.ticketbox.data.remote.dto.IncomePlanDto
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.IncomePlan
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
 import com.ticketbox.domain.model.IncomeSourceType
 import java.time.YearMonth
 
@@ -25,7 +25,7 @@ data class IncomePlanSubmissionPayload(
     val homeCurrencyCode: String,
     val originSessionGeneration: String,
     val originBindingRevision: String,
-    val request: IncomePlanUpdateRequestDto,
+    val request: IncomePlanUpdateRequest,
 ) {
     fun supports(row: OutboxRow): Boolean = isSupported() && !row.idempotencyKey.isNullOrBlank() && when (row.type) {
         PendingMutationType.CreateIncomePlan -> revision == INCOME_PLAN_CREATE_PAYLOAD_REVISION &&
@@ -103,7 +103,7 @@ internal fun JsonAdapter<IncomePlanSubmissionPayload>.readSupportedIncomeSubmiss
 private fun validMonth(value: String): Boolean = value.length == 7 &&
     runCatching { YearMonth.parse(value).toString() == value }.getOrDefault(false)
 
-private fun validIncomeFields(request: IncomePlanUpdateRequestDto): Boolean =
+private fun validIncomeFields(request: IncomePlanUpdateRequest): Boolean =
     (request.label == null || request.label.isNotBlank()) &&
         (request.amountCents == null || request.amountCents >= 0) && (request.payDay == null || request.payDay in 1..31) &&
         (request.sourceType == null || IncomeSourceType.entries.any { it.wireValue == request.sourceType }) &&
@@ -129,5 +129,5 @@ internal fun IncomePlanSubmissionPayload.toView() = IncomePlanSubmission(
     homeCurrencyCode = homeCurrencyCode,
     originSessionGeneration = originSessionGeneration,
     originBindingRevision = originBindingRevision,
-    request = request.toDomain(),
+    request = request,
 )

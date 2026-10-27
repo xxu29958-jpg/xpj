@@ -3,11 +3,11 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto
 import com.ticketbox.data.remote.dto.IncomePlanDto
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
+import com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.IncomePlan
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
 import com.ticketbox.domain.model.ledgerRoleCanModify
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
@@ -116,7 +116,7 @@ class IncomePlanRepository(
         val request = draft.toCreateRequest()
         val payload = IncomePlanSubmissionPayload(INCOME_PLAN_CREATE_PAYLOAD_REVISION, "", request.label,
             request.amountCents, request.homeCurrencyCode, expectedBinding.sessionGeneration, expectedBinding.bindingRevision,
-            IncomePlanUpdateRequestDto(request.intentMonth, 0, request.label, request.sourceType, request.frequency,
+            IncomePlanUpdateRequest(request.intentMonth, 0, request.label, request.sourceType, request.frequency,
                 request.incomeMonth, request.amountCents, request.payDay))
         outbox.enqueueOriginalCreation(bound, payload.toMutationIntent(incomePlanSubmissionAdapter, 0, creationKey))
     }

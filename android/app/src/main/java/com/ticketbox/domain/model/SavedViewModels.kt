@@ -1,35 +1,38 @@
 package com.ticketbox.domain.model
 
-/** Values consumed by the product; wire names and persistence remain at the repository boundary. */
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
 data class SavedViewDefinitionRequest(
     val name: String,
-    val monthMode: String,
+    @param:Json(name = "month_mode") val monthMode: String,
     val month: String?,
     val filter: String,
-    val tagPublicId: String?,
-    val homeCurrencyCode: String,
-    val queryText: String,
+    @param:Json(name = "tag_public_id") val tagPublicId: String?,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
+    @param:Json(name = "query_text") val queryText: String,
     val category: String,
 )
 
 data class SavedViewDeletionReceipt(
-    val publicId: String,
-    val rowVersion: Long,
+    @param:Json(name = "public_id") val publicId: String,
+    @param:Json(name = "row_version") val rowVersion: Long,
     val name: String,
 )
 
 data class SavedView(
-    val publicId: String,
+    @param:Json(name = "public_id") val publicId: String,
     val name: String,
-    val rowVersion: Long,
-    val monthMode: String,
+    @param:Json(name = "row_version") val rowVersion: Long,
+    @param:Json(name = "month_mode") val monthMode: String,
     val month: String?,
     val filter: String,
-    val tagPublicId: String?,
-    val tagName: String?,
-    val homeCurrencyCode: String,
-    val repairReason: String?,
-    val queryText: String,
+    @param:Json(name = "tag_public_id") val tagPublicId: String?,
+    @param:Json(name = "tag_name") val tagName: String?,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
+    @param:Json(name = "repair_reason") val repairReason: String?,
+    @param:Json(name = "query_text") val queryText: String,
     val category: String,
 )
 

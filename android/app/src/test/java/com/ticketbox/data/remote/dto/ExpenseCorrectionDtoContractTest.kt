@@ -2,6 +2,8 @@ package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.domain.model.CorrectionIntChange
+import com.ticketbox.domain.model.CorrectionStringChange
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -95,8 +97,8 @@ class ExpenseCorrectionDtoContractTest {
             ExpenseCorrectionRequestDto(
                 expectedRowVersion = 0L,
                 reason = "清除误填信息",
-                expenseTime = CorrectionOptionalString.changed(null),
-                valueScore = CorrectionOptionalInt.changed(null),
+                expenseTime = CorrectionStringChange.changed(null),
+                valueScore = CorrectionIntChange.changed(null),
             ),
         )
 

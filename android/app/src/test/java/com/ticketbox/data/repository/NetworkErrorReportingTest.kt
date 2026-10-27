@@ -1,8 +1,9 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.BuildConfig
+import android.util.Log
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.BuildConfig
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
@@ -12,7 +13,14 @@ import com.ticketbox.data.remote.dto.MerchantAliasDto
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import com.ticketbox.data.remote.dto.RecurringCandidateConfirmRequestDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
-import android.util.Log
+import com.ticketbox.domain.model.DebtGoalLinksReplaceRequest
+import java.io.IOException
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -31,13 +39,6 @@ import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowLog
 import retrofit2.HttpException
-import java.io.IOException
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertSame
-import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], manifest = Config.NONE)
@@ -252,13 +253,13 @@ class NetworkErrorReportingTest {
         val outbox = testOutboxRepository(dao = dao)
         val adapters = com.ticketbox.OutboxAdapterGraph()
         val payload = adapters.goalDebtEditAdapter.toJson(DebtGoalEditPayload("原关联任务",
-            com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto(7, listOf("debt-original")),
+            com.ticketbox.domain.model.DebtGoalLinksReplaceRequest(7, listOf("debt-original")),
             mapOf("debt-original" to "原选择")))
         val id = outbox.enqueue(PendingMutationType.ReplaceGoalDebtLinks, "goal:original", payload, 7L, "original-links-key")
         var attempts = 0
         val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
             override suspend fun replaceGoalDebtLinks(publicId: String,
-                request: com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto, idempotencyKey: String?, timezone: String?):
+                request: com.ticketbox.domain.model.DebtGoalLinksReplaceRequest, idempotencyKey: String?, timezone: String?):
                 com.ticketbox.data.remote.dto.GoalDto {
                 attempts++
                 throw IllegalStateException("password=synthetic-links-secret", IOException("private financial text"))

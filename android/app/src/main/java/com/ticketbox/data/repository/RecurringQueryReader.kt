@@ -7,10 +7,10 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.data.local.ExpenseDao
 import com.ticketbox.data.local.StatsProjectionCacheEntity
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.RecurringHistoryPageDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
+import com.ticketbox.domain.model.RecurringHistoryPage
 import com.ticketbox.domain.model.RecurringItem
+import com.ticketbox.domain.model.RecurringOccurrence
 import java.time.Clock
 import java.time.Instant
 import java.time.YearMonth
@@ -34,8 +34,8 @@ internal class RecurringQueryReader(
     private val errors = NetworkErrorHandler({ apiProvider.currentSession()?.serverUrl }, "Recurring")
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val itemsAdapter by lazy { moshi.adapter(RecurringItemListResponseDto::class.java) }
-    private val historyAdapter by lazy { moshi.adapter(RecurringHistoryPageDto::class.java) }
-    private val occurrenceAdapter by lazy { moshi.adapter(RecurringOccurrenceDto::class.java) }
+    private val historyAdapter by lazy { moshi.adapter(RecurringHistoryPage::class.java) }
+    private val occurrenceAdapter by lazy { moshi.adapter(RecurringOccurrence::class.java) }
     private val mutex = Mutex()
     private val publishedReads = mutableMapOf<String, Long>()
     private val localInvalidation = AtomicLong()
@@ -218,7 +218,7 @@ internal class RecurringQueryReader(
             require(publicId.isNotBlank() && (before == null || before > 0)) { "固定支出历史范围不正确。" }
             read(binding, recurringScope(binding, "recurring_history", "", "$publicId:50:$before", "UTC"), historyAdapter,
                 { recurringHistory(publicId, 50, before) }) { it.validateHistory(binding, publicId, before) }
-                .map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }.getOrThrow()
+                .getOrThrow()
         }
 
     suspend fun occurrence(binding: LogicalSessionBinding, publicId: String, period: String): Result<ReadSnapshot<com.ticketbox.domain.model.RecurringOccurrence>> =
@@ -229,7 +229,7 @@ internal class RecurringQueryReader(
             // A current read retains the server's actual period, never a locally guessed month.
             read(binding, recurringScope(binding, "recurring_occurrence", period, publicId, "UTC"), occurrenceAdapter,
                 { recurringOccurrence(publicId, period) }) { it.validateOccurrence(publicId, period) }
-                .map { ReadSnapshot(it.value.toDomain(), it.fetchedAt, it.fromCache) }.getOrThrow()
+                .getOrThrow()
         }
 
     private suspend fun <T> read(binding: LogicalSessionBinding, query: StatsProjectionCacheEntity, adapter: JsonAdapter<T>,
@@ -294,7 +294,7 @@ internal class RecurringQueryReader(
 /** Both query names address one occurrence; this policy shares the reader's existing ordering and retirement. */
 private class RecurringQueryCache(
     private val dao: ExpenseDao,
-    private val adapter: JsonAdapter<RecurringOccurrenceDto>,
+    private val adapter: JsonAdapter<RecurringOccurrence>,
     private val publishedReads: MutableMap<String, Long>,
     private val retiredBindings: MutableSet<String>,
 ) {
@@ -339,7 +339,7 @@ private class RecurringQueryCache(
 
 private fun StatsProjectionCacheEntity.readKey() = "$bindingKey|$kind|$month|$tag|$timezone"
 
-private fun RecurringOccurrenceDto.preferredTo(other: RecurringOccurrenceDto, preferOnTie: Boolean): Boolean {
+private fun RecurringOccurrence.preferredTo(other: RecurringOccurrence, preferOnTie: Boolean): Boolean {
     // Neither a later request nor receipt time can undo a definition or payment version.
     val dominates = seriesRowVersion >= other.seriesRowVersion && rowVersion >= other.rowVersion
     val otherDominates = other.seriesRowVersion >= seriesRowVersion && other.rowVersion >= rowVersion
@@ -359,7 +359,7 @@ private fun originalRecurringBinding(guard: LedgerRequestGuard, row: OutboxRow):
 private fun recurringScope(binding: LogicalSessionBinding, kind: String, month: String, tag: String, timezone: String) =
     StatsProjectionCacheEntity(logicalBindingAdapter.toJson(binding), binding.ledgerId, kind, month, tag, "", timezone, "", "")
 
-private fun RecurringOccurrenceDto.validateOccurrence(id: String, requested: String) {
+private fun RecurringOccurrence.validateOccurrence(id: String, requested: String) {
     require(seriesPublicId == id && seriesRowVersion > 0 && rowVersion >= 0 &&
         (requested == "current" || period == requested)) { "固定支出期次读取不匹配。" }
     YearMonth.parse(period)

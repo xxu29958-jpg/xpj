@@ -14,14 +14,8 @@ import com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
 import com.ticketbox.data.remote.dto.BudgetAdviseRequestDto
 import com.ticketbox.data.remote.dto.BudgetAdviseResponseDto
 import com.ticketbox.data.remote.dto.DiscretionaryResponseDto
-import com.ticketbox.data.remote.dto.ExchangeRateDto
 import com.ticketbox.data.remote.dto.ExchangeRateListDto
-import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
 import com.ticketbox.data.remote.dto.MissingExchangeRateDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementHistoryItemDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementResponseDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest
 import com.ticketbox.data.repository.ApiServiceProvider
 import com.ticketbox.data.repository.BudgetRepository
 import com.ticketbox.data.repository.LedgerRequestGuard
@@ -30,6 +24,12 @@ import com.ticketbox.data.repository.OutboxDrainEngine
 import com.ticketbox.data.repository.OutboxRepository
 import com.ticketbox.data.repository.SaveMonthlyArrangementDispatcher
 import com.ticketbox.data.repository.toOutboxBinding
+import com.ticketbox.domain.model.ExchangeRate
+import com.ticketbox.domain.model.ExchangeRateRequest
+import com.ticketbox.domain.model.MonthlyArrangement
+import com.ticketbox.domain.model.MonthlyArrangementChange
+import com.ticketbox.domain.model.MonthlyArrangementHistoryItem
+import com.ticketbox.domain.model.MonthlyArrangementResponse
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.LocalSessionStore
@@ -52,26 +52,26 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     val adapters = OutboxAdapterGraph()
     val originalMonth = YearMonth.now().minusMonths(1).toString()
     val rateDate = "$originalMonth-07"
-    val request = ExchangeRateRequestDto("CNY", "JPY", rateDate, "20", "manual", 0)
+    val request = ExchangeRateRequest("CNY", "JPY", rateDate, "20", "manual", 0)
     val inputReads = CopyOnWriteArrayList<Pair<String, String?>>()
-    val writes = CopyOnWriteArrayList<Pair<ExchangeRateRequestDto, String>>()
+    val writes = CopyOnWriteArrayList<Pair<ExchangeRateRequest, String>>()
     var referenceUnavailable = false
-    val referenceRequests = CopyOnWriteArrayList<com.ticketbox.data.remote.dto.ReferenceRateRequestDto>()
-    var referenceQuote: com.ticketbox.data.remote.dto.ReferenceRateDto? = null
+    val referenceRequests = CopyOnWriteArrayList<com.ticketbox.domain.model.ReferenceRateRequest>()
+    var referenceQuote: com.ticketbox.domain.model.ReferenceRate? = null
     val adviceCalls = CopyOnWriteArrayList<BudgetAdviseRequestDto>()
     var advice: com.ticketbox.data.remote.dto.BudgetAdviceDto? = null
-    val arrangementWrites = CopyOnWriteArrayList<Triple<String, MonthlyArrangementSaveRequest, String>>()
+    val arrangementWrites = CopyOnWriteArrayList<Triple<String, MonthlyArrangementChange, String>>()
     val trialRequests = CopyOnWriteArrayList<Pair<String, Map<String, String>>>()
-    var arrangementReply: MonthlyArrangementDto? = null
-    var historyItems = emptyList<MonthlyArrangementHistoryItemDto>()
+    var arrangementReply: MonthlyArrangement? = null
+    var historyItems = emptyList<MonthlyArrangementHistoryItem>()
     var trialReply: BudgetAdviceInputsDto? = null
-    @Volatile var arrangement: MonthlyArrangementDto? = null
+    @Volatile var arrangement: MonthlyArrangement? = null
     var historyReadGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
     var historyUnavailable = false
-    var rateReply = ExchangeRateDto("original-rate", "CNY", "JPY", rateDate, "20", "manual",
+    var rateReply = ExchangeRate("original-rate", "CNY", "JPY", rateDate, "20", "manual",
         "2026-09-09T00:00:00Z", "2026-09-09T00:00:00Z", 1)
-    var referenceReply: com.ticketbox.data.remote.dto.ReferenceRateDto? = null
-    @Volatile var latest: ExchangeRateDto? = null
+    var referenceReply: com.ticketbox.domain.model.ReferenceRate? = null
+    @Volatile var latest: ExchangeRate? = null
     @Volatile var loseAck = false
     @Volatile var runtimeHome = "JPY"
     var inputReply = BudgetAdviceInputsDto(YearMonth.now().toString(), "JPY",
@@ -103,16 +103,16 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
             trialRequests += month to arrangement
             return requireNotNull(trialReply)
         }
-        override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponseDto(
+        override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponse(
             session.value.identity.ledgerId, month, arrangement?.takeIf { it.month == month })
-        override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto {
+        override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): com.ticketbox.domain.model.MonthlyArrangementHistory {
             historyReadGate?.await()
             if (historyUnavailable) throw java.net.ConnectException("offline")
-            return com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto(session.value.identity.ledgerId, month,
+            return com.ticketbox.domain.model.MonthlyArrangementHistory(session.value.identity.ledgerId, month,
                 historyItems, null)
         }
-        override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementSaveRequest,
-            idempotencyKey: String): MonthlyArrangementDto {
+        override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementChange,
+            idempotencyKey: String): MonthlyArrangement {
             arrangementWrites += Triple(month, request, idempotencyKey)
             return requireNotNull(arrangementReply).also { arrangement = it }
         }
@@ -120,16 +120,16 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
             ExchangeRateListDto(listOfNotNull(latest).filter { (currencyCode == null || it.currencyCode == currencyCode) &&
                 (homeCurrencyCode == null || it.homeCurrencyCode == homeCurrencyCode) && (rateDate == null || it.rateDate == rateDate) })
         override suspend fun referenceRates(homeCurrencyCode: String, currencyCode: String?, rateDate: String?) =
-            com.ticketbox.data.remote.dto.ReferenceRatesDto("frankfurter", true, "ready", rateDate,
+            com.ticketbox.domain.model.ReferenceRates("frankfurter", true, "ready", rateDate,
                 referenceQuote?.takeIf { it.currencyCode == currencyCode && it.rateDate == rateDate }, listOfNotNull(referenceQuote))
-        override suspend fun acquireReferenceRates(request: com.ticketbox.data.remote.dto.ReferenceRateRequestDto): com.ticketbox.data.remote.dto.ReferenceRatesDto {
+        override suspend fun acquireReferenceRates(request: com.ticketbox.domain.model.ReferenceRateRequest): com.ticketbox.domain.model.ReferenceRates {
             referenceRequests += request
             if (referenceUnavailable) throw java.net.ConnectException("offline")
             referenceQuote = requireNotNull(referenceReply)
             return referenceRates(request.homeCurrencyCode, request.currencyCode, request.rateDate)
         }
         override suspend fun saveExchangeRate(currencyCode: String, rateDate: String,
-            request: ExchangeRateRequestDto, idempotencyKey: String): ExchangeRateDto {
+            request: ExchangeRateRequest, idempotencyKey: String): ExchangeRate {
             check(currencyCode == request.currencyCode && rateDate == request.rateDate)
             writes += request to idempotencyKey
             if (loseAck) throw IOException("Synthetic lost acknowledgement")

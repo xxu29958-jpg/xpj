@@ -22,21 +22,21 @@ import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ticketbox.data.remote.ApiService
 import com.ticketbox.R
+import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ConfirmedExpenseStreamItemDto
 import com.ticketbox.data.remote.dto.ConfirmedStreamEntryKindDto
 import com.ticketbox.data.remote.dto.ExpenseLineageStatusDto
-import com.ticketbox.data.remote.dto.SavedViewDto
 import com.ticketbox.data.remote.dto.SavedViewListDto
-import com.ticketbox.data.remote.dto.SavedViewResultsDto
 import com.ticketbox.data.remote.dto.SavedViewResultRowDto
+import com.ticketbox.data.remote.dto.SavedViewResultsDto
 import com.ticketbox.data.remote.dto.SavedViewUpdateRequestDto
 import com.ticketbox.data.remote.dto.TagListItemDto
 import com.ticketbox.data.remote.dto.TagManagementListDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.SavedView
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import java.io.IOException
@@ -51,7 +51,7 @@ import org.junit.Test
 class SavedQueryNavigationTest {
     @get:Rule val compose = createComposeRule()
     private val context = ApplicationProvider.getApplicationContext<Context>()
-    private var query = SavedViewDto("household-query", "每月日用", 4, "current", null, "", "daily", "日用", "CNY", null, "便利店", "购物")
+    private var query = SavedView("household-query", "每月日用", 4, "current", null, "", "daily", "日用", "CNY", null, "便利店", "购物")
     private val response = query.copy(name = "每月家庭日用", rowVersion = 5)
     private val updates = mutableListOf<Pair<String, SavedViewUpdateRequestDto>>()
     private val keys = mutableListOf<String>()
@@ -138,7 +138,7 @@ class SavedQueryNavigationTest {
                 "category" to query.category, "tag" to "日用", "home_currency_code" to query.homeCurrencyCode),
                 listOf(SavedViewResultRowDto(entry, 12860, null)), page, 50, 1)
         }
-        override suspend fun updateSavedView(publicId: String, request: SavedViewUpdateRequestDto, idempotencyKey: String): SavedViewDto {
+        override suspend fun updateSavedView(publicId: String, request: SavedViewUpdateRequestDto, idempotencyKey: String): SavedView {
             keys += idempotencyKey
             updates += publicId to request
             if (keys.size == 1) throw IOException("accepted reply lost")

@@ -1,10 +1,13 @@
 package com.ticketbox.domain.model
 
-/** Values consumed by the product; wire names and persistence remain at the repository boundary. */
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
 data class LedgerCalendar(
-    val ledgerId: String,
+    @param:Json(name = "ledger_id") val ledgerId: String,
     val revision: Long,
-    val timezoneName: String,
+    @param:Json(name = "timezone_name") val timezoneName: String,
     val basis: String,
-    val adoptedAt: String,
+    @param:Json(name = "adopted_at") val adoptedAt: String,
 )

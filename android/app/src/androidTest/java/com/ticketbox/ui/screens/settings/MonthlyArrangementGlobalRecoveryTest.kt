@@ -7,11 +7,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest
 import com.ticketbox.data.repository.*
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.MonthlyArrangementChange
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.OutboxStatusUiState
@@ -62,5 +62,5 @@ class MonthlyArrangementGlobalRecoveryTest {
             type = PendingMutationType.SaveMonthlyArrangement, targetId = "monthly_arrangement:2026-07", payloadJson = "{}",
             expectedRowVersion = 1, status = PendingMutationStatus.Failed, retryCount = 0, lastError = null,
             createdAt = "2026-07-08T00:00:00Z", attemptedAt = null, completedAt = null, idempotencyKey = "arrangement-original-key"),
-        MonthlyArrangementPayload(1, "2026-07", MonthlyArrangementSaveRequest("JPY", 3000, 500)), null)
+        MonthlyArrangementSubmission(1, "2026-07", MonthlyArrangementChange("JPY", 3000, 500)), null)
 }

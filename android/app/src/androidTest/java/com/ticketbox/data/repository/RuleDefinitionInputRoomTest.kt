@@ -1,9 +1,8 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.domain.model.CategoryRuleDefinition
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.domain.model.CategoryRule
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import com.ticketbox.viewmodel.CategoryRuleDraftForm
 import kotlinx.coroutines.runBlocking
 import org.junit.After

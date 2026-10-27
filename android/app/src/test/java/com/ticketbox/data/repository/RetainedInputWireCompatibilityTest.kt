@@ -44,11 +44,11 @@ class RetainedInputWireCompatibilityTest {
     @Test fun everyRetainedFundsFieldAndNestedActivityPartSurvivesDomainProjection() {
         val legacy = assertNotNull(javaClass.getResource("/retained-input-funds-c7738.json")).readText()
         val wire = assertNotNull(FundsWire.input.fromJson(legacy))
-        val input = wire.toDomain()
+        val input = wire
         assertEquals(binding, input.binding)
         assertEquals(listOf(1234L, -1234L), input.activityParts.map { it.amountMinor })
         assertEquals("  原账户  ", input.activityParts.first().accountName)
-        assertEquals(json.fromJson(legacy), json.fromJson(FundsWire.input.toJson(input.toWire())))
+        assertEquals(json.fromJson(legacy), json.fromJson(FundsWire.input.toJson(input)))
     }
 
     @Test fun acceptedMerchantInputKeepsItsReceiptWithoutReallocatingItsKey() = runTest {

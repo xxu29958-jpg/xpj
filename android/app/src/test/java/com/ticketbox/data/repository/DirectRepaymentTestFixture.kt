@@ -6,6 +6,9 @@ import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto
 import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
+import com.ticketbox.domain.model.DebtKindSetRequest
+import com.ticketbox.domain.model.DebtVoidCreateRequest
+import com.ticketbox.domain.model.RepaymentVoidCreateRequest
 import java.io.IOException
 import java.time.Clock
 import java.time.Instant
@@ -62,7 +65,7 @@ internal class RepaymentResponseLossProbe : ApiService by FakeApiService(mutable
     var receiptTransform: (DebtRepaymentReceiptDto) -> DebtRepaymentReceiptDto = { it }
     var voidReceiptTransform: (DebtDto) -> DebtDto = { it }
     val voidCalls = mutableListOf<Triple<String, Any, String>>()
-    val kindCalls = mutableListOf<Triple<String, com.ticketbox.data.remote.dto.DebtKindSetRequestDto, String>>()
+    val kindCalls = mutableListOf<Triple<String, com.ticketbox.domain.model.DebtKindSetRequest, String>>()
     var kindReceiptTransform: (DebtDto) -> DebtDto = { it }
     var current = DebtDto(
         publicId = "d1", ledgerId = "owner", direction = "i_owe", counterpartyType = "external",
@@ -81,7 +84,7 @@ internal class RepaymentResponseLossProbe : ApiService by FakeApiService(mutable
 
     override suspend fun debt(publicId: String): DebtDto = current
 
-    override suspend fun setDebtKind(publicId: String, request: com.ticketbox.data.remote.dto.DebtKindSetRequestDto,
+    override suspend fun setDebtKind(publicId: String, request: com.ticketbox.domain.model.DebtKindSetRequest,
         idempotencyKey: String?): DebtDto {
         val key = requireNotNull(idempotencyKey)
         kindCalls += Triple(publicId, request, key)
@@ -94,10 +97,10 @@ internal class RepaymentResponseLossProbe : ApiService by FakeApiService(mutable
         return kindReceiptTransform(current)
     }
 
-    override suspend fun voidDebt(publicId: String, request: com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto,
+    override suspend fun voidDebt(publicId: String, request: com.ticketbox.domain.model.DebtVoidCreateRequest,
         idempotencyKey: String?): DebtDto = commitVoid(publicId, request, requireNotNull(idempotencyKey), voidResponse)
 
-    override suspend fun voidDebtRepayment(publicId: String, request: com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto,
+    override suspend fun voidDebtRepayment(publicId: String, request: com.ticketbox.domain.model.RepaymentVoidCreateRequest,
         idempotencyKey: String?): DebtDto = commitVoid(publicId, request, requireNotNull(idempotencyKey), repaymentVoidResponse)
 
     private fun commitVoid(publicId: String, request: Any, key: String, response: DebtDto): DebtDto {

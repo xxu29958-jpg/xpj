@@ -13,30 +13,32 @@ data class RecognitionTimeChoice(
 )
 
 /** Read-only source evidence. Only a deliberate choice changes the existing edit draft. */
+@JsonClass(generateAdapter = true)
 data class RecognitionTime(
-    val evidencePublicId: String,
-    val parserVersion: String,
+    @param:Json(name = "evidence_public_id") val evidencePublicId: String,
+    @param:Json(name = "parser_version") val parserVersion: String,
     val status: String,
     val candidates: List<RecognitionTimeCandidate>,
     val source: String = "image",
 )
 
+@JsonClass(generateAdapter = true)
 data class RecognitionTimeCandidate(
     val id: String,
     val label: String,
     val explanation: String,
-    val originalText: String,
-    val localValue: String,
+    @param:Json(name = "original_text") val originalText: String,
+    @param:Json(name = "local_value") val localValue: String,
     val precision: String,
-    val sourceTimezone: String?,
-    val sourceUtcOffsetSeconds: Int?,
-    val canApply: Boolean,
-    val evidencePublicId: String? = null,
+    @param:Json(name = "source_timezone") val sourceTimezone: String?,
+    @param:Json(name = "source_utc_offset_seconds") val sourceUtcOffsetSeconds: Int?,
+    @param:Json(name = "can_apply") val canApply: Boolean,
+    @param:Json(name = "evidence_public_id") val evidencePublicId: String? = null,
     val source: String? = null,
-    val parserVersion: String? = null,
+    @param:Json(name = "parser_version") val parserVersion: String? = null,
     val role: String = "unknown",
     val components: Map<String, Int> = emptyMap(),
-    val requiresYear: Boolean = false,
-    val eventId: String? = null,
-    val eventSelected: Boolean = false,
+    @param:Json(name = "requires_year") val requiresYear: Boolean = false,
+    @param:Json(name = "event_id") val eventId: String? = null,
+    @param:Json(name = "event_selected") val eventSelected: Boolean = false,
 )

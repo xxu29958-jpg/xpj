@@ -6,55 +6,55 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.GoalDto
-import com.ticketbox.data.remote.dto.GoalListResponseDto
-import com.ticketbox.data.remote.dto.BudgetMonthlyDto
+import com.ticketbox.data.remote.dto.BudgetAdviceDto
 import com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
 import com.ticketbox.data.remote.dto.BudgetAdviseRequestDto
 import com.ticketbox.data.remote.dto.BudgetAdviseResponseDto
-import com.ticketbox.data.remote.dto.BudgetAdviceDto
+import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.DiscretionaryResponseDto
 import com.ticketbox.data.remote.dto.ExchangeRateListDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementResponseDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementHistoryItemDto
-import com.ticketbox.data.remote.dto.MonthlyStatsDto
+import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
+import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.ReportsOverviewDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
+import com.ticketbox.domain.model.MonthlyArrangement
+import com.ticketbox.domain.model.MonthlyArrangementHistory
+import com.ticketbox.domain.model.MonthlyArrangementHistoryItem
+import com.ticketbox.domain.model.MonthlyArrangementResponse
+import com.ticketbox.ui.assertEditableTextEquals
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.theme.TicketboxTheme
-import com.ticketbox.ui.assertEditableTextEquals
-import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
-import com.ticketbox.viewmodel.SpendingGoalsViewModel
-import com.ticketbox.viewmodel.SpendingGoalEditField
-import com.ticketbox.viewmodel.SpendingGoalEditDraftStore
-import com.ticketbox.viewmodel.MonthlyStatsViewModel
-import com.ticketbox.viewmodel.StatsReportsViewModel
-import com.ticketbox.viewmodel.DebtGoalViewModel
 import com.ticketbox.viewmodel.BudgetAdviceViewModel
+import com.ticketbox.viewmodel.DebtGoalViewModel
+import com.ticketbox.viewmodel.MonthlyStatsViewModel
+import com.ticketbox.viewmodel.SpendingGoalDetailViewModel
+import com.ticketbox.viewmodel.SpendingGoalEditDraftStore
+import com.ticketbox.viewmodel.SpendingGoalEditField
+import com.ticketbox.viewmodel.SpendingGoalsViewModel
+import com.ticketbox.viewmodel.StatsReportsViewModel
 import com.ticketbox.viewmodel.editArrangement
 import com.ticketbox.viewmodel.loadArrangementHistory
 import com.ticketbox.viewmodel.refreshArrangement
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import java.net.ConnectException
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.runBlocking
@@ -81,7 +81,7 @@ class GoalOfflineReadingConnectedTest {
         "monthly", "2026-09", null, 1200, null, null, null, "on_track", "active",
         "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 4, null, homeCurrencyCode = "JPY")
     private val debtGoal = original.copy(publicId = "offline-debt-goal", name = "还债计划", goalType = "debt_repayment")
-    private val arrangement = MonthlyArrangementDto("correction-ledger", "2026-09", "JPY", 1200, 300, 4, "2026-09-01T00:00:00Z")
+    private val arrangement = MonthlyArrangement("correction-ledger", "2026-09", "JPY", 1200, 300, 4, "2026-09-01T00:00:00Z")
     private val harness = FactEntryNavigationHarness(context) { delegate ->
         object : ApiService by delegate {
             override suspend fun goals(month: String?, includeArchived: Boolean, goalType: String?, timezone: String?): GoalListResponseDto {
@@ -113,14 +113,14 @@ class GoalOfflineReadingConnectedTest {
                     "2026-08", 3000, 1, "2025-09", 2000, 1, 5000, 1, null, "amount",
                     emptyList(), emptyList(), emptyList(), "JPY", emptyList())
             }
-            override suspend fun monthlyArrangement(month: String): MonthlyArrangementResponseDto {
+            override suspend fun monthlyArrangement(month: String): MonthlyArrangementResponse {
                 checkTransport()
-                return MonthlyArrangementResponseDto(arrangement.ledgerId, month, arrangement.copy(month = month))
+                return MonthlyArrangementResponse(arrangement.ledgerId, month, arrangement.copy(month = month))
             }
-            override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): MonthlyArrangementHistoryDto {
+            override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): MonthlyArrangementHistory {
                 checkTransport()
-                return MonthlyArrangementHistoryDto(arrangement.ledgerId, month,
-                    listOf(MonthlyArrangementHistoryItemDto(4, arrangement.updatedAt, "JPY", 1200, 300)), null)
+                return MonthlyArrangementHistory(arrangement.ledgerId, month,
+                    listOf(MonthlyArrangementHistoryItem(4, arrangement.updatedAt, "JPY", 1200, 300)), null)
             }
             override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): BudgetAdviceInputsDto {
                 checkTransport()

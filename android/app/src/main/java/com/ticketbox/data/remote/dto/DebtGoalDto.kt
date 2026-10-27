@@ -81,22 +81,6 @@ data class DebtGoalLinkViewDto(
 )
 
 /**
- * Body for `POST /api/goals/{publicId}/debt-links` — replace a debt_repayment goal's
- * linked Debt set (the backend bumps `row_version` + `goal_version`). `debtPublicIds`
- * is the FULL new set (replace, not delta) and must be non-empty.
- *
- * `expectedRowVersion` is the client's last-seen OCC token; server returns 409
- * `state_conflict` on a stale snapshot.
- */
-@JsonClass(generateAdapter = true)
-data class DebtGoalLinksReplaceRequestDto(
-    @param:Json(name = "expected_row_version")
-    val expectedRowVersion: Long,
-    @param:Json(name = "debt_public_ids")
-    val debtPublicIds: List<String>,
-)
-
-/**
  * Body for `POST /api/goals/{publicId}/integrity-review/acknowledge` (§6/F13) —
  * "keep for audit": acknowledge an achieved goal version whose linked set carries a
  * debt-voided Debt, clearing `needs_review` for the current version. The other exit
@@ -105,19 +89,4 @@ data class DebtGoalLinksReplaceRequestDto(
 data class DebtGoalIntegrityReviewRequestDto(
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
-)
-
-/**
- * Body for `POST /api/goals/{publicId}/target-date` (ADR-0049 §7.0 / 8e-6c) — set or clear a
- * debt_repayment goal's payoff deadline. `expectedRowVersion` is the OCC token (the setter bumps
- * `row_version` only, never `goal_version`). `targetDate` is the ISO date to set, or `null` to
- * clear — the backend field is optional (a setter: omitted/null = clear), so Moshi's null-omission
- * naturally encodes the clear case (it never reaches the wire as an explicit null).
- */
-@JsonClass(generateAdapter = true)
-data class DebtGoalTargetDateRequestDto(
-    @param:Json(name = "expected_row_version")
-    val expectedRowVersion: Long,
-    @param:Json(name = "target_date")
-    val targetDate: String? = null,
 )

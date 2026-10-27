@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.remote.ApiService
@@ -8,13 +9,12 @@ import com.ticketbox.data.remote.dto.RepaymentDraftDismissRequestDto
 import com.ticketbox.data.remote.dto.RepaymentDraftDto
 import com.ticketbox.domain.model.Debt
 import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.cancel
-import androidx.lifecycle.viewModelScope
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -54,13 +54,13 @@ class RepaymentReviewRoomTest {
                 return api.expenseFactBundle(fixture.network.current.id.toString())
             }
             override suspend fun repaymentAsExpense(publicId: String, request: com.ticketbox.data.remote.dto.RepaymentAsExpenseDto,
-                idempotencyKey: String): com.ticketbox.data.remote.dto.PaymentCaptureDto {
+                idempotencyKey: String): com.ticketbox.domain.model.PaymentCapture {
                 assertEquals(capture.publicId, publicId)
                 correctionCalls += idempotencyKey to request
                 assertEquals(8L, request.correctionVersions?.debtRowVersion)
                 assertEquals("原通知其实是消费", request.reason)
                 if (loseCorrectionReply) throw IOException("lost correction reply")
-                return com.ticketbox.data.remote.dto.PaymentCaptureDto("event-original", 3, "alipay", capture.capturedAt,
+                return com.ticketbox.domain.model.PaymentCapture("event-original", 3, "alipay", capture.capturedAt,
                     "CNY", 9000, "原采集", "expense", "legacy", emptyList(), fixture.network.current.id,
                     fixture.network.current.publicId, capture.publicId)
             }

@@ -1,25 +1,25 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.data.repository.toView
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
-import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
-import com.ticketbox.data.repository.DebtKindPayload
 import com.ticketbox.data.repository.DebtActions
+import com.ticketbox.data.repository.DebtAdjustmentPayload
+import com.ticketbox.data.repository.DebtKindPayload
 import com.ticketbox.data.repository.DebtWriteActions
 import com.ticketbox.data.repository.DebtWriteObservation
-import com.ticketbox.data.repository.DebtAdjustmentPayload
 import com.ticketbox.data.repository.DebtWriteSubject
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.PendingDebtWrite
+import com.ticketbox.data.repository.toView
 import com.ticketbox.domain.model.Debt
+import com.ticketbox.domain.model.DebtAdjustmentCreateRequest
+import com.ticketbox.domain.model.DebtKindSetRequest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 
 internal data class AdjustmentSaveCall(
     val binding: LogicalSessionBinding,
@@ -137,7 +137,7 @@ internal fun pendingAdjustment(
         subject = DebtWriteSubject("debt-1", "房东", "CNY"),
         originSessionGeneration = binding.sessionGeneration,
         originBindingRevision = binding.bindingRevision,
-        request = DebtAdjustmentCreateRequestDto(amountCents = -5_000, reason = "减免", expectedRowVersion = 7),
+        request = DebtAdjustmentCreateRequest(amountCents = -5_000, reason = "减免", expectedRowVersion = 7),
     )
     return PendingDebtWrite(
         row = OutboxRow(
@@ -157,7 +157,7 @@ internal fun pendingAdjustment(
 internal fun pendingKind(debt: Debt, kind: String, status: PendingMutationStatus = PendingMutationStatus.Pending,
     binding: LogicalSessionBinding = adjustmentBinding()): PendingDebtWrite {
     val intent = DebtKindPayload(1, DebtWriteSubject(debt.publicId, debt.counterpartyLabel, debt.homeCurrencyCode),
-        binding.sessionGeneration, binding.bindingRevision, DebtKindSetRequestDto(kind, debt.rowVersion))
+        binding.sessionGeneration, binding.bindingRevision, DebtKindSetRequest(kind, debt.rowVersion))
     val original = pendingAdjustment(status = status, binding = binding).row
     return PendingDebtWrite(original.copy(type = PendingMutationType.SetDebtKind, targetId = "debt:${debt.publicId}",
         payloadJson = com.ticketbox.OutboxAdapterGraph().debt.debtKindAdapter.toJson(intent),

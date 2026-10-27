@@ -4,27 +4,27 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseDto
-import com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto
-import com.ticketbox.data.remote.dto.PaymentCaptureDto
 import com.ticketbox.data.remote.dto.RepaymentAsExpenseDto
+import com.ticketbox.domain.model.PaymentCapture
+import com.ticketbox.domain.model.PaymentCaptureDecision
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
 @JsonClass(generateAdapter = true)
 data class PaymentCaptureResolution(val revision: Int = 1, val binding: LogicalSessionBinding,
-    val publicId: String, val decision: PaymentCaptureDecisionDto? = null,
+    val publicId: String, val decision: PaymentCaptureDecision? = null,
     val correction: RepaymentAsExpenseDto? = null)
 
 internal object PaymentCaptureWire {
     private val moshi = Moshi.Builder().build()
     val resolution = moshi.adapter(PaymentCaptureResolution::class.java)
-    val receipt = moshi.adapter(PaymentCaptureDto::class.java)
+    val receipt = moshi.adapter(PaymentCapture::class.java)
 }
 
 fun OutboxRow.paymentCaptureReceipt(): com.ticketbox.domain.model.PaymentCapture? = runCatching {
     require(type == PendingMutationType.ResolvePaymentCapture)
-    PaymentCaptureWire.receipt.fromJson(requireNotNull(receiptJson))?.toDomain()
+    PaymentCaptureWire.receipt.fromJson(requireNotNull(receiptJson))
 }.getOrNull()
 
 internal fun OutboxRow.paymentResolution(): PaymentCaptureResolution? = runCatching {

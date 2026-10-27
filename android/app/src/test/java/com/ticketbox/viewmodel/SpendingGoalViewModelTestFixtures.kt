@@ -4,10 +4,11 @@ import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.data.repository.ReadSnapshot
 import com.ticketbox.data.repository.ReportsActions
+import com.ticketbox.data.repository.originalCreation
 import com.ticketbox.domain.model.Goal
+import com.ticketbox.domain.model.GoalCreateRequest
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
-import com.ticketbox.data.repository.originalCreation
 import java.lang.reflect.Proxy
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -131,7 +132,7 @@ internal class RecordingGoalEdits : com.ticketbox.data.repository.GoalEditAction
     var saveGate: (suspend () -> Unit)? = null
     var saveResult = Result.success(1L)
     val saves = mutableListOf<GoalUpdate>()
-    val createCalls = mutableListOf<com.ticketbox.data.remote.dto.GoalCreateRequestDto>()
+    val createCalls = mutableListOf<com.ticketbox.domain.model.GoalCreateRequest>()
     val createKeys = mutableListOf<String>()
     var createGate: (suspend () -> Unit)? = null
     var createFailure: Throwable? = null
@@ -156,7 +157,7 @@ internal class RecordingGoalEdits : com.ticketbox.data.repository.GoalEditAction
         } })
     }
     override suspend fun create(binding: com.ticketbox.data.repository.LogicalSessionBinding,
-        request: com.ticketbox.data.remote.dto.GoalCreateRequestDto, creationKey: String): Result<Long> {
+        request: com.ticketbox.domain.model.GoalCreateRequest, creationKey: String): Result<Long> {
         createCalls += request
         createKeys += creationKey
         createGate?.invoke()

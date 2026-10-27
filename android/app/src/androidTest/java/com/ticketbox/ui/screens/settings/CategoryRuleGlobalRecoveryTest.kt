@@ -1,7 +1,5 @@
 package com.ticketbox.ui.screens.settings
 
-import com.ticketbox.data.repository.toDomain
-import com.ticketbox.domain.model.CategoryRuleDefinition
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -12,7 +10,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.data.repository.ExpenseCorrectionObservation
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
@@ -21,8 +19,9 @@ import com.ticketbox.data.repository.OutboxStatus
 import com.ticketbox.data.repository.PendingCategoryRuleSubmission
 import com.ticketbox.data.repository.PendingRuleApplication
 import com.ticketbox.data.repository.RuleApplicationPayload
-import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
+import com.ticketbox.data.repository.toDomain
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.CurrencyDisplay
 import com.ticketbox.ui.design.LocalCurrencyDisplay

@@ -2,6 +2,7 @@ package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import com.ticketbox.domain.model.RecognitionTime
 
 /**
  * ADR-0049 §杠杆③ (slice 3a) — Android contract for the NLS repayment-capture inbox.
@@ -49,7 +50,7 @@ data class RepaymentDraftDto(
     @param:Json(name = "source_expense_requires_review") val sourceExpenseRequiresReview: Boolean = false,
     @param:Json(name = "corrected_expense_id") val correctedExpenseId: Long? = null,
     @param:Json(name = "correction_versions") val correctionVersions: RepaymentCorrectionVersionsDto? = null,
-    @param:Json(name = "recognition_time") val recognitionTime: RecognitionTimeDto? = null,
+    @param:Json(name = "recognition_time") val recognitionTime: RecognitionTime? = null,
 )
 
 data class RepaymentDraftListResponseDto(

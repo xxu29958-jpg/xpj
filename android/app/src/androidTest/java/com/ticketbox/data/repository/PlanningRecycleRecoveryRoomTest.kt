@@ -7,16 +7,16 @@ import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.BudgetArrangementDto
 import com.ticketbox.data.remote.dto.BudgetHistoryDto
 import com.ticketbox.data.remote.dto.BudgetRevisionDto
-import com.ticketbox.data.remote.dto.RecurringDefinitionDto
-import com.ticketbox.data.remote.dto.RecurringHistoryPageDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
 import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
-import com.ticketbox.data.remote.dto.RecurringRevisionDto
 import com.ticketbox.data.remote.dto.RecycleBinItemDto
 import com.ticketbox.data.remote.dto.RecycleBinListResponseDto
 import com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto
 import com.ticketbox.data.remote.dto.RecycleBinRestoreResponseDto
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import com.ticketbox.domain.model.RecurringDefinition
+import com.ticketbox.domain.model.RecurringHistoryPage
+import com.ticketbox.domain.model.RecurringRevision
 import com.ticketbox.ui.navigation.offlineBudget
 import java.io.IOException
 import java.net.ConnectException
@@ -160,11 +160,11 @@ private class PlanningRecycleTransport {
                 pausedAt = null, archivedAt = timestamp.takeIf { seriesVersion == 7L }, homeCurrencyCode = "JPY")))
                 .also { checkRead() }
 
-        override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?): RecurringHistoryPageDto {
+        override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?): RecurringHistoryPage {
             if (offline) throw ConnectException("Synthetic unavailable recurring history")
-            return RecurringHistoryPageDto("correction-ledger", publicId, listOf(RecurringRevisionDto(seriesVersion,
+            return RecurringHistoryPage("correction-ledger", publicId, listOf(RecurringRevision(seriesVersion,
                 if (seriesVersion == 7L) "archive" else "restore", timestamp, null,
-                RecurringDefinitionDto("原日元计划", "原日元计划", "monthly", "JPY", 1200, "2026-09-09",
+                RecurringDefinition("原日元计划", "原日元计划", "monthly", "JPY", 1200, "2026-09-09",
                     if (seriesVersion == 7L) "archived" else "active", "manual"))), null)
         }
 

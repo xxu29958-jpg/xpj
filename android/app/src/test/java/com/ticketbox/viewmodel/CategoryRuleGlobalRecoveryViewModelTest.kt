@@ -1,17 +1,24 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.data.repository.toDomain
+import androidx.lifecycle.viewModelScope
+import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.repository.CategoryRuleSubmissionPayload
 import com.ticketbox.data.repository.ExpenseCorrectionObservation
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.OutboxRow
 import com.ticketbox.data.repository.OutboxStatus
-import androidx.lifecycle.viewModelScope
-import com.ticketbox.OutboxAdapterGraph
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
-import com.ticketbox.data.repository.CategoryRuleSubmissionPayload
+import com.ticketbox.data.repository.toDomain
+import com.ticketbox.domain.model.CategoryRuleDefinition
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
@@ -22,13 +29,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CategoryRuleGlobalRecoveryViewModelTest {
@@ -88,7 +88,7 @@ class CategoryRuleGlobalRecoveryViewModelTest {
 
     @Test fun globalRetryPreservesOriginalCurrencyKeyOccAndRequiresWriteAccess() = runTest(dispatcher) {
         val harness = outboxStatusHarness()
-        val request = CategoryRuleRequest("月票", "transport", true, 0, amountMinCents = 1200, homeCurrencyCode = "JPY")
+        val request = CategoryRuleDefinition("月票", "transport", true, 0, amountMinCents = 1200, homeCurrencyCode = "JPY")
         val payload = OutboxAdapterGraph().categoryRuleSubmissionAdapter.toJson(
             CategoryRuleSubmissionPayload(expectedRowVersion = 3, request = request))
         val id = harness.outbox.enqueue(PendingMutationType.UpdateCategoryRule, "category_rule:17", payload, 3, "original-rule-key")
@@ -98,7 +98,7 @@ class CategoryRuleGlobalRecoveryViewModelTest {
         try {
             val ready = vm.uiState.first { it.categoryRules.containsKey(id) }
             assertTrue(ready.offersRetry(original))
-            assertEquals(request.toDomain(), ready.categoryRules[id]?.request)
+            assertEquals(request, ready.categoryRules[id]?.request)
             val access = requireNotNull(ready.correctionObservation.access)
             assertFalse(ready.copy(correctionObservation = ExpenseCorrectionObservation(access.copy(canModify = false), emptyList())).offersRetry(original))
             assertNull(harness.rules.describeSubmission(original.copy(serverUrl = "https://foreign.test")))

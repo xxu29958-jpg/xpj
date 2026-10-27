@@ -2,28 +2,28 @@ package com.ticketbox.data.repository
 
 import com.squareup.moshi.Moshi
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.RecurringDefinitionDto
-import com.ticketbox.data.remote.dto.RecurringHistoryPageDto
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
-import com.ticketbox.data.remote.dto.RecurringRevisionDto
+import com.ticketbox.domain.model.RecurringDefinition
+import com.ticketbox.domain.model.RecurringHistoryPage
+import com.ticketbox.domain.model.RecurringOccurrence
+import com.ticketbox.domain.model.RecurringRevision
 import java.util.TimeZone
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class RecurringHistoryReadTest {
     @Test fun externalGoalRefusalInvalidatesAnAlreadyRunningHistoryReadOnTheSameBinding() = runTest {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val fixture = GoalReadFixture(decorate = { delegate -> object : ApiService by delegate {
-            override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?): RecurringHistoryPageDto {
+            override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?): RecurringHistoryPage {
                 started.complete(Unit)
                 release.await()
                 return page()
@@ -42,7 +42,7 @@ class RecurringHistoryReadTest {
 
     @Test fun historyRefusalPublishesTheSharedDenialAndRetiresExistingGoalReadPages() = runTest {
         val fixture = GoalReadFixture(decorate = { delegate -> object : ApiService by delegate {
-            override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?): RecurringHistoryPageDto =
+            override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?): RecurringHistoryPage =
                 throw HttpException(Response.error<Any>(401, "".toResponseBody()))
         } })
         fixture.repository.goal("goal-jpy").getOrThrow()
@@ -62,7 +62,7 @@ class RecurringHistoryReadTest {
         val originalTimezone = TimeZone.getDefault()
         try {
             TimeZone.setDefault(TimeZone.getTimeZone("Pacific/Honolulu"))
-            assertEquals(page().toDomain(), repository.history(fixture.binding, "recurring", null).getOrThrow().value)
+            assertEquals(page(), repository.history(fixture.binding, "recurring", null).getOrThrow().value)
         } finally { TimeZone.setDefault(originalTimezone) }
         val row = response.items.single()
         for (invalid in listOf(response.copy(ledgerId = "other"), response.copy(publicId = "other"),
@@ -74,14 +74,14 @@ class RecurringHistoryReadTest {
         assertTrue(repository.history(fixture.binding, "recurring", 9).isFailure)
         val legacy = definition().copy(homeCurrencyCode = null, baselineAmountCents = 0, source = "candidate")
         response = response.copy(items = listOf(row.copy(snapshot = legacy)))
-        assertEquals(legacy.toDomain(), repository.history(fixture.binding, "recurring", null).getOrThrow().value.items.single().snapshot)
+        assertEquals(legacy, repository.history(fixture.binding, "recurring", null).getOrThrow().value.items.single().snapshot)
     }
 
     @Test fun newLogicalSessionCannotAcceptALateOriginalHistoryResponse() = runTest {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val fixture = GoalReadFixture(decorate = { delegate -> object : ApiService by delegate {
-            override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?): RecurringHistoryPageDto {
+            override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?): RecurringHistoryPage {
                 started.complete(Unit)
                 release.await()
                 return page()
@@ -98,7 +98,7 @@ class RecurringHistoryReadTest {
     }
 
     @Test fun occurrenceWireKeepsFirstDefinitionSeparateFromCurrentPlanAndActualRecordedInstant() {
-        val adapter = Moshi.Builder().build().adapter(RecurringOccurrenceDto::class.java)
+        val adapter = Moshi.Builder().build().adapter(RecurringOccurrence::class.java)
         val body = """{"series_public_id":"recurring","period":"2026-09","series_row_version":9,"row_version":3,
             "state":"unfulfilled","planned_amount_cents":2400,"reserved_amount_cents":2400,
             "expense_public_id":null,"paid_amount_cents":null,"next_due_date":null,"home_currency_code":"JPY",
@@ -117,8 +117,8 @@ class RecurringHistoryReadTest {
         assertNull(adapter.fromJson(oldBody)?.recordedDefinition)
     }
 
-    private fun definition() = RecurringDefinitionDto("原计划", "original", "monthly", "JPY", 1200,
+    private fun definition() = RecurringDefinition("原计划", "original", "monthly", "JPY", 1200,
         "2026-10-09", "active", "manual")
-    private fun page() = RecurringHistoryPageDto("owner", "recurring", listOf(RecurringRevisionDto(9, "edit",
+    private fun page() = RecurringHistoryPage("owner", "recurring", listOf(RecurringRevision(9, "edit",
         "2026-09-19T00:00:00Z", 1, definition())), 9)
 }

@@ -1,31 +1,31 @@
 package com.ticketbox.viewmodel
 
-import com.ticketbox.data.repository.toDomain
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.job
+import com.ticketbox.data.repository.toDomain
+import com.ticketbox.domain.model.ExchangeRateRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 
 class ManualRateGlobalRecoveryViewModelTest {
-    private val request = ExchangeRateRequestDto("JPY", "USD", "2026-09-01", "0.0069", "manual", 0)
+    private val request = ExchangeRateRequest("JPY", "USD", "2026-09-01", "0.0069", "manual", 0)
 
     @Test fun globalRetryUsesTheOwnerAndRetainsOriginalPairDateAmountKeyAndOcc() = budgetTest {
         val harness = outboxStatusHarness()
         val binding = requireNotNull(harness.expenseRepository.captureDeferredLedgerBinding())
-        val id = harness.budgetSaves.enqueueRate(binding, "2026-09", request.toDomain(), null).getOrThrow()
+        val id = harness.budgetSaves.enqueueRate(binding, "2026-09", request, null).getOrThrow()
         harness.outbox.markFailed(id, "client_upgrade_required")
         val original = harness.outbox.observeStatus().first().failed.single()
         val vm = harness.rateGlobalViewModel()
         try {
             val state = vm.uiState.first { it.bindingReady && it.manualRates[id]?.canRetry == true }
-            assertEquals(request.toDomain(), state.manualRates[id]?.intent?.request)
+            assertEquals(request, state.manualRates[id]?.intent?.request)
             assertTrue(state.offersRetry(original))
             vm.keepMine(original)
             assertEquals(original, harness.outbox.observeStatus().first().failed.single())
@@ -41,7 +41,7 @@ class ManualRateGlobalRecoveryViewModelTest {
     @Test fun unverifiedDoneCannotReportSuccessOrRetryAndCanBeStoppedLocally() = budgetTest {
         val harness = outboxStatusHarness()
         val binding = requireNotNull(harness.expenseRepository.captureDeferredLedgerBinding())
-        val id = harness.budgetSaves.enqueueRate(binding, "2026-09", request.toDomain(), null).getOrThrow()
+        val id = harness.budgetSaves.enqueueRate(binding, "2026-09", request, null).getOrThrow()
         harness.outbox.markDone(id)
         val vm = harness.rateGlobalViewModel()
         try {

@@ -1,15 +1,20 @@
 package com.ticketbox.ui.navigation
 
-import com.ticketbox.domain.model.MonthlyArrangementChange
 import android.content.Context
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -19,37 +24,31 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.DashboardCardDto
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
+import com.ticketbox.data.remote.dto.DiscretionaryResponseDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.MonthsDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementResponseDto
-import com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest
-import com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
-import com.ticketbox.data.remote.dto.DiscretionaryResponseDto
 import com.ticketbox.data.repository.MonthlyArrangementDraft
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
-import com.ticketbox.ui.theme.TicketboxTheme
-import com.ticketbox.ui.saveConsumerArtPreview
-import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.domain.model.CurrencyDisplay
-import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.assertIsNotEnabled
+import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
+import com.ticketbox.domain.model.MonthlyArrangement
+import com.ticketbox.domain.model.MonthlyArrangementChange
+import com.ticketbox.domain.model.MonthlyArrangementResponse
+import com.ticketbox.presentation.formatDisplayAmount
+import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.theme.TicketboxTheme
 import java.time.YearMonth
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
@@ -324,10 +323,10 @@ internal class BudgetNavigationTransport(private val currentMonth: String, priva
             return com.ticketbox.data.remote.dto.StatusPrivateDto("ok", backupStale = true)
         }
 
-        override suspend fun monthlyArrangement(month: String): MonthlyArrangementResponseDto {
+        override suspend fun monthlyArrangement(month: String): MonthlyArrangementResponse {
             arrangementReads += month
-            return MonthlyArrangementResponseDto("correction-ledger", month,
-                MonthlyArrangementDto("correction-ledger", month, "JPY", 4000, 600, 2, "2026-09-27T00:00:00Z"))
+            return MonthlyArrangementResponse("correction-ledger", month,
+                MonthlyArrangement("correction-ledger", month, "JPY", 4000, 600, 2, "2026-09-27T00:00:00Z"))
         }
 
         override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): BudgetAdviceInputsDto {
@@ -354,7 +353,7 @@ internal class BudgetNavigationTransport(private val currentMonth: String, priva
         }
 
         override suspend fun referenceRates(homeCurrencyCode: String, currencyCode: String?, rateDate: String?) =
-            com.ticketbox.data.remote.dto.ReferenceRatesDto("frankfurter", true, "waiting", rateDate, items = emptyList())
+            com.ticketbox.domain.model.ReferenceRates("frankfurter", true, "waiting", rateDate, items = emptyList())
 
         override suspend fun months(timezone: String?) = MonthsDto(listOf(currentMonth, originalMonth))
 

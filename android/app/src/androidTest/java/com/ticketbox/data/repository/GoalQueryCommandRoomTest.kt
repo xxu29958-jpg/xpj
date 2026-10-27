@@ -4,13 +4,13 @@ import androidx.test.core.app.ApplicationProvider
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
+import com.ticketbox.domain.model.GoalCreateRequest
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalUpdate
+import com.ticketbox.domain.model.GoalUpdateRequest
 import java.net.ConnectException
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
@@ -35,13 +35,13 @@ class GoalQueryCommandRoomTest {
                 return originalGoal()
             }
             override suspend fun archiveGoal(publicId: String, timezone: String?) = originalGoal().copy(status = "archived", rowVersion = 3)
-            override suspend fun updateGoal(publicId: String, request: GoalUpdateRequestDto, idempotencyKey: String?, timezone: String?): GoalDto {
+            override suspend fun updateGoal(publicId: String, request: GoalUpdateRequest, idempotencyKey: String?, timezone: String?): GoalDto {
                 assertEquals("goal-jpy", publicId)
                 assertEquals(2L, request.expectedRowVersion)
                 assertEquals(2400L, request.targetAmountCents)
                 return originalGoal().copy(targetAmountCents = 2400, rowVersion = 3)
             }
-            override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto {
+            override suspend fun createGoal(request: GoalCreateRequest, timezone: String?, idempotencyKey: String?): GoalDto {
                 assertEquals("新目标", request.name)
                 assertEquals("2026-09", request.month)
                 assertEquals(2400L, request.targetAmountCents)

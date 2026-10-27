@@ -5,8 +5,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.BillSplitInviteRequestDto
 import com.ticketbox.data.remote.dto.BillSplitSentDto
+import com.ticketbox.domain.model.BillSplitInviteRequest
 import java.io.IOException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -25,11 +25,11 @@ import retrofit2.Response
 class BillSplitCreationRoomContinuityTest {
     private val fixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext())
     private val adapters = OutboxAdapterGraph()
-    private val calls = mutableListOf<Pair<BillSplitInviteRequestDto, String>>()
+    private val calls = mutableListOf<Pair<BillSplitInviteRequest, String>>()
     private var loseResponse = true
     private var refusal: String? = null
     private val service = object : ApiService by fixture.network.service {
-        override suspend fun createBillSplitInvitation(id: Long, request: BillSplitInviteRequestDto, idempotencyKey: String): BillSplitSentDto {
+        override suspend fun createBillSplitInvitation(id: Long, request: BillSplitInviteRequest, idempotencyKey: String): BillSplitSentDto {
             calls += request to idempotencyKey
             refusal?.let { code -> throw HttpException(Response.error<Any>(409,
                 """{"error":"$code","message":"Synthetic refusal"}""".toResponseBody("application/json".toMediaType()))) }

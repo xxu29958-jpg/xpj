@@ -21,8 +21,14 @@ import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
 import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
 import com.ticketbox.data.remote.dto.RecurringItemDto
-import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.domain.model.BackgroundSettings
+import com.ticketbox.domain.model.LedgerCalendar
+import com.ticketbox.domain.model.OriginalCommandReceipt
+import com.ticketbox.domain.model.OriginalHealth
+import com.ticketbox.domain.model.RecurringHistoryPage
+import com.ticketbox.domain.model.RecurringOccurrence
+import com.ticketbox.domain.model.RecurringOccurrencePaymentRequest
+import com.ticketbox.security.LocalSessionIdentity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.MultipartBody
@@ -86,13 +92,13 @@ internal class StubApi(
     override suspend fun portableExportLedgers(): LedgerListResponseDto = error("Portable export not configured")
     override fun portableExport(ledgerId: String, download: com.ticketbox.data.remote.PortableDownloadRequest): retrofit2.Call<ResponseBody> =
         error("Portable export not configured")
-    override suspend fun originalHealth(id: Long): com.ticketbox.data.remote.dto.OriginalHealthDto = error("Original health not configured")
-    override suspend fun verifyOriginal(id: Long, body: com.ticketbox.data.remote.dto.OriginalVerificationRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original verification not configured")
-    override suspend fun replenishOriginal(id: Long, file: okhttp3.MultipartBody.Part, expectedRowVersion: Long, expectedSha256: String, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original replenishment not configured")
-    override suspend fun retryOriginalCleanup(id: Long, body: com.ticketbox.data.remote.dto.OriginalCleanupRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original cleanup not configured")
-    override suspend fun cancelOriginalCleanup(id: Long, body: com.ticketbox.data.remote.dto.OriginalCleanupRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original cleanup not configured")
+    override suspend fun originalHealth(id: Long): com.ticketbox.domain.model.OriginalHealth = error("Original health not configured")
+    override suspend fun verifyOriginal(id: Long, body: com.ticketbox.data.remote.dto.OriginalVerificationRequestDto, idempotencyKey: String): com.ticketbox.domain.model.OriginalCommandReceipt = error("Original verification not configured")
+    override suspend fun replenishOriginal(id: Long, file: okhttp3.MultipartBody.Part, expectedRowVersion: Long, expectedSha256: String, idempotencyKey: String): com.ticketbox.domain.model.OriginalCommandReceipt = error("Original replenishment not configured")
+    override suspend fun retryOriginalCleanup(id: Long, body: com.ticketbox.data.remote.dto.OriginalCleanupRequestDto, idempotencyKey: String): com.ticketbox.domain.model.OriginalCommandReceipt = error("Original cleanup not configured")
+    override suspend fun cancelOriginalCleanup(id: Long, body: com.ticketbox.data.remote.dto.OriginalCleanupRequestDto, idempotencyKey: String): com.ticketbox.domain.model.OriginalCommandReceipt = error("Original cleanup not configured")
 
-    override suspend fun ledgerCalendar(ledgerId: String, revision: Long?): com.ticketbox.data.remote.dto.LedgerCalendarDto =
+    override suspend fun ledgerCalendar(ledgerId: String, revision: Long?): com.ticketbox.domain.model.LedgerCalendar =
         error("Unexpected ledger calendar query")
 
     var onLedgerMembers: (() -> Unit)? = null
@@ -147,14 +153,14 @@ internal class StubApi(
     override suspend fun recurringOccurrence(
         publicId: String,
         month: String,
-    ): com.ticketbox.data.remote.dto.RecurringOccurrenceDto = error("Unexpected recurring occurrence read")
+    ): com.ticketbox.domain.model.RecurringOccurrence = error("Unexpected recurring occurrence read")
 
     override suspend fun setRecurringOccurrencePayment(
         publicId: String,
         month: String,
-        request: com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto,
+        request: com.ticketbox.domain.model.RecurringOccurrencePaymentRequest,
         idempotencyKey: String,
-    ): com.ticketbox.data.remote.dto.RecurringOccurrenceDto = error("Unexpected recurring occurrence write")
+    ): com.ticketbox.domain.model.RecurringOccurrence = error("Unexpected recurring occurrence write")
 
     override suspend fun createRecurringItem(
         request: com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto,
@@ -267,7 +273,7 @@ internal class StubApi(
         com.ticketbox.data.remote.dto.GoalHistoryResponseDto = error("Unexpected goal definition history")
 
     override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?):
-        com.ticketbox.data.remote.dto.RecurringHistoryPageDto = error("Unexpected recurring definition history")
+        com.ticketbox.domain.model.RecurringHistoryPage = error("Unexpected recurring definition history")
 
     // issue #65 slice 6b: device routes (records call + returns configured result).
     override suspend fun ledgerDevices(

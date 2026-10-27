@@ -5,7 +5,15 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.GoalEditActions
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
+import com.ticketbox.domain.model.GoalCreateRequest
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -17,14 +25,6 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DebtAdjustmentRetainedQueriesTest {
@@ -130,7 +130,7 @@ class DebtAdjustmentRetainedQueriesTest {
 private fun retainedCreateCommands(calls: MutableList<Pair<String, List<String>>>): GoalEditActions {
     val commands = RecordingGoalEdits().apply { access.value = LedgerAccessContext(adjustmentBinding(), true) }
     return object : GoalEditActions by commands {
-        override suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequestDto, creationKey: String): Result<Long> {
+        override suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequest, creationKey: String): Result<Long> {
             calls += request.name to request.debtPublicIds.orEmpty()
             return Result.failure(IllegalStateException("Synthetic creation refusal after recording the exact request"))
         }

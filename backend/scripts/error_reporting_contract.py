@@ -54,10 +54,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "The dispatcher reads the original wire payload through the same admission validation used by its UI description. Only that accessor changed; every catch and result branch is unchanged. Cancellation propagates, transport interruption remains retryable, HTTP failures retain the existing mapper, and unverified responses produce the same static blocking failure stored by Outbox. No raw exception text, fresh key, refreshed OCC or success receipt is introduced. The existing replay/binding/refusal tests exercise the retained original consumer.",
     },
     (ANDROID + "data/repository/MonthlyArrangementRepository.kt", "arrangement"): {
-        "sha256": "f33b677b49ae9a2e95d12d6714a10ca571a5bd534b249df3f88bfa995f20a338",
+        "sha256": "8f2392cfbdd17f024dbf97fba0c34d332710045e0ad5290cb6315c0eb1de76eb",
         "owner": "existing NetworkErrorHandler.safeCall and retained bound cache/read Result",
         "test": "android/app/src/androidTest/java/com/ticketbox/data/repository/MonthlyArrangementRoomContinuityTest.kt",
-        "reason": "Mapping occurs after wire validation and read protection. Only transport unavailability selects a previously authorized query; HTTP refusal withdraws access, malformed JSON and cancellation still propagate to safeCall. The receipt projection maps back to the unchanged cache wire fields, without manufacturing a new original command or swallowing publication failure.",
+        "reason": "The saved arrangement and response now share canonical domain values with their original JSON fields; only identity copies disappear. The existing ledger/month/currency validation and snapshot gate still precede exposure. HTTP refusal withdraws access, only transport unavailability admits the already authorized cache, and malformed JSON, cancellation and publication failures still propagate through NetworkErrorHandler.safeCall.",
     },
     (ANDROID + "data/repository/OutboxDrainWorker.kt", "doWork"): {
         "sha256": "321bf7e97e05fa81946e9899ec390d9115d79c2be0560a40c761b7160ecee876",
@@ -108,10 +108,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "The bounded coordinator moved from restore_cli to domain.restore and fences Backend through the shared domain.operation owner. Known lifecycle codes survive; unknown errors still become the static restore_incomplete result so recovery credentials cannot reach logs. The CLI writes that same private result and calls command_io.emit_failure exactly once. The regression proves the durable fence, retained candidate, one terminal report and absence of private input; no retry or new financial writer is introduced.",
     },
     (ANDROID + "data/repository/LedgerCalendarRepository.kt", "refresh"): {
-        "sha256": "34401d554316662ed7dddd2b3fbaec32ff5cebe1247144e3a318fda0599cfba1",
+        "sha256": "4d5a6d5e55461db80af5e4b4d0081d26e04c5587264f7a3da83b2c22ee08fc04",
         "owner": "existing sanitized TicketboxNetwork output and unchanged read Result",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/LedgerCalendarRepositoryTest.kt::ruleSurvivesReopenAndOfflineWithoutCrossingLogicalBindings",
-        "reason": "The public result now maps the already verified wire rule into the domain value; the original cache bytes, lock, cancellation and sanitized error owner are unchanged. Refresh serializes its reads and cache commits, reports failures through logNetworkWarning, and returns the original exception; cancellation while waiting or reading propagates. The test verifies one sanitized diagnostic without private response text, preserves the same failure, and proves bound cache/revision retention through offline reopen and unsupported capability. The overlapping-read regression also proves that delayed old rules cannot overwrite newer or unsupported current results. This read boundary neither retries financial work nor changes draft intents or user-facing error policy.",
+        "reason": "The calendar value now has one domain definition with the original JSON names; the redundant output copy is removed. Refresh still validates the exact ledger/revision/timezone under the same mutex, checks active binding before cache writes, propagates cancellation, logs through logNetworkWarning, and returns the original failure. The cache encoding and error owner are unchanged.",
     },
     (ANDROID + "viewmodel/FundsViewModel.kt", "runAction"): {
         "sha256": "f17605aa43a5316b882490fc49c3f35cd89b01ad14c80e2bfb582ade4ad10636",
@@ -194,10 +194,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "The broad catch only selects authorized cached reads for transport unavailability. Other errors, cancellation and cache validation failures propagate to the enclosing safeCall; HTTP refusal uses httpFailure before revoking cached access. NetworkErrorReportingTest proves the existing sanitized sink. Alias publication adds no independent terminal owner, retry or user-facing raw exception.",
     },
     (ANDROID + "data/repository/MonthlyArrangementRepository.kt", "arrangementHistory"): {
-        "sha256": "669b3df7910f1909c870e884fc29a8839ce5191931fff32fbec947328493397f",
+        "sha256": "a6ae4fbbd609560e48c5e5b5999fee965302e141bd4593969d98dc86e5a5e752",
         "owner": "existing NetworkErrorHandler.safeCall and sanitized TicketboxNetwork output",
         "test": "android/app/src/androidTest/java/com/ticketbox/data/repository/MonthlyArrangementRoomContinuityTest.kt::malformedJsonAndTlsFailureCannotBecomeCachedSuccess",
-        "reason": "The validated cached/live wire page is mapped only for its public read result; original receipt snapshots and their cache format remain unchanged. Only transport unavailability selects the authorized cached query and separately retained receipt snapshots. HTTP refusal reports through httpFailure and withdraws query access; cancellation, malformed JSON, invalid metadata and storage failures propagate to the enclosing safeCall. Existing NetworkErrorReportingTest verifies the sanitized sink. No new output owner, command retry or exception suppression is introduced.",
+        "reason": "History and receipt snapshots now share canonical values with the original JSON fields; redundant input/output copies are removed. The existing exact binding, HTTP refusal withdrawal, transport-only cache fallback, receipt-version merge and snapshot publication rules are unchanged. No failure becomes a successful empty list, refreshed intent or new timestamp; NetworkErrorHandler.safeCall remains the reporting owner.",
     },
     (ANDROID + "data/repository/UpdateMerchantAliasDispatcher.kt", "dispatch"): {
         "sha256": "d044a4f8f66ecae3886b6d5b0cde72617fbee7e6f9798e8efc7492fa578b31e3",

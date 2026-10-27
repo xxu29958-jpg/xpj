@@ -4,27 +4,25 @@ import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.remote.dto.BillSplitInviteRequestDto
+import com.ticketbox.domain.model.BillSplitInviteRequest
 import java.io.IOException
 
 /** The original reviewed source and recipient survive retries and process recreation. */
 @JsonClass(generateAdapter = true)
-data class BillSplitCreatePayload(
+data class BillSplitSubmission(
     val revision: Int,
     val expenseId: Long,
     val merchant: String?,
     val receiverName: String,
     val homeCurrencyCode: String,
-    val request: BillSplitInviteRequestDto,
+    val request: BillSplitInviteRequest,
 )
 
 data class PendingBillSplitCreation(
     val row: OutboxRow,
     val payload: BillSplitSubmission?,
-    val invitation: com.ticketbox.domain.model.BillSplitSent?,
+    val invitation: com.ticketbox.domain.model.BillSplitSent? = null,
 ) {
-    internal constructor(row: OutboxRow, payload: BillSplitCreatePayload?, invitation: com.ticketbox.domain.model.BillSplitSent? = null) :
-        this(row, payload?.toView(), invitation)
     val delivered: Boolean get() = row.status == PendingMutationStatus.Done
     val canRetry: Boolean get() = payload != null && row.status == PendingMutationStatus.Failed &&
         row.lastError !in setOf("outbox_row_expired", "bill_split_requires_review", "bill_split_payload_unsupported", "bill_split_intent_invalid")
@@ -35,7 +33,7 @@ data class BillSplitCreationObservation(
     val submissions: List<PendingBillSplitCreation> = emptyList(),
 )
 
-internal fun JsonAdapter<BillSplitCreatePayload>.readBillSplitIntent(row: OutboxRow): BillSplitCreatePayload? = try {
+internal fun JsonAdapter<BillSplitSubmission>.readBillSplitIntent(row: OutboxRow): BillSplitSubmission? = try {
     fromJson(row.payloadJson)?.takeIf {
         it.revision == 1 && it.expenseId > 0 && row.targetId == "expense:${it.expenseId}" &&
             it.request.expectedRowVersion == row.expectedRowVersion && row.expectedRowVersion > 0 &&
@@ -47,21 +45,3 @@ internal fun JsonAdapter<BillSplitCreatePayload>.readBillSplitIntent(row: Outbox
 } catch (_: IOException) {
     null
 }
-
-data class BillSplitSubmission(
-    val revision: Int,
-    val expenseId: Long,
-    val merchant: String?,
-    val receiverName: String,
-    val homeCurrencyCode: String,
-    val request: com.ticketbox.domain.model.BillSplitInviteRequest,
-)
-
-internal fun BillSplitCreatePayload.toView() = BillSplitSubmission(
-    revision = revision,
-    expenseId = expenseId,
-    merchant = merchant,
-    receiverName = receiverName,
-    homeCurrencyCode = homeCurrencyCode,
-    request = request.toDomain(),
-)

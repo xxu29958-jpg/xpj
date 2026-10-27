@@ -4,7 +4,7 @@ import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.CategoryRuleDto
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 
 class CategoryRuleOriginalIntentTest {
     private val adapters = OutboxAdapterGraph()
-    private val request = CategoryRuleRequest("旅行", "交通", true, 10, 1200, null, homeCurrencyCode = "JPY")
+    private val request = CategoryRuleDefinition("旅行", "交通", true, 10, 1200, null, homeCurrencyCode = "JPY")
     private val original = CategoryRuleSubmissionPayload(expectedRowVersion = 4, request = request)
     private val row = OutboxRow(1, "https://rule.example", "owner", "identity",
         PendingMutationType.UpdateCategoryRule, "category_rule:7", "", 4,

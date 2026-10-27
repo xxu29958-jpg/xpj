@@ -4,23 +4,23 @@ import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.CategoryRuleDto
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
-import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
+import com.ticketbox.data.remote.dto.CategoryRuleDto
+import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
 import com.ticketbox.data.remote.dto.StatusDto
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import java.io.IOException
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 
 class CategoryRuleCommandTest {
     @Test fun createAndEditEnterRoomBeforeHttpAndKeepConfirmedFacts() = runTest {
         val f = CategoryRuleCommandFixture()
-        val create = f.repository.createCategoryRule(f.binding, f.current.asRequest().toDomain()).getOrThrow()
+        val create = f.repository.createCategoryRule(f.binding, f.current.asRequest()).getOrThrow()
         assertEquals(0, f.calls)
         assertEquals("JPY", f.pending(create).request?.homeCurrencyCode)
         assertEquals(null, f.pending(create).confirmed)
@@ -28,7 +28,7 @@ class CategoryRuleCommandTest {
         assertEquals(1, f.engine(PendingMutationType.CreateCategoryRule).drainOnce().done)
         assertEquals("JPY", f.pending(create).confirmed?.homeCurrencyCode)
         val update = f.repository.updateCategoryRule(f.binding, f.current.toDomain(),
-            f.current.asRequest().toDomain().copy(amountMinCents = 3500, amountMaxCents = null)).getOrThrow()
+            f.current.asRequest().copy(amountMinCents = 3500, amountMaxCents = null)).getOrThrow()
         assertEquals(1, f.calls)
         assertEquals(1200L, f.current.amountMinCents)
         assertTrue(f.repository.deleteCategoryRule(f.binding, f.current.toDomain()).isFailure)
@@ -38,7 +38,7 @@ class CategoryRuleCommandTest {
     @Test fun lostAckRetryKeepsKeyBoundsAndOriginalReceiptAfterAnotherEdit() = runTest {
         val f = CategoryRuleCommandFixture()
         val id = f.repository.updateCategoryRule(f.binding, f.current.toDomain(),
-            f.current.asRequest().toDomain().copy(amountMinCents = 3500, amountMaxCents = null)).getOrThrow()
+            f.current.asRequest().copy(amountMinCents = 3500, amountMaxCents = null)).getOrThrow()
         val original = f.dao.rows.getValue(id)
         f.response = f.current.copy(amountMinCents = 3500, amountMaxCents = null, rowVersion = 2)
         f.current = f.response
@@ -65,14 +65,14 @@ class CategoryRuleCommandTest {
     @Test fun currencyRelabelForeignBindingAndReadonlyCannotPublishOrRetry() = runTest {
         val f = CategoryRuleCommandFixture()
         assertTrue(f.repository.updateCategoryRule(f.binding, f.current.toDomain(),
-            f.current.asRequest().toDomain().copy(homeCurrencyCode = "CNY")).isFailure)
-        val id = f.repository.createCategoryRule(f.binding, f.current.asRequest().toDomain()).getOrThrow()
+            f.current.asRequest().copy(homeCurrencyCode = "CNY")).isFailure)
+        val id = f.repository.createCategoryRule(f.binding, f.current.asRequest()).getOrThrow()
         f.outbox.markFailed(id, "client_upgrade_required")
         val pending = f.pending(id)
         assertTrue(pending.canRetry)
         f.session.switchLedgerForFixture("other", "其他账本")
         assertTrue(f.repository.recoverSubmission(f.binding, pending, false).isFailure)
-        assertTrue(f.repository.createCategoryRule(f.binding, f.current.asRequest().toDomain()).isFailure)
+        assertTrue(f.repository.createCategoryRule(f.binding, f.current.asRequest()).isFailure)
         f.session.switchLedgerForFixture("owner", "原账本", "viewer")
         assertTrue(f.repository.recoverSubmission(f.repository.currentAccess()!!.binding, pending, false).isFailure)
         assertEquals(0, f.calls)
@@ -80,7 +80,7 @@ class CategoryRuleCommandTest {
 
     @Test fun terminalRefusalAndMalformedTargetNeverGetRequeuedOrSettled() = runTest {
         val f = CategoryRuleCommandFixture()
-        val id = f.repository.createCategoryRule(f.binding, f.current.asRequest().toDomain()).getOrThrow()
+        val id = f.repository.createCategoryRule(f.binding, f.current.asRequest()).getOrThrow()
         f.outbox.markFailed(id, "目标参数不再适用")
         val pending = f.pending(id)
         assertFalse(pending.canRetry)
@@ -117,7 +117,7 @@ internal class CategoryRuleCommandFixture {
     var response = current
     val requests = mutableListOf<Any>()
     val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
-        override suspend fun createCategoryRule(request: CategoryRuleRequest, idempotencyKey: String): CategoryRuleDto =
+        override suspend fun createCategoryRule(request: CategoryRuleDefinition, idempotencyKey: String): CategoryRuleDto =
             accept(idempotencyKey, request)
         override suspend fun updateCategoryRule(id: Long, request: CategoryRuleUpdateRequest, idempotencyKey: String?,): CategoryRuleDto =
             accept(requireNotNull(idempotencyKey), request)

@@ -4,34 +4,33 @@ import android.content.Context
 import android.os.Bundle
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.isDialog
-import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onLast
-import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.SemanticsMatcher
-import com.ticketbox.ui.assertEditableTextEquals
-import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.hasScrollToIndexAction
-import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.SAVED_STATE_REGISTRY_OWNER_KEY
 import androidx.lifecycle.VIEW_MODEL_STORE_OWNER_KEY
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.MutableCreationExtras
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavHostController
@@ -40,44 +39,43 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
-import com.ticketbox.R
-import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.DebtListResponseDto
-import com.ticketbox.data.remote.dto.GoalListResponseDto
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
-import com.ticketbox.data.remote.dto.GoalDto
-import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
-import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
-import com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto
-import com.ticketbox.data.repository.OutboxDrainEngine
-import com.ticketbox.data.repository.DebtGoalEditDispatcher
-import com.ticketbox.OutboxAdapterGraph
-import com.ticketbox.viewmodel.DebtGoalEditViewModel
-import com.ticketbox.viewmodel.debtGoalEditViewModelFactory
 import androidx.test.platform.app.InstrumentationRegistry
-import java.io.IOException
-import okhttp3.ResponseBody.Companion.toResponseBody
-import retrofit2.HttpException
-import retrofit2.Response
+import com.ticketbox.OutboxAdapterGraph
+import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
+import com.ticketbox.data.remote.dto.DebtListResponseDto
+import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
+import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.data.remote.dto.GoalListResponseDto
 import com.ticketbox.data.repository.DebtAdjustmentConnectedNetwork
+import com.ticketbox.data.repository.DebtGoalEditDispatcher
 import com.ticketbox.data.repository.GoalEditActions
-import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.IncomeDraftStateOwner
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.OutboxDrainEngine
 import com.ticketbox.data.repository.createDebtGoal
 import com.ticketbox.data.repository.originalCreation
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.domain.model.DebtGoalLinksReplaceRequest
+import com.ticketbox.domain.model.DebtGoalTargetDateRequest
+import com.ticketbox.domain.model.GoalCreateRequest
+import com.ticketbox.ui.assertEditableTextEquals
 import com.ticketbox.ui.screens.CreateDebtGoalScreen
 import com.ticketbox.ui.screens.DebtGoalEditScreen
-import com.ticketbox.viewmodel.DebtGoalEditKind
-import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto
+import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.CreateDebtGoalViewModel
+import com.ticketbox.viewmodel.DebtGoalEditKind
+import com.ticketbox.viewmodel.DebtGoalEditViewModel
 import com.ticketbox.viewmodel.createDebtGoalViewModelFactory
-import kotlinx.coroutines.runBlocking
+import com.ticketbox.viewmodel.debtGoalEditViewModelFactory
+import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runBlocking
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -86,6 +84,8 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import retrofit2.HttpException
+import retrofit2.Response
 
 class DebtGoalDraftNavigationRoomTest {
     @get:Rule val compose = createComposeRule()
@@ -98,12 +98,12 @@ class DebtGoalDraftNavigationRoomTest {
     private val restores = mutableListOf<com.ticketbox.data.remote.dto.RecycleBinRestoreRequestDto>()
     private val anotherDebt = originalDebt.copy(publicId = "other-debt", counterpartyLabel = "另一笔欠款")
     private var loseDateReply = false
-    private val dateRequests = mutableListOf<Triple<String, DebtGoalTargetDateRequestDto, String?>>()
+    private val dateRequests = mutableListOf<Triple<String, DebtGoalTargetDateRequest, String?>>()
     private var dateResponse: GoalDto? = null
     private var editFailure: Exception? = null
     private var loseLinkReply = false
     private var denyGoalRead = false
-    private val linkRequests = mutableListOf<Triple<String, DebtGoalLinksReplaceRequestDto, String?>>()
+    private val linkRequests = mutableListOf<Triple<String, DebtGoalLinksReplaceRequest, String?>>()
     private var linkResponse: GoalDto? = null
     private lateinit var linksApi: ApiService
     private var existingGoal = GoalDto("debt-goal", "correction-ledger", "年底还清", "debt_repayment", "unbounded", null,
@@ -136,14 +136,14 @@ class DebtGoalDraftNavigationRoomTest {
             }
             override suspend fun debts(lens: String?) = DebtListResponseDto(
                 if (debtAvailable) if (showGoal) listOf(originalDebt, anotherDebt) else listOf(originalDebt) else emptyList(), "CNY")
-            override suspend fun setGoalTargetDate(publicId: String, request: DebtGoalTargetDateRequestDto,
+            override suspend fun setGoalTargetDate(publicId: String, request: DebtGoalTargetDateRequest,
                 idempotencyKey: String?, timezone: String?): GoalDto {
                 dateRequests += Triple(publicId, request, idempotencyKey)
                 editFailure?.let { throw it }
                 if (loseDateReply) throw IOException("Reply lost after the target date was committed")
                 return requireNotNull(dateResponse)
             }
-            override suspend fun replaceGoalDebtLinks(publicId: String, request: DebtGoalLinksReplaceRequestDto,
+            override suspend fun replaceGoalDebtLinks(publicId: String, request: DebtGoalLinksReplaceRequest,
                 idempotencyKey: String?, timezone: String?): GoalDto {
                 linkRequests += Triple(publicId, request, idempotencyKey)
                 editFailure?.let { throw it }
@@ -652,7 +652,7 @@ class DebtGoalDraftNavigationRoomTest {
         val localAck = CompletableDeferred<Unit>()
         val repository = harness.screenFactory.goalEditRepository
         val actions = object : GoalEditActions by repository {
-            override suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequestDto, creationKey: String): Result<Long> {
+            override suspend fun create(binding: LogicalSessionBinding, request: GoalCreateRequest, creationKey: String): Result<Long> {
                 val result = repository.create(binding, request, creationKey)
                 if (result.isSuccess) localAck.await()
                 return result

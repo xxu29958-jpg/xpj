@@ -8,14 +8,6 @@ import com.squareup.moshi.Json
  */
 
 @com.squareup.moshi.JsonClass(generateAdapter = true)
-data class BillSplitInviteRequestDto(
-    @param:Json(name = "receiver_account_id")
-    val receiverAccountId: Long,
-    @param:Json(name = "amount_cents")
-    val amountCents: Long,
-    @param:Json(name = "expected_row_version")
-    val expectedRowVersion: Long,
-)
 
 data class BillSplitAcceptRequestDto(
     @param:Json(name = "target_ledger_id")

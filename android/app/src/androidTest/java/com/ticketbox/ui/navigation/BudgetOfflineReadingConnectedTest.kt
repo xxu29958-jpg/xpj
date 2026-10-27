@@ -5,47 +5,47 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.unit.Density
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
+import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.BudgetCategoryDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
-import com.ticketbox.data.remote.dto.LedgerCalendarDto
 import com.ticketbox.data.remote.dto.DashboardCardDto
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.MonthsDto
-import com.ticketbox.data.repository.newTaskMonth
 import com.ticketbox.data.repository.budgetHistoryPage
-import com.ticketbox.R
+import com.ticketbox.data.repository.newTaskMonth
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
-import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.BudgetMonthlyUpdate
+import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.DASHBOARD_CARD_BUDGET
-import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.domain.model.LedgerCalendar
 import com.ticketbox.ui.saveConsumerArtPreview
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
+import com.ticketbox.ui.theme.TicketboxTheme
 import java.net.ConnectException
 import java.time.YearMonth
 import java.util.concurrent.CopyOnWriteArrayList
@@ -302,7 +302,7 @@ internal class OfflineBudgetTransport {
             it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = 1))
         }
         override suspend fun ledgerCalendar(ledgerId: String, revision: Long?) =
-            LedgerCalendarDto(ledgerId, 1, "Asia/Shanghai", "explicit", "2026-09-01T00:00:00Z")
+            LedgerCalendar(ledgerId, 1, "Asia/Shanghai", "explicit", "2026-09-01T00:00:00Z")
         override suspend fun monthlyBudget(month: String, timezone: String?): BudgetMonthlyDto {
             reads += month
             readScopes += month to timezone

@@ -206,32 +206,6 @@ data class RepaymentCreateRequestDto(
 )
 
 /**
- * Body for `POST /api/debts/{id}/adjustments` — record one signed principal-like correction
- * (ADR-0049 §3.3, slice 8c). [amountCents] is a signed home-currency delta (negative lowers
- * `remaining`, never below 0); [reason] is required. [expectedRowVersion] is the §2.1 stale-intent
- * token + §3.6 fingerprint component.
- */
-@JsonClass(generateAdapter = true)
-data class DebtAdjustmentCreateRequestDto(
-    @param:Json(name = "amount_cents")
-    val amountCents: Long,
-    val reason: String,
-    @param:Json(name = "expected_row_version")
-    val expectedRowVersion: Long,
-)
-
-/**
- * Body for `POST /api/debts/{id}/void` — void an entire Debt (ADR-0049 §3.5, slice 8c). [reason] is
- * required. [expectedRowVersion] is the §2.1 stale-intent token + §3.6 fingerprint component.
- */
-@JsonClass(generateAdapter = true)
-data class DebtVoidCreateRequestDto(
-    val reason: String,
-    @param:Json(name = "expected_row_version")
-    val expectedRowVersion: Long,
-)
-
-/**
  * Body for `POST /api/debts/{id}/forgive` — creditor forgives a member Debt's remaining
  * (ADR-0049 §3.7 / §4, slice 8e-3). No amount and no reason: the forgiven amount is the
  * `remaining_before` the backend snapshots under the §2.1 lock, and forgiveness needs no
@@ -240,23 +214,6 @@ data class DebtVoidCreateRequestDto(
  * of the schema (the contract gate's forward check is the forbid protection).
  */
 data class DebtForgiveCreateRequestDto(
-    @param:Json(name = "expected_row_version")
-    val expectedRowVersion: Long,
-)
-
-/**
- * Body for `POST /api/debts/{id}/kind` — set / correct an existing Debt's repayment-rhythm
- * classification (ADR-0049 §7.0 / 8e-6e correction entry). [debtKind] is one of DebtKinds;
- * [expectedRowVersion] is the §2.1 stale-intent OCC token (a reclassification bumps `row_version`,
- * so two concurrent edits cannot both silently win) + the §3.6 fingerprint component. NOT
- * fold-changing — the backend owns the projections that use `debt_kind`. The backend marks
- * this body `additionalProperties=false`, so the DTO field set must stay a subset of the schema
- * (the contract gate's forward check is the forbid protection).
- */
-@JsonClass(generateAdapter = true)
-data class DebtKindSetRequestDto(
-    @param:Json(name = "debt_kind")
-    val debtKind: String,
     @param:Json(name = "expected_row_version")
     val expectedRowVersion: Long,
 )

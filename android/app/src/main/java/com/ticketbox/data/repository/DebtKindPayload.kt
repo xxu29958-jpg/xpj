@@ -5,7 +5,7 @@ import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.DebtDto
-import com.ticketbox.data.remote.dto.DebtKindSetRequestDto
+import com.ticketbox.domain.model.DebtKindSetRequest
 import com.ticketbox.domain.model.DebtKinds
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -17,7 +17,7 @@ data class DebtKindPayload(
     override val subject: DebtWriteSubject,
     override val originSessionGeneration: String,
     override val originBindingRevision: String,
-    val request: DebtKindSetRequestDto,
+    val request: DebtKindSetRequest,
 ) : DebtWriteIntent { override val expectedRowVersion: Long get() = request.expectedRowVersion }
 
 internal fun OutboxRow.readOriginalDebtKind(adapter: JsonAdapter<DebtKindPayload>): DebtKindPayload? {

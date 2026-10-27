@@ -1,6 +1,5 @@
 package com.ticketbox.ui.navigation
 
-import com.ticketbox.domain.model.CategoryRuleDefinition
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
@@ -26,10 +25,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.domain.model.AppSkin
-import com.ticketbox.ui.theme.TicketboxTheme
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import com.ticketbox.ui.saveConsumerArtPreview
+import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.CategoryRulesViewModel
 import kotlinx.coroutines.runBlocking
 import org.junit.After

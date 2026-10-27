@@ -7,9 +7,9 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtGoalLinkViewDto
 import com.ticketbox.data.remote.dto.DebtRepaymentEvaluationDto
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
+import com.ticketbox.domain.model.GoalCreateRequest
 import com.ticketbox.domain.model.GoalDraft
 import java.io.IOException
 import java.net.ConnectException
@@ -191,8 +191,8 @@ class DebtGoalCreationAdmissionRoomTest {
 private class DebtCreationConnectedFixture {
     val adapters = OutboxAdapterGraph()
     val key = UUID.randomUUID().toString()
-    val request = GoalCreateRequestDto("还清欠款", goalType = "debt_repayment", debtPublicIds = listOf("debt-b", "debt-a"))
-    val calls = mutableListOf<Pair<GoalCreateRequestDto, String>>()
+    val request = GoalCreateRequest("还清欠款", goalType = "debt_repayment", debtPublicIds = listOf("debt-b", "debt-a"))
+    val calls = mutableListOf<Pair<GoalCreateRequest, String>>()
     val response = GoalDto(
         "created-debt-goal", "correction-ledger", "还清欠款", "debt_repayment", "monthly", null, null, null, null, null, null,
         "in_progress", "active", "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null,
@@ -205,7 +205,7 @@ private class DebtCreationConnectedFixture {
     lateinit var service: ApiService
     val fixture = ExpenseCorrectionConnectedFixture(ApplicationProvider.getApplicationContext()) { delegate ->
         object : ApiService by delegate {
-            override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto {
+            override suspend fun createGoal(request: GoalCreateRequest, timezone: String?, idempotencyKey: String?): GoalDto {
                 val key = requireNotNull(idempotencyKey)
                 calls += request to key
                 if (loseRemoteAck) throw IOException("Synthetic remote acknowledgement lost after creation")

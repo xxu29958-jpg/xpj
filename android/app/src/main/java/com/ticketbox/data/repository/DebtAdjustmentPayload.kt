@@ -4,7 +4,7 @@ import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto
+import com.ticketbox.domain.model.DebtAdjustmentCreateRequest
 import java.io.IOException
 
 private const val DEBT_ADJUSTMENT_REVISION = 1
@@ -17,7 +17,7 @@ data class DebtAdjustmentPayload(
     override val subject: DebtWriteSubject,
     override val originSessionGeneration: String,
     override val originBindingRevision: String,
-    val request: DebtAdjustmentCreateRequestDto,
+    val request: DebtAdjustmentCreateRequest,
 ) : DebtAmountIntent {
     override val amountCents: Long get() = request.amountCents
     override val expectedRowVersion: Long get() = request.expectedRowVersion

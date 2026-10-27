@@ -2,20 +2,20 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
-import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.RuleApplicationRollbackRequestDto
-import com.ticketbox.domain.model.RuleApplicationRollbackPreview
-import com.ticketbox.domain.model.RuleRollbackSkippedItem
+import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.domain.model.CategoryRule
+import com.ticketbox.domain.model.CategoryRuleDefinition
 import com.ticketbox.domain.model.RuleApplicationBatch
 import com.ticketbox.domain.model.RuleApplicationRollback
+import com.ticketbox.domain.model.RuleApplicationRollbackPreview
 import com.ticketbox.domain.model.RuleApplyConfirmedResult
+import com.ticketbox.domain.model.RuleRollbackSkippedItem
 import com.ticketbox.domain.model.ledgerRoleCanModify
+import com.ticketbox.domain.model.normalizeExpenseCategory
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import com.ticketbox.domain.model.normalizeExpenseCategory
 
 /**
  * Category-rule CRUD and bulk rule application over confirmed expenses.
@@ -73,7 +73,7 @@ class RuleRepository(
         errorHandler.safeCall {
             val bound = ledgerRequestGuard.bindExact(expected)
             require(canModifyLedger()) { "当前角色为只读，无法修改规则。" }
-            val clean = request.toDto().cleanRule()
+            val clean = request.cleanRule()
             require(input == null || input.binding == expected && input.baseline == null)
             val key = input?.key ?: UUID.randomUUID().toString()
             val payload = CategoryRuleSubmissionPayload(version = if (input == null) 1 else 2,
@@ -86,7 +86,7 @@ class RuleRepository(
         request: com.ticketbox.domain.model.CategoryRuleDefinition, input: RuleDefinitionDraft? = null): Result<Long> = errorHandler.safeCall {
         val bound = ledgerRequestGuard.bindExact(expected)
         require(canModifyLedger()) { "当前角色为只读，无法修改规则。" }
-        val clean = request.toDto().cleanRule()
+        val clean = request.cleanRule()
         require(input == null || input.binding == expected && input.baseline == baseline)
         require(baseline.id > 0 && baseline.rowVersion > 0) { "请重新打开原规则。" }
         require(baseline.homeCurrencyCode == null || clean.homeCurrencyCode == baseline.homeCurrencyCode) { "原规则币种不能改贴，请核对。" }
@@ -104,7 +104,7 @@ class RuleRepository(
         val bound = ledgerRequestGuard.bindExact(expected)
         require(canModifyLedger()) { "当前角色为只读，无法修改规则。" }
         require(rule.id > 0 && rule.rowVersion > 0) { "请重新打开原规则。" }
-        val payload = CategoryRuleSubmissionPayload(expectedRowVersion = rule.rowVersion, request = rule.asRequest().toDto())
+        val payload = CategoryRuleSubmissionPayload(expectedRowVersion = rule.rowVersion, request = rule.asRequest())
         enqueue(bound, PendingMutationIntent(PendingMutationType.DeleteCategoryRule, "category_rule:${rule.id}",
             requireNotNull(offlineMutations.submissionAdapter).toJson(payload), rule.rowVersion, UUID.randomUUID().toString()))
     }
@@ -248,7 +248,7 @@ class RuleRepository(
 private val RULE_MUTATIONS = setOf(PendingMutationType.CreateCategoryRule,
     PendingMutationType.UpdateCategoryRule, PendingMutationType.DeleteCategoryRule)
 
-private fun CategoryRuleRequest.cleanRule(): CategoryRuleRequest = copy(
+private fun CategoryRuleDefinition.cleanRule(): CategoryRuleDefinition = copy(
     keyword = keyword?.trim(), category = category?.trim()?.let(::normalizeExpenseCategory),
     sourceContains = sourceContains?.trim()?.takeIf { it.isNotBlank() },
     tagContains = tagContains?.trim()?.takeIf { it.isNotBlank() },

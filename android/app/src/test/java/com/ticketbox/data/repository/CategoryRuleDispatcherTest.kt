@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 class CategoryRuleDispatcherTest {
     @Test fun refusalConflictAndTransientHttpResponsesPreserveTheOriginalIntent() = runTest {
         val f = CategoryRuleCommandFixture()
-        val id = f.repository.updateCategoryRule(f.binding, f.current.toDomain(), f.current.asRequest().toDomain()).getOrThrow()
+        val id = f.repository.updateCategoryRule(f.binding, f.current.toDomain(), f.current.asRequest()).getOrThrow()
         val original = f.pending(id).row
         val errors = listOf(
             Triple(409, "idempotency_key_in_progress", DispatchResult.RetryableFailure::class),
@@ -41,7 +41,7 @@ class CategoryRuleDispatcherTest {
 
     @Test fun unsupportedCurrencyAndAlteredOccNeverReachTheApi() = runTest {
         val f = CategoryRuleCommandFixture()
-        val id = f.repository.updateCategoryRule(f.binding, f.current.toDomain(), f.current.asRequest().toDomain()).getOrThrow()
+        val id = f.repository.updateCategoryRule(f.binding, f.current.toDomain(), f.current.asRequest()).getOrThrow()
         val original = f.pending(id).row
         val dispatcher = f.dispatcher(PendingMutationType.UpdateCategoryRule)
         val currencyless = original.copy(payloadJson = original.payloadJson.replace("\"JPY\"", "null"))

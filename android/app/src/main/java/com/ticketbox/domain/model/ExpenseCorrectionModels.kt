@@ -1,6 +1,5 @@
 package com.ticketbox.domain.model
 
-/** Values consumed by the product; wire names and persistence remain at the repository boundary. */
 data class CorrectionIntChange(
     val changed: Boolean,
     val value: Int?,

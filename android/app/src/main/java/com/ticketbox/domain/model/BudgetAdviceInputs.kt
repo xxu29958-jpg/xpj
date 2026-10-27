@@ -1,5 +1,8 @@
 package com.ticketbox.domain.model
 
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
 /** Advice premises are domain values; transport metadata never owns freshness or readiness. */
 data class BudgetAdviceInputs(
     val month: String,
@@ -34,14 +37,15 @@ data class BudgetAdviceBreakdown(
     val shortfallCents: Long? = null,
 )
 
+@JsonClass(generateAdapter = true)
 data class MonthlyArrangement(
-    val ledgerId: String,
+    @param:Json(name = "ledger_id") val ledgerId: String,
     val month: String,
-    val homeCurrencyCode: String,
-    val savingsTargetCents: Long,
-    val reservedBufferCents: Long,
-    val rowVersion: Long,
-    val updatedAt: String,
+    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
+    @param:Json(name = "savings_target_cents") val savingsTargetCents: Long,
+    @param:Json(name = "reserved_buffer_cents") val reservedBufferCents: Long,
+    @param:Json(name = "row_version") val rowVersion: Long,
+    @param:Json(name = "updated_at") val updatedAt: String,
 )
 
 data class BudgetPlanDefinition(

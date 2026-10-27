@@ -3,8 +3,8 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.JsonDataException
-import com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
+import com.ticketbox.domain.model.RecurringOccurrence
+import com.ticketbox.domain.model.RecurringOccurrencePaymentRequest
 import java.io.IOException
 import java.time.YearMonth
 
@@ -20,7 +20,7 @@ data class RecurringOccurrencePayload(
     val originBindingRevision: String,
     val paymentLabel: String?,
     val paymentAmountCents: Long?,
-    val request: RecurringOccurrencePaymentRequestDto,
+    val request: RecurringOccurrencePaymentRequest,
     val paymentCurrencyCode: String? = null,
 )
 
@@ -50,14 +50,14 @@ internal fun RecurringOccurrencePayload.matchesOriginal(row: OutboxRow): Boolean
     !row.idempotencyKey.isNullOrBlank() && row.targetId == occurrenceTarget(seriesPublicId, period) &&
         row.expectedRowVersion == request.expectedRowVersion
 
-internal fun RecurringOccurrencePayload.acceptsReceipt(receipt: RecurringOccurrenceDto): Boolean =
+internal fun RecurringOccurrencePayload.acceptsReceipt(receipt: RecurringOccurrence): Boolean =
     receipt.seriesPublicId == seriesPublicId && receipt.period == period &&
         receipt.seriesRowVersion == request.expectedSeriesRowVersion &&
         receipt.rowVersion == request.expectedRowVersion + 1 &&
         receipt.expensePublicId == request.expensePublicId &&
         receipt.state == (if (request.action == "link") "fulfilled" else "unfulfilled")
 
-private fun RecurringOccurrencePaymentRequestDto.hasSupportedAction(): Boolean = when (action) {
+private fun RecurringOccurrencePaymentRequest.hasSupportedAction(): Boolean = when (action) {
     "link" -> !expensePublicId.isNullOrBlank() && (expectedExpenseRowVersion ?: 0) > 0
     "clear" -> expensePublicId == null && expectedExpenseRowVersion == null
     else -> false
@@ -85,6 +85,6 @@ internal fun RecurringOccurrencePayload.toView() = RecurringOccurrenceSubmission
     originBindingRevision = originBindingRevision,
     paymentLabel = paymentLabel,
     paymentAmountCents = paymentAmountCents,
-    request = request.toDomain(),
+    request = request,
     paymentCurrencyCode = paymentCurrencyCode,
 )

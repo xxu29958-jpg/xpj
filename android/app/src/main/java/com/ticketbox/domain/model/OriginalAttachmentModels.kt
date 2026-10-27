@@ -1,27 +1,31 @@
 package com.ticketbox.domain.model
 
-/** Values consumed by the product; wire names and persistence remain at the repository boundary. */
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
 data class OriginalCleanupObservation(
-    val requestId: String,
+    @param:Json(name = "request_id") val requestId: String,
     val reason: String,
-    val requestedAt: String,
-    val policyEnabled: Boolean,
+    @param:Json(name = "requested_at") val requestedAt: String,
+    @param:Json(name = "policy_enabled") val policyEnabled: Boolean,
     val image: String? = null,
     val thumbnail: String? = null,
-    val imageError: String? = null,
-    val thumbnailError: String? = null,
+    @param:Json(name = "image_error") val imageError: String? = null,
+    @param:Json(name = "thumbnail_error") val thumbnailError: String? = null,
 )
 
+@JsonClass(generateAdapter = true)
 data class OriginalHealth(
-    val expenseId: Long,
-    val publicId: String,
-    val rowVersion: Long,
+    @param:Json(name = "expense_id") val expenseId: Long,
+    @param:Json(name = "public_id") val publicId: String,
+    @param:Json(name = "row_version") val rowVersion: Long,
     val state: String,
-    val checkedAt: String,
-    val expectedSha256: String? = null,
-    val observedSha256: String? = null,
-    val sizeBytes: Long? = null,
-    val mediaType: String? = null,
+    @param:Json(name = "checked_at") val checkedAt: String,
+    @param:Json(name = "expected_sha256") val expectedSha256: String? = null,
+    @param:Json(name = "observed_sha256") val observedSha256: String? = null,
+    @param:Json(name = "size_bytes") val sizeBytes: Long? = null,
+    @param:Json(name = "media_type") val mediaType: String? = null,
     val cleanup: OriginalCleanupObservation? = null,
-    val cleanupError: String? = null,
+    @param:Json(name = "cleanup_error") val cleanupError: String? = null,
 )

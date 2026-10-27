@@ -3,8 +3,8 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonAdapter
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.domain.model.GoalCreateRequest
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
@@ -12,7 +12,7 @@ import retrofit2.HttpException
 /** The only queued goal POST writer; an unverified response retains the original intent. */
 class CreateGoalDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
-    private val payloadAdapter: JsonAdapter<GoalCreateRequestDto>,
+    private val payloadAdapter: JsonAdapter<GoalCreateRequest>,
     private val receiptAdapter: JsonAdapter<GoalDto>,
     private val onAccepted: suspend (OutboxRow) -> Unit,
 ) : OutboxMutationDispatcher {

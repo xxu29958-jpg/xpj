@@ -30,10 +30,3 @@ internal fun com.ticketbox.domain.model.MerchantCatalogMergeResult.toDto() = com
     target = target.toDto(),
     createdAliasPublicId = createdAliasPublicId,
 )
-
-internal fun com.ticketbox.domain.model.ReferenceCreated.toDto() = com.ticketbox.data.remote.dto.ReferenceCreatedDto(
-    kind = kind,
-    publicId = publicId,
-    name = name,
-    rowVersion = rowVersion,
-)

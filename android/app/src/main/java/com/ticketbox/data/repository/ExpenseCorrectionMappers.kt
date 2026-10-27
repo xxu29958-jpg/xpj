@@ -1,11 +1,11 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.remote.dto.CorrectionOptionalTimeInput
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitRequestDto
-import com.ticketbox.data.remote.dto.CorrectionOptionalInt
-import com.ticketbox.data.remote.dto.CorrectionOptionalString
-import com.ticketbox.data.remote.dto.CorrectionOptionalTimeInput
+import com.ticketbox.domain.model.CorrectionIntChange
+import com.ticketbox.domain.model.CorrectionStringChange
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseCorrectionDraft
 import com.ticketbox.domain.model.MONEY_MINOR_MAX
@@ -24,20 +24,20 @@ fun ExpenseCorrectionDraft.toRequest(expectedRowVersion: Long): ExpenseCorrectio
         categoryChoice = categoryChoice,
         note = note,
         expenseTime = if (expenseTimeChanged) {
-            CorrectionOptionalString.changed(expenseTime)
+            CorrectionStringChange.changed(expenseTime)
         } else {
-            CorrectionOptionalString.unchanged()
+            CorrectionStringChange.unchanged()
         },
         tags = tags,
         valueScore = if (valueScoreChanged) {
-            CorrectionOptionalInt.changed(valueScore)
+            CorrectionIntChange.changed(valueScore)
         } else {
-            CorrectionOptionalInt.unchanged()
+            CorrectionIntChange.unchanged()
         },
         regretScore = if (regretScoreChanged) {
-            CorrectionOptionalInt.changed(regretScore)
+            CorrectionIntChange.changed(regretScore)
         } else {
-            CorrectionOptionalInt.unchanged()
+            CorrectionIntChange.unchanged()
         },
         items = items?.map { it.toRequest() },
         splits = splits?.map { it.toRequest() },

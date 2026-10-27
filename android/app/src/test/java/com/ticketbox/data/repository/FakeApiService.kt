@@ -1,32 +1,28 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
-
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
+import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
 import com.ticketbox.data.remote.dto.AuthCheckDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import com.ticketbox.data.remote.dto.CategoriesDto
 import com.ticketbox.data.remote.dto.CategoryRuleDto
-import com.ticketbox.data.remote.dto.CategoryRuleRequest
 import com.ticketbox.data.remote.dto.DashboardCardsResponseDto
 import com.ticketbox.data.remote.dto.DashboardCardsUpdateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseDto
+import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
 import com.ticketbox.data.remote.dto.ExpenseItemDto
 import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseItemsResponseDto
+import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
+import com.ticketbox.data.remote.dto.ExpenseOffsetVoidRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
-import com.ticketbox.data.remote.dto.ExpenseFactBundleDto
-import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
-import com.ticketbox.data.remote.dto.ExpenseOffsetVoidRequestDto
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.data.remote.dto.GoalListResponseDto
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.data.remote.dto.LifestyleStatsDto
 import com.ticketbox.data.remote.dto.MerchantAliasDto
 import com.ticketbox.data.remote.dto.MerchantAliasListDto
@@ -51,21 +47,63 @@ import com.ticketbox.data.remote.dto.RecurringItemListResponseDto
 import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
 import com.ticketbox.data.remote.dto.RefreshSessionResponseDto
 import com.ticketbox.data.remote.dto.ReportsOverviewDto
-import com.ticketbox.data.remote.dto.RuntimeCompatibilityDto
 import com.ticketbox.data.remote.dto.RuleApplicationBatchDto
 import com.ticketbox.data.remote.dto.RuleApplicationListDto
 import com.ticketbox.data.remote.dto.RuleApplicationRollbackDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedRequestDto
 import com.ticketbox.data.remote.dto.RuleApplyConfirmedResponseDto
 import com.ticketbox.data.remote.dto.RuleApplyPreviewItemDto
+import com.ticketbox.data.remote.dto.RuntimeCompatibilityDto
 import com.ticketbox.data.remote.dto.ServerSettingsDto
 import com.ticketbox.data.remote.dto.StatusDto
 import com.ticketbox.data.remote.dto.TagsDto
 import com.ticketbox.data.remote.dto.UploadResponseDto
+import com.ticketbox.domain.model.AccountChoice
+import com.ticketbox.domain.model.AmountConversion
+import com.ticketbox.domain.model.BillSplitChangeAcceptRequest
+import com.ticketbox.domain.model.BillSplitChangeCreateRequest
+import com.ticketbox.domain.model.BillSplitChangeProposal
+import com.ticketbox.domain.model.BillSplitInviteRequest
+import com.ticketbox.domain.model.CategoryRuleDefinition
+import com.ticketbox.domain.model.DebtAdjustmentCreateRequest
+import com.ticketbox.domain.model.DebtGoalLinksReplaceRequest
+import com.ticketbox.domain.model.DebtGoalTargetDateRequest
+import com.ticketbox.domain.model.DebtKindSetRequest
+import com.ticketbox.domain.model.DebtVoidCreateRequest
+import com.ticketbox.domain.model.EnvelopeRevision
+import com.ticketbox.domain.model.Envelopes
+import com.ticketbox.domain.model.ExchangeRate
+import com.ticketbox.domain.model.ExchangeRateRequest
+import com.ticketbox.domain.model.ExistingDebtChoice
+import com.ticketbox.domain.model.ExpenseFundingView
+import com.ticketbox.domain.model.FundsOverview
+import com.ticketbox.domain.model.GoalCreateRequest
+import com.ticketbox.domain.model.GoalUpdateRequest
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
+import com.ticketbox.domain.model.Installments
+import com.ticketbox.domain.model.LedgerCalendar
+import com.ticketbox.domain.model.MonthlyArrangement
+import com.ticketbox.domain.model.MonthlyArrangementChange
+import com.ticketbox.domain.model.MonthlyArrangementHistory
+import com.ticketbox.domain.model.MonthlyArrangementResponse
+import com.ticketbox.domain.model.OriginalCommandReceipt
+import com.ticketbox.domain.model.OriginalHealth
+import com.ticketbox.domain.model.PaymentCapture
+import com.ticketbox.domain.model.PaymentCaptureDecision
+import com.ticketbox.domain.model.RecurringHistoryPage
+import com.ticketbox.domain.model.RecurringOccurrence
+import com.ticketbox.domain.model.RecurringOccurrencePaymentRequest
+import com.ticketbox.domain.model.ReferenceCreated
+import com.ticketbox.domain.model.ReferenceRateRequest
+import com.ticketbox.domain.model.ReferenceRates
+import com.ticketbox.domain.model.RepaymentVoidCreateRequest
+import com.ticketbox.domain.model.SavedView
+import com.ticketbox.domain.model.SavedViewDefinitionRequest
+import com.ticketbox.domain.model.SavedViewDeletionReceipt
+import java.io.IOException
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
-import java.io.IOException
 
 internal class FakeApiServiceFactory(
     private val service: FakeApiService,
@@ -86,57 +124,57 @@ internal class FakeApiService(
     private val serverSettingsResult: ServerSettingsDto? = null,
     private val merchantApi: FakeMerchantApi = FakeMerchantApi(),
 ) : ApiService {
-    override suspend fun fundsAccountChoices(): List<com.ticketbox.data.remote.dto.AccountChoiceDto> = error("Funds response not configured")
-    override suspend fun existingFundDebts(): List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto> = error("Funds response not configured")
+    override suspend fun fundsAccountChoices(): List<com.ticketbox.domain.model.AccountChoice> = error("Funds response not configured")
+    override suspend fun existingFundDebts(): List<com.ticketbox.domain.model.ExistingDebtChoice> = error("Funds response not configured")
     override suspend fun voidCreditPayment(id: String, body: com.ticketbox.data.remote.dto.CreditPaymentVoidDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto = error("Funds response not configured")
     override suspend fun voidFundsActivity(id: String, body: com.ticketbox.data.remote.dto.AccountActivityVoidDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto = error("Funds response not configured")
     override suspend fun applyRetainedCredit(id: String, body: com.ticketbox.data.remote.dto.CreditApplicationCreateDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto = error("Funds response not configured")
     override suspend fun voidCreditApplication(id: String, body: com.ticketbox.data.remote.dto.CreditApplicationVoidDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto = error("Funds response not configured")
     override suspend fun incurCreditFee(id: String, body: com.ticketbox.data.remote.dto.CreditFeeCreateDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto = error("Funds response not configured")
-    override suspend fun installments(id: String): com.ticketbox.data.remote.dto.InstallmentsDto = error("Funds response not configured")
+    override suspend fun installments(id: String): com.ticketbox.domain.model.Installments = error("Funds response not configured")
     override suspend fun saveInstallments(id: String, body: com.ticketbox.data.remote.dto.InstallmentCommandDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto = error("Funds response not configured")
-    override suspend fun expenseFunding(id: Long): com.ticketbox.data.remote.dto.ExpenseFundingViewDto = error("Funds response not configured")
-    override suspend fun saveExpenseFunding(id: Long, body: com.ticketbox.data.remote.dto.ExpenseFundingCommandDto, key: String): com.ticketbox.data.remote.dto.ExpenseFundingViewDto = error("Funds response not configured")
-    override suspend fun fundsOverview(): com.ticketbox.data.remote.dto.FundsOverviewDto = error("Funds response not configured")
+    override suspend fun expenseFunding(id: Long): com.ticketbox.domain.model.ExpenseFundingView = error("Funds response not configured")
+    override suspend fun saveExpenseFunding(id: Long, body: com.ticketbox.data.remote.dto.ExpenseFundingCommandDto, key: String): com.ticketbox.domain.model.ExpenseFundingView = error("Funds response not configured")
+    override suspend fun fundsOverview(): com.ticketbox.domain.model.FundsOverview = error("Funds response not configured")
     override suspend fun fundsAccounts(): List<com.ticketbox.data.remote.dto.FinancialAccountDto> = error("Funds response not configured")
-    override suspend fun envelopes(month: String): com.ticketbox.data.remote.dto.EnvelopesDto = error("Envelope response not configured")
-    override suspend fun envelopeHistory(beforeVersion: Long?): List<com.ticketbox.data.remote.dto.EnvelopeRevisionDto> = error("Envelope history not configured")
+    override suspend fun envelopes(month: String): com.ticketbox.domain.model.Envelopes = error("Envelope response not configured")
+    override suspend fun envelopeHistory(beforeVersion: Long?): List<com.ticketbox.domain.model.EnvelopeRevision> = error("Envelope history not configured")
     override suspend fun saveEnvelopes(month: String, body: com.ticketbox.data.remote.dto.EnvelopeSaveDto, key: String): com.ticketbox.data.remote.dto.EnvelopeReceiptDto = error("Envelope response not configured")
     override suspend fun fundsAccount(id: String): com.ticketbox.data.remote.dto.FinancialAccountDto = error("Funds response not configured")
     override suspend fun createFundsAccount(body: com.ticketbox.data.remote.dto.FinancialAccountCreateDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto = error("Funds response not configured")
     override suspend fun editFundsAccount(id: String, body: com.ticketbox.data.remote.dto.FinancialAccountEditDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto = error("Funds response not configured")
     override suspend fun payCreditAccount(id: String, body: com.ticketbox.data.remote.dto.CreditPaymentDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto = error("Funds response not configured")
     override suspend fun postFundsActivity(id: String, body: com.ticketbox.data.remote.dto.AccountPostingDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto = error("Funds response not configured")
-    override suspend fun capturePayment(request: com.ticketbox.data.remote.dto.PaymentCaptureCreateDto): com.ticketbox.data.remote.dto.PaymentCaptureDto = error("Capture response not configured")
-    override suspend fun paymentCaptures(): List<com.ticketbox.data.remote.dto.PaymentCaptureDto> = error("Capture read not configured")
-    override suspend fun decidePaymentCapture(publicId: String, request: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto, key: String): com.ticketbox.data.remote.dto.PaymentCaptureDto = error("Capture decision not configured")
-    override suspend fun repaymentAsExpense(publicId: String, request: com.ticketbox.data.remote.dto.RepaymentAsExpenseDto, key: String): com.ticketbox.data.remote.dto.PaymentCaptureDto = error("Capture correction not configured")
+    override suspend fun capturePayment(request: com.ticketbox.data.remote.dto.PaymentCaptureCreateDto): com.ticketbox.domain.model.PaymentCapture = error("Capture response not configured")
+    override suspend fun paymentCaptures(): List<com.ticketbox.domain.model.PaymentCapture> = error("Capture read not configured")
+    override suspend fun decidePaymentCapture(publicId: String, request: com.ticketbox.domain.model.PaymentCaptureDecision, key: String): com.ticketbox.domain.model.PaymentCapture = error("Capture decision not configured")
+    override suspend fun repaymentAsExpense(publicId: String, request: com.ticketbox.data.remote.dto.RepaymentAsExpenseDto, key: String): com.ticketbox.domain.model.PaymentCapture = error("Capture correction not configured")
     override suspend fun savedViews(): com.ticketbox.data.remote.dto.SavedViewListDto = error("Saved queries not configured")
-    override suspend fun savedView(publicId: String): com.ticketbox.data.remote.dto.SavedViewDto = error("Saved query not configured")
+    override suspend fun savedView(publicId: String): com.ticketbox.domain.model.SavedView = error("Saved query not configured")
     override suspend fun savedViewResults(publicId: String, page: Int): com.ticketbox.data.remote.dto.SavedViewResultsDto = error("Saved query results not configured")
-    override suspend fun createSavedView(request: com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.SavedViewDto = error("Saved query creation not configured")
-    override suspend fun updateSavedView(publicId: String, request: com.ticketbox.data.remote.dto.SavedViewUpdateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.SavedViewDto = error("Saved query edit not configured")
-    override suspend fun deleteSavedView(publicId: String, request: com.ticketbox.data.remote.dto.SavedViewDeleteRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.SavedViewDeletionReceiptDto = error("Saved query deletion not configured")
+    override suspend fun createSavedView(request: com.ticketbox.domain.model.SavedViewDefinitionRequest, idempotencyKey: String): com.ticketbox.domain.model.SavedView = error("Saved query creation not configured")
+    override suspend fun updateSavedView(publicId: String, request: com.ticketbox.data.remote.dto.SavedViewUpdateRequestDto, idempotencyKey: String): com.ticketbox.domain.model.SavedView = error("Saved query edit not configured")
+    override suspend fun deleteSavedView(publicId: String, request: com.ticketbox.data.remote.dto.SavedViewDeleteRequestDto, idempotencyKey: String): com.ticketbox.domain.model.SavedViewDeletionReceipt = error("Saved query deletion not configured")
     override suspend fun portableExportLedgers(): com.ticketbox.data.remote.dto.LedgerListResponseDto =
         error("Portable export not configured")
     override fun portableExport(ledgerId: String, download: com.ticketbox.data.remote.PortableDownloadRequest): retrofit2.Call<ResponseBody> =
         error("Portable export not configured")
-    override suspend fun originalHealth(id: Long): com.ticketbox.data.remote.dto.OriginalHealthDto = error("Original health not configured")
-    override suspend fun verifyOriginal(id: Long, body: com.ticketbox.data.remote.dto.OriginalVerificationRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original verification not configured")
-    override suspend fun attachOriginal(id: Long, file: okhttp3.MultipartBody.Part, expectedRowVersion: Long, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original attachment not configured")
-    override suspend fun replenishOriginal(id: Long, file: okhttp3.MultipartBody.Part, expectedRowVersion: Long, expectedSha256: String, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original replenishment not configured")
-    override suspend fun retryOriginalCleanup(id: Long, body: com.ticketbox.data.remote.dto.OriginalCleanupRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original cleanup not configured")
-    override suspend fun cancelOriginalCleanup(id: Long, body: com.ticketbox.data.remote.dto.OriginalCleanupRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.OriginalCommandReceiptDto = error("Original cleanup not configured")
+    override suspend fun originalHealth(id: Long): com.ticketbox.domain.model.OriginalHealth = error("Original health not configured")
+    override suspend fun verifyOriginal(id: Long, body: com.ticketbox.data.remote.dto.OriginalVerificationRequestDto, idempotencyKey: String): com.ticketbox.domain.model.OriginalCommandReceipt = error("Original verification not configured")
+    override suspend fun attachOriginal(id: Long, file: okhttp3.MultipartBody.Part, expectedRowVersion: Long, idempotencyKey: String): com.ticketbox.domain.model.OriginalCommandReceipt = error("Original attachment not configured")
+    override suspend fun replenishOriginal(id: Long, file: okhttp3.MultipartBody.Part, expectedRowVersion: Long, expectedSha256: String, idempotencyKey: String): com.ticketbox.domain.model.OriginalCommandReceipt = error("Original replenishment not configured")
+    override suspend fun retryOriginalCleanup(id: Long, body: com.ticketbox.data.remote.dto.OriginalCleanupRequestDto, idempotencyKey: String): com.ticketbox.domain.model.OriginalCommandReceipt = error("Original cleanup not configured")
+    override suspend fun cancelOriginalCleanup(id: Long, body: com.ticketbox.data.remote.dto.OriginalCleanupRequestDto, idempotencyKey: String): com.ticketbox.domain.model.OriginalCommandReceipt = error("Original cleanup not configured")
 
-    override suspend fun ledgerCalendar(ledgerId: String, revision: Long?): com.ticketbox.data.remote.dto.LedgerCalendarDto =
+    override suspend fun ledgerCalendar(ledgerId: String, revision: Long?): com.ticketbox.domain.model.LedgerCalendar =
         error("Unexpected ledger calendar query")
 
-    override suspend fun recurringOccurrence(publicId: String, month: String): com.ticketbox.data.remote.dto.RecurringOccurrenceDto =
+    override suspend fun recurringOccurrence(publicId: String, month: String): com.ticketbox.domain.model.RecurringOccurrence =
         error("Unexpected recurring occurrence read")
     override suspend fun setRecurringOccurrencePayment(
-        publicId: String, month: String, request: com.ticketbox.data.remote.dto.RecurringOccurrencePaymentRequestDto,
+        publicId: String, month: String, request: com.ticketbox.domain.model.RecurringOccurrencePaymentRequest,
         idempotencyKey: String,
-    ): com.ticketbox.data.remote.dto.RecurringOccurrenceDto = error("Unexpected recurring occurrence write")
+    ): com.ticketbox.domain.model.RecurringOccurrence = error("Unexpected recurring occurrence write")
     var lastNotificationDraftRequest: NotificationDraftRequestDto? = null
     var lastConfirmedMonth: String? = null
     var lastConfirmedCategory: String? = null
@@ -300,7 +338,7 @@ internal class FakeApiService(
         unsupported()
 
     override suspend fun createCategoryPreference(key: String, request: com.ticketbox.data.remote.dto.ReferenceCreateRequestDto):
-        com.ticketbox.data.remote.dto.ReferenceCreatedDto = unsupported()
+        com.ticketbox.domain.model.ReferenceCreated = unsupported()
 
     override suspend fun inspectCategoryPreference(publicId: String):
         com.ticketbox.data.remote.dto.CategoryPreferenceInspectionDto = unsupported()
@@ -314,7 +352,7 @@ internal class FakeApiService(
 
     override suspend fun listManagedTags(): com.ticketbox.data.remote.dto.TagManagementListDto = unsupported()
     override suspend fun createTag(key: String, request: com.ticketbox.data.remote.dto.ReferenceCreateRequestDto):
-        com.ticketbox.data.remote.dto.ReferenceCreatedDto = unsupported()
+        com.ticketbox.domain.model.ReferenceCreated = unsupported()
     override suspend fun renameTag(publicId: String, request: com.ticketbox.data.remote.dto.TagRenameRequest): com.ticketbox.data.remote.dto.TagDetailDto = unsupported()
     override suspend fun deleteTag(publicId: String, request: com.ticketbox.data.remote.dto.TagDeleteRequest): com.ticketbox.data.remote.dto.TagMutationDto = unsupported()
     override suspend fun mergeTag(publicId: String, request: com.ticketbox.data.remote.dto.TagMergeRequest): com.ticketbox.data.remote.dto.TagMutationDto = unsupported()
@@ -477,7 +515,7 @@ internal class FakeApiService(
         )
     override suspend fun createBillSplitInvitation(
         id: Long,
-        request: com.ticketbox.data.remote.dto.BillSplitInviteRequestDto,
+        request: com.ticketbox.domain.model.BillSplitInviteRequest,
         idempotencyKey: String,
     ): com.ticketbox.data.remote.dto.BillSplitSentDto = stubBillSplitSent()
     override suspend fun listBillSplitInbox(
@@ -577,7 +615,7 @@ internal class FakeApiService(
 
     override suspend fun categoryRules(): List<CategoryRuleDto> = emptyList()
 
-    override suspend fun createCategoryRule(request: CategoryRuleRequest, idempotencyKey: String): CategoryRuleDto = unsupported()
+    override suspend fun createCategoryRule(request: CategoryRuleDefinition, idempotencyKey: String): CategoryRuleDto = unsupported()
 
     override suspend fun updateCategoryRule(
         id: Long,
@@ -736,20 +774,20 @@ internal class FakeApiService(
         goalType: String?,
         timezone: String?,
     ): GoalListResponseDto = unsupported()
-    override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto = unsupported()
+    override suspend fun createGoal(request: GoalCreateRequest, timezone: String?, idempotencyKey: String?): GoalDto = unsupported()
     override suspend fun goalHistory(publicId: String, limit: Int, beforeVersion: Long?):
         com.ticketbox.data.remote.dto.GoalHistoryResponseDto = error("Unexpected goal definition history")
     override suspend fun goal(publicId: String, timezone: String?): GoalDto = unsupported()
     override suspend fun updateGoal(
         publicId: String,
-        request: GoalUpdateRequestDto,
+        request: GoalUpdateRequest,
         idempotencyKey: String?,
         timezone: String?,
     ): GoalDto = unsupported()
     override suspend fun archiveGoal(publicId: String, timezone: String?): GoalDto = unsupported()
     override suspend fun replaceGoalDebtLinks(
         publicId: String,
-        request: com.ticketbox.data.remote.dto.DebtGoalLinksReplaceRequestDto,
+        request: com.ticketbox.domain.model.DebtGoalLinksReplaceRequest,
         idempotencyKey: String?,
         timezone: String?,
     ): GoalDto = unsupported()
@@ -761,7 +799,7 @@ internal class FakeApiService(
     ): GoalDto = unsupported()
     override suspend fun setGoalTargetDate(
         publicId: String,
-        request: com.ticketbox.data.remote.dto.DebtGoalTargetDateRequestDto,
+        request: com.ticketbox.domain.model.DebtGoalTargetDateRequest,
         idempotencyKey: String?,
         timezone: String?,
     ): GoalDto = unsupported()
@@ -775,16 +813,16 @@ internal class FakeApiService(
         file: MultipartBody.Part,
     ): com.ticketbox.data.remote.dto.DebtBillParseResponseDto = unsupported()
     override suspend fun splitAgreement(publicId: String, newShareAmountCents: Long?): com.ticketbox.data.remote.dto.BillSplitAgreementDto = unsupported()
-    override suspend fun createSplitChangeProposal(publicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeCreateRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitChangeProposalDto = unsupported()
-    override suspend fun acceptSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeAcceptRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitAgreementDto = unsupported()
-    override suspend fun rejectSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitChangeProposalDto = unsupported()
-    override suspend fun withdrawSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitChangeProposalDto = unsupported()
+    override suspend fun createSplitChangeProposal(publicId: String, request: com.ticketbox.domain.model.BillSplitChangeCreateRequest, idempotencyKey: String?): com.ticketbox.domain.model.BillSplitChangeProposal = unsupported()
+    override suspend fun acceptSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.domain.model.BillSplitChangeAcceptRequest, idempotencyKey: String?): com.ticketbox.data.remote.dto.BillSplitAgreementDto = unsupported()
+    override suspend fun rejectSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto, idempotencyKey: String?): com.ticketbox.domain.model.BillSplitChangeProposal = unsupported()
+    override suspend fun withdrawSplitChangeProposal(publicId: String, proposalPublicId: String, request: com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto, idempotencyKey: String?): com.ticketbox.domain.model.BillSplitChangeProposal = unsupported()
 
     override suspend fun debt(publicId: String): com.ticketbox.data.remote.dto.DebtDto = unsupported()
     override suspend fun debtActivity(publicId: String, page: Int, focusRepayment: String?): com.ticketbox.data.remote.dto.DebtActivityListDto = unsupported()
     override suspend fun voidDebtRepayment(
         publicId: String,
-        request: com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto,
+        request: com.ticketbox.domain.model.RepaymentVoidCreateRequest,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.DebtDto = unsupported()
     override suspend fun recordDebtRepayment(
@@ -794,17 +832,17 @@ internal class FakeApiService(
     ): com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto = unsupported()
     override suspend fun recordDebtAdjustment(
         publicId: String,
-        request: com.ticketbox.data.remote.dto.DebtAdjustmentCreateRequestDto,
+        request: com.ticketbox.domain.model.DebtAdjustmentCreateRequest,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.DebtDto = unsupported()
     override suspend fun voidDebt(
         publicId: String,
-        request: com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto,
+        request: com.ticketbox.domain.model.DebtVoidCreateRequest,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.DebtDto = unsupported()
     override suspend fun setDebtKind(
         publicId: String,
-        request: com.ticketbox.data.remote.dto.DebtKindSetRequestDto,
+        request: com.ticketbox.domain.model.DebtKindSetRequest,
         idempotencyKey: String?,
     ): com.ticketbox.data.remote.dto.DebtDto = unsupported()
     override suspend fun forgiveDebt(
@@ -871,24 +909,24 @@ internal class FakeApiService(
     override suspend fun listIncomePlans(status: String): com.ticketbox.data.remote.dto.IncomePlanListResponseDto = unsupported()
     override suspend fun incomePlanHistory(publicId: String, limit: Int, beforeVersion: Long?): com.ticketbox.data.remote.dto.IncomeHistoryResponseDto = unsupported()
     override suspend fun createIncomePlan(request: com.ticketbox.data.remote.dto.IncomePlanCreateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
-    override suspend fun updateIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto, idempotencyKey: String?): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
+    override suspend fun updateIncomePlan(publicId: String, request: com.ticketbox.domain.model.IncomePlanUpdateRequest, idempotencyKey: String?): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun archiveIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun restoreIncomePlan(publicId: String, request: com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto): com.ticketbox.data.remote.dto.IncomePlanDto = unsupported()
     override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int): com.ticketbox.data.remote.dto.ExchangeRateListDto = unsupported()
     override suspend fun convertAmount(currencyCode: String, homeCurrencyCode: String, rateDate: String,
-        amount: String): com.ticketbox.data.remote.dto.AmountConversionDto = unsupported()
-    override suspend fun referenceRates(homeCurrencyCode: String, currencyCode: String?, rateDate: String?): com.ticketbox.data.remote.dto.ReferenceRatesDto = unsupported()
-    override suspend fun acquireReferenceRates(request: com.ticketbox.data.remote.dto.ReferenceRateRequestDto): com.ticketbox.data.remote.dto.ReferenceRatesDto = unsupported()
-    override suspend fun saveExchangeRate(currencyCode: String, rateDate: String, request: com.ticketbox.data.remote.dto.ExchangeRateRequestDto, idempotencyKey: String): com.ticketbox.data.remote.dto.ExchangeRateDto = unsupported()
-    override suspend fun monthlyArrangement(month: String): com.ticketbox.data.remote.dto.MonthlyArrangementResponseDto = unsupported()
-    override suspend fun saveMonthlyArrangement(month: String, request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest, idempotencyKey: String): com.ticketbox.data.remote.dto.MonthlyArrangementDto = unsupported()
-    override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto = unsupported()
+        amount: String): com.ticketbox.domain.model.AmountConversion = unsupported()
+    override suspend fun referenceRates(homeCurrencyCode: String, currencyCode: String?, rateDate: String?): com.ticketbox.domain.model.ReferenceRates = unsupported()
+    override suspend fun acquireReferenceRates(request: com.ticketbox.domain.model.ReferenceRateRequest): com.ticketbox.domain.model.ReferenceRates = unsupported()
+    override suspend fun saveExchangeRate(currencyCode: String, rateDate: String, request: com.ticketbox.domain.model.ExchangeRateRequest, idempotencyKey: String): com.ticketbox.domain.model.ExchangeRate = unsupported()
+    override suspend fun monthlyArrangement(month: String): com.ticketbox.domain.model.MonthlyArrangementResponse = unsupported()
+    override suspend fun saveMonthlyArrangement(month: String, request: com.ticketbox.domain.model.MonthlyArrangementChange, idempotencyKey: String): com.ticketbox.domain.model.MonthlyArrangement = unsupported()
+    override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): com.ticketbox.domain.model.MonthlyArrangementHistory = unsupported()
     override suspend fun trialBudgetAdviceInputs(month: String, timezone: String?, arrangement: Map<String, String>): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto = unsupported()
     override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): com.ticketbox.data.remote.dto.BudgetAdviceInputsDto = unsupported()
     override suspend fun budgetAdvise(request: com.ticketbox.data.remote.dto.BudgetAdviseRequestDto): com.ticketbox.data.remote.dto.BudgetAdviseResponseDto = unsupported()
     override suspend fun recurringCandidates(timezone: String?): com.ticketbox.data.remote.dto.RecurringCandidatesResponseDto = unsupported()
     override suspend fun recurringHistory(publicId: String, limit: Int, beforeVersion: Long?):
-        com.ticketbox.data.remote.dto.RecurringHistoryPageDto = error("Unexpected recurring definition history")
+        com.ticketbox.domain.model.RecurringHistoryPage = error("Unexpected recurring definition history")
     override suspend fun recurringItems(
         status: String?,
         includeArchived: Boolean,

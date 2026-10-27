@@ -1,12 +1,12 @@
 package com.ticketbox.data.remote.api
 
+import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
 import com.ticketbox.data.remote.dto.LedgerCreateRequestDto
 import com.ticketbox.data.remote.dto.LedgerListResponseDto
+import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.LedgerMemberListResponseDto
 import com.ticketbox.data.remote.dto.LedgerMemberRoleUpdateRequestDto
 import com.ticketbox.data.remote.dto.LedgerSwitchResponseDto
-import com.ticketbox.data.remote.dto.LedgerAuditListResponseDto
-import com.ticketbox.data.remote.dto.LedgerMemberDto
 import com.ticketbox.data.remote.dto.OwnerTransferResponseDto
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -19,7 +19,7 @@ interface LedgerApi {
     suspend fun ledgerCalendar(
         @Path("ledgerId") ledgerId: String,
         @Query("revision") revision: Long? = null,
-    ): com.ticketbox.data.remote.dto.LedgerCalendarDto
+    ): com.ticketbox.domain.model.LedgerCalendar
 
     @GET("api/ledgers")
     suspend fun listLedgers(): LedgerListResponseDto

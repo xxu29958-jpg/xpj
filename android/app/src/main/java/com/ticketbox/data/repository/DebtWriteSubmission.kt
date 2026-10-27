@@ -87,7 +87,7 @@ internal fun DebtAdjustmentPayload.toView() = DebtAdjustmentSubmission(
     subject = subject,
     originSessionGeneration = originSessionGeneration,
     originBindingRevision = originBindingRevision,
-    request = request.toDomain(),
+    request = request,
 )
 
 internal fun DebtVoidPayload.toView() = DebtVoidSubmission(
@@ -95,7 +95,7 @@ internal fun DebtVoidPayload.toView() = DebtVoidSubmission(
     subject = subject,
     originSessionGeneration = originSessionGeneration,
     originBindingRevision = originBindingRevision,
-    request = request.toDomain(),
+    request = request,
 )
 
 internal fun DebtRepaymentVoidPayload.toView() = DebtRepaymentVoidSubmission(
@@ -103,7 +103,7 @@ internal fun DebtRepaymentVoidPayload.toView() = DebtRepaymentVoidSubmission(
     subject = subject,
     originSessionGeneration = originSessionGeneration,
     originBindingRevision = originBindingRevision,
-    request = request.toDomain(),
+    request = request,
 )
 
 internal fun DebtKindPayload.toView() = DebtKindSubmission(
@@ -111,7 +111,7 @@ internal fun DebtKindPayload.toView() = DebtKindSubmission(
     subject = subject,
     originSessionGeneration = originSessionGeneration,
     originBindingRevision = originBindingRevision,
-    request = request.toDomain(),
+    request = request,
 )
 
 internal fun RepaymentReviewPayload.toView() = RepaymentReviewSubmission(

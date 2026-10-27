@@ -10,7 +10,7 @@ import retrofit2.HttpException
 
 class SplitAgreementDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
-    private val adapter: JsonAdapter<SplitAgreementPayload>,
+    private val adapter: JsonAdapter<SplitAgreementSubmission>,
     private val receiptAdapter: JsonAdapter<SplitAgreementReceipt>,
 ) : OutboxMutationDispatcher {
     override val type = PendingMutationType.SplitAgreement
@@ -31,7 +31,7 @@ class SplitAgreementDispatcher(
             DispatchResult.Failure("split_agreement_response_unverified")
         }
     }
-    private suspend fun send(api: ApiService, intent: SplitAgreementPayload, key: String?): SplitAgreementReceipt {
+    private suspend fun send(api: ApiService, intent: SplitAgreementSubmission, key: String?): SplitAgreementReceipt {
         val id = intent.originalDebtPublicId
         return when (intent.operation) {
             SPLIT_CREATE -> api.createSplitChangeProposal(id, requireNotNull(intent.create), key)

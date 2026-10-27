@@ -2,10 +2,10 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.AccountPostingDto
 import com.ticketbox.data.remote.dto.CreditPaymentDto
-import com.ticketbox.data.remote.dto.FinancialAccountCreateDto
-import com.ticketbox.data.remote.dto.FinancialAccountEditDto
 import com.ticketbox.data.remote.dto.ExpenseFundingCommandDto
 import com.ticketbox.data.remote.dto.ExpenseFundingPartDto
+import com.ticketbox.data.remote.dto.FinancialAccountCreateDto
+import com.ticketbox.data.remote.dto.FinancialAccountEditDto
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.parseExactMoneyMinor
 
@@ -42,7 +42,7 @@ private fun FundsInput.envelopeCommand(): FundsCommand {
 internal fun fundsInputAmount(text: String, code: String, signed: Boolean = false): Long = requireNotNull(parseExactMoneyMinor(text,
         requireNotNull(CurrencyCode.fromStorageKeyOrNull(code)) { "请先选择原币种。" }, allowNegative = signed)) { "请核对金额及币种的小数位。" }
 
-private fun FundsInput.creditTerms(): com.ticketbox.data.remote.dto.CreditTermsDto? {
+private fun FundsInput.creditTerms(): com.ticketbox.domain.model.CreditTerms? {
         if (kind != "credit") return null
         fun day(value: String): Int? = value.takeIf(String::isNotBlank)?.let {
             requireNotNull(it.toIntOrNull()?.takeIf { day -> day in 1..31 }) { "账单日和还款日请填写 1 至 31。" }
@@ -51,7 +51,7 @@ private fun FundsInput.creditTerms(): com.ticketbox.data.remote.dto.CreditTermsD
             java.time.LocalDate.parse(creditObservedOn)
             require(creditSource.isNotBlank()) { "请填写额度查询来源。" }
         }
-        return com.ticketbox.data.remote.dto.CreditTermsDto(creditLimit.takeIf(String::isNotBlank)?.let { fundsInputAmount(it, currency) },
+        return com.ticketbox.domain.model.CreditTerms(creditLimit.takeIf(String::isNotBlank)?.let { fundsInputAmount(it, currency) },
             availableCredit.takeIf(String::isNotBlank)?.let { fundsInputAmount(it, currency) }, creditObservedOn.ifBlank { null },
             day(statementDay), day(paymentDueDay), creditSource.ifBlank { null })
     }

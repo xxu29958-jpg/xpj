@@ -1,9 +1,9 @@
 package com.ticketbox.data.repository
 
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -11,28 +11,28 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtDto
-import com.ticketbox.data.remote.dto.DebtVoidCreateRequestDto
-import com.ticketbox.data.remote.dto.RepaymentVoidCreateRequestDto
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.DebtRepayment
+import com.ticketbox.domain.model.DebtVoidCreateRequest
+import com.ticketbox.domain.model.RepaymentVoidCreateRequest
 import com.ticketbox.ui.screens.DebtDetailNavigation
 import com.ticketbox.ui.screens.DebtDetailScreen
 import com.ticketbox.ui.screens.settings.syncStatusOverview
-import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.DebtAction
-import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.DebtActivityViewModel
+import com.ticketbox.viewmodel.DebtDetailViewModel
 import com.ticketbox.viewmodel.MemberRepaymentProposalViewModel
 import com.ticketbox.viewmodel.OutboxRecoveryRepositories
 import com.ticketbox.viewmodel.OutboxStatusViewModel
 import com.ticketbox.viewmodel.outboxStatusViewModelFactory
 import java.io.IOException
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
@@ -393,11 +393,11 @@ private class DirectVoidRoomProbe {
             return current
         }
 
-        override suspend fun voidDebt(publicId: String, request: DebtVoidCreateRequestDto,
+        override suspend fun voidDebt(publicId: String, request: DebtVoidCreateRequest,
             idempotencyKey: String?): DebtDto = reply(OriginalVoidRoomCall(publicId, null, request.reason,
             request.expectedRowVersion, requireNotNull(idempotencyKey)))
 
-        override suspend fun voidDebtRepayment(publicId: String, request: RepaymentVoidCreateRequestDto,
+        override suspend fun voidDebtRepayment(publicId: String, request: RepaymentVoidCreateRequest,
             idempotencyKey: String?): DebtDto = reply(OriginalVoidRoomCall(publicId, request.repaymentPublicId,
             request.reason, request.expectedRowVersion, requireNotNull(idempotencyKey)))
     }

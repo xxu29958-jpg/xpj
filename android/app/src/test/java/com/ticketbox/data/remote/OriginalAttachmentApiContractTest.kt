@@ -3,9 +3,16 @@ package com.ticketbox.data.remote
 import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.Moshi
 import com.ticketbox.data.remote.dto.OriginalCleanupRequestDto
-import com.ticketbox.data.remote.dto.OriginalCommandReceiptDto
-import com.ticketbox.data.remote.dto.OriginalHealthDto
 import com.ticketbox.data.remote.dto.OriginalVerificationRequestDto
+import com.ticketbox.domain.model.OriginalCommandReceipt
+import com.ticketbox.domain.model.OriginalHealth
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -16,13 +23,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
-import kotlin.test.Test
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 private const val DIGEST = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 private const val REQUEST_ID = "2518898d-ff04-4690-9caa-c7d8b8aba053"
@@ -38,7 +38,7 @@ class OriginalAttachmentApiContractTest {
             "reason":"after_confirm","requested_at":"2026-09-19T00:00:00Z","image":"deleted",
             "thumbnail":"pending","image_error":null,"thumbnail_error":"unlink_failed","policy_enabled":false}}
         """.trimIndent()
-        val health = requireNotNull(moshi.adapter(OriginalHealthDto::class.java).fromJson(json))
+        val health = requireNotNull(moshi.adapter(OriginalHealth::class.java).fromJson(json))
         assertEquals(7L, health.expenseId)
         assertEquals(12L, health.rowVersion)
         assertEquals(DIGEST, health.expectedSha256)
@@ -56,7 +56,7 @@ class OriginalAttachmentApiContractTest {
     }
 
     @Test fun legacyOrDamagedCleanupDoesNotInventKnownIdentity() {
-        val health = requireNotNull(moshi.adapter(OriginalHealthDto::class.java).fromJson(
+        val health = requireNotNull(moshi.adapter(OriginalHealth::class.java).fromJson(
             """{"expense_id":7,"public_id":"bill-seven","row_version":12,"state":"unverified",
                 "checked_at":"$CHECKED_AT","observed_sha256":"$DIGEST",
                 "cleanup_error":"attachment_cleanup_invalid"}""",
@@ -68,7 +68,7 @@ class OriginalAttachmentApiContractTest {
     }
 
     @Test fun acceptedReceiptRoundTripsWithoutBecomingAHealthObservation() {
-        val adapter = moshi.adapter(OriginalCommandReceiptDto::class.java)
+        val adapter = moshi.adapter(OriginalCommandReceipt::class.java)
         val receipt = requireNotNull(adapter.fromJson(receiptJson("retry_original_cleanup")))
         assertEquals("retry_original_cleanup", receipt.operation)
         assertEquals(REQUEST_ID, receipt.cleanupRequestId)
@@ -76,7 +76,7 @@ class OriginalAttachmentApiContractTest {
         assertEquals(receipt, adapter.fromJson(adapter.toJson(receipt)))
         assertFalse(adapter.toJson(receipt).contains("\"state\""))
         assertFailsWith<JsonDataException> {
-            moshi.adapter(OriginalHealthDto::class.java).fromJson(adapter.toJson(receipt))
+            moshi.adapter(OriginalHealth::class.java).fromJson(adapter.toJson(receipt))
         }
     }
 

@@ -1,8 +1,8 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.data.remote.dto.RepaymentDraftListResponseDto
 import com.ticketbox.domain.model.RepaymentDraft
 import com.ticketbox.domain.model.ledgerRoleCanModify
 
@@ -40,12 +40,12 @@ class RepaymentDraftRepository internal constructor(
     override suspend fun readCaptures(binding: LogicalSessionBinding): Result<ReadSnapshot<List<com.ticketbox.domain.model.PaymentCapture>>> =
         errorHandler.safeCall {
             ledgerRequestGuard.bindExact(binding)
-            val type = com.squareup.moshi.Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.PaymentCaptureDto::class.java)
-            val adapter = Moshi.Builder().build().adapter<List<com.ticketbox.data.remote.dto.PaymentCaptureDto>>(type)
+            val type = com.squareup.moshi.Types.newParameterizedType(List::class.java, com.ticketbox.domain.model.PaymentCapture::class.java)
+            val adapter = Moshi.Builder().build().adapter<List<com.ticketbox.domain.model.PaymentCapture>>(type)
             queryReader.read(binding, DebtQueryScope(debtScope(binding, "payment_capture_list", "review")),
                 DebtReadSpec(adapter, { paymentCaptures() }, validate = { require(it.all { row -> row.kind == "review" }) },
                     isNewer = { _, _ -> false }, project = { value, _ -> value }))
-                .map { ReadSnapshot(it.value.map { capture -> capture.toDomain() }, it.fetchedAt, it.fromCache) }.getOrThrow()
+                .map { ReadSnapshot(it.value.map { capture -> capture }, it.fetchedAt, it.fromCache) }.getOrThrow()
         }
 
     override suspend fun readDrafts(expectedBinding: LogicalSessionBinding?): Result<ReadSnapshot<List<RepaymentDraft>>> =

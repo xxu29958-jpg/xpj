@@ -1,37 +1,41 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.domain.model.MonthlyArrangementChange
 import android.content.Context
 import android.content.ContextWrapper
-import com.ticketbox.data.local.LocalSettingsStore
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.squareup.moshi.JsonEncodingException
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.AppDatabase
+import com.ticketbox.data.local.LocalSettingsStore
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.*
+import com.ticketbox.domain.model.MonthlyArrangement
+import com.ticketbox.domain.model.MonthlyArrangementChange
+import com.ticketbox.domain.model.MonthlyArrangementHistory
+import com.ticketbox.domain.model.MonthlyArrangementHistoryItem
+import com.ticketbox.domain.model.MonthlyArrangementResponse
 import com.ticketbox.security.*
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.runBlocking
 import java.io.IOException
-import java.net.ConnectException
-import javax.net.ssl.SSLHandshakeException
-import com.squareup.moshi.JsonEncodingException
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
 import java.lang.reflect.Proxy
+import java.net.ConnectException
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import javax.net.ssl.SSLHandshakeException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
-import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
 
@@ -63,29 +67,29 @@ class MonthlyArrangementRoomContinuityTest {
     private val readStarted = CompletableDeferred<Unit>()
     private var loseAck = true
     private var conflict = false
-    private var fact: MonthlyArrangementDto? = null
-    private var saveResponse = MonthlyArrangementDto("owner", "2026-09", "JPY", 1200, 300, 1, "2026-09-27T00:00:00Z")
+    private var fact: MonthlyArrangement? = null
+    private var saveResponse = MonthlyArrangement("owner", "2026-09", "JPY", 1200, 300, 1, "2026-09-27T00:00:00Z")
     private var historyResponse = historyOf(saveResponse)
-    private val historyPages = mutableMapOf<Long, MonthlyArrangementHistoryDto>()
+    private val historyPages = mutableMapOf<Long, MonthlyArrangementHistory>()
     private val snapshots = mutableMapOf<String, String>()
-    private val calls = mutableListOf<Pair<MonthlyArrangementSaveRequest, String>>()
+    private val calls = mutableListOf<Pair<MonthlyArrangementChange, String>>()
     private val api = object : ApiService by arrangementProxy<ApiService>({ error("Unexpected API method $it") }) {
-        override suspend fun monthlyArrangement(month: String): MonthlyArrangementResponseDto {
-            val response = MonthlyArrangementResponseDto(session.value.identity.ledgerId, month, fact)
+        override suspend fun monthlyArrangement(month: String): MonthlyArrangementResponse {
+            val response = MonthlyArrangementResponse(session.value.identity.ledgerId, month, fact)
             delayedRead?.let { readStarted.complete(Unit); it.await(); return response }
             readFailure?.let { throw it }
             if (offline) throw ConnectException("offline")
-            return MonthlyArrangementResponseDto(session.value.identity.ledgerId, month, fact)
+            return MonthlyArrangementResponse(session.value.identity.ledgerId, month, fact)
         }
-        override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): MonthlyArrangementHistoryDto {
+        override suspend fun monthlyArrangementHistory(month: String, beforeVersion: Long?, limit: Int): MonthlyArrangementHistory {
             readFailure?.let { throw it }
             if (offline) throw ConnectException("offline")
             return if (beforeVersion == null) historyResponse else historyPages.getValue(beforeVersion)
         }
-        override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementSaveRequest, idempotencyKey: String): MonthlyArrangementDto {
+        override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementChange, idempotencyKey: String): MonthlyArrangement {
             calls += request to idempotencyKey
             assertEquals("2026-09", month)
-            if (conflict) throw HttpException(Response.error<MonthlyArrangementDto>(409,
+            if (conflict) throw HttpException(Response.error<MonthlyArrangement>(409,
                 """{"error":"state_conflict","message":"另一端已修改安排。"}""".toResponseBody()))
             fact = saveResponse
             if (loseAck) {
@@ -110,8 +114,8 @@ class MonthlyArrangementRoomContinuityTest {
             { key, stamp -> snapshots[key] = stamp }, coordinator)
     }
     private fun binding() = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
-    private fun historyOf(vararg values: MonthlyArrangementDto) = MonthlyArrangementHistoryDto(
-        "owner", "2026-09", values.map { MonthlyArrangementHistoryItemDto(it.rowVersion, it.updatedAt,
+    private fun historyOf(vararg values: MonthlyArrangement) = MonthlyArrangementHistory(
+        "owner", "2026-09", values.map { MonthlyArrangementHistoryItem(it.rowVersion, it.updatedAt,
             it.homeCurrencyCode, it.savingsTargetCents, it.reservedBufferCents) }, null)
     private suspend fun drain() = OutboxDrainEngine(outbox, listOf(SaveMonthlyArrangementDispatcher({ api },
         adapters.budget.arrangementSaveAdapter, adapters.budget.arrangementReceiptAdapter)), now = clock::millis).drainOnce()
@@ -233,7 +237,7 @@ class MonthlyArrangementRoomContinuityTest {
         repository.arrangementHistory(original, "2026-09").getOrThrow()
         val before = requireNotNull(db).pendingMutationDao().allRows()
         val draftBefore = requireNotNull(db).monthlyArrangementCacheDao().read(monthlyArrangementPersistentBindingKey(original), "2026-09", "draft")
-        readFailure = HttpException(Response.error<MonthlyArrangementResponseDto>(403,
+        readFailure = HttpException(Response.error<MonthlyArrangementResponse>(403,
             """{"error":"forbidden","message":"无权读取账本。"}""".toResponseBody()))
         assertEquals(403, (repository.arrangement(original, "2026-09").exceptionOrNull() as RepositoryException).httpStatusCode)
         readFailure = null
@@ -255,7 +259,7 @@ class MonthlyArrangementRoomContinuityTest {
         val oldRead = async { repository.arrangement(original, "2026-09") }
         readStarted.await()
         delayedRead = null
-        readFailure = HttpException(Response.error<MonthlyArrangementHistoryDto>(403,
+        readFailure = HttpException(Response.error<MonthlyArrangementHistory>(403,
             """{"error":"forbidden"}""".toResponseBody()))
         assertTrue(repository.arrangementHistory(original, "2026-09").isFailure)
         val stampsAtRefusal = snapshots.toMap()
@@ -394,7 +398,7 @@ class MonthlyArrangementRoomContinuityTest {
         val cached = com.squareup.moshi.Moshi.Builder().build().adapter(MonthlyArrangementHistoryCache::class.java)
             .fromJson(requireNotNull(requireNotNull(db).monthlyArrangementCacheDao()
                 .read(monthlyArrangementPersistentBindingKey(original), "2026-09", "history:0")).json)!!
-        assertEquals("The saved query stays separate from receipt snapshots", firstRead.response, cached.response?.toDomain())
+        assertEquals("The saved query stays separate from receipt snapshots", firstRead.response, cached.response)
         assertEquals(firstRead.fetchedAt.toString(), cached.fetchedAt)
         assertEquals(listOf(2L), cached.receipts.map { it.rowVersion })
         repository = reopen()
@@ -404,9 +408,9 @@ class MonthlyArrangementRoomContinuityTest {
         repository = reopen()
         assertEquals(history, repository.arrangementHistory(original, "2026-09").getOrThrow())
         // Earlier installations cached a raw response without read time or provenance.
-        val legacyPage = com.squareup.moshi.Moshi.Builder().build().adapter(MonthlyArrangementHistoryDto::class.java)
-            .toJson(MonthlyArrangementHistoryDto(history.response.ledgerId, history.response.month,
-                history.response.items.map { item -> com.ticketbox.data.remote.dto.MonthlyArrangementHistoryItemDto(
+        val legacyPage = com.squareup.moshi.Moshi.Builder().build().adapter(MonthlyArrangementHistory::class.java)
+            .toJson(MonthlyArrangementHistory(history.response.ledgerId, history.response.month,
+                history.response.items.map { item -> com.ticketbox.domain.model.MonthlyArrangementHistoryItem(
                     item.rowVersion, item.recordedAt, item.homeCurrencyCode, item.savingsTargetCents, item.reservedBufferCents) },
                 history.response.nextBeforeVersion))
         requireNotNull(db).monthlyArrangementCacheDao().write(requireNotNull(queriedPage).copy(json = legacyPage))

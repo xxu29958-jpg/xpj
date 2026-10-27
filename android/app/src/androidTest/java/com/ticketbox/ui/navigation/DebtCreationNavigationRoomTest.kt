@@ -6,8 +6,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -27,13 +27,13 @@ import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto
-import com.ticketbox.data.remote.dto.LedgerCalendarDto
 import com.ticketbox.data.repository.CreateDebtDispatcher
 import com.ticketbox.data.repository.DebtAdjustmentConnectedNetwork
 import com.ticketbox.data.repository.OutboxDrainEngine
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.AppThemeMode
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.LedgerCalendar
 import com.ticketbox.ui.assertEditableTextEquals
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.expense.LocalLedgerCalendarRepository
@@ -70,7 +70,7 @@ class DebtCreationNavigationRoomTest {
             override suspend fun debtReceivables() = DebtListResponseDto(emptyList(), "CNY")
             override suspend fun debt(publicId: String) = response
             override suspend fun ledgerCalendar(ledgerId: String, revision: Long?) =
-                LedgerCalendarDto(ledgerId, 3L, "Asia/Shanghai", "adopted", "2026-01-01T00:00:00Z")
+                LedgerCalendar(ledgerId, 3L, "Asia/Shanghai", "adopted", "2026-01-01T00:00:00Z")
             override suspend fun createDebt(request: DebtCreateRequestDto, idempotencyKey: String?): DebtDto {
                 calls += request to idempotencyKey
                 if (loseReply) throw IOException("Synthetic lost first receipt")

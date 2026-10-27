@@ -12,7 +12,7 @@ Screen → ViewModel → Repository → ApiService / Dao / SecureStorage；DTO�
 
 ## 完整生产责任面
 
-路径相对 `android/app/src/main/java/com/ticketbox/`。当前主源集有 1140 个 Kotlin 文件；
+路径相对 `android/app/src/main/java/com/ticketbox/`。检查覆盖整个主源集；
 其他发行源集只有 manifest/resource 配置，没有另一套 Kotlin 业务实现。
 目录和 import 索引覆盖全部主源集，结论还结合下列真实入口和消费者；文件数量不是拆分理由。
 
@@ -23,11 +23,11 @@ Screen → ViewModel → Repository → ApiService / Dao / SecureStorage；DTO�
 | 页面、交互状态 | `ui/screens`、`viewmodel` | 账单、往来、资金、预算/安排、规则、查询、成员、设置等真实页面全部消费领域结果和 Repository 的原意图描述；没有 DTO/Room Entity 的直接或推断类型引用 |
 | 展示机制与编辑状态 | `presentation`、`viewmodel/ExpenseTimeForm`、`viewmodel/CategoryRuleDraftForm` | 金额/日期字符串格式化无 Compose、IO 或协议依赖；编辑状态归 ViewModel。页面不再作为 ViewModel 的依赖提供者 |
 | 领域值与共享规则 | `domain/model` | 金额、时间、均分、往来操作资格、建议前提和只读结果；没有对 data、security、ViewModel、UI 的 import。服务端仍拥有最终授权和财务事实 |
-| 业务命令和读取 | `data/repository` | 各域 Actions/Repository、QueryReader、Mapper 保持原绑定、权限、读屏障与本地投影；领域映射位于验证及缓存边界之后。按业务 owner 保留现有仓库，不再增加统一协调仓库 |
+| 业务命令和读取 | `data/repository` | 各域 Actions/Repository、QueryReader 保持原绑定、权限、读屏障与本地投影；只有实际形状或语义差异才转换。按业务 owner 保留现有仓库，不增加统一协调仓库 |
 | 原命令发布与恢复 | `OutboxRepository` 及 Drain/Recovery/Status 文件 | 一个队列 owner 管理原 key、OCC、principal binding、lease、冲突和隔离；分文件仍是同一状态权威。业务 Dispatcher 使用原始 wire，不从展示对象重新构造重放 |
 | 后台派发与版本门 | `OutboxDrainEngine`、`OutboxDrainWorker`、`OutboxRuntimeCompatibility` | Engine 管逐行交付和原结果，Worker 管 Android 调度结果，compatibility owner 管会话内写阻断；没有第二套重试控制器 |
 | 会话、账本与凭据 | `security`、`ServerBindingRepository`、`ApiServiceProvider`、`LedgerRequestGuard`、`LocalLedgerSessionCoordinator` | SecureSessionStore 保管凭据，守卫核对账本/代际，协调者保护切换与投影发布。UI 只得显示字段/绑定状态；本地生物识别是设备解锁机制，不授予服务端权限 |
-| 协议与存储 | `data/remote/api`、`data/remote/dto`、`data/local` | API 字段、Moshi 注解和 Room schema 保持。DAO 原子写/版本栅栏、原始命令和可重建缓存的职责继续分开 |
+| 协议与存储 | `data/remote/api`、`data/remote/dto`、`data/local` | 同义值直接使用领域定义及原 Moshi 字段名；协议封套、不同形状的 DTO 和 Room Entity 留在 data。DAO 原子写/版本栅栏、原始命令和可重建缓存的职责继续分开 |
 | 本地界面偏好 | `TicketboxSettingsStore`、`AppearanceViewModel`、`AppViewModel`、`SettingsViewModel` | 已有接口提供主题、背景和非敏感偏好；ViewModel 不持有 DAO 或存储实现。无需为包名再加转发仓库；会话凭据仍不在此接口 |
 | 通知与采集 | `notification`、`notification/{backup,budget,recurring}`、`upload` | Android 通知监听受 manifest 系统权限限制；采集进入原 capture/upload Repository 和 Outbox，业务通知使用领域结果。健康/预算/固定支出提醒只读各自仓库，不自行确认事实 |
 
@@ -40,9 +40,9 @@ Screen → ViewModel → Repository → ApiService / Dao / SecureStorage；DTO�
 |---|---|---|
 | #682 之前 8 个业务文件依赖完整 `OutboxAdapterGraph` | 四组 `MutationJsonAdapters` 仅供预算/安排、固定支出、债务/复核、上传；其余具体 codec 继续直接注入 | #682 已迁移根图、仓库和 Dispatcher；业务文件对两个 Graph 引用为零 |
 | 建议规则和缺汇率规则位于网络 DTO | `BudgetAdviceInputs`、`CurrencyProjectionGap` 承接原规则 | #682 已退役 DTO 规则；本轮复用已有领域值，未复制另一套判断 |
-| 多个 Repository 返回网络 DTO，部分待处理状态通过嵌套字段泄漏 wire，复核状态直接暴露 Room Entity | 资金/信用、账单更正/分摊、往来/分期、固定支出、计划/历史、汇率、规则、保存查询和回执均逐字段映射领域值；复用已有 Expense/Debt/Repayment 等模型 | UI/ViewModel 的直接 DTO import、全限定名及编译后推断引用退出；测试与 AndroidTest 的真实消费者同步迁移 |
+| 多个 Repository 返回网络 DTO，部分待处理状态通过嵌套字段泄漏 wire，复核状态直接暴露 Room Entity | 同义对象共用一个领域值，删除旧 DTO 和纯字段复制；Expense/Debt/Repayment、账务时间、流水投影等真实差异仍在仓库边界转换 | UI/ViewModel 只消费领域值或仓库的用户意图描述；网络、页面、测试与 AndroidTest 同步迁移，没有类型别名或通用反射转换器 |
 | 待处理命令的 UI 描述同时被 Dispatcher 用作原始请求 | `readOriginalDebt*` / `readOriginalRepaymentReview` 保留同一准入校验，展示才调用 `toView` | 债务还款、调整、分类、作废和复核 Dispatcher 直接使用原 wire；旧 describe → wire 反取路径退出，原 key/OCC/绑定保持 |
-| 改领域类型会改变已持久化草稿的嵌套 JSON 或对象比较 | Funds/Merchant/SavedQuery/Reference 的私有 wire 与 MemberSettlement 命令 codec 显式双向映射；RepaymentReview 在仓库内转换 Entity | 原字段/默认值/顺序和嵌套时间字段保留；consume 仍核对原始 JSON，reviewAgain 仍核对完整已读输入，不用不同类型对象做恒假的比较 |
+| 改领域类型会改变已持久化草稿的嵌套 JSON 或对象比较 | Funds/SavedQuery/Reference 直接保存唯一草稿，复用同义领域值的原 JSON 字段名；Merchant 和 MemberSettlement 的实际格式差异局限于原存储边界；RepaymentReview 在仓库内转换 Entity | 原字段/默认值/顺序和嵌套时间字段保留；consume 仍核对原始 JSON，reviewAgain 仍核对完整已读输入，不用不同类型对象做恒假的比较 |
 | AppContainer 决定回执如何写投影、兼容性如何阻断写、如何选原绑定 API | `ExpenseReceiptPublication` 由 ExpenseRepositoryCore 持有并复用原 DAO；`OutboxRuntimeCompatibility` 持有原会话内阻断流；绑定选择归 `LedgerRequestGuard` | 根图中旧 publishExpenseSnapshot/publishExpenseFactBundle、outboxWriteCompatibility/outboxApi 实现删除；Dispatcher、Worker 迁入真实 owner。原锁、版本栅栏和发布顺序保持 |
 | RepositoryGraph 根据回收站类型决定恢复读保护 | `RecycleBinReadProtection` 使用各域现有 QueryReader 的 directMutation/directWrite/invalidate | 根图只连接方法引用；旧 when 流程移走，没有另一套恢复事务或财务规则 |
 | ViewModel 从页面文件导入表单、金额解析、均分和操作资格 | 编辑表单归 ViewModel，纯格式化归 presentation，邀请解析/均分/往来资格归 domain | 32 个符号及全部页面、ViewModel、测试调用点迁移；旧 Formatters/页面表单文件和重复定义删除，ViewModel → UI import 为零 |
@@ -74,22 +74,31 @@ flowchart LR
 `RepositoryGraph` 保留为 composition root 是有意决定：对象较多是业务消费者较多的结果，
 移走已证实的业务决策后，没有依据把它们再拆成框架或服务定位器。
 
+## 简洁性与格式边界
+
+领域值声明 Moshi 字段名是现有 `RecognitionFieldChoice` 等模型采用的机制，不引入新框架。
+字段名注解只描述编码，不授予网络格式业务权威；请求准入、权限、金额规则、读屏障及状态迁移仍归原 owner。
+语义、类型和默认值完全相同时只维护一份值定义。不得再为目录分层复制相同对象，
+也不能用 JSON 往返或通用反射 mapper 隐藏复制成本。
+
+账务时间已有本地草稿编码，Merchant 的输入与回执嵌套编码也不同；这些有具体兼容性依据的转换继续保留。
+已确认流水必须经过账本验证和原投影逻辑，不能把网络结果直接当作领域事实。
+
 ## 保持与验证
 
-- Room schema、API DTO、mutation wire 值和服务端协议未改。私有 wire 保留原 JSON，
+- Room schema、API 字段、mutation JSON 和服务端协议保持。共享领域定义退役对应 DTO；
+  必要的私有 wire 保留不同的原 JSON 形状，
   展示映射不刷新原金额、原 key、原 OCC、principal 或会话代际。请求准入和错误分类仍由原 owner 执行。
 - 五项固定原始 JSON 用例覆盖资金全部 74 字段及嵌套活动部分、成员提议时间/空白、
   商户/引用创建已接受回执、保存查询 consume 原字节。旧草稿可以被新代码读出并继续使用原命令。
-- 同一候选主代码、JVM 和 AndroidTest Kotlin 编译通过；完整本机 JVM 执行 2942 项，
-  2940 通过、2 失败、零跳过。失败是 Windows DataStore 重命名和 SQLite 重新打开，
-  与此前未修改基线复现的两个测试/异常一致；不隐藏失败，云端完整 JVM 仍是独立门禁。
-- main 和测试 detekt 无新增 finding。生产分析的 31 个既有类型分析告警仍保留，不能代替编译证据。
-  错误边界逐个核对并登记当前符号；Worker 的异常输出使用已有脱敏 Logcat owner，调度结果不变。
-- 当前源码 import 复核覆盖 1140 文件、7540 条项目内 import；领域反向依赖、数据 → UI/ViewModel、
-  ViewModel → UI、UI/ViewModel → 网络层均为零。成功编译后另查 UI/ViewModel 字节码，DTO/Entity 引用为零。
+- 编译、完整 JVM、detekt、Lint、schema 和 Connected 结果必须绑定本次候选；返工前的绿色不能替代当前结果。
+  已在未修改基线复现的 Windows DataStore 重命名和 SQLite 重新打开失败单列，云端完整 JVM 是独立门禁。
+- 错误边界逐个核对并登记当前符号；Worker 的异常输出使用已有脱敏 Logcat owner，调度结果不变。
+- 源码检查覆盖全部主源集，另查 UI/ViewModel 编译后类型；检查领域反向依赖、数据 → UI/ViewModel、
+  ViewModel → UI、UI/ViewModel → 网络层及 DTO/Entity 泄漏。
 - 完整 JVM、Lint、构建、Room schema 漂移门和 Connected 消费者旅程以本 PR 的 exact source/tree 检查为准；
   本机编译与静态检查不替代设备执行。没有重装日常手机、日常电脑或旧验收 VM。
 
 这轮是当前实现的责任与依赖收敛，不扩展已关闭 R1/公网的验收资格；
-R2/U1/C1 HOLD、iPhone 未验、iPad 后续范围保持。同形 DTO/领域值的字段演进仍需同步检查显式映射和实际消费者，
-不为此再增加通用转换框架。
+R2/U1/C1 HOLD、iPhone 未验、iPad 后续范围保持。复杂度只保留在确有责任的 owner 和格式边界内，
+不为形式上的分层向全仓扩散。

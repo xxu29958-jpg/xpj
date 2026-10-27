@@ -3,24 +3,25 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
-import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.dto.AccountPostingDto
 import com.ticketbox.data.remote.dto.CreditPaymentDto
 import com.ticketbox.data.remote.dto.CreditPaymentVoidDto
+import com.ticketbox.data.remote.dto.ExpenseFundingCommandDto
 import com.ticketbox.data.remote.dto.FinancialAccountCreateDto
-import com.ticketbox.data.remote.dto.FinancialAccountReceiptDto
 import com.ticketbox.data.remote.dto.FinancialAccountDto
 import com.ticketbox.data.remote.dto.FinancialAccountEditDto
-import com.ticketbox.data.remote.dto.AccountPostingDto
-import com.ticketbox.data.remote.dto.FundsOverviewDto
-import com.ticketbox.data.remote.dto.ExpenseFundingViewDto
-import com.ticketbox.data.remote.dto.ExpenseFundingCommandDto
+import com.ticketbox.data.remote.dto.FinancialAccountReceiptDto
 import com.ticketbox.data.remote.dto.InstallmentCommandDto
-import com.ticketbox.data.remote.dto.InstallmentsDto
+import com.ticketbox.domain.model.ExpenseFundingView
+import com.ticketbox.domain.model.FundsOverview
+import com.ticketbox.domain.model.Installments
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
+@JsonClass(generateAdapter = true)
 data class FundsInput(val binding: LogicalSessionBinding, val mode: String, val key: String,
     val accountId: String = "", val version: Long = 0, val calendarRevision: Long = 0,
     val name: String = "", val kind: String = "bank", val currency: String = "", val visibility: String = "private",
@@ -48,113 +49,6 @@ data class FundsInput(val binding: LogicalSessionBinding, val mode: String, val 
     val activityParts: List<com.ticketbox.domain.model.ActivityCorrectionPart> = emptyList())
 
 @JsonClass(generateAdapter = true)
-internal data class FundsInputWire(val binding: LogicalSessionBinding, val mode: String, val key: String,
-    val accountId: String = "", val version: Long = 0, val calendarRevision: Long = 0,
-    val name: String = "", val kind: String = "bank", val currency: String = "", val visibility: String = "private",
-    val institution: String = "", val tail: String = "", val opening: String = "", val date: String = "",
-    val source: String = "本人核对", val archived: Boolean = false,
-    val payerId: String = "", val payerName: String = "", val payerCurrency: String = "", val payerVersion: Long = 0,
-    val principal: String = "", val paid: String = "", val note: String = "",
-    val newFee: String = "", val feeNote: String = "", val activityAmount: String = "", val otherAmount: String = "",
-    val applyAdjustment: Boolean = false, val loanName: String = "", val loanCurrency: String = "", val loanPrincipal: String = "",
-    val expenseId: Long? = null, val fundingJson: String = "[]", val previousAgreement: String = "",
-    val drawIds: List<String> = emptyList(), val periodsJson: String = "[]", val allocationJson: String = "[]", val overpayment: String = "",
-    val repaymentId: String = "", val creditLimit: String = "", val availableCredit: String = "",
-    val creditObservedOn: String = "", val creditSource: String = "", val statementDay: String = "", val paymentDueDay: String = "",
-    val existingDebtId: String = "", val existingDebtVersion: Long = 0, val existingDebtLabel: String = "",
-    val sourceRepaymentDraftId: String = "", val sourceAmountBasis: String = "payer_total",
-    val sourceReviewReason: String = "", val sourceCurrency: String = "", val sourceAmount: String = "",
-    val sourceLabel: String = "", val envelopeMonth: String = "",
-    val envelopeAccounts: List<String> = emptyList(), val envelopeAccountVersions: Map<String, Long> = emptyMap(),
-    val envelopeAmounts: Map<String, String> = emptyMap(), val visibilityEdit: String? = null,
-    val feePeriodId: String = "", val feePeriodLabel: String = "", val feePayments: Map<String, String> = emptyMap(),
-    val payerFeeAmount: String = "", val creditSourceId: String = "", val creditDrawId: String = "",
-    val creditReviewId: String = "", val creditSourceLabel: String = "", val creditDrawLabel: String = "",
-    val legacyRepayment: Boolean = false, val reviewedDebtAmount: String = "",
-    val activityEventId: String = "", val activityLabel: String = "",
-    val activityParts: List<com.ticketbox.data.remote.dto.ActivityCorrectionPartDto> = emptyList())
-internal fun FundsInputWire.toDomain() = FundsInput(
-    binding = binding, mode = mode,
-    key = key, accountId = accountId,
-    version = version, calendarRevision = calendarRevision,
-    name = name, kind = kind,
-    currency = currency, visibility = visibility,
-    institution = institution, tail = tail,
-    opening = opening, date = date,
-    source = source, archived = archived,
-    payerId = payerId, payerName = payerName,
-    payerCurrency = payerCurrency, payerVersion = payerVersion,
-    principal = principal, paid = paid,
-    note = note, newFee = newFee,
-    feeNote = feeNote, activityAmount = activityAmount,
-    otherAmount = otherAmount, applyAdjustment = applyAdjustment,
-    loanName = loanName, loanCurrency = loanCurrency,
-    loanPrincipal = loanPrincipal, expenseId = expenseId,
-    fundingJson = fundingJson, previousAgreement = previousAgreement,
-    drawIds = drawIds, periodsJson = periodsJson,
-    allocationJson = allocationJson, overpayment = overpayment,
-    repaymentId = repaymentId, creditLimit = creditLimit,
-    availableCredit = availableCredit, creditObservedOn = creditObservedOn,
-    creditSource = creditSource, statementDay = statementDay,
-    paymentDueDay = paymentDueDay, existingDebtId = existingDebtId,
-    existingDebtVersion = existingDebtVersion, existingDebtLabel = existingDebtLabel,
-    sourceRepaymentDraftId = sourceRepaymentDraftId, sourceAmountBasis = sourceAmountBasis,
-    sourceReviewReason = sourceReviewReason, sourceCurrency = sourceCurrency,
-    sourceAmount = sourceAmount, sourceLabel = sourceLabel,
-    envelopeMonth = envelopeMonth, envelopeAccounts = envelopeAccounts,
-    envelopeAccountVersions = envelopeAccountVersions, envelopeAmounts = envelopeAmounts,
-    visibilityEdit = visibilityEdit, feePeriodId = feePeriodId,
-    feePeriodLabel = feePeriodLabel, feePayments = feePayments,
-    payerFeeAmount = payerFeeAmount, creditSourceId = creditSourceId,
-    creditDrawId = creditDrawId, creditReviewId = creditReviewId,
-    creditSourceLabel = creditSourceLabel, creditDrawLabel = creditDrawLabel,
-    legacyRepayment = legacyRepayment, reviewedDebtAmount = reviewedDebtAmount,
-    activityEventId = activityEventId, activityLabel = activityLabel,
-    activityParts = activityParts.map { it.toDomain() },
-)
-
-internal fun FundsInput.toWire() = FundsInputWire(
-    binding = binding, mode = mode,
-    key = key, accountId = accountId,
-    version = version, calendarRevision = calendarRevision,
-    name = name, kind = kind,
-    currency = currency, visibility = visibility,
-    institution = institution, tail = tail,
-    opening = opening, date = date,
-    source = source, archived = archived,
-    payerId = payerId, payerName = payerName,
-    payerCurrency = payerCurrency, payerVersion = payerVersion,
-    principal = principal, paid = paid,
-    note = note, newFee = newFee,
-    feeNote = feeNote, activityAmount = activityAmount,
-    otherAmount = otherAmount, applyAdjustment = applyAdjustment,
-    loanName = loanName, loanCurrency = loanCurrency,
-    loanPrincipal = loanPrincipal, expenseId = expenseId,
-    fundingJson = fundingJson, previousAgreement = previousAgreement,
-    drawIds = drawIds, periodsJson = periodsJson,
-    allocationJson = allocationJson, overpayment = overpayment,
-    repaymentId = repaymentId, creditLimit = creditLimit,
-    availableCredit = availableCredit, creditObservedOn = creditObservedOn,
-    creditSource = creditSource, statementDay = statementDay,
-    paymentDueDay = paymentDueDay, existingDebtId = existingDebtId,
-    existingDebtVersion = existingDebtVersion, existingDebtLabel = existingDebtLabel,
-    sourceRepaymentDraftId = sourceRepaymentDraftId, sourceAmountBasis = sourceAmountBasis,
-    sourceReviewReason = sourceReviewReason, sourceCurrency = sourceCurrency,
-    sourceAmount = sourceAmount, sourceLabel = sourceLabel,
-    envelopeMonth = envelopeMonth, envelopeAccounts = envelopeAccounts,
-    envelopeAccountVersions = envelopeAccountVersions, envelopeAmounts = envelopeAmounts,
-    visibilityEdit = visibilityEdit, feePeriodId = feePeriodId,
-    feePeriodLabel = feePeriodLabel, feePayments = feePayments,
-    payerFeeAmount = payerFeeAmount, creditSourceId = creditSourceId,
-    creditDrawId = creditDrawId, creditReviewId = creditReviewId,
-    creditSourceLabel = creditSourceLabel, creditDrawLabel = creditDrawLabel,
-    legacyRepayment = legacyRepayment, reviewedDebtAmount = reviewedDebtAmount,
-    activityEventId = activityEventId, activityLabel = activityLabel,
-    activityParts = activityParts.map { it.toDto() },
-)
-
-
-@JsonClass(generateAdapter = true)
 data class FundsCommand(val revision: Int = 1, val binding: LogicalSessionBinding, val accountId: String,
     val create: FinancialAccountCreateDto? = null, val edit: FinancialAccountEditDto? = null,
     val payment: CreditPaymentDto? = null, val activity: AccountPostingDto? = null,
@@ -174,24 +68,23 @@ data class FundsCommand(val revision: Int = 1, val binding: LogicalSessionBindin
 
 internal object FundsWire {
     private val moshi = Moshi.Builder().build()
-    val input = moshi.adapter(FundsInputWire::class.java)
+    val input = moshi.adapter(FundsInput::class.java)
     val command = moshi.adapter(FundsCommand::class.java)
     val account = moshi.adapter(FinancialAccountDto::class.java)
     val accountReceipt = moshi.adapter(FinancialAccountReceiptDto::class.java)
     val envelopeReceipt = moshi.adapter(com.ticketbox.data.remote.dto.EnvelopeReceiptDto::class.java)
-    val envelopeHistory = moshi.adapter<List<com.ticketbox.data.remote.dto.EnvelopeRevisionDto>>(
-        Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.EnvelopeRevisionDto::class.java))
-    val overview = moshi.adapter(FundsOverviewDto::class.java)
-    val funding = moshi.adapter(ExpenseFundingViewDto::class.java)
-    val installments = moshi.adapter(InstallmentsDto::class.java)
-    val envelopes = moshi.adapter(com.ticketbox.data.remote.dto.EnvelopesDto::class.java)
+    val envelopeHistory = moshi.adapter<List<com.ticketbox.domain.model.EnvelopeRevision>>(
+        Types.newParameterizedType(List::class.java, com.ticketbox.domain.model.EnvelopeRevision::class.java))
+    val overview = moshi.adapter(FundsOverview::class.java)
+    val funding = moshi.adapter(ExpenseFundingView::class.java)
+    val installments = moshi.adapter(Installments::class.java)
+    val envelopes = moshi.adapter(com.ticketbox.domain.model.Envelopes::class.java)
     val listing = moshi.adapter<List<FinancialAccountDto>>(Types.newParameterizedType(List::class.java, FinancialAccountDto::class.java))
-    val choices = moshi.adapter<List<com.ticketbox.data.remote.dto.AccountChoiceDto>>(
-        Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.AccountChoiceDto::class.java))
-    val existingDebts = moshi.adapter<List<com.ticketbox.data.remote.dto.ExistingDebtChoiceDto>>(
-        Types.newParameterizedType(List::class.java, com.ticketbox.data.remote.dto.ExistingDebtChoiceDto::class.java))
+    val choices = moshi.adapter<List<com.ticketbox.domain.model.AccountChoice>>(
+        Types.newParameterizedType(List::class.java, com.ticketbox.domain.model.AccountChoice::class.java))
+    val existingDebts = moshi.adapter<List<com.ticketbox.domain.model.ExistingDebtChoice>>(
+        Types.newParameterizedType(List::class.java, com.ticketbox.domain.model.ExistingDebtChoice::class.java))
 }
-
 
 internal const val FUNDS_REFUSED = "资金请求未接受："
 

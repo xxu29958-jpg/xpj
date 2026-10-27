@@ -3,23 +3,23 @@ package com.ticketbox.data.repository
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.ExchangeRateDto
 import com.ticketbox.data.remote.dto.ExchangeRateListDto
-import com.ticketbox.data.remote.dto.ExchangeRateRequestDto
+import com.ticketbox.domain.model.ExchangeRate
+import com.ticketbox.domain.model.ExchangeRateRequest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class ManualExchangeRateContinuityTest {
     @Test fun everyReceiptFieldMustMatchTheOriginalAnd404NeverCompletes() = runTest {
         val f = ManualRateFixture()
-        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request.toDomain(), null).getOrThrow()
+        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
         val pending = f.pending(id)
         val intent = requireNotNull(f.adapters.budget.manualRateAdapter.fromJson(pending.row.payloadJson))
         val mismatches = listOf(f.latest.copy(publicId = ""), f.latest.copy(currencyCode = "USD"),
@@ -34,14 +34,14 @@ class ManualExchangeRateContinuityTest {
 
     @Test fun rejectedOrUnverifiedRateKeepsOriginalAndRequiresReview() = runTest {
         val f = ManualRateFixture()
-        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request.toDomain(), null).getOrThrow()
+        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
         f.response = f.latest.copy(homeCurrencyCode = "USD")
         f.dao.runnableBatches += listOf(id)
         assertEquals(1, f.engine.drainOnce().failures)
         assertEquals(0, f.adviceInvalidations)
         assertFalse(f.pending(id).isConfirmed)
         assertFalse(f.pending(id).canRetry)
-        assertTrue(f.repository.enqueueRate(f.binding, "2026-09", f.request.toDomain(), null).isFailure)
+        assertTrue(f.repository.enqueueRate(f.binding, "2026-09", f.request, null).isFailure)
         val pending = f.pending(id)
         assertTrue(f.dispatcher.dispatch(pending.row.copy(payloadJson = "{}")) is DispatchResult.Failure)
         assertEquals(1, f.keys.size)
@@ -49,25 +49,25 @@ class ManualExchangeRateContinuityTest {
 
     @Test fun conflictDoesNotChangeOriginalVersionAndNewCorrectionRequiresExplicitStopAndNewIntent() = runTest {
         val f = ManualRateFixture()
-        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request.toDomain(), null).getOrThrow()
+        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
         val original = f.dao.rows.getValue(id)
         f.outbox.markConflict(id, "state_conflict")
         assertFalse(f.pending(id).canRetry)
         assertTrue(f.repository.recoverRate(f.binding, f.pending(id), false).isFailure)
         f.repository.recoverRate(f.binding, f.pending(id), true).getOrThrow()
         val next = f.repository.enqueueRate(f.binding, "2026-09",
-            f.request.copy(expectedRowVersion = 1).toDomain(), f.latest.publicId).getOrThrow()
+            f.request.copy(expectedRowVersion = 1), f.latest.publicId).getOrThrow()
         assertTrue(original.idempotencyKey != f.dao.rows.getValue(next).idempotencyKey)
         assertEquals(1L, f.pending(next).row.expectedRowVersion)
     }
 
     @Test fun changedBindingCannotSaveOrStopTheOriginalRate() = runTest {
         val f = ManualRateFixture()
-        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request.toDomain(), null).getOrThrow()
+        val id = f.repository.enqueueRate(f.binding, "2026-09", f.request, null).getOrThrow()
         f.outbox.markFailed(id, "client_upgrade_required")
         val pending = f.pending(id)
         f.session.switchLedgerForFixture("other", "Other")
-        assertTrue(f.repository.enqueueRate(f.binding, "2026-09", f.request.toDomain(), null).isFailure)
+        assertTrue(f.repository.enqueueRate(f.binding, "2026-09", f.request, null).isFailure)
         assertTrue(f.repository.recoverRate(f.binding, pending, true).isFailure)
         assertEquals(null, f.repository.describeRate(pending.row))
         assertTrue(f.dao.rows.containsKey(id))
@@ -81,8 +81,8 @@ internal class ManualRateFixture {
     val adapters = OutboxAdapterGraph()
     val dao = FakePendingMutationDao()
     val outbox = testOutboxRepository(dao, bindingProvider = { session.sessionStore.currentSession().toOutboxBinding() })
-    val request = ExchangeRateRequestDto("JPY", "CNY", "2026-09-01", "0.05", "manual", 0)
-    var latest = ExchangeRateDto("manual-rate", "JPY", "CNY", "2026-09-01", "0.05", "manual",
+    val request = ExchangeRateRequest("JPY", "CNY", "2026-09-01", "0.05", "manual", 0)
+    var latest = ExchangeRate("manual-rate", "JPY", "CNY", "2026-09-01", "0.05", "manual",
         "2026-09-09T00:00:00Z", "2026-09-09T00:00:00Z", 1)
     val keys = mutableListOf<String>()
     var response = latest
@@ -90,7 +90,7 @@ internal class ManualRateFixture {
         override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int) =
             ExchangeRateListDto(listOf(latest))
         override suspend fun saveExchangeRate(currencyCode: String, rateDate: String,
-            request: ExchangeRateRequestDto, idempotencyKey: String): ExchangeRateDto {
+            request: ExchangeRateRequest, idempotencyKey: String): ExchangeRate {
             assertEquals(request.currencyCode, currencyCode)
             assertEquals(request.rateDate, rateDate)
             keys += idempotencyKey

@@ -1,12 +1,12 @@
 package com.ticketbox.data.remote.api
 
-import com.ticketbox.data.remote.dto.SavedViewDefinitionRequestDto
 import com.ticketbox.data.remote.dto.SavedViewDeleteRequestDto
-import com.ticketbox.data.remote.dto.SavedViewDeletionReceiptDto
-import com.ticketbox.data.remote.dto.SavedViewDto
 import com.ticketbox.data.remote.dto.SavedViewListDto
 import com.ticketbox.data.remote.dto.SavedViewResultsDto
 import com.ticketbox.data.remote.dto.SavedViewUpdateRequestDto
+import com.ticketbox.domain.model.SavedView
+import com.ticketbox.domain.model.SavedViewDefinitionRequest
+import com.ticketbox.domain.model.SavedViewDeletionReceipt
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.HTTP
@@ -21,28 +21,28 @@ interface SavedViewApi {
     suspend fun savedViews(): SavedViewListDto
 
     @GET("api/saved-views/{publicId}")
-    suspend fun savedView(@Path("publicId") publicId: String): SavedViewDto
+    suspend fun savedView(@Path("publicId") publicId: String): SavedView
 
     @GET("api/saved-views/{publicId}/results")
     suspend fun savedViewResults(@Path("publicId") publicId: String, @Query("page") page: Int): SavedViewResultsDto
 
     @POST("api/saved-views")
     suspend fun createSavedView(
-        @Body request: SavedViewDefinitionRequestDto,
+        @Body request: SavedViewDefinitionRequest,
         @Header("Idempotency-Key") idempotencyKey: String,
-    ): SavedViewDto
+    ): SavedView
 
     @PATCH("api/saved-views/{publicId}")
     suspend fun updateSavedView(
         @Path("publicId") publicId: String,
         @Body request: SavedViewUpdateRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String,
-    ): SavedViewDto
+    ): SavedView
 
     @HTTP(method = "DELETE", path = "api/saved-views/{publicId}", hasBody = true)
     suspend fun deleteSavedView(
         @Path("publicId") publicId: String,
         @Body request: SavedViewDeleteRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String,
-    ): SavedViewDeletionReceiptDto
+    ): SavedViewDeletionReceipt
 }

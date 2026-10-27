@@ -4,21 +4,21 @@ import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
+import com.ticketbox.domain.model.GoalCreateRequest
 import com.ticketbox.domain.model.GoalDraft
 import java.util.UUID
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class GoalCreationRepositoryTest {
     @Test fun creationIsDurableBeforeAnyRemoteWriteAndKeepsCapturedCurrency() = runTest {
@@ -142,7 +142,7 @@ private class GoalCreationFixture {
     val draft = GoalDraft(" Travel ", "2026-09", 1200, "交通", "jpy")
     val creationKey = UUID.randomUUID().toString()
     val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
-        override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto {
+        override suspend fun createGoal(request: GoalCreateRequest, timezone: String?, idempotencyKey: String?): GoalDto {
             keys += idempotencyKey
             httpError?.let { throw it }
             return if (wrongReceipt) response.copy(homeCurrencyCode = "CNY") else response

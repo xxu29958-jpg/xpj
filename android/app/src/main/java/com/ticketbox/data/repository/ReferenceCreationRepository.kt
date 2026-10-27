@@ -1,9 +1,9 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.dto.ReferenceCreateRequestDto
-import com.ticketbox.data.remote.dto.ReferenceCreatedDto
-import kotlinx.coroutines.flow.Flow
+import com.ticketbox.domain.model.ReferenceCreated
 import java.util.UUID
+import kotlinx.coroutines.flow.Flow
 
 enum class ReferenceKind(val wire: String) { Category("category"), Tag("tag") }
 
@@ -34,7 +34,7 @@ class ReferenceCreationRepository(
                 }
                 check(receipt.kind == kind.wire && receipt.rowVersion > 0) { "返回的添加结果不匹配，请核实原提交。" }
                 UUID.fromString(receipt.publicId)
-                receipt.toDomain()
+                receipt
             }
         }
 }

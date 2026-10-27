@@ -1,24 +1,29 @@
 package com.ticketbox.domain.model
 
-/** Values consumed by the product; wire names and persistence remain at the repository boundary. */
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
 data class CreditApplicationChoice(
-    val publicId: String,
+    @param:Json(name = "public_id") val publicId: String,
     val note: String,
-    val occurredOn: String,
-    val remainingMinor: Long,
+    @param:Json(name = "occurred_on") val occurredOn: String,
+    @param:Json(name = "remaining_minor") val remainingMinor: Long,
 )
 
+@JsonClass(generateAdapter = true)
 data class CreditApplicationHistory(
-    val publicId: String,
-    val creditNote: String,
-    val drawNote: String,
-    val amountMinor: Long,
-    val appliedMinor: Long,
+    @param:Json(name = "public_id") val publicId: String,
+    @param:Json(name = "credit_note") val creditNote: String,
+    @param:Json(name = "draw_note") val drawNote: String,
+    @param:Json(name = "amount_minor") val amountMinor: Long,
+    @param:Json(name = "applied_minor") val appliedMinor: Long,
     val reason: String,
-    val createdAt: String,
-    val voidReason: String?,
+    @param:Json(name = "created_at") val createdAt: String,
+    @param:Json(name = "void_reason") val voidReason: String?,
 )
 
+@JsonClass(generateAdapter = true)
 data class CreditApplications(
     val credits: List<CreditApplicationChoice>,
     val obligations: List<CreditApplicationChoice>,

@@ -10,20 +10,20 @@ import retrofit2.http.Query
 
 interface RepaymentDraftApi {
     @POST("api/payment-captures")
-    suspend fun capturePayment(@Body request: com.ticketbox.data.remote.dto.PaymentCaptureCreateDto): com.ticketbox.data.remote.dto.PaymentCaptureDto
+    suspend fun capturePayment(@Body request: com.ticketbox.data.remote.dto.PaymentCaptureCreateDto): com.ticketbox.domain.model.PaymentCapture
 
     @GET("api/payment-captures")
-    suspend fun paymentCaptures(): List<com.ticketbox.data.remote.dto.PaymentCaptureDto>
+    suspend fun paymentCaptures(): List<com.ticketbox.domain.model.PaymentCapture>
 
     @POST("api/payment-captures/{publicId}/decision")
     suspend fun decidePaymentCapture(@Path("publicId") publicId: String,
-        @Body request: com.ticketbox.data.remote.dto.PaymentCaptureDecisionDto,
-        @Header("Idempotency-Key") key: String): com.ticketbox.data.remote.dto.PaymentCaptureDto
+        @Body request: com.ticketbox.domain.model.PaymentCaptureDecision,
+        @Header("Idempotency-Key") key: String): com.ticketbox.domain.model.PaymentCapture
 
     @POST("api/repayment-drafts/{publicId}/as-expense")
     suspend fun repaymentAsExpense(@Path("publicId") publicId: String,
         @Body request: com.ticketbox.data.remote.dto.RepaymentAsExpenseDto,
-        @Header("Idempotency-Key") key: String): com.ticketbox.data.remote.dto.PaymentCaptureDto
+        @Header("Idempotency-Key") key: String): com.ticketbox.domain.model.PaymentCapture
     // ADR-0049 §杠杆③ (slice 3a): NLS repayment-capture inbox. The list is ledger-scoped via the
     // session token (default status=pending). Create posts one NLS-captured repayment as a PENDING
     // draft (never auto-records — §8); it is content+identity deduped server-side, so it carries no

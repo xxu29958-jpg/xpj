@@ -4,40 +4,40 @@ import android.os.Bundle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.SAVED_STATE_REGISTRY_OWNER_KEY
 import androidx.lifecycle.VIEW_MODEL_STORE_OWNER_KEY
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.viewmodel.MutableCreationExtras
 import androidx.lifecycle.viewModelScope
-import androidx.test.platform.app.InstrumentationRegistry
+import androidx.lifecycle.viewmodel.MutableCreationExtras
 import androidx.test.espresso.Espresso.closeSoftKeyboard
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
 import com.ticketbox.data.remote.dto.RuntimeCompatibilityDto
 import com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto
 import com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.domain.model.GoalCreateRequest
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.ui.screens.CreateSpendingGoalScreen
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.CreateSpendingGoalViewModel
 import com.ticketbox.viewmodel.createSpendingGoalViewModelFactory
 import java.io.IOException
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -53,14 +53,14 @@ class GoalCreationRoomContinuityTest {
     private var loseAck = true
     private var navigations = 0
     private val keys = mutableListOf<String?>()
-    private val requests = mutableListOf<GoalCreateRequestDto>()
+    private val requests = mutableListOf<GoalCreateRequest>()
     private var response = GoalDto("goal-created", "debt-adjustment-ledger", "旅行", "spending_limit", "monthly",
         "2026-09", null, 1200, 0, 1200, 0, "not_started", "active",
         "2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z", 1, null, homeCurrencyCode = "JPY")
     private val service = object : ApiService by network.service {
         override suspend fun runtimeCompatibility() = RuntimeCompatibilityDto(CURRENT_TICKETBOX_API_VERSION, "compatible",
             RuntimeProductCapabilitiesDto(RuntimeCurrencyCapabilityDto("1:1:$currency", currency, if (currency == "JPY") 0 else 2, "compatible")))
-        override suspend fun createGoal(request: GoalCreateRequestDto, timezone: String?, idempotencyKey: String?): GoalDto {
+        override suspend fun createGoal(request: GoalCreateRequest, timezone: String?, idempotencyKey: String?): GoalDto {
             keys += idempotencyKey
             requests += request
             if (loseAck) throw IOException("Synthetic lost acknowledgement")
@@ -192,7 +192,7 @@ class GoalCreationRoomContinuityTest {
 
     private fun installModel(repository: GoalEditActions) {
         val actions = object : GoalEditActions by repository {
-            override suspend fun create(binding: LogicalSessionBinding, request: com.ticketbox.data.remote.dto.GoalCreateRequestDto,
+            override suspend fun create(binding: LogicalSessionBinding, request: com.ticketbox.domain.model.GoalCreateRequest,
                 creationKey: String): Result<Long> {
                 val result = repository.create(binding, request, creationKey)
                 if (result.isSuccess) localAcknowledgement?.await()

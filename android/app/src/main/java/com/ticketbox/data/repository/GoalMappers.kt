@@ -1,12 +1,12 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.remote.dto.GoalDto
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.domain.model.Goal
+import com.ticketbox.domain.model.GoalCreateRequest
 import com.ticketbox.domain.model.GoalDraft
 import com.ticketbox.domain.model.GoalProgressState
 import com.ticketbox.domain.model.GoalUpdate
+import com.ticketbox.domain.model.GoalUpdateRequest
 import com.ticketbox.domain.model.normalizeExpenseCategory
 
 fun GoalDto.toDomain(): Goal = Goal(
@@ -32,7 +32,7 @@ fun GoalDto.toDomain(): Goal = Goal(
     undatedExpenseCount = undatedExpenseCount,
 )
 
-fun GoalDraft.toRequest(): GoalCreateRequestDto = GoalCreateRequestDto(
+fun GoalDraft.toRequest(): GoalCreateRequest = GoalCreateRequest(
     name = name.trim(),
     month = month.trim(),
     targetAmountCents = targetAmountCents,
@@ -40,7 +40,7 @@ fun GoalDraft.toRequest(): GoalCreateRequestDto = GoalCreateRequestDto(
     category = category.cleanCategoryOrNull(),
 )
 
-fun GoalUpdate.toRequest(): GoalUpdateRequestDto = GoalUpdateRequestDto(
+fun GoalUpdate.toRequest(): GoalUpdateRequest = GoalUpdateRequest(
     expectedRowVersion = expectedRowVersion,
     homeCurrencyCode = homeCurrencyCode,
     name = name?.trim()?.takeIf { it.isNotBlank() },
@@ -56,4 +56,4 @@ private fun String?.cleanCategoryOrNull(): String? =
     this?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory)
 
 internal fun GoalUpdate.matchesSubmittedRequest(original: com.ticketbox.domain.model.GoalUpdateRequest?): Boolean =
-    toRequest().toDomain() == original
+    toRequest() == original

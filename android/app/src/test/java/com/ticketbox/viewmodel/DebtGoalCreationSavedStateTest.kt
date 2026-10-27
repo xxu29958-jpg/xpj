@@ -3,20 +3,10 @@ package com.ticketbox.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.local.PendingMutationStatus
-import com.ticketbox.data.remote.dto.GoalCreateRequestDto
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.PendingGoalCreation
+import com.ticketbox.domain.model.GoalCreateRequest
 import java.io.IOException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -25,6 +15,16 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 
 class DebtGoalCreationSavedStateTest {
     private val dispatcher = StandardTestDispatcher()
@@ -185,7 +185,7 @@ class DebtGoalCreationSavedStateTest {
         vm.updateName("  独立草稿  "); vm.toggleDebt("a")
         val ownKey = vm.state.value.creationKey
         val other = PendingGoalCreation(debtCreationRow(adjustmentBinding(), "other-key", 7),
-            GoalCreateRequestDto(name = "另一个原提交", goalType = "debt_repayment", debtPublicIds = listOf("cleared")), null)
+            GoalCreateRequest(name = "另一个原提交", goalType = "debt_repayment", debtPublicIds = listOf("cleared")), null)
         edits.origins[7] = adjustmentBinding(); edits.rows.value = listOf(other)
         vm.reload(7); advanceUntilIdle()
         assertEquals("另一个原提交", vm.state.value.name)

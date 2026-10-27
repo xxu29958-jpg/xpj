@@ -1,6 +1,7 @@
 package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
+import com.ticketbox.domain.model.BillSplitChangeProposal
 
 /** Participant-visible records, not another balance or command owner. */
 data class DebtActivityDto(
@@ -13,7 +14,7 @@ data class DebtActivityDto(
     val reason: String? = null,
     val repayment: RepaymentFactDto? = null,
     val proposal: MemberRepaymentProposalDto? = null,
-    @param:Json(name = "split_change") val splitChange: BillSplitChangeProposalDto? = null,
+    @param:Json(name = "split_change") val splitChange: BillSplitChangeProposal? = null,
 )
 
 data class DebtActivityListDto(

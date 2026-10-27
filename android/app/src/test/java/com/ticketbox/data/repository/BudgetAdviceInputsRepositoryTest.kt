@@ -1,29 +1,31 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.domain.model.MonthlyArrangementChange
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.*
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.job
-import com.ticketbox.viewmodel.refreshInputs
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.advanceUntilIdle
+import com.ticketbox.domain.model.MonthlyArrangement
+import com.ticketbox.domain.model.MonthlyArrangementChange
+import com.ticketbox.domain.model.MonthlyArrangementResponse
 import com.ticketbox.viewmodel.*
+import com.ticketbox.viewmodel.refreshInputs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
 
 class BudgetAdviceInputsRepositoryTest {
     @Test fun editingDuringTheInitialReadKeepsTheYenDraftAndWaitsForDollarReportingBeforeTrial() = budgetTest {
         val f = AdviceInputsFixture()
-        f.savedArrangement = MonthlyArrangementDto(f.binding.ledgerId, "2026-09", "JPY", 1200, 300, 1, "now")
+        f.savedArrangement = MonthlyArrangement(f.binding.ledgerId, "2026-09", "JPY", 1200, 300, 1, "now")
         f.inputs = f.inputs.copy(homeCurrencyCode = "USD", savedArrangement = f.savedArrangement,
             breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 120, 30, 6850), missingRates = emptyList())
         val initial = CompletableDeferred<BudgetAdviceInputsDto>()
@@ -58,7 +60,7 @@ class BudgetAdviceInputsRepositoryTest {
 
     @Test fun oldOrWrongCurrencyEchoCannotPublishCrossCurrencyTrialOrCacheAiWhileCorrectEchoKeepsTheYenDraft() = budgetTest {
         val f = AdviceInputsFixture()
-        f.savedArrangement = MonthlyArrangementDto(f.binding.ledgerId, "2026-09", "JPY", 1200, 300, 1, "now")
+        f.savedArrangement = MonthlyArrangement(f.binding.ledgerId, "2026-09", "JPY", 1200, 300, 1, "now")
         f.inputs = f.inputs.copy(homeCurrencyCode = "USD", savedArrangement = f.savedArrangement,
             breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 120, 30, 6850), missingRates = emptyList())
         f.withViewModel { vm ->
@@ -117,7 +119,7 @@ class BudgetAdviceInputsRepositoryTest {
 
     @Test fun yenDraftTrialAndAiStayInDollarReportThroughRateRepairAndFreshBasisWithoutRewritingTheSave() = budgetTest {
         val f = AdviceInputsFixture()
-        f.savedArrangement = MonthlyArrangementDto(f.binding.ledgerId, "2026-09", "JPY", 1200, 300, 1, "now")
+        f.savedArrangement = MonthlyArrangement(f.binding.ledgerId, "2026-09", "JPY", 1200, 300, 1, "now")
         f.inputs = f.inputs.copy(homeCurrencyCode = "USD", savedArrangement = f.savedArrangement,
             breakdown = DiscretionaryResponseDto(10000, 1000, 2000, 120, 30, 6850), missingRates = emptyList())
         f.withViewModel { vm ->
@@ -172,7 +174,7 @@ class BudgetAdviceInputsRepositoryTest {
             vm.uiState.first { !it.arrangementBusy }
             val row = f.dao.allRows().single()
             val saved = assertNotNull(com.ticketbox.OutboxAdapterGraph().budget.arrangementSaveAdapter.fromJson(row.payload))
-            assertEquals(trial.copy(expectedRowVersion = null), saved.request.toDomain())
+            assertEquals(trial.copy(expectedRowVersion = null), saved.request)
             assertEquals("JPY", saved.request.homeCurrencyCode)
             assertEquals(1L, row.expectedRowVersion)
         }
@@ -299,7 +301,7 @@ private class AdviceInputsFixture {
     val reads = mutableListOf<Pair<String, String?>>()
     val requests = mutableListOf<BudgetAdviseRequestDto>()
     val trialQueries = mutableListOf<Map<String, String>>()
-    var savedArrangement: MonthlyArrangementDto? = null
+    var savedArrangement: MonthlyArrangement? = null
     var missingTrialRate = false
     var fxDivisor = 10L
     var trialOverride: BudgetAdviceInputsDto? = null
@@ -309,7 +311,7 @@ private class AdviceInputsFixture {
             reads += month to homeCurrencyCode
             return delayedInputs?.await() ?: inputs
         }
-        override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponseDto(binding.ledgerId, month, savedArrangement)
+        override suspend fun monthlyArrangement(month: String) = MonthlyArrangementResponse(binding.ledgerId, month, savedArrangement)
         override suspend fun exchangeRates(currencyCode: String?, homeCurrencyCode: String?, rateDate: String?, limit: Int) =
             ExchangeRateListDto(emptyList())
         override suspend fun trialBudgetAdviceInputs(month: String, timezone: String?, arrangement: Map<String, String>): BudgetAdviceInputsDto {

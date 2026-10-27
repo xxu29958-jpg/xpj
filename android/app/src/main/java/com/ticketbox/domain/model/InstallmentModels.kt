@@ -1,42 +1,48 @@
 package com.ticketbox.domain.model
 
-/** Values consumed by the product; wire names and persistence remain at the repository boundary. */
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
 data class CreditDrawView(
-    val publicId: String,
+    @param:Json(name = "public_id") val publicId: String,
     val note: String,
-    val occurredOn: String,
-    val originalMinor: Long,
-    val remainingMinor: Long,
-    val agreementPublicId: String?,
+    @param:Json(name = "occurred_on") val occurredOn: String,
+    @param:Json(name = "original_minor") val originalMinor: Long,
+    @param:Json(name = "remaining_minor") val remainingMinor: Long,
+    @param:Json(name = "agreement_public_id") val agreementPublicId: String?,
 )
 
+@JsonClass(generateAdapter = true)
 data class InstallmentPeriodView(
-    val publicId: String,
+    @param:Json(name = "public_id") val publicId: String,
     val position: Int,
-    val dueOn: String,
-    val principalMinor: Long,
-    val plannedFeeMinor: Long,
-    val paidPrincipalMinor: Long,
-    val paidFeeMinor: Long,
-    val unincurredFeeMinor: Long = plannedFeeMinor - paidFeeMinor,
-    val incurredFeeMinor: Long? = null,
+    @param:Json(name = "due_on") val dueOn: String,
+    @param:Json(name = "principal_minor") val principalMinor: Long,
+    @param:Json(name = "planned_fee_minor") val plannedFeeMinor: Long,
+    @param:Json(name = "paid_principal_minor") val paidPrincipalMinor: Long,
+    @param:Json(name = "paid_fee_minor") val paidFeeMinor: Long,
+    @param:Json(name = "unincurred_fee_minor") val unincurredFeeMinor: Long = plannedFeeMinor - paidFeeMinor,
+    @param:Json(name = "incurred_fee_minor") val incurredFeeMinor: Long? = null,
 )
 
+@JsonClass(generateAdapter = true)
 data class InstallmentView(
-    val publicId: String,
-    val seriesId: String,
+    @param:Json(name = "public_id") val publicId: String,
+    @param:Json(name = "series_id") val seriesId: String,
     val revision: Long, val name: String, val source: String,
-    val agreedOn: String,
+    @param:Json(name = "agreed_on") val agreedOn: String,
     val active: Boolean,
-    val needsReview: Boolean,
-    val remainingPrincipalMinor: Long,
+    @param:Json(name = "needs_review") val needsReview: Boolean,
+    @param:Json(name = "remaining_principal_minor") val remainingPrincipalMinor: Long,
     val periods: List<InstallmentPeriodView>,
-    val drawPublicIds: List<String>,
+    @param:Json(name = "draw_public_ids") val drawPublicIds: List<String>,
 )
 
+@JsonClass(generateAdapter = true)
 data class Installments(
-    val accountPublicId: String,
-    val accountRowVersion: Long,
-    val currencyCode: String,
+    @param:Json(name = "account_public_id") val accountPublicId: String,
+    @param:Json(name = "account_row_version") val accountRowVersion: Long,
+    @param:Json(name = "currency_code") val currencyCode: String,
     val agreements: List<InstallmentView>, val draws: List<CreditDrawView>,
 )

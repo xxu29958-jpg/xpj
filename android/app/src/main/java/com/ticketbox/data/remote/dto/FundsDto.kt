@@ -2,6 +2,11 @@ package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import com.ticketbox.domain.model.BalanceObservation
+import com.ticketbox.domain.model.CreditApplications
+import com.ticketbox.domain.model.CreditFeeView
+import com.ticketbox.domain.model.CreditTerms
+import com.ticketbox.domain.model.FundMovement
 
 @JsonClass(generateAdapter = true)
 data class FinancialAccountDto(
@@ -22,58 +27,20 @@ data class FinancialAccountDto(
     @param:Json(name = "opening_source") val openingSource: String,
     @param:Json(name = "debt_public_id") val debtPublicId: String?,
     @param:Json(name = "can_edit") val canEdit: Boolean,
-    val movements: List<FundMovementDto> = emptyList(),
-    @param:Json(name = "fee_obligations") val feeObligations: List<CreditFeeViewDto> = emptyList(),
-    @param:Json(name = "credit_applications") val creditApplications: CreditApplicationsDto? = null,
+    val movements: List<FundMovement> = emptyList(),
+    @param:Json(name = "fee_obligations") val feeObligations: List<CreditFeeView> = emptyList(),
+    @param:Json(name = "credit_applications") val creditApplications: CreditApplications? = null,
     @param:Json(name = "prior_repayments") val priorRepayments: RepaymentFactListDto? = null,
     @param:Json(name = "unallocated_credit_minor") val unallocatedCreditMinor: Long = 0,
     @param:Json(name = "credit_kind") val creditKind: String? = null,
-    val observation: BalanceObservationDto? = null,
-    @param:Json(name = "credit_terms") val creditTerms: CreditTermsDto? = null,
+    val observation: BalanceObservation? = null,
+    @param:Json(name = "credit_terms") val creditTerms: CreditTerms? = null,
 )
 
 @JsonClass(generateAdapter = true)
 data class DebtAdoptionDto(
     @param:Json(name = "public_id") val publicId: String,
     @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
-)
-
-@JsonClass(generateAdapter = true)
-data class ExistingDebtChoiceDto(
-    @param:Json(name = "public_id") val publicId: String,
-    @param:Json(name = "row_version") val rowVersion: Long,
-    val name: String,
-    @param:Json(name = "remaining_home_minor") val remainingHomeMinor: Long,
-    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
-    @param:Json(name = "earliest_opening_date") val earliestOpeningDate: String,
-)
-
-@JsonClass(generateAdapter = true)
-data class CreditTermsDto(
-    @param:Json(name = "credit_limit_minor") val creditLimitMinor: Long? = null,
-    @param:Json(name = "available_credit_minor") val availableCreditMinor: Long? = null,
-    @param:Json(name = "observed_on") val observedOn: String? = null,
-    @param:Json(name = "statement_day") val statementDay: Int? = null,
-    @param:Json(name = "payment_due_day") val paymentDueDay: Int? = null,
-    val source: String? = null,
-)
-
-@JsonClass(generateAdapter = true)
-data class AccountChoiceDto(val key: String, val name: String, val kind: String, val institution: String)
-
-@JsonClass(generateAdapter = true)
-data class FundMovementDto(
-    @param:Json(name = "public_id") val publicId: String,
-    @param:Json(name = "event_public_id") val eventPublicId: String,
-    val kind: String,
-    @param:Json(name = "amount_minor") val amountMinor: Long,
-    @param:Json(name = "occurred_on") val occurredOn: String,
-    val note: String,
-    @param:Json(name = "expense_id") val expenseId: Long?,
-    @param:Json(name = "repayment_public_id") val repaymentPublicId: String?,
-    @param:Json(name = "can_void_repayment") val canVoidRepayment: Boolean = false,
-    val voided: Boolean = false,
-    @param:Json(name = "correction_parts") val correctionParts: List<ActivityCorrectionPartDto> = emptyList(),
 )
 
 @JsonClass(generateAdapter = true)
@@ -96,7 +63,7 @@ data class FinancialAccountCreateDto(
     @param:Json(name = "opening_amount_minor") val openingAmountMinor: Long?,
     @param:Json(name = "opening_date") val openingDate: String,
     @param:Json(name = "opening_source") val openingSource: String,
-    @param:Json(name = "credit_terms") val creditTerms: CreditTermsDto? = null,
+    @param:Json(name = "credit_terms") val creditTerms: CreditTerms? = null,
     @param:Json(name = "existing_debt") val existingDebt: DebtAdoptionDto? = null,
 )
 
@@ -104,7 +71,7 @@ data class FinancialAccountCreateDto(
 data class FinancialAccountEditDto(
     @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
     val name: String, val institution: String?, val tail: String?, val archived: Boolean,
-    @param:Json(name = "credit_terms") val creditTerms: CreditTermsDto? = null,
+    @param:Json(name = "credit_terms") val creditTerms: CreditTerms? = null,
     val visibility: String? = null,
 )
 
@@ -146,49 +113,6 @@ data class ExpenseFundingPartDto(
 data class ExpenseFundingCommandDto(
     @param:Json(name = "expected_row_version") val expectedRowVersion: Long,
     val parts: List<ExpenseFundingPartDto>, val reason: String,
-)
-
-@JsonClass(generateAdapter = true)
-data class ExpenseFundingViewDto(
-    @param:Json(name = "expense_id") val expenseId: Long,
-    @param:Json(name = "expense_row_version") val expenseRowVersion: Long,
-    @param:Json(name = "currency_code") val currencyCode: String,
-    @param:Json(name = "total_minor") val totalMinor: Long?,
-    @param:Json(name = "can_edit") val canEdit: Boolean,
-    val parts: List<FundingViewPartDto>,
-)
-
-@JsonClass(generateAdapter = true)
-data class FundingViewPartDto(
-    @param:Json(name = "component_id") val componentId: String,
-    @param:Json(name = "account_public_id") val accountPublicId: String?,
-    @param:Json(name = "account_row_version") val accountRowVersion: Long?,
-    @param:Json(name = "account_name") val accountName: String,
-    @param:Json(name = "currency_code") val currencyCode: String?,
-    @param:Json(name = "expense_amount_minor") val expenseAmountMinor: Long,
-    @param:Json(name = "account_amount_minor") val accountAmountMinor: Long?,
-    @param:Json(name = "included_in_opening") val includedInOpening: Boolean,
-)
-
-@JsonClass(generateAdapter = true)
-data class BalanceObservationDto(
-    @param:Json(name = "observed_minor") val observedMinor: Long,
-    @param:Json(name = "recorded_minor") val recordedMinor: Long,
-    @param:Json(name = "difference_minor") val differenceMinor: Long,
-    @param:Json(name = "occurred_on") val occurredOn: String,
-    val source: String, val adjusted: Boolean,
-)
-
-@JsonClass(generateAdapter = true)
-data class FundsOverviewDto(
-    @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
-    @param:Json(name = "valuation_date") val valuationDate: String,
-    @param:Json(name = "assets_minor") val assetsMinor: Long,
-    @param:Json(name = "liabilities_minor") val liabilitiesMinor: Long,
-    @param:Json(name = "net_worth_minor") val netWorthMinor: Long,
-    @param:Json(name = "included_accounts") val includedAccounts: Int,
-    @param:Json(name = "unknown_accounts") val unknownAccounts: Int,
-    @param:Json(name = "missing_rate_accounts") val missingRateAccounts: Int,
 )
 
 @JsonClass(generateAdapter = true)

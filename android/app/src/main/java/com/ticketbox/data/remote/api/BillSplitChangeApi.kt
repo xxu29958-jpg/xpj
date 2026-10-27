@@ -1,10 +1,10 @@
 package com.ticketbox.data.remote.api
 
 import com.ticketbox.data.remote.dto.BillSplitAgreementDto
-import com.ticketbox.data.remote.dto.BillSplitChangeAcceptRequestDto
-import com.ticketbox.data.remote.dto.BillSplitChangeCreateRequestDto
 import com.ticketbox.data.remote.dto.BillSplitChangeEmptyRequestDto
-import com.ticketbox.data.remote.dto.BillSplitChangeProposalDto
+import com.ticketbox.domain.model.BillSplitChangeAcceptRequest
+import com.ticketbox.domain.model.BillSplitChangeCreateRequest
+import com.ticketbox.domain.model.BillSplitChangeProposal
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -22,15 +22,15 @@ interface BillSplitChangeApi {
     @POST("api/debts/{publicId}/split-change-proposals")
     suspend fun createSplitChangeProposal(
         @Path("publicId") publicId: String,
-        @Body request: BillSplitChangeCreateRequestDto,
+        @Body request: BillSplitChangeCreateRequest,
         @Header("Idempotency-Key") idempotencyKey: String?,
-    ): BillSplitChangeProposalDto
+    ): BillSplitChangeProposal
 
     @POST("api/debts/{publicId}/split-change-proposals/{proposalPublicId}/accept")
     suspend fun acceptSplitChangeProposal(
         @Path("publicId") publicId: String,
         @Path("proposalPublicId") proposalPublicId: String,
-        @Body request: BillSplitChangeAcceptRequestDto,
+        @Body request: BillSplitChangeAcceptRequest,
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): BillSplitAgreementDto
 
@@ -40,7 +40,7 @@ interface BillSplitChangeApi {
         @Path("proposalPublicId") proposalPublicId: String,
         @Body request: BillSplitChangeEmptyRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String?,
-    ): BillSplitChangeProposalDto
+    ): BillSplitChangeProposal
 
     @POST("api/debts/{publicId}/split-change-proposals/{proposalPublicId}/withdraw")
     suspend fun withdrawSplitChangeProposal(
@@ -48,5 +48,5 @@ interface BillSplitChangeApi {
         @Path("proposalPublicId") proposalPublicId: String,
         @Body request: BillSplitChangeEmptyRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String?,
-    ): BillSplitChangeProposalDto
+    ): BillSplitChangeProposal
 }

@@ -5,18 +5,18 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.ApiServiceFactory
 import com.ticketbox.data.remote.dto.IncomePlanDto
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
 import com.ticketbox.data.remote.dto.IncomePlanTokenRequestDto
 import com.ticketbox.domain.model.CurrencyCode
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 
 class IncomePlanIntentContinuityTest {
     @Test
@@ -82,7 +82,7 @@ private class IncomeIntentFixture {
 
 private class IncomeIntentApi : ApiService by FakeApiService(mutableListOf(), 0) {
     var lifecycleCalls = 0
-    val calls = mutableListOf<Pair<IncomePlanUpdateRequestDto, String>>()
+    val calls = mutableListOf<Pair<IncomePlanUpdateRequest, String>>()
 
     override suspend fun archiveIncomePlan(publicId: String, request: IncomePlanTokenRequestDto): IncomePlanDto {
         lifecycleCalls += 1
@@ -94,7 +94,7 @@ private class IncomeIntentApi : ApiService by FakeApiService(mutableListOf(), 0)
         return incomeIntentDto()
     }
 
-    override suspend fun updateIncomePlan(publicId: String, request: IncomePlanUpdateRequestDto,
+    override suspend fun updateIncomePlan(publicId: String, request: IncomePlanUpdateRequest,
         idempotencyKey: String?): IncomePlanDto {
         calls += request to requireNotNull(idempotencyKey)
         error("Unsupported original income intent must never reach the network")

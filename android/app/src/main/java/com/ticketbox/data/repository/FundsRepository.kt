@@ -25,13 +25,13 @@ class FundsRepository internal constructor(private val provider: ApiServiceProvi
 
     suspend fun convertPayerAmount(value: FundsInput) = errors.safeCall {
         guard.bindExact(value.binding).call {
-            it.convertAmount(value.currency, value.payerCurrency, value.date, value.principal).toDomain()
+            it.convertAmount(value.currency, value.payerCurrency, value.date, value.principal)
         }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun input(binding: LogicalSessionBinding) = inputs.observe(binding.serverUrl, binding.ownerKey, binding.ledgerId).flatMapLatest { row ->
-        val value = row?.let { FundsWire.input.fromJson(it.inputJson)?.toDomain() }
+        val value = row?.let { FundsWire.input.fromJson(it.inputJson) }
         if (row?.commandJson == null) flowOf(FundsInputState(value))
         else outbox.observeOriginalCommand(PendingMutationType.FinancialAccountCommand, row.originalKey)
             .map { FundsInputState(value, true, it.singleOrNull()) }
@@ -43,7 +43,7 @@ class FundsRepository internal constructor(private val provider: ApiServiceProvi
             require(com.ticketbox.domain.model.ledgerRoleCanModify(provider.currentLedgerRole())) { "当前角色只读，原输入已保留。" }
             val old = inputs.get(binding.serverUrl, binding.ownerKey, binding.ledgerId)
             require(old == null || old.originalKey == value.key && old.commandJson == null) { "请先核对原资金任务。" }
-            inputs.put(FundsInputEntity(binding.serverUrl, binding.ownerKey, binding.ledgerId, value.key, FundsWire.input.toJson(value.toWire())))
+            inputs.put(FundsInputEntity(binding.serverUrl, binding.ownerKey, binding.ledgerId, value.key, FundsWire.input.toJson(value)))
         }
     }
 
@@ -51,7 +51,7 @@ class FundsRepository internal constructor(private val provider: ApiServiceProvi
         val bound = guard.bindExact(binding)
         val row = outbox.withActiveBinding(bound) {
             val old = requireNotNull(inputs.get(binding.serverUrl, binding.ownerKey, binding.ledgerId))
-            val value = requireNotNull(FundsWire.input.fromJson(old.inputJson)).toDomain()
+            val value = requireNotNull(FundsWire.input.fromJson(old.inputJson))
             require(value.binding == binding) { "身份已变化，请返回原身份继续。" }
             if (old.commandJson != null) old else old.copy(commandJson = FundsWire.command.toJson(value.command())).also { inputs.put(it) }
         }
@@ -108,7 +108,7 @@ class FundsRepository internal constructor(private val provider: ApiServiceProvi
                 "原提交状态已变化，请重新核对。"
             }
             val next = reviewed.copy(key = java.util.UUID.randomUUID().toString())
-            inputs.put(FundsInputEntity(binding.serverUrl, binding.ownerKey, binding.ledgerId, next.key, FundsWire.input.toJson(next.toWire())))
+            inputs.put(FundsInputEntity(binding.serverUrl, binding.ownerKey, binding.ledgerId, next.key, FundsWire.input.toJson(next)))
         } }
     }
 }

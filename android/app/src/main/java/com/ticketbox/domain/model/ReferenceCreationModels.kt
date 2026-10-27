@@ -1,9 +1,12 @@
 package com.ticketbox.domain.model
 
-/** Values consumed by the product; wire names and persistence remain at the repository boundary. */
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
 data class ReferenceCreated(
     val kind: String,
-    val publicId: String,
+    @param:Json(name = "public_id") val publicId: String,
     val name: String,
-    val rowVersion: Long,
+    @param:Json(name = "row_version") val rowVersion: Long,
 )

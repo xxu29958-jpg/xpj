@@ -130,5 +130,5 @@ private fun OccurrencePaymentDraft.toPayload(binding: LogicalSessionBinding) = R
     originBindingRevision = binding.bindingRevision,
     paymentLabel = paymentLabel,
     paymentAmountCents = paymentAmountCents,
-    request = request.toDto(),
+    request = request,
 )

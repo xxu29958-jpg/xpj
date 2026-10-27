@@ -1,9 +1,9 @@
 package com.ticketbox.ui.navigation
 
 import androidx.lifecycle.SavedStateHandle
-import com.ticketbox.data.remote.dto.RecurringOccurrenceDto
 import com.ticketbox.data.repository.LedgerAccessContext
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.domain.model.RecurringOccurrence
 import com.ticketbox.ui.screens.recurringItem
 import com.ticketbox.viewmodel.RecurringOccurrenceUiState
 import kotlin.test.Test
@@ -383,7 +383,6 @@ class RecurringPaymentTaskTest {
         assertEquals("current-b", kept.clientRef)
         assertEquals(3L, kept.occurrenceRowVersion)
     }
-
 
     @Test
     fun aLaterOccurrenceGenerationDoesNotKeepThePreviousClientRef() {

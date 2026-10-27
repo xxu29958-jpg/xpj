@@ -4,11 +4,11 @@ import com.ticketbox.data.remote.dto.BudgetMonthlyDto
 import com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto
 import retrofit2.http.Body
 import retrofit2.http.GET
-import retrofit2.http.Header
 import retrofit2.http.HTTP
+import retrofit2.http.Header
 import retrofit2.http.POST
-import retrofit2.http.Path
 import retrofit2.http.PUT
+import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.QueryMap
 
@@ -18,17 +18,17 @@ interface BudgetApi {
         @Body request: com.ticketbox.data.remote.dto.BudgetMonthlyArchiveRequestDto): com.ticketbox.data.remote.dto.BudgetMonthlyArchiveResponseDto
 
     @GET("api/budget/arrangements/{month}")
-    suspend fun monthlyArrangement(@Path("month") month: String): com.ticketbox.data.remote.dto.MonthlyArrangementResponseDto
+    suspend fun monthlyArrangement(@Path("month") month: String): com.ticketbox.domain.model.MonthlyArrangementResponse
 
     @PUT("api/budget/arrangements/{month}")
     suspend fun saveMonthlyArrangement(@Path("month") month: String,
-        @Body request: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest,
-        @Header("Idempotency-Key") idempotencyKey: String): com.ticketbox.data.remote.dto.MonthlyArrangementDto
+        @Body request: com.ticketbox.domain.model.MonthlyArrangementChange,
+        @Header("Idempotency-Key") idempotencyKey: String): com.ticketbox.domain.model.MonthlyArrangement
 
     @GET("api/budget/arrangements/{month}/history")
     suspend fun monthlyArrangementHistory(@Path("month") month: String,
         @Query("before_version") beforeVersion: Long? = null,
-        @Query("limit") limit: Int = 20): com.ticketbox.data.remote.dto.MonthlyArrangementHistoryDto
+        @Query("limit") limit: Int = 20): com.ticketbox.domain.model.MonthlyArrangementHistory
 
     @GET("api/budget/advisor/inputs")
     suspend fun trialBudgetAdviceInputs(@Query("month") month: String,

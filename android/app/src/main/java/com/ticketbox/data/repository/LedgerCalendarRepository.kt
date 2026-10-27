@@ -2,8 +2,8 @@ package com.ticketbox.data.repository
 
 import android.content.SharedPreferences
 import com.squareup.moshi.Moshi
-import com.ticketbox.data.remote.dto.LedgerCalendarDto
 import com.ticketbox.data.remote.dto.toWriteCompatibility
+import com.ticketbox.domain.model.LedgerCalendar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -15,14 +15,14 @@ class LedgerCalendarRepository internal constructor(
 ) : LedgerCalendarReader {
     private val moshi = Moshi.Builder().build()
     private val bindingAdapter = moshi.adapter(LogicalSessionBinding::class.java)
-    private val ruleAdapter = moshi.adapter(LedgerCalendarDto::class.java)
+    private val ruleAdapter = moshi.adapter(LedgerCalendar::class.java)
     private val refreshMutex = Mutex()
 
     override fun currentBinding(): LogicalSessionBinding? = guard.captureLogicalBinding()
 
     override fun cached(binding: LogicalSessionBinding, revision: Long?): com.ticketbox.domain.model.LedgerCalendar? {
         val raw = preferences.getString(key(binding, revision), null) ?: return null
-        return runCatching { ruleAdapter.fromJson(raw)?.toDomain() }.getOrNull()
+        return runCatching { ruleAdapter.fromJson(raw) }.getOrNull()
     }
 
     override suspend fun refresh(binding: LogicalSessionBinding, revision: Long?): Result<com.ticketbox.domain.model.LedgerCalendar?> = refreshMutex.withLock {
@@ -44,7 +44,7 @@ class LedgerCalendarRepository internal constructor(
                 if (revision == null) editor.putString(key(binding, null), ruleAdapter.toJson(it))
                 check(editor.commit()) { "账本日期规则未能保存，请重试。" }
             }
-            Result.success(rule?.toDomain())
+            Result.success(rule)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {

@@ -6,7 +6,10 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.IncomePlanDto
-import com.ticketbox.data.remote.dto.IncomePlanUpdateRequestDto
+import com.ticketbox.domain.model.IncomePlanUpdateRequest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Protocol
@@ -14,9 +17,6 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * ADR-0042 Slice F: [IncomePlanDispatcher] replay contract.
@@ -60,7 +60,7 @@ class IncomePlanDispatcherTest {
             targetId = "income_plan:plan-1",
             payloadJson = moshi().adapter(IncomePlanSubmissionPayload::class.java)
                 .toJson(IncomePlanSubmissionPayload(1, "plan-1", "工资", 1400000, "CNY", "test-session", "test-binding",
-                    IncomePlanUpdateRequestDto(intentMonth = "2026-09", expectedRowVersion = 0L, amountCents = 1500000))),
+                    IncomePlanUpdateRequest(intentMonth = "2026-09", expectedRowVersion = 0L, amountCents = 1500000))),
             expectedRowVersion = 1L,
             status = PendingMutationStatus.InFlight,
             retryCount = 0,
@@ -84,7 +84,7 @@ class IncomePlanDispatcherTest {
 
         override suspend fun updateIncomePlan(
             publicId: String,
-            request: IncomePlanUpdateRequestDto,
+            request: IncomePlanUpdateRequest,
             idempotencyKey: String?,
         ): IncomePlanDto {
             lastIdempotencyKey = idempotencyKey

@@ -55,7 +55,7 @@ import java.time.Instant
 
 fun ExpenseDto.toDomain(): Expense {
     return Expense(
-        recognitionTime = recognitionTime?.toDomain(),
+        recognitionTime = recognitionTime,
         recognitionNotes = recognitionNotes,
         recognitionFields = recognitionFields,
         id = id,

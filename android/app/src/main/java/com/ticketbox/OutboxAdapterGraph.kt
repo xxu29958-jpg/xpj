@@ -1,26 +1,26 @@
 package com.ticketbox
 
 import com.squareup.moshi.JsonAdapter
-import com.ticketbox.data.repository.lazyJsonAdapter
 import com.squareup.moshi.Moshi
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
-import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
-import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
+import com.ticketbox.data.remote.dto.ExpenseItemReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
-import com.ticketbox.data.repository.ExpenseOffsetVoidOutboxPayload
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
-import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
-import com.ticketbox.data.remote.dto.addRecurringWireAdapters
-import com.ticketbox.data.remote.dto.addCategoryRuleWireAdapters
 import com.ticketbox.data.remote.dto.addBudgetWireAdapters
+import com.ticketbox.data.remote.dto.addCategoryRuleWireAdapters
+import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
+import com.ticketbox.data.remote.dto.addRecurringWireAdapters
+import com.ticketbox.data.repository.ExpenseOffsetVoidOutboxPayload
+import com.ticketbox.data.repository.lazyJsonAdapter
+import com.ticketbox.domain.model.GoalUpdateRequest
 
 internal class OutboxAdapterGraph {
     val budget = com.ticketbox.data.repository.BudgetMutationAdapters { moshi }
@@ -147,16 +147,16 @@ internal class OutboxAdapterGraph {
 
     // ADR-0042 Slice F: PATCH /api/goals/{publicId} adapter. Shared between
     // UpdateGoalDispatcher and GoalEditRepository.save.
-    val goalUpdateAdapter: JsonAdapter<GoalUpdateRequestDto> = lazyJsonAdapter {
-        moshi.adapter(GoalUpdateRequestDto::class.java)
+    val goalUpdateAdapter: JsonAdapter<GoalUpdateRequest> = lazyJsonAdapter {
+        moshi.adapter(GoalUpdateRequest::class.java)
     }
 
     val goalReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.GoalDto> = lazyJsonAdapter {
         moshi.adapter(com.ticketbox.data.remote.dto.GoalDto::class.java)
     }
 
-    val goalCreateAdapter: JsonAdapter<com.ticketbox.data.remote.dto.GoalCreateRequestDto> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.remote.dto.GoalCreateRequestDto::class.java)
+    val goalCreateAdapter: JsonAdapter<com.ticketbox.domain.model.GoalCreateRequest> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.domain.model.GoalCreateRequest::class.java)
     }
 
     val goalDebtEditAdapter: JsonAdapter<com.ticketbox.data.repository.DebtGoalEditPayload> = lazyJsonAdapter {
@@ -173,15 +173,15 @@ internal class OutboxAdapterGraph {
         moshi.adapter(com.ticketbox.data.repository.IncomePlanSubmissionPayload::class.java)
     }
 
-    val splitAgreementAdapter: JsonAdapter<com.ticketbox.data.repository.SplitAgreementPayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.SplitAgreementPayload::class.java)
+    val splitAgreementAdapter: JsonAdapter<com.ticketbox.data.repository.SplitAgreementSubmission> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.SplitAgreementSubmission::class.java)
     }
     val splitAgreementReceiptAdapter: JsonAdapter<com.ticketbox.data.repository.SplitAgreementReceipt> = lazyJsonAdapter {
         moshi.adapter(com.ticketbox.data.repository.SplitAgreementReceipt::class.java)
     }
 
-    val billSplitCreateAdapter: JsonAdapter<com.ticketbox.data.repository.BillSplitCreatePayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.BillSplitCreatePayload::class.java)
+    val billSplitCreateAdapter: JsonAdapter<com.ticketbox.data.repository.BillSplitSubmission> = lazyJsonAdapter {
+        moshi.adapter(com.ticketbox.data.repository.BillSplitSubmission::class.java)
     }
     val billSplitReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.BillSplitSentDto> = lazyJsonAdapter {
         moshi.adapter(com.ticketbox.data.remote.dto.BillSplitSentDto::class.java)
