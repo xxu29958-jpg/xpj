@@ -703,7 +703,7 @@ class FactEntryNavigationTest {
         androidx.test.espresso.Espresso.closeSoftKeyboard()
         val expandedFilters = context.getString(R.string.occurrence_filters_hide, "2026-08 · 家庭午餐")
         compose.onNodeWithTag("occurrence-payment-filter-toggle").performScrollTo().assertTextContains(expandedFilters)
-        compose.onNodeWithText(openPayment).performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText(openPayment).assertIsDisplayed().performClick()
         assertRealFactAndReturn()
         saveConsumerArtPreview("recurring-return-context", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
         compose.onNodeWithText(context.getString(R.string.occurrence_subtitle)).assertIsDisplayed()

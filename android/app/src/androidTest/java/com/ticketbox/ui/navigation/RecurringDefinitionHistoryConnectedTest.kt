@@ -21,6 +21,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
+import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
 import com.ticketbox.data.remote.buildApiService
 import com.ticketbox.data.repository.RecurringItemPatch
 import com.ticketbox.domain.model.AppSkin
@@ -57,6 +58,13 @@ class RecurringDefinitionHistoryConnectedTest {
         val status = if (history && failHistoryOnce) 503.also { failHistoryOnce = false } else 200
         val body = when {
             status != 200 -> """{"error":"history_unavailable","message":"无法读取计划记录"}"""
+            request.url.encodedPath == "/api/system/runtime-compatibility" ->
+                """{"api_version":"$CURRENT_TICKETBOX_API_VERSION","write_compatibility":"compatible",
+                    "capabilities":{"currency":{"request_binding":"1:1:CNY"},"upload_original_receipt_version":1,
+                    "accounting_time_input_version":1}}"""
+            request.url.encodedPath == "/api/ledgers/correction-ledger/calendar" ->
+                """{"ledger_id":"correction-ledger","revision":${request.url.queryParameter("revision") ?: "1"},
+                    "timezone_name":"UTC","basis":"explicit","adopted_at":"2026-01-01T00:00:00Z"}"""
             history -> historyJson(request.url.queryParameter("before_version"))
             request.url.encodedPath == "/api/recurring/items" -> """{"items":[${itemJson()}]}"""
             request.url.encodedPath == "/api/insights/recurring-candidates" -> """{"items":[]}"""
