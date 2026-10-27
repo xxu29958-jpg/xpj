@@ -5,11 +5,13 @@ from uuid import uuid4
 
 from app.errors import AppError
 from app.services import goal_debt_repayment_achievement
+from app.services.time_service import now_utc
 from tests.debt_repayment_goal_helpers import (
     _clear_debt,
     _create_debt_goal,
     _create_external_debt,
     _goal_latch_state,
+    _insert_repayment_fact,
 )
 from tests.test_funds_accounts import _create_funds_account
 
@@ -31,6 +33,28 @@ def _funded_purchase(client, identity, credit, amount=10000):
         "home_currency_code": "CNY", "amount_cents": amount, "category": "购物", "merchant": "原消费",
         "funding": [{"component_id": "purchase", "account_public_id": credit["public_id"],
             "account_row_version": credit["row_version"], "expense_amount_minor": amount, "account_amount_minor": amount}]}, status=200)
+
+
+def test_command_latches_only_affected_goals_without_refreshing_other_ledgers(client, identity):
+    affected = _create_external_debt(client, identity.app_headers)
+    target = _create_debt_goal(client, identity.app_headers, name="本次结清",
+        debt_public_ids=[affected["public_id"]]).json()
+    unrelated = []
+    for headers in (identity.app_headers, identity.gray_app_headers):
+        debt = _create_external_debt(client, headers)
+        goal = _create_debt_goal(client, headers, name="历史已还清",
+            debt_public_ids=[debt["public_id"]]).json()
+        unrelated.append((debt, goal))
+    # Historical clear facts remain unlatched until a command affects them.
+    # A broad refresh would incorrectly manufacture these achievement dates.
+    for debt, goal in unrelated:
+        _insert_repayment_fact(debt["public_id"], amount_cents=debt["principal_amount_cents"], created_at=now_utc())
+        assert _goal_latch_state(goal["public_id"]) == (None, None)
+
+    _clear_debt(client, identity.app_headers, affected)
+    assert _goal_latch_state(target["public_id"])[1] == 1
+    for _, goal in unrelated:
+        assert _goal_latch_state(goal["public_id"]) == (None, None)
 
 
 def test_correction_does_not_latch_temporary_zero_and_offset_latch_is_atomic(client, identity, monkeypatch):
