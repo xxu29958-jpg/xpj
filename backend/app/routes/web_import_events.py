@@ -36,9 +36,12 @@ from app.routes.web_common import (
     templates,
 )
 from app.schemas import CsvImportReviewRequest, CsvImportRowResponse
-from app.services.csv_import_batch_service._queries import get_csv_import_batch, get_csv_import_row
+from app.services.csv_import_batch_service._queries import (
+    get_csv_import_batch,
+    get_csv_import_row,
+    preview_csv_offset_net,
+)
 from app.services.csv_import_batch_service._review import review_csv_import_row
-from app.services.expense_offset_service import expense_fact_bundle
 from app.services.expense_query import get_expense, search_import_root_expenses
 
 if TYPE_CHECKING:
@@ -83,23 +86,8 @@ def _selected_root(db: Session, selected_id: str, row: CsvImportRowResponse,
 
 def _event_net_preview(db: Session, selected_id: str, row: CsvImportRowResponse,
                        root: Expense | None) -> dict[str, str] | None:
-    if (root is None or root.status != "confirmed" or row.entry_kind != "offset"
-            or row.status not in {"review", "valid"}
-            or any(value is None for value in (row.exchange_rate_to_cny, row.exchange_rate_date,
-                                               row.exchange_rate_source, row.amount_cents, row.original_amount_minor))):
-        return None
-    bundle = expense_fact_bundle(db, tenant_id=selected_id, expense_id=root.id)
-    summary = bundle.financial_summary
-    if (bundle.root.row_version != root.row_version or row.original_currency_code != bundle.root.original_currency_code
-            or row.home_currency_code != bundle.root.home_currency or summary.status == "reversed"):
-        return None
-    if row.offset_kind == "reversal":
-        if bundle.active_offsets:
-            return None
-        net = 0
-    elif row.offset_kind in {"refund", "chargeback"} and 0 < row.original_amount_minor <= summary.remaining_refundable_original_minor:
-        net = summary.lineage_home_net_cents - row.amount_cents
-    else:
+    net = preview_csv_offset_net(db, tenant_id=selected_id, row=row, root=root)
+    if net is None:
         return None
     return {"amount_label": _minor_amount_label(net, row.home_currency_code), "currency_code": row.home_currency_code}
 

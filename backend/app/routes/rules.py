@@ -26,17 +26,6 @@ from app.schemas import (
     StatusResponse,
 )
 from app.schemas._rules import RuleApplicationRollbackPreview, RuleApplicationRollbackRequest
-from app.services.classify_service import (
-    delete_rule,
-    get_rule_for_tenant,
-    list_rule_applications,
-    list_rules,
-    preview_apply_rules_to_confirmed,
-    preview_apply_rules_to_pending,
-    preview_rule_for_pending,
-    rollback_rule_application,
-    undo_delete_rule,
-)
 from app.services.idempotency import (
     claim_idempotent_request,
     mark_idempotency_succeeded,
@@ -44,10 +33,16 @@ from app.services.idempotency import (
 from app.services.permission_service import require_write_expense
 from app.services.rule_application_service import (
     apply_rules_idempotently,
+    list_rule_applications,
+    preview_apply_rules_to_confirmed,
+    preview_apply_rules_to_pending,
     preview_rule_application_rollback,
+    preview_rule_for_pending,
+    rollback_rule_application,
     rule_application_change_counts,
 )
 from app.services.rule_command_service import create_rule_idempotently, update_rule_idempotently
+from app.services.rule_service import delete_rule, get_rule_for_tenant, list_rules, undo_delete_rule
 from app.tenants import AuthContext
 
 router = APIRouter(

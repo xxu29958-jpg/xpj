@@ -187,13 +187,21 @@ def disposal_summary(candidates: list[dict], outcomes: dict[str, str]) -> dict:
         "_outcomes": outcomes}
 
 
-def run_orphan_cleanup(db: Session, tenant_id: str, *, settings, dry_run: bool = True) -> OrphanCleanupResult:
+def run_orphan_cleanup(
+    db: Session, tenant_id: str, *, settings, authorize: Callable[[], None], dry_run: bool = True,
+) -> OrphanCleanupResult:
     """Existing admin API uses the same reference, publication and disposal owner."""
-    inspection = inspect_orphans(db, tenant_id, settings=settings, checkpoint=lambda _result: db.commit())
+    def checkpoint(_result: dict) -> None:
+        db.commit()
+        authorize()
+
+    authorize()
+    inspection = inspect_orphans(db, tenant_id, settings=settings, checkpoint=checkpoint)
     candidates = inspection["_candidates"]
     outcomes = {}
     if not dry_run:
         for start in range(0, len(candidates), CHUNK_SIZE):
+            authorize()
             outcomes.update(dispose_chunk(db, tenant_id, candidates[start:start + CHUNK_SIZE]))
             db.commit()
     disposed = disposal_summary(candidates, outcomes)

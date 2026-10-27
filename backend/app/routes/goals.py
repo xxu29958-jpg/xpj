@@ -60,7 +60,6 @@ def get_goals(
                 db,
                 tenant_id=auth.tenant_id,
                 include_archived=include_archived,
-                persist_achievement=auth.role != "viewer",
             )
         )
     timezone_name = timezone or get_settings().ocr_default_timezone
@@ -91,7 +90,6 @@ def get_goal_detail(
         tenant_id=auth.tenant_id,
         public_id=public_id,
         timezone_name=timezone_name,
-        persist_achievement=auth.role != "viewer",
     )
 
 
