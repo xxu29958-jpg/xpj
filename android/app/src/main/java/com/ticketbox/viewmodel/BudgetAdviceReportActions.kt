@@ -18,6 +18,8 @@ fun BudgetAdviceViewModel.openReportRate(binding: LogicalSessionBinding, month: 
     if (runCatching { YearMonth.parse(month).toString() == month }.getOrDefault(false).not() ||
         CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode) == null) return
     requestGeneration += 1
+    monthSelected = true
+    resolvingMonth = false
     _state.update { it.copy(month = month, reportingHomeCurrencyCode = homeCurrencyCode, inputs = null, result = null,
         loadState = BudgetAdviceLoadState.Idle, rateEditor = null, selectedRateSubmissionId = null,
         arrangementRead = null, arrangementDraft = null, trialRequest = null, arrangementHistory = emptyList(),

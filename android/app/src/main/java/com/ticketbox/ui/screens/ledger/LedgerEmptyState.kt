@@ -155,6 +155,8 @@ internal fun LedgerEmptyOrFirstSync(
 ) {
     if (state.isFirstSync) {
         LedgerFirstSyncSkeleton()
+    } else if (!state.monthReady) {
+        Text(stringResource(R.string.financial_month_choose))
     } else {
         EmptyLedgerState(
             state = state,

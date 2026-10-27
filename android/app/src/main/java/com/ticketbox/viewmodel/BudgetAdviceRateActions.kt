@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 fun BudgetAdviceViewModel.openRate(gap: CurrencyProjectionGap, original: PendingManualRateSubmission? = null) {
     val binding = _state.value.binding ?: return
     val month = _state.value.month
-    if (!gap.canEnterManualRate() || _state.value.rateBusy) return
+    if (month.isBlank() || !gap.canEnterManualRate() || _state.value.rateBusy) return
     _state.update { it.copy(rateBusy = true, rateMessage = null) }
     viewModelScope.launch {
         val response = repository.exchangeRates(binding, gap.sourceCurrencyCode, gap.homeCurrencyCode, gap.rateDate)
@@ -81,7 +81,7 @@ fun BudgetAdviceViewModel.closeRateEditor() {
 fun BudgetAdviceViewModel.saveRate() {
     val snapshot = _state.value
     val editor = snapshot.rateEditor ?: return
-    if (snapshot.rateBusy || !snapshot.canRequest || snapshot.binding != editor.binding) return
+    if (snapshot.month.isBlank() || snapshot.rateBusy || !snapshot.canRequest || snapshot.binding != editor.binding) return
     val value = canonicalManualExchangeRateOrNull(editor.value)
     if (value == null) {
         _state.update { it.copy(rateMessage = UiText.res(R.string.expense_edit_manual_rate_invalid)) }
@@ -113,6 +113,7 @@ fun BudgetAdviceViewModel.recoverRate(pending: PendingManualRateSubmission, drop
 
 fun BudgetAdviceViewModel.reviewRate(pending: PendingManualRateSubmission) {
     val request = pending.intent?.takeIf { pending.supported }?.request ?: return
+    openRateSubmission(pending.row.id)
     openRate(CurrencyProjectionGap(request.currencyCode, request.homeCurrencyCode, request.rateDate), pending)
 }
 

@@ -37,7 +37,7 @@ import com.ticketbox.viewmodel.FundsUiState
 internal data class FundsOverviewActions(
     val open: (String) -> Unit,
     val create: () -> Unit,
-    val envelopes: () -> Unit,
+    val envelopes: (String?) -> Unit,
     val resume: () -> Unit,
 )
 
@@ -62,7 +62,12 @@ internal fun LazyListScope.fundsOverview(state: FundsUiState, actions: FundsOver
         }
     val archived = state.accounts.filter { it.archived }
     if (archived.isNotEmpty()) item(key = "archived") { FundsArchivedAccounts(archived, actions.open) }
-    item(key = "envelopes") { FundsEnvelopeEntry(actions.envelopes) }
+    item(key = "envelopes") {
+        if (state.overview == null) Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+            Text(stringResource(R.string.envelopes_title), style = MaterialTheme.typography.titleMedium)
+            com.ticketbox.ui.components.FinancialMonthInput(onSelectMonth = actions.envelopes)
+        } else FundsEnvelopeEntry { actions.envelopes(null) }
+    }
 }
 
 @Composable

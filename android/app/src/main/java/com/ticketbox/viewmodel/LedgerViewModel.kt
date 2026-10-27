@@ -88,7 +88,8 @@ data class LedgerUiState(
     val readOnly: Boolean = false,
     val exportFile: CsvExport? = null,
     val exportDestinationPending: Boolean = false,
-    val monthFilter: String = YearMonth.now().toString(),
+    val monthFilter: String = "",
+    val monthReady: Boolean = true,
     val categoryFilter: String = "",
     val tagFilter: String = "",
     val query: String = "",
@@ -199,13 +200,13 @@ class LedgerViewModel(
         LedgerUiState(
             readOnly = !repository.canModifyLedger(),
             lastSyncAt = repository.lastConfirmedSyncAt(),
-            monthFilter = if (initialDataQualityFilter == null) YearMonth.now().toString() else "",
+            monthReady = initialDataQualityFilter != null,
             dataQualityFilter = initialDataQualityFilter,
         ),
     )
     val uiState: StateFlow<LedgerUiState> = _uiState.asStateFlow()
     private var monthSelected = initialDataQualityFilter != null
-    private var resolvingMonth = calendars != null
+    private var resolvingMonth = false
     private var allConfirmed: List<ConfirmedStreamItem> = emptyList()
     private var inFlightSyncKey: LedgerSyncKey? = null
 
@@ -242,17 +243,22 @@ class LedgerViewModel(
                 }
             }
         }
+        sync()
+    }
+
+    private fun resolveMonth() {
+        resolvingMonth = true
+        _uiState.update { it.copy(syncing = true, message = null) }
         viewModelScope.launch {
             val binding = calendars?.currentBinding()
-            val month = calendars.newTaskMonth(binding)
-            if (binding != calendars?.currentBinding()) return@launch
+            val result = calendars.newTaskMonth(binding)
+            if (binding != calendars?.currentBinding() || monthSelected) return@launch
             resolvingMonth = false
-            if (!monthSelected) {
-                _uiState.update { state ->
-                    state.copy(monthFilter = month).withFilteredItems(allConfirmed)
-                }
-            }
-            sync()
+            val month = result.getOrNull()
+            _uiState.update { it.copy(monthFilter = month.orEmpty(), monthReady = month != null, syncing = false,
+                message = result.monthReadMessage(), messageTone = if (result.isFailure) MessageTone.Danger else MessageTone.Info)
+                .withFilteredItems(allConfirmed) }
+            if (month != null) sync()
         }
     }
 
@@ -295,6 +301,7 @@ class LedgerViewModel(
     }
 
     private fun LedgerUiState.withFilteredItems(streamItems: List<ConfirmedStreamItem>): LedgerUiState {
+        if (!monthReady) return copy(items = emptyList(), undatedExpenseCountsByCurrency = emptyMap())
         val undated = filterItems(streamItems, copy(monthFilter = "", dataQualityFilter = LedgerDataQualityFilter.MissingAccountingDate))
         return copy(
             items = filterItems(streamItems, this),
@@ -336,10 +343,14 @@ class LedgerViewModel(
     }
 
     fun setMonthFilter(value: String) {
+        if (value.isNotBlank() && runCatching { YearMonth.parse(value) }.isFailure) return
+        val wasReady = _uiState.value.monthReady
         monthSelected = true
+        resolvingMonth = false
         _uiState.update { state ->
-            state.copy(monthFilter = value).withFilteredItems(allConfirmed)
+            state.copy(monthFilter = value, monthReady = true, syncing = false, message = null).withFilteredItems(allConfirmed)
         }
+        if (!wasReady) sync()
     }
 
     fun setCategoryFilter(value: String) {
@@ -355,9 +366,11 @@ class LedgerViewModel(
      */
     fun applyDrillFilter(month: String, category: String, tag: String = "") {
         monthSelected = true
+        resolvingMonth = false
         _uiState.update { state ->
             val next = state.copy(
                 monthFilter = month,
+                monthReady = true,
                 categoryFilter = category,
                 tagFilter = tag,
                 query = "",
@@ -375,9 +388,11 @@ class LedgerViewModel(
      */
     fun applyDataQualityFilter(filter: LedgerDataQualityFilter) {
         monthSelected = true
+        resolvingMonth = false
         _uiState.update { state ->
             val next = state.copy(
                 monthFilter = "",
+                monthReady = true,
                 categoryFilter = "",
                 tagFilter = "",
                 query = "",
@@ -405,10 +420,13 @@ class LedgerViewModel(
     }
 
     fun clearFilters() {
+        val wasReady = _uiState.value.monthReady
         monthSelected = true
+        resolvingMonth = false
         _uiState.update { state ->
             val next = state.copy(
                 monthFilter = "",
+                monthReady = true,
                 categoryFilter = "",
                 tagFilter = "",
                 query = "",
@@ -416,10 +434,12 @@ class LedgerViewModel(
             )
             next.withFilteredItems(allConfirmed)
         }
+        if (!wasReady) sync()
     }
 
     fun sync() {
         if (resolvingMonth) return
+        if (!_uiState.value.monthReady) { resolveMonth(); return }
         val key = _uiState.value.toSyncKey()
         if (inFlightSyncKey == key) return
         inFlightSyncKey = key

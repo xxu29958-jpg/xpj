@@ -31,7 +31,9 @@ class CreateSpendingGoalViewModelTest {
     @BeforeTest fun setup() { Dispatchers.setMain(dispatcher) }
     @AfterTest fun close() { models.forEach { it.viewModelScope.cancel() }; Dispatchers.resetMain() }
     private fun model(edits: RecordingGoalEdits) =
-        CreateSpendingGoalViewModel(edits).also { models += it }
+        CreateSpendingGoalViewModel(edits, calendars = requireNotNull(edits.currentAccess()).binding.let {
+            com.ticketbox.data.repository.MonthCalendarFixture(it, com.ticketbox.data.repository.calendar(it))
+        }).also { models += it }
 
     @Test fun jpyCreateUsesCapabilityAndPreservesReenteredDraft() = runTest(dispatcher) {
         val edits = RecordingGoalEdits().apply { currencyResult = Result.success(CurrencyCode.JPY) }

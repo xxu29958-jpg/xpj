@@ -448,6 +448,29 @@ class MonthlyStatsViewModelTest {
 
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
+class MonthlyStatsMonthResolutionTest {
+    @Test fun failedCalendarCanRetryAndUnsupportedCalendarRequiresAnExplicitMonth() = statsTest {
+        val repository = FakeStatsActions()
+        val calendars = com.ticketbox.data.repository.MonthCalendarFixture(requireNotNull(repository.bindingFlow.value)).apply {
+            response = Result.failure(java.io.IOException("offline"))
+        }
+        val vm = MonthlyStatsViewModel(repository, calendars = calendars)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.ledgerReady)
+        assertNotNull(vm.uiState.value.statsLoadError)
+        assertTrue(repository.queries.isEmpty())
+        calendars.response = Result.success(null)
+        com.ticketbox.ui.navigation.reloadAllStats(vm, StatsReportsViewModel()); advanceUntilIdle()
+        assertEquals("", vm.uiState.value.month)
+        assertTrue(repository.queries.isEmpty())
+        vm.setMonth("2024-02"); advanceUntilIdle()
+        assertTrue(vm.uiState.value.ledgerReady)
+        assertEquals("2024-02", repository.queries.single().month)
+        assertEquals(2, calendars.refreshes)
+    }
+}
+
 private class FakeStatsActions : StatsActions {
     val bindingFlow = MutableStateFlow<LogicalSessionBinding?>(
         LogicalSessionBinding("https://stats.example", "owner", "owner-key", "session", "binding"))

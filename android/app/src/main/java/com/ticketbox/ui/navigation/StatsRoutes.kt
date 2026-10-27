@@ -140,6 +140,7 @@ internal fun BudgetRoute(
             onSave = budgetViewModel::save,
             onRecoverSave = budgetViewModel::recoverSave,
             onArchive = budgetViewModel::archive,
+            onSelectMonth = budgetViewModel::selectMonth,
         ),
         onBack = onBack,
     )

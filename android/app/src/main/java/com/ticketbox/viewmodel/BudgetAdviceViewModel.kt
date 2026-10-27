@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.YearMonth
 
 enum class BudgetAdviceLoadState {
     Idle,
@@ -32,7 +31,7 @@ enum class BudgetAdviceLoadState {
 }
 
 data class BudgetAdviceUiState(
-    val month: String = YearMonth.now().toString(),
+    val month: String = "",
     val loadState: BudgetAdviceLoadState = BudgetAdviceLoadState.Idle,
     val canRequest: Boolean = true,
     val result: BudgetAdviceResult? = null,
@@ -81,14 +80,14 @@ class BudgetAdviceViewModel(
 ) : ViewModel() {
     internal val _state = MutableStateFlow(
         BudgetAdviceUiState(
-            month = initialMonth ?: YearMonth.now().toString(),
+            month = initialMonth.orEmpty(),
             canRequest = repository.canModifyLedger(),
         ),
     )
     val uiState: StateFlow<BudgetAdviceUiState> = _state.asStateFlow()
-    internal var monthSelected = initialMonth != null
+    internal var monthSelected = !initialMonth.isNullOrBlank()
     internal var resolvingMonth = false
-    internal suspend fun defaultMonth(binding: com.ticketbox.data.repository.LogicalSessionBinding): String = calendars.newTaskMonth(binding)
+    internal suspend fun defaultMonth(binding: com.ticketbox.data.repository.LogicalSessionBinding): Result<String?> = calendars.newTaskMonth(binding)
     internal var requestGeneration = 0
     internal var inputGeneration = 0
     internal var rateObservation: kotlinx.coroutines.Job? = null

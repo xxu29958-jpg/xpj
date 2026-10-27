@@ -16,6 +16,26 @@ import kotlin.test.assertTrue
 class BudgetFinancialMonthTest {
     private val binding = LogicalSessionBinding("https://example.test", "ledger-1", "owner", "session", "revision")
 
+    @Test fun unknownMonthDoesNotReadBudgetOrConsumeThrottleOrSentKey() = runTest {
+        var month: Result<String?> = Result.failure(java.io.IOException("offline"))
+        val store = RecordingStore()
+        val requested = mutableListOf<String>()
+        val checker = BudgetOverspendChecker(
+            source = { requested += it; Result.success(budgetOf(overspentCents = 5_000).copy(month = it)) },
+            store = store, dispatcher = { _, _ -> BudgetOverspendDispatchOutcome.SENT },
+            runtime = BudgetOverspendRuntime({ true }, { month }, { 0L }, activeBinding = { binding }), scope = this,
+        )
+        checker.checkNow(binding.ledgerId)
+        month = Result.success(null)
+        checker.checkNow(binding.ledgerId)
+        assertTrue(requested.isEmpty())
+        assertTrue(store.sent.isEmpty())
+        month = Result.success("2024-02")
+        checker.checkNow(binding.ledgerId)
+        assertEquals(listOf("2024-02"), requested)
+        assertEquals(1, store.sent.size)
+    }
+
     @Test fun ledgerMonthOwnsRequestAndNotificationKeyAtMonthBoundary() = runTest {
         val calendars = MonthCalendarFixture(binding, calendar(binding))
         val clock = Clock.fixed(Instant.parse("2026-06-01T00:30:00Z"), ZoneId.of("Asia/Tokyo"))
@@ -44,7 +64,7 @@ class BudgetFinancialMonthTest {
             store = store,
             dispatcher = { _, _ -> BudgetOverspendDispatchOutcome.SENT },
             runtime = BudgetOverspendRuntime({ true },
-                { active = binding.copy(bindingRevision = "replacement"); "2026-06" }, { 0L }, activeBinding = { active }),
+                { active = binding.copy(bindingRevision = "replacement"); Result.success("2026-06") }, { 0L }, activeBinding = { active }),
             scope = this,
         )
         checker.checkNow(binding.ledgerId)

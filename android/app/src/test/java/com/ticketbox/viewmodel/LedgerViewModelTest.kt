@@ -471,6 +471,7 @@ class LedgerViewModelTest {
         fake.syncGate = syncGate
 
         val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        vm.setMonthFilter(FIXTURE_MONTH)
         runCurrent()
         assertEquals(1, fake.syncCallCount)
 
@@ -912,6 +913,31 @@ private data class ManualCreateBehavior(
     val failure: Throwable? = null,
     val pendingSync: Boolean = false,
 )
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class LedgerMonthResolutionTest {
+    @Test fun unknownDefaultDoesNotPretendToBeAllMonthsAndExplicitAllMonthsStillWorks() = ledgerTest {
+        val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://example.test", "owner", "owner", "session", "revision")
+        val calendars = com.ticketbox.data.repository.MonthCalendarFixture(binding).apply {
+            response = Result.failure(java.io.IOException("offline"))
+        }
+        val repository = FakeLedgerActions(listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")))
+        val vm = LedgerViewModel(repository, CapabilityDebtActions(), calendars = calendars)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.monthReady)
+        assertTrue(vm.uiState.value.items.isEmpty())
+        assertEquals(0, repository.syncCallCount)
+        calendars.response = Result.success(null)
+        vm.sync(); advanceUntilIdle()
+        assertFalse(vm.uiState.value.monthReady)
+        assertNotNull(vm.uiState.value.message)
+        vm.setMonthFilter(""); advanceUntilIdle()
+        assertTrue(vm.uiState.value.monthReady)
+        assertEquals(1, vm.uiState.value.items.size)
+        assertEquals(1, repository.syncCallCount)
+        assertEquals(2, calendars.refreshes)
+    }
+}
 
 private class FakeLedgerActions(
     expenses: List<Expense>,

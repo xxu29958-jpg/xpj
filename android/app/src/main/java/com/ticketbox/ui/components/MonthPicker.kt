@@ -18,7 +18,7 @@ import com.ticketbox.ui.design.AppTextHierarchy
 @Composable
 fun MonthPickerSheet(
     months: List<String>,
-    selectedMonth: String,
+    selectedMonth: String?,
     description: String,
     listState: MonthPickerListState = MonthPickerListState.Loaded,
     onSelectMonth: (String) -> Unit,
@@ -43,7 +43,7 @@ fun MonthPickerSheet(
 @Composable
 private fun MonthPickerOptions(
     months: List<String>,
-    selectedMonth: String,
+    selectedMonth: String?,
     listState: MonthPickerListState,
     onSelectMonth: (String) -> Unit,
 ) {
@@ -57,7 +57,7 @@ private fun MonthPickerOptions(
         item(key = "all-months") {
             MonthPickerOptionRow(
                 label = stringResource(R.string.components_month_picker_all_months),
-                selected = selectedMonth.isBlank(),
+                selected = selectedMonth?.isBlank() == true,
                 onClick = { onSelectMonth("") },
             )
         }

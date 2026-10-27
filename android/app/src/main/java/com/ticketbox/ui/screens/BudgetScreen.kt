@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.ui.components.FinancialMonthInput
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -69,6 +71,7 @@ data class BudgetScreenActions(
     val onSave: () -> Unit,
     val onRecoverSave: (PendingBudgetSave, Boolean) -> Unit,
     val onArchive: (Long) -> Unit,
+    val onSelectMonth: (String) -> Unit,
 )
 
 @Composable
@@ -104,7 +107,7 @@ private fun BudgetScreenContent(
             layout = AppScrollableContentLayout(hasBottomBar = onBack == null,
                 contentWidth = AppAdaptiveContentWidth.Secondary,
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.sectionGap)),
-            bottomBar = if (state.canModify) ({
+            bottomBar = if (state.canModify && state.month.isNotBlank()) ({
                 AppFloatingActionBar {
                     BudgetEditEntry(firstUse = decision.status == BudgetPageStatus.NotEnabled) { editorOpen = true }
                 }
@@ -123,7 +126,7 @@ private fun BudgetScreenContent(
             else AppSecondaryPageHeader(title = stringResource(R.string.budget_header_title),
                 subtitle = stringResource(R.string.budget_header_subtitle, displayMonthLabel(state.month)),
                 backText = backText ?: stringResource(R.string.budget_back_to_stats), onBack = onBack,
-                slots = AppSecondaryPageSlots(actions = { BudgetPageActions(decision, onHistory) }))
+                slots = AppSecondaryPageSlots(actions = { BudgetPageActions(decision, onHistory, state.month.isNotBlank()) }))
         }
         budgetPageContent(state, actions, decision, editorOpen)
     }
@@ -160,7 +163,8 @@ private fun BudgetEditorSheet(state: BudgetUiState, actions: BudgetScreenActions
 private fun LazyListScope.budgetPageContent(state: BudgetUiState, actions: BudgetScreenActions,
     decision: BudgetPageDecision, editorOpen: Boolean) {
     val currencyDisplay = CurrencyDisplay.forRecord(state.budget?.homeCurrencyCode ?: "UNKNOWN")
-    if (!state.fromCache) item { MonthSwitcher(displayMonthLabel(state.month), actions.onPreviousMonth, actions.onNextMonth) }
+    if (state.month.isBlank()) item { FinancialMonthInput(actions.onSelectMonth) }
+    else if (!state.fromCache) item { MonthSwitcher(displayMonthLabel(state.month), actions.onPreviousMonth, actions.onNextMonth) }
     state.message?.takeIf { !editorOpen }?.let { message ->
         item { AppStatusBanner(message = message, tone = state.messageTone) }
     }
@@ -193,10 +197,10 @@ private fun BudgetEditEntry(firstUse: Boolean, onEdit: () -> Unit) {
 }
 
 @Composable
-private fun BudgetPageActions(decision: BudgetPageDecision, onHistory: () -> Unit) {
+private fun BudgetPageActions(decision: BudgetPageDecision, onHistory: () -> Unit, monthReady: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         BudgetStatusBadge(decision)
-        TextButton(onClick = onHistory) { Text(stringResource(R.string.budget_history_title)) }
+        TextButton(onClick = onHistory, enabled = monthReady) { Text(stringResource(R.string.budget_history_title)) }
     }
 }
 

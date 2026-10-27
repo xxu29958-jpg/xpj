@@ -29,7 +29,7 @@ fun interface BudgetOverspendSource {
  */
 class BudgetOverspendRuntime(
     val budgetOverspendAlertsEnabled: () -> Boolean,
-    val currentMonth: suspend () -> String,
+    val currentMonth: suspend () -> Result<String?>,
     val monotonicNowMillis: () -> Long,
     val logWarning: (String, Throwable?) -> Unit = { _, _ -> },
     val activeBinding: () -> com.ticketbox.data.repository.LogicalSessionBinding?,
@@ -71,7 +71,10 @@ class BudgetOverspendChecker(
         if (ledgerId.isBlank()) return
         if (!runtime.budgetOverspendAlertsEnabled()) return
         val binding = runtime.activeBinding()?.takeIf { it.ledgerId == ledgerId } ?: return
-        val month = runtime.currentMonth()
+        val month = runtime.currentMonth().getOrElse { error ->
+            runtime.logWarning("budget calendar read failed: ${error::class.java.simpleName}", error)
+            return
+        } ?: return
         if (runtime.activeBinding() != binding) return
         val key = boundReminderKey(binding, budgetOverspendSentKey(ledgerId, month))
         if (store.wasSent(key)) return

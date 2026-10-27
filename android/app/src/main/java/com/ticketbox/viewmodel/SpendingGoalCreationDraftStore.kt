@@ -10,11 +10,10 @@ import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.UiText
-import java.time.YearMonth
 import java.util.UUID
 
 @JsonClass(generateAdapter = false)
-internal enum class SpendingGoalFailureKind { Create, Currency, Lookup, Validation, Amount, Recovery, MissingOriginal }
+internal enum class SpendingGoalFailureKind { Create, Currency, Calendar, Lookup, Validation, Amount, Recovery, MissingOriginal }
 
 @JsonClass(generateAdapter = true)
 internal data class SpendingGoalCreationFailure(
@@ -28,8 +27,11 @@ internal data class SpendingGoalCreationFailure(
         SpendingGoalFailureKind.Amount -> UiText.res(R.string.expense_edit_amount_invalid)
         SpendingGoalFailureKind.MissingOriginal -> UiText.res(R.string.goal_creation_missing)
         else -> RepositoryException(message.orEmpty(), code, localFailure = localFailure).toUiText(
-            if (kind == SpendingGoalFailureKind.Currency) R.string.currency_unconfirmed_write_blocked
-            else R.string.spending_goal_create_failed)
+            when (kind) {
+                SpendingGoalFailureKind.Currency -> R.string.currency_unconfirmed_write_blocked
+                SpendingGoalFailureKind.Calendar -> R.string.financial_month_load_failed
+                else -> R.string.spending_goal_create_failed
+            })
     }
 }
 
@@ -43,10 +45,11 @@ internal data class SpendingGoalCreationDraft(
     val creationKey: String = UUID.randomUUID().toString(),
     val name: String = "",
     val amount: String = "",
-    val month: String = YearMonth.now().toString(),
+    val month: String = "",
     val category: String = "",
     val currencyCode: String? = null,
     val monthReady: Boolean = false,
+    val monthFailure: SpendingGoalCreationFailure? = null,
     val monthSelected: Boolean = false,
     val userSelectedMonth: Boolean = false,
     val opened: Boolean = false,
@@ -61,6 +64,7 @@ internal data class SpendingGoalCreationDraft(
 
     fun presentation(canModify: Boolean) = CreateSpendingGoalUiState(canModify = canModify,
         name = name, month = month, monthReady = monthReady, targetAmountInput = amount, category = category,
+        monthError = if (monthReady) null else monthFailure?.text() ?: UiText.res(R.string.financial_month_choose),
         ledgerCurrency = CurrencyCode.fromStorageKeyOrNull(currencyCode),
         formError = (if (viewingOriginalId == null) failure else viewFailure)?.text(),
         creationKey = creationKey, hasDraft = hasDraft, isViewingOriginal = viewingOriginalId != null,

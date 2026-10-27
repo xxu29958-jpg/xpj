@@ -67,7 +67,7 @@ fun FundsScreen(viewModel: FundsViewModel, onBack: () -> Unit, onExpense: (Long)
             state.captureRequested -> captureAccounts(state, viewModel)
             detail != null -> accountDetail(state, detail, viewModel, onExpense)
             else -> fundsOverview(state, FundsOverviewActions(open = { viewModel.open(it) }, create = { viewModel.start("create") },
-                envelopes = { viewModel.openEnvelopes() }, resume = viewModel::resume))
+                envelopes = { month -> if (month == null) viewModel.openEnvelopes() else viewModel.openEnvelopes(month) }, resume = viewModel::resume))
         }
     }
 }

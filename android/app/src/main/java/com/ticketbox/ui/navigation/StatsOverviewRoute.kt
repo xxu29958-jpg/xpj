@@ -86,10 +86,10 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
 }
 
 internal fun reloadAllStats(monthly: MonthlyStatsViewModel, reports: StatsReportsViewModel) {
-    if (!monthly.uiState.value.ledgerReady) return
-    monthly.reloadTags()
     monthly.refresh()
     val state = monthly.uiState.value
+    if (!state.ledgerReady) return
+    monthly.reloadTags()
     reports.refresh(state.month, state.selectedTag)
 }
 

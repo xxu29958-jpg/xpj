@@ -37,10 +37,13 @@ import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.components.displayMonthLabel
+import com.ticketbox.ui.components.FinancialMonthInput
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.budget.MonthSwitcher
 import com.ticketbox.viewmodel.CreateSpendingGoalUiState
 import com.ticketbox.viewmodel.CreateSpendingGoalViewModel
+import com.ticketbox.viewmodel.selectMonth
+import com.ticketbox.viewmodel.resolveGoalTaskMonth
 
 @Composable
 fun CreateSpendingGoalScreen(
@@ -149,7 +152,11 @@ private fun SpendingGoalForm(
             modifier = Modifier.fillMaxWidth(),
         )
         Text(stringResource(R.string.spending_goal_create_month_section), style = MaterialTheme.typography.labelLarge)
-        MonthSwitcher(
+        if (!state.monthReady) {
+            state.monthError?.let { AppStatusBanner(message = it, tone = MessageTone.Info) }
+            FinancialMonthInput(viewModel::selectMonth, state.editable, state.month)
+            TextButton(onClick = viewModel::resolveGoalTaskMonth, enabled = state.editable) { Text(stringResource(R.string.common_retry)) }
+        } else MonthSwitcher(
             month = displayMonthLabel(state.month),
             onPreviousMonth = { viewModel.shiftMonth(-1) },
             onNextMonth = { viewModel.shiftMonth(1) },

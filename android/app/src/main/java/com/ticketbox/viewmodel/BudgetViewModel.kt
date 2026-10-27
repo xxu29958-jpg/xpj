@@ -48,7 +48,7 @@ data class BudgetFormState(
 )
 
 data class BudgetUiState(
-    val month: String = YearMonth.now().toString(),
+    val month: String = "",
     val loading: Boolean = false,
     val saving: Boolean = false,
     val message: UiText? = null,
@@ -76,7 +76,7 @@ class BudgetViewModel(
     private val originalBinding: LogicalSessionBinding? = null,
 ) : ViewModel() {
     private val drafts = BudgetDraftStore(savedStateHandle)
-    private val _uiState = MutableStateFlow(BudgetUiState(month = savedStateHandle["month"] ?: initialMonth ?: YearMonth.now().toString()))
+    private val _uiState = MutableStateFlow(BudgetUiState(month = savedStateHandle["month"] ?: initialMonth.orEmpty()))
     val uiState: StateFlow<BudgetUiState> = _uiState.asStateFlow()
     private var requestGeneration = 0
     private var refreshGeneration = 0
@@ -84,7 +84,7 @@ class BudgetViewModel(
     private var observationsJob: Job? = null
     private var observedSaves: List<PendingBudgetSave> = emptyList()
 
-    private var monthSelected = initialMonth != null || savedStateHandle.get<String>("month") != null
+    private var monthSelected = !initialMonth.isNullOrBlank() || !savedStateHandle.get<String>("month").isNullOrBlank()
     private var resolvingMonth = false
 
     init {
@@ -97,22 +97,13 @@ class BudgetViewModel(
                     requestGeneration += 1
                     observationsJob?.cancel()
                     observedSaves = emptyList()
-                    _uiState.value = BudgetUiState(month = _uiState.value.month, canModify = access?.canModify == true,
+                    _uiState.value = BudgetUiState(month = _uiState.value.month.takeIf { monthSelected }.orEmpty(), canModify = access?.canModify == true,
                         binding = access?.binding)
                     restoreDraft()
                     access?.let {
                         observeBudgetChanges(it.binding)
-                        resolvingMonth = !monthSelected && !uiState.value.formDirty && calendars != null
-                        viewModelScope.launch {
-                            val month = if (resolvingMonth) calendars.newTaskMonth(it.binding) else uiState.value.month
-                            if (activeBinding != it.binding) return@launch
-                            resolvingMonth = false
-                            if (!monthSelected && !uiState.value.formDirty && !uiState.value.hasPendingSave) {
-                                _uiState.update { state -> state.copy(month = month, saves = observedSaves.forMonth(month)) }
-                                restoreDraft()
-                            }
-                            refresh()
-                        }
+                        resolvingMonth = false
+                        refresh()
                     }
                 }
             }
@@ -165,6 +156,7 @@ class BudgetViewModel(
     fun refresh() {
         if (_uiState.value.saving || resolvingMonth) return
         val binding = activeBinding ?: return
+        if (_uiState.value.month.isBlank()) { resolveMonth(binding); return }
         val generation = requestGeneration
         val refresh = ++refreshGeneration
         val month = _uiState.value.month
@@ -186,6 +178,20 @@ class BudgetViewModel(
         }
     }
 
+    private fun resolveMonth(binding: LogicalSessionBinding) {
+        resolvingMonth = true
+        _uiState.update { it.copy(loading = true, loadError = null) }
+        viewModelScope.launch {
+            val result = calendars.newTaskMonth(binding)
+            if (activeBinding != binding || monthSelected) return@launch
+            resolvingMonth = false
+            val month = result.getOrNull()
+            _uiState.update { it.copy(month = month.orEmpty(), loading = false, loadError = result.monthReadMessage(),
+                saves = observedSaves.forMonth(month.orEmpty())) }
+            if (month != null) { restoreDraft(); refresh() }
+        }
+    }
+
     fun previousMonth() = changeMonth(-1)
     fun nextMonth() = changeMonth(1)
     fun updateTotalAmount(value: String) = updateForm { it.copy(totalAmount = value) }
@@ -204,7 +210,7 @@ class BudgetViewModel(
 
     fun save() {
         val state = _uiState.value
-        if (state.saving || state.hasPendingSave) return
+        if (state.saving || state.hasPendingSave || state.month.isBlank()) return
         val binding = activeBinding ?: return
         if (!state.canModify || !repository.canModifyLedger()) {
             _uiState.update { it.copy(canModify = false, message = UiText.res(R.string.common_readonly_ledger), messageTone = MessageTone.Danger) }
@@ -246,7 +252,7 @@ class BudgetViewModel(
     fun archive(expectedVersion: Long) {
         val state = _uiState.value
         val binding = activeBinding ?: return
-        if (state.saving || state.hasPendingSave || !state.canModify || !repository.canModifyLedger()) return
+        if (state.saving || state.hasPendingSave || state.month.isBlank() || !state.canModify || !repository.canModifyLedger()) return
         val generation = requestGeneration
         refreshGeneration += 1
         _uiState.update { it.copy(saving = true, loading = false, message = null) }
@@ -282,9 +288,15 @@ class BudgetViewModel(
     private fun isCurrent(generation: Int, month: String): Boolean = requestGeneration == generation && _uiState.value.month == month
 
     private fun changeMonth(delta: Long) {
-        monthSelected = true
+        val month = runCatching { YearMonth.parse(_uiState.value.month).plusMonths(delta).toString() }.getOrNull() ?: return
+        selectMonth(month)
+    }
+
+    fun selectMonth(value: String) {
         if (_uiState.value.saving) return
-        val month = YearMonth.parse(_uiState.value.month).plusMonths(delta).toString()
+        val month = runCatching { YearMonth.parse(value).toString() }.getOrNull() ?: return
+        monthSelected = true
+        resolvingMonth = false
         savedStateHandle["month"] = month
         requestGeneration += 1
         _uiState.update { BudgetUiState(month = month, canModify = it.canModify,
@@ -294,6 +306,7 @@ class BudgetViewModel(
     }
 
     private fun restoreDraft() {
+        if (_uiState.value.month.isBlank()) return
         val binding = activeBinding ?: return
         val form = drafts.read(binding, _uiState.value.month)
         _uiState.update { it.copy(form = form ?: it.saves.firstOrNull {
@@ -301,6 +314,7 @@ class BudgetViewModel(
     }
 
     private fun updateForm(transform: (BudgetFormState) -> BudgetFormState) {
+        if (_uiState.value.month.isBlank()) return
         monthSelected = true
         savedStateHandle["month"] = _uiState.value.month
         _uiState.update { if (it.saving || it.hasPendingSave) it else it.copy(form = transform(it.form),

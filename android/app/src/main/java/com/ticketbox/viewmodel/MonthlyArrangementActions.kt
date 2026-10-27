@@ -13,6 +13,7 @@ import java.math.BigDecimal
 /** Reopening reads the raw original draft and the independently cached server projection. */
 internal fun BudgetAdviceViewModel.openArrangementMonth() {
     val snapshot = _state.value
+    if (snapshot.month.isBlank()) { refreshInputs(); return }
     val binding = snapshot.binding ?: return
     val generation = ++arrangementLoadGeneration
     _state.update { it.copy(arrangementLoading = true) }
@@ -26,6 +27,7 @@ internal fun BudgetAdviceViewModel.openArrangementMonth() {
 
 fun BudgetAdviceViewModel.refreshArrangement() {
     val snapshot = _state.value
+    if (snapshot.month.isBlank()) { refreshInputs(); return }
     val binding = snapshot.binding ?: return
     val generation = ++arrangementLoadGeneration
     _state.update { it.copy(arrangementLoading = true) }
@@ -155,6 +157,8 @@ fun BudgetAdviceViewModel.reviewArrangement(pending: PendingMonthlyArrangement) 
             BigDecimal.valueOf(request.reservedBufferCents, currency.minorUnitDigits).toPlainString(), record?.rowVersion, true)
         // Original stays in queue until the user explicitly stops it; reviewed draft cannot bypass it.
         requestGeneration += 1
+        monthSelected = true
+        resolvingMonth = false
         _state.update { it.copy(month = original.month, arrangementRead = verified, arrangementDraft = draft, trialRequest = null,
             inputs = null, result = null, loadState = BudgetAdviceLoadState.Idle,
             arrangementHistory = emptyList(), arrangementHistoryLoaded = false,
