@@ -10,12 +10,11 @@ from ticketbox_lifecycle.domain.install import (
     inspect_machine,
     install_or_resume,
 )
-from ticketbox_lifecycle.domain.operation import LifecycleStores
+from ticketbox_lifecycle.domain.operation import LifecycleStores, finalize_install_result
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
 from ticketbox_lifecycle.schemas import (
     RESULT_SCHEMA,
-    ActiveOperation,
     CommandResult,
 )
 
@@ -96,76 +95,11 @@ def _install_main(argv: list[str]) -> int:
             installation_published=False,
         )
     if args.command in {"install", "resume"} and lifecycle_stores is not None:
-        return _deliver_install_result(result_path, result, lifecycle_stores)
+        result = finalize_install_result(result, lifecycle_stores)
     command_io.write_result(result_path, result)
     if not result.ok:
         command_io.emit_failure(result)
     return 0 if result.ok else 2
-
-
-def _deliver_install_result(
-    path: Path,
-    result: CommandResult,
-    stores: LifecycleStores,
-) -> int:
-    if not result.ok:
-        command_io.write_result(path, result)
-        command_io.emit_failure(result)
-        return 2
-    active = stores.operations_read.read_active()
-    committed = (
-        stores.operations_read.read_committed(result.operation_id)
-        if active is None
-        else None
-    )
-    if (
-        result.phase != "committed"
-        or (
-            not _is_exact_commit(active, result.operation_id)
-            and not _is_exact_commit(committed, result.operation_id)
-        )
-    ):
-        failure = CommandResult(
-            schema=RESULT_SCHEMA,
-            ok=False,
-            command=result.command,
-            operation_id=result.operation_id,
-            phase="committed",
-            code="committed_operation_missing",
-            message="committed result has no exact active operation",
-            installation_published=result.installation_published,
-        )
-        command_io.write_result(path, failure)
-        command_io.emit_failure(failure)
-        return 2
-    if _is_exact_commit(active, result.operation_id):
-        try:
-            stores.operations_write.archive_committed(active)
-        except Exception as exc:
-            failure = CommandResult(
-                schema=RESULT_SCHEMA,
-                ok=False,
-                command=result.command,
-                operation_id=result.operation_id,
-                phase="committed",
-                code="operation_archive_failed",
-                message=str(exc),
-                installation_published=result.installation_published,
-            )
-            command_io.write_result(path, failure)
-            command_io.emit_failure(failure)
-            return 2
-    command_io.write_result(path, result)
-    return 0
-
-
-def _is_exact_commit(operation: ActiveOperation | None, operation_id: str) -> bool:
-    return (
-        operation is not None
-        and operation.kind in {"install", "restore"}
-        and operation.phase == "committed"
-        and operation.operation_id == operation_id
-    )
 
 
 if __name__ == "__main__":

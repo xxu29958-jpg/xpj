@@ -50,6 +50,7 @@ backend_manager/
 ├── desktop_shell.py   HKLM Edge 发现、独立 app profile 与可等待窗口进程
 ├── control_server.py  localhost HTTP 控制:token 鉴权 + authenticated reopen + bootstrap 会话 + 产品桥
 ├── product_data.py    #219 两阶段身份协议客户端（attempt 证明 + KDF 派生）与 loopback 数据面
+├── product_sessions.py 配对/切账/激活/解除与恢复的唯一协调器，持有原会话锁
 ├── product_identity.py WinCred app 会话存取（installation 作用域、fail-closed、token 不进 repr）
 ├── product_recovery.py WinCred 重绑定恢复位（attempt 证明持久化,崩溃可幂等重放）
 ├── web_bff.py         同源 /web 受限 relay（身份无关,只注入 Bearer + bridge 头）

@@ -90,3 +90,60 @@ def _failure_identity(failure: LifecycleError | OSError) -> tuple[str, str]:
     if isinstance(failure, LifecycleError):
         return failure.code, failure.message
     return "operation_io_failed", "lifecycle operation I/O failed"
+
+
+def finalize_install_result(
+    result: CommandResult,
+    stores: LifecycleStores,
+) -> CommandResult:
+    if not result.ok:
+        return result
+    active = stores.operations_read.read_active()
+    committed = (
+        stores.operations_read.read_committed(result.operation_id)
+        if active is None
+        else None
+    )
+    if (
+        result.phase != "committed"
+        or (
+            not _is_exact_commit(active, result.operation_id)
+            and not _is_exact_commit(committed, result.operation_id)
+        )
+    ):
+        failure = CommandResult(
+            schema=RESULT_SCHEMA,
+            ok=False,
+            command=result.command,
+            operation_id=result.operation_id,
+            phase="committed",
+            code="committed_operation_missing",
+            message="committed result has no exact active operation",
+            installation_published=result.installation_published,
+        )
+        return failure
+    if _is_exact_commit(active, result.operation_id):
+        try:
+            stores.operations_write.archive_committed(active)
+        except Exception as exc:
+            failure = CommandResult(
+                schema=RESULT_SCHEMA,
+                ok=False,
+                command=result.command,
+                operation_id=result.operation_id,
+                phase="committed",
+                code="operation_archive_failed",
+                message=str(exc),
+                installation_published=result.installation_published,
+            )
+            return failure
+    return result
+
+
+def _is_exact_commit(operation: ActiveOperation | None, operation_id: str) -> bool:
+    return (
+        operation is not None
+        and operation.kind in {"install", "restore"}
+        and operation.phase == "committed"
+        and operation.operation_id == operation_id
+    )

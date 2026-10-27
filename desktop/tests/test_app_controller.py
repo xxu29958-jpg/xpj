@@ -1989,7 +1989,7 @@ def test_provisional_attempt_ttl_mirrors_the_backend_pending_ttl() -> None:
     DESKTOP_PENDING_TOKEN_TTL_SECONDS`` (300s). The desktop deadline mirrors it
     and only the skew margin extends past it, so a provisional proof is never
     retired while it could still be live server-side."""
-    from backend_manager.app_controller import (
+    from backend_manager.product_sessions import (
         _PROVISIONAL_ATTEMPT_EXPIRY_MARGIN_SECONDS,
         _PROVISIONAL_ATTEMPT_TTL_SECONDS,
     )

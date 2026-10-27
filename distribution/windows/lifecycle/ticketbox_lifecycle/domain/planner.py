@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from ticketbox_lifecycle.adapters.ports import AdapterBundle, PlatformAdapter
 from ticketbox_lifecycle.errors import LifecycleViolation
 from ticketbox_lifecycle.schemas import (
     APPLY_SEQUENCE,
     ApplyStep,
+    DurablePhase,
     HostObservation,
     InstallPlan,
     InstallRequest,
@@ -60,3 +62,24 @@ def _adapter_name(step: str) -> str:
         "start_services": "scm",
         "health": "dataset",
     }[step]
+
+
+def adapter_for_step(bundle: AdapterBundle, step: str) -> PlatformAdapter:
+    return getattr(bundle, _adapter_name(step))
+
+
+def phase_after(step: str) -> DurablePhase:
+    if step in {
+        "programdata_root",
+        "acl",
+        "postgres_initdb",
+        "scm",
+        "start_postgres",
+        "roles_database",
+        "alembic",
+        "owner_claim",
+    }:
+        return "data_ready"
+    if step in {"start_services", "health"}:
+        return "release_activated"
+    raise KeyError(step)

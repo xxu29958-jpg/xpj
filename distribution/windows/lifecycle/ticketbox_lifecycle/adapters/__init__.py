@@ -7,8 +7,6 @@ from ticketbox_lifecycle.adapters.ports import (
     OperationPublisher,
     OperationReader,
     PlatformAdapter,
-    adapter_for_step,
-    phase_after,
 )
 
 __all__ = [
@@ -20,6 +18,4 @@ __all__ = [
     "OperationPublisher",
     "OperationReader",
     "PlatformAdapter",
-    "adapter_for_step",
-    "phase_after",
 ]

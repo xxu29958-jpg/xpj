@@ -8,15 +8,13 @@ from dataclasses import replace
 
 from ticketbox_lifecycle.adapters.ports import (
     PlatformAdapter,
-    adapter_for_step,
-    phase_after,
 )
 from ticketbox_lifecycle.domain import operation as operation_state
 from ticketbox_lifecycle.domain.binding import (
     ensure_runtime_binding,
     require_runtime_binding,
 )
-from ticketbox_lifecycle.domain.planner import plan_fresh_install
+from ticketbox_lifecycle.domain.planner import adapter_for_step, phase_after, plan_fresh_install
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.schemas import (
     APPLY_SEQUENCE,

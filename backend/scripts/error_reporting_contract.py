@@ -60,16 +60,16 @@ REVIEWED_BOUNDARIES = {
         "reason": "This is the terminal owner of the fixed connector worker, including exceptions from final refresh. It exposes only a static unknown result and next step, never exception text, a false success, or another operation. The regression injects a private marker both during the action and after the host reply and verifies the real thread cannot leak it through stderr or remain running.",
     },
     ("distribution/windows/lifecycle/ticketbox_lifecycle/cli.py", "_install_main"): {
-        "sha256": "1b93a3014ad723ca12f7bf916b92c26fe755dbffcfcc63173e2ed903a94f7dde",
+        "sha256": "0a8ca6769a8c8dac3c7c9e58bd36dbdf5995dfa4955ef4b3090d44a7e59ab148",
         "owner": "existing Lifecycle private result file and sanitized CLI stderr",
         "test": "distribution/windows/tests/test_cli.py::test_unhandled_failure_does_not_publish_exception_text",
-        "reason": "Dispatch retains the install/resume/inspect terminal owner while shared parsing and result I/O move to command_io. Unexpected failures still become static unhandled/failed_recoverable results and pass once through command_io.emit_failure. The regression checks the result, empty stdout, one sanitized stderr line and absence of the private exception marker; no alternate recovery path is added.",
+        "reason": "CLI retains request parsing and terminal output while the domain owns committed-operation finalization. Unexpected failures still become static unhandled/failed_recoverable results and pass once through command_io.emit_failure. The regression checks the result, empty stdout, one sanitized stderr line and absence of the private exception marker; no alternate recovery path is added.",
     },
-    ("distribution/windows/lifecycle/ticketbox_lifecycle/cli.py", "_deliver_install_result"): {
-        "sha256": "65d6c2ef010e6def609fb718b73487c8a51dee822f5ac382c96e04d919fb431e",
+    ("distribution/windows/lifecycle/ticketbox_lifecycle/domain/operation.py", "finalize_install_result"): {
+        "sha256": "3709ef79a7a1f6c256e3c3e583727057abc9e3ea906d5b36a6028505736c387d",
         "owner": "existing Lifecycle committed-operation delivery and command_io failure output",
         "test": "distribution/windows/tests/test_install_sequence.py::test_archive_failure_retains_exact_commit_and_reports_once",
-        "reason": "Only the shared result writer and stderr function moved. An archive failure still returns operation_archive_failed without claiming successful delivery, repeating the operation or removing its exact active commit. The regression injects an archive failure and verifies one attempt, retained authority, the private failure result and one sanitized stderr report with no pairing code. It does not add an archive retry or a new reporting path.",
+        "reason": "Exact-commit validation and archival now belong to the operation domain. CLI writes the returned result and reports failure once. An archive failure still returns operation_archive_failed without claiming successful delivery, repeating the operation or removing its exact active commit. The regression invokes the real CLI, injects an archive failure and verifies one attempt, retained authority, the private failure result and one sanitized stderr report with no pairing code. It does not add an archive retry or a new reporting path.",
     },
     ("distribution/windows/lifecycle/ticketbox_lifecycle/domain/restore.py", "_restore_candidate"): {
         "sha256": "2fab1d47a8e99d77eb6e436b5d0d07d5913924924aee14ab7beddbbb1ef6b54a",
