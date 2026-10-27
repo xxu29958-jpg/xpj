@@ -48,17 +48,14 @@ from app.routes.web_rule_forms import (
     rule_form_failure,
 )
 from app.schemas import CategoryRuleCreateRequest, CategoryRuleUpdateRequest
-from app.services.classify_service import (
-    delete_rule,
-    find_rule_for_tenant,
+from app.services.rule_application_service import (
     list_rule_applications,
-    list_rules,
     preview_rule_for_pending,
     rollback_rule_application,
-    undo_delete_rule,
+    rule_application_change_counts,
 )
-from app.services.rule_application_service import rule_application_change_counts
 from app.services.rule_command_service import create_rule_idempotently, update_rule_idempotently
+from app.services.rule_service import delete_rule, find_rule_for_tenant, list_rules, undo_delete_rule
 
 if TYPE_CHECKING:
     from app.models import CategoryRule

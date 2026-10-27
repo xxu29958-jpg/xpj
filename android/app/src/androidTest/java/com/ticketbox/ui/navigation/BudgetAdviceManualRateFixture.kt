@@ -49,6 +49,7 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     private val base = DataQualityConnectedHarness()
     private val name = "budget-advice-rate-${UUID.randomUUID()}.db"
     private var database: AppDatabase? = null
+    private val calendarPreferences = context.getSharedPreferences("$name.calendar", Context.MODE_PRIVATE)
     val adapters = OutboxAdapterGraph()
     val originalMonth = YearMonth.now().minusMonths(1).toString()
     val rateDate = "$originalMonth-07"
@@ -92,6 +93,12 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
         else -> error("Unexpected session call: $name")
     } }
     private val api = object : ApiService by rateProxy<ApiService>({ error("Unexpected API call: $it") }) {
+        override suspend fun runtimeCompatibility() = com.ticketbox.data.remote.dto.RuntimeCompatibilityDto(
+            com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION, "compatible",
+            com.ticketbox.data.remote.dto.RuntimeProductCapabilitiesDto(
+                com.ticketbox.data.remote.dto.RuntimeCurrencyCapabilityDto("1:1:JPY"), accountingTimeInputVersion = 1))
+        override suspend fun ledgerCalendar(ledgerId: String, revision: Long?) =
+            com.ticketbox.domain.model.LedgerCalendar(ledgerId, revision ?: 1, "UTC", "explicit", "2026-01-01T00:00:00Z")
         override suspend fun budgetAdviceInputs(month: String, timezone: String?, homeCurrencyCode: String?): BudgetAdviceInputsDto {
             inputReads += month to homeCurrencyCode
             return inputReply.copy(month = month, homeCurrencyCode = homeCurrencyCode ?: runtimeHome,
@@ -146,10 +153,11 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
         override fun create(baseUrl: String, tokenProvider: () -> String?): ApiService = api
     }, sessions, SessionCredentialAdapter(sessions))
     val binding = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
+    private val calendars = com.ticketbox.data.repository.LedgerCalendarRepository(LedgerRequestGuard(provider), calendarPreferences)
     lateinit var outbox: OutboxRepository
     lateinit var repository: BudgetRepository
     val screenFactory get() = MainScreenFactory(base.screenFactory.repositories.copy(
-        budgetRepository = repository, outboxRepository = outbox), base.screenFactory.viewModelFactories)
+        budgetRepository = repository, outboxRepository = outbox, ledgerCalendarRepository = calendars), base.screenFactory.viewModelFactories)
 
     init { reopen() }
 
@@ -186,7 +194,9 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
         { api }, adapters.budget.manualRateAdapter, adapters.budget.manualRateReceiptAdapter), SaveMonthlyArrangementDispatcher(
         { api }, adapters.budget.arrangementSaveAdapter, adapters.budget.arrangementReceiptAdapter)), maxAttempts = 1).drainOnce()
 
-    override fun close() { database?.close(); context.deleteDatabase(name); base.close() }
+    override fun close() {
+        database?.close(); context.deleteDatabase(name); calendarPreferences.edit().clear().commit(); base.close()
+    }
 }
 
 private inline fun <reified T> rateProxy(crossinline answer: (String) -> Any?): T = Proxy.newProxyInstance(

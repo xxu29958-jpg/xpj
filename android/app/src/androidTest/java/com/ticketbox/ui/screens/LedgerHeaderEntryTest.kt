@@ -131,7 +131,7 @@ class LedgerHeaderEntryTest {
 
     @Test
     fun writerEmptyFilteredKeepsClearFiltersAsOnlyEmptyCta() {
-        render(LedgerUiState(syncedInCurrentSession = true))
+        render(LedgerUiState(monthFilter = "2026-09", syncedInCurrentSession = true))
 
         assertRecordCtaCount(1)
         composeRule.onAllNodesWithText("重置筛选").assertCountEquals(1)

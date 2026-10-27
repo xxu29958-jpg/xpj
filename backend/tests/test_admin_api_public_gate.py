@@ -82,7 +82,7 @@ def governance_services(monkeypatch: pytest.MonkeyPatch):
         calls.append(("devices", account_id))
         return []
 
-    def cleanup_images(_db, tenant_id):
+    def cleanup_images(_db, tenant_id, *, auth):
         calls.append(("cleanup", tenant_id))
         return MaintenanceCleanupResponse(
             enabled=True, delete_after_days=30, scanned=0,

@@ -8,7 +8,6 @@ from app.models import Expense
 from app.schemas import ExpenseUpdateRequest
 from app.services.bill_split_service import assert_no_immutable_field_changes
 from app.services.category_preference_service import ensure_category_preference_for_name
-from app.services.classify_service import classify_expense
 from app.services.duplicate_service import mark_duplicate_status, revalidate_duplicate_references_to
 from app.services.exchange_rate_service import validate_currency_payload_money_command
 from app.services.expense_accounting_time_service import apply_expense_time_input
@@ -21,6 +20,7 @@ from app.services.expense_service._helpers import (
 from app.services.expense_service._update_currency import _apply_update_currency
 from app.services.ocr_service import clear_ocr_draft_fields
 from app.services.receipt_item_service import recompute_items_sum_status
+from app.services.rule_service import classify_expense
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import now_utc
 
@@ -55,7 +55,8 @@ def _apply_classification_and_duplicate_projection(
     updates: dict[str, object],
 ) -> None:
     if (
-        "category" not in updates
+        expense.status == "pending"
+        and "category" not in updates
         and expense.category == "其他"
         and any(field in updates for field in {"merchant", "note"})
     ):

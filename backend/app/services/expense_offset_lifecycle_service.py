@@ -22,6 +22,7 @@ from app.services.expense_offset_service import (
     expense_fact_bundle,
     offset_accounting_values,
 )
+from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.time_service import now_utc
@@ -236,6 +237,7 @@ def _complete_lifecycle_command(
     actor_device_name: str | None,
     idempotency_key: str,
     created_at: datetime,
+    affected_account_ids: set[int],
     commit: bool = True,
 ) -> ExpenseFactBundleResponse:
     _append_revision(
@@ -260,6 +262,7 @@ def _complete_lifecycle_command(
         response_body=result.model_dump(mode="json", exclude_computed_fields=True),
     )
     if commit:
+        stage_debt_goal_achievements(db, account_ids=affected_account_ids)
         db.commit()
     return result
 
@@ -354,6 +357,7 @@ def correct_expense_offset(
         actor_device_name=actor_device_name,
         idempotency_key=idempotency_key,
         created_at=now,
+        affected_account_ids={account.id for account in accounts.values()},
     )
 
 
@@ -408,7 +412,7 @@ def void_expense_offset(
         now=now,
     )
     from app.services.funds_refund_service import reverse_offset_funds
-    reverse_offset_funds(db, expense=expense, offset=voided, actor_account_id=actor_account_id, reason=payload.void_reason)
+    affected_account_ids = reverse_offset_funds(db, expense=expense, offset=voided, actor_account_id=actor_account_id, reason=payload.void_reason)
     return _complete_lifecycle_command(
         db,
         claim=claim_or_replay,
@@ -422,6 +426,7 @@ def void_expense_offset(
         actor_device_name=actor_device_name,
         idempotency_key=idempotency_key,
         created_at=now,
+        affected_account_ids=affected_account_ids,
         commit=commit,
     )
 

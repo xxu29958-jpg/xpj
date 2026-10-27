@@ -326,9 +326,7 @@ class MonthlyStatsViewModelTest {
 
     @Test
     fun dataQualityLoadsEvenWhenMonthlyStatsFails() = statsTest {
-        // PR #230 round 12 review claimed the DQ load is bound to the monthly
-        // success path — pin the actual contract: the failure path also fires
-        // the supplemental DQ load (handleStatsFailure → loadSupplemental).
+        // Ledger-wide quality remains readable when the monthly query fails.
         val stats = FakeStatsActions()
         stats.monthlyStatsResponder = { _, _ -> Result.failure(RuntimeException("offline")) }
         stats.dataQualityResponder = {
@@ -450,6 +448,81 @@ class MonthlyStatsViewModelTest {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MonthlyStatsMonthResolutionTest {
+    @Test fun dataQualityRefreshesWhileCalendarIsPendingFailedOrUnsupported() = statsTest {
+        val repository = FakeStatsActions()
+        val summary = repository.dataQualitySummary().getOrThrow()
+        val gate = CompletableDeferred<Unit>()
+        val calendars = com.ticketbox.data.repository.MonthCalendarFixture(requireNotNull(repository.bindingFlow.value)).apply {
+            this.gate = { gate.await() }
+            response = Result.failure(java.io.IOException("offline"))
+        }
+        val vm = MonthlyStatsViewModel(repository, calendars = calendars)
+        runCurrent()
+        assertEquals(DataQualityLoadState.Loaded, vm.uiState.value.dataQualityLoadState)
+        assertTrue(repository.queries.isEmpty())
+        assertFalse(vm.uiState.value.ledgerReady)
+
+        repository.dataQualityResponder = { Result.success(summary.copy(missingMerchant = 2)) }
+        vm.refresh()
+        runCurrent()
+        assertEquals(2, vm.uiState.value.dataQuality?.missingMerchant)
+        assertEquals(1, calendars.refreshes)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertNotNull(vm.uiState.value.statsLoadError)
+
+        calendars.response = Result.success(null)
+        repository.dataQualityResponder = { Result.success(summary.copy(missingMerchant = 3)) }
+        vm.refresh()
+        advanceUntilIdle()
+        assertEquals(DataQualityLoadState.Loaded, vm.uiState.value.dataQualityLoadState)
+        assertEquals(3, vm.uiState.value.dataQuality?.missingMerchant)
+        assertEquals(2, calendars.refreshes)
+        assertEquals("", vm.uiState.value.month)
+        assertFalse(vm.uiState.value.ledgerReady)
+        assertTrue(repository.queries.isEmpty())
+    }
+
+    @Test fun unresolvedMonthDropsLateDataQualityFromAReplacedBinding() = statsTest {
+        val repository = FakeStatsActions()
+        val summary = repository.dataQualitySummary().getOrThrow()
+        val oldResponse = CompletableDeferred<Result<DataQualitySummary>>()
+        repository.dataQualityResponder = { oldResponse.await() }
+        val vm = MonthlyStatsViewModel(repository)
+        runCurrent()
+        assertEquals(DataQualityLoadState.Loading, vm.uiState.value.dataQualityLoadState)
+
+        repository.dataQualityResponder = { Result.success(summary.copy(missingMerchant = 2)) }
+        repository.bindingFlow.value = requireNotNull(repository.bindingFlow.value).copy(bindingRevision = "replacement")
+        runCurrent()
+        assertEquals(2, vm.uiState.value.dataQuality?.missingMerchant)
+        oldResponse.complete(Result.success(summary.copy(missingMerchant = 9)))
+        advanceUntilIdle()
+        assertEquals(2, vm.uiState.value.dataQuality?.missingMerchant)
+        assertEquals("replacement", vm.uiState.value.binding?.bindingRevision)
+        assertTrue(repository.queries.isEmpty())
+    }
+
+    @Test fun explicitReadRefusalInvalidatesAnAlreadyStartedDataQualityResponse() = statsTest {
+        val repository = FakeStatsActions()
+        val vm = MonthlyStatsViewModel(repository, initialMonth = "2026-05")
+        advanceUntilIdle()
+        val summary = requireNotNull(vm.uiState.value.dataQuality)
+        val response = CompletableDeferred<Result<DataQualitySummary>>()
+        repository.dataQualityResponder = { response.await() }
+        repository.monthlyStatsResponder = { _, _ -> Result.failure(
+            com.ticketbox.data.repository.RepositoryException("Forbidden", httpStatusCode = 403)) }
+        vm.refresh()
+        runCurrent()
+        assertNull(vm.uiState.value.stats)
+        response.complete(Result.success(summary.copy(missingMerchant = 9)))
+        advanceUntilIdle()
+        assertEquals(summary, vm.uiState.value.dataQuality)
+        assertEquals(DataQualityLoadState.Failed, vm.uiState.value.dataQualityLoadState)
+        assertNotNull(vm.uiState.value.dataQualityError)
+        assertNull(vm.uiState.value.stats)
+    }
+
     @Test fun failedCalendarCanRetryAndUnsupportedCalendarRequiresAnExplicitMonth() = statsTest {
         val repository = FakeStatsActions()
         val calendars = com.ticketbox.data.repository.MonthCalendarFixture(requireNotNull(repository.bindingFlow.value)).apply {
