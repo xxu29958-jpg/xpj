@@ -4,9 +4,12 @@ import hashlib
 import json
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from fakes import MemoryMutex
 from ticketbox_lifecycle import cli
+from ticketbox_lifecycle.domain.cold_copy import create_cold_copy
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime import cold_archive
 
@@ -36,6 +39,48 @@ def materials(tmp_path: Path) -> dict[str, Path]:
 def _write(path: Path, roots: dict[str, Path], checkpoint) -> dict[str, object]:
     with path.open("x+b") as target:
         return cold_archive.write_archive(target, roots, {"dataset_id": "original"}, checkpoint)
+
+
+@pytest.mark.parametrize("failure", [None, "source", "write", "readback"])
+def test_cold_copy_holds_lease_through_independent_readback_and_releases_on_failure(
+    tmp_path: Path, materials: dict[str, Path], failure: str | None,
+) -> None:
+    mutex = MemoryMutex()
+    events: list[str] = []
+
+    def observe(stage: str) -> None:
+        assert mutex._lock.locked()
+        events.append(stage)
+        if failure == stage:
+            raise LifecycleError("cold_corrupt", "injected " + stage)
+
+    def read_source():
+        observe("source")
+        return materials
+
+    def write_archive(target, source):
+        observe("write")
+        return cold_archive.write_archive(target, source, {"dataset_id": "original"}, lambda: None)
+
+    def verify_archive(target):
+        observe("readback")
+        return cold_archive.verify_archive(target)
+
+    target = tmp_path / "coordinated.tbxcold"
+    platform = SimpleNamespace(
+        mutex=mutex, read_source=read_source, create_archive=lambda path: path.open("x+b"),
+        write_archive=write_archive, verify_archive=verify_archive,
+    )
+    if failure is None:
+        result = create_cold_copy(target, platform)
+        assert result["files"] == 11
+        assert events == ["source", "write", "readback"]
+    else:
+        with pytest.raises(LifecycleError, match="injected " + failure):
+            create_cold_copy(target, platform)
+        assert events[-1] == failure
+    assert mutex.acquired == 1
+    assert not mutex._lock.locked()
 
 
 def test_retention_reopens_with_every_original_file_and_empty_directory(

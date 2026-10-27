@@ -1,6 +1,6 @@
 # Windows 生命周期的责任边界
 
-核对日期：2026-10-27；迁移基线 `663f6e165fa135907df32b115622b04e661b3e6a`。
+核对日期：2026-10-27；第一阶段基线 `663f6e165fa135907df32b115622b04e661b3e6a`，本轮基于已合并 #681 的 `87c649d8e9f5f62ba7ac42db35f78e07873c1fe8`。
 本文件描述所在候选的源码边界，不代表发行或日常安装资格。
 
 Gmail 原邮件 `1a0f78f4d88cbcbb` 的 Rev3.2 三份 PDF 已重新核对，下载字节与完整本地正文一致。
@@ -14,7 +14,7 @@ Windows 合同 §5、§7、§17 要求保留唯一 Lifecycle、固定恢复顺�
 |---|---|
 | `desktop/backend_manager/` | 普通权限 Manager、同源 BFF、安装读模型、固定动作代理；不生成安装身份 |
 | `distribution/windows/installer/` | Setup 物化声明载荷，调用 Lifecycle 并展示原操作结果 |
-| `distribution/windows/lifecycle/ticketbox_lifecycle/domain/` | install、restore、connector 的有限编排与持久状态发布 |
+| `distribution/windows/lifecycle/ticketbox_lifecycle/domain/` | install、restore、connector、cold-copy 的有限编排与持久状态发布 |
 | 同包 `policy/`、`adapters/`、`runtime/` | 纯策略、窄能力合同/共享机制、Windows 实现和组合 |
 | `distribution/windows/build/`、`backend/packaging/`、`backend/scripts/windows_build_provenance.ps1` | 冻结程序、受信源清单与安装器来源绑定 |
 | `backend/app/`、PostgreSQL、原件目录 | 财务事实和原件权威；不是宿主安装操作的第二 writer |
@@ -30,7 +30,10 @@ flowchart LR
     Broker --> CLI
     Manager --> BFF[同源 BFF]
     BFF --> Backend[Backend 领域命令与事实]
-    CLI --> Domain[domain: install / restore / connector]
+    CLI --> Domain[domain: install / restore / connector / cold-copy]
+    Manager --> Sessions[ProductSessions: 配对 / 切账 / 凭据恢复]
+    Sessions --> WinCred[当前用户 WinCred 主位与恢复位]
+    Sessions --> Backend
     Domain --> Op[operation / binding]
     Domain --> Ports[能力端口与 SCM 观测模型]
     Native[Windows adapters] --> Ports
@@ -48,6 +51,19 @@ flowchart LR
 | 主 CLI 与恢复 CLI 为共享请求/结果 IO 互相导入 | `command_io` 只拥有原解析、原子结果写入和脱敏输出；两个 CLI 直接使用 | restore CLI → 主 CLI 私有工具函数回边 |
 | cloudflared 探测选择器 → 已安装探测器 → 选择器私有端点观测 | 原选择器传入单次端点观测能力；已安装探测器继续拥有 SCM/PID/配置前后核验 | 已安装探测器对选择器的延迟反向导入 |
 
+本轮进一步迁移：
+
+| 旧责任点 | 当前唯一 owner | 退役与真实消费者 |
+|---|---|---|
+| cold-copy CLI 持有 mutex、源读取、写入与独立回读顺序 | `domain.cold_copy`；`runtime.windows_cold_copy` 提供原生授权和私有文件机制 | CLI 仅装配/输出；原冷备入口、真实归档校验和管理员拒绝门继续使用 |
+| CLI 校验 exact commit、归档 active operation | `domain.operation.finalize_install_result` | 原 `_deliver_install_result` 删除；Setup 仍只消费归档之后的成功结果 |
+| connector CLI 判断续办是否需要新凭据 | `domain.connector.requires_configuration_token` | 原 `_needs_token` 删除；原生输入由 CLI 执行，领域判断不新增凭据或重试 |
+| adapter 合同拥有步骤到阶段的策略，且与 planner 重复步骤映射 | `domain.planner` | adapter 的两个策略导出删除；install 使用同一份步骤映射 |
+| AppController 同时持有 UI 状态和配对/切账/恢复协议 | `ProductSessions` 持有原互斥锁、WinCred 能力和完整续办时序 | UI 控制器中的所有私有协议实现删除；BFF、控制路由、连接器上下文均消费同一实例 |
+
+AppController 只保留原用户动作入口与界面投影，动作准入回调仍在会话锁内执行，保持与维护退出的原锁顺序。
+会话协调器只读安装身份，不能获得 SCM、数据根或宿主恢复发布权。
+
 CLI 继续做参数、管理员权限、组合和结果映射。R1 仍只接受干净隔离目标：
 mutex → shipment/目标核验 → 源核验 → prepared → 私有提取 → ACL/SCM → 凭证轮换/身份事务 →
 候选 health → fence → binding → committed → 正常 health → autostart → archive。
@@ -59,6 +75,14 @@ Manager 与 Lifecycle 的静态 Python 模块导入图中，两条包含函数�
 用户仍使用原入口、原任务和原失败恢复方式，没有新增操作步骤。
 
 ## 验证及限制
+
+本轮本地 Lifecycle 与来源契约 323 通过、6 个权限相关跳过；Desktop 全套 552 通过、10 跳过。
+Desktop 跳过项包含需要独立 Backend/数据库配置的真实消费者，由新候选的云端专用门验证；不能继承 #681 的资格。
+迁移后的 30 个会话方法逐个与基线 AST 比较，除动作准入及共享错误映射名称外保持一致。
+新的冷备租约失败测试、凭据续办测试，以及改为真实 CLI 入口的归档/丢失结果回归均通过。
+安装器显式来源清单纳入三个新 Lifecycle 文件，Manager 来源清单递归纳入新会话 owner。
+
+以下为第一阶段来源 `a37ee1705b937536a2e4caecf0804784439b8d71` 的历史验证：
 
 本地 Windows 生命周期套件 307 通过、6 跳过；跳过的是需要管理员令牌的 ACL/受限令牌用例，
 由 exact candidate Windows CI 执行。Manager 安装识别、诊断目录及原生 Known Folder 的相关消费者
