@@ -7,7 +7,6 @@ from datetime import date, datetime
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
 from app.models import ApiIdempotencyKey, RecurringItem
@@ -29,7 +28,7 @@ from app.services.recurring_item_command_service import (
     replay_recurring_receipt,
 )
 from app.services.recurring_merchant_capacity import ensure_recurring_merchant_storage_shape
-from app.services.time_service import ensure_utc, now_utc, safe_zone
+from app.services.time_service import ensure_utc, now_utc
 
 _VALID_FREQUENCIES = {"monthly"}
 
@@ -81,7 +80,7 @@ def confirm_recurring_candidate(
     match = _require_recurring_candidate_match(db, tenant_id=tenant_id, payload=payload,
         timezone_name=timezone_name)
     return _create_recurring_item_from_candidate(db, tenant_id=tenant_id, match=match, payload=payload,
-        claim=outcome.row, timezone_name=timezone_name, actor_account_id=actor_account_id)
+        claim=outcome.row, actor_account_id=actor_account_id)
 
 
 def _validated_candidate_intent(payload: RecurringCandidateConfirmRequest) -> tuple[str, str, int]:
@@ -142,7 +141,6 @@ def _create_recurring_item_from_candidate(
     match: _RecurringCandidateMatch,
     payload: RecurringCandidateConfirmRequest,
     claim: ApiIdempotencyKey,
-    timezone_name: str | None,
     actor_account_id: int | None = None,
 ) -> RecurringItemResponse:
     # Observation provenance belongs to the server-side candidate scan. The
@@ -167,8 +165,7 @@ def _create_recurring_item_from_candidate(
         last_seen_at=last_seen_at,
         next_expected_date=_candidate_next_expected_date(
             payload,
-            last_seen_at=last_seen_at,
-            timezone_name=timezone_name,
+            last_accounting_date=match.candidate["last_accounting_date"],
         ),
         status="active",
         confidence=str(confidence) if confidence else None,
@@ -201,15 +198,6 @@ def _add_one_month(value: date) -> date:
     month = 1 if value.month == 12 else value.month + 1
     day = min(value.day, monthrange(year, month)[1])
     return date(year, month, day)
-
-
-def _next_expected_date(last_seen_at: datetime | None, timezone_name: str | None) -> date | None:
-    utc_value = ensure_utc(last_seen_at)
-    if utc_value is None:
-        return None
-    resolved_timezone = (timezone_name or "").strip() or get_settings().ocr_default_timezone
-    local_date = utc_value.astimezone(safe_zone(resolved_timezone)).date()
-    return _add_one_month(local_date)
 
 
 def _find_recurring_candidate(
@@ -270,9 +258,8 @@ def _candidate_occurrence_count(match: _RecurringCandidateMatch) -> int:
 def _candidate_next_expected_date(
     payload: RecurringCandidateConfirmRequest,
     *,
-    last_seen_at: datetime | None,
-    timezone_name: str | None,
+    last_accounting_date: date,
 ) -> date | None:
     if "next_expected_date" in payload.model_fields_set:
         return payload.next_expected_date
-    return _next_expected_date(last_seen_at, timezone_name)
+    return _add_one_month(last_accounting_date)

@@ -293,7 +293,8 @@ def test_confirm_rejected_when_draft_currency_mismatches_debt(client: TestClient
 def _candidate_confirm_call(db, monkeypatch):
     """Exercise the public adoption command with a controlled server observation."""
     monkeypatch.setattr(candidate_service, "recurring_candidates", lambda *args, **kwargs: [
-        {"merchant": "咖啡店", "amount_cents": 1200, "occurrence_count": 3, "confidence": "high"},
+        {"merchant": "咖啡店", "amount_cents": 1200, "occurrence_count": 3, "confidence": "high",
+         "last_accounting_date": date(2026, 5, 1)},
     ])
     payload = RecurringCandidateConfirmRequest(
         home_currency_code="CNY",
