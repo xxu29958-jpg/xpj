@@ -128,7 +128,7 @@ private fun SavedQueryResult(row: SavedViewResultRow, currency: String, canModif
     val entry = row.entry
     val offset = (entry as? com.ticketbox.domain.model.ConfirmedStreamItem.OffsetRow)?.offset
     val originalMinor = offset?.originalAmountMinor ?: entry.root.originalAmountMinor
-    val originalCurrency = offset?.originalCurrencyCode ?: entry.root.originalCurrencyCode.storageKey
+    val originalCurrency = offset?.originalCurrencyCode ?: entry.root.originalCurrencyCodeRaw ?: entry.root.originalCurrencyCode.storageKey
     AppListRow(onClick = { actions.openExpense(entry.root.id) }) {
         SettingsEntryIcon(ImageVector.vectorResource(R.drawable.ic_lucide_receipt_text))
         Spacer(Modifier.width(AppSpacing.contentGap))
@@ -140,8 +140,11 @@ private fun SavedQueryResult(row: SavedViewResultRow, currency: String, canModif
             Text(listOfNotNull(entry.streamDate, offset?.category ?: entry.root.category).joinToString(" · "),
                 color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             if (offset != null) Text(stringResource(R.string.saved_query_offset))
-            if (originalMinor != null && originalCurrency != null) Text(stringResource(R.string.saved_query_original,
-                "${formatDisplayAmount(originalMinor, CurrencyDisplay.forRecord(originalCurrency))} $originalCurrency"))
+            if (originalMinor != null) {
+                val display = CurrencyDisplay.forRecord(originalCurrency)
+                val amount = formatDisplayAmount(originalMinor, display)
+                Text(stringResource(R.string.saved_query_original, if (display.unknownCode == null) "$amount $originalCurrency" else amount))
+            }
             row.projectionGap?.let { gap ->
                 Text(stringResource(R.string.saved_query_projection_missing))
                 if (canModify && gap.canEnterManualRate()) AppSecondaryButton(stringResource(R.string.saved_query_rate_repair),

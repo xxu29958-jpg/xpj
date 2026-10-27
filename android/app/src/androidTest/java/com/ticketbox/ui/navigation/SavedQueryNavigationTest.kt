@@ -62,17 +62,20 @@ class SavedQueryNavigationTest {
     @Test fun queryResultReturnAndUnknownEditKeepOriginalTaskAcrossRoomReopen() {
         harness = FactEntryNavigationHarness(context) { api -> queryApi(api) }
         harness.fixture.network.current = harness.fixture.network.current.copy(merchant = "便利店", category = "购物", amountCents = 12860,
-            originalCurrencyCode = "JPY", originalAmountMinor = 2850, homeCurrency = "CNY")
+            originalCurrencyCode = "JPY", originalCurrency = "JPY", originalAmountMinor = 2850, homeCurrency = "CNY")
         install()
         enterDirectory()
         click("每月日用")
         waitFor("¥128.60")
+        waitFor(context.getString(R.string.saved_query_original, "¥2,850 JPY"))
         capture("saved-query-results")
         click("便利店")
         waitFor(context.getString(R.string.expense_fact_original_spend))
-        harness.fixture.network.current = harness.fixture.network.current.copy(merchant = "便利店后来更正")
+        harness.fixture.network.current = harness.fixture.network.current.copy(merchant = "便利店后来更正",
+            originalCurrencyCode = "ZZZ", originalCurrency = null, originalAmountMinor = 1200)
         Espresso.pressBack()
         waitFor("便利店后来更正")
+        waitFor(context.getString(R.string.saved_query_original, "1200 ZZZ"))
         capture("saved-query-after-detail")
         click("修改条件或名称")
         waitFor("名称")
@@ -113,6 +116,7 @@ class SavedQueryNavigationTest {
         waitFor("后来人工条件")
         click("后来人工条件")
         waitFor("便利店后来更正")
+        waitFor(context.getString(R.string.saved_query_original, "1200 ZZZ"))
         capture("saved-query-current-result")
         Espresso.pressBack()
         readFailure = true
