@@ -118,9 +118,11 @@ def _apply_rules_to_status(
     if current_token != preview_token:
         raise AppError("preview_stale", "预览已过期，请重新预览后再确认。", status_code=409)
     versions = [expense.row_version for expense in expenses]
-    changes: list[tuple[int, int, str, str, str]] = []
+    changes: dict[int, tuple[int, int, str, str, str]] = {}
     now = now_utc()
-    for expense, match, expected_version in zip(expenses, matches, versions, strict=True):
+    # All multi-expense writers acquire fact rows in ID order.
+    candidates = sorted(zip(expenses, matches, versions, strict=True), key=lambda item: item[0].id)
+    for expense, match, expected_version in candidates:
         if match.unavailable or match.rule_id is None or match.category is None:
             continue
         new_category = match.category
@@ -136,7 +138,7 @@ def _apply_rules_to_status(
             reason=reason,
         )
         if applied is not None:
-            changes.append(applied)
+            changes[expense.id] = applied
     application_id = None
     if changes:
         batch = RuleApplicationBatch(
@@ -148,7 +150,9 @@ def _apply_rules_to_status(
         db.add(batch)
         db.flush()
         application_id = batch.public_id
-        for expense_id, rule_id, matched_keyword, before_category, after_category in changes:
+        # Retain the preview's original newest-first order in the audit history.
+        ordered_changes = (changes[expense.id] for expense in expenses if expense.id in changes)
+        for expense_id, rule_id, matched_keyword, before_category, after_category in ordered_changes:
             db.add(RuleApplicationChange(
                 tenant_id=tenant_id, batch_id=batch.id, expense_id=expense_id,
                 rule_id=rule_id, matched_keyword=matched_keyword,

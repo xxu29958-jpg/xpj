@@ -119,7 +119,7 @@ def rollback_rule_application(
     now = now_utc()
     changed = 0
     skipped = 0
-    for change in changes:
+    for change in sorted(changes, key=lambda item: item.expense_id):
         if change.status != "applied":
             skipped += 1
             continue

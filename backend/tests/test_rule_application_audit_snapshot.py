@@ -36,7 +36,7 @@ def test_rule_rename_during_correction_cannot_rewrite_preview_audit(monkeypatch)
         persisted.append(row)
     db = SimpleNamespace(add=add, flush=lambda: None, commit=lambda: None,
         scalar=lambda query: selected["expense"],
-        expire_all=lambda: setattr(rule, "keyword", "renamed-after-preview"))
+        expire=lambda _expense: setattr(rule, "keyword", "renamed-after-preview"))
     preview = _preview.preview_apply_rules_to_confirmed(db, tenant_id="owner")
     result = _apply.apply_rules_to_confirmed(db, tenant_id="owner", preview_token=preview["preview_token"])
     assert result == (2, 2, False, "batch-9")
