@@ -7,6 +7,7 @@ import java.time.ZoneId
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class FinancialMonthTest {
     private val binding = LogicalSessionBinding("https://example.test", "ledger", "owner", "session", "revision")
@@ -25,27 +26,35 @@ class FinancialMonthTest {
 
     @Test fun capturedLedgerRuleOwnsMonthAcrossDeviceBoundaryAndWorksOffline() = runTest {
         val calendars = MonthCalendarFixture(binding, calendar(binding, "America/Los_Angeles"))
-        assertEquals("2026-05", calendars.newTaskMonth(binding, clock))
+        assertEquals("2026-05", calendars.newTaskMonth(binding, clock).getOrThrow())
         assertEquals(0, calendars.refreshes)
-        assertEquals("2026-05", calendars.newTaskMonth(binding, clock.withZone(ZoneId.of("Pacific/Kiritimati"))))
+        assertEquals("2026-05", calendars.newTaskMonth(binding, clock.withZone(ZoneId.of("Pacific/Kiritimati"))).getOrThrow())
     }
 
-    @Test fun uncachedRuleIsFetchedBeforeDefaultAndOldServerKeepsUsableMonth() = runTest {
+    @Test fun uncachedRuleDistinguishesKnownMonthUnsupportedAndReadFailure() = runTest {
         val calendars = MonthCalendarFixture(binding).apply {
             response = Result.success(calendar(binding, "America/Los_Angeles"))
         }
-        assertEquals("2026-05", calendars.newTaskMonth(binding, clock))
+        assertEquals("2026-05", calendars.newTaskMonth(binding, clock).getOrThrow())
         assertEquals(1, calendars.refreshes)
         calendars.response = Result.success(null)
-        assertEquals("2026-06", calendars.newTaskMonth(binding, clock))
+        assertEquals(null, calendars.newTaskMonth(binding, clock).getOrThrow())
         calendars.response = Result.failure(java.io.IOException("offline"))
-        assertEquals("2026-06", calendars.newTaskMonth(binding, clock))
+        assertTrue(calendars.newTaskMonth(binding, clock).exceptionOrNull() is java.io.IOException)
     }
 
     @Test fun anotherLogicalBindingCannotSupplyTheDefaultMonth() = runTest {
         val calendars = MonthCalendarFixture(binding, calendar(binding, "America/Los_Angeles"))
-        assertEquals("2026-06", calendars.newTaskMonth(binding.copy(bindingRevision = "replacement"), clock))
+        assertEquals(null, calendars.newTaskMonth(binding.copy(bindingRevision = "replacement"), clock).getOrThrow())
         assertEquals(0, calendars.refreshes)
+    }
+
+    @Test fun aBindingReplacementDuringTheReadCannotSupplyAMonth() = runTest {
+        val calendars = MonthCalendarFixture(binding).apply {
+            response = Result.success(calendar(binding))
+            gate = { this.binding = binding.copy(bindingRevision = "replacement") }
+        }
+        assertTrue(calendars.newTaskMonth(binding, clock).isFailure)
     }
 
     @Test fun omittedGoalMonthReachesServerWithoutDeviceTimezoneDefault() = runTest {

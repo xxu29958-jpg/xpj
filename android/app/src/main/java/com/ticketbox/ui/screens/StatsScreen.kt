@@ -1,5 +1,7 @@
 package com.ticketbox.ui.screens
 
+import com.ticketbox.ui.components.FinancialMonthInput
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -100,7 +102,7 @@ fun StatsScreen(
         ModalBottomSheet(onDismissRequest = { showMonthPicker = false }) {
             MonthPickerSheet(
                 months = state.months,
-                selectedMonth = state.month,
+                selectedMonth = state.month.takeIf { it.isNotBlank() },
                 description = stringResource(R.string.stats_month_picker_description),
                 listState = state.monthPickerListState(),
                 onSelectMonth = { month ->
@@ -217,6 +219,7 @@ private fun StatsPrimaryPane(
         }
 
         if (state.stats == null) {
+            if (state.month.isBlank()) item { FinancialMonthInput(actions.filters.onMonthChange) }
             item {
                 StatsUnreadableState(state = state, onRefresh = actions.onRefresh)
             }

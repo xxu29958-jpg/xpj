@@ -12,6 +12,7 @@ import com.ticketbox.domain.model.CsvExport
 import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
+import com.ticketbox.domain.model.ExpenseAccountingTime
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.RecentMerchant
@@ -22,11 +23,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -295,43 +296,89 @@ class LedgerViewModelTest {
 
     @Test
     fun manualCreateSuccessFlipsDoneForTheSheetToClose() = ledgerTest {
-        val fake = FakeLedgerActions(
-            expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
-        )
-        val vm = LedgerViewModel(fake, CapabilityDebtActions())
-        advanceUntilIdle()
+        val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://example.test", "owner", "owner", "session", "revision")
+        for (response in listOf(Result.failure(java.io.IOException("offline")), Result.success(null))) {
+            val calendars = com.ticketbox.data.repository.MonthCalendarFixture(binding).apply { this.response = response }
+            val fake = FakeLedgerActions(
+                expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
+            )
+            val vm = LedgerViewModel(fake, CapabilityDebtActions(), calendars = calendars)
+            advanceUntilIdle()
+            assertFalse(vm.uiState.value.monthReady)
+            assertEquals(0, fake.syncCallCount)
 
-        vm.createManualExpense(manualDraft())
-        advanceUntilIdle()
+            vm.createManualExpense(manualDraft())
+            advanceUntilIdle()
 
-        val state = vm.uiState.value
-        assertTrue(state.manualCreateResult != null)
-        assertEquals(null, state.manualCreateError)
-        assertEquals(UiText.res(R.string.ledger_msg_manual_saved), state.message)
-        assertEquals(MessageTone.Success, state.messageTone)
+            val state = vm.uiState.value
+            val created = assertNotNull(state.manualCreateResult)
+            assertNull(state.manualCreateError)
+            assertEquals(UiText.res(R.string.ledger_msg_manual_saved), state.message)
+            assertEquals(MessageTone.Success, state.messageTone)
+            assertTrue(state.monthReady)
+            assertEquals(FIXTURE_MONTH, state.monthFilter)
+            assertTrue(state.items.any { it.root.id == created.id })
+            assertFalse(state.syncing)
 
-        vm.manualCreateSettled()
-        assertTrue(vm.uiState.value.manualCreateResult == null)
+            vm.manualCreateSettled()
+            assertNull(vm.uiState.value.manualCreateResult)
+            val syncGate = CompletableDeferred<Unit>()
+            fake.syncGate = syncGate
+            vm.sync()
+            runCurrent()
+            assertTrue(vm.uiState.value.syncing)
+            assertEquals(1, fake.syncCallCount)
+            vm.createManualExpense(manualDraft())
+            runCurrent()
+            assertTrue(vm.uiState.value.syncing, "Saving a row must not finish the independent stream sync")
+            assertTrue(vm.uiState.value.items.any { it.root.id == vm.uiState.value.manualCreateResult?.id })
+            syncGate.complete(Unit)
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.syncedInCurrentSession)
+            assertEquals(1, calendars.refreshes)
+        }
     }
 
     @Test
     fun manualCreateOfflineSuccessShowsQueuedTruth() = ledgerTest {
+        val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://example.test", "owner", "owner", "session", "revision")
+        val calendarGate = CompletableDeferred<Unit>()
+        val calendars = com.ticketbox.data.repository.MonthCalendarFixture(binding).apply {
+            gate = { calendarGate.await() }
+            response = Result.success(com.ticketbox.data.repository.calendar(binding))
+        }
         val fake = FakeLedgerActions(
             expenses = listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "A")),
             manualCreate = ManualCreateBehavior(pendingSync = true),
         )
-        val vm = LedgerViewModel(fake, CapabilityDebtActions())
-        advanceUntilIdle()
+        val vm = LedgerViewModel(fake, CapabilityDebtActions(), calendars = calendars)
+        runCurrent()
+        assertFalse(vm.uiState.value.monthReady)
+        assertTrue(vm.uiState.value.syncing)
 
         vm.createManualExpense(manualDraft())
-        advanceUntilIdle()
+        runCurrent()
 
         val state = vm.uiState.value
-        assertTrue(state.manualCreateResult != null)
+        val created = assertNotNull(state.manualCreateResult)
         assertEquals(UiText.res(R.string.ledger_msg_manual_saved_offline), state.message)
         assertEquals(MessageTone.Info, state.messageTone)
-        assertTrue(requireNotNull(state.manualCreateResult).pendingSync)
-        assertTrue(requireNotNull(state.manualCreateResult).id < 0)
+        assertTrue(created.pendingSync)
+        assertTrue(created.id < 0)
+        assertTrue(state.monthReady)
+        assertEquals(FIXTURE_MONTH, state.monthFilter)
+        assertTrue(state.items.any { it.root.id == created.id && it.root.pendingSync })
+        assertFalse(state.syncing)
+        vm.sync()
+        runCurrent()
+        assertEquals(1, fake.syncCallCount)
+        assertTrue(vm.uiState.value.syncedInCurrentSession)
+        calendarGate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(FIXTURE_MONTH, vm.uiState.value.monthFilter)
+        assertTrue(vm.uiState.value.items.any { it.root.id == created.id })
+        assertEquals(1, calendars.refreshes)
+        assertEquals(1, fake.syncCallCount)
     }
 
     @Test
@@ -471,6 +518,7 @@ class LedgerViewModelTest {
         fake.syncGate = syncGate
 
         val vm = LedgerViewModel(fake, CapabilityDebtActions())
+        vm.setMonthFilter(FIXTURE_MONTH)
         runCurrent()
         assertEquals(1, fake.syncCallCount)
 
@@ -911,7 +959,61 @@ private const val FIXTURE_MONTH = "2026-05"
 private data class ManualCreateBehavior(
     val failure: Throwable? = null,
     val pendingSync: Boolean = false,
+    val accountingTime: ExpenseAccountingTime? = null,
 )
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class LedgerMonthResolutionTest {
+    @Test fun unknownDefaultDoesNotPretendToBeAllMonthsAndExplicitAllMonthsStillWorks() = ledgerTest {
+        val binding = com.ticketbox.data.repository.LogicalSessionBinding("https://example.test", "owner", "owner", "session", "revision")
+        val calendars = com.ticketbox.data.repository.MonthCalendarFixture(binding).apply {
+            response = Result.failure(java.io.IOException("offline"))
+        }
+        val repository = FakeLedgerActions(
+            listOf(expense(id = 1, amountCents = 1200, category = "餐饮", merchant = "早餐店")),
+            manualCreate = ManualCreateBehavior(accountingTime = ExpenseAccountingTime(precision = "unknown")),
+        )
+        val vm = LedgerViewModel(repository, CapabilityDebtActions(), calendars = calendars)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.monthReady)
+        assertTrue(vm.uiState.value.items.isEmpty())
+        assertEquals(0, repository.syncCallCount)
+        vm.createManualExpense(manualDraft())
+        advanceUntilIdle()
+        assertNull(assertNotNull(vm.uiState.value.manualCreateResult).accountingTime?.accountingDate)
+        assertFalse(vm.uiState.value.monthReady)
+        assertEquals("", vm.uiState.value.monthFilter)
+        calendars.response = Result.success(null)
+        vm.sync(); advanceUntilIdle()
+        assertFalse(vm.uiState.value.monthReady)
+        assertFalse(vm.uiState.value.syncing)
+        assertNotNull(vm.uiState.value.message)
+
+        val calendarGate = CompletableDeferred<Unit>()
+        calendars.gate = { calendarGate.await() }
+        calendars.response = Result.success(com.ticketbox.data.repository.calendar(binding))
+        vm.sync(); runCurrent()
+        vm.createManualExpense(manualDraft()); runCurrent()
+        assertFalse(vm.uiState.value.monthReady)
+        assertEquals("", vm.uiState.value.monthFilter)
+        assertTrue(vm.uiState.value.syncing, "An undated result must leave the pending calendar read in charge")
+        calendarGate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.monthReady)
+        assertTrue(vm.uiState.value.monthFilter.isNotBlank())
+        assertTrue(vm.uiState.value.syncedInCurrentSession)
+        vm.setMonthFilter("2024-02")
+        vm.createManualExpense(manualDraft()); advanceUntilIdle()
+        assertEquals("2024-02", vm.uiState.value.monthFilter)
+        assertTrue(vm.uiState.value.monthReady)
+        vm.setMonthFilter(""); advanceUntilIdle()
+        assertTrue(vm.uiState.value.monthReady)
+        assertEquals(4, vm.uiState.value.items.size)
+        assertEquals(mapOf<String?, Int>("CNY" to 3), vm.uiState.value.undatedExpenseCountsByCurrency)
+        assertEquals(1, repository.syncCallCount)
+        assertEquals(3, calendars.refreshes)
+    }
+}
 
 private class FakeLedgerActions(
     expenses: List<Expense>,
@@ -923,6 +1025,7 @@ private class FakeLedgerActions(
     private val manualCreate: ManualCreateBehavior = ManualCreateBehavior(),
 ) : LedgerActions {
     private var confirmed = expenses
+    private val confirmedStream = MutableStateFlow(expenses.map { it.toStreamRow() })
 
     var batchCallCount = 0
         private set
@@ -952,7 +1055,7 @@ private class FakeLedgerActions(
     override fun observeConfirmed(): Flow<List<Expense>> = flowOf(confirmed)
 
     override fun observeConfirmedStream(): Flow<List<ConfirmedStreamItem>> =
-        flowOf(confirmed.map { it.toStreamRow() })
+        confirmedStream
 
     override suspend fun categories(): Result<List<String>> =
         Result.success(DEFAULT_EXPENSE_CATEGORIES)
@@ -997,8 +1100,9 @@ private class FakeLedgerActions(
             amountCents = draft.amountCents ?: 0L,
             category = draft.category ?: "其他",
             merchant = draft.merchant ?: "手动",
-        ).copy(pendingSync = manualCreate.pendingSync)
+        ).copy(pendingSync = manualCreate.pendingSync, accountingTime = manualCreate.accountingTime)
         confirmed = confirmed + created
+        confirmedStream.value = confirmed.map { it.toStreamRow() }
         return Result.success(created)
     }
 
@@ -1041,7 +1145,7 @@ private fun manualDraft(): ExpenseDraft = ExpenseDraft(
  *  the same caliber the server would (streamDate = the bill's day, contribution
  *  = gross amount, ordinary confirmed lineage, no offsets). */
 internal fun Expense.toStreamRow(): ConfirmedStreamItem.ExpenseRow = ConfirmedStreamItem.ExpenseRow(
-    streamDate = (expenseTime ?: createdAt).take(10),
+    streamDate = if (accountingTime != null) accountingTime.accountingDate else (expenseTime ?: createdAt).take(10),
     streamAmountCents = amountCents ?: 0L,
     root = this,
     lineageStatus = ExpenseLineageStatus.Confirmed,

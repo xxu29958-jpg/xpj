@@ -35,7 +35,9 @@ class CreateSpendingGoalSavedStateTest {
     @BeforeTest fun setup() { Dispatchers.setMain(dispatcher) }
     @AfterTest fun close() { models.forEach { it.viewModelScope.cancel() }; Dispatchers.resetMain() }
     private fun model(edits: RecordingGoalEdits, saved: SavedStateHandle = SavedStateHandle()) =
-        CreateSpendingGoalViewModel(edits, savedStateHandle = saved).also { models += it }
+        CreateSpendingGoalViewModel(edits, calendars = requireNotNull(edits.currentAccess()).binding.let {
+            com.ticketbox.data.repository.MonthCalendarFixture(it, com.ticketbox.data.repository.calendar(it))
+        }, savedStateHandle = saved).also { models += it }
     private fun snapshot(saved: SavedStateHandle) = SavedStateHandle(saved.keys().associateWith { saved.get<Any?>(it) })
 
     @Test fun constructingTheListOwnerDoesNotExposeAnEmptyContinueTaskButOpeningTheFormDoes() = runTest(dispatcher) {

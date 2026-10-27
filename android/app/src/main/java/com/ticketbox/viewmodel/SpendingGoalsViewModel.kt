@@ -36,13 +36,13 @@ class SpendingGoalsViewModel(
     private val _state = MutableStateFlow(
         SpendingGoalsUiState(
             canModify = edits.currentAccess()?.canModify == true,
-            month = (initialMonth ?: YearMonth.now().toString()).validGoalMonth(),
+            month = initialMonth.orEmpty(),
         ),
     )
     val state: StateFlow<SpendingGoalsUiState> = _state.asStateFlow()
-    private var monthSelected = initialMonth != null
-    private var resolvingMonth = calendars != null && initialMonth == null
-    val monthForNewGoal: String? get() = _state.value.month.takeUnless { resolvingMonth }
+    private var monthSelected = !initialMonth.isNullOrBlank()
+    private var resolvingMonth = false
+    val monthForNewGoal: String? get() = _state.value.month.takeUnless { resolvingMonth || it.isBlank() }
     private var loadJob: Job? = null
     private var loadGeneration = 0L
     private val timezone = java.util.TimeZone.getDefault().id
@@ -64,16 +64,11 @@ class SpendingGoalsViewModel(
                     binding = access?.binding
                     loadGeneration += 1
                     loadJob?.cancel()
-                    _state.update { it.copy(goals = emptyList(), fetchedAt = null, fromCache = false, canModify = access?.canModify == true, isLoading = false) }
+                    _state.update { it.copy(month = it.month.takeIf { monthSelected }.orEmpty(), goals = emptyList(), fetchedAt = null,
+                        fromCache = false, canModify = access?.canModify == true, isLoading = false) }
                     if (access != null) {
-                        resolvingMonth = !monthSelected && calendars != null
-                        viewModelScope.launch {
-                            val month = if (resolvingMonth) calendars.newTaskMonth(access.binding) else _state.value.month
-                            if (binding != access.binding || edits.currentAccess()?.binding != access.binding) return@launch
-                            resolvingMonth = false
-                            if (!monthSelected) _state.update { it.copy(month = month) }
-                            refresh()
-                        }
+                        resolvingMonth = false
+                        refresh()
                     }
                 } else _state.update { it.copy(canModify = access?.canModify == true) }
             }
@@ -83,6 +78,7 @@ class SpendingGoalsViewModel(
     fun refresh() {
         if (resolvingMonth) return
         val origin = edits.currentAccess()?.binding ?: return
+        if (_state.value.month.isBlank()) { resolveMonth(origin); return }
         val requestedMonth = _state.value.month
         val includeArchived = _state.value.includeArchived
         val generation = ++loadGeneration
@@ -124,6 +120,18 @@ class SpendingGoalsViewModel(
         }
     }
 
+    private fun resolveMonth(origin: com.ticketbox.data.repository.LogicalSessionBinding) {
+        resolvingMonth = true
+        _state.update { it.copy(isLoading = true, loadError = null) }
+        viewModelScope.launch {
+            val result = calendars.newTaskMonth(origin)
+            if (binding != origin || edits.currentAccess()?.binding != origin || monthSelected) return@launch
+            resolvingMonth = false
+            _state.update { it.copy(month = result.getOrNull().orEmpty(), isLoading = false, loadError = result.monthReadMessage()) }
+            if (result.getOrNull() != null) refresh()
+        }
+    }
+
     fun acceptArchived(expectedBinding: com.ticketbox.data.repository.LogicalSessionBinding, archived: Goal) {
         if (expectedBinding != binding || expectedBinding != edits.currentAccess()?.binding ||
             archived.ledgerId != expectedBinding.ledgerId || !archived.isArchived) return
@@ -153,14 +161,15 @@ class SpendingGoalsViewModel(
     }
 
     private fun shiftMonth(delta: Long) {
+        val month = runCatching { YearMonth.parse(_state.value.month).plusMonths(delta).toString() }.getOrNull() ?: return
+        selectMonth(month)
+    }
+
+    fun selectMonth(value: String) {
+        val month = runCatching { YearMonth.parse(value).toString() }.getOrNull() ?: return
         monthSelected = true
-        _state.update {
-            val nextMonth = YearMonth.parse(it.month).plusMonths(delta).toString()
-            it.copy(month = nextMonth, goals = emptyList(), fetchedAt = null, fromCache = false, loadError = null)
-        }
+        resolvingMonth = false
+        _state.update { it.copy(month = month, goals = emptyList(), fetchedAt = null, fromCache = false, loadError = null) }
         refresh()
     }
 }
-
-private fun String.validGoalMonth(): String =
-    runCatching { YearMonth.parse(trim()).toString() }.getOrDefault(YearMonth.now().toString())

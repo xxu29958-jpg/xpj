@@ -16,10 +16,17 @@ interface LedgerCalendarReader {
 suspend fun LedgerCalendarReader?.newTaskMonth(
     binding: LogicalSessionBinding? = this?.currentBinding(),
     clock: Clock = Clock.systemDefaultZone(),
-): String {
-    val capturedClock = Clock.fixed(clock.instant(), clock.zone)
-    // Keep the existing usable month default when no ledger rule has been read.
-    return YearMonth.from(newTaskDate(binding, capturedClock) ?: LocalDate.now(capturedClock)).toString()
+): Result<String?> {
+    val instant = clock.instant()
+    if (this == null || binding == null || currentBinding() != binding) return Result.success(null)
+    val rule = cached(binding)?.let { Result.success(it) } ?: refresh(binding)
+    return rule.mapCatching { calendar ->
+        check(currentBinding() == binding) { "Ledger binding changed while reading its calendar" }
+        calendar?.let {
+            check(it.ledgerId == binding.ledgerId) { "Calendar belongs to another ledger" }
+            YearMonth.from(instant.atZone(ZoneId.of(it.timezoneName))).toString()
+        }
+    }
 }
 
 /** A new date-only financial form uses a known ledger day; unknown rules need an explicit date. */

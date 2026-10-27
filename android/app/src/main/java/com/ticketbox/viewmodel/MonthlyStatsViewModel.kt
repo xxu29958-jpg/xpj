@@ -26,12 +26,12 @@ class MonthlyStatsViewModel(
     initialMonth: String? = null,
     private val calendars: LedgerCalendarReader? = null,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(MonthlyStatsUiState(month = initialMonth ?: YearMonth.now().toString()))
+    private val _uiState = MutableStateFlow(MonthlyStatsUiState(month = initialMonth.orEmpty()))
     val uiState: StateFlow<MonthlyStatsUiState> = _uiState.asStateFlow()
     private var refreshGeneration = 0L
     private var inFlightRefresh: MonthlyStatsRefreshSnapshot? = null
 
-    private var monthSelected = initialMonth != null
+    private var monthSelected = !initialMonth.isNullOrBlank()
     private var resolvingMonth = false
 
     init {
@@ -45,22 +45,30 @@ class MonthlyStatsViewModel(
                 refreshGeneration += 1
                 inFlightRefresh = null
                 _uiState.update {
-                    MonthlyStatsUiState(month = it.month, selectedTag = it.selectedTag,
-                        binding = binding, ledgerReady = binding != null && (monthSelected || calendars == null))
+                    MonthlyStatsUiState(month = it.month.takeIf { monthSelected }.orEmpty(), selectedTag = it.selectedTag,
+                        binding = binding, ledgerReady = binding != null && monthSelected)
                 }
                 if (binding != null) {
-                    resolvingMonth = !monthSelected && calendars != null
-                    viewModelScope.launch {
-                        val month = if (resolvingMonth) calendars.newTaskMonth(binding) else _uiState.value.month
-                        if (!isBindingCurrent(binding)) return@launch
-                        resolvingMonth = false
-                        _uiState.update { it.copy(month = if (monthSelected) it.month else month, ledgerReady = true) }
-                        loadMonths()
-                        loadTags()
-                        refresh()
-                    }
+                    resolvingMonth = false
+                    loadMonths()
+                    loadTags()
+                    refresh()
                 }
             }
+        }
+    }
+
+    private fun resolveMonth(binding: LogicalSessionBinding) {
+        resolvingMonth = true
+        _uiState.update { it.copy(loading = true, statsLoadError = null) }
+        viewModelScope.launch {
+            val result = calendars.newTaskMonth(binding)
+            if (!isBindingCurrent(binding) || monthSelected) return@launch
+            resolvingMonth = false
+            val month = result.getOrNull()
+            _uiState.update { it.copy(month = month.orEmpty(), ledgerReady = month != null, loading = false,
+                months = statsMonthOptions(it.months, month.orEmpty()), statsLoadError = result.monthReadMessage()) }
+            if (month != null) refresh()
         }
     }
 
@@ -96,8 +104,11 @@ class MonthlyStatsViewModel(
     fun reloadTags() = loadTags()
 
     fun setMonth(value: String) {
-        if (runCatching { YearMonth.parse(value) }.isSuccess) monthSelected = true
-        if (runCatching { YearMonth.parse(value) }.isFailure || value == _uiState.value.month) return
+        if (runCatching { YearMonth.parse(value) }.isFailure) return
+        monthSelected = true
+        resolvingMonth = false
+        _uiState.update { it.copy(ledgerReady = true) }
+        if (value == _uiState.value.month) return
         changeQuery(value, _uiState.value.selectedTag)
     }
 
@@ -120,12 +131,17 @@ class MonthlyStatsViewModel(
     }
 
     fun refresh() {
-        if (resolvingMonth) return
         val state = _uiState.value
         val binding = state.binding ?: return
         val query = StatsQuery(binding, state.month, state.selectedTag, state.homeCurrencyCode, state.timezone)
         if (inFlightRefresh?.query == query) return
         val snapshot = MonthlyStatsRefreshSnapshot(++refreshGeneration, query)
+        // Ledger-wide quality remains readable while the default month is unresolved.
+        loadDataQuality(snapshot)
+        if (state.month.isBlank()) {
+            if (!resolvingMonth) resolveMonth(binding)
+            return
+        }
         inFlightRefresh = snapshot
         viewModelScope.launch {
             try {
@@ -148,7 +164,6 @@ class MonthlyStatsViewModel(
                 homeCurrencyCode = read.value.homeCurrencyCode, loading = false, statsLoadError = null,
                 primaryRefreshRevision = it.primaryRefreshRevision + 1)
         }
-        loadDataQuality(snapshot)
         if (snapshot.query.tag.isBlank()) loadLifestyle(snapshot, read.value.homeCurrencyCode)
         if (!read.fromCache) viewModelScope.launch {
             if (snapshot.isCurrent()) repository.syncConfirmed(snapshot.query.month, null, snapshot.query.tag.ifBlank { null })
@@ -163,7 +178,6 @@ class MonthlyStatsViewModel(
                 statsLoadError = if (it.stats == null) error.toUiText(R.string.stats_message_stats_failed) else null,
                 message = if (it.stats == null) null else error.toUiText(R.string.stats_message_stats_failed))
         }
-        loadDataQuality(snapshot)
     }
 
     private fun clearRejectedRead(error: Throwable): Boolean {
@@ -173,6 +187,8 @@ class MonthlyStatsViewModel(
         inFlightRefresh = null
         _uiState.update { it.copy(stats = null, statsFetchedAt = null, statsSource = StatsSource.None,
             lifestyleStats = null, lifestyleFetchedAt = null, lifestyleFromCache = false,
+            dataQualityLoadState = DataQualityLoadState.Failed,
+            dataQualityError = error.toUiText(R.string.stats_data_quality_load_failed),
             loading = false, statsLoadError = error.toUiText(R.string.stats_message_stats_failed), message = null) }
         return true
     }
@@ -194,6 +210,7 @@ class MonthlyStatsViewModel(
 
     private fun loadDataQuality(snapshot: MonthlyStatsRefreshSnapshot) {
         viewModelScope.launch {
+            if (!snapshot.isCurrent()) return@launch
             _uiState.update { it.copy(dataQualityLoadState = DataQualityLoadState.Loading, dataQualityError = null) }
             val result = repository.dataQualitySummary()
             if (!snapshot.isCurrent()) return@launch

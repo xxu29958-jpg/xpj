@@ -28,7 +28,7 @@ class FinancialMonthViewModelTest {
         val vm = BudgetViewModel(fake, calendars = calendars)
         runCurrent()
         assertEquals(emptyList(), fake.loadedMonths)
-        vm.nextMonth()
+        vm.selectMonth("2025-03")
         val selected = vm.uiState.value.month
         gate.complete(Unit)
         advanceUntilIdle()
@@ -73,7 +73,7 @@ class FinancialMonthViewModelTest {
         val advice = BudgetAdviceViewModel(fake, calendars = calendars)
         runCurrent()
         assertTrue(fake.inputs.months.isEmpty())
-        advice.shiftMonth(-2)
+        advice.selectMonth("2025-04")
         val selected = advice.uiState.value.month
         gate.complete(Unit)
         advanceUntilIdle()
@@ -90,7 +90,7 @@ class FinancialMonthViewModelTest {
         val goals = SpendingGoalsViewModel(reports, edits, calendars = calendars)
         runCurrent()
         assertTrue(reports.goalsCalls.isEmpty())
-        goals.previousMonth()
+        goals.selectMonth("2025-05")
         val goalMonth = goals.state.value.month
         goalGate.complete(Unit)
         advanceUntilIdle()
@@ -107,7 +107,7 @@ class FinancialMonthViewModelTest {
         runCurrent()
         create.updateName("Food")
         create.updateTargetAmount("100")
-        create.shiftMonth(-3)
+        create.selectMonth("2025-06")
         val month = create.state.value.month
         create.submit()
         runCurrent()

@@ -72,7 +72,7 @@ internal fun LedgerFilterPanel(
             recordCtaSlot = recordCtaSlot,
             actions = actions,
         )
-        if (showSummaryHeader) LedgerHeader(state = state)
+        if (showSummaryHeader && state.monthReady) LedgerHeader(state = state)
     }
 }
 
@@ -98,7 +98,8 @@ private fun LedgerInlineFilters(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
     ) {
         AppFilterChip(
-            label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
+            label = if (!state.monthReady) stringResource(R.string.financial_month_label)
+                else displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
                 ?: stringResource(R.string.ledger_inline_month_all),
             selected = state.monthFilter.isNotBlank(),
             onClick = actions.onOpenMonthPicker,

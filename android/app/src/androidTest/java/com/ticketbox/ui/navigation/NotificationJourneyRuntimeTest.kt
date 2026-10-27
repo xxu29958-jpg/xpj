@@ -54,7 +54,8 @@ class NotificationJourneyRuntimeTest {
             assertEquals(1, recurring.skippedDispatch)
             assertEquals(BackupStaleRunOutcome.Detail.SKIPPED_DISPATCH, backup.detail)
         }
-        val key = boundReminderKey(binding, budgetOverspendSentKey(binding.ledgerId, container.ledgerCalendarRepository.newTaskMonth()))
+        val key = boundReminderKey(binding, budgetOverspendSentKey(binding.ledgerId,
+            requireNotNull(container.ledgerCalendarRepository.newTaskMonth().getOrThrow())))
         assertEquals("A refused notification is not an already-delivered reminder", enabled,
             SharedPrefsBudgetOverspendStore(context).wasSent(key))
 

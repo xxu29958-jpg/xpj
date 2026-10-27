@@ -25,7 +25,7 @@ internal fun CreateSpendingGoalViewModel.activateGoalDraft() {
         mutableState.value = CreateSpendingGoalUiState(canModify = false)
         return
     }
-    val current = store.read(origin) ?: SpendingGoalCreationDraft(origin, monthReady = calendars == null).also(store::write)
+    val current = store.read(origin) ?: SpendingGoalCreationDraft(origin).also(store::write)
     task = current
     mutableState.value = current.presentation(edits.currentAccess()?.canModify == true)
         .copy(isSubmitting = current.viewingOriginalId == null && submittingKey == current.creationKey && submitJob?.isActive == true)
@@ -48,13 +48,21 @@ internal fun CreateSpendingGoalViewModel.updateGoalDraft(change: (SpendingGoalCr
 }
 
 internal fun CreateSpendingGoalViewModel.resolveGoalTaskMonth() {
-    val original = task?.takeUnless { it.monthSelected || it.monthReady || it.acceptedId != null } ?: return
+    val original = task?.takeUnless { it.monthSelected || it.monthReady || it.month.isNotBlank() || it.acceptedId != null } ?: return
     val revision = generation
     viewModelScope.launch {
-        val month = calendars.newTaskMonth(original.binding)
+        val result = calendars.newTaskMonth(original.binding)
         if (!isCurrentGoalTask(original) || generation != revision || task?.viewingOriginalId != null || task?.acceptedId != null) return@launch
-        updateGoalDraft { it.copy(month = if (it.monthSelected) it.month else month, monthReady = true) }
+        updateGoalDraft { if (it.monthSelected) it else it.copy(month = result.getOrNull().orEmpty(),
+            monthReady = result.getOrNull() != null, monthFailure = result.exceptionOrNull()?.goalCreationFailure(SpendingGoalFailureKind.Calendar)) }
     }
+}
+
+internal fun CreateSpendingGoalViewModel.selectMonth(value: String) {
+    if (!state.value.editable) return
+    val month = runCatching { java.time.YearMonth.parse(value).toString() }.getOrNull() ?: return
+    updateGoalDraft { it.copy(month = month, monthReady = true, monthSelected = true, userSelectedMonth = true, monthFailure = null,
+        failure = it.amountFailure()) }
 }
 
 internal fun CreateSpendingGoalViewModel.observeGoalCreations() {

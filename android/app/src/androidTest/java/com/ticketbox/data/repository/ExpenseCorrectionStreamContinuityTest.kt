@@ -82,7 +82,15 @@ class ExpenseCorrectionStreamContinuityTest {
     @Test
     fun deliveredAmountAndDateCorrectionUpdatesTheRetainedLedgerWithoutManualSync() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val fixture = ExpenseCorrectionConnectedFixture(context)
+        val fixture = ExpenseCorrectionConnectedFixture(context) { delegate ->
+            object : com.ticketbox.data.remote.ApiService by delegate {
+                override suspend fun runtimeCompatibility() = delegate.runtimeCompatibility().let {
+                    it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = 1))
+                }
+                override suspend fun ledgerCalendar(ledgerId: String, revision: Long?) =
+                    com.ticketbox.domain.model.LedgerCalendar(ledgerId, revision ?: 1, "UTC", "explicit", "2026-01-01T00:00:00Z")
+            }
+        }
         var owner: LedgerViewModel? = null
         try {
             val oldDate = YearMonth.now().atDay(1).toString()
@@ -102,7 +110,9 @@ class ExpenseCorrectionStreamContinuityTest {
                 .toConfirmedStreamCacheItem("untouched-ledger").root
             fixture.expenseDao.upsertByServerIdForLedger("untouched-ledger", otherLedger)
             val otherBefore = fixture.expenseDao.findByServerId("untouched-ledger", 501L)
-            val ledger = withContext(Dispatchers.Main) { LedgerViewModel(graph.expenseRepository, graph.debtRepository) }
+            val ledger = withContext(Dispatchers.Main) {
+                LedgerViewModel(graph.expenseRepository, graph.debtRepository, calendars = fixture.ledgerCalendarRepository)
+            }
             owner = ledger
             val initial = withTimeoutOrNull(10_000) { ledger.uiState.first { !it.syncing && it.items.size == 3 } }
                 ?: ledger.uiState.value

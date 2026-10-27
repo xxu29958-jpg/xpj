@@ -32,6 +32,7 @@ import com.ticketbox.ui.components.AppSecondaryRefreshState
 import com.ticketbox.ui.components.AppSecondaryScrollableContent
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.components.displayMonthLabel
+import com.ticketbox.ui.components.FinancialMonthInput
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.screens.budget.MonthSwitcher
 import com.ticketbox.viewmodel.SpendingGoalsUiState
@@ -77,7 +78,8 @@ internal fun SpendingGoalsScreen(
         ),
     ) {
         item {
-            MonthSwitcher(
+            if (state.month.isBlank()) FinancialMonthInput(viewModel::selectMonth)
+            else MonthSwitcher(
                 month = displayMonthLabel(state.month),
                 onPreviousMonth = viewModel::previousMonth,
                 onNextMonth = viewModel::nextMonth,

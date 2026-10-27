@@ -44,11 +44,12 @@ internal data class BudgetAdviceActions(val onGenerate: () -> Unit, val onRefres
     val onRefreshArrangement: () -> Unit, val onHistory: (Boolean) -> Unit,
     val onReviewArrangement: (com.ticketbox.data.repository.PendingMonthlyArrangement) -> Unit,
     val onRecoverArrangement: (com.ticketbox.data.repository.PendingMonthlyArrangement, Boolean) -> Unit,
-    val onFetchRates: () -> Unit, val onManualRate: () -> Unit)
+    val onFetchRates: () -> Unit, val onManualRate: () -> Unit, val onSelectMonth: (String) -> Unit)
 
 @Composable
 internal fun BudgetAdviceInputsContent(state: BudgetAdviceUiState, actions: BudgetAdviceActions, onOpenBudget: (() -> Unit)? = null) {
-    MonthSwitcher(displayMonthLabel(state.month), onPreviousMonth = { actions.onShiftMonth(-1) },
+    if (state.month.isBlank()) FinancialMonthInput(actions.onSelectMonth)
+    else MonthSwitcher(displayMonthLabel(state.month), onPreviousMonth = { actions.onShiftMonth(-1) },
         onNextMonth = { actions.onShiftMonth(1) }, enabled = !state.rateBusy)
     BudgetAdviceIncome(state)
     state.inputs?.let { MonthlyPlanBudget(it, onOpenBudget) }

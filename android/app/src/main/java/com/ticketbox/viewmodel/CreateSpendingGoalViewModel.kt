@@ -21,8 +21,9 @@ import kotlinx.coroutines.launch
 data class CreateSpendingGoalUiState(
     val canModify: Boolean = true,
     val name: String = "",
-    val month: String = YearMonth.now().toString(),
-    val monthReady: Boolean = true,
+    val month: String = "",
+    val monthReady: Boolean = false,
+    val monthError: UiText? = null,
     val targetAmountInput: String = "",
     val category: String = "",
     val isSubmitting: Boolean = false,
@@ -80,10 +81,11 @@ class CreateSpendingGoalViewModel(
         if (current.viewingOriginalId == originalId && (originalId != null || current.hasDraft || current.acceptedId != null)) return
         generation += 1
         currencyJob?.cancel(); lookupJob?.cancel()
+        val selectedMonth = month?.let { runCatching { YearMonth.parse(it).toString() }.getOrNull() }
         val next = if (originalId != null) current.copy(viewingOriginalId = originalId, viewFailure = null)
             else current.copy(viewingOriginalId = null, viewFailure = null).let {
-                if (it.hasDraft || it.acceptedId != null || month == null) it.copy(opened = true) else it.copy(month = month.cleanGoalMonth(),
-                    monthSelected = true, monthReady = true, opened = true)
+                if (it.hasDraft || it.acceptedId != null || selectedMonth == null) it.copy(opened = true) else it.copy(month = selectedMonth,
+                    monthSelected = true, monthReady = true, monthFailure = null, opened = true)
             }
         store.write(next)
         activateGoalDraft()
@@ -115,16 +117,14 @@ class CreateSpendingGoalViewModel(
     }
 
     fun shiftMonth(delta: Long) {
-        if (!state.value.editable) return
         val next = runCatching { YearMonth.parse(state.value.month).plusMonths(delta).toString() }.getOrNull() ?: return
-        updateGoalDraft { it.copy(month = next, monthReady = true, monthSelected = true, userSelectedMonth = true,
-            failure = it.amountFailure()) }
+        selectMonth(next)
     }
 
     fun submit() {
         val original = task ?: return
         val current = state.value
-        if (!current.editable || !current.monthReady || edits.currentAccess()?.binding != original.binding ||
+        if (!current.editable || !current.monthReady || current.month.isBlank() || edits.currentAccess()?.binding != original.binding ||
             edits.currentAccess()?.canModify != true) return
         val currency = current.ledgerCurrency
         val amount = currency?.let { parseAmountCents(current.targetAmountInput, it) }
@@ -196,6 +196,3 @@ class CreateSpendingGoalViewModel(
         }
     }
 }
-
-internal fun String.cleanGoalMonth(): String =
-    runCatching { YearMonth.parse(trim()).toString() }.getOrDefault(YearMonth.now().toString())

@@ -38,7 +38,7 @@ internal class CheckerHarness(
         },
         runtime = BudgetOverspendRuntime(
             budgetOverspendAlertsEnabled = { enabled },
-            currentMonth = { month },
+            currentMonth = { Result.success(month) },
             monotonicNowMillis = { nowMillis },
             activeBinding = { binding },
         ),

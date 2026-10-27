@@ -81,7 +81,7 @@ class BudgetOfflineReadingConnectedTest {
         val calendars = harness.fixture.ledgerCalendarRepository
         val month = runBlocking {
             calendars.refresh(requireNotNull(calendars.currentBinding())).getOrThrow()
-            calendars.newTaskMonth()
+            requireNotNull(calendars.newTaskMonth().getOrThrow())
         }
         transport.uiMonth = month
         runBlocking {
@@ -180,7 +180,7 @@ class BudgetOfflineReadingConnectedTest {
         val calendars = harness.fixture.ledgerCalendarRepository
         val month = runBlocking {
             calendars.refresh(requireNotNull(calendars.currentBinding())).getOrThrow()
-            calendars.newTaskMonth()
+            requireNotNull(calendars.newTaskMonth().getOrThrow())
         }
         transport.uiMonth = month
         showPlans()

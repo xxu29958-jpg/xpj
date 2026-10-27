@@ -50,7 +50,7 @@ internal fun BudgetAdviceRoute(
             viewModel::saveRate, viewModel::closeRateEditor, viewModel::reviewRate, viewModel::recoverRate,
             viewModel::editArrangement, viewModel::trialArrangement, viewModel::saveArrangement,
             viewModel::refreshArrangement, viewModel::loadArrangementHistory, viewModel::reviewArrangement, viewModel::recoverArrangement,
-            viewModel::fetchReferenceRates, viewModel::showManualRate),
+            viewModel::fetchReferenceRates, viewModel::showManualRate, viewModel::selectMonth),
         onBack = onBack,
         purpose = when {
             context.correctionContinuation -> BudgetAdvicePurpose.CorrectionRates

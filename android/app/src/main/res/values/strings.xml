@@ -345,4 +345,8 @@
     <string name="ocr_region_cancel">返回</string>
     <string name="ocr_region_clear">清除选框</string>
     <string name="ocr_region_submit">重读这一行</string>
+    <string name="financial_month_label">选择月份</string>
+    <string name="financial_month_format">YYYY-MM</string>
+    <string name="financial_month_choose">尚未取得账本月份，请明确选择要查看或填写的月份。</string>
+    <string name="financial_month_load_failed">账本月份读取失败，请重试，或明确选择月份。</string>
 </resources>

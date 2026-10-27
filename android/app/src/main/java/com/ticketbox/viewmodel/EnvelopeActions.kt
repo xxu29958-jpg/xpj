@@ -11,8 +11,12 @@ import java.time.YearMonth
 import java.util.UUID
 import kotlinx.coroutines.launch
 
-fun FundsViewModel.openEnvelopes(month: String = state.value.overview?.valuationDate?.take(7) ?: YearMonth.now().toString()) {
+fun FundsViewModel.openEnvelopes(month: String = state.value.overview?.valuationDate?.take(7).orEmpty()) {
     val binding = state.value.access?.binding ?: return
+    if (month.isBlank()) {
+        mutable.value = mutable.value.copy(error = UiText.res(R.string.financial_month_choose))
+        return
+    }
     if (runCatching { YearMonth.parse(month) }.isFailure) {
         mutable.value = mutable.value.copy(error = UiText.res(R.string.envelopes_invalid_month))
         return

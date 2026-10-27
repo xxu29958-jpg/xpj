@@ -10,7 +10,6 @@ import com.ticketbox.domain.model.LifestyleStats
 import com.ticketbox.domain.model.MonthlyStats
 import com.ticketbox.domain.model.ReportsOverview
 import com.ticketbox.domain.model.UiText
-import java.time.YearMonth
 
 /** CachedSnapshot is the original server read, explicitly stale after a failed refresh. */
 enum class StatsSource { None, Backend, CachedSnapshot }
@@ -49,7 +48,7 @@ data class StatsUiState(
     val monthsLoadState: StatsFilterOptionsLoadState = StatsFilterOptionsLoadState.Unknown,
     val tags: List<String> = emptyList(),
     val tagsLoadState: StatsFilterOptionsLoadState = StatsFilterOptionsLoadState.Unknown,
-    val month: String = YearMonth.now().toString(),
+    val month: String = "",
     val selectedTag: String = "",
     val loading: Boolean = false,
     val message: UiText? = null,
@@ -81,7 +80,7 @@ data class MonthlyStatsUiState(
     val monthsLoadState: StatsFilterOptionsLoadState = StatsFilterOptionsLoadState.Unknown,
     val tags: List<String> = emptyList(),
     val tagsLoadState: StatsFilterOptionsLoadState = StatsFilterOptionsLoadState.Unknown,
-    val month: String = YearMonth.now().toString(),
+    val month: String = "",
     val selectedTag: String = "",
     val loading: Boolean = false,
     val message: UiText? = null,

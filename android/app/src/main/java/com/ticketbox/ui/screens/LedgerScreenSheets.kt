@@ -67,7 +67,8 @@ private fun LedgerMonthPickerHost(
     ModalBottomSheet(onDismissRequest = { chromeState.showMonthPicker = false }) {
         LedgerMonthStepper(
             state = LedgerMonthStepperState(
-                label = displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
+                label = if (!state.monthReady) stringResource(R.string.financial_month_label)
+                    else displayMonthLabel(state.monthFilter).takeIf { state.monthFilter.isNotBlank() }
                     ?: stringResource(R.string.ledger_inline_month_all),
                 previousMonth = shiftLedgerMonth(state.monthFilter, -1L),
                 nextMonth = shiftLedgerMonth(state.monthFilter, 1L),
@@ -76,7 +77,7 @@ private fun LedgerMonthPickerHost(
         )
         MonthPickerSheet(
             months = state.months,
-            selectedMonth = state.monthFilter,
+            selectedMonth = state.monthFilter.takeIf { state.monthReady },
             description = stringResource(R.string.ledger_month_picker_description),
             listState = ledgerMonthPickerListState(state.monthsLoadState),
             onSelectMonth = { month ->

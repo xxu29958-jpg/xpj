@@ -197,7 +197,7 @@ class BudgetOfflineSnapshotConnectedTest {
         val graph = fixture.reopen()
         val calendars = fixture.ledgerCalendarRepository
         calendars.refresh(requireNotNull(calendars.currentBinding())).getOrThrow()
-        val month = calendars.newTaskMonth()
+        val month = requireNotNull(calendars.newTaskMonth().getOrThrow())
         val queryTimezone = TimeZone.getDefault().id
         transport.original = offlineBudget().copy(spentAmountCents = 1500, remainingAmountCents = -300, overspentAmountCents = 300)
         graph.budgetRepository.monthlyBudget(month, timezone = queryTimezone).getOrThrow()
