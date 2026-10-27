@@ -165,6 +165,7 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     assert int(credit["balance_minor"]) == 0
     assert credit["credit_terms"]["available_credit_minor"] == 1500000
     assert credit["credit_terms"]["payment_due_day"] == 15
+    initial_debt = client.get("/api/debts/" + credit["debt_public_id"], headers=identity.app_headers).json()
     purchase_ids = []
     for amount in (3790, 2000, 500):
         body = {"client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": amount,
@@ -177,6 +178,9 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
         purchase_ids.append(response.json()["id"])
         credit = client.get("/api/funds/accounts/" + credit["public_id"], headers=identity.app_headers).json()
     assert int(credit["balance_minor"]) == -6290
+    with SessionLocal() as db:
+        stored = db.scalar(select(Debt).where(Debt.public_id == credit["debt_public_id"]))
+        assert (stored.status, stored.row_version) == ("open", initial_debt["row_version"] + 3)
     funding = client.get(f"/api/expenses/{purchase_ids[0]}/funding", headers=identity.app_headers)
     assert funding.status_code == 200, funding.text
     assert funding.json()["total_minor"] == 3790
@@ -217,6 +221,8 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     bank = client.get("/api/funds/accounts/" + bank["public_id"], headers=identity.app_headers).json()
     assert int(bank["balance_minor"]) == 95880
     with SessionLocal() as db:
+        stored = db.scalar(select(Debt).where(Debt.public_id == credit["debt_public_id"]))
+        assert (stored.status, stored.row_version) == ("open", tracked["row_version"] + 1)
         assert db.scalar(select(func.sum(Expense.amount_cents)).where(Expense.id.in_(purchase_ids))) == 6290
         assert db.scalar(select(func.count()).select_from(CreditFacility)) == 1
         assert db.scalar(select(func.count()).select_from(ExpenseFunding).where(ExpenseFunding.voided_at.is_(None))) == 4
@@ -251,6 +257,8 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     assert extra.status_code == 201, extra.text
     credit = client.get("/api/funds/accounts/" + credit["public_id"], headers=identity.app_headers).json()
     assert (credit["balance_minor"], credit["unallocated_credit_minor"]) == (1000, 1500)
+    with SessionLocal() as db:
+        assert db.scalar(select(Debt.status).where(Debt.public_id == credit["debt_public_id"])) == "cleared"
     _apply_and_correct_spare_credit(client, identity, credit)
     debt = client.get("/api/debts/" + credit["debt_public_id"], headers=identity.app_headers)
     assert debt.status_code == 200, debt.text
@@ -264,6 +272,8 @@ def test_credit_purchases_and_bank_principal_share_one_financial_history(client,
     assert credit["credit_applications"]["history"][0]["applied_minor"] == 0
     debt = client.get("/api/debts/" + credit["debt_public_id"], headers=identity.app_headers).json()
     assert debt["remaining_amount_cents"] == 1790
+    with SessionLocal() as db:
+        assert db.scalar(select(Debt.status).where(Debt.public_id == credit["debt_public_id"])) == "open"
 
     _correct_captured_payment(client, identity, draft_id, resolved["correction_versions"], bank, credit)
     assert client.post(url, headers=headers, json=payment).json() == result.json()
@@ -940,10 +950,14 @@ def test_actual_installments_refund_revision_and_cash_movements(client, identity
         "period_allocations": [{"period_public_id": schedule["periods"][0]["public_id"], "principal_minor": 1000, "fee_minor": 20}]}
     fee_only = {**first_payment, "principal_minor": 0, "payer_amount_minor": 0,
         "period_allocations": [{"period_public_id": schedule["periods"][0]["public_id"], "principal_minor": 0, "fee_minor": 20}]}
+    debt_before_fee = get("/api/debts/" + credit["debt_public_id"])
     fee_key = str(uuid4())
     fee_accepted = post(credit_url + "/repay", fee_only, key=fee_key)
     assert post(credit_url + "/repay", fee_only, key=fee_key) == fee_accepted
     assert fee_accepted["balance_minor"] == -10000 and get(bank_url)["balance_minor"] == 99980
+    with SessionLocal() as db:
+        stored = db.scalar(select(Debt).where(Debt.public_id == credit["debt_public_id"]))
+        assert (stored.status, stored.row_version) == ("open", debt_before_fee["row_version"] + 1)
     first_payment.update(expected_row_version=fee_accepted["row_version"], payer_row_version=get(bank_url)["row_version"],
         new_fee_minor=0, fee_note=None,
         period_allocations=[{"period_public_id": schedule["periods"][0]["public_id"], "principal_minor": 1000}])
