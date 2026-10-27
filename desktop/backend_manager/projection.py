@@ -88,3 +88,9 @@ class UnavailableInstalledRuntimeConfigProvider:
 
     def shutdown(self) -> None:
         return
+
+
+def display_runtime_error(provider: RuntimeConfigProvider, exc: Exception) -> str:
+    if provider.mode_hint == "installed" and isinstance(exc, ConfigError):
+        return "安装信息已变化或不可用；请等待升级完成，或修复/重新安装小票夹。"
+    return str(exc)

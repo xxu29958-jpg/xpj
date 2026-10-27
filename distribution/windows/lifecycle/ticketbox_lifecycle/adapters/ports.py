@@ -6,7 +6,6 @@ from typing import Protocol
 from ticketbox_lifecycle.connector_schema import ConnectorOperation
 from ticketbox_lifecycle.schemas import (
     ActiveOperation,
-    DurablePhase,
     HostObservation,
     InstallationBinding,
     InstallRequest,
@@ -83,38 +82,3 @@ class AdapterBundle(Protocol):
     alembic: PlatformAdapter
     scm: ScmAdapter
     dataset: DatasetAdapter
-
-
-def adapter_for_step(bundle: AdapterBundle, step: str) -> PlatformAdapter:
-    mapping = {
-        "programdata_root": bundle.files,
-        "acl": bundle.security,
-        "postgres_initdb": bundle.postgres,
-        "start_postgres": bundle.postgres,
-        "roles_database": bundle.postgres,
-        "alembic": bundle.alembic,
-        "scm": bundle.scm,
-        "start_services": bundle.scm,
-        "health": bundle.dataset,
-    }
-    try:
-        return mapping[step]
-    except KeyError as exc:
-        raise KeyError(step) from exc
-
-
-def phase_after(step: str) -> DurablePhase:
-    if step in {
-        "programdata_root",
-        "acl",
-        "postgres_initdb",
-        "scm",
-        "start_postgres",
-        "roles_database",
-        "alembic",
-        "owner_claim",
-    }:
-        return "data_ready"
-    if step in {"start_services", "health"}:
-        return "release_activated"
-    raise KeyError(step)

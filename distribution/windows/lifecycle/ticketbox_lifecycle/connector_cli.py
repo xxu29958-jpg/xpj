@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from ticketbox_lifecycle.connector_schema import ConnectorOperation, parse_request, require_binding
-from ticketbox_lifecycle.domain.connector import ConnectorStores, run_connector
+from ticketbox_lifecycle.domain.connector import ConnectorStores, requires_configuration_token, run_connector
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
 from ticketbox_lifecycle.runtime.windows_connector_channel import connect_channel
@@ -31,24 +31,6 @@ def _installed_context():
     return stores, binding, app_dir, program_data
 
 
-def _needs_token(host: WindowsConnectorHost, stores, request) -> bool:
-    if request.action != "configure":
-        return False
-    active = stores.read_active()
-    if active is None and stores.read_committed(request.operation_id) is not None:
-        return False
-    if isinstance(active, ConnectorOperation) and active.request_hash == request.request_hash and active.phase == "committed":
-        return False
-    if isinstance(active, ConnectorOperation) and active.request_hash == request.request_hash:
-        try:
-            host.credential_identity(request, request.expected_credential_generation + 1, None)
-            return False
-        except LifecycleError as exc:
-            if exc.code not in {"connector_credential_missing", "connector_token_invalid"}:
-                raise
-    return True
-
-
 def _execute(channel, peer, stores, binding, app_dir, program_data) -> int:
     request = parse_request(channel.receive(seconds=15))
     if request.initiator_sid != peer.sid:
@@ -62,10 +44,11 @@ def _execute(channel, peer, stores, binding, app_dir, program_data) -> int:
         # UAC is sufficient for the already-selected fixed host action. Only
         # configure asks for new input, directly in the elevated native dialog.
         host.verify_context(request)
-        if _needs_token(host, stores, request):
-            token = confirm_native(request, needs_token=True)
         lifecycle = stores.as_lifecycle_stores()
-        operation = run_connector(ConnectorStores(lifecycle.mutex, stores, stores, host.files, host), request, token=token)
+        connector_stores = ConnectorStores(lifecycle.mutex, stores, stores, host.files, host)
+        if requires_configuration_token(connector_stores, request):
+            token = confirm_native(request, needs_token=True)
+        operation = run_connector(connector_stores, request, token=token)
         reply.update(ok=True, phase=operation.phase, code=operation.result_code)
     except (LifecycleError, OSError, ValueError) as exc:
         active = stores.read_active()

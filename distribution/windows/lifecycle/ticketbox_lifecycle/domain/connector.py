@@ -48,6 +48,24 @@ class ConnectorStores:
     host: ConnectorHost
 
 
+def requires_configuration_token(stores: ConnectorStores, request: ConnectorRequest) -> bool:
+    if request.action != "configure":
+        return False
+    active = stores.operations.read_active()
+    if active is None and stores.operations.read_committed(request.operation_id) is not None:
+        return False
+    if isinstance(active, ConnectorOperation) and active.request_hash == request.request_hash and active.phase == "committed":
+        return False
+    if isinstance(active, ConnectorOperation) and active.request_hash == request.request_hash:
+        try:
+            stores.host.credential_identity(request, request.expected_credential_generation + 1, None)
+            return False
+        except LifecycleError as exc:
+            if exc.code not in {"connector_credential_missing", "connector_token_invalid"}:
+                raise
+    return True
+
+
 def run_connector(stores: ConnectorStores, request: ConnectorRequest, *, token: str | None = None) -> ConnectorOperation:
     stores.mutex.acquire()
     try:

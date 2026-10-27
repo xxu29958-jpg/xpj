@@ -24,6 +24,16 @@ from ticketbox_lifecycle.schemas import (
 )
 
 
+def _deliver_through_cli(path: Path, result: CommandResult, stores: MemoryStores) -> int:
+    request = _request(path.parent, operation_id=result.operation_id)
+    request_path = path.with_suffix(".request.json")
+    request_path.write_text(json.dumps(request.__dict__), encoding="utf-8")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(cli.FilesystemStores, "from_request", lambda _request: stores)
+        patch.setattr(cli, "install_or_resume", lambda _stores, _request: result)
+        return cli.main([result.command, "--request", str(request_path), "--result", str(path)])
+
+
 def test_fresh_install_publishes_binding_only_after_health(tmp_path: Path) -> None:
     adapters = RecordingAdapterBundle()
     request = _request(tmp_path)
@@ -265,14 +275,14 @@ def test_active_operation_is_archived_before_committed_result_is_published(
         archive_committed(operation)
 
     def record_result(path: Path, command_result: CommandResult) -> None:
-        events.append("result")
+        events.append("progress" if command_result.code == "running" else "result")
         write_result(path, command_result)
 
     monkeypatch.setattr(stores, "archive_committed", record_archive)
     monkeypatch.setattr(command_io, "write_result", record_result)
 
-    assert cli._deliver_install_result(result_path, result, stores.as_lifecycle_stores()) == 0
-    assert events == ["archive", "result"]
+    assert _deliver_through_cli(result_path, result, stores) == 0
+    assert events == ["progress", "archive", "result"]
     delivered = json.loads(result_path.read_text(encoding="utf-8"))
     assert delivered["ok"] is True
     assert delivered["pairing_code"] == "12345678"
@@ -299,7 +309,7 @@ def test_archive_failure_retains_exact_commit_and_reports_once(
     monkeypatch.setattr(stores, "archive_committed", fail_archive)
     result_path = tmp_path / "result.json"
 
-    assert cli._deliver_install_result(result_path, result, stores.as_lifecycle_stores()) == 2
+    assert _deliver_through_cli(result_path, result, stores) == 2
     delivered = json.loads(result_path.read_text(encoding="utf-8"))
     assert delivered["ok"] is False
     assert delivered["code"] == "operation_archive_failed"
@@ -326,7 +336,7 @@ def test_archived_commit_replays_pairing_after_setup_crashes_before_consuming_re
     first = install_or_resume(stores.as_lifecycle_stores(), request)
     first_result = tmp_path / "first-setup" / "result.json"
 
-    assert cli._deliver_install_result(first_result, first, stores.as_lifecycle_stores()) == 0
+    assert _deliver_through_cli(first_result, first, stores) == 0
     assert stores.read_active() is None
     assert stores.read_committed(request.operation_id) is not None
 
@@ -337,7 +347,7 @@ def test_archived_commit_replays_pairing_after_setup_crashes_before_consuming_re
     assert replay.ok is True
     assert replay.operation_id == request.operation_id
     assert replay.pairing_code == first.pairing_code
-    assert cli._deliver_install_result(second_result, replay, stores.as_lifecycle_stores()) == 0
+    assert _deliver_through_cli(second_result, replay, stores) == 0
     assert json.loads(second_result.read_text(encoding="utf-8"))["pairing_code"] == "12345678"
 
 
@@ -348,10 +358,10 @@ def test_archived_result_replay_does_not_take_over_another_active_operation(
     request = _request(tmp_path, operation_id="fresh-" + "a" * 64)
     stores = MemoryStores(adapters, request.app_dir, request.data_root)
     first = install_or_resume(stores.as_lifecycle_stores(), request)
-    assert cli._deliver_install_result(
+    assert _deliver_through_cli(
         tmp_path / "first.json",
         first,
-        stores.as_lifecycle_stores(),
+        stores,
     ) == 0
     replay_request = InstallRequest(**{**request.__dict__, "command": "resume"})
     replay = install_or_resume(stores.as_lifecycle_stores(), replay_request)
@@ -361,10 +371,10 @@ def test_archived_result_replay_does_not_take_over_another_active_operation(
     stores.prepare(request)
     stores.publish_active(foreign)
 
-    assert cli._deliver_install_result(
+    assert _deliver_through_cli(
         tmp_path / "replay.json",
         replay,
-        stores.as_lifecycle_stores(),
+        stores,
     ) == 2
     assert stores.read_active() == foreign
 
@@ -378,13 +388,17 @@ def test_result_write_failure_after_archive_replays_exact_committed_history(
     stores = MemoryStores(adapters, request.app_dir, request.data_root)
     first = install_or_resume(stores.as_lifecycle_stores(), request)
 
-    def fail_result_write(path: Path, result: object) -> None:
-        del path, result
+    write_result = command_io.write_result
+
+    def fail_result_write(path: Path, result: CommandResult) -> None:
+        if result.code == "running":
+            write_result(path, result)
+            return
         raise OSError("injected result write failure")
 
     monkeypatch.setattr(command_io, "write_result", fail_result_write)
     with pytest.raises(OSError, match="result write failure"):
-        cli._deliver_install_result(tmp_path / "result.json", first, stores.as_lifecycle_stores())
+        _deliver_through_cli(tmp_path / "result.json", first, stores)
 
     assert stores.read_active() is None
     assert [operation.phase for operation in stores.history] == ["committed"]

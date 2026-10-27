@@ -16,7 +16,7 @@ from ticketbox_lifecycle.connector_schema import (
     parse_operation,
     parse_request,
 )
-from ticketbox_lifecycle.domain.connector import ConnectorStores, run_connector
+from ticketbox_lifecycle.domain.connector import ConnectorStores, requires_configuration_token, run_connector
 from ticketbox_lifecycle.domain.install import install_or_resume
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.mutex import ThreadMutex
@@ -199,6 +199,33 @@ def test_cancelled_native_input_has_no_publication_or_host_change():
     with pytest.raises(LifecycleError, match="cancelled"):
         run_connector(machine.stores, request())
     assert machine.events == [] and machine.state.read() is None
+
+
+@pytest.mark.parametrize("credential_error", [None, "connector_credential_missing", "connector_token_invalid", "connector_acl_failed"])
+def test_same_configuration_continuation_asks_only_for_missing_credential(credential_error):
+    machine = Machine()
+    req = request()
+    assert requires_configuration_token(machine.stores, req)
+    run_connector(machine.stores, req, token="fixture-secret")
+    assert not requires_configuration_token(machine.stores, req)
+    committed = machine.operations.history.pop(req.operation_id)
+    machine.operations.active = replace(committed, phase="applying", completed_step="credential_prepared")
+    before = list(machine.events)
+
+    def credential_identity(actual_request, generation, token):
+        assert actual_request == req and generation == 1 and token is None
+        if credential_error:
+            raise LifecycleError(credential_error, "injected credential read failure")
+        return "77777777-7777-4777-8777-777777777777"
+
+    machine.host.credential_identity = credential_identity
+    if credential_error == "connector_acl_failed":
+        with pytest.raises(LifecycleError, match="credential read failure"):
+            requires_configuration_token(machine.stores, req)
+    else:
+        assert requires_configuration_token(machine.stores, req) is (credential_error is not None)
+    assert machine.events == before
+    assert machine.operations.active.operation_id == req.operation_id
 
 
 def test_old_reconnect_cannot_override_pause_and_response_loss_does_not_repeat_host_mutations():
