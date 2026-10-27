@@ -10,6 +10,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -96,7 +97,9 @@ class CategoryRuleRouteRecoveryTest {
     @Test fun unsentRuleKeepsItsOriginalFieldsWhenLeavingAndReopeningTheLibrary() {
         openRules()
         val add = context.getString(R.string.category_rule_editor_submit_create)
-        waitForText(add)
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasText(add) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText(add).performScrollTo().performClick()
         val raw = "  未完成的街角规则  "
         compose.onNode(hasSetTextAction() and hasText(context.getString(R.string.category_rule_editor_keyword_label)))
@@ -142,7 +145,9 @@ class CategoryRuleRouteRecoveryTest {
     @Test fun viewerCanReadOriginalInputButCannotEditOrSubmitIt() {
         openRules()
         val add = context.getString(R.string.category_rule_editor_submit_create)
-        waitForText(add)
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasText(add) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText(add).performScrollTo().performClick()
         compose.onNode(hasSetTextAction() and hasText(context.getString(R.string.category_rule_editor_keyword_label)))
             .performTextReplacement("只读后仍保留的规则")
@@ -167,7 +172,9 @@ class CategoryRuleRouteRecoveryTest {
     @Test fun renewedSessionNeedsExplicitIdentityReviewBeforeTheOriginalInputCanBeSubmitted() {
         openRules()
         val add = context.getString(R.string.category_rule_editor_submit_create)
-        waitForText(add)
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasText(add) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText(add).performScrollTo().performClick()
         compose.onNode(hasSetTextAction() and hasText(context.getString(R.string.category_rule_editor_keyword_label)))
             .performTextReplacement("重新登录后的原规则")

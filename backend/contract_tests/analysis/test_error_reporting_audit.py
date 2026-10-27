@@ -158,3 +158,37 @@ def test_public_guard_rejects_missing_base_and_identifies_committed_qualificatio
     assert result.returncode == 0, result.stdout + result.stderr
     assert '"evidence": "committed-tree"' in result.stdout
     assert '"returncode":0' in result.stdout
+
+
+@pytest.mark.parametrize("old,new", [
+    ("recover(error)", "ignore(error)"),
+    ("    false", "    true"),
+    ("release()", "forget()"),
+])
+def test_expression_try_catch_and_finally_changes_require_review(guard_repo, old, new):
+    path = "android/app/src/main/java/com/ticketbox/ExistingStore.kt"
+    source = """fun Store.persist(): Boolean = try {
+    save()
+    true
+} catch (error: IllegalArgumentException) {
+    recover(error)
+} catch (_: Exception) {
+    false
+} finally {
+    release()
+}
+fun other() { unrelated() }
+"""
+    _save(guard_repo[0], path, source)
+    _git(guard_repo[0], "add", ".")
+    _git(guard_repo[0], "commit", "-qm", "existing expression try boundary")
+    baseline = (guard_repo[0], _git(guard_repo[0], "rev-parse", "HEAD"))
+    _git(guard_repo[0], "commit", "--allow-empty", "-qm", "candidate expression consumer")
+    # The following function is outside the reviewed persist boundary.
+    _save(guard_repo[0], path, source.replace("unrelated()", "unrelatedChange()"))
+    result = _run(baseline)
+    assert result.returncode == 0, result.stdout + result.stderr
+    _save(guard_repo[0], path, source.replace(old, new))
+    result = _run(baseline)
+    assert result.returncode == 1 and any(item.get("symbol") == "persist" and item["status"] == "NEEDS_REVIEW"
+        for item in json.loads(result.stdout)["findings"]), result.stdout + result.stderr
