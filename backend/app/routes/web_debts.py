@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
+from starlette.responses import FileResponse
 
 from app.database import get_db
 from app.error_reporting import retain_handled_error
@@ -42,6 +44,7 @@ from app.routes.web_debt_presenters import (
     debt_view_direction,
     principal_date_label,
 )
+from app.services.debt_bill_capture_service import get_capture, list_captures, read_capture_original
 from app.services.debt_service import (
     get_participant_debt_response,
     list_debts,
@@ -361,6 +364,8 @@ def _load_debt_detail_state(
         sidebar_counts=_sidebar_counts(db, selected_id),
     )
     detail = _detail_view(debt)
+    ctx["bill_sources"] = list_captures(db, tenant_id=selected_id, actor_account_id=account_id,
+        debt_public_id=public_id) if account_id is not None else []
     can_write = _debt_write_gate(options, selected_id)
     action_keys = _debt_action_keys() if can_write and debt.status == "open" and debt.source_type != "credit_facility" else {}
     proposals = None
@@ -394,6 +399,23 @@ def _load_debt_detail_state(
         }
     )
     return ctx, debt, account_id, proposal_items
+
+
+@router.get("/debts/{public_id}/bill-sources/{source_id}/original", include_in_schema=False)
+def web_debt_bill_original(request: Request, public_id: str, source_id: str, ledger_id: str | None = None,
+    _local: None = LocalOnly, db: Session = Depends(get_db),
+) -> FileResponse:
+    selected = _resolve_selected_ledger_id(db, ledger_id, request=request)
+    actor = _web_viewer_account_id(request, db, selected)
+    get_participant_debt_response(db, public_id=public_id, ledger_id=selected, account_id=actor)
+    if actor is None:
+        raise AppError("permission_denied", status_code=403)
+    source = get_capture(db, tenant_id=selected, actor_account_id=actor, public_id=source_id)
+    if source.adopted_debt_public_id != public_id:
+        raise AppError("debt_bill_capture_not_found", status_code=404)
+    snapshot = read_capture_original(source)
+    return FileResponse(snapshot.path, media_type=snapshot.media_type,
+        headers={"Cache-Control": "private, no-store"}, background=BackgroundTask(snapshot.close))
 
 
 def _render_debt_detail(

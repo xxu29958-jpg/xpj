@@ -17,6 +17,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app import models as m
 from app.database_model_registry import Base
 from app.services.credit_balance_projection import credit_visible
+from app.services.debt_bill_capture_service import capture_scope
 from app.services.original_reference_queries import original_receipt_references_query
 from app.services.permission_service import can_manage_members
 from app.services.portable_funds_queries import (
@@ -143,7 +144,7 @@ PORTABLE_COLLECTION_SCOPES = {
     **dict.fromkeys((model.__tablename__ for model, _ in (*_LEDGER_RECORDS, *_DEBT_CHILDREN)), "ledger"),
     **dict.fromkeys(("ledgers", "ledger_members", "device_references", "ledger_calendar_revisions",
         "currency_interpretation", "repayment_voids", "debt_goal_links", "bill_split_source_relationships"), "ledger"),
-    **dict.fromkeys(("repayment_drafts", "bill_split_sent", "account_bill_split_inbox",
+    **dict.fromkeys(("repayment_drafts", "debt_bill_captures", "bill_split_sent", "account_bill_split_inbox",
         "account_debt_relationships", "account_repayments", "account_repayment_voids", "account_repayment_proposals",
         "account_debt_balances", "background_task_observations", "account_resource_actions"), "account"),
     "accounts": "mixed", "accepted_operations": "mixed", "ledger_audit_logs": "owner",
@@ -320,6 +321,8 @@ def _accepted_operations(auth: AuthContext) -> Select:
     funds = funds_receipts_allowed(auth)
     drafts = and_(receipt.resource_type == "repayment_draft", receipt.resource_id.in_(
         select(m.RepaymentDraft.public_id).where(_owned_drafts(auth))))
+    debt_bills = and_(receipt.resource_type == "debt_bill_capture", receipt.resource_id.in_(
+        select(m.DebtBillCapture.public_id).where(capture_scope(auth.ledger_id, auth.account_id))))
     splits = and_(receipt.resource_type == "bill_split_invitation", receipt.resource_id.in_(
         select(m.BillSplitInvitation.public_id).where(_sent(auth))))
     # Keep the frozen shared result for the originals adapter. The archive edge
@@ -344,7 +347,7 @@ def _accepted_operations(auth: AuthContext) -> Select:
     return _record(receipt, "id tenant_id idempotency_key operation target_type target_id request_fingerprint "
         "status resource_type resource_id created_at completed_at expires_at",
         and_(receipt.tenant_id == auth.ledger_id, receipt.status == "succeeded",
-            or_(shared, debt_relationships, drafts, splits, funds))).add_columns(
+            or_(shared, debt_relationships, drafts, debt_bills, splits, funds))).add_columns(
             receipt.response_body,
             case((private_funding_receipt(auth), "private_funding_scope"),
                 (or_(redacted_upload, redacted_fx_task), "personal_task_scope"),
@@ -359,7 +362,7 @@ def _history_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
     own_actions = _record(m.LedgerAuditLog, "id public_id ledger_id action actor_account_id "
         "resource_type resource_public_id result created_at", and_(
             m.LedgerAuditLog.ledger_id == auth.ledger_id, m.LedgerAuditLog.actor_account_id == auth.account_id,
-            m.LedgerAuditLog.resource_type.in_(("tag", "merchant_alias", "expense", "category_rule"))))
+            m.LedgerAuditLog.resource_type.in_(("tag", "merchant_alias", "expense", "category_rule", "debt_bill_capture"))))
     queries = (("accepted_operations", _accepted_operations(auth)), ("background_task_observations", tasks),
         ("account_resource_actions", own_actions))
     if not can_manage_members(auth):
@@ -442,6 +445,12 @@ def portable_queries(auth: AuthContext) -> tuple[tuple[str, Select], ...]:
         records.append((model.__tablename__, query))
     business = (
         *records, *funds_queries(auth, _record),
+        ("debt_bill_captures", _record(m.DebtBillCapture,
+            "id public_id tenant_id created_by_account_id creation_key capture_key request_fingerprint accepted_receipt "
+            "file_name media_type input_sha256 image_path image_hash image_size_bytes image_evidence image_deleted_at "
+            "attachment_cleanup_request status row_version parse_attempt_key parse_request_fingerprint parse_outcome "
+            "adopted_debt_public_id created_at updated_at confirmed_at rejected_at",
+            capture_scope(auth.ledger_id, auth.account_id))),
         *_ledger_relationships(auth), *_split_queries(auth), *_split_agreement_queries(auth),
         *_participant_queries(auth), *_history_queries(auth),
     )

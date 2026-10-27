@@ -41,7 +41,14 @@ internal class FakeDebtActions(
     var fromCache = false
     var detailResult = Result.success(sampleDebt())
     var detailGate: CompletableDeferred<Unit>? = null
-    val creation = FakeDebtCreationActions(canModify, createResult)
+    val creation = FakeDebtCreationActions(canModify, createResult).also { commands ->
+        commands.billSources = FakeDebtBillActions { fileName ->
+            parseBillCalls += fileName
+            val captured = parseBillResult
+            parseBillGate?.await()
+            captured
+        }
+    }
     val writes = FakeDebtWriteActions(creation.access)
     val parseBillCalls = mutableListOf<String>()
     var listCalls = 0
@@ -72,17 +79,6 @@ internal class FakeDebtActions(
         return captured.map { debtReadSnapshot(it.copy(publicId = publicId), fromCache) }
     }
 
-    override suspend fun parseDebtBillImage(
-        expectedBinding: LogicalSessionBinding,
-        fileName: String,
-        contentType: String?,
-        bytes: ByteArray,
-    ): Result<DebtBillSuggestion> {
-        parseBillCalls += fileName
-        val captured = parseBillResult
-        parseBillGate?.await()
-        return captured
-    }
 
 
 
@@ -93,6 +89,7 @@ internal class FakeDebtCreationActions(
     canModify: Boolean,
     var createResult: Result<Unit>,
 ) : DebtCreationActions {
+    override var billSources: com.ticketbox.data.repository.DebtBillActions? = null
     val access = MutableStateFlow<LedgerAccessContext?>(
         LedgerAccessContext(LogicalSessionBinding("https://example.test", "owner", "test-owner", "session-1", "binding-1"), canModify),
     )

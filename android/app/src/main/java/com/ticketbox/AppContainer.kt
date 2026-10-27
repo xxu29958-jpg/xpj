@@ -127,7 +127,10 @@ class AppContainer(context: Context) {
 
     val uploadIntentRepository: UploadIntentRepository = UploadIntentRepository(
         apiServiceProvider, outboxRepository, uploadFiles,
-        outboxAdapters.upload, settingsStore, database.expenseDao(),
+        outboxAdapters.upload, settingsStore, com.ticketbox.data.repository.UploadOriginalInputs(database.expenseDao(), database.debtBillInputDao()),
+    )
+    val debtBillRepository = com.ticketbox.data.repository.DebtBillRepository(
+        apiServiceProvider, database.debtBillInputDao(), outboxRepository, uploadFiles,
     )
 
     internal val notificationCaptureRepository = com.ticketbox.data.repository.NotificationCaptureRepository(apiServiceProvider, outboxRepository)
@@ -157,6 +160,7 @@ class AppContainer(context: Context) {
     private val outboxDispatchers: List<OutboxMutationDispatcher> by lazy {
         listOf(
             com.ticketbox.data.repository.OriginalAttachmentDispatcher(outboxRequestGuard::serviceForOutbox, uploadFiles::read),
+            com.ticketbox.data.repository.DebtBillCaptureDispatcher(outboxRequestGuard::serviceForOutbox, uploadFiles::read),
             UploadScreenshotDispatcher(
                 apiProvider = outboxRequestGuard::serviceForOutbox,
                 payloadAdapter = outboxAdapters.upload.uploadPayloadAdapter,
@@ -381,6 +385,7 @@ class AppContainer(context: Context) {
             sessionStore = sessionStore,
             credentials = credentials,
             apiServiceProvider = apiServiceProvider,
+            debtBills = debtBillRepository,
             outbox = RepositoryGraphOutbox(
                 repository = outboxRepository,
                 adapters = outboxAdapters,

@@ -10,7 +10,6 @@ import com.ticketbox.data.repository.SnapshotAccessDenial
 import com.ticketbox.data.repository.DebtReadResourceDenial
 import com.ticketbox.data.repository.RepositoryException
 import com.ticketbox.domain.model.Debt
-import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Goal
 import com.ticketbox.domain.model.GoalProgressState
 import kotlinx.coroutines.Dispatchers
@@ -443,12 +442,6 @@ internal class FakeCreateDebtActions(
     }
     override suspend fun getDebt(publicId: String): Result<ReadSnapshot<Debt>> =
         Result.failure(UnsupportedOperationException())
-    override suspend fun parseDebtBillImage(
-        expectedBinding: LogicalSessionBinding,
-        fileName: String,
-        contentType: String?,
-        bytes: ByteArray,
-    ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
 
     // slice 8c widened DebtActions; the create-debt-goal flow only reads listDebts for the picker.
 

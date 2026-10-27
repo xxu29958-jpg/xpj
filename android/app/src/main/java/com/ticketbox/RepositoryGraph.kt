@@ -35,6 +35,7 @@ internal data class RepositoryGraphDependencies(
     val credentials: SessionCredentialProvider,
     val apiServiceProvider: ApiServiceProvider,
     val outbox: RepositoryGraphOutbox,
+    val debtBills: com.ticketbox.data.repository.DebtBillActions? = null,
 )
 
 internal data class RepositoryGraphOutbox(
@@ -163,6 +164,7 @@ internal class RepositoryGraph(
         apiProvider = apiServiceProvider,
         outbox = outbox,
         payloadAdapter = outboxAdapters.debt.debtCreateAdapter,
+        billSources = dependencies.debtBills,
     )
 
     // Personal repayment review uses the existing debt query owner; capture is dispatched by Outbox.

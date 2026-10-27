@@ -126,6 +126,7 @@ data class DebtListResponseDto(
  * so the Android form can still fall back to manual entry. The suggestion is not a fact; creating a
  * Debt still goes through [DebtCreateRequestDto].
  */
+@JsonClass(generateAdapter = true)
 data class DebtBillParseResponseDto(
     val merchant: String? = null,
     @param:Json(name = "principal_amount_cents")
@@ -183,6 +184,8 @@ data class DebtCreateRequestDto(
     val note: String? = null,
     @param:Json(name = "time_input")
     val timeInput: ExpenseTimeInputDto? = null,
+    @param:Json(name = "bill_source")
+    val billSource: DebtBillSourceReferenceDto? = null,
 )
 
 /**

@@ -58,6 +58,15 @@
 {% endblock %}
 
 {% block content %}
+{% for source in bill_sources %}
+<section class="product-card" aria-label="建债原账单">
+  <h2 class="product-section-title">建债原账单</h2>
+  <p>{{ source.file_name }}</p>
+  {% if source.original_state == 'verified' %}
+  <a class="product-button" href="/web/debts/{{ debt.public_id|urlencode }}/bill-sources/{{ source.public_id|urlencode }}/original?ledger_id={{ selected_ledger_id|urlencode }}">查看原件</a>
+  {% else %}<p>{{ '原件已按保留设置清理，来源记录仍保留。' if source.original_state == 'cleaned' else '原件暂不可读取，来源记录仍保留。' }}</p>{% endif %}
+</section>
+{% endfor %}
 {% set _pending_pid = pending_proposal.public_id if pending_proposal else none %}
 {% set _anchor_form = confirm_amount_error and debt.is_member and can_write and debt_open and action_keys and viewer_is_debtor == false and confirm_error_proposal_id == _pending_pid %}
 {% set _anchor_zone = confirm_amount_error and proposals and (proposals.pending_line or proposals.has_resolved) and confirm_error_proposal_id != _pending_pid %}

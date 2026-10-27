@@ -174,6 +174,9 @@ ERROR_MESSAGES = {
     "goal_not_found": "目标不存在。",
     # ADR-0049 Debt domain (slice 1: external/manual Debt create/list/get).
     "debt_not_found": "这笔欠款不存在。",
+    "debt_bill_capture_not_found": "没有找到可访问的原账单，请核对当前账本和账号。",
+    "debt_bill_parse_not_found": "没有找到这次账单解析结果，请回到原账单核对。",
+    "debt_bill_task_mismatch": "这张原账单不属于当前建债草稿，请回到原草稿继续。",
     "debt_counterparty_invalid": "欠款对象信息不完整。",
     "debt_amount_invalid": "请填写大于 0 的欠款金额。",
     "debt_direction_invalid": "欠款方向不正确。",

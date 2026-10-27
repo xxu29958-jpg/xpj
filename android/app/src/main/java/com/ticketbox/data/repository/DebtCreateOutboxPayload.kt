@@ -21,6 +21,7 @@ data class DebtCreateOutboxPayload(
     val originSessionGeneration: String,
     val originBindingRevision: String,
     val request: DebtCreateOutboxRequest,
+    val billSource: com.ticketbox.data.remote.dto.DebtBillSourceReferenceDto? = null,
 )
 
 internal fun DebtCreateOutboxPayload.acceptsReceipt(receipt: DebtDto, ledgerId: String?): Boolean =
@@ -64,6 +65,7 @@ internal fun DebtCreateOutboxPayload.toCreateRequest(): DebtCreateRequestDto = D
     installmentPeriodMonths = request.installmentPeriodMonths,
     note = request.note,
     timeInput = request.timeInput,
+    billSource = billSource,
 )
 
 enum class DebtCreationPendingState { Waiting, Sending, NeedsAttention, Unsupported }
@@ -84,7 +86,8 @@ data class DebtCreationQueueSnapshot(
 internal fun JsonAdapter<DebtCreateOutboxPayload>.readSupportedDebtCreate(json: String): DebtCreateOutboxPayload? =
     try {
         fromJson(json)?.takeIf {
-            it.revision == DEBT_CREATE_PAYLOAD_REVISION &&
+            ((it.revision == DEBT_CREATE_PAYLOAD_REVISION && it.billSource == null) ||
+                (it.revision == 2 && it.billSource?.publicId?.isNotBlank() == true && it.billSource.expectedRowVersion > 0L)) &&
                 CurrencyCode.fromStorageKeyOrNull(it.homeCurrencyCode) != null &&
                 it.originSessionGeneration.isNotBlank() && it.originBindingRevision.isNotBlank()
         }

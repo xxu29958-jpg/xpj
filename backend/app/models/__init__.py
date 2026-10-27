@@ -71,6 +71,7 @@ from app.models.debt import (
     RepaymentDraft,
     RepaymentVoid,
 )
+from app.models.debt_bill_capture import DebtBillCapture
 from app.models.envelopes import EnvelopeAllocation, EnvelopeBook, EnvelopeRevision, EnvelopeSource
 from app.models.exchange import ExchangeRate, FxRate
 from app.models.expense import Expense, ExpenseItem, ExpenseSplit
@@ -144,6 +145,7 @@ __all__ = [
     "CsvImportRow",
     "DashboardCardPreference",
     "Debt",
+    "DebtBillCapture",
     "DebtAdjustment",
     "DebtForgiveness",
     "DebtGoalLink",

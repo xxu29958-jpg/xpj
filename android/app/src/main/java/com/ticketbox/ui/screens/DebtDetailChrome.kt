@@ -65,6 +65,7 @@ internal data class DebtDetailPanels(
     val historyState: DebtActivityUiState,
     val historyCallbacks: DebtActivityCallbacks,
     val splitAgreement: (@Composable () -> Unit)? = null,
+    val billSources: (@Composable () -> Unit)? = null,
 )
 
 @Composable
@@ -165,6 +166,7 @@ private fun LazyListScope.debtDetailBodyItems(
         }
         DebtDetailBodyState.Content -> state.debt?.let { loaded ->
             panels.splitAgreement?.let { section -> item { section() } }
+            panels.billSources?.let { section -> item { section() } }
             item { DebtReadSource(state.fetchedAt, state.fromCache, state.isLoading) }
             if (loaded.sourceType == "credit_facility") {
                 item { DebtRemainingCard(loaded) }

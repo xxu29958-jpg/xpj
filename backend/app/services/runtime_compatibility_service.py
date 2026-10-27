@@ -19,6 +19,7 @@ from app.runtime_compatibility_contract import (
     ACCOUNTING_TIME_INPUT_VERSION,
     CURRENT_API_VERSION,
     DEBT_ACTIVITY_READ_VERSION,
+    DEBT_BILL_SOURCE_VERSION,
     REPAYMENT_TIME_INPUT_VERSION,
     RUNTIME_COMPATIBILITY_CONTRACT,
     TICKETBOX_API_VERSION_HEADER,
@@ -67,6 +68,7 @@ class RuntimeCompatibilitySnapshot:
     original_attachment_version: int
     original_attachment_create_version: int
     debt_activity_read_version: int
+    debt_bill_source_version: int
     currency: RuntimeCurrencyCapability
 
 
@@ -111,6 +113,7 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
         original_attachment_version=1,
         original_attachment_create_version=1,
         debt_activity_read_version=DEBT_ACTIVITY_READ_VERSION,
+        debt_bill_source_version=DEBT_BILL_SOURCE_VERSION,
         currency=RuntimeCurrencyCapability(
             home_currency_code=product_home_currency,
             minor_unit_exponent=capability.minor_unit_exponent,

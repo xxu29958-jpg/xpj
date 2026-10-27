@@ -30,6 +30,11 @@ GET /api/budgets/monthly
 GET /api/budgets/monthly/{month}/history
 GET /api/dashboard/cards
 GET /api/debts
+GET /api/debt-bills
+GET /api/debt-bills/by-key/{capture_key}
+GET /api/debt-bills/{public_id}
+GET /api/debt-bills/{public_id}/original
+GET /api/debt-bills/{public_id}/parse-attempts/{attempt_key}
 GET /api/debts/receivables
 GET /api/debts/{public_id}
 GET /api/debts/{public_id}/activity
@@ -124,6 +129,9 @@ POST /api/bill-splits/{public_id}/cancel
 POST /api/bill-splits/{public_id}/reject
 POST /api/budget/advise
 POST /api/debts
+POST /api/debt-bills
+POST /api/debt-bills/{public_id}/parse
+POST /api/debt-bills/{public_id}/discard
 POST /api/debts/parse-bill
 POST /api/debts/{public_id}/adjustments
 POST /api/debts/{public_id}/forgive
@@ -281,6 +289,7 @@ GET /web/debt-goals/{public_id}/target-date
 GET /web/debts
 GET /web/debts/new
 GET /web/debts/{public_id}
+GET /web/debts/{public_id}/bill-sources/{source_id}/original
 GET /web/debts/{public_id}/repayment-proposals
 GET /web/debts/{public_id}/repayments
 GET /web/debts/{public_id}/split-agreement

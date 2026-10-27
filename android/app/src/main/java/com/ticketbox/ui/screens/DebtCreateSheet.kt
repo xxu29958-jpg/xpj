@@ -58,6 +58,7 @@ internal fun DebtAddSheet(
     viewModel: DebtListViewModel,
     sheetState: SheetState,
     onClose: () -> Unit,
+    onPickOriginal: () -> Unit = {},
 ) {
     ModalBottomSheet(onDismissRequest = { if (!state.isSubmitting) onClose() }, sheetState = sheetState) {
         DebtDraftForm(
@@ -65,6 +66,7 @@ internal fun DebtAddSheet(
             viewModel = viewModel,
             onSubmit = { viewModel.submitDraft() },
             onCancel = onClose,
+            onPickOriginal = onPickOriginal,
         )
     }
 }
@@ -75,6 +77,7 @@ private fun DebtDraftForm(
     viewModel: DebtListViewModel,
     onSubmit: () -> Unit,
     onCancel: () -> Unit,
+    onPickOriginal: () -> Unit,
 ) {
     val draft = state.addDraft
     val editable = state.canModify && !state.isSubmitting && !state.publicationUnverified
@@ -103,6 +106,7 @@ private fun DebtDraftForm(
             }
         },
     ) {
+        DebtBillInputPanel(state, viewModel, onPickOriginal)
         DebtDirectionField(selected = draft.direction, enabled = editable, onSelect = viewModel::updateDraftDirection)
         AppTextInput(
             state = AppTextInputState(
@@ -130,7 +134,7 @@ private fun DebtDraftForm(
         DebtPrincipalDateField(state, viewModel)
         DebtKindCreateField(selected = draft.kind, enabled = editable, onSelect = viewModel::updateDraftKind)
         DebtDraftDetails(draft, editable, viewModel)
-        TextButton(onClick = { viewModel.discardDraft(); onCancel() }, enabled = editable) {
+        TextButton(onClick = { viewModel.discardDraft(); if (state.activeBillCaptureKey == null) onCancel() }, enabled = editable) {
             Text(stringResource(R.string.debt_creation_discard_original))
         }
     }

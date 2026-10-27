@@ -30,8 +30,9 @@ class UploadIntentRepository internal constructor(
     internal val files: UploadIntentFileStore,
     adapters: UploadMutationAdapters,
     internal val settingsStore: TicketboxSettingsStore,
-    internal val originalInputs: com.ticketbox.data.local.ExpenseFactInputDao,
+    private val inputs: UploadOriginalInputs,
 ) : UploadIntentActions, OriginalAttachmentActions {
+    internal val originalInputs get() = inputs.expenses
     private val payloadAdapter = adapters.uploadPayloadAdapter
     private val receiptAdapter = adapters.uploadReceiptAdapter
     internal val guard = LedgerRequestGuard(apiProvider)
@@ -124,10 +125,7 @@ class UploadIntentRepository internal constructor(
     /** The FileStore holds its lock while ALL bindings and raw types prove the referenced key set. */
     suspend fun collectOrphans(): Int = files.collectOrphans {
         val referenced = mutableSetOf<String>()
-        for (input in originalInputs.originalSelections()) {
-            val selection = runCatching { decodeOriginalSelection(input) }.getOrNull() ?: return@collectOrphans null
-            referenced += requireNotNull(selection.payload.file).key
-        }
+        referenced += inputs.retainedFileKeys() ?: return@collectOrphans null
         for (row in outbox.allRowsForUploadFileReferences()) {
             when (PendingMutationType.fromWire(row.type)) {
                 PendingMutationType.Unknown -> return@collectOrphans null
@@ -139,6 +137,8 @@ class UploadIntentRepository internal constructor(
                     val payload = readOriginalPayload(row.toDomain()) ?: return@collectOrphans null
                     payload.file?.let { referenced += it.key }
                 }
+                PendingMutationType.CaptureDebtBill -> referenced +=
+                    DebtBillJson.readCommand(row.toDomain())?.file?.key ?: return@collectOrphans null
                 else -> Unit
             }
         }
@@ -258,5 +258,24 @@ private suspend fun UploadIntentRepository.recordLastUpload(observation: UploadI
                 settingsStore.saveLastUploadAtForLedger(bound.ledgerId, requireNotNull(originalTimestamp))
             }
         }
+    }
+}
+
+/** All durable original-input owners participate in the existing file-reference proof. */
+internal data class UploadOriginalInputs(
+    val expenses: com.ticketbox.data.local.ExpenseFactInputDao,
+    val debtBills: com.ticketbox.data.local.DebtBillInputDao,
+) {
+    suspend fun retainedFileKeys(): Set<String>? {
+        val keys = mutableSetOf<String>()
+        for (input in debtBills.allInputs()) {
+            val original = decodeBillInput(input) ?: return null
+            if (!input.closed) keys += original.payload.file.key
+        }
+        for (input in expenses.originalSelections()) {
+            val selection = runCatching { decodeOriginalSelection(input) }.getOrNull() ?: return null
+            keys += requireNotNull(selection.payload.file).key
+        }
+        return keys
     }
 }

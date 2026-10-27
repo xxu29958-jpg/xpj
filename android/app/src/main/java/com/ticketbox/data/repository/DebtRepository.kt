@@ -5,14 +5,10 @@ import com.ticketbox.data.remote.dto.MemberRepaymentProposalConfirmRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalCreateRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalRejectRequestDto
 import com.ticketbox.data.remote.dto.MemberRepaymentProposalWithdrawRequestDto
-import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.domain.model.MemberRepaymentProposal
 import com.ticketbox.domain.model.ledgerRoleCanModify
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
@@ -26,8 +22,6 @@ interface DebtActions {
     fun canModifyLedger(): Boolean
     suspend fun listDebts(lens: DebtListLens = DebtListLens.Ledger, expectedBinding: LogicalSessionBinding? = null): Result<ReadSnapshot<DebtListPage>>
     suspend fun getDebt(publicId: String): Result<ReadSnapshot<Debt>>
-    suspend fun parseDebtBillImage(expectedBinding: LogicalSessionBinding, fileName: String,
-        contentType: String?, bytes: ByteArray): Result<DebtBillSuggestion>
 }
 
 /**
@@ -104,28 +98,6 @@ class DebtRepository internal constructor(
         val binding = ledgerRequestGuard.captureLogicalBinding() ?: return Result.failure(RepositoryException("请重新绑定账本。"))
         return queryReader.receivables(binding)
     }
-    override suspend fun parseDebtBillImage(
-        expectedBinding: LogicalSessionBinding,
-        fileName: String,
-        contentType: String?,
-        bytes: ByteArray,
-    ): Result<DebtBillSuggestion> {
-        if (!canModifyLedger()) return Result.failure(RepositoryException(DEBT_VIEWER_READONLY))
-        if (bytes.isEmpty()) return Result.failure(RepositoryException("请选择一张账单截图。"))
-        return errorHandler.safeCall {
-            val cleanName = fileName
-                .trim()
-                .ifBlank { "ticketbox-debt-bill.jpg" }
-                .replace(Regex("[\\\\/:*?\"<>|]"), "_")
-            val mediaType = (contentType?.takeIf { it.isNotBlank() } ?: "image/jpeg").toMediaTypeOrNull()
-            val body = bytes.toRequestBody(mediaType)
-            val filePart = MultipartBody.Part.createFormData("file", cleanName, body)
-            ledgerRequestGuard.bindExact(expectedBinding).call { api ->
-                api.parseDebtBill(filePart).toDomain()
-            }
-        }
-    }
-
     val proposals: DebtProposalActions = ProposalActions()
 
     private inner class ProposalActions : DebtProposalActions {

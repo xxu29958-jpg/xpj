@@ -326,7 +326,7 @@ internal fun DebtRoute(
             splitAgreement = screenFactory.debtRepository.splitAgreement,
             openDebtId = openDebtId,
             onOpenCredit = context.onOpenCredit,
-            models = DebtDetailHostModels(detailViewModel, proposalViewModel, repaymentHistoryViewModel),
+            models = DebtDetailHostModels(detailViewModel, proposalViewModel, repaymentHistoryViewModel, screenFactory.debtCreationRepository.billSources),
             onBack = {
                 detailDebtId = null
                 debtListViewModel.refresh()
@@ -356,7 +356,15 @@ internal fun rememberDebtBillImageLauncher(
         if (uri == null) return@rememberLauncherForActivityResult
         val attempt = viewModel.markBillParsePreparing() ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val selected = withContext(Dispatchers.IO) { context.prepareScreenshotUpload(uri) }
+            val selected = try {
+                withContext(Dispatchers.IO) { context.prepareScreenshotUpload(uri) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                viewModel.parseDebtBillImage(attempt, null, cancelled = true)
+                throw cancelled
+            } catch (_: Exception) {
+                viewModel.parseDebtBillImage(attempt, null)
+                return@launch
+            }
             viewModel.parseDebtBillImage(attempt, selected)
         }
     }
@@ -405,9 +413,12 @@ private fun DebtDetailHost(
             proposalViewModel = proposalViewModel,
             historyViewModel = historyViewModel,
             navigation = com.ticketbox.ui.screens.DebtDetailNavigation(returnFromDetail, onOpenCredit),
-            splitAgreement = splitModel?.let { model -> com.ticketbox.ui.screens.SplitAgreementPanel(model) { id ->
-                if (id != displayedDebtId) relatedTrail = relatedTrail + id
-            } },
+            sources = com.ticketbox.ui.screens.DebtDetailSourcePanels(
+                billSources = models.billSources,
+                splitAgreement = splitModel?.let { model -> com.ticketbox.ui.screens.SplitAgreementPanel(model) { id ->
+                    if (id != displayedDebtId) relatedTrail = relatedTrail + id
+                } },
+            ),
         )
         DebtSettleCelebrationOverlay(
             celebration = celebration.takeIf { relationSettled },
@@ -458,7 +469,7 @@ internal fun ReceivablesRoute(
         DebtDetailHost(
             splitAgreement = screenFactory.debtRepository.splitAgreement,
             openDebtId = openDebtId,
-            models = DebtDetailHostModels(detailViewModel, proposalViewModel, repaymentHistoryViewModel),
+            models = DebtDetailHostModels(detailViewModel, proposalViewModel, repaymentHistoryViewModel, screenFactory.debtCreationRepository.billSources),
             onBack = {
                 detailDebtId = null
                 viewModel.refresh()
@@ -526,5 +537,5 @@ private fun RepaymentDraftLinkedDebt(screenFactory: MainScreenFactory, publicId:
         memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals))
     val history: DebtActivityViewModel = viewModel(key = "repayment-capture-history", factory =
         debtActivityViewModelFactory(screenFactory.debtActivityRepository))
-    DebtDetailHost(screenFactory.debtRepository.splitAgreement, publicId, DebtDetailHostModels(detail, proposal, history), onBack, onOpenCredit)
+    DebtDetailHost(screenFactory.debtRepository.splitAgreement, publicId, DebtDetailHostModels(detail, proposal, history, screenFactory.debtCreationRepository.billSources), onBack, onOpenCredit)
 }

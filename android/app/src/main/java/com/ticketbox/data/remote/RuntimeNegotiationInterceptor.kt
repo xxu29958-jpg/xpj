@@ -37,15 +37,16 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         val timeInput = request.requiredTimeInput()
         val originalAttachment = Regex("/api/expenses/[^/]+/original(?:/.*)?$").containsMatchIn(request.url.encodedPath)
         val debtActivityRead = request.isDebtActivityRead()
+        val debtBillSource = request.requiresDebtBillSource()
         // An API date, including one already attached to this request, does not prove receipt replay support.
         if (!request.requiresRuntimeNegotiation(
                 incomeForecastRead,
-                keyedUpload || timeInput != null || originalAttachment || debtActivityRead,
+                keyedUpload || timeInput != null || originalAttachment || debtActivityRead || debtBillSource,
             )) {
             return chain.proceed(request)
         }
         val compatibility = readCompatibility(chain, request)
-        if (compatibility != null && compatibility.apiVersion != CURRENT_TICKETBOX_API_VERSION) {
+        if (!compatibility.supportsProtocol(debtBillSource)) {
             return incompatibleProtocolResponse(request)
         }
         if (!compatibility.supportsRequiredCapabilities(
@@ -103,6 +104,16 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
 }
 
 private enum class RuntimeTimeInput { Expense, Repayment }
+
+private fun RuntimeWriteCompatibility?.supportsProtocol(debtBillSource: Boolean): Boolean =
+    (!debtBillSource || this?.debtBillSourceVersion == 1) &&
+        (this == null || apiVersion == CURRENT_TICKETBOX_API_VERSION)
+
+private fun Request.requiresDebtBillSource(): Boolean =
+    url.encodedPath == "/api/debt-bills" || url.encodedPath.startsWith("/api/debt-bills/") ||
+        tag(Invocation::class.java)?.arguments()?.any {
+            it is com.ticketbox.data.remote.dto.DebtCreateRequestDto && it.billSource != null
+        } == true
 
 private fun RuntimeWriteCompatibility?.supportsRequiredCapabilities(uploadReceipt: Boolean, timeInput: RuntimeTimeInput?,
     originalAttachment: Boolean, debtActivityRead: Boolean, firstAttachment: Boolean): Boolean =

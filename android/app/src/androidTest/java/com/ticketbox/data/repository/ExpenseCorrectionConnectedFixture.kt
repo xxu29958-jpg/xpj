@@ -86,7 +86,10 @@ internal class ExpenseCorrectionConnectedFixture(
     lateinit var ledgerCalendarRepository: LedgerCalendarRepository
     lateinit var notificationDependencies: NotificationRuntimeDependencies
     lateinit var uploadIntents: UploadIntentRepository
+    lateinit var debtBills: DebtBillRepository
+    var debtBillSources = false
     val expenseDao get() = requireNotNull(database).expenseDao()
+    val debtBillInputDao get() = requireNotNull(database).debtBillInputDao()
     val pendingDao get() = requireNotNull(database).pendingMutationDao()
     var failCachePublication = false
     var originalStorageAvailable = true
@@ -157,12 +160,13 @@ internal class ExpenseCorrectionConnectedFixture(
         }
         val provider = ApiServiceProvider(factory, sessions, credentials).also { apiProvider = it }
         ledgerCalendarRepository = LedgerCalendarRepository(LedgerRequestGuard(provider), calendarPreferences)
+        debtBills = DebtBillRepository(provider, db.debtBillInputDao(), outbox, UploadIntentFileStore(context))
         graph = RepositoryGraph(RepositoryGraphDependencies(db, ApiClient(), settingsStore, sessions, credentials,
-            provider, RepositoryGraphOutbox(outbox, adapters)))
+            provider, RepositoryGraphOutbox(outbox, adapters), debtBills = debtBills.takeIf { debtBillSources }))
         notificationDependencies = NotificationRuntimeDependencies(context, settingsStore, provider,
             graph.recurringRepository, graph.budgetRepository, ledgerCalendarRepository)
         uploadIntents = UploadIntentRepository(provider, outbox, UploadIntentFileStore(context) { if (originalStorageAvailable) it.usableSpace else 0L },
-            adapters.upload, settingsStore, db.expenseDao())
+            adapters.upload, settingsStore, com.ticketbox.data.repository.UploadOriginalInputs(db.expenseDao(), db.debtBillInputDao()))
         graph.expenseRepository.onConfirmedCommitted = { confirmedCallbacks++ }
         return graph
     }

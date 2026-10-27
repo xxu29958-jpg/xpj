@@ -193,6 +193,7 @@ def post_debt(
         actor_account_id=auth.account_id,
         payload=payload,
         idempotency_key=idempotency_key,
+        auth=auth,
     )
 
 

@@ -55,11 +55,12 @@ internal fun rememberDebtGoalRouteViewModels(screenFactory: MainScreenFactory, c
         history = viewModel(
             key = DebtGoalLinkedRepaymentHistoryViewModelKey,
             factory = debtActivityViewModelFactory(screenFactory.debtActivityRepository),
-        )),
+        ), billSources = screenFactory.debtCreationRepository.billSources),
     )
 
 internal data class DebtDetailHostModels(
     val detail: DebtDetailViewModel,
     val proposal: MemberRepaymentProposalViewModel,
     val history: DebtActivityViewModel,
+    val billSources: com.ticketbox.data.repository.DebtBillActions?,
 )

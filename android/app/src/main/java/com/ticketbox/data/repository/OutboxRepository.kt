@@ -391,13 +391,14 @@ class OutboxRepository private constructor(
         return id
     }
 
-    internal suspend fun originalIncomeCreation(boundRequest: BoundLedgerRequest, key: String): OutboxRow? =
+    internal suspend fun originalCreation(boundRequest: BoundLedgerRequest, key: String, type: PendingMutationType): OutboxRow? =
         withActiveBinding(boundRequest) { binding ->
+            require(type in setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.CreateDebt))
             val rows = dao.findByIdempotencyKeys(binding.ownerStorageKey, binding.ledgerId,
-                PendingMutationType.CreateIncomePlan.wireValue, listOf(key))
+                type.wireValue, listOf(key))
             val row = rows.singleOrNull()
             require(rows.size <= 1 && (row == null || row.serverUrl == binding.serverUrl)) {
-                "原收入创建归属无法确认，请先核对原提交。"
+                "原创建归属无法确认，请先核对原提交。"
             }
             row?.toDomain()
         }
@@ -425,7 +426,7 @@ class OutboxRepository private constructor(
     ): List<Long> {
         require(intents.size in 1..100)
         require(intents.map { it.type }.distinct().size == 1)
-        require(intents.all { (it.type == PendingMutationType.UploadScreenshot && it.expectedRowVersion == 0L) ||
+        require(intents.all { (it.type in setOf(PendingMutationType.UploadScreenshot, PendingMutationType.CaptureDebtBill) && it.expectedRowVersion == 0L) ||
             (it.type == PendingMutationType.OriginalAttachment && it.expectedRowVersion > 0L) })
         val keys = intents.map { requireNotNull(it.idempotencyKey) }
         require(keys.distinct().size == keys.size && keys.all(::isUploadIntentFileKey))

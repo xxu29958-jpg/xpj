@@ -25,6 +25,11 @@ from app.schemas import (
     RepaymentVoidCreateRequest,
 )
 from app.services.currency_common import normalize_currency_code
+from app.services.debt_bill_capture_service import (
+    authorize_capture_write,
+    lock_capture_for_adoption,
+    stage_capture_adoption,
+)
 from app.services.debt_service import (
     create_debt,
     forgive_debt,
@@ -48,6 +53,7 @@ from app.services.idempotency import (
     fingerprint_request,
     mark_idempotency_succeeded,
 )
+from app.tenants import AuthContext
 
 _DEBT_TARGET_TYPE = "debt"
 _CREATE_OPERATION = "create_debt"
@@ -106,10 +112,15 @@ def create_debt_idempotently(
     actor_account_id: int,
     payload: DebtCreateRequest,
     idempotency_key: str | None,
+    auth: AuthContext | None = None,
 ) -> DebtResponse:
     """Create one external/manual Debt with the collection-create replay contract."""
     if not idempotency_key:
         raise AppError("idempotency_key_required", status_code=422)
+    if payload.bill_source is not None:
+        if auth is None or auth.tenant_id != tenant_id or auth.account_id != actor_account_id:
+            raise AppError("permission_denied", status_code=403)
+        authorize_capture_write(db, auth)
     validate_home_amount_command(
         amount_cents=payload.principal_amount_cents,
         original_currency=payload.original_currency,
@@ -154,6 +165,10 @@ def create_debt_idempotently(
             return legacy
         raise AppError("idempotency_key_reused", status_code=422)
 
+    source = None if payload.bill_source is None else lock_capture_for_adoption(
+        db, tenant_id=tenant_id, actor_account_id=actor_account_id,
+        creation_key=idempotency_key, reference=payload.bill_source,
+    )
     debt = create_debt(
         db,
         tenant_id=tenant_id,
@@ -162,6 +177,8 @@ def create_debt_idempotently(
         payload=payload,
         commit=False,
     )
+    if source is not None:
+        stage_capture_adoption(db, source, debt.public_id)
     result = get_debt_response(db, tenant_id=tenant_id, public_id=debt.public_id)
     mark_idempotency_succeeded(
         db,
@@ -171,6 +188,9 @@ def create_debt_idempotently(
         response_body=result.model_dump(mode="json"),
     )
     db.commit()
+    if source is not None:
+        from app.services.cleanup_service import cleanup_after_confirm
+        cleanup_after_confirm(db, source)
     return result
 
 

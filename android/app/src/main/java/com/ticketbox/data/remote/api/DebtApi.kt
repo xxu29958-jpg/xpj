@@ -1,6 +1,5 @@
 package com.ticketbox.data.remote.api
 
-import com.ticketbox.data.remote.dto.DebtBillParseResponseDto
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtForgiveCreateRequestDto
@@ -9,13 +8,10 @@ import com.ticketbox.data.remote.dto.RepaymentCreateRequestDto
 import com.ticketbox.domain.model.DebtAdjustmentCreateRequest
 import com.ticketbox.domain.model.DebtKindSetRequest
 import com.ticketbox.domain.model.DebtVoidCreateRequest
-import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
-import retrofit2.http.Multipart
 import retrofit2.http.POST
-import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -35,12 +31,6 @@ interface DebtApi {
         @Body request: DebtCreateRequestDto,
         @Header("Idempotency-Key") idempotencyKey: String?,
     ): DebtDto
-
-    // ADR-0049 §D: transient debt-bill OCR/vision parser. Multipart image in, suggestion fields
-    // out; no Debt is created until the user confirms the normal create form.
-    @Multipart
-    @POST("api/debts/parse-bill")
-    suspend fun parseDebtBill(@Part file: MultipartBody.Part): DebtBillParseResponseDto
 
     // ADR-0049 §2 (slice 8c): one Debt's server-derived fold (for the detail screen). 404
     // debt_not_found; a cross-ledger participant gets the redacted shell (ledger_id null, §5.2).

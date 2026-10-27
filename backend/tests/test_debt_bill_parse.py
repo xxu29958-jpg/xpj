@@ -1,6 +1,6 @@
 """ADR-0049 §D 债务账单 OCR 解析：服务 provider + ``POST /api/debts/parse-bill`` 路由。
 
-瞬态解析（不落库、不建债、不存图）：上传欠款截图 → 建议还款条款 → 预填建债表单。
+保存原账单后解析：建议还款条款只用于预填建债表单。
 §8 红线：建议非事实，``source_text`` 是源文本片段，用户确认/改后才建债（走 POST /api/debts）。
 """
 
@@ -105,14 +105,20 @@ def test_parse_bill_route_returns_mock_suggestion(client: TestClient, monkeypatc
         lambda: SimpleNamespace(debt_bill_provider="mock"),
     )
 
-    response = client.post(
-        "/api/debts/parse-bill",
-        headers=identity.app_headers,
+    captured = client.post(
+        "/api/debt-bills",
+        headers={**identity.app_headers, "Idempotency-Key": "parse-test-capture"},
+        data={"creation_key": "parse-test-create"},
         files={"file": ("bill.png", PNG_BYTES, "image/png")},
     )
+    assert captured.status_code == 200, captured.text
+    source = captured.json()
+    response = client.post(f"/api/debt-bills/{source['public_id']}/parse",
+        headers={**identity.app_headers, "Idempotency-Key": "parse-test-outcome"},
+        json={"expected_row_version": source["row_version"]})
 
     assert response.status_code == 200, response.json()
-    body = response.json()
+    body = response.json()["suggestion"]
     assert body["merchant"] == "花呗"
     assert body["installment_count"] == 12
     assert body["installment_period_months"] == 1
@@ -133,8 +139,9 @@ def test_parse_bill_route_unauthenticated_is_401(client: TestClient) -> None:
 
 def test_parse_bill_route_rejects_non_image(client: TestClient, *, identity) -> None:
     response = client.post(
-        "/api/debts/parse-bill",
-        headers=identity.app_headers,
+        "/api/debt-bills",
+        headers={**identity.app_headers, "Idempotency-Key": "invalid-source"},
+        data={"creation_key": "invalid-create"},
         files={"file": ("notes.txt", b"hello", "text/plain")},
     )
 

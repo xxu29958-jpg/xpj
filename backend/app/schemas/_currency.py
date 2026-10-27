@@ -40,6 +40,7 @@ class RuntimeProductCapabilitiesResponse(BaseModel):
     original_attachment_version: int = Field(ge=1)
     original_attachment_create_version: int = Field(ge=1)
     debt_activity_read_version: int = Field(ge=1)
+    debt_bill_source_version: int = Field(ge=1)
     currency: RuntimeCurrencyCapabilityResponse
 
 
