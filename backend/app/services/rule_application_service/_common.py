@@ -218,7 +218,7 @@ def _try_apply_rule_category(
     if rowcount != 1:
         return None
     if prepared is not None:
-        db.expire_all()
+        db.expire(expense)
         updated = db.scalar(ledger_scoped_select(Expense, tenant_id).where(Expense.id == int(expense.id)))
         if updated is None:
             raise AppError("expense_not_found", status_code=404)
@@ -261,7 +261,7 @@ def _try_rollback_rule_change(
     if rowcount != 1:
         return False
     if prepared is not None:
-        db.expire_all()
+        db.expire(expense)
         updated = db.scalar(ledger_scoped_select(Expense, tenant_id).where(Expense.id == int(expense.id)))
         if updated is None:
             raise AppError("expense_not_found", status_code=404)

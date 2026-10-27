@@ -234,6 +234,10 @@ def prepare_correction_revision(
     if not _has_published_fact(expense):
         return None
     if expense.fact_revision == 0:
+        # Serialize legacy history publication before checking revision 1. Keep
+        # the caller's original snapshot/version for its subsequent OCC claim.
+        db.execute(select(Expense.id).where(Expense.tenant_id == expense.tenant_id,
+            Expense.id == expense.id).with_for_update())
         record_confirmation_revision(
             db,
             expense,
