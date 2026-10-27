@@ -8,6 +8,21 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class RecurringOccurrencePaymentPickerTest {
+    @Test fun preferredSelectionStillRequiresAnAcceptedNonReversedPaymentFact() {
+        val accepted = payment(1, "bill", "2026-09-03", null)
+        val zero = accepted.copy(root = accepted.root.copy(id = 2, amountCents = 0))
+        val rejected = listOf(
+            accepted.copy(root = accepted.root.copy(id = -1)),
+            accepted.copy(root = accepted.root.copy(pendingSync = true)),
+            accepted.copy(root = accepted.root.copy(status = "pending")),
+            accepted.copy(root = accepted.root.copy(amountCents = null)),
+            accepted.copy(lineageStatus = ExpenseLineageStatus.Reversed),
+        )
+        rejected.forEach { candidate ->
+            assertEquals(listOf(2L), occurrencePaymentChoices(listOf(candidate, zero), "", "", candidate.root.id).map { it.root.id })
+        }
+    }
+
     @Test
     fun acceptedExpenseIdPinsAcrossMonthAndSearchWithoutUsingClientRef() {
         val grocery = payment(id = 41, merchant = "grocery", streamDate = "2026-09-03", clientRef = "period-ref")
