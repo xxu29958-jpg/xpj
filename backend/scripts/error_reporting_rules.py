@@ -147,6 +147,22 @@ def kotlin_code(text: str) -> str:
         for _offset, token, value in get_lexer_by_name("kotlin").get_tokens_unprocessed(text))
 
 
+def _kotlin_function_end(code: str, start: int) -> int:
+    """Include trailing catch/finally blocks of expression-bodied try functions."""
+    opening = code.find("{", start)
+    while True:
+        depth, end = 0, len(code)
+        for offset in range(opening, len(code)):
+            depth += (code[offset] == "{") - (code[offset] == "}")
+            if depth == 0:
+                end = offset + 1
+                break
+        continuation = re.match(r"\s*(?:catch\s*\([^)]*\)|finally)\s*\{", code[end:])
+        if continuation is None:
+            return end
+        opening = end + continuation.end() - 1
+
+
 def kotlin_boundaries(text: str) -> list[dict]:
     code = kotlin_code(text)
     findings = []
@@ -160,13 +176,7 @@ def kotlin_boundaries(text: str) -> list[dict]:
         symbol = preceding[-1].group(1) if preceding else "<module>"
         # Preserve the entire function text for exact reviewed exceptions, not only the catch count.
         start = preceding[-1].start() if preceding else 0
-        opening = code.find("{", start)
-        depth, end = 0, len(code)
-        for offset in range(opening, len(code)):
-            depth += (code[offset] == "{") - (code[offset] == "}")
-            if depth == 0:
-                end = offset + 1
-                break
+        end = _kotlin_function_end(code, start)
         digest = hashlib.sha256(text[start:end].encode()).hexdigest()
         findings.append({"rule": "android-terminal-output", "symbol": symbol,
             "line": code[:match.start()].count("\n") + 1, "owner": "NetworkErrorHandler / sanitized Logcat boundary",
