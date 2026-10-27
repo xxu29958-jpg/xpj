@@ -570,7 +570,12 @@ class LedgerViewModel(
             // JPY 安装手记乐观行与同步后权威行同口径。
             repository.createManualExpense(draft.copy(ledgerHomeCurrency = draft.ledgerHomeCurrency ?: _uiState.value.ledgerCurrency))
                 .onSuccess { expense ->
-                    monthSelected = true
+                    val createdMonth = expenseLedgerMonth(expense)
+                    val resolvedDefaultMonth = createdMonth != null && resolvingMonth
+                    if (createdMonth != null) {
+                        monthSelected = true
+                        resolvingMonth = false
+                    }
                     loadCategories()
                     loadTags()
                     loadMonths()
@@ -578,7 +583,9 @@ class LedgerViewModel(
                         val next = state.copy(
                             creatingManual = false,
                             manualCreateResult = expense,
-                            monthFilter = expenseLedgerMonth(expense) ?: state.monthFilter,
+                            monthFilter = createdMonth ?: state.monthFilter,
+                            monthReady = state.monthReady || createdMonth != null,
+                            syncing = if (resolvedDefaultMonth) false else state.syncing,
                             categoryFilter = "",
                             tagFilter = "",
                             message = if (expense.pendingSync) {
