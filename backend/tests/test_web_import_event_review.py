@@ -12,6 +12,7 @@ from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader, Stri
 from sqlalchemy.engine import Engine
 from starlette.templating import Jinja2Templates
 
+from app.services.csv_import_batch_service import _queries as import_queries
 from tests._web_import_test_support import BATCH, EVENT, root, row
 
 
@@ -42,7 +43,7 @@ def review_web(monkeypatch):
     monkeypatch.setattr(route, "get_csv_import_batch", lambda *_a, **_k: SimpleNamespace(file_name="events.csv"))
     monkeypatch.setattr(route, "rendered_draft_scope", lambda *_a: (None, False))
     monkeypatch.setattr(route, "reviewed_draft_scope", lambda _db, _request, scope, **_k: scope)
-    monkeypatch.setattr(route, "expense_fact_bundle", lambda *_a, **_k: SimpleNamespace(
+    monkeypatch.setattr(import_queries, "expense_fact_bundle", lambda *_a, **_k: SimpleNamespace(
         root=SimpleNamespace(row_version=9, original_currency_code="USD", home_currency="CNY"),
         financial_summary=SimpleNamespace(status="partially_refunded", remaining_refundable_original_minor=200,
                                          lineage_home_net_cents=1420), active_offsets=[]))
@@ -322,8 +323,8 @@ def test_event_preview_uses_current_net_and_frozen_event_money(review_web, chang
 
 
 def test_preview_does_not_use_newer_root_or_reverse_existing_refunds(review_web, monkeypatch):
-    bundle = review_web.expense_fact_bundle(None)
-    monkeypatch.setattr(review_web, "expense_fact_bundle", lambda *_a, **_k: bundle)
+    bundle = import_queries.expense_fact_bundle(None)
+    monkeypatch.setattr(import_queries, "expense_fact_bundle", lambda *_a, **_k: bundle)
     assert review_web._event_net_preview(object(), "family", row(), root(row_version=8)) is None
     bundle.active_offsets = [object()]
     assert review_web._event_net_preview(object(), "family", row(offset_kind="reversal"), root()) is None
