@@ -7,50 +7,25 @@ import pytest
 from backend_manager.runtime import RuntimeControlError
 from backend_manager.windows_known_folders import (
     PROGRAM_DATA_FOLDER_ID,
-    _com_initialized,
     known_folder_path,
 )
 
 
-class _Ole32:
-    def __init__(self, result: int) -> None:
-        self.result = result
-        self.events: list[str] = []
+@pytest.mark.parametrize(("code", "expected"), [
+    ("windows_required", "Windows ProgramData 目录只支持 Windows。"),
+    ("com_initialization_failed", "无法为 Windows Known Folder 初始化 COM（HRESULT=0x80004005）。"),
+    ("folder_unavailable", "无法定位 Windows ProgramData（HRESULT=0x80004005）。"),
+])
+def test_manager_preserves_known_folder_failure_presentation(monkeypatch, code, expected):
+    from ticketbox_lifecycle.adapters import windows_known_folders as native
 
-    def CoInitializeEx(self, _reserved, _mode: int) -> int:  # noqa: N802
-        self.events.append("initialize")
-        return self.result
+    def fail(_folder):
+        raise native.KnownFolderError(code, 0x80004005)
 
-    def CoUninitialize(self) -> None:  # noqa: N802
-        self.events.append("uninitialize")
-
-
-@pytest.mark.parametrize("result", [0, 1])
-def test_known_folder_balances_successful_com_initialization(result: int) -> None:
-    ole32 = _Ole32(result)
-
-    with _com_initialized(ole32):
-        ole32.events.append("query")
-
-    assert ole32.events == ["initialize", "query", "uninitialize"]
-
-
-def test_known_folder_uses_an_existing_different_com_apartment_without_uninitializing() -> None:
-    ole32 = _Ole32(0x80010106)
-
-    with _com_initialized(ole32):
-        ole32.events.append("query")
-
-    assert ole32.events == ["initialize", "query"]
-
-
-def test_known_folder_rejects_other_com_initialization_failures() -> None:
-    ole32 = _Ole32(0x80004005)
-
-    with pytest.raises(RuntimeControlError, match="COM"), _com_initialized(ole32):
-        raise AssertionError("query must not run")
-
-    assert ole32.events == ["initialize"]
+    monkeypatch.setattr(native, "known_folder_path", fail)
+    with pytest.raises(RuntimeControlError) as error:
+        known_folder_path(PROGRAM_DATA_FOLDER_ID, label="ProgramData")
+    assert str(error.value) == expected
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Known Folder contract")

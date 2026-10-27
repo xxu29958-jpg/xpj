@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ticketbox_lifecycle.runtime.windows_scm_observation import FailureAction, ServiceConfiguration
+from ticketbox_lifecycle.adapters.scm import FailureAction, ServiceConfiguration
 
 SERVICE_NAME = "TicketboxCloudflared"
 SERVICE_ACCOUNT = "NT SERVICE\\" + SERVICE_NAME

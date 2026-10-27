@@ -68,7 +68,7 @@ def test_ordinary_observation_requires_the_installed_own_process_and_stable_list
     monkeypatch.setattr(managed_connector_probe, "ConnectorScm", Scm)
     monkeypatch.setattr(managed_connector_probe, "NativeWindowsScmObserver", Observer)
     monkeypatch.setattr(cloudflared_probe, "_observe_endpoint", endpoint)
-    result = managed_connector_probe.probe_managed_connector(expected, object())
+    result = cloudflared_probe.probe_cloudflared(expected, transport=object())
     assert facts.payload_checks == 1
     if case in {"foreign_listener", "public_listener", "wrong_image"}:
         assert result.ownership == OwnershipState.CONFLICT and facts.endpoint_reads == 0

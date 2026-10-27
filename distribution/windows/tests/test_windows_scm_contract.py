@@ -4,13 +4,10 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from ticketbox_lifecycle.adapters.scm import FailureAction, ServiceConfiguration
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.command import CompletedCommand
 from ticketbox_lifecycle.runtime.windows_scm import WindowsScmAdapter
-from ticketbox_lifecycle.runtime.windows_scm_observation import (
-    FailureAction,
-    ServiceConfiguration,
-)
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
 
 

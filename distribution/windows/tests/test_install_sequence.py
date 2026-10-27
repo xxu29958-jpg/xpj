@@ -6,8 +6,9 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from fakes import MemoryStores, RecordingAdapterBundle, make_install_request as _request
-from ticketbox_lifecycle import cli
+from fakes import MemoryStores, RecordingAdapterBundle
+from fakes import make_install_request as _request
+from ticketbox_lifecycle import cli, command_io
 from ticketbox_lifecycle.domain.install import (
     hash_install_identity,
     hash_request_payload,
@@ -257,7 +258,7 @@ def test_active_operation_is_archived_before_committed_result_is_published(
     result_path = tmp_path / "result.json"
     events: list[str] = []
     archive_committed = stores.archive_committed
-    write_result = cli._write_result
+    write_result = command_io.write_result
 
     def record_archive(operation: ActiveOperation) -> None:
         events.append("archive")
@@ -268,7 +269,7 @@ def test_active_operation_is_archived_before_committed_result_is_published(
         write_result(path, command_result)
 
     monkeypatch.setattr(stores, "archive_committed", record_archive)
-    monkeypatch.setattr(cli, "_write_result", record_result)
+    monkeypatch.setattr(command_io, "write_result", record_result)
 
     assert cli._deliver_install_result(result_path, result, stores.as_lifecycle_stores()) == 0
     assert events == ["archive", "result"]
@@ -277,6 +278,43 @@ def test_active_operation_is_archived_before_committed_result_is_published(
     assert delivered["pairing_code"] == "12345678"
     assert stores.read_active() is None
     assert [operation.phase for operation in stores.history] == ["committed"]
+
+
+def test_archive_failure_retains_exact_commit_and_reports_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    adapters = RecordingAdapterBundle()
+    request = _request(tmp_path)
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    result = install_or_resume(stores.as_lifecycle_stores(), request)
+    active = stores.read_active()
+    calls: list[str] = []
+
+    def fail_archive(operation: ActiveOperation) -> None:
+        calls.append(operation.operation_id)
+        raise OSError("archive unavailable for pairing 12345678")
+
+    monkeypatch.setattr(stores, "archive_committed", fail_archive)
+    result_path = tmp_path / "result.json"
+
+    assert cli._deliver_install_result(result_path, result, stores.as_lifecycle_stores()) == 2
+    delivered = json.loads(result_path.read_text(encoding="utf-8"))
+    assert delivered["ok"] is False
+    assert delivered["code"] == "operation_archive_failed"
+    assert delivered["phase"] == "committed"
+    assert delivered["operation_id"] == request.operation_id
+    assert delivered["installation_published"] is True
+    assert delivered["pairing_code"] == ""
+    assert calls == [request.operation_id]
+    assert stores.read_active() == active
+    assert stores.history == []
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.count("\n") == 1
+    assert "operation_archive_failed" in captured.err
+    assert "12345678" not in captured.err
 
 
 def test_archived_commit_replays_pairing_after_setup_crashes_before_consuming_result(
@@ -344,7 +382,7 @@ def test_result_write_failure_after_archive_replays_exact_committed_history(
         del path, result
         raise OSError("injected result write failure")
 
-    monkeypatch.setattr(cli, "_write_result", fail_result_write)
+    monkeypatch.setattr(command_io, "write_result", fail_result_write)
     with pytest.raises(OSError, match="result write failure"):
         cli._deliver_install_result(tmp_path / "result.json", first, stores.as_lifecycle_stores())
 

@@ -4,6 +4,7 @@ import os
 import time
 from pathlib import Path
 
+from ticketbox_lifecycle.adapters.scm import ScmObserver, ServiceConfiguration
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.windows_scm_contract import (
     SERVICE_AUTO_START,
@@ -15,10 +16,6 @@ from ticketbox_lifecycle.policy.windows_scm_contract import (
 )
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok
-from ticketbox_lifecycle.runtime.windows_scm_observation import (
-    ScmObserver,
-    ServiceConfiguration,
-)
 from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 from ticketbox_lifecycle.runtime.windows_services import (
     require_running_service,
