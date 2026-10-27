@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ticketbox_lifecycle.cli import _emit_failure, main
+from ticketbox_lifecycle.cli import main
+from ticketbox_lifecycle.command_io import emit_failure
 from ticketbox_lifecycle.schemas import RESULT_SCHEMA, CommandResult
 
 
@@ -62,7 +63,7 @@ def test_cli_overwrites_leftover_committed_result_before_work(tmp_path: Path) ->
 
 def test_failure_diagnostic_never_prints_a_pairing_code(capsys) -> None:
     password = "rA8dsfl29dkSla90_qwerty-Secret-Database-Value"
-    _emit_failure(
+    emit_failure(
         CommandResult(
             schema=RESULT_SCHEMA,
             ok=False,
@@ -90,7 +91,7 @@ def test_unhandled_failure_does_not_publish_exception_text(
     monkeypatch,
     capsys,
 ) -> None:
-    from ticketbox_lifecycle import cli
+    from ticketbox_lifecycle import command_io
 
     request = tmp_path / "request.json"
     result = tmp_path / "result.json"
@@ -103,7 +104,7 @@ def test_unhandled_failure_does_not_publish_exception_text(
     def fail_parse(*_args, **_kwargs):
         raise RuntimeError(secret)
 
-    monkeypatch.setattr(cli, "_parse_request", fail_parse)
+    monkeypatch.setattr(command_io, "parse_request", fail_parse)
     assert main(["install", "--request", str(request), "--result", str(result)]) == 2
 
     payload = json.loads(result.read_text(encoding="utf-8"))

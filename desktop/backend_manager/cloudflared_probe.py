@@ -301,7 +301,8 @@ def probe_cloudflared(
     if expectation is not None and service_reader is None:
         from backend_manager.managed_connector_probe import probe_managed_connector
 
-        return probe_managed_connector(expectation, transport or LoopbackCloudflaredTransport())
+        http = transport or LoopbackCloudflaredTransport()
+        return probe_managed_connector(expectation, lambda port: _observe_endpoint(http, port))
     reader = service_reader or WindowsCloudflaredServiceReader()
     http = transport or LoopbackCloudflaredTransport()
     service_name = expectation.service_name if expectation is not None else _DEFAULT_SERVICE_NAME

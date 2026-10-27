@@ -12,7 +12,7 @@ from typing import cast
 
 from ticketbox_lifecycle.adapters.ports import AdapterBundle, Mutex
 from ticketbox_lifecycle.connector_schema import ConnectorOperation, parse_operation
-from ticketbox_lifecycle.domain.install import LifecycleStores
+from ticketbox_lifecycle.domain.operation import LifecycleStores
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.command import SubprocessCommandRunner

@@ -56,7 +56,7 @@ def test_pgpass_consumer_topology_is_closed_and_follows_acl_verification() -> No
         "health",
     ):
         assert acl_index < APPLY_SEQUENCE.index(step)
-    restore = (runtime.parent / "restore_cli.py").read_text(encoding="utf-8")
+    restore = (runtime.parent / "domain" / "restore.py").read_text(encoding="utf-8")
     assert restore.index('security.verify(bound, "acl")') < restore.index("platform.rotate_credentials(")
     assert restore.index('security.verify(bound, "acl")') < restore.index("platform.rebind_identity(")
 

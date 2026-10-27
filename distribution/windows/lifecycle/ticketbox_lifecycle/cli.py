@@ -2,26 +2,21 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import re
 import sys
-import tempfile
-from dataclasses import asdict
 from pathlib import Path
 
+from ticketbox_lifecycle import command_io
 from ticketbox_lifecycle.domain.install import (
-    LifecycleStores,
     inspect_machine,
     install_or_resume,
 )
+from ticketbox_lifecycle.domain.operation import LifecycleStores
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
 from ticketbox_lifecycle.schemas import (
-    REQUEST_SCHEMA,
     RESULT_SCHEMA,
     ActiveOperation,
     CommandResult,
-    InstallRequest,
 )
 
 
@@ -57,7 +52,7 @@ def _install_main(argv: list[str]) -> int:
     try:
         payload = json.loads(Path(args.request).read_text(encoding="utf-8"))
         operation_id = str(payload.get("operation_id") or "unknown")
-        _write_result(
+        command_io.write_result(
             result_path,
             CommandResult(
                 schema=RESULT_SCHEMA,
@@ -70,7 +65,7 @@ def _install_main(argv: list[str]) -> int:
                 installation_published=False,
             ),
         )
-        request = _parse_request(payload, command=args.command)
+        request = command_io.parse_request(payload, command=args.command)
         operation_id = request.operation_id
         stores = FilesystemStores.from_request(request)
         lifecycle_stores = stores.as_lifecycle_stores()
@@ -102,9 +97,9 @@ def _install_main(argv: list[str]) -> int:
         )
     if args.command in {"install", "resume"} and lifecycle_stores is not None:
         return _deliver_install_result(result_path, result, lifecycle_stores)
-    _write_result(result_path, result)
+    command_io.write_result(result_path, result)
     if not result.ok:
-        _emit_failure(result)
+        command_io.emit_failure(result)
     return 0 if result.ok else 2
 
 
@@ -114,8 +109,8 @@ def _deliver_install_result(
     stores: LifecycleStores,
 ) -> int:
     if not result.ok:
-        _write_result(path, result)
-        _emit_failure(result)
+        command_io.write_result(path, result)
+        command_io.emit_failure(result)
         return 2
     active = stores.operations_read.read_active()
     committed = (
@@ -140,8 +135,8 @@ def _deliver_install_result(
             message="committed result has no exact active operation",
             installation_published=result.installation_published,
         )
-        _write_result(path, failure)
-        _emit_failure(failure)
+        command_io.write_result(path, failure)
+        command_io.emit_failure(failure)
         return 2
     if _is_exact_commit(active, result.operation_id):
         try:
@@ -157,28 +152,11 @@ def _deliver_install_result(
                 message=str(exc),
                 installation_published=result.installation_published,
             )
-            _write_result(path, failure)
-            _emit_failure(failure)
+            command_io.write_result(path, failure)
+            command_io.emit_failure(failure)
             return 2
-    _write_result(path, result)
+    command_io.write_result(path, result)
     return 0
-
-
-def _emit_failure(result: CommandResult) -> None:
-    message = " ".join(result.message.split())
-    message = re.sub(r"(?<!\d)\d{8}(?!\d)", "[redacted]", message)
-    message = re.sub(
-        r"(?i)(PASSWORD\s+')[^']*(')",
-        r"\1[redacted]\2",
-        message,
-    )
-    if len(message) > 800:
-        message = message[:797] + "..."
-    print(
-        f"TicketboxLifecycle failed [{result.code}]: {message}",
-        file=sys.stderr,
-        flush=True,
-    )
 
 
 def _is_exact_commit(operation: ActiveOperation | None, operation_id: str) -> bool:
@@ -187,43 +165,6 @@ def _is_exact_commit(operation: ActiveOperation | None, operation_id: str) -> bo
         and operation.kind in {"install", "restore"}
         and operation.phase == "committed"
         and operation.operation_id == operation_id
-    )
-
-
-def _write_result(path: Path, result: CommandResult) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(asdict(result), indent=2) + "\n"
-    fd, tmp_name = tempfile.mkstemp(prefix=path.name, suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp_name, path)
-    except Exception:
-        if os.path.exists(tmp_name):
-            os.unlink(tmp_name)
-        raise
-
-
-def _parse_request(payload: dict[str, object], *, command: str) -> InstallRequest:
-    if payload.get("schema") != REQUEST_SCHEMA:
-        raise LifecycleError("bad_request_schema", "request schema is not ticketbox-lifecycle-request-v1")
-    return InstallRequest(
-        schema=REQUEST_SCHEMA,
-        command=command,  # type: ignore[arg-type]
-        operation_id=str(payload["operation_id"]),
-        request_hash=str(payload["request_hash"]),
-        target_release_id=str(payload["target_release_id"]),
-        app_dir=str(payload["app_dir"]),
-        data_root=str(payload["data_root"]),
-        program_data_root=str(payload["program_data_root"]),
-        pg_service_name=str(payload["pg_service_name"]),
-        backend_service_name=str(payload["backend_service_name"]),
-        pg_port=int(payload["pg_port"]),
-        backend_port=int(payload["backend_port"]),
-        postgres_major=int(payload["postgres_major"]),
-        release_manifest_sha256=str(payload["release_manifest_sha256"]),
     )
 
 
