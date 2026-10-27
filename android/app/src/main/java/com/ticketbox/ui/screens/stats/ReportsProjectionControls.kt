@@ -13,7 +13,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import com.ticketbox.data.remote.dto.MissingExchangeRateDto
 import com.ticketbox.R
 import com.ticketbox.domain.model.CurrencyProjectionGap
 import com.ticketbox.domain.model.ReportsOverview
@@ -56,7 +55,7 @@ internal fun ProjectionRateGaps(
 ) {
         if (gaps.isNotEmpty()) Text(stringResource(R.string.reports_projection_incomplete))
         gaps.forEach { gap ->
-            if (MissingExchangeRateDto(gap.sourceCurrencyCode, gap.homeCurrencyCode, gap.rateDate).canEnterManualRate()) {
+            if (gap.canEnterManualRate()) {
                 TextButton(onClick = { onRepair(gap) }, modifier = Modifier.testTag("$tagPrefix-${gap.sourceCurrencyCode}-${gap.rateDate}")) {
                     Text(stringResource(R.string.reports_rate_gap, requireNotNull(gap.sourceCurrencyCode), gap.homeCurrencyCode, requireNotNull(gap.rateDate)))
                 }

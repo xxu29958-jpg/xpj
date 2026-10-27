@@ -10,7 +10,7 @@ import kotlin.test.assertNotNull
 class RepaymentReviewCommandTest {
     @Test fun unchangedCapturedMoneyKeepsItsKnownHomeAmountWhileAnExplicitCorrectionTravelsSeparately() {
         val binding = LogicalSessionBinding("https://isolated.invalid", "ledger", "owner", "session", "binding")
-        val adapters = OutboxAdapterGraph()
+        val adapters = OutboxAdapterGraph().debt
         val original = RepaymentDraftDto("capture-original", "alipay", 1400, "USD", "原银行卡", "2026-09-01T00:00:00Z",
             "pending", createdAt = "2026-09-01T00:00:01Z", originalCurrencyCode = "CNY", originalAmountMinor = 10000).toDomain()
         val input = reviewInput(binding)

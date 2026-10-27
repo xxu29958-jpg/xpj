@@ -1,6 +1,5 @@
 package com.ticketbox.data.repository
 
-import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.domain.model.RecurringCandidate
 import com.ticketbox.domain.model.RecurringItem
 import com.ticketbox.domain.model.ledgerRoleCanModify
@@ -75,7 +74,7 @@ interface RecurringActions :
 class RecurringRepository internal constructor(
     private val apiProvider: ApiServiceProvider,
     outbox: OutboxRepository? = null,
-    adapters: OutboxAdapterGraph? = null,
+    adapters: RecurringMutationAdapters? = null,
     private val queryReader: RecurringQueryReader,
 ) : RecurringActions,
     RecurringManualMutationActions by RecurringMutationClient(

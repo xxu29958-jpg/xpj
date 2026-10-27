@@ -30,7 +30,7 @@ class DebtCreationRepositoryTest {
         assertTrue(fixture.api.calls.isEmpty())
         assertEquals(listOf(1), fixture.queueDepthAtSchedule)
         val stored = fixture.dao.rows.getValue(receipt.intentId)
-        val payload = requireNotNull(fixture.adapters.debtCreateAdapter.fromJson(stored.payload))
+        val payload = requireNotNull(fixture.adapters.debt.debtCreateAdapter.fromJson(stored.payload))
         assertEquals(fixture.binding, receipt.binding)
         assertEquals(fixture.binding.ownerKey, stored.ownerKey)
         assertEquals(fixture.binding.ledgerId, stored.ledgerId)
@@ -180,7 +180,7 @@ class DebtCreationRepositoryTest {
             assertTrue(fixture.api.calls.isEmpty())
         }
         val receipt = fixture.repository.createDebt(fixture.binding, draft, CurrencyCode.CNY, "valid-draft").getOrThrow()
-        val payload = requireNotNull(fixture.adapters.debtCreateAdapter.fromJson(fixture.dao.rows.getValue(receipt.intentId).payload))
+        val payload = requireNotNull(fixture.adapters.debt.debtCreateAdapter.fromJson(fixture.dao.rows.getValue(receipt.intentId).payload))
         assertEquals(DebtKinds.UNSPECIFIED, payload.request.debtKind)
         assertEquals("房东", payload.request.counterpartyLabel)
         assertEquals(50_000L, payload.request.principalAmountCents)
@@ -191,8 +191,8 @@ class DebtCreationRepositoryTest {
         val fixture = DebtCreationFixture()
         val receipt = fixture.save().getOrThrow()
         val row = fixture.dao.rows.getValue(receipt.intentId)
-        val payload = requireNotNull(fixture.adapters.debtCreateAdapter.fromJson(row.payload))
-        val unknown = row.copy(payload = fixture.adapters.debtCreateAdapter.toJson(payload.copy(revision = 99)))
+        val payload = requireNotNull(fixture.adapters.debt.debtCreateAdapter.fromJson(row.payload))
+        val unknown = row.copy(payload = fixture.adapters.debt.debtCreateAdapter.toJson(payload.copy(revision = 99)))
         fixture.dao.rows[receipt.intentId] = unknown
 
         fixture.dao.runnableBatches += listOf(receipt.intentId)
@@ -232,7 +232,7 @@ internal class DebtCreationFixture(role: String = "owner") {
         onEnqueued = { queueDepthAtSchedule += dao.rows.size },
     )
     val adapters = OutboxAdapterGraph()
-    val repository = DebtCreationRepository(provider, outbox, adapters.debtCreateAdapter)
+    val repository = DebtCreationRepository(provider, outbox, adapters.debt.debtCreateAdapter)
 
     suspend fun save(time: com.ticketbox.data.remote.dto.ExpenseTimeInputDto? = null,
         creationKey: String = java.util.UUID.randomUUID().toString()) = repository.createDebt(
@@ -249,7 +249,7 @@ internal class DebtCreationFixture(role: String = "owner") {
 
     fun engine(outbox: OutboxRepository, clock: Clock) = OutboxDrainEngine(
         outbox = outbox,
-        dispatchers = listOf(CreateDebtDispatcher({ api }, adapters.debtCreateAdapter)),
+        dispatchers = listOf(CreateDebtDispatcher({ api }, adapters.debt.debtCreateAdapter)),
         now = clock::millis,
     )
 }

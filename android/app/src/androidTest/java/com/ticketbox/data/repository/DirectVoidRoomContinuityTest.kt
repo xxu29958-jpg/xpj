@@ -132,7 +132,7 @@ class DirectVoidRoomContinuityTest {
         assertEquals("Recovery must reuse the original key rather than write another correction",
             remote.calls.first().key, remote.calls.last().key)
 
-        assertEquals(receipt, requireNotNull(com.ticketbox.OutboxAdapterGraph().debtVoidReceiptAdapter
+        assertEquals(receipt, requireNotNull(com.ticketbox.OutboxAdapterGraph().debt.debtVoidReceiptAdapter
             .fromJson(requireNotNull(fixture.stored().single()["receiptJson"]))))
         assertOriginalColumns(original)
     }

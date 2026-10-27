@@ -162,7 +162,7 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
             if (method.name == "snapshotReadAccessDenial") null else error("Unexpected settings method ${method.name}")
         } as com.ticketbox.data.local.TicketboxSettingsStore
         val coordinator = com.ticketbox.data.repository.LocalLedgerSessionCoordinator(settings, sessions, db.expenseDao(), outbox)
-        repository = BudgetRepository(provider, outbox, adapters, com.ticketbox.data.repository.BudgetLocalStorage(
+        repository = BudgetRepository(provider, outbox, adapters.budget, com.ticketbox.data.repository.BudgetLocalStorage(
             db.monthlyArrangementCacheDao(), com.ticketbox.data.repository.BudgetQueryReader(provider, db.expenseDao(), coordinator, outbox)), coordinator)
     }
 
@@ -183,8 +183,8 @@ internal class BudgetAdviceManualRateFixture(private val context: Context) : Aut
     }
     suspend fun pending(id: Long) = repository.observeRates(binding).first().single { it.row.id == id }
     suspend fun drain() = OutboxDrainEngine(outbox, listOf(ManualExchangeRateDispatcher(
-        { api }, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter), SaveMonthlyArrangementDispatcher(
-        { api }, adapters.arrangementSaveAdapter, adapters.arrangementReceiptAdapter)), maxAttempts = 1).drainOnce()
+        { api }, adapters.budget.manualRateAdapter, adapters.budget.manualRateReceiptAdapter), SaveMonthlyArrangementDispatcher(
+        { api }, adapters.budget.arrangementSaveAdapter, adapters.budget.arrangementReceiptAdapter)), maxAttempts = 1).drainOnce()
 
     override fun close() { database?.close(); context.deleteDatabase(name); base.close() }
 }

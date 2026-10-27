@@ -88,7 +88,7 @@ internal class RecurringOccurrenceConnectedFixture(private val context: Context)
         } }
 
     suspend fun drain(maxAttempts: Int = 10) = OutboxDrainEngine(outbox,
-        listOf(RecurringOccurrenceDispatcher({ network.service }, adapters.recurringOccurrenceAdapter)),
+        listOf(RecurringOccurrenceDispatcher({ network.service }, adapters.recurring.recurringOccurrenceAdapter)),
         maxAttempts = maxAttempts, now = clock::millis).drainOnce()
 
     fun advanceForRetry() { clock = Clock.offset(clock, Duration.ofMinutes(2)) }

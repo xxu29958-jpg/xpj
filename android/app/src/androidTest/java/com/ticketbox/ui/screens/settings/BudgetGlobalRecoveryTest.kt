@@ -154,7 +154,7 @@ class BudgetGlobalRecoveryTest {
         val receipt = offlineBudget().copy(rowVersion = 8)
         return pending().let { it.copy(
             row = it.row.copy(status = PendingMutationStatus.Done, lastError = "budget_read_refresh_required",
-                receiptJson = com.ticketbox.OutboxAdapterGraph().budgetReceiptAdapter.toJson(receipt)),
+                receiptJson = com.ticketbox.OutboxAdapterGraph().budget.budgetReceiptAdapter.toJson(receipt)),
             receipt = receipt.toDomain(),
         ) }
     }

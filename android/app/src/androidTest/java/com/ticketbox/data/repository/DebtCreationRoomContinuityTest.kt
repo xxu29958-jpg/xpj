@@ -140,7 +140,7 @@ class DebtCreationRoomContinuityTest {
 
     private fun engine(outbox: OutboxRepository) = OutboxDrainEngine(
         outbox = outbox,
-        dispatchers = listOf(CreateDebtDispatcher({ network.service }, OutboxAdapterGraph().debtCreateAdapter)),
+        dispatchers = listOf(CreateDebtDispatcher({ network.service }, OutboxAdapterGraph().debt.debtCreateAdapter)),
         now = clock::millis,
     )
 

@@ -240,14 +240,14 @@ class RepaymentReviewRoomTest {
         val adapters = OutboxAdapterGraph()
         val guard = LedgerRequestGuard(fixture.apiProvider)
         OutboxDrainEngine(fixture.outbox, listOf(
-            ConfirmRepaymentDraftDispatcher(guard, adapters.repaymentReviewAdapter, adapters.repaymentDraftReceiptAdapter,
+            ConfirmRepaymentDraftDispatcher(guard, adapters.debt.repaymentReviewAdapter, adapters.debt.repaymentDraftReceiptAdapter,
                 { ledgerId, bundle ->
                     sourcePublications++
                     if (sourcePublications == 1) throw IOException("isolated cache publication failure")
                     val projection = bundle.toCacheProjection(ledgerId)
                     fixture.expenseDao.applyExpenseFactBundle(ledgerId, projection.root, projection.activeOffsets)
                 }),
-            DismissRepaymentDraftDispatcher(guard, adapters.repaymentDismissAdapter, adapters.repaymentDraftReceiptAdapter),
+            DismissRepaymentDraftDispatcher(guard, adapters.debt.repaymentDismissAdapter, adapters.debt.repaymentDraftReceiptAdapter),
             PaymentCaptureResolutionDispatcher(guard) { _, _ -> },
         ), now = fixture.clock::millis).drainOnce()
     }

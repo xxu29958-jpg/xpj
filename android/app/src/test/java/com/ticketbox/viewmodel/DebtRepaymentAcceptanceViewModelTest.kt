@@ -181,7 +181,7 @@ private fun confirmedRepayment(call: RepaymentSaveCall): com.ticketbox.data.repo
     return old.copy(row = old.row.copy(
         type = com.ticketbox.data.local.PendingMutationType.RecordDebtRepayment,
         targetId = "debt:${call.debt.publicId}", expectedRowVersion = call.debt.rowVersion,
-        payloadJson = com.ticketbox.OutboxAdapterGraph().debtRepaymentAdapter.toJson(payload),
+        payloadJson = com.ticketbox.OutboxAdapterGraph().debt.debtRepaymentAdapter.toJson(payload),
         status = com.ticketbox.data.local.PendingMutationStatus.Done,
         idempotencyKey = call.key, completedAt = "2026-09-01T00:01:00Z",
     ), intent = payload)

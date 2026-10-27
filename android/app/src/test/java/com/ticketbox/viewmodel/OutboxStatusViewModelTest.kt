@@ -329,7 +329,7 @@ class OutboxStatusViewModelTest {
     @Test
     fun globalRecurringRecoveryRetainsItsOriginalCurrencyVersionAndKey() = runTest(dispatcher) {
         val harness = outboxStatusHarness()
-        val payload = OutboxAdapterGraph().recurringUpdateAdapter.toJson(
+        val payload = OutboxAdapterGraph().recurring.recurringUpdateAdapter.toJson(
             com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto(expectedRowVersion = 7,
                 baselineAmountCents = 1200, homeCurrencyCode = "JPY"),
         )
@@ -362,7 +362,7 @@ class OutboxStatusViewModelTest {
     @Test
     fun globalBudgetRecoveryReplaysOnlyTheOriginalSupportedCommand() = runTest(dispatcher) {
         val harness = outboxStatusHarness()
-        val payload = OutboxAdapterGraph().budgetSaveAdapter.toJson(com.ticketbox.data.repository.BudgetSavePayload(
+        val payload = OutboxAdapterGraph().budget.budgetSaveAdapter.toJson(com.ticketbox.data.repository.BudgetSavePayload(
             1, "2026-09", "UTC", com.ticketbox.data.remote.dto.BudgetMonthlyUpdateRequestDto("JPY", null, 1200)))
         val id = harness.outbox.enqueue(PendingMutationType.SaveMonthlyBudget, "monthly_budget:2026-09", payload, 0, "budget-original-key")
         harness.outbox.markFailed(id, "budget_save_unverified")

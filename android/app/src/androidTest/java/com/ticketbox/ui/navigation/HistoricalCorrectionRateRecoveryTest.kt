@@ -115,7 +115,7 @@ class HistoricalCorrectionRateRecoveryTest {
         compose.onNodeWithTag("advice_rate_save").performScrollTo().performClick()
         compose.waitUntil(5_000) { harness.fixture.stored().size == 2 }
         val rateRow = harness.fixture.stored().single { it["type"] == "save_manual_exchange_rate" }
-        val payload = requireNotNull(adapters.manualRateAdapter.fromJson(requireNotNull(rateRow["payload"])))
+        val payload = requireNotNull(adapters.budget.manualRateAdapter.fromJson(requireNotNull(rateRow["payload"])))
         assertEquals("2025-12", payload.month)
         assertEquals(ExchangeRateRequestDto("JPY", "CNY", "2025-12-03", "0.05", "manual", 0), payload.request)
         assertEquals(1, correctionCalls.size)
@@ -268,7 +268,7 @@ class HistoricalCorrectionRateRecoveryTest {
     private suspend fun drain() = OutboxDrainEngine(harness.fixture.outbox, listOf(
         CorrectExpenseDispatcher({ sender }, adapters.correctionAdapter,
             { row, expense -> harness.fixture.graph.expenseRepository.publishDeliveredCorrection(row, expense) }, {}),
-        ManualExchangeRateDispatcher({ sender }, adapters.manualRateAdapter, adapters.manualRateReceiptAdapter)),
+        ManualExchangeRateDispatcher({ sender }, adapters.budget.manualRateAdapter, adapters.budget.manualRateReceiptAdapter)),
         maxAttempts = 1, now = harness.fixture.clock::millis).drainOnce()
 
     private fun openRate() {

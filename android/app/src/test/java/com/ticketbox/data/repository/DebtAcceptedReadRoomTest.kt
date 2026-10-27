@@ -242,11 +242,11 @@ class DebtAcceptedReadRoomTest {
             outbox.onDebtDispatchFinished = reads::finishReadDispatch
             outbox.onDebtAccepted = reads::invalidateReadsAfterAccepted
             val adapters = OutboxAdapterGraph()
-            val writes = DebtWriteRepository(fixture.provider, outbox, adapters)
+            val writes = DebtWriteRepository(fixture.provider, outbox, adapters.debt)
             writes.saveRepayment(fixture.binding, baseline.value, 10_000).getOrThrow()
             val original = db.pendingMutationDao().allRows().single()
             val engine = OutboxDrainEngine(outbox, listOf(RecordDebtRepaymentDispatcher(
-                LedgerRequestGuard(fixture.provider), adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter)))
+                LedgerRequestGuard(fixture.provider), adapters.debt.debtRepaymentAdapter, adapters.debt.debtRepaymentReceiptAdapter)))
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_debt_protection BEFORE INSERT ON stats_projection_cache " +
                 "WHEN NEW.kind = 'debt_outbox_read_barrier' BEGIN SELECT RAISE(ABORT, 'Debt read protection unavailable'); END")
             assertEquals(OutboxDrainWorker.DrainOutcome.RETRY, OutboxDrainWorker.runDrain { engine.drainOnce() })
@@ -381,7 +381,7 @@ class DebtAcceptedReadRoomTest {
                 outbox.onDebtDispatchFinished = reads::finishReadDispatch
                 outbox.onDebtAccepted = reads::invalidateReadsAfterAccepted
                 val adapters = OutboxAdapterGraph()
-                DebtWriteRepository(fixture.provider, outbox, adapters).saveRepayment(fixture.binding, original.value, 10_000).getOrThrow()
+                DebtWriteRepository(fixture.provider, outbox, adapters.debt).saveRepayment(fixture.binding, original.value, 10_000).getOrThrow()
                 val queued = db.pendingMutationDao().allRows().single()
                 db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_denied_debt_cleanup BEFORE DELETE ON stats_projection_cache " +
                     "WHEN OLD.kind = 'debt_detail' BEGIN SELECT RAISE(ABORT, 'Read cleanup unavailable'); END")
@@ -389,7 +389,7 @@ class DebtAcceptedReadRoomTest {
                     fixture.session.rebindToDifferentServerForFixture("https://other.example.com", "other-session-token")
                 }
                 val engine = OutboxDrainEngine(outbox, listOf(RecordDebtRepaymentDispatcher(
-                    LedgerRequestGuard(fixture.provider), adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter)))
+                    LedgerRequestGuard(fixture.provider), adapters.debt.debtRepaymentAdapter, adapters.debt.debtRepaymentReceiptAdapter)))
                 assertEquals(1, engine.drainOnce().failures)
                 val failed = db.pendingMutationDao().allRows().single()
                 assertEquals(queued.payload, failed.payload)
@@ -441,9 +441,9 @@ class DebtAcceptedReadRoomTest {
             outbox.onDebtDispatchFinished = reads::finishReadDispatch
             outbox.onDebtAccepted = reads::invalidateReadsAfterAccepted
             val adapters = OutboxAdapterGraph()
-            val writes = DebtWriteRepository(fixture.provider, outbox, adapters)
+            val writes = DebtWriteRepository(fixture.provider, outbox, adapters.debt)
             val engine = OutboxDrainEngine(outbox, listOf(RecordDebtRepaymentDispatcher(
-                LedgerRequestGuard(fixture.provider), adapters.debtRepaymentAdapter, adapters.debtRepaymentReceiptAdapter)))
+                LedgerRequestGuard(fixture.provider), adapters.debt.debtRepaymentAdapter, adapters.debt.debtRepaymentReceiptAdapter)))
             val key = logicalBindingAdapter.toJson(fixture.binding)
             val invalid = outbox.enqueue(PendingMutationType.RecordDebtRepayment, "debt:d1", "{}", 1, idempotencyKey = "invalid-original")
             assertEquals(1, engine.drainOnce().failures)

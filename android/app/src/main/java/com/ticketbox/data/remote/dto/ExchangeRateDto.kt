@@ -45,14 +45,7 @@ data class BudgetAdviceInputsDto(
     @param:Json(name = "budget_definition") val budgetDefinition: BudgetPlanDefinitionDto? = null,
     @param:Json(name = "planned_total_cents") val plannedTotalCents: Long? = null,
     @param:Json(name = "data_scope") val dataScope: BudgetAdviceDataScopeDto? = null,
-) {
-    /** Reading time and the separately saved budget do not change what was sent to the advisor. */
-    fun adviceBasis() = copy(budgetDefinition = null, plannedTotalCents = null,
-        dataScope = dataScope?.copy(readAt = null))
-
-    val readyForAdvice: Boolean get() = missingRates.isEmpty() && breakdown.monthlyIncomeCents != null &&
-        breakdown.fixedExpensesCents != null && breakdown.spentAmountCents != null && breakdown.discretionaryCents != null
-}
+)
 
 @JsonClass(generateAdapter = true)
 data class BudgetPlanDefinitionDto(
@@ -78,9 +71,4 @@ data class MissingExchangeRateDto(
     @param:Json(name = "source_currency_code") val sourceCurrencyCode: String?,
     @param:Json(name = "home_currency_code") val homeCurrencyCode: String,
     @param:Json(name = "rate_date") val rateDate: String?,
-) {
-    fun canEnterManualRate(): Boolean =
-        com.ticketbox.domain.model.CurrencyCode.fromStorageKeyOrNull(sourceCurrencyCode)?.storageKey == sourceCurrencyCode && sourceCurrencyCode != null &&
-            com.ticketbox.domain.model.CurrencyCode.fromStorageKeyOrNull(homeCurrencyCode)?.storageKey == homeCurrencyCode && sourceCurrencyCode != homeCurrencyCode &&
-            rateDate != null && runCatching { java.time.LocalDate.parse(rateDate).toString() == rateDate }.getOrDefault(false)
-}
+)

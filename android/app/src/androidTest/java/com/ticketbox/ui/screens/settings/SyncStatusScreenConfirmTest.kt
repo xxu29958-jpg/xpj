@@ -130,7 +130,7 @@ class SyncStatusScreenConfirmTest {
         assertEquals("2026-09-03", error.missingExchangeRate?.rateDate)
         val original = outboxRow(PendingMutationStatus.Failed, error.correctionRateFailure())
             .copy(type = PendingMutationType.CreateExpenseOffset, idempotencyKey = "original-refund")
-        var opened: Pair<com.ticketbox.data.repository.LogicalSessionBinding, com.ticketbox.data.remote.dto.MissingExchangeRateDto>? = null
+        var opened: Pair<com.ticketbox.data.repository.LogicalSessionBinding, com.ticketbox.domain.model.CurrencyProjectionGap>? = null
         var retried = 0
         val state = OutboxStatusUiState(binding = binding, bindingReady = true,
             retryableOffsetIds = setOf(original.id), status = OutboxStatus(0, emptyList(), listOf(original)),

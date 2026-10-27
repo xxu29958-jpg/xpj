@@ -82,7 +82,7 @@ class BudgetFirstUseRouteTest {
         keyboard.dismissAndWait(compose)
         compose.waitUntil(5_000) { runBlocking { harness.fixture.pendingDao.allRows().size == 1 } }
         val original = runBlocking { harness.fixture.pendingDao.allRows().single() }
-        val intent = requireNotNull(adapters.budgetSaveAdapter.fromJson(original.payload))
+        val intent = requireNotNull(adapters.budget.budgetSaveAdapter.fromJson(original.payload))
         assertEquals(PendingMutationType.SaveMonthlyBudget.wireValue, original.type)
         assertEquals(0L, original.expectedRowVersion)
         assertEquals("correction-ledger", original.ledgerId)
@@ -93,7 +93,7 @@ class BudgetFirstUseRouteTest {
             .fetchSemanticsNodes().isNotEmpty() }
 
         val engine = OutboxDrainEngine(harness.fixture.outbox, listOf(SaveMonthlyBudgetDispatcher(
-            { transport.service }, adapters.budgetSaveAdapter, adapters.budgetReceiptAdapter,
+            { transport.service }, adapters.budget.budgetSaveAdapter, adapters.budget.budgetReceiptAdapter,
             harness.fixture.graph.budgetRepository.invalidateBudgetReadsAfterDelivery)),
             now = harness.fixture.clock::millis)
         assertEquals(1, runBlocking { engine.drainOnce().done })

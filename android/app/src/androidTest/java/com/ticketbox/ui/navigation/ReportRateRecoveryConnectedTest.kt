@@ -70,7 +70,7 @@ class ReportRateRecoveryConnectedTest {
         enterRate("20")
         compose.onNodeWithTag("advice_rate_save").performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
         val original = fixture.awaitSavedRow(compose)
-        val intent = requireNotNull(fixture.adapters.manualRateAdapter.fromJson(original.payload))
+        val intent = requireNotNull(fixture.adapters.budget.manualRateAdapter.fromJson(original.payload))
         assertEquals(report.month, intent.month)
         assertEquals(request, intent.request)
         assertEquals(0L, original.expectedRowVersion)

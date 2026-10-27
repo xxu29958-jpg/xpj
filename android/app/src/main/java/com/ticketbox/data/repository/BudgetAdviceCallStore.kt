@@ -213,7 +213,7 @@ private fun verifyAdviceBasis(result: BudgetAdviceResult, key: AdviceRequestKey)
     key.trial?.let { verifyTrialAmounts(basis, it) }
 }
 
-private fun verifyTrialAmounts(basis: com.ticketbox.data.remote.dto.BudgetAdviceInputsDto,
+private fun verifyTrialAmounts(basis: com.ticketbox.domain.model.BudgetAdviceInputs,
     trial: com.ticketbox.data.remote.dto.MonthlyArrangementSaveRequest) {
     // Cross-currency projection belongs to the server; raw equality only holds in the original currency.
     if (trial.homeCurrencyCode != basis.homeCurrencyCode) {

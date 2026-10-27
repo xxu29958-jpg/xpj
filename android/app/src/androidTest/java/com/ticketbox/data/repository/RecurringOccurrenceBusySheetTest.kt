@@ -85,7 +85,7 @@ class RecurringOccurrenceBusySheetTest {
         assertEquals(choice, host.model.value?.uiState?.value?.choice)
         release.complete(Unit)
         compose.waitUntil(10_000) { fixture.stored().size == 1 && host.model.value?.uiState?.value?.saving == false }
-        val intent = requireNotNull(OutboxAdapterGraph().recurringOccurrenceAdapter.fromJson(
+        val intent = requireNotNull(OutboxAdapterGraph().recurring.recurringOccurrenceAdapter.fromJson(
             requireNotNull(fixture.stored().single()["payload"])))
         assertEquals(choice.request, intent.request)
         assertEquals(choice.occurrence.period, intent.period)

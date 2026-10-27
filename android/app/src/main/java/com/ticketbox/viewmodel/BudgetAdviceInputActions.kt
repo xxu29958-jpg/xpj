@@ -2,7 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
-import com.ticketbox.data.remote.dto.BudgetAdviceInputsDto
+import com.ticketbox.domain.model.BudgetAdviceInputs
 import com.ticketbox.data.remote.dto.ExchangeRateDto
 import com.ticketbox.data.repository.LogicalSessionBinding
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -89,9 +89,9 @@ fun BudgetAdviceViewModel.refreshInputs() {
 }
 
 private fun BudgetAdviceViewModel.acceptAdviceInputs(
-    inputs: Result<BudgetAdviceInputsDto>,
+    inputs: Result<BudgetAdviceInputs>,
     rates: Result<List<ExchangeRateDto>>,
-    requestedInputs: BudgetAdviceInputsDto?,
+    requestedInputs: BudgetAdviceInputs?,
 ) {
     val denied = listOfNotNull(inputs.exceptionOrNull(), rates.exceptionOrNull()).firstOrNull { it.isReadAccessDenied() }
     if (denied != null) { rejectArrangementRead(denied); return }
@@ -108,7 +108,7 @@ private fun BudgetAdviceViewModel.acceptAdviceInputs(
 }
 
 private fun BudgetAdviceUiState.inputsRefreshed(
-    read: Result<BudgetAdviceInputsDto>,
+    read: Result<BudgetAdviceInputs>,
     rateRead: Result<List<ExchangeRateDto>>,
     adviceBasisChanged: Boolean,
 ): BudgetAdviceUiState = copy(inputsLoading = false,

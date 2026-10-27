@@ -31,7 +31,7 @@ class UploadScreenshotDispatcherTest {
         val outbox = testOutboxRepository(dao)
         val payload = originalPayload()
         val id = outbox.enqueue(PendingMutationType.UploadScreenshot, "upload_batch:${payload.batch.groupId}",
-            adapters.uploadPayloadAdapter.toJson(payload), 0L, payload.file!!.key)
+            adapters.upload.uploadPayloadAdapter.toJson(payload), 0L, payload.file!!.key)
         var sends = 0
         val api = uploadApi { file, timezone, key ->
             sends++
@@ -50,9 +50,9 @@ class UploadScreenshotDispatcherTest {
         assertEquals(1, engine.drainOnce().done)
         val original = dao.rows.getValue(id)
         assertEquals(PendingMutationStatus.Done.wireValue, original.status)
-        assertEquals(receipt(), adapters.uploadReceiptAdapter.fromJson(requireNotNull(original.receiptJson)))
-        assertEquals(adapters.uploadReceiptAdapter.toJson(receipt()), original.receiptJson)
-        assertEquals(adapters.uploadPayloadAdapter.toJson(payload), original.payload)
+        assertEquals(receipt(), adapters.upload.uploadReceiptAdapter.fromJson(requireNotNull(original.receiptJson)))
+        assertEquals(adapters.upload.uploadReceiptAdapter.toJson(receipt()), original.receiptJson)
+        assertEquals(adapters.upload.uploadPayloadAdapter.toJson(payload), original.payload)
         assertEquals(payload.file.key, original.idempotencyKey)
         assertEquals(0L, original.expectedRowVersion)
         assertEquals(1, sends)
@@ -77,7 +77,7 @@ class UploadScreenshotDispatcherTest {
             val outbox = testOutboxRepository(dao)
             val payload = originalPayload()
             val id = outbox.enqueue(PendingMutationType.UploadScreenshot, "upload_batch:${payload.batch.groupId}",
-                adapters.uploadPayloadAdapter.toJson(payload), 0L, payload.file!!.key)
+                adapters.upload.uploadPayloadAdapter.toJson(payload), 0L, payload.file!!.key)
             var sends = 0
             val engine = OutboxDrainEngine(outbox, listOf(dispatcher(uploadApi { _, _, _ ->
                 sends++
@@ -99,11 +99,11 @@ class UploadScreenshotDispatcherTest {
     @Test
     fun unreadableAndUnsupportedOriginalsDoNotReadOrSend() = runTest {
         var reads = 0
-        val dispatch = UploadScreenshotDispatcher({ error("must not bind HTTP") }, adapters.uploadPayloadAdapter,
-            adapters.uploadReceiptAdapter, { reads++; error("must not read a file") })
+        val dispatch = UploadScreenshotDispatcher({ error("must not bind HTTP") }, adapters.upload.uploadPayloadAdapter,
+            adapters.upload.uploadReceiptAdapter, { reads++; error("must not read a file") })
         val row = originalRow()
         assertEquals(DispatchResult.Failure(UPLOAD_UNREADABLE, blocksFollowing = false),
-            dispatch.dispatch(row.copy(payloadJson = adapters.uploadPayloadAdapter.toJson(originalPayload().copy(file = null)))))
+            dispatch.dispatch(row.copy(payloadJson = adapters.upload.uploadPayloadAdapter.toJson(originalPayload().copy(file = null)))))
         assertEquals(DispatchResult.Failure(UPLOAD_UNSUPPORTED), dispatch.dispatch(row.copy(idempotencyKey = "other")))
         assertEquals(0, reads)
     }
@@ -118,8 +118,8 @@ class UploadScreenshotDispatcherTest {
         assertNull(originalRow().receiptJson)
     }
 
-    private fun dispatcher(api: ApiService) = UploadScreenshotDispatcher({ api }, adapters.uploadPayloadAdapter,
-        adapters.uploadReceiptAdapter, { "original".encodeToByteArray() })
+    private fun dispatcher(api: ApiService) = UploadScreenshotDispatcher({ api }, adapters.upload.uploadPayloadAdapter,
+        adapters.upload.uploadReceiptAdapter, { "original".encodeToByteArray() })
 
     private fun originalPayload(): UploadScreenshotPayload {
         val id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
@@ -136,7 +136,7 @@ class UploadScreenshotDispatcherTest {
         val payload = originalPayload()
         return OutboxRow(1L, payload.origin.serverUrl, payload.origin.ledgerId, payload.origin.ownerKey,
             PendingMutationType.UploadScreenshot, "upload_batch:${payload.batch.groupId}",
-            adapters.uploadPayloadAdapter.toJson(payload), 0L, PendingMutationStatus.Pending, 0, null,
+            adapters.upload.uploadPayloadAdapter.toJson(payload), 0L, PendingMutationStatus.Pending, 0, null,
             "2026-09-07T00:00:00.000Z", null, null, payload.file!!.key)
     }
 

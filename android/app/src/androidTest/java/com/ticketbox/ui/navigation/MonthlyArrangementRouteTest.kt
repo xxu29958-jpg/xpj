@@ -73,7 +73,7 @@ class MonthlyArrangementRouteTest {
         assertTrue(runBlocking { fixture.rows().isEmpty() })
         tap("arrangement_save")
         val row = fixture.awaitSavedRow(compose)
-        val intent = requireNotNull(fixture.adapters.arrangementSaveAdapter.fromJson(row.payload))
+        val intent = requireNotNull(fixture.adapters.budget.arrangementSaveAdapter.fromJson(row.payload))
         assertEquals("JPY", intent.request.homeCurrencyCode)
         assertEquals(3000L, intent.request.savingsTargetCents)
         assertEquals(500L, intent.request.reservedBufferCents)

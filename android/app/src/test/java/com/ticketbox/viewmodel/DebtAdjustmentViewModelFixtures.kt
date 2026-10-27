@@ -142,7 +142,7 @@ internal fun pendingAdjustment(
         row = OutboxRow(
             id = id, serverUrl = binding.serverUrl, ledgerId = binding.ledgerId, ownerKey = binding.ownerKey,
             type = PendingMutationType.RecordDebtAdjustment, targetId = "debt:debt-1",
-            payloadJson = com.ticketbox.OutboxAdapterGraph().debtAdjustmentAdapter.toJson(payload),
+            payloadJson = com.ticketbox.OutboxAdapterGraph().debt.debtAdjustmentAdapter.toJson(payload),
             expectedRowVersion = 7, status = status, retryCount = 0,
             lastError = if (status == PendingMutationStatus.Failed) "network unavailable" else null,
             createdAt = "2026-09-06T08:00:00Z", attemptedAt = null,
@@ -159,7 +159,7 @@ internal fun pendingKind(debt: Debt, kind: String, status: PendingMutationStatus
         binding.sessionGeneration, binding.bindingRevision, DebtKindSetRequestDto(kind, debt.rowVersion))
     val original = pendingAdjustment(status = status, binding = binding).row
     return PendingDebtWrite(original.copy(type = PendingMutationType.SetDebtKind, targetId = "debt:${debt.publicId}",
-        payloadJson = com.ticketbox.OutboxAdapterGraph().debtKindAdapter.toJson(intent),
+        payloadJson = com.ticketbox.OutboxAdapterGraph().debt.debtKindAdapter.toJson(intent),
         expectedRowVersion = debt.rowVersion, idempotencyKey = "original-kind-1"), intent)
 }
 

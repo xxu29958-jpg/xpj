@@ -1,8 +1,7 @@
 package com.ticketbox
 
 import com.squareup.moshi.JsonAdapter
-import com.squareup.moshi.JsonReader
-import com.squareup.moshi.JsonWriter
+import com.ticketbox.data.repository.lazyJsonAdapter
 import com.squareup.moshi.Moshi
 import com.ticketbox.data.remote.dto.CategoryRuleDeleteRequest
 import com.ticketbox.data.remote.dto.CategoryRuleUpdateRequest
@@ -12,7 +11,6 @@ import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
 import com.ticketbox.data.remote.dto.ExpenseManualCreateRequestDto
 import com.ticketbox.data.remote.dto.ExpenseOffsetCreateRequestDto
 import com.ticketbox.data.repository.ExpenseOffsetVoidOutboxPayload
-import com.ticketbox.data.repository.DebtCreateOutboxPayload
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
@@ -20,13 +18,16 @@ import com.ticketbox.data.remote.dto.ExpenseUpdateRequest
 import com.ticketbox.data.remote.dto.GoalUpdateRequestDto
 import com.ticketbox.data.remote.dto.MerchantAliasDeleteRequest
 import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
-import com.ticketbox.data.remote.dto.RecurringItemCreateRequestDto
-import com.ticketbox.data.remote.dto.RecurringItemUpdateRequestDto
 import com.ticketbox.data.remote.dto.addRecurringWireAdapters
 import com.ticketbox.data.remote.dto.addCategoryRuleWireAdapters
 import com.ticketbox.data.remote.dto.addBudgetWireAdapters
 
 internal class OutboxAdapterGraph {
+    val budget = com.ticketbox.data.repository.BudgetMutationAdapters { moshi }
+    val recurring = com.ticketbox.data.repository.RecurringMutationAdapters { moshi }
+    val debt = com.ticketbox.data.repository.DebtMutationAdapters { moshi }
+    val upload = com.ticketbox.data.repository.UploadMutationAdapters { moshi }
+
     // ADR-0038 PR-2g.2 + 2g.3: outbox plumbing.
     //
     // A dedicated Moshi instance for the outbox dispatcher layer.
@@ -61,14 +62,6 @@ internal class OutboxAdapterGraph {
 
     val correctionAdapter: JsonAdapter<com.ticketbox.data.repository.ExpenseCorrectionPayload> = lazyJsonAdapter {
         moshi.adapter(com.ticketbox.data.repository.ExpenseCorrectionPayload::class.java)
-    }
-
-    val uploadPayloadAdapter: JsonAdapter<com.ticketbox.data.repository.UploadScreenshotPayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.UploadScreenshotPayload::class.java).serializeNulls()
-    }
-
-    val uploadReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.UploadResponseDto> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.remote.dto.UploadResponseDto::class.java).serializeNulls()
     }
 
     // One original submission schema and its server receipt; the flat update adapter reads older records.
@@ -180,37 +173,6 @@ internal class OutboxAdapterGraph {
         moshi.adapter(com.ticketbox.data.repository.IncomePlanSubmissionPayload::class.java)
     }
 
-    val arrangementSaveAdapter: JsonAdapter<com.ticketbox.data.repository.MonthlyArrangementPayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.MonthlyArrangementPayload::class.java)
-    }
-    val arrangementReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.MonthlyArrangementDto> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.remote.dto.MonthlyArrangementDto::class.java)
-    }
-    val budgetSaveAdapter: JsonAdapter<com.ticketbox.data.repository.BudgetSavePayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.BudgetSavePayload::class.java)
-    }
-    val manualRateAdapter: JsonAdapter<com.ticketbox.data.repository.ManualRatePayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.ManualRatePayload::class.java)
-    }
-    val manualRateReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.ExchangeRateDto> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.remote.dto.ExchangeRateDto::class.java)
-    }
-    val budgetReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.BudgetMonthlyDto> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.remote.dto.BudgetMonthlyDto::class.java)
-    }
-
-    val recurringCandidateAdapter: JsonAdapter<com.ticketbox.data.repository.RecurringCandidatePayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.RecurringCandidatePayload::class.java)
-    }
-
-    val recurringCreateAdapter: JsonAdapter<RecurringItemCreateRequestDto> = lazyJsonAdapter {
-        moshi.adapter(RecurringItemCreateRequestDto::class.java)
-    }
-
-    val recurringUpdateAdapter: JsonAdapter<RecurringItemUpdateRequestDto> = lazyJsonAdapter {
-        moshi.adapter(RecurringItemUpdateRequestDto::class.java)
-    }
-
     val splitAgreementAdapter: JsonAdapter<com.ticketbox.data.repository.SplitAgreementPayload> = lazyJsonAdapter {
         moshi.adapter(com.ticketbox.data.repository.SplitAgreementPayload::class.java)
     }
@@ -218,42 +180,6 @@ internal class OutboxAdapterGraph {
         moshi.adapter(com.ticketbox.data.repository.SplitAgreementReceipt::class.java)
     }
 
-    val debtAdjustmentAdapter: JsonAdapter<com.ticketbox.data.repository.DebtAdjustmentPayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.DebtAdjustmentPayload::class.java)
-    }
-    val debtRepaymentAdapter: JsonAdapter<com.ticketbox.data.repository.DebtRepaymentPayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.DebtRepaymentPayload::class.java)
-    }
-    val debtRepaymentReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.remote.dto.DebtRepaymentReceiptDto::class.java)
-    }
-    val repaymentReviewAdapter: JsonAdapter<com.ticketbox.data.repository.RepaymentReviewPayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.RepaymentReviewPayload::class.java)
-    }
-    val repaymentDismissAdapter: JsonAdapter<com.ticketbox.data.repository.RepaymentDismissPayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.RepaymentDismissPayload::class.java)
-    }
-    val repaymentDraftReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.RepaymentDraftDto> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.remote.dto.RepaymentDraftDto::class.java)
-    }
-
-    val debtVoidAdapter: JsonAdapter<com.ticketbox.data.repository.DebtVoidPayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.DebtVoidPayload::class.java)
-    }
-    val debtRepaymentVoidAdapter: JsonAdapter<com.ticketbox.data.repository.DebtRepaymentVoidPayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.DebtRepaymentVoidPayload::class.java)
-    }
-    val debtVoidReceiptAdapter: JsonAdapter<com.ticketbox.data.remote.dto.DebtDto> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.remote.dto.DebtDto::class.java).serializeNulls()
-    }
-
-    val debtKindAdapter: JsonAdapter<com.ticketbox.data.repository.DebtKindPayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.DebtKindPayload::class.java)
-    }
-
-    val debtCreateAdapter: JsonAdapter<DebtCreateOutboxPayload> = lazyJsonAdapter {
-        moshi.adapter(DebtCreateOutboxPayload::class.java)
-    }
     val billSplitCreateAdapter: JsonAdapter<com.ticketbox.data.repository.BillSplitCreatePayload> = lazyJsonAdapter {
         moshi.adapter(com.ticketbox.data.repository.BillSplitCreatePayload::class.java)
     }
@@ -266,20 +192,4 @@ internal class OutboxAdapterGraph {
     val billSplitAcceptedAdapter: JsonAdapter<com.ticketbox.data.remote.dto.BillSplitAcceptanceDto> = lazyJsonAdapter {
         moshi.adapter(com.ticketbox.data.remote.dto.BillSplitAcceptanceDto::class.java)
     }
-    val recurringOccurrenceAdapter: JsonAdapter<com.ticketbox.data.repository.RecurringOccurrencePayload> = lazyJsonAdapter {
-        moshi.adapter(com.ticketbox.data.repository.RecurringOccurrencePayload::class.java)
-    }
 }
-
-private fun <T> lazyJsonAdapter(factory: () -> JsonAdapter<T>): JsonAdapter<T> =
-    object : JsonAdapter<T>() {
-        private val delegate: JsonAdapter<T> by lazy(factory)
-
-        override fun fromJson(reader: JsonReader): T? = delegate.fromJson(reader)
-
-        override fun toJson(writer: JsonWriter, value: T?) {
-            delegate.toJson(writer, value)
-        }
-
-        override fun toString(): String = "LazyJsonAdapter"
-    }
