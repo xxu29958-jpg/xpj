@@ -20,5 +20,5 @@ internal class OutboxRuntimeCompatibility(private val guard: LedgerRequestGuard)
         }
     }
 
-    fun clearSession() { currentBlock.value = null }
+    fun clearWriteBlock() { currentBlock.value = null }
 }

@@ -115,7 +115,7 @@ class AppContainer(context: Context) {
         // Re-arm right here so the periodic tick survives the
         // session boundary.
         onClearAll = {
-            outboxCompatibility.clearSession()
+            outboxCompatibility.clearWriteBlock()
             outboxScheduler.cancel(appContext)
             if (sessionStore.currentSession().isBusinessReady()) {
                 outboxScheduler.ensurePeriodic(appContext)
