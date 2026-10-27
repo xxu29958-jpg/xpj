@@ -234,6 +234,10 @@ def prepare_correction_revision(
     if not _has_published_fact(expense):
         return None
     if expense.fact_revision == 0:
+        # Serialize legacy history publication before checking revision 1. Keep
+        # the caller's original snapshot/version for its subsequent OCC claim.
+        db.execute(select(Expense.id).where(Expense.tenant_id == expense.tenant_id,
+            Expense.id == expense.id).with_for_update())
         record_confirmation_revision(
             db,
             expense,
@@ -331,3 +335,12 @@ def list_expense_revisions(
         total=total,
         snapshot_revision=effective_snapshot,
     )
+
+
+def correction_funding_account_ids(db: Session, revision: ExpenseRevision) -> set[int]:
+    """Use this correction's immutable before/after sources, including removed ones."""
+    if (revision.before_snapshot or {}).get("funding", []) == (revision.after_snapshot or {}).get("funding", []):
+        return set()
+    parts = {part["part_id"] for snapshot in (revision.before_snapshot, revision.after_snapshot)
+        for part in (snapshot or {}).get("funding", [])}
+    return set(db.scalars(select(ExpenseFunding.account_id).where(ExpenseFunding.id.in_(parts))))

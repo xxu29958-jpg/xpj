@@ -9,7 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models import Expense
-from app.services import attachment_cleanup_service, cleanup_service, file_service
+from app.services import attachment_cleanup_service, cleanup_service, expense_funding_service, file_service
 from app.services.expense_review_command_service import _commit_confirmation_and_cleanup
 from app.services.time_service import now_utc
 from tests._infra.assets import PNG_BYTES
@@ -28,6 +28,7 @@ def test_cleanup_commit_failure_preserves_files_without_durable_delete_authority
     settings = SimpleNamespace(upload_dir=upload_dir, delete_image_after_confirm=True,
                                delete_image_after_days=1, delete_rejected_after_days=1)
     monkeypatch.setattr(cleanup_service, "get_settings", lambda: settings)
+    monkeypatch.setattr(expense_funding_service, "expense_funding_account_ids", lambda *_a: set())
     monkeypatch.setattr(file_service, "get_settings", lambda: settings)
     monkeypatch.setattr(attachment_cleanup_service, "authorize_currency_metadata_write", lambda _db: None)
     old = now_utc() - timedelta(days=3)

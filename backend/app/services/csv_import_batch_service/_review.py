@@ -2,13 +2,14 @@
 
 from uuid import uuid4
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.ledger_scope import ledger_scoped_select
-from app.models import ApiIdempotencyKey, CsvImportEvent, CsvImportRow, Expense, ExpenseOffsetFact
+from app.models import AccountMovement, ApiIdempotencyKey, CsvImportEvent, CsvImportRow, Expense, ExpenseOffsetFact
 from app.schemas import CsvImportReviewRequest, CsvImportRowResponse, ExpenseOffsetCreateRequest
 from app.services.csv_import_batch_service._apply import _apply_one_claimed_csv_import_row
 from app.services.csv_import_batch_service._events import (
@@ -23,6 +24,7 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.exchange_rate_service import validate_imported_currency_snapshot
 from app.services.expense_offset_service import ReviewedOffsetImport, create_expense_offset
 from app.services.expense_query import resolve_expense
+from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
 from app.services.import_financial_events import native_accounting_time
 from app.services.time_service import now_utc
 
@@ -103,6 +105,8 @@ def _review_offset(db: Session, row: CsvImportRow, *, payload: CsvImportReviewRe
     db.flush()
     # Fact, immutable revision, canonical receipt, root association and the saved
     # import outcome are accepted by exactly one transaction.
+    stage_debt_goal_achievements(db, account_ids=db.scalars(select(AccountMovement.account_id).where(
+        AccountMovement.offset_id == offset.id)))
     db.commit()
 
 

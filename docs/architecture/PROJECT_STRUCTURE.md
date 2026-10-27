@@ -71,7 +71,8 @@ backend\
       admin_service.py
       owner_console_service.py
       category_service.py
-      classify_service.py
+      rule_service.py
+      rule_application_service/
       cleanup_service.py
       csv_import_batch_service.py
       budget_service.py

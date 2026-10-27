@@ -14,7 +14,6 @@ from app.config import get_settings
 from app.errors import AppError
 from app.models import Expense
 from app.schemas import ExpenseRecognizeTextRequest
-from app.services.classify_service import classify_expense
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.expense_service._helpers import _replace_ocr_draft_items_from_text
@@ -23,6 +22,7 @@ from app.services.expense_service._query import get_expense, resolve_expense
 from app.services.learning_service import read_ocr_text
 from app.services.ocr_service import OcrExtraction, OcrResult, extract_ocr_result
 from app.services.optimistic_concurrency import claim_row_with_token
+from app.services.rule_service import classify_expense
 from app.services.time_service import now_utc
 
 __all__ = ["recognize_expense_text", "retry_expense_ocr"]

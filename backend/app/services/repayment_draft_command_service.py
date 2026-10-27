@@ -11,13 +11,15 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ApiIdempotencyKey
+from app.models import AccountMovement, ApiIdempotencyKey, Debt
 from app.schemas import RepaymentDraftConfirmRequest, RepaymentDraftResponse
 from app.services.debt_service import (
     confirm_repayment_draft,
     get_repayment_draft_response,
     repayment_draft_response,
 )
+from app.services.debt_service._repayment_correction_context import repayment_source_rows
+from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
 from app.services.idempotency import (
     claim_idempotent_request,
     mark_idempotency_succeeded,
@@ -100,5 +102,10 @@ def confirm_repayment_draft_idempotently(
         resource_id=draft.public_id,
         response_body=result.model_dump(mode="json"),
     )
+    _, source_offset = repayment_source_rows(db, draft)
+    account_ids = (set(db.scalars(select(AccountMovement.account_id).where(
+        AccountMovement.offset_id == source_offset.id))) if source_offset is not None else set())
+    stage_debt_goal_achievements(db, account_ids=account_ids,
+        debt_ids=db.scalars(select(Debt.id).where(Debt.public_id == draft.committed_debt_public_id)))
     db.commit()
     return result

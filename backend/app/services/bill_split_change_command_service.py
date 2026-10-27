@@ -20,6 +20,7 @@ from app.services.bill_split_service._agreement_commands import (
 )
 from app.services.bill_split_service._agreement_context import agreement_context, require_agreement_party
 from app.services.bill_split_service._agreement_queries import get_bill_split_agreement, get_bill_split_change_proposal
+from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
 from app.services.idempotency import (
     IdempotencyOutcomeKind,
     claim_idempotency_key,
@@ -86,9 +87,11 @@ def accept_bill_split_change_idempotently(
     payload: BillSplitChangeAcceptRequest, idempotency_key: str | None,
 ) -> BillSplitAgreementResponse:
     def mutate() -> BillSplitAgreementResponse:
-        accept_bill_split_change(db, tenant_id=tenant_id, actor_account_id=actor_account_id,
+        change = accept_bill_split_change(db, tenant_id=tenant_id, actor_account_id=actor_account_id,
             public_id=public_id, proposal_public_id=proposal_public_id, payload=payload,
             idempotency_key=idempotency_key)
+        stage_debt_goal_achievements(db, debt_ids=[identifier for identifier in
+            (change.original_debt_id, change.return_debt_id) if identifier is not None])
         return get_bill_split_agreement(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id)
 
     return _execute(db, tenant_id=tenant_id, actor_account_id=actor_account_id, public_id=public_id,

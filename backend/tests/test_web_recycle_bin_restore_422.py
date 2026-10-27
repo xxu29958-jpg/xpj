@@ -18,8 +18,8 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import CategoryRule, LedgerMember, MonthlyIncomePlan
-from app.services.classify_service import create_rule, delete_rule
 from app.services.income_plan_service import archive_income_plan, create_income_plan
+from app.services.rule_service import create_rule, delete_rule
 from app.services.soft_delete_policy import recycle_bin_retention_days
 from app.services.spending_contract_service import current_accounting_month
 from app.services.time_service import now_utc
