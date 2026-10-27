@@ -4,6 +4,10 @@ import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import com.ticketbox.TicketboxApplication
+import com.ticketbox.data.local.TicketboxSettingsStore
+import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.NotificationCaptureRepository
+import com.ticketbox.data.repository.logNetworkWarning
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +40,8 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
         serviceScope.launch(start = CoroutineStart.UNDISPATCHED) {
             // A service disconnect cannot cancel a started local acceptance. No network IO is in this block.
             withContext(NonCancellable + Dispatchers.IO) {
-                container.notificationCaptureRepository.accept(result, bindingAtPost, notificationKey)
+                acceptNotificationCapture(container.notificationCaptureRepository, container.settingsStore,
+                    result, bindingAtPost, notificationKey)
             }
         }
     }
@@ -56,5 +61,20 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
             subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString(),
             postTimeMillis = postTime,
         )
+    }
+}
+
+/** The OS delivery has no interactive caller to consume an admission failure. Keep only a reconciliation reminder. */
+internal suspend fun acceptNotificationCapture(
+    repository: NotificationCaptureRepository,
+    settingsStore: TicketboxSettingsStore,
+    result: PaymentNotificationResult,
+    binding: LogicalSessionBinding,
+    notificationKey: String,
+) {
+    repository.accept(result, binding, notificationKey).onFailure { error ->
+        val scope = notificationCaptureFailureScope(binding)
+        logNetworkWarning("notification_capture_admission_failed scope=$scope", error)
+        settingsStore.recordNotificationCaptureFailure(scope)
     }
 }

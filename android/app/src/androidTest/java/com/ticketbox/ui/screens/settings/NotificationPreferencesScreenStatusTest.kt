@@ -24,6 +24,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.domain.model.AppSkin
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.NotificationPreferences
+import com.ticketbox.domain.model.NotificationCaptureFailure
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppStatusBanner
 import com.ticketbox.ui.saveConsumerArtPreview
@@ -57,6 +58,28 @@ class NotificationPreferencesScreenStatusTest {
         )
 
         composeRule.onNodeWithText("通知偏好已保存").assertIsDisplayed()
+    }
+
+    @Test
+    fun captureFailureInRealStatusSlotRequiresExplicitAcknowledgement() {
+        var failure by mutableStateOf<NotificationCaptureFailure?>(
+            NotificationCaptureFailure("failure-token", "2026-10-27T08:00:00Z", persistenceFailed = true),
+        )
+        var acknowledged = 0
+        setScreenContent {
+            NotificationCaptureFailureStatus(failure) { seen ->
+                assertEquals(failure?.token, seen.token)
+                acknowledged++
+                failure = null
+            }
+            AppStatusBanner(UiText.Raw("通知偏好已保存"), MessageTone.Success)
+        }
+        composeRule.onNodeWithText("有付款通知未能保存为待确认。", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("本机未能保存这项提醒状态。", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("已核对，清除提醒").performClick()
+        composeRule.onNodeWithText("有付款通知未能保存为待确认。", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("通知偏好已保存").assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(1, acknowledged) }
     }
 
     @Test

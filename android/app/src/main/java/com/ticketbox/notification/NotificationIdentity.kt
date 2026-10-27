@@ -26,3 +26,7 @@ internal fun boundReminderKey(binding: LogicalSessionBinding, taskKey: String): 
         .digest(material.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it) }
 }
+
+/** Stable across credential refresh, isolated by server, data generation, account, device and ledger. */
+internal fun notificationCaptureFailureScope(binding: LogicalSessionBinding): String =
+    boundReminderKey(binding, "capture-failure:${binding.ledgerId}")

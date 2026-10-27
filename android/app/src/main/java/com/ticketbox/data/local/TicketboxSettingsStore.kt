@@ -3,7 +3,9 @@ package com.ticketbox.data.local
 import com.ticketbox.domain.model.BackgroundSettings
 import com.ticketbox.domain.model.ImmersionMode
 import com.ticketbox.domain.model.NotificationPreferences
+import com.ticketbox.domain.model.NotificationCaptureFailure
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 data class PersistedLedgerIdentity(
     val accountName: String,
@@ -36,6 +38,14 @@ interface TicketboxSettingsStore {
     fun saveNotificationPreferences(preferences: NotificationPreferences) {
         unsupportedSettingsWrite()
     }
+
+    fun notificationCaptureFailure(scope: String): NotificationCaptureFailure? = null
+
+    fun observeNotificationCaptureFailures(): Flow<Map<String, NotificationCaptureFailure>> = flowOf(emptyMap())
+
+    fun recordNotificationCaptureFailure(scope: String) { unsupportedSettingsWrite() }
+
+    fun acknowledgeNotificationCaptureFailure(scope: String, expectedToken: String) { unsupportedSettingsWrite() }
 
     suspend fun saveBackgroundSettings(settings: BackgroundSettings) {
         unsupportedSettingsWrite()
