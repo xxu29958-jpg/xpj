@@ -238,7 +238,8 @@ def _ocr_attempt(provider_name, purpose, started, *, result=None, error=None) ->
 def _comparison_fields(parsed: ParsedReceipt, merged: OcrResult) -> dict[str, tuple]:
     selected = {decision.selected_id for decision in parsed.decisions if decision.selected_id}
     fields = {candidate.field: (candidate.value, candidate.currency_code, candidate.role,
-        candidate.precision, candidate.local_value, candidate.timezone_name, candidate.inferred_components)
+        candidate.precision, candidate.local_value, candidate.timezone_name, candidate.inferred_components,
+        getattr(merged, candidate.field, None))
         for candidate in parsed.candidates if candidate.id in selected}
     for field in ("amount_cents", "merchant", "expense_time", "category"):
         value = getattr(merged, field)

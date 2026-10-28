@@ -28,11 +28,12 @@ from tests.test_pending_enrichment_task_service import _ocr_result, _seed_pendin
 pytestmark = pytest.mark.real_db
 
 
-@pytest.mark.parametrize("enhancement,notice,fact_count", [
-    (AppError("ocr_timeout", status_code=503), "enhancement_failed", 1),
-    (OcrResult("商户：盒马\n实付：78.00", 0.99), "provider_conflict", 2),
+@pytest.mark.parametrize("enhancement,notice,fact_count,other_amount", [
+    (AppError("ocr_timeout", status_code=503), "enhancement_failed", 1, None),
+    (OcrResult("商户：盒马\n实付：78.00", 0.99), "provider_conflict", 2, 7800),
+    (OcrResult("商户：盒马\n实付：18.00", 0.99, amount_cents=7800), "provider_conflict", 2, None),
 ])
-def test_partial_ocr_commits_primary_fact_and_notice_once(identity, monkeypatch, enhancement, notice, fact_count):
+def test_partial_ocr_commits_primary_fact_and_notice_once(identity, monkeypatch, enhancement, notice, fact_count, other_amount):
     expense_id, predecessor, task_id = _seed_pending_enrichment_task()
     primary = OcrResult("商户：盒马\n实付：18.00", 0.8)
     _providers(monkeypatch, primary, enhancement)
@@ -55,7 +56,9 @@ def test_partial_ocr_commits_primary_fact_and_notice_once(identity, monkeypatch,
         assert len(facts) == fact_count
         assert read_ocr_facts(db, tenant_id="owner", expenses=[expense])[expense_id].raw_text == primary.raw_text
         if notice == "provider_conflict":
-            assert {fact.parsed_amount_cents for fact in facts} == {1800, 7800}
+            assert primary.raw_text in {fact.raw_text for fact in facts}
+            assert enhancement.raw_text in {fact.raw_text for fact in facts}
+            assert {fact.parsed_amount_cents for fact in facts} == {1800, other_amount}
         from app.routes._web_pending_enrichment_watch import _completed_state
         assert _completed_state(task.result_summary_json) == notice
 

@@ -94,3 +94,12 @@ def test_missing_enhancement_field_cannot_drop_primary_evidence(monkeypatch):
     run = collect_auto_ocr_extractions(_expense(), raise_on_failure=True)
     assert run.notice is None
     assert run.extractions[-1].result == primary
+
+
+def test_merged_enhancement_cannot_drop_usable_primary_amount(monkeypatch):
+    primary = OcrResult(raw_text="实付：18.00", confidence=0.8)
+    fallback = OcrResult(raw_text="商户：盒马\n实付：18.00", confidence=0.99, amount_cents=7800)
+    _providers(monkeypatch, primary, fallback)
+    run = collect_auto_ocr_extractions(_expense(), raise_on_failure=True)
+    assert run.extractions[-1].result == primary
+    assert run.notice == "provider_conflict"
