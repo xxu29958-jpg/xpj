@@ -159,6 +159,7 @@ def _candidate_from_entries(
         ),
         "occurrence_count": occurrence_count,
         "last_seen_at": entries[-1][3],
+        "last_accounting_date": entries[-1][0],
         "confidence": "high" if occurrence_count >= 3 else "medium",
         "reason": _recurring_reason(occurrence_count),
     }

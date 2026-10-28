@@ -214,46 +214,61 @@ def test_recurring_candidate_confirm_uses_server_observation_not_client_provenan
     assert body["confidence"] == "high"
 
 
-@pytest.mark.parametrize(("date_input", "expected_date"), [
-    ({}, "2026-06-01"),
-    ({"next_expected_date": None}, None),
-    ({"next_expected_date": "2026-10-12"}, "2026-10-12"),
+@pytest.mark.parametrize(("request_timezone", "precision", "date_input", "expected_date"), [
+    pytest.param("UTC", "instant", {}, "2026-06-01", id="utc-inferred"),
+    pytest.param("Asia/Shanghai", "instant", {}, "2026-06-01", id="shanghai-inferred"),
+    pytest.param("UTC", "instant", {"next_expected_date": None}, None, id="utc-null"),
+    pytest.param("Asia/Shanghai", "instant", {"next_expected_date": None}, None, id="shanghai-null"),
+    pytest.param("UTC", "instant", {"next_expected_date": "2026-10-12"}, "2026-10-12", id="utc-explicit"),
+    pytest.param("Asia/Shanghai", "instant", {"next_expected_date": "2026-10-12"}, "2026-10-12", id="shanghai-explicit"),
+    pytest.param("UTC", "date_only", {}, "2026-06-01", id="date-only-inferred"),
+    pytest.param("UTC", "date_only", {"next_expected_date": None}, None, id="date-only-null"),
 ])
 def test_recurring_candidate_reminder_respects_explicit_choice_before_observed_default(
-    client: TestClient, *, identity, date_input: dict, expected_date: str | None,
+    client: TestClient, *, identity, date_input: dict, expected_date: str | None, request_timezone: str, precision: str,
 ) -> None:
+    calendar_path = "/api/ledgers/owner/calendar"
+    original_rule = client.get(calendar_path, headers=identity.app_headers).json()
+    selected_rule = client.post(calendar_path,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"timezone_name": "Asia/Shanghai", "expected_revision": original_rule["revision"]})
+    assert selected_rule.status_code == 200, selected_rule.text
     merchant = "Boundary Billing"
     amount_cents = 9900
-    last_seen = datetime(2026, 4, 30, 16, 30, tzinfo=UTC)
-    for when in (
-        datetime(2026, 2, 28, 16, 30, tzinfo=UTC),
-        datetime(2026, 3, 31, 16, 30, tzinfo=UTC),
-        last_seen,
+    observations = []
+    for when, accounting_date in (
+        ("2026-02-28T16:30:00Z", "2026-03-01"),
+        ("2026-03-31T16:30:00Z", "2026-04-01"),
+        ("2026-04-30T16:30:00Z", "2026-05-01"),
     ):
-        insert_confirmed_expense(
-            amount_cents=amount_cents,
-            merchant=merchant,
-            category="AI订阅",
-            expense_time=when,
-            confirmed_at=when,
-        )
+        time_input = {"precision": precision, "calendar_revision": selected_rule.json()["revision"],
+            "source_timezone": "Asia/Shanghai", "user_local_date": accounting_date, "accounting_date": accounting_date}
+        if precision == "instant":
+            time_input["instant_utc"] = when
+        created = client.post("/api/expenses/manual", headers=identity.app_headers,
+            json={"client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": amount_cents,
+                "merchant": merchant, "time_input": time_input})
+        assert created.status_code == 200 and created.json()["status"] == "confirmed", created.text
+        assert created.json()["accounting_time"]["accounting_date"] == accounting_date
+        assert created.json()["expense_time"] == (when if precision == "instant" else None)
+        observations.append(created.json())
 
-    response = client.post(
-        "/api/recurring/from-candidate?timezone=Asia/Shanghai",
+    # A later calendar rule cannot reinterpret the observations' saved days.
+    changed_rule = client.post(calendar_path,
         headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
-        json={"home_currency_code": "CNY",
-            "merchant": merchant,
-            "amount_cents": amount_cents,
-            "occurrence_count": 3,
-            "last_seen_at": last_seen.isoformat().replace("+00:00", "Z"),
-            "confidence": "high",
-            "frequency": "monthly",
-            **date_input,
-        },
-    )
-
+        json={"timezone_name": "UTC", "expected_revision": selected_rule.json()["revision"]})
+    assert changed_rule.status_code == 200, changed_rule.text
+    candidates = client.get("/api/insights/recurring-candidates", headers=identity.app_headers,
+        params={"timezone": request_timezone})
+    assert candidates.status_code == 200, candidates.text
+    assert "last_accounting_date" not in candidates.json()["items"][0]
+    path = f"/api/recurring/from-candidate?timezone={request_timezone}"
+    headers = {**identity.app_headers, "Idempotency-Key": str(uuid4())}
+    body = {"home_currency_code": "CNY", "merchant": merchant, "amount_cents": amount_cents,
+        "frequency": "monthly", **date_input}
+    response = client.post(path, headers=headers, json=body)
     assert response.status_code == 200, response.json()
-    assert response.json()["last_seen_at"] == "2026-04-30T16:30:00Z"
+    assert response.json()["last_seen_at"] == ("2026-04-30T16:30:00Z" if precision == "instant" else None)
     assert response.json()["next_expected_date"] == expected_date
     assert response.json()["next_due_date"] == expected_date
     public_id = response.json()["public_id"]
@@ -262,6 +277,20 @@ def test_recurring_candidate_reminder_respects_explicit_choice_before_observed_d
     history = client.get(f"/api/recurring/items/{public_id}/history", headers=identity.app_headers)
     assert history.status_code == 200, history.text
     assert history.json()["items"][0]["snapshot"]["next_expected_date"] == expected_date
+
+    later_rule = client.post(calendar_path,
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"timezone_name": "Asia/Tokyo", "expected_revision": changed_rule.json()["revision"]})
+    assert later_rule.status_code == 200, later_rule.text
+    replay = client.post(path, headers=headers, json=body)
+    assert replay.status_code == 200 and replay.json() == response.json()
+    assert client.get(f"/api/recurring/items/{public_id}/history", headers=identity.app_headers).json() == history.json()
+    other_timezone = "Asia/Shanghai" if request_timezone == "UTC" else "UTC"
+    changed_intent = client.post(f"/api/recurring/from-candidate?timezone={other_timezone}", headers=headers, json=body)
+    assert changed_intent.status_code == 422 and changed_intent.json()["error"] == "idempotency_key_reused"
+    for observation in observations:
+        current = client.get(f'/api/expenses/{observation["id"]}', headers=identity.app_headers)
+        assert current.status_code == 200 and current.json()["accounting_time"] == observation["accounting_time"]
 
 
 def test_recurring_item_state_transitions(client: TestClient, *, identity) -> None:
