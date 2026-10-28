@@ -96,7 +96,7 @@ class IncomePlanRepository(
         creationKey: String): Result<PendingIncomePlanSubmission?> = errors.safeCall {
         require(creationKey.isNotBlank()) { "收入创建标识无法确认，请重新打开创建任务。" }
         val bound = guard.bindExact(expectedBinding)
-        val row = outbox.originalIncomeCreation(bound, creationKey)
+        val row = outbox.originalCreation(bound, creationKey, PendingMutationType.CreateIncomePlan)
         bound.requireStillActive()
         if (row == null) return@safeCall null
         val original = requireNotNull(describeSubmission(row)) { "原收入创建归属无法确认，请先核对原提交。" }

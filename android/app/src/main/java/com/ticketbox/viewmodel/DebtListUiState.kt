@@ -29,6 +29,9 @@ data class DebtListUiState(
     val addDraft: DebtDraftUi = DebtDraftUi(),
     val isSubmitting: Boolean = false,
     val isParsingBill: Boolean = false,
+    val billInputs: List<com.ticketbox.data.repository.DebtBillInput> = emptyList(),
+    val activeBillCaptureKey: String? = null,
+    val billPreview: ByteArray? = null,
     val flashMessage: UiText? = null,
     /** Room has acknowledged the original intent, not a confirmed Debt. Failure keeps the sheet open. */
     val addAccepted: Boolean = false,
@@ -56,9 +59,19 @@ data class DebtListUiState(
     /** 当前列表的任务视角（全账本 / 个人应付）：只用于空态文案按 lens+角色说诚实，不改变查询语义。 */
     val lens: DebtListLens = DebtListLens.Ledger,
 ) {
-    val canSubmitCreation: Boolean get() = canModify && !isSubmitting && !isParsingBill && homeCurrencyResolved
+    internal fun afterBillTask(result: Result<DebtBillTaskResult>, draft: DebtDraftUi?): DebtListUiState = copy(
+        isParsingBill = false,
+        addDraft = draft ?: addDraft,
+        billPreview = result.getOrNull()?.preview ?: billPreview,
+        error = result.exceptionOrNull()?.toUiText(R.string.debt_bill_parse_failed)
+            ?: result.getOrNull()?.outcome?.errorCode?.let { UiText.res(R.string.debt_bill_parse_failed) },
+    )
+
+    val activeBill: com.ticketbox.data.repository.DebtBillInput? get() = billInputs.singleOrNull { it.captureKey == activeBillCaptureKey }
+    val canSubmitCreation: Boolean get() = canModify && !isSubmitting && !isParsingBill && homeCurrencyResolved &&
+        (activeBillCaptureKey == null || activeBill?.source?.let { it.status == "pending" && it.originalState == "verified" } == true)
     val hasCreationDraft: Boolean get() = addDraft.userTouched || addDraft.counterpartyLabel.isNotEmpty() ||
-        addDraft.amountYuanInput.isNotEmpty() || publicationUnverified
+        addDraft.amountYuanInput.isNotEmpty() || publicationUnverified || activeBillCaptureKey != null
 }
 
 @JsonClass(generateAdapter = true)

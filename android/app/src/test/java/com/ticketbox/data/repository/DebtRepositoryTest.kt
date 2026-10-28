@@ -1,5 +1,7 @@
 package com.ticketbox.data.repository
 
+import kotlin.test.assertFalse
+
 import com.ticketbox.data.local.PersistedLedgerIdentity
 
 import com.ticketbox.data.remote.ApiService
@@ -22,7 +24,6 @@ import com.ticketbox.domain.model.MemberProposalStatuses
 import com.ticketbox.security.LocalSessionIdentity
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MultipartBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import retrofit2.Response
@@ -80,9 +81,8 @@ class DebtRepositoryTest {
     }
 
     @Test
-    fun parseDebtBillUploadsImageAndMapsSuggestion() = runTest {
-        val handler = DebtApiHandler().apply {
-            parseBillResult = DebtBillParseResponseDto(
+    fun retainedDebtBillSuggestionMapsOriginalProviderFields() = runTest {
+        val originalSuggestion = DebtBillParseResponseDto(
                 merchant = "花呗",
                 principalAmountCents = 120_000,
                 installmentCount = 12,
@@ -92,45 +92,22 @@ class DebtRepositoryTest {
                 sourceText = "花呗 分期 12期",
                 confidence = 0.8,
             )
-        }
 
-        val sessionFixture = TestSessionFixture().apply { saveToken("session-token") }
-        val originalSession = requireNotNull(sessionFixture.sessionStore.currentSession())
-        val binding = requireNotNull(originalSession.toBoundSessionSnapshotOrNull()).logicalBinding
-        val repository = repository(handler, sessionFixture = sessionFixture)
-        val suggestion = repository.parseDebtBillImage(
-            expectedBinding = binding,
-            fileName = """bad:name?.png""",
-            contentType = "image/png",
-            bytes = byteArrayOf(1, 2, 3),
-        ).getOrThrow()
-
-        assertEquals(1, handler.parseBillCalls.size)
+        val suggestion = originalSuggestion.toDomain()
         assertEquals("花呗", suggestion.merchant)
         assertEquals(120_000L, suggestion.principalAmountCents)
         assertEquals(12L, suggestion.installmentCount)
 
-        sessionFixture.sessionStore.replaceForFixture(originalSession.copy(bindingRevision = "next-binding",
-            identity = originalSession.identity.copy(ledgerId = "next-ledger")))
-        val stale = repository.parseDebtBillImage(binding, "original.png", "image/png", byteArrayOf(1, 2, 3))
-        assertTrue(stale.isFailure)
-        assertEquals(1, handler.parseBillCalls.size)
     }
 
     @Test
-    fun parseDebtBillViewerShortCircuitsWithoutApiCall() = runTest {
+    fun debtRepositoryViewerRetainsReadAccessWithoutRawBillMutation() = runTest {
         val handler = DebtApiHandler()
 
         val sessionFixture = TestSessionFixture().apply { saveToken("session-token") }
         val current = requireNotNull(sessionFixture.sessionStore.currentSession())
         sessionFixture.sessionStore.replaceForFixture(current.copy(identity = current.identity.copy(role = "viewer")))
-        val binding = requireNotNull(current.toBoundSessionSnapshotOrNull()).logicalBinding
-        val result = repository(handler, sessionFixture = sessionFixture)
-            .parseDebtBillImage(binding, "bill.jpg", "image/jpeg", byteArrayOf(1))
-
-        assertTrue(result.isFailure)
-        assertEquals("当前角色为只读，无法修改账本。", result.exceptionOrNull()?.message)
-        assertTrue(handler.parseBillCalls.isEmpty())
+        assertFalse(repository(handler, sessionFixture = sessionFixture).canModifyLedger())
     }
 
     @Test
@@ -583,7 +560,6 @@ private fun proposalDto(publicId: String = "p1", proposed: Long = 20_000L): Memb
 
 private class DebtApiHandler : InvocationHandler, ApiServiceFactory {
     val listLenses = mutableListOf<String?>()
-    val parseBillCalls = mutableListOf<MultipartBody.Part>()
     // ADR-0049 §3.2 (slice 8d) proposal-route recordings.
     val proposeCalls = mutableListOf<ProposeProposalCall>()
     val withdrawProposalCalls = mutableListOf<WithdrawProposalCall>()
@@ -597,7 +573,6 @@ private class DebtApiHandler : InvocationHandler, ApiServiceFactory {
     // ADR-0049 ⑤c (slice ⑤c-2) cross-ledger receivables read.
     var receivablesResult: DebtListResponseDto? = null
     var receivablesError: Throwable? = null
-    var parseBillResult: DebtBillParseResponseDto? = null
     // Fold-after Debt returned by getDebt / the write routes (defaults to a fresh sample).
     var debtResult: DebtDto? = null
     var proposalsResult: MemberRepaymentProposalListResponseDto? = null
@@ -633,10 +608,6 @@ private class DebtApiHandler : InvocationHandler, ApiServiceFactory {
                 receivablesResult ?: DebtListResponseDto(items = listOf(debtDto()))
             }
             "debt" -> debtResult ?: debtDto(publicId = values[0] as String)
-            "parseDebtBill" -> {
-                parseBillCalls += values[0] as MultipartBody.Part
-                parseBillResult ?: DebtBillParseResponseDto()
-            }
             // ADR-0049 §3.2 (slice 8d) proposal routes are dispatched in a helper so invoke stays
             // under the LongMethod gate (the slice-2 fact arms already fill it).
             else -> proposalCall(method.name, values)

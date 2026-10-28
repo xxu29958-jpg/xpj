@@ -274,6 +274,7 @@ def test_orphan_gc_retains_frozen_pending_paths_after_replenishment(cleanup_case
     request = _accept_only(case)
     case.db.execute.side_effect = [
         [("uploads/owner/new.png", None, None, None, request.model_dump(mode="json"))],
+        [],  # No debt-bill sources in this Expense-only reference probe.
         SimpleNamespace(mappings=lambda: []),
     ]
     paths = referenced_upload_paths(case.db, "owner")

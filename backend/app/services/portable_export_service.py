@@ -91,6 +91,7 @@ def create_portable_ledger_export(db: Session, *, auth: AuthContext,
                     account_public_id=current.account_public_id,
                     sections=sections,
                     originals=_rows(snapshot, dict(queries)["expenses"], cancel_requested),
+                    debt_bill_originals=_rows(snapshot, dict(queries)["debt_bill_captures"], cancel_requested),
                     historical_originals=_rows(
                         snapshot, portable_original_history_query(current), cancel_requested),
                     cancel_requested=cancel_requested,

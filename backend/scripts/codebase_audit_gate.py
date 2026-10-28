@@ -139,12 +139,12 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # main. See ``_audit_pr_delta_metrics.py`` docstring for what each
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
-    "mutate_token_carriers": 159,  # Includes the async OCR retry's original expense OCC token.
-    "mutate_token_exempted": 156,  # Adds Owner learning policy and append-only feedback withdrawal.
+    "mutate_token_carriers": 161,  # Captured bill parse and discard each retain the original source OCC token.
+    "mutate_token_exempted": 157,  # Original bill capture inserts a new row under its original idempotency claim.
     "mutate_token_reason_admin_single_writer": 17,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
-    "mutate_token_reason_create_row": 44,  # Funds account creation has no predecessor account version.
+    "mutate_token_reason_create_row": 45,  # Original bill capture has no predecessor source version.
     "mutate_token_reason_enqueue_task": 2,
     "mutate_token_reason_external_side_effect": 7,  # Owner FX save-and-fetch now also upserts fx_rates.
     "mutate_token_reason_governance_action": 8,
@@ -179,6 +179,13 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # ADR-0038 create_row / Rev3.2 original-before-suggestion lifecycle:
+    # POST /api/debt-bills creates a private source and frozen receipt under
+    # the original actor/key/body claim. No predecessor source exists; later
+    # parse/discard and Debt adoption retain source OCC. test_debt_bill_capture
+    # covers replay, wrong task, version conflicts, uncertain commit and discard.
+    # Admit only this exact base/count edge, with all 159 prior carriers retained.
+    ("73f707e452c87efe38c931c61dd10ab08c594f1f", 156, 157),
     # ADR-0038 admin_single_writer / append_only_fact: two new Local Owner
     # learning routes. Policy upserts one ledger/type/version/axis key;
     # withdrawal locks the original event and appends once on retry. Neither

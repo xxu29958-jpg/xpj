@@ -112,11 +112,13 @@ def _record(collection: str, row: Mapping[str, object]) -> dict[str, object]:
         return result
     if collection == "accepted_operations":
         return _receipt_record(result)
-    if collection != "expenses":
+    if collection not in {"expenses", "debt_bill_captures"}:
         return result
+    resource = "expense" if collection == "expenses" else "debt_bill_capture"
     result.pop("image_path", None)
-    result["thumbnail_reference_present"] = bool(result.pop("thumbnail_path", None))
-    result["original_reference_id"] = f"expense:{row['id']}:current"
+    if collection == "expenses":
+        result["thumbnail_reference_present"] = bool(result.pop("thumbnail_path", None))
+    result["original_reference_id"] = f"{resource}:{row['id']}:current"
     cleanup = row.get("attachment_cleanup_request")
     if isinstance(cleanup, dict):
         exported = dict(cleanup)
@@ -124,7 +126,7 @@ def _record(collection: str, row: Mapping[str, object]) -> dict[str, object]:
             item = cleanup.get(kind)
             if isinstance(item, dict):
                 exported[kind] = {key: value for key, value in item.items() if key != "reference"}
-                exported[kind]["reference_id"] = f"expense:{row['id']}:cleanup:{cleanup['request_id']}:{kind}"
+                exported[kind]["reference_id"] = f"{resource}:{row['id']}:cleanup:{cleanup['request_id']}:{kind}"
         result["attachment_cleanup_request"] = exported
     return result
 
@@ -215,9 +217,9 @@ def _write_records(package: ZipFile, name: str, rows: Iterable[Mapping[str, obje
         "records": count, "size_bytes": size, "sha256": digest.hexdigest()}
 
 
-def _reference_rows(expense: Mapping[str, object]) -> Iterable[dict[str, object]]:
-    root = f"expense:{expense['id']}"
-    yield {"reference_id": f"{root}:current", "expense_id": expense["id"], "kind": "original",
+def _reference_rows(expense: Mapping[str, object], *, resource: str = "expense") -> Iterable[dict[str, object]]:
+    root = f"{resource}:{expense['id']}"
+    yield {"reference_id": f"{root}:current", f"{resource}_id": expense["id"], "kind": "original",
         "source": expense.get("image_path"), "expected_sha256": expense.get("image_hash"),
         "cleaned": expense.get("image_deleted_at") is not None, "slot": "current"}
     cleanup = expense.get("attachment_cleanup_request")
@@ -230,7 +232,7 @@ def _reference_rows(expense: Mapping[str, object]) -> Iterable[dict[str, object]
             # Replenishment changes the path, never the admitted original's digest.
             expected = expense.get("image_hash") if kind == "image" else None
             yield {"reference_id": f"{root}:cleanup:{cleanup['request_id']}:{kind}",
-                "expense_id": expense["id"], "kind": "original" if kind == "image" else "derived",
+                f"{resource}_id": expense["id"], "kind": "original" if kind == "image" else "derived",
                 "source": source, "expected_sha256": expected,
                 "cleaned": item.get("outcome") == "deleted", "slot": f"cleanup-{kind}"}
 
@@ -276,7 +278,7 @@ def _history_reference(row: Mapping[str, object]) -> dict[str, object]:
 
 def _write_originals(package: ZipFile, directory: Path, ledger_id: str,
                      rows: Iterable[Mapping[str, object]], historical: Iterable[Mapping[str, object]],
-                     budget: _ExportBudget) -> dict[str, object]:
+                     budget: _ExportBudget, debt_bills: Iterable[Mapping[str, object]]) -> dict[str, object]:
     index_path = directory / "originals.jsonl"
     digest, size, count = hashlib.sha256(), 0, 0
     states: Counter[str] = Counter()
@@ -300,6 +302,9 @@ def _write_originals(package: ZipFile, directory: Path, ledger_id: str,
         budget.consume(0)
         for row in historical:
             write_reference(output, _history_reference(row))
+        for source in debt_bills:
+            for reference in _reference_rows(source, resource="debt_bill_capture"):
+                write_reference(output, reference)
         budget.consume(0)
     package.write(index_path, "originals.jsonl")
     return {"path": "originals.jsonl", "records": count, "size_bytes": size,
@@ -310,6 +315,7 @@ def create_portable_archive(*, ledger_id: str, snapshot_at: datetime, account_pu
                             sections: Iterable[tuple[str, Iterable[Mapping[str, object]]]],
                             originals: Iterable[Mapping[str, object]],
                             historical_originals: Iterable[Mapping[str, object]] = (),
+                            debt_bill_originals: Iterable[Mapping[str, object]] = (),
                             cancel_requested: Callable[[], bool] | None = None) -> PortableArchive:
     """Consume one authorized DB snapshot; publish only a closed, complete record package."""
     budget = _ExportBudget(cancel_requested=cancel_requested)
@@ -319,7 +325,8 @@ def create_portable_archive(*, ledger_id: str, snapshot_at: datetime, account_pu
         path = directory / "ticketbox-data.zip"
         with ZipFile(path, "w", compression=ZIP_DEFLATED, compresslevel=1, allowZip64=True) as package:
             collections = [_write_records(package, name, rows, budget) for name, rows in sections]
-            originals_index = _write_originals(package, directory, ledger_id, originals, historical_originals, budget)
+            originals_index = _write_originals(package, directory, ledger_id, originals, historical_originals,
+                budget, debt_bill_originals)
             incomplete_states = set(originals_index["states"]) - {"verified", "none", "derived_not_included"}
             manifest = {"format": "ticketbox-portable-data", "version": 1, "ledger_id": ledger_id,
                 "snapshot_at": snapshot_at, "records_complete": True, "originals_complete": not incomplete_states,

@@ -75,6 +75,7 @@ data class DebtDraft(
     val installmentPeriodMonths: Int? = null,
     val note: String? = null,
     val timeInput: com.ticketbox.domain.model.ExpenseTimeInput? = null,
+    val billSource: com.ticketbox.data.remote.dto.DebtBillSourceReferenceDto? = null,
 )
 
 fun DebtDraft.toOutboxRequest(): DebtCreateOutboxRequest = DebtCreateOutboxRequest(

@@ -223,6 +223,12 @@ class OpenApiContractGateTest {
         // has no required fields; the DTO keeps source_text non-null with a default so the
         // reverse check stays trivially satisfied while the forward check pins the wire names.
         Pairing(DebtBillParseResponseDto::class, "DebtBillParseResponse"),
+        Pairing(DebtBillSourceReferenceDto::class, "DebtBillSourceReference"),
+        Pairing(DebtBillCaptureReceiptDto::class, "DebtBillCaptureReceipt"),
+        Pairing(DebtBillCaptureDto::class, "DebtBillCaptureResponse"),
+        Pairing(DebtBillCaptureListDto::class, "DebtBillCaptureListResponse"),
+        Pairing(DebtBillParseRequestDto::class, "DebtBillParseRequest"),
+        Pairing(DebtBillParseOutcomeDto::class, "DebtBillParseOutcome"),
         Pairing(DebtListResponseDto::class, "DebtListResponse"),
         Pairing(DebtCreateRequestDto::class, "DebtCreateRequest"),
         // ADR-0049 §3 (slice 8c) direct fact-write bodies. Each is additionalProperties=false →
@@ -287,6 +293,10 @@ class OpenApiContractGateTest {
         // detail is not part of these rows; its required code remains intentionally omitted.
         "BillSplitSentResponse" to setOf("original_currency_code"),
         "BillSplitInboxResponse" to setOf("original_currency_code"),
+        // The private source UI consumes identity, original availability and parse/adoption state.
+        // Server evidence and audit metadata remain on the source; they are not an Android projection.
+        "DebtBillCaptureResponse" to setOf("media_type", "image_size_bytes", "image_evidence", "created_at", "confirmed_at", "rejected_at"),
+        "DebtBillParseOutcome" to setOf("completed_at"), // Server audit time is not a financial date or form input.
         "RuntimeCompatibilitySnapshotResponse" to setOf(
             "contract",
             "observed_at",

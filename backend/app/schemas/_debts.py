@@ -59,6 +59,12 @@ __all__ = [
 ]
 
 
+class DebtBillSourceReference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    public_id: str = Field(min_length=1, max_length=36)
+    expected_row_version: int = Field(gt=0)
+
+
 class DebtCreateRequest(BaseModel):
     """Create one external/manual Debt (ADR-0049 §2 / §5.1).
 
@@ -84,6 +90,7 @@ class DebtCreateRequest(BaseModel):
     event_time: datetime | None = None
     time_input: AccountingTimeInput | None = None
     source_type: str = "manual"
+    bill_source: DebtBillSourceReference | None = None
     # 8e-6e: optional repayment-rhythm classification (external debt). Defaulted (not
     # `required`) so an older client that omits it still creates an `unspecified` Debt —
     # and the Android DebtCreateRequestDto need not model it for the contract gate.

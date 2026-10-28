@@ -249,6 +249,7 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # ensure_thumbnail_file via ledger_scoped_select.
     ("GET", "/web/expenses/{expense_id}/image"): "media",
     ("GET", "/web/expenses/{expense_id}/thumbnail"): "media",
+    ("GET", "/web/debts/{public_id}/bill-sources/{source_id}/original"): "media",
     # CSV export
     ("GET", "/web/export.csv"): "local-only-rendering",
     ("GET", "/web/export/portable"): "principal-read",

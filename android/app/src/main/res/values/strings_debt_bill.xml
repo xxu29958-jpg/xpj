@@ -1,0 +1,18 @@
+<resources>
+    <string name="debt_bill_draft_in_use">请先保存或放弃当前原稿，再继续另一张账单。</string>
+    <string name="debt_bill_draft_unreadable">原稿暂时未能读取，请保留当前输入后重试。</string>
+    <string name="debt_bill_local_save_unverified">本机保存尚未确认，原稿已保留。可重新选择原账单继续保存，或明确放弃原稿。</string>
+    <string name="debt_bill_retry_original">原账单读取失败，点击重试</string>
+    <string name="debt_bill_original_cleaned">原件已按保留设置清理，来源记录仍保留。</string>
+    <string name="debt_bill_originals">建债原账单</string>
+    <string name="debt_bill_suggestion_failed_kept">原件已保存，建议暂不可用；可按原图手填后提交。</string>
+    <string name="debt_bill_source_retained">原件已保存。建议仅供填写参考，确认表单后才建立欠款。</string>
+    <string name="debt_bill_capture_needs_attention">原账单仍保存在本机，保存未确认；请重试原任务。</string>
+    <string name="debt_bill_capture_waiting">原账单已保存在本机，等待发送；确认保存前不会建立无图欠款。</string>
+    <string name="debt_bill_continue_original">继续这张账单的原稿</string>
+    <string name="debt_bill_view_original">查看原账单</string>
+    <string name="debt_bill_retry_capture">重试保存原账单</string>
+    <string name="debt_bill_retry_suggestion">解析原账单建议</string>
+    <string name="debt_bill_private_source">你保存的建债原账单</string>
+    <string name="debt_bill_original_unavailable">原件当前不可读取，保留的来源记录仍可核对。</string>
+</resources>

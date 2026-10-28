@@ -234,6 +234,7 @@ private fun RelationsComposerHost(
         composerState = composerState,
         showAddSheet = showAddSheet,
         onSheetVisibility = { showAddSheet = it },
+        onPickOriginal = { debtBillPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
     )
 
     return RelationsComposerHandles(
@@ -266,6 +267,7 @@ private fun RelationsComposerOverlays(
     composerState: DebtListUiState,
     showAddSheet: Boolean,
     onSheetVisibility: (Boolean) -> Unit,
+    onPickOriginal: () -> Unit,
 ) {
     val saving by rememberUpdatedState(composerState.isSubmitting)
     val sheetState = rememberModalBottomSheetState(
@@ -281,7 +283,7 @@ private fun RelationsComposerOverlays(
         },
         onBillParsePrefill = {
             onSheetVisibility(true)
-            composerViewModel.ackBillParsePrefill()
+            composerViewModel.acknowledgeCreation(billPrefill = true)
         },
     )
 
@@ -291,6 +293,7 @@ private fun RelationsComposerOverlays(
             viewModel = composerViewModel,
             sheetState = sheetState,
             onClose = { onSheetVisibility(false) },
+            onPickOriginal = onPickOriginal,
         )
     }
 }

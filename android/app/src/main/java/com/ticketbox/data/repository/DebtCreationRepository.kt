@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 
 interface DebtCreationActions {
+    val billSources: DebtBillActions? get() = null
     fun currentAccess(): LedgerAccessContext?
     fun observeActiveLedgerAccess(): Flow<LedgerAccessContext?>
     fun observePendingCreations(): Flow<DebtCreationQueueSnapshot>
@@ -34,6 +35,7 @@ class DebtCreationRepository(
     private val apiProvider: ApiServiceProvider,
     private val outbox: OutboxRepository,
     private val payloadAdapter: JsonAdapter<DebtCreateOutboxPayload>,
+    override val billSources: DebtBillActions? = null,
 ) : DebtCreationActions {
     private val guard = LedgerRequestGuard(apiProvider)
 
@@ -64,19 +66,30 @@ class DebtCreationRepository(
             }
             val cleanDraft = draft.validatedForCreation().getOrElse { return Result.failure(it) }
             val payload = DebtCreateOutboxPayload(
-                revision = DEBT_CREATE_PAYLOAD_REVISION,
+                revision = if (cleanDraft.billSource == null) DEBT_CREATE_PAYLOAD_REVISION else 2,
                 homeCurrencyCode = homeCurrency.storageKey,
                 originSessionGeneration = expectedBinding.sessionGeneration,
                 originBindingRevision = expectedBinding.bindingRevision,
                 request = cleanDraft.toOutboxRequest(),
+                billSource = cleanDraft.billSource,
             )
             require(creationKey.isNotBlank() && creationKey == creationKey.trim() && creationKey.length <= 64)
+            val original = outbox.originalCreation(bound, creationKey, PendingMutationType.CreateDebt)
+            val rawPayload = original?.let { row ->
+                val stored = requireNotNull(payloadAdapter.readSupportedDebtCreate(row.payloadJson))
+                require(stored.toCreateRequest() == payload.toCreateRequest() &&
+                    row.targetId == "$DEBT_CREATE_TARGET_PREFIX$creationKey" && row.expectedRowVersion == 0L) {
+                    "原欠款提交内容已冻结，请先核对原提交。"
+                }
+                // Keep released bytes and origin epochs; only the current operation uses the new exact binding.
+                row.payloadJson
+            } ?: payloadAdapter.toJson(payload)
             val id = outbox.enqueueOriginalCreation(
                 boundRequest = bound,
                 intent = PendingMutationIntent(
                     type = PendingMutationType.CreateDebt,
                     targetId = "$DEBT_CREATE_TARGET_PREFIX$creationKey",
-                    payloadJson = payloadAdapter.toJson(payload),
+                    payloadJson = rawPayload,
                     expectedRowVersion = 0,
                     idempotencyKey = creationKey,
                 ),

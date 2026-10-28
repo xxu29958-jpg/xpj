@@ -10,6 +10,8 @@ import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtCreationActions
 import com.ticketbox.data.repository.DebtDraft
 import com.ticketbox.data.repository.LogicalSessionBinding
+import com.ticketbox.data.repository.RepositoryException
+import com.ticketbox.data.repository.logNetworkWarning
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
 import com.ticketbox.domain.model.DebtBillSuggestion
@@ -25,8 +27,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 class DebtListViewModel(
     private val repository: DebtActions,
@@ -45,6 +52,15 @@ class DebtListViewModel(
         set(value) {
             field = value
             value?.let(drafts::write)
+            value?.billCaptureKey?.let {
+                viewModelScope.launch {
+                    withContext(NonCancellable) {
+                        creation.billSources?.let { drafts.persistBillDraft(it, value) }?.onFailure { error ->
+                            _state.update { it.copy(error = error.toUiText(R.string.debt_bill_parse_failed)) }
+                        }
+                    }
+                }
+            }
         }
     private var draftGeneration = 0L
     private var completedIntentIds = emptySet<Long>()
@@ -63,6 +79,14 @@ class DebtListViewModel(
     private var loadGeneration = 0L
 
     init {
+        viewModelScope.launch {
+            @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+            creation.observeActiveLedgerAccess().flatMapLatest { access ->
+                access?.binding?.let { creation.billSources?.observe(it) } ?: flowOf(emptyList())
+            }.collect { inputs ->
+                _state.update { it.copy(billInputs = inputs, activeBillCaptureKey = creationDraft?.billCaptureKey) }
+            }
+        }
         viewModelScope.launch {
             repository.observeReadAccessDenials().collect { denial ->
                 if (denial.binding != creation.currentAccess()?.binding) return@collect
@@ -208,7 +232,7 @@ class DebtListViewModel(
         }
         draftGeneration++ // A later manual edit retires an in-flight bill suggestion.
         creationDraft = creationDraft?.copy(input = updated.copy(userTouched = true))
-        _state.update { it.copy(addDraft = requireNotNull(creationDraft).input, isParsingBill = false) }
+        _state.update { it.copy(addDraft = requireNotNull(creationDraft).input, isParsingBill = false, pendingBillParsePrefill = false) }
     }
 
     fun openDraft(direction: String = com.ticketbox.domain.model.DebtDirections.I_OWE) {
@@ -218,10 +242,13 @@ class DebtListViewModel(
         }
     }
 
-    fun acknowledgeCreation() { _state.update { it.copy(addAccepted = false) } }
+    fun acknowledgeCreation(billPrefill: Boolean = false) {
+        _state.update { if (billPrefill) it.copy(pendingBillParsePrefill = false) else it.copy(addAccepted = false) }
+    }
 
     fun discardDraft() {
         if (_state.value.isSubmitting || _state.value.publicationUnverified) return
+        creationDraft?.billCaptureKey?.let { billTask(it, DebtBillTaskAction.Discard); return }
         creationDraft?.let(drafts::remove)
         creationDraft = activeAccess?.binding?.let { binding ->
             DebtCreationDraft(binding, input = DebtDraftUi(homeCurrency = _state.value.ledgerHomeCurrency ?: FxContract.HomeCurrency),
@@ -235,6 +262,7 @@ class DebtListViewModel(
                 addAccepted = false,
                 pendingBillParsePrefill = false,
                 isParsingBill = false,
+                activeBillCaptureKey = creationDraft?.billCaptureKey,
             )
         }
     }
@@ -254,46 +282,48 @@ class DebtListViewModel(
         return attempt
     }
 
-    fun parseDebtBillImage(attempt: DebtBillParseAttempt, image: PreparedUploadImage?) {
+    fun parseDebtBillImage(attempt: DebtBillParseAttempt, image: PreparedUploadImage?, cancelled: Boolean = false) {
         if (!continueBillParse(attempt)) return
         if (image == null) {
+            _state.update { it.copy(isParsingBill = false,
+                error = if (cancelled) null else UiText.res(R.string.debt_bill_parse_failed)) }
+            return
+        }
+        val sources = creation.billSources
+        val original = creationDraft
+        if (sources == null || original == null) {
             _state.update { it.copy(isParsingBill = false, error = UiText.res(R.string.debt_bill_parse_failed)) }
             return
         }
+        val captured = original.captureBill()
+        creationDraft = captured
         viewModelScope.launch {
-            val result = repository.parseDebtBillImage(attempt.binding, image.fileName, image.contentType, image.bytes)
+            val input = sources.capture(attempt.binding, captured.creationKey,
+                requireNotNull(captured.billCaptureKey), drafts.encode(captured), image)
+            // capture inserts the durable input; edits made while that insert was pending must follow it.
+            val accepted = input.fold(onSuccess = { stored -> drafts.persistBillDraft(sources, captured).map { stored } },
+                onFailure = { Result.failure(it) })
             if (!continueBillParse(attempt)) return@launch
-            result.fold(
-                onSuccess = { suggestion ->
-                    val filled = _state.value.addDraft
-                        .prefillFrom(suggestion)
-                        .withInheritedModelFrom(_state.value.debts)
-                    creationDraft = creationDraft?.copy(input = filled)
-                    _state.update {
-                        it.copy(
-                            addDraft = filled,
-                            isParsingBill = false,
-                            pendingBillParsePrefill = true,
-                            flashMessage = UiText.res(parseBillDoneRes(suggestion)),
-                            error = null,
-                        )
-                    }
-                },
-                onFailure = { err ->
-                    _state.update {
-                        it.copy(
-                            isParsingBill = false,
-                            error = err.toUiText(R.string.debt_bill_parse_failed),
-                        )
-                    }
-                },
-            )
+            _state.update { it.copy(isParsingBill = false, pendingBillParsePrefill = true,
+                activeBillCaptureKey = captured.billCaptureKey,
+                billInputs = accepted.getOrNull()?.let { row -> it.billInputs.filterNot { old -> old.captureKey == row.captureKey } + row }
+                    ?: it.billInputs,
+                error = accepted.exceptionOrNull()?.toUiText(R.string.debt_bill_parse_failed)) }
+            if (accepted.isFailure) return@launch
+            val delivered = sources.observe(attempt.binding).first { rows -> rows.any {
+                it.captureKey == captured.billCaptureKey && (it.source != null || it.command?.status in setOf(
+                    com.ticketbox.data.local.PendingMutationStatus.Done, com.ticketbox.data.local.PendingMutationStatus.Failed,
+                    com.ticketbox.data.local.PendingMutationStatus.Conflict))
+            } }.single { it.captureKey == captured.billCaptureKey }
+            if (continueBillParse(attempt, requireBusy = false) && !delivered.needsAttention) {
+                billTask(delivered.captureKey, DebtBillTaskAction.Parse)
+            }
         }
     }
 
-    private fun continueBillParse(attempt: DebtBillParseAttempt): Boolean {
+    private fun continueBillParse(attempt: DebtBillParseAttempt, requireBusy: Boolean = true): Boolean {
         val current = _state.value
-        if (attempt.generation != draftGeneration || !current.isParsingBill) return false
+        if (attempt.generation != draftGeneration || (requireBusy && !current.isParsingBill)) return false
         val access = creation.currentAccess()
         if (access != null && access.binding == attempt.binding && access.canModify &&
             current.ledgerHomeCurrency == attempt.homeCurrency) {
@@ -303,8 +333,38 @@ class DebtListViewModel(
         return false
     }
 
-    fun ackBillParsePrefill() {
-        _state.update { it.copy(pendingBillParsePrefill = false) }
+    fun billTask(captureKey: String, action: DebtBillTaskAction) {
+        val sources = creation.billSources ?: return
+        val binding = creation.currentAccess()?.binding ?: return
+        if (!_state.value.acceptsBillTask(action)) return
+        val generation = ++draftGeneration
+        _state.update { it.copy(isParsingBill = action == DebtBillTaskAction.Parse, error = null) }
+        viewModelScope.launch {
+            val result = try {
+                val input = sources.find(binding, captureKey).getOrThrow()
+                if (generation != draftGeneration || binding != creation.currentAccess()?.binding) return@launch
+                if (action == DebtBillTaskAction.Resume) {
+                    creationDraft = drafts.resume(requireNotNull(input), creationDraft)
+                    _state.update { it.copy(addDraft = requireNotNull(creationDraft).input, activeBillCaptureKey = captureKey,
+                        pendingBillParsePrefill = true, publicationUnverified = creationDraft?.publicationAttempted == true) }
+                }
+                runDebtBillTask(sources, input, action)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) { Result.failure(debtBillTaskFailure(error)) }
+            if (generation != draftGeneration || binding != creation.currentAccess()?.binding) return@launch
+            val completed = result.getOrNull()
+            val adopted = completed?.source?.adoptedDebtPublicId != null
+            val filled = completed?.prefill(_state.value)
+            if (filled != null) creationDraft = creationDraft?.copy(input = filled)
+            if (completed?.ends(creationDraft, captureKey) == true) {
+                creationDraft = creationDraft?.copy(billCaptureKey = null, publicationAttempted = false)
+                _state.update { it.copy(publicationUnverified = false) }
+                discardDraft()
+                if (adopted) refresh()
+            }
+            _state.update { it.afterBillTask(result, creationDraft?.input) }
+        }
     }
 
     fun submitDraft() {
@@ -322,26 +382,38 @@ class DebtListViewModel(
             }
             return
         }
-        val request = draft.toCreationDraft(requireNotNull(draft.parsedAmountCents()))
-        val submitted = original.copy(input = draft)
+        val request = draft.toCreationDraft(requireNotNull(draft.parsedAmountCents())).copy(
+            billSource = original.sourceReference(state),
+        )
+        val submitted = original.copy(input = draft, frozenBillSource = request.billSource)
         creationDraft = submitted.copy(publicationAttempted = true)
         _state.update { it.copy(isSubmitting = true, publicationUnverified = true, addAccepted = false, flashMessage = null) }
         viewModelScope.launch {
-            val result = creation.createDebt(original.binding, request, currency, original.creationKey)
+            val result = drafts.persistBillDraft(creation.billSources, submitted).fold(
+                onSuccess = { creation.createDebt(original.binding, request, currency, original.creationKey) },
+                onFailure = { Result.failure(it) },
+            )
             val retained = drafts.settle(original) { submitted.afterPublication(result) } ?: return@launch
             if (creationDraft?.creationKey != original.creationKey || creation.currentAccess()?.binding != original.binding) return@launch
             val accepted = retained.creationKey != original.creationKey
             creationDraft = retained
             _state.update { it.copy(isSubmitting = false, publicationUnverified = retained.publicationAttempted,
-                addDraft = retained.input, addAccepted = accepted,
+                addDraft = retained.input, addAccepted = accepted, activeBillCaptureKey = retained.billCaptureKey,
                 flashMessage = if (accepted) UiText.res(R.string.debt_create_local_saved) else null) }
             if (accepted) refresh()
         }
     }
 
     fun dismissFlash() {
-        _state.update { it.copy(flashMessage = null) }
+        _state.update { it.copy(flashMessage = null, billPreview = null) }
     }
+}
+
+private fun debtBillTaskFailure(error: Exception): RepositoryException {
+    if (error is RepositoryException) return error
+    logNetworkWarning("operation=Debt bill task unverified", error)
+    return RepositoryException("Debt bill draft is unreadable",
+        localFailure = com.ticketbox.data.repository.LocalRepositoryFailure.DebtBillDraftUnreadable, cause = error)
 }
 
 private data class DebtModelTemplate(
@@ -364,7 +436,7 @@ private fun DebtDraftUi.toCreationDraft(amount: Long): DebtDraft = DebtDraft(
     },
 )
 
-private fun DebtDraftUi.prefillFrom(suggestion: DebtBillSuggestion): DebtDraftUi {
+internal fun DebtDraftUi.prefillFrom(suggestion: DebtBillSuggestion): DebtDraftUi {
     val parsedInstallmentCount = suggestion.installmentCount?.toIntOrNullIn(1, 600)
     val parsedInstallmentPeriod = suggestion.installmentPeriodMonths?.toIntOrNullIn(1, 120)
     return copy(
@@ -398,7 +470,7 @@ internal fun DebtDraftUi.rebindHomeCurrency(authoritative: CurrencyCode): DebtDr
     }
 }
 
-private fun DebtDraftUi.withInheritedModelFrom(debts: List<Debt>): DebtDraftUi {
+internal fun DebtDraftUi.withInheritedModelFrom(debts: List<Debt>): DebtDraftUi {
     if (kind != DebtKinds.UNSPECIFIED) return this
     val template = debts.modelTemplateFor(counterpartyLabel) ?: return this
     return copy(
@@ -444,10 +516,3 @@ private fun String?.normalizedDebtLabel(): String =
 
 private fun Long.toIntOrNullIn(min: Int, max: Int): Int? =
     takeIf { it in min.toLong()..max.toLong() }?.toInt()
-
-private fun parseBillDoneRes(suggestion: DebtBillSuggestion): Int =
-    if (suggestion.hasAnyPrefill) {
-        R.string.debt_bill_parse_done
-    } else {
-        R.string.debt_bill_parse_empty
-    }

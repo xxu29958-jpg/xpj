@@ -46,6 +46,14 @@ Cloudflare ingress 只匹配 hostname/path；方法、鉴权、角色、账本�
 | GET | `/api/budgets/monthly/{month}/history` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
 | GET | `/api/dashboard/cards` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
 | PUT | `/api/dashboard/cards` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
+| GET | `/api/debt-bills` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
+| POST | `/api/debt-bills` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
+| GET | `/api/debt-bills/by-key/{capture_key}` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
+| GET | `/api/debt-bills/{public_id}` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
+| POST | `/api/debt-bills/{public_id}/discard` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
+| GET | `/api/debt-bills/{public_id}/original` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
+| POST | `/api/debt-bills/{public_id}/parse` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
+| GET | `/api/debt-bills/{public_id}/parse-attempts/{attempt_key}` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
 | GET | `/api/debts` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
 | POST | `/api/debts` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
 | POST | `/api/debts/parse-bill` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
@@ -388,6 +396,7 @@ Cloudflare ingress 只匹配 hostname/path；方法、鉴权、角色、账本�
 | POST | `/web/debts/rate` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | GET | `/web/debts/{public_id}` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | POST | `/web/debts/{public_id}/adjustments` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| GET | `/web/debts/{public_id}/bill-sources/{source_id}/original` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | POST | `/web/debts/{public_id}/forgive` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | POST | `/web/debts/{public_id}/kind` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | GET | `/web/debts/{public_id}/repayment-proposals` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |

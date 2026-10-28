@@ -16,13 +16,14 @@ from sqlalchemy.orm import Session
 from app.attachment_cleanup_contract import CleanupFile, CleanupRequest
 from app.config import get_settings
 from app.errors import AppError
-from app.models import Expense, LedgerAuditLog
+from app.models import DebtBillCapture, Expense, LedgerAuditLog
 from app.services.currency_binding_service import authorize_currency_metadata_write
 from app.services.file_service import resolve_upload_path_for_tenant
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.time_service import now_utc
 
 logger = logging.getLogger(__name__)
+AttachmentSubject = Expense | DebtBillCapture
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ class CleanupSettlement:
     pending: bool = False
 
 
-def read_cleanup_request(expense: Expense) -> CleanupRequest | None:
+def read_cleanup_request(expense: AttachmentSubject) -> CleanupRequest | None:
     """Parse only for attachment work; ordinary financial reads need not parse it."""
     raw = expense.attachment_cleanup_request
     if raw is None:
@@ -77,12 +78,12 @@ def _log_missing_reference(reference: str, tenant_id: str) -> None:
                  extra={"event": "upload_integrity_missing", "reference_digest": digest})
 
 
-def _new_request(expense: Expense, reason: str) -> CleanupRequest | None:
+def _new_request(expense: AttachmentSubject, reason: str) -> CleanupRequest | None:
     files = {}
-    for kind, reference, deleted_at in (
-        ("image", expense.image_path, expense.image_deleted_at),
-        ("thumbnail", expense.thumbnail_path, expense.thumbnail_deleted_at),
-    ):
+    originals = [("image", expense.image_path, expense.image_deleted_at)]
+    if isinstance(expense, Expense):
+        originals.append(("thumbnail", expense.thumbnail_path, expense.thumbnail_deleted_at))
+    for kind, reference, deleted_at in originals:
         if reference is None or deleted_at is not None:
             continue
         candidate = resolve_upload_path_for_tenant(reference, expense.tenant_id)
@@ -102,19 +103,21 @@ def _new_request(expense: Expense, reason: str) -> CleanupRequest | None:
     return CleanupRequest(request_id=uuid4(), reason=reason, requested_at=now_utc(), **files)
 
 
-def _retention_due(expense: Expense, reason: str, settings) -> bool:
+def _retention_due(expense: AttachmentSubject, reason: str, settings) -> bool:
     if reason == "after_confirm":
         return settings.delete_image_after_confirm
     status = "confirmed" if reason == "confirmed_retention" else "rejected"
     days = settings.delete_image_after_days if status == "confirmed" else settings.delete_rejected_after_days
-    evidence = [value for value in (getattr(expense, f"{status}_at"), expense.image_replenished_at) if value is not None]
+    replenished = expense.image_replenished_at if isinstance(expense, Expense) else None
+    evidence = [value for value in (getattr(expense, f"{status}_at"), replenished) if value is not None]
     return expense.status == status and days > 0 and bool(evidence) and max(evidence) <= now_utc() - timedelta(days=days)
 
 
-def _audit(db: Session, expense: Expense, request: CleanupRequest, action: str, actor_account_id: int | None) -> None:
+def _audit(db: Session, expense: AttachmentSubject, request: CleanupRequest, action: str, actor_account_id: int | None) -> None:
     db.add(LedgerAuditLog(
         ledger_id=expense.tenant_id, actor_account_id=actor_account_id, action=action,
-        resource_type="expense", resource_public_id=expense.public_id,
+        resource_type="debt_bill_capture" if isinstance(expense, DebtBillCapture) else "expense",
+        resource_public_id=expense.public_id,
         detail=json.dumps({"request_id": str(request.request_id), "reason": request.reason,
                            "outcomes": {kind: item.outcome for kind in ("image", "thumbnail")
                                         if (item := getattr(request, kind)) is not None}}),
@@ -152,7 +155,7 @@ def _settle_file(item: CleanupFile, tenant_id: str, *, delete_enabled: bool, can
     return _file_result(item, outcome="deleted"), 1
 
 
-def _mark_current_deleted(expense: Expense, kind: str, item: CleanupFile) -> bool:
+def _mark_current_deleted(expense: AttachmentSubject, kind: str, item: CleanupFile) -> bool:
     marker = f"{kind}_deleted_at"
     if (item.outcome != "deleted" or getattr(expense, f"{kind}_path") != item.reference
             or getattr(expense, marker) is not None):
@@ -162,7 +165,7 @@ def _mark_current_deleted(expense: Expense, kind: str, item: CleanupFile) -> boo
 
 
 def settle_cleanup_request(
-    db: Session, expense: Expense, *, expected_request_id: UUID, cancel_remaining: bool = False,
+    db: Session, expense: AttachmentSubject, *, expected_request_id: UUID, cancel_remaining: bool = False,
     actor_account_id: int | None = None, settings=None,
 ) -> CleanupSettlement:
     """Caller holds the Expense row lock and owns OCC + commit/rollback.
@@ -201,7 +204,7 @@ def settle_cleanup_request(
 
 
 def execute_attachment_cleanup(
-    db: Session, expense: Expense, *, reason: str, settings_provider: Callable,
+    db: Session, expense: AttachmentSubject, *, reason: str, settings_provider: Callable,
     actor_account_id: int | None = None, authorize: Callable[[], None] | None = None,
 ) -> CleanupSettlement:
     """Own acceptance and deletion, reauthorizing admin work after each commit."""

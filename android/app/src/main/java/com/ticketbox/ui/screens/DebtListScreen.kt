@@ -105,7 +105,7 @@ fun DebtListScreen(
     LaunchedEffect(state.pendingBillParsePrefill) {
         if (!state.pendingBillParsePrefill) return@LaunchedEffect
         showAddSheet = true
-        viewModel.ackBillParsePrefill()
+        viewModel.acknowledgeCreation(billPrefill = true)
     }
 
     val callbacks = DebtListScreenCallbacks(
@@ -130,6 +130,7 @@ fun DebtListScreen(
             viewModel = viewModel,
             sheetState = sheetState,
             onClose = { showAddSheet = false },
+            onPickOriginal = actions.onParseBillImage,
         )
     }
 }

@@ -32,6 +32,11 @@
     },
     {
       "hostname": "ticketbox.example.com",
+      "path": "^(/api/debt\\-bills|/api/debt\\-bills/[^/]+|/api/debt\\-bills/[^/]+/discard|/api/debt\\-bills/[^/]+/original|/api/debt\\-bills/[^/]+/parse|/api/debt\\-bills/[^/]+/parse\\-attempts/[^/]+|/api/debt\\-bills/by\\-key/[^/]+)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
       "path": "^(/api/debts|/api/debts/[^/]+|/api/debts/[^/]+/activity|/api/debts/[^/]+/adjustments|/api/debts/[^/]+/forgive|/api/debts/[^/]+/kind|/api/debts/[^/]+/repayment\\-proposals|/api/debts/[^/]+/repayment\\-proposals/[^/]+/confirm|/api/debts/[^/]+/repayment\\-proposals/[^/]+/reject|/api/debts/[^/]+/repayment\\-proposals/[^/]+/withdraw|/api/debts/[^/]+/repayment\\-voids|/api/debts/[^/]+/repayments|/api/debts/[^/]+/split\\-agreement|/api/debts/[^/]+/split\\-change\\-proposals|/api/debts/[^/]+/split\\-change\\-proposals/[^/]+/accept|/api/debts/[^/]+/split\\-change\\-proposals/[^/]+/reject|/api/debts/[^/]+/split\\-change\\-proposals/[^/]+/withdraw|/api/debts/[^/]+/void|/api/debts/parse\\-bill|/api/debts/receivables)$",
       "service": "http://127.0.0.1:8000"
     },
@@ -232,7 +237,7 @@
     },
     {
       "hostname": "ticketbox.example.com",
-      "path": "^(/web/debts|/web/debts/[^/]+|/web/debts/[^/]+/adjustments|/web/debts/[^/]+/forgive|/web/debts/[^/]+/kind|/web/debts/[^/]+/repayment\\-proposals|/web/debts/[^/]+/repayment\\-proposals/[^/]+/confirm|/web/debts/[^/]+/repayment\\-proposals/[^/]+/reject|/web/debts/[^/]+/repayment\\-proposals/[^/]+/withdraw|/web/debts/[^/]+/repayment\\-voids|/web/debts/[^/]+/repayments|/web/debts/[^/]+/split\\-agreement|/web/debts/[^/]+/split\\-agreement/preview|/web/debts/[^/]+/split\\-changes|/web/debts/[^/]+/split\\-changes/[^/]+/accept|/web/debts/[^/]+/split\\-changes/[^/]+/reject|/web/debts/[^/]+/split\\-changes/[^/]+/withdraw|/web/debts/[^/]+/void|/web/debts/new|/web/debts/rate)$",
+      "path": "^(/web/debts|/web/debts/[^/]+|/web/debts/[^/]+/adjustments|/web/debts/[^/]+/bill\\-sources/[^/]+/original|/web/debts/[^/]+/forgive|/web/debts/[^/]+/kind|/web/debts/[^/]+/repayment\\-proposals|/web/debts/[^/]+/repayment\\-proposals/[^/]+/confirm|/web/debts/[^/]+/repayment\\-proposals/[^/]+/reject|/web/debts/[^/]+/repayment\\-proposals/[^/]+/withdraw|/web/debts/[^/]+/repayment\\-voids|/web/debts/[^/]+/repayments|/web/debts/[^/]+/split\\-agreement|/web/debts/[^/]+/split\\-agreement/preview|/web/debts/[^/]+/split\\-changes|/web/debts/[^/]+/split\\-changes/[^/]+/accept|/web/debts/[^/]+/split\\-changes/[^/]+/reject|/web/debts/[^/]+/split\\-changes/[^/]+/withdraw|/web/debts/[^/]+/void|/web/debts/new|/web/debts/rate)$",
       "service": "http://127.0.0.1:8000"
     },
     {

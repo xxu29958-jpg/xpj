@@ -68,6 +68,7 @@ interface ApiService :
     ReportsApi,
     GoalsApi,
     DebtApi,
+    com.ticketbox.data.remote.api.DebtBillApi,
     DebtRepaymentApi,
     DebtProposalApi,
     com.ticketbox.data.remote.api.BillSplitChangeApi,

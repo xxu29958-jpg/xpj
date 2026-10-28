@@ -11,6 +11,7 @@ from app.errors import AppError
 from app.models import (
     CategoryPreference,
     CategoryRule,
+    DebtBillCapture,
     Expense,
     MerchantAlias,
     MerchantCatalog,
@@ -39,7 +40,7 @@ class CleanupResult:
     deleted_thumbnails: int
 
 
-def cleanup_after_confirm(db: Session, expense: Expense) -> bool:
+def cleanup_after_confirm(db: Session, expense: Expense | DebtBillCapture) -> bool:
     """Own GC commits after the caller has committed this confirmed Expense.
 
     The return value reports cleanup metadata change; callers must not add a
@@ -78,8 +79,14 @@ def _cleanup_retained_images(
             and_(days > 0, Expense.status == status,
                  func.greatest(original_time, Expense.image_replenished_at) <= cutoff)),
     )))
+    source_time = DebtBillCapture.confirmed_at if status == "confirmed" else DebtBillCapture.rejected_at
+    sources = list(db.scalars(select(DebtBillCapture).where(
+        DebtBillCapture.tenant_id == tenant_id,
+        or_(DebtBillCapture.attachment_cleanup_request.is_not(None),
+            and_(days > 0, DebtBillCapture.status == status, source_time <= cutoff)),
+    )))
     deleted_images = deleted_thumbnails = 0
-    for expense in expenses:
+    for expense in [*expenses, *sources]:
         result = execute_attachment_cleanup(
             db, expense, reason=f"{status}_retention", settings_provider=get_settings,
             actor_account_id=auth.account_id if auth else None,
@@ -87,7 +94,7 @@ def _cleanup_retained_images(
         )
         deleted_images += result.deleted_images
         deleted_thumbnails += result.deleted_thumbnails
-    return CleanupResult(days > 0, days, len(expenses), deleted_images, deleted_thumbnails)
+    return CleanupResult(days > 0, days, len(expenses) + len(sources), deleted_images, deleted_thumbnails)
 
 
 def cleanup_confirmed_images(db: Session, tenant_id: str, *, auth: AuthContext | None = None) -> CleanupResult:

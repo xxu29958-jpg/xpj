@@ -120,6 +120,16 @@ def referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
             if normalized:
                 referenced.add(normalized)
     history = original_receipt_references_query(select(m.ApiIdempotencyKey), tenant_id=tenant_id)
+    sources = db.execute(select(m.DebtBillCapture.image_path, m.DebtBillCapture.image_deleted_at,
+        m.DebtBillCapture.attachment_cleanup_request).where(m.DebtBillCapture.tenant_id == tenant_id))
+    for image_path, deleted_at, cleanup_request in sources:
+        references = pending_cleanup_references(cleanup_request)
+        if deleted_at is None:
+            references = (*references, image_path)
+        for reference in references:
+            normalized = _normalize_upload_reference(reference, tenant_id)
+            if normalized:
+                referenced.add(normalized)
     for original in db.execute(history).mappings():
         if historical_original_is_cleaned(original):
             continue

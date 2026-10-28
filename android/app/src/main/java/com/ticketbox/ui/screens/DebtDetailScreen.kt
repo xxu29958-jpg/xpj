@@ -65,6 +65,11 @@ private const val DebtDetailFlashDismissMillis = 4000L
  */
 data class DebtDetailNavigation(val onBack: () -> Unit, val onOpenCredit: (String) -> Unit = {})
 
+data class DebtDetailSourcePanels(
+    val splitAgreement: SplitAgreementPanel? = null,
+    val billSources: com.ticketbox.data.repository.DebtBillActions? = null,
+)
+
 // ADR-0049 §3.2 (slice 8d): the detail screen's side-effects, extracted so the screen composable
 // loads the participant task, adopts acknowledged folds, and dismisses temporary feedback.
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,7 +79,7 @@ fun DebtDetailScreen(
     proposalViewModel: MemberRepaymentProposalViewModel,
     historyViewModel: DebtActivityViewModel,
     navigation: DebtDetailNavigation,
-    splitAgreement: SplitAgreementPanel? = null,
+    sources: DebtDetailSourcePanels = DebtDetailSourcePanels(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val observedProposalState by proposalViewModel.state.collectAsStateWithLifecycle()
@@ -99,7 +104,7 @@ fun DebtDetailScreen(
             viewModel.refresh()
             if (debt?.isMember == true) proposalViewModel.refresh()
             historyViewModel.refresh()
-            splitAgreement?.model?.refresh()
+            sources.splitAgreement?.model?.refresh()
         },
         onSelectKind = viewModel::selectKind,
         onOpenAction = viewModel::openAction,
@@ -111,9 +116,10 @@ fun DebtDetailScreen(
         panels = DebtDetailPanels(
             proposalState = proposalState,
             proposalViewModel = proposalViewModel,
-            splitAgreement = splitAgreement?.let { panel ->
+            splitAgreement = sources.splitAgreement?.let { panel ->
                 { SplitAgreementDetailPanel(state, proposalState, panel) { viewModel.refresh(); historyViewModel.refresh() } }
             },
+            billSources = sources.billSources?.let { original -> { DebtBillSourcePanel(state, original) } },
             historyState = historyState,
             historyCallbacks = DebtActivityCallbacks(
                 onVoidRepayment = { viewModel.openAction(DebtAction.RepaymentVoid, it) },

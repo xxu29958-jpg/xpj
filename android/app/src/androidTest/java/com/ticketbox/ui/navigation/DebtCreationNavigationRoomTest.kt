@@ -1,5 +1,13 @@
 package com.ticketbox.ui.navigation
 
+import android.app.Activity
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.result.ActivityResultRegistryOwner
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.core.app.ActivityOptionsCompat
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -9,9 +17,12 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
@@ -24,10 +35,17 @@ import com.ticketbox.OutboxAdapterGraph
 import com.ticketbox.R
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.DebtCreateRequestDto
+import com.ticketbox.data.remote.dto.DebtBillCaptureDto
+import com.ticketbox.data.remote.dto.DebtBillCaptureReceiptDto
+import com.ticketbox.data.remote.dto.DebtBillCaptureListDto
+import com.ticketbox.data.remote.dto.DebtBillParseOutcomeDto
+import com.ticketbox.data.remote.dto.DebtBillParseRequestDto
 import com.ticketbox.data.remote.dto.DebtDto
 import com.ticketbox.data.remote.dto.DebtListResponseDto
 import com.ticketbox.data.remote.dto.ExpenseAccountingTimeDto
 import com.ticketbox.data.repository.CreateDebtDispatcher
+import com.ticketbox.data.repository.DebtBillCaptureDispatcher
+import com.ticketbox.data.repository.UploadIntentFileStore
 import com.ticketbox.data.repository.DebtAdjustmentConnectedNetwork
 import com.ticketbox.data.repository.OutboxDrainEngine
 import com.ticketbox.domain.model.AppSkin
@@ -39,8 +57,15 @@ import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.screens.expense.LocalLedgerCalendarRepository
 import com.ticketbox.ui.theme.TicketboxTheme
 import java.io.IOException
+import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
+import okio.ByteString.Companion.toByteString
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -60,11 +85,16 @@ class DebtCreationNavigationRoomTest {
         paidAmountCents = 0, debtKind = "unspecified", note = null, installmentCount = null, installmentPeriodMonths = null,
         accountingTime = ExpenseAccountingTimeDto("date_only", userLocalDate = "2026-01-31", calendarRevision = 3))
     private var loseReply = true
+    private var source: DebtBillCaptureDto? = null
+    private var sourceBytes = byteArrayOf()
+    private val originalReads = CopyOnWriteArrayList<String>()
+    private var pickedFile: File? = null
+    private lateinit var navigation: androidx.navigation.NavHostController
     private lateinit var api: ApiService
     private val harness = FactEntryNavigationHarness(context) { delegate ->
         object : ApiService by delegate {
             override suspend fun runtimeCompatibility() = delegate.runtimeCompatibility().let {
-                it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = 1))
+                it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = 1, debtBillSourceVersion = 1))
             }
             override suspend fun debts(lens: String?) = DebtListResponseDto(if (acceptedRead) listOf(response) else emptyList(), "CNY")
             override suspend fun debtReceivables() = DebtListResponseDto(emptyList(), "CNY")
@@ -74,12 +104,107 @@ class DebtCreationNavigationRoomTest {
             override suspend fun createDebt(request: DebtCreateRequestDto, idempotencyKey: String?): DebtDto {
                 calls += request to idempotencyKey
                 if (loseReply) throw IOException("Synthetic lost first receipt")
+                request.billSource?.let {
+                    assertEquals(requireNotNull(source).publicId, it.publicId)
+                    assertEquals(requireNotNull(source).rowVersion, it.expectedRowVersion)
+                    source = requireNotNull(source).copy(status = "confirmed", adoptedDebtPublicId = response.publicId,
+                        rowVersion = it.expectedRowVersion + 1)
+                    acceptedRead = true
+                }
                 return response
             }
+            override suspend fun captureDebtBill(file: MultipartBody.Part, creationKey: RequestBody, captureKey: String): DebtBillCaptureReceiptDto {
+                sourceBytes = Buffer().also(file.body::writeTo).readByteArray()
+                val hash = sourceBytes.toByteString().sha256().hex()
+                val originalKey = Buffer().also(creationKey::writeTo).readUtf8()
+                source = DebtBillCaptureDto("bill-source", originalKey, captureKey, 1, "pending", hash, hash, "bank.jpg", "verified")
+                return DebtBillCaptureReceiptDto("bill-source", originalKey, captureKey, 1, hash, hash)
+            }
+            override suspend fun debtBillByKey(captureKey: String) = requireNotNull(source).also { assertEquals(captureKey, it.captureKey) }
+            override suspend fun parseDebtBillSource(publicId: String, request: DebtBillParseRequestDto, key: String): DebtBillParseOutcomeDto =
+                DebtBillParseOutcomeDto(publicId, key, request.expectedRowVersion + 1, "failed", "controlled-provider",
+                    errorCode = "debt_bill_provider_unavailable").also {
+                    source = requireNotNull(source).copy(rowVersion = it.rowVersion, parseOutcome = it)
+                }
+            override suspend fun debtBills(creationKey: String?, debtPublicId: String?) = DebtBillCaptureListDto(
+                source?.takeIf { it.adoptedDebtPublicId == debtPublicId }?.let(::listOf).orEmpty())
+            override suspend fun debtBillOriginal(publicId: String) = sourceBytes.toResponseBody("image/jpeg".toMediaType())
+                .also { originalReads += publicId }
         }.also { api = it }
-    }
+    }.apply { fixture.debtBillSources = true; reopen() }
 
-    @After fun close() { compose.runOnIdle { harness.models.viewModelStore.clear() }; harness.close() }
+    @After fun close() { compose.runOnIdle { harness.models.viewModelStore.clear() }; harness.close(); pickedFile?.delete() }
+
+    @Test fun originalBillContinuesThroughCreationAndDetailRead() {
+        pickedFile = File(context.cacheDir, "debt-bill-navigation.jpg").apply { writeBytes(harness.fixture.network.originalImage) }
+        var pickerLaunched = false
+        val registry = object : ActivityResultRegistry() {
+            override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) {
+                pickerLaunched = true
+                dispatchResult(requestCode, Activity.RESULT_OK, Intent().setData(Uri.fromFile(requireNotNull(pickedFile))))
+            }
+        }
+        mount(object : ActivityResultRegistryOwner { override val activityResultRegistry = registry })
+        compose.onNodeWithText(text(R.string.nav_domain_obligations)).performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasContentDescription(text(R.string.debt_list_parse_bill)) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription(text(R.string.debt_list_parse_bill)).performClick()
+        try {
+            waitFor(text(R.string.debt_bill_capture_waiting))
+        } catch (failure: androidx.compose.ui.test.ComposeTimeoutException) {
+            val state = compose.runOnIdle {
+                (navigation.getBackStackEntry(MAIN_ROUTE).viewModelStore[RelationsDebtComposerViewModelKey]
+                    as com.ticketbox.viewmodel.DebtListViewModel).state.value
+            }
+            throw AssertionError("Picker launched=$pickerLaunched; source inputs=${runBlocking {
+                harness.fixture.debtBillInputDao.allInputs().size }}; actual creation state=$state", failure)
+        }
+        val original = runBlocking { harness.fixture.debtBillInputDao.allInputs().single() }
+        assertTrue(calls.isEmpty())
+        assertTrue(source == null)
+        assertTrue(!original.closed)
+        compose.onNodeWithText(text(R.string.debt_create_save)).assertIsNotEnabled()
+        runBlocking { assertEquals(1, drain().done) }
+        waitFor(text(R.string.debt_bill_suggestion_failed_kept))
+        assertTrue(calls.isEmpty())
+        field(R.string.debt_create_label_counterparty).performScrollTo().performTextReplacement("原往来 小王")
+        field(R.string.debt_create_label_amount).performScrollTo().performTextReplacement("123456789.01")
+        field(R.string.debt_principal_date_label).performScrollTo().performTextReplacement("2026-01-31")
+        closeSoftKeyboard()
+        compose.onNodeWithText(text(R.string.debt_creation_keep_exit)).performClick()
+        compose.onNodeWithText(text(R.string.relations_all_debts)).performScrollTo().performClick()
+        waitFor(text(R.string.debt_list_add))
+        compose.onNodeWithText(text(R.string.debt_list_add)).performClick()
+        compose.onNodeWithText(text(R.string.debt_bill_continue_original)).performScrollTo().performClick()
+        field(R.string.debt_create_label_counterparty).performScrollTo().assertEditableTextEquals("原往来 小王")
+        field(R.string.debt_create_label_amount).performScrollTo().assertEditableTextEquals("123456789.01")
+        compose.onNodeWithText(text(R.string.debt_create_save)).assertIsEnabled().performClick()
+        waitFor(text(R.string.debt_create_local_saved))
+        assertTrue(calls.isEmpty())
+        assertEquals("pending", requireNotNull(source).status)
+        assertTrue(!runBlocking { requireNotNull(harness.fixture.debtBillInputDao.input(original.captureKey)).closed })
+        loseReply = false
+        runBlocking { assertEquals(1, drain().done) }
+        assertEquals(original.creationKey, calls.single().second)
+        assertEquals("bill-source", calls.single().first.billSource?.publicId)
+        assertEquals(2L, calls.single().first.billSource?.expectedRowVersion)
+        // The source continuation ends only when its accepted backlink is read.
+        compose.onNodeWithText(text(R.string.debt_list_add)).performClick()
+        compose.onNodeWithText(text(R.string.debt_bill_continue_original)).performScrollTo().performClick()
+        compose.waitUntil(5_000) { runBlocking { requireNotNull(harness.fixture.debtBillInputDao.input(original.captureKey)).closed } }
+        compose.onNodeWithText(text(R.string.debt_creation_keep_exit)).performClick()
+        waitFor("我欠原往来 小王")
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("我欠原往来 小王"))
+        compose.onNodeWithText("我欠原往来 小王").performClick()
+        waitFor(text(R.string.debt_bill_view_original))
+        compose.onNodeWithText(text(R.string.debt_bill_view_original)).performScrollTo().performClick()
+        waitFor(context.getString(android.R.string.ok))
+        assertEquals(listOf("bill-source"), originalReads)
+        assertTrue(sourceBytes.isNotEmpty())
+        assertEquals(original.payloadJson, runBlocking { requireNotNull(harness.fixture.debtBillInputDao.input(original.captureKey)).payloadJson })
+        capture("debt-bill-original-read")
+    }
 
     @Test fun bothRealEntrypointsContinueOneOriginalThenShowTheAcceptedDebt() {
         mount()
@@ -141,12 +266,13 @@ class DebtCreationNavigationRoomTest {
         assertEquals(1, harness.fixture.stored().size)
     }
 
-    private fun mount() {
+    private fun mount(picker: ActivityResultRegistryOwner? = null) {
         compose.setContent {
             CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models,
+                LocalActivityResultRegistryOwner provides (picker ?: requireNotNull(LocalActivityResultRegistryOwner.current)),
                 LocalLedgerCalendarRepository provides harness.fixture.ledgerCalendarRepository) {
                 TicketboxTheme(skin = skin) {
-                    MainNavGraph(MainNavigationRuntime(rememberNavController(), harness.shell, harness.screenFactory),
+                    MainNavGraph(MainNavigationRuntime(rememberNavController().also { navigation = it }, harness.shell, harness.screenFactory),
                         remember { SnackbarHostState() },
                         SettingsPreferenceControls(AppSkin.Paper, AppThemeMode.System, CurrencyCode.CNY,
                             onThemeModeChange = {}, onCurrencyChange = {}), onBindingCleared = { error("Binding must remain") })
@@ -162,5 +288,6 @@ class DebtCreationNavigationRoomTest {
     private fun field(resource: Int) = compose.onNode(hasSetTextAction() and hasText(text(resource)))
     private fun waitFor(value: String) = compose.waitUntil(5_000) { compose.onAllNodesWithText(value).fetchSemanticsNodes().isNotEmpty() }
     private suspend fun drain(now: Long = harness.fixture.clock.millis()) = OutboxDrainEngine(harness.fixture.outbox,
-        listOf(CreateDebtDispatcher({ api }, OutboxAdapterGraph().debt.debtCreateAdapter)), now = { now }).drainOnce()
+        listOf(CreateDebtDispatcher({ api }, OutboxAdapterGraph().debt.debtCreateAdapter),
+            DebtBillCaptureDispatcher({ api }, UploadIntentFileStore(context)::read)), now = { now }).drainOnce()
 }

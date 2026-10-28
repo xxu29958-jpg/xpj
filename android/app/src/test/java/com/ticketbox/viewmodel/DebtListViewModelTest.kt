@@ -226,7 +226,7 @@ class DebtListViewModelTest {
         assertEquals("1", draft.installmentPeriodInput)
         assertEquals(false, viewModel.state.value.isParsingBill)
         assertTrue(viewModel.state.value.pendingBillParsePrefill)
-        viewModel.ackBillParsePrefill()
+        viewModel.acknowledgeCreation(billPrefill = true)
         assertEquals(false, viewModel.state.value.pendingBillParsePrefill)
     }
 

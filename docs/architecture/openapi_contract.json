@@ -3235,6 +3235,27 @@
         "title": "Body_post_archive_web_income_plans__public_id__archive_post",
         "type": "object"
       },
+      "Body_post_capture_bill_api_debt_bills_post": {
+        "properties": {
+          "creation_key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Creation Key",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "creation_key"
+        ],
+        "title": "Body_post_capture_bill_api_debt_bills_post",
+        "type": "object"
+      },
       "Body_post_create_web_income_plans_create_post": {
         "properties": {
           "amount_yuan": {
@@ -3347,20 +3368,6 @@
           "csv_file"
         ],
         "title": "Body_post_csv_import_batch_api_imports_csv_post",
-        "type": "object"
-      },
-      "Body_post_parse_debt_bill_api_debts_parse_bill_post": {
-        "properties": {
-          "file": {
-            "contentMediaType": "application/octet-stream",
-            "title": "File",
-            "type": "string"
-          }
-        },
-        "required": [
-          "file"
-        ],
-        "title": "Body_post_parse_debt_bill_api_debts_parse_bill_post",
         "type": "object"
       },
       "Body_post_restore_recycle_bin_web_recycle_bin_restore_post": {
@@ -14299,6 +14306,282 @@
         "title": "DebtAdoption",
         "type": "object"
       },
+      "DebtBillCaptureListResponse": {
+        "properties": {
+          "captures": {
+            "items": {
+              "$ref": "#/components/schemas/DebtBillCaptureResponse"
+            },
+            "title": "Captures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "captures"
+        ],
+        "title": "DebtBillCaptureListResponse",
+        "type": "object"
+      },
+      "DebtBillCaptureReceipt": {
+        "properties": {
+          "capture_key": {
+            "title": "Capture Key",
+            "type": "string"
+          },
+          "creation_key": {
+            "title": "Creation Key",
+            "type": "string"
+          },
+          "image_hash": {
+            "title": "Image Hash",
+            "type": "string"
+          },
+          "input_sha256": {
+            "title": "Input Sha256",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "public_id",
+          "creation_key",
+          "capture_key",
+          "row_version",
+          "input_sha256",
+          "image_hash"
+        ],
+        "title": "DebtBillCaptureReceipt",
+        "type": "object"
+      },
+      "DebtBillCaptureResponse": {
+        "properties": {
+          "adopted_debt_public_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adopted Debt Public Id"
+          },
+          "capture_key": {
+            "title": "Capture Key",
+            "type": "string"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "creation_key": {
+            "title": "Creation Key",
+            "type": "string"
+          },
+          "file_name": {
+            "title": "File Name",
+            "type": "string"
+          },
+          "image_evidence": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Evidence"
+          },
+          "image_hash": {
+            "title": "Image Hash",
+            "type": "string"
+          },
+          "image_size_bytes": {
+            "title": "Image Size Bytes",
+            "type": "integer"
+          },
+          "input_sha256": {
+            "title": "Input Sha256",
+            "type": "string"
+          },
+          "media_type": {
+            "title": "Media Type",
+            "type": "string"
+          },
+          "original_state": {
+            "enum": [
+              "verified",
+              "cleaned",
+              "missing",
+              "corrupt",
+              "unreadable"
+            ],
+            "title": "Original State",
+            "type": "string"
+          },
+          "parse_outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DebtBillParseOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "rejected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected At"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "confirmed",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id",
+          "creation_key",
+          "capture_key",
+          "row_version",
+          "input_sha256",
+          "image_hash",
+          "status",
+          "file_name",
+          "media_type",
+          "image_size_bytes",
+          "original_state",
+          "image_evidence",
+          "adopted_debt_public_id",
+          "parse_outcome",
+          "created_at",
+          "confirmed_at",
+          "rejected_at"
+        ],
+        "title": "DebtBillCaptureResponse",
+        "type": "object"
+      },
+      "DebtBillParseOutcome": {
+        "properties": {
+          "attempt_key": {
+            "title": "Attempt Key",
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "title": "Completed At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "public_id": {
+            "title": "Public Id",
+            "type": "string"
+          },
+          "row_version": {
+            "title": "Row Version",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DebtBillParseResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "public_id",
+          "attempt_key",
+          "row_version",
+          "status",
+          "provider",
+          "completed_at"
+        ],
+        "title": "DebtBillParseOutcome",
+        "type": "object"
+      },
+      "DebtBillParseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_row_version"
+        ],
+        "title": "DebtBillParseRequest",
+        "type": "object"
+      },
       "DebtBillParseResponse": {
         "description": "ADR-0049 §D 债务账单解析建议（瞬态，不落库、不建债）。\n\n一张「欠款截图」OCR 后的**建议**还款条款，用于预填建/编外部债表单。所有字段\n可空（缺字段=留给用户手填）；§8 红线：这是建议非事实，``source_text`` 是模型回的\n源文本片段（防编数字），用户在表单确认/改后才落账。未配视觉 provider 时全字段为空\n（回落手填），端点仍 200。",
         "properties": {
@@ -14394,10 +14677,42 @@
         "title": "DebtBillParseResponse",
         "type": "object"
       },
+      "DebtBillSourceReference": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_row_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "public_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Public Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "public_id",
+          "expected_row_version"
+        ],
+        "title": "DebtBillSourceReference",
+        "type": "object"
+      },
       "DebtCreateRequest": {
         "additionalProperties": false,
         "description": "Create one external/manual Debt (ADR-0049 §2 / §5.1).\n\n``principal_amount_cents`` is the home-currency principal for a home-currency\nDebt. For a foreign-currency Debt the client submits ``original_currency`` +\n``original_amount`` (+ optional ``event_time``); the backend freezes the\nhome principal from the [[0027]] snapshot and rejects the request when the\nrate is still pending (§2.2). Clients MUST NOT submit exchange rates or\ncompute home amounts.",
         "properties": {
+          "bill_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DebtBillSourceReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "counterparty_account_id": {
             "anyOf": [
               {
@@ -30871,6 +31186,11 @@
             "title": "Debt Activity Read Version",
             "type": "integer"
           },
+          "debt_bill_source_version": {
+            "minimum": 1.0,
+            "title": "Debt Bill Source Version",
+            "type": "integer"
+          },
           "original_attachment_create_version": {
             "minimum": 1.0,
             "title": "Original Attachment Create Version",
@@ -30899,6 +31219,7 @@
           "original_attachment_version",
           "original_attachment_create_version",
           "debt_activity_read_version",
+          "debt_bill_source_version",
           "currency"
         ],
         "title": "RuntimeProductCapabilitiesResponse",
@@ -35423,6 +35744,822 @@
         ]
       }
     },
+    "/api/debt-bills": {
+      "get": {
+        "operationId": "get_captures_api_debt_bills_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "creation_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Creation Key"
+            }
+          },
+          {
+            "in": "query",
+            "name": "debt_public_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 36,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Debt Public Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillCaptureListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Captures",
+        "tags": [
+          "debts"
+        ]
+      },
+      "post": {
+        "operationId": "post_capture_bill_api_debt_bills_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_capture_bill_api_debt_bills_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillCaptureReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Capture Bill",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debt-bills/by-key/{capture_key}": {
+      "get": {
+        "operationId": "get_capture_by_key_api_debt_bills_by_key__capture_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "capture_key",
+            "required": true,
+            "schema": {
+              "title": "Capture Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillCaptureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Capture By Key",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debt-bills/{public_id}": {
+      "get": {
+        "operationId": "get_capture_detail_api_debt_bills__public_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillCaptureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Capture Detail",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debt-bills/{public_id}/discard": {
+      "post": {
+        "operationId": "post_discard_capture_api_debt_bills__public_id__discard_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebtBillParseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillCaptureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Discard Capture",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debt-bills/{public_id}/original": {
+      "get": {
+        "operationId": "get_capture_image_api_debt_bills__public_id__original_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Capture Image",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debt-bills/{public_id}/parse": {
+      "post": {
+        "operationId": "post_parse_capture_api_debt_bills__public_id__parse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required API contract version from the runtime compatibility handshake.",
+            "in": "header",
+            "name": "Ticketbox-Api-Version",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required API contract version from the runtime compatibility handshake.",
+              "title": "Ticketbox-Api-Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebtBillParseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillParseOutcome"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Post Parse Capture",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
+    "/api/debt-bills/{public_id}/parse-attempts/{attempt_key}": {
+      "get": {
+        "operationId": "get_parse_attempt_api_debt_bills__public_id__parse_attempts__attempt_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attempt_key",
+            "required": true,
+            "schema": {
+              "title": "Attempt Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillParseOutcome"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Get Parse Attempt",
+        "tags": [
+          "debts"
+        ]
+      }
+    },
     "/api/debts": {
       "get": {
         "operationId": "get_debts_api_debts_get",
@@ -35635,6 +36772,7 @@
     },
     "/api/debts/parse-bill": {
       "post": {
+        "description": "Old transient requests have no retained original; never silently accept them.",
         "operationId": "post_parse_debt_bill_api_debts_parse_bill_post",
         "parameters": [
           {
@@ -35676,16 +36814,6 @@
             "$ref": "#/components/parameters/TicketboxCurrencyBinding"
           }
         ],
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_post_parse_debt_bill_api_debts_parse_bill_post"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {

@@ -100,7 +100,7 @@ internal class UploadIntentRepositoryFixture : Closeable {
             bindingChanges = session.map { it.toOutboxBinding() }, onEnqueued = { scheduled++ },
             onRowsDeleted = { repository.collectOrphans() })
         return UploadIntentRepository(provider, outbox, fileStore,
-            adapters.upload, settings, database.expenseDao())
+            adapters.upload, settings, com.ticketbox.data.repository.UploadOriginalInputs(database.expenseDao(), database.debtBillInputDao()))
     }
 
     private suspend fun recordInsert(insert: suspend () -> List<Long>): List<Long> {

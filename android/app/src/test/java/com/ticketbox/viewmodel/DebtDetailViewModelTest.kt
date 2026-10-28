@@ -10,7 +10,6 @@ import com.ticketbox.data.repository.DebtActions
 import com.ticketbox.data.repository.DebtListPage
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Debt
-import com.ticketbox.domain.model.DebtBillSuggestion
 import com.ticketbox.domain.model.DebtCounterpartyTypes
 import com.ticketbox.domain.model.DebtDirections
 import com.ticketbox.domain.model.DebtKinds
@@ -776,12 +775,6 @@ private class FakeDebtDetailActions(
     }
 
 
-    override suspend fun parseDebtBillImage(
-        expectedBinding: LogicalSessionBinding,
-        fileName: String,
-        contentType: String?,
-        bytes: ByteArray,
-    ): Result<DebtBillSuggestion> = Result.failure(UnsupportedOperationException())
 
 
 }

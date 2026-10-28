@@ -9,11 +9,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ticketbox.domain.model.FxContract
 
 @Database(
-    entities = [FundsInputEntity::class, SavedQueryInputEntity::class, RuleDefinitionInputEntity::class, MerchantCreationInputEntity::class, ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class, RepaymentReviewInputEntity::class, ExpenseFactQueryCacheEntity::class, ExpenseFactInputEntity::class],
-    version = 31,
+    entities = [DebtBillInputEntity::class, FundsInputEntity::class, SavedQueryInputEntity::class, RuleDefinitionInputEntity::class, MerchantCreationInputEntity::class, ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class, RepaymentReviewInputEntity::class, ExpenseFactQueryCacheEntity::class, ExpenseFactInputEntity::class],
+    version = 32,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun debtBillInputDao(): DebtBillInputDao
     abstract fun fundsInputDao(): FundsInputDao
     abstract fun savedQueryInputDao(): SavedQueryInputDao
     abstract fun ruleDefinitionInputDao(): RuleDefinitionInputDao
@@ -25,6 +26,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun repaymentReviewInputDao(): RepaymentReviewInputDao
 
     companion object {
+        internal val Migration31To32 = object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS debt_bill_inputs (captureKey TEXT NOT NULL, ownerKey TEXT NOT NULL, ledgerId TEXT NOT NULL, creationKey TEXT NOT NULL, payloadJson TEXT NOT NULL, draftJson TEXT NOT NULL, sourceJson TEXT, parseAttemptKey TEXT, parseExpectedRowVersion INTEGER, closed INTEGER NOT NULL, PRIMARY KEY(captureKey))")
+            }
+        }
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -672,6 +678,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration28To29,
                         Migration29To30,
                         Migration30To31,
+                        Migration31To32,
                     )
                     .build()
                     .also { instance = it }

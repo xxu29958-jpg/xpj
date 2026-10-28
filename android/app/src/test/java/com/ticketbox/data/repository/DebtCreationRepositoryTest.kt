@@ -23,6 +23,35 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class DebtCreationRepositoryTest {
+    @Test fun returnToLedgerReusesExactSourceCreateBytesAndRejectsChangedBody() = runTest {
+        val fixture = DebtCreationFixture()
+        val draft = DebtDraft(DebtDirections.I_OWE, "原账单", 1234L,
+            billSource = com.ticketbox.data.remote.dto.DebtBillSourceReferenceDto("original-source", 7L),
+            timeInput = ExpenseTimeInput("date_only", userLocalDate = "2026-01-31", calendarRevision = 3L))
+        val first = fixture.repository.createDebt(fixture.binding, draft, CurrencyCode.CNY, "original-source-create").getOrThrow()
+        val stored = fixture.dao.rows.getValue(first.intentId)
+        val exact = stored.copy(payload = " \n${stored.payload}\n ")
+        fixture.dao.rows[first.intentId] = exact
+        fixture.session.switchLedgerForFixture("other", "另一账本")
+        fixture.session.switchLedgerForFixture(fixture.binding.ledgerId, "返回账本")
+        val rebound = requireNotNull(fixture.repository.currentAccess()).binding
+        assertNotEquals(fixture.binding.bindingRevision, rebound.bindingRevision)
+        val replay = fixture.repository.createDebt(rebound, draft, CurrencyCode.CNY, "original-source-create").getOrThrow()
+        assertEquals(first.intentId, replay.intentId)
+        assertEquals(exact, fixture.dao.rows.getValue(first.intentId))
+        assertEquals(1, fixture.dao.rows.size)
+        for (changed in listOf(draft.copy(principalAmountCents = 1235L),
+            draft.copy(billSource = draft.billSource?.copy(expectedRowVersion = 8L)))) {
+            assertTrue(fixture.repository.createDebt(rebound, changed, CurrencyCode.CNY, "original-source-create").isFailure)
+            assertEquals(exact, fixture.dao.rows.getValue(first.intentId))
+        }
+        val unknown = exact.copy(payload = exact.payload.replace("\"revision\":2", "\"revision\":99"))
+        fixture.dao.rows[first.intentId] = unknown
+        assertTrue(fixture.repository.createDebt(rebound, draft, CurrencyCode.CNY, "original-source-create").isFailure)
+        assertEquals(unknown, fixture.dao.rows.getValue(first.intentId))
+        assertTrue(fixture.api.calls.isEmpty())
+    }
+
     @Test
     fun savePublishesCompleteIntentBeforeTheSchedulerAndNeverSendsDirectly() = runTest {
         val fixture = DebtCreationFixture()
@@ -82,6 +111,9 @@ class DebtCreationRepositoryTest {
         assertEquals(row.idempotencyKey, sent.second)
         assertEquals(original, fixture.dao.rows.getValue(row.id).payload)
         assertEquals(null, sent.first.timeInput)
+        assertEquals(null, sent.first.billSource)
+        assertTrue(!com.squareup.moshi.Moshi.Builder().build().adapter(DebtCreateRequestDto::class.java)
+            .toJson(sent.first).contains("bill_source"), "Released no-source bodies must omit the new optional field")
         assertEquals(PendingMutationStatus.Done.wireValue, fixture.dao.rows.getValue(row.id).status)
     }
 

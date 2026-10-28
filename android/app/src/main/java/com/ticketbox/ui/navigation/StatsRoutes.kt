@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ticketbox.data.repository.logNetworkWarning
 import com.ticketbox.domain.model.DebtListLens
 import com.ticketbox.ui.design.LocalCurrencyDisplay
 import com.ticketbox.ui.mascot.rememberMascotController
@@ -326,7 +327,7 @@ internal fun DebtRoute(
             splitAgreement = screenFactory.debtRepository.splitAgreement,
             openDebtId = openDebtId,
             onOpenCredit = context.onOpenCredit,
-            models = DebtDetailHostModels(detailViewModel, proposalViewModel, repaymentHistoryViewModel),
+            models = DebtDetailHostModels(detailViewModel, proposalViewModel, repaymentHistoryViewModel, screenFactory.debtCreationRepository.billSources),
             onBack = {
                 detailDebtId = null
                 debtListViewModel.refresh()
@@ -356,7 +357,16 @@ internal fun rememberDebtBillImageLauncher(
         if (uri == null) return@rememberLauncherForActivityResult
         val attempt = viewModel.markBillParsePreparing() ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val selected = withContext(Dispatchers.IO) { context.prepareScreenshotUpload(uri) }
+            val selected = try {
+                withContext(Dispatchers.IO) { context.prepareScreenshotUpload(uri) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                viewModel.parseDebtBillImage(attempt, null, cancelled = true)
+                throw cancelled
+            } catch (error: Exception) {
+                logNetworkWarning("operation=Debt bill image preparation", error)
+                viewModel.parseDebtBillImage(attempt, null)
+                return@launch
+            }
             viewModel.parseDebtBillImage(attempt, selected)
         }
     }
@@ -405,9 +415,12 @@ private fun DebtDetailHost(
             proposalViewModel = proposalViewModel,
             historyViewModel = historyViewModel,
             navigation = com.ticketbox.ui.screens.DebtDetailNavigation(returnFromDetail, onOpenCredit),
-            splitAgreement = splitModel?.let { model -> com.ticketbox.ui.screens.SplitAgreementPanel(model) { id ->
-                if (id != displayedDebtId) relatedTrail = relatedTrail + id
-            } },
+            sources = com.ticketbox.ui.screens.DebtDetailSourcePanels(
+                billSources = models.billSources,
+                splitAgreement = splitModel?.let { model -> com.ticketbox.ui.screens.SplitAgreementPanel(model) { id ->
+                    if (id != displayedDebtId) relatedTrail = relatedTrail + id
+                } },
+            ),
         )
         DebtSettleCelebrationOverlay(
             celebration = celebration.takeIf { relationSettled },
@@ -458,7 +471,7 @@ internal fun ReceivablesRoute(
         DebtDetailHost(
             splitAgreement = screenFactory.debtRepository.splitAgreement,
             openDebtId = openDebtId,
-            models = DebtDetailHostModels(detailViewModel, proposalViewModel, repaymentHistoryViewModel),
+            models = DebtDetailHostModels(detailViewModel, proposalViewModel, repaymentHistoryViewModel, screenFactory.debtCreationRepository.billSources),
             onBack = {
                 detailDebtId = null
                 viewModel.refresh()
@@ -526,5 +539,5 @@ private fun RepaymentDraftLinkedDebt(screenFactory: MainScreenFactory, publicId:
         memberRepaymentProposalViewModelFactory(screenFactory.debtRepository.proposals))
     val history: DebtActivityViewModel = viewModel(key = "repayment-capture-history", factory =
         debtActivityViewModelFactory(screenFactory.debtActivityRepository))
-    DebtDetailHost(screenFactory.debtRepository.splitAgreement, publicId, DebtDetailHostModels(detail, proposal, history), onBack, onOpenCredit)
+    DebtDetailHost(screenFactory.debtRepository.splitAgreement, publicId, DebtDetailHostModels(detail, proposal, history, screenFactory.debtCreationRepository.billSources), onBack, onOpenCredit)
 }
