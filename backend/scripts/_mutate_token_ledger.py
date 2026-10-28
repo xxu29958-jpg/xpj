@@ -178,6 +178,8 @@ ALLOWLIST: dict[str, Exempt] = {
     # safe replay rests on the [[0042]] Idempotency-Key the route requires, not
     # an expected_row_version token.
     "POST /api/debts": Exempt("create_row", "debts", _DEBTS),
+    # Original capture has no predecessor row; the original key/body claim and receipt commit together.
+    "POST /api/debt-bills": Exempt("create_row", "debts", ("debt_bill_captures", "api_idempotency_keys")),
     # New account identity has no predecessor token. Existing Debt adoption
     # additionally carries and locks its reviewed Debt version in AccountCreate.
     "POST /api/funds/accounts": Exempt("create_row", "funds",

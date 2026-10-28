@@ -46,6 +46,8 @@ enum class LocalRepositoryFailure {
     OriginalWriterRequired,
     FactInputReviewRequired,
     FactInputNotSaved,
+    DebtBillDraftInUse,
+    DebtBillDraftUnreadable,
 }
 
 data class RepositoryConflictDetails(

@@ -136,6 +136,25 @@ def test_source_private_read_and_write_scope_and_version_conflicts(client, ident
     assert denied.status_code == 403
 
 
+def test_discard_is_authenticated_versioned_and_replays_without_deleting_original(client, identity):
+    source = capture(client, identity)
+    body = {"expected_row_version": source["row_version"]}
+    headers = negotiated_headers(client, {**identity.app_headers, "Idempotency-Key": "original-discard"})
+    assert client.post(f"/api/debt-bills/{source['public_id']}/discard", json=body).status_code == 401
+    stale = client.post(f"/api/debt-bills/{source['public_id']}/discard", headers=headers,
+        json={"expected_row_version": 99})
+    assert stale.status_code == 409
+    response = client.post(f"/api/debt-bills/{source['public_id']}/discard", headers=headers, json=body)
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "rejected" and response.json()["row_version"] == 2
+    assert client.post(f"/api/debt-bills/{source['public_id']}/discard", headers=headers, json=body).json() == response.json()
+    assert client.post(f"/api/debt-bills/{source['public_id']}/discard", headers=headers,
+        json={"expected_row_version": 2}).status_code == 422
+    assert create(client, identity, create_body(source, version=2)).status_code == 409
+    assert client.get(f"/api/debt-bills/{source['public_id']}/original", headers=identity.app_headers).status_code == 200
+    assert capture(client, identity) == source
+
+
 def test_parse_replay_and_explicit_retry_are_distinct_versioned_suggestions(client, identity, monkeypatch):
     source = capture(client, identity)
     monkeypatch.setattr(debt_bill_source_parse, "get_debt_bill_provider", MockDebtBillProvider)
@@ -220,6 +239,27 @@ def test_confirm_cleanup_uses_durable_authority_and_leaves_stable_capture_receip
     with SessionLocal() as db:
         row = db.scalar(select(DebtBillCapture))
         assert row.image_deleted_at is not None and row.attachment_cleanup_request is None
+
+
+@pytest.mark.real_db
+def test_failed_capture_before_commit_rolls_back_receipt_and_removes_unpublished_bytes(client, identity, monkeypatch):
+    from app.services import debt_bill_capture_service
+    paths = []
+
+    def fail_receipt(db, *_args, **_kwargs):
+        source = db.scalar(select(DebtBillCapture))
+        paths.append(resolve_upload_path_for_tenant(source.image_path, "owner"))
+        raise ValueError("simulated receipt failure before COMMIT")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(debt_bill_capture_service, "mark_idempotency_succeeded", fail_receipt)
+        with pytest.raises(ValueError, match="simulated receipt failure"):
+            capture(client, identity)
+    assert paths and all(not path.exists() for path in paths)
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(DebtBillCapture)) == 0
+        assert db.scalar(select(func.count()).select_from(ApiIdempotencyKey)) == 0
+    assert capture(client, identity)["capture_key"] == "original-capture"
 
 
 @pytest.mark.real_db
