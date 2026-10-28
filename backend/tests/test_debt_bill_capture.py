@@ -213,7 +213,10 @@ def test_confirm_cleanup_uses_durable_authority_and_leaves_stable_capture_receip
     assert capture(client, identity) == source
     detail = client.get(f"/api/debt-bills/{source['public_id']}", headers=identity.app_headers).json()
     assert detail["original_state"] == "cleaned" and detail["adopted_debt_public_id"] == result.json()["public_id"]
-    assert client.get(f"/api/debt-bills/{source['public_id']}/original", headers=identity.app_headers).status_code == 410
+    unavailable = client.get(f"/api/debt-bills/{source['public_id']}/original", headers=identity.app_headers)
+    assert unavailable.status_code == 410
+    assert unavailable.json()["error"] == "original_cleaned"
+    assert unavailable.json()["message"] == "原件已按保留设置清理，来源记录仍保留。"
     with SessionLocal() as db:
         row = db.scalar(select(DebtBillCapture))
         assert row.image_deleted_at is not None and row.attachment_cleanup_request is None
