@@ -21,6 +21,7 @@ from app.services.identity_service import (
     upload_link_default_timezone,
 )
 from app.services.permission_service import require_create_pending_expense
+from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
 from app.services.upload_link_throttle_service import (
     enforce_remote_interval,
     finalize_upload_bytes,
@@ -84,6 +85,11 @@ async def app_upload_screenshot(
     auth: AuthContext = Depends(get_current_writer_context),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
+    def revalidate_before_commit() -> None:
+        lock_and_revalidate_mutation_actor(
+            db, auth, actor_account_id=auth.account_id, ledger_id=auth.ledger_id,
+        )
+
     return await handle_upload(
         request=request,
         tenant_id=auth.ledger_id,
@@ -94,6 +100,7 @@ async def app_upload_screenshot(
         initiator_device_id=auth.device_id,
         timezone_name=timezone,
         idempotency_key=idempotency_key,
+        commit_guard=revalidate_before_commit,
     )
 
 

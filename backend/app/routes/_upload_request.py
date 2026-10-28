@@ -228,12 +228,17 @@ async def _prepare_request_upload(
     tenant_id: str,
     max_size_bytes: int | None,
     intent: _UploadIntent | None,
+    commit_guard: Callable[[], None] | None,
 ) -> UploadResponse | tuple[SavedUpload, dict[str, int], ApiIdempotencyKey | None]:
     if intent is None:
         saved, timing = await save_request_upload(request, tenant_id, max_size_bytes=max_size_bytes,
             before_publish=lambda reference: retain_publication(db, reference))
         return saved, timing, None
     content, timing = await read_request_upload(request, max_size_bytes=max_size_bytes)
+    # Match other commands' identity -> original-key lock order. The body is
+    # already read; this lock then covers the claim, file publication and commit.
+    if commit_guard is not None:
+        commit_guard()
     claim = claim_idempotency_key(
         db, tenant_id=tenant_id, idempotency_key=intent.key, operation="upload_screenshot",
         request_fingerprint=_upload_fingerprint(content, intent), target_type="upload_receipt",
@@ -326,13 +331,16 @@ async def handle_upload(
     saved_file = None
     commit_attempted = False
     try:
-        prepared_upload = await _prepare_request_upload(request, db, tenant_id, max_size_bytes, intent)
+        prepared_upload = await _prepare_request_upload(request, db, tenant_id, max_size_bytes, intent, commit_guard)
         if isinstance(prepared_upload, UploadResponse):
+            # HIT only read the accepted receipt. Release admission locks before
+            # the original worker reacquires its own identity/expense/task locks.
+            db.rollback()
             resume_pending_expense_enrichment(db, task_public_id=prepared_upload.enrichment_task_public_id,
                 expense_id=prepared_upload.id, tenant_id=tenant_id)
             return prepared_upload
         saved_file, timing_ms, claim = prepared_upload
-        if commit_guard is not None:
+        if intent is None and commit_guard is not None:
             commit_guard()
         db_started_at = perf_counter()
         expense = stage_pending_expense(
