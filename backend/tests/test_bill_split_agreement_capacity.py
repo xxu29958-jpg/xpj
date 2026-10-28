@@ -3,16 +3,20 @@
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import select, update
 
+from app.database import SessionLocal
 from app.errors import AppError
-from app.models import BillSplitInvitation, Debt, Expense
+from app.models import BillSplitInvitation, Debt, Expense, LedgerAuditLog
 from app.routes._web_bill_split_context import _remaining_split_capacity
 from app.services import bill_split_service as bsplit
 from app.services.bill_split_service._create import _ensure_invitation_capacity
 from app.services.time_service import now_utc
+from tests.bill_split_test_support import _seed_receiver, _split_headers, accept_split_http, change_split_http
 from tests.bill_split_test_support import accept_agreement_change as _accept
 from tests.bill_split_test_support import agreement_db as agreement_db
 from tests.bill_split_test_support import request_agreement_change as _request
+from tests.bill_split_test_support import split_http as split_http
 
 
 def test_lower_accepted_share_releases_capacity_without_rewriting_original_invitation(agreement_db):
@@ -66,3 +70,32 @@ def test_a_decrease_can_resolve_old_overallocation_after_source_was_corrected(ag
     db.flush()
     _accept(db, split, _request(db, split, share=2_000, net=2_000))
     assert db.get(Debt, split["original_id"]).row_version == 2
+
+
+def test_accepting_share_increase_settles_expired_reservation_in_its_command(client, split_http):
+    split = split_http
+    receiver = _seed_receiver(name="Expired sibling", ledger_id="expired_sibling")
+    invited = client.post(f"/api/expenses/{split['source']}/split-invite",
+        headers=_split_headers(client, split["sender"]),
+        json={"expected_row_version": 1, "receiver_account_id": receiver, "amount_cents": 6000})
+    assert invited.status_code == 200, invited.json()
+    public_id = invited.json()["public_id"]
+    with SessionLocal() as db:
+        db.execute(update(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id)
+            .values(expires_at=now_utc() - timedelta(days=1)))
+        db.commit()
+        invitations = bsplit.list_sent_for_expense(db, sender_account_id=split["sender_id"], expense_id=split["source"])
+        assert _remaining_split_capacity({"amount_cents": 10000, "home_currency_code": "CNY"},
+            invitations, presentation_currency="CNY") == ("CNY", 6000)
+        assert db.scalar(select(BillSplitInvitation.status).where(BillSplitInvitation.public_id == public_id)) == "invited"
+    proposal, basis = change_split_http(client, split, share=5000, net=5000)
+    accepted = accept_split_http(client, split, proposal, basis)
+    assert accepted.status_code == 200, accepted.json()
+    assert accepted.json()["agreed_share_amount_cents"] == 5000
+    assert accepted.json()["original_debt"]["remaining_amount_cents"] == 5000
+    with SessionLocal() as db:
+        expired = db.scalar(select(BillSplitInvitation).where(BillSplitInvitation.public_id == public_id))
+        assert expired.status == "expired" and expired.expired_at is not None
+        assert len(list(db.scalars(select(LedgerAuditLog).where(
+            LedgerAuditLog.invitation_public_id == public_id, LedgerAuditLog.action == "bill_split_expired")))) == 1
+        assert db.get(BillSplitInvitation, split["invitation_id"]).amount_cents == 4000

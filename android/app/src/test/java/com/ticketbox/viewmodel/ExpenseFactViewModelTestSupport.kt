@@ -263,7 +263,7 @@ internal class FakeExpenseFactActions : ExpenseFactActions {
         merchantSnapshot = null,
         categorySuggestion = null,
         expenseTimeSnapshot = null,
-        expiresAt = "2026-09-01T00:00:00Z",
+        expiresAt = "2999-09-01T00:00:00Z",
         createdAt = "2026-08-28T00:00:00Z",
         acceptedAt = null,
         rejectedAt = null,

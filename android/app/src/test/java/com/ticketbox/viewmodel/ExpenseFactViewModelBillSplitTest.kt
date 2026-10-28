@@ -8,6 +8,7 @@ import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -38,6 +39,43 @@ internal class ExpenseFactViewModelBillSplitTest : ExpenseFactViewModelTestBase(
 
         assertEquals(1_200L, listOf(decreased, increased, legacy).factActiveSplitCentsFor(7L))
         assertEquals(listOf(400L, 400L, 300L), listOf(decreased, increased, legacy).map { it.amountCents })
+    }
+
+    @Test
+    fun `capacity at the deadline excludes only the expired invitation`() = edit { fake ->
+        val deadline = Instant.parse("2026-10-27T12:00:00Z")
+        val expired = fake.sentInvite(publicId = "expired", amountCents = 900L)
+            .copy(expiresAt = deadline.toString())
+        val live = fake.sentInvite(publicId = "live", amountCents = 200L)
+            .copy(expiresAt = deadline.plusSeconds(1).toString())
+        val accepted = fake.sentInvite(publicId = "accepted", status = BillSplitStatusValues.ACCEPTED)
+            .copy(expiresAt = deadline.minusSeconds(1).toString(), currentAgreedShareAmountCents = 300L)
+
+        assertEquals(500L, listOf(expired, live, accepted).factActiveSplitCentsFor(7L, deadline))
+        assertEquals(BillSplitStatusValues.INVITED, expired.status)
+        assertEquals(900L, expired.amountCents)
+    }
+
+    @Test
+    fun `expired reservation does not block saving the replacement intent`() = edit { fake ->
+        fake.billSplitSentResult = {
+            Result.success(listOf(fake.sentInvite(publicId = "expired", amountCents = 1_000L)
+                .copy(expiresAt = "2000-01-01T00:00:00Z")))
+        }
+        fake.splitMembersResult = { Result.success(listOf(fake.member(memberId = 3L, accountId = 333L))) }
+        fake.createBillSplitResult = { _, _, _ -> Result.success(11L) }
+        val vm = viewModel(fake)
+        vm.openBillSplitInviteSheet()
+        advanceUntilIdle()
+        vm.selectBillSplitInviteMember(3L)
+        vm.updateBillSplitInviteAmount("10.00")
+        vm.sendBillSplitInvite()
+        advanceUntilIdle()
+
+        assertEquals(1, fake.createBillSplitCalls)
+        assertEquals(Triple(7L, 333L, 1_000L), fake.lastCreateBillSplitArgs)
+        assertEquals(UiText.res(R.string.bill_split_submission_saved), vm.uiState.value.message)
+        assertEquals(BillSplitStatusValues.INVITED, vm.uiState.value.billSplitSent.single().status)
     }
 
     @Test

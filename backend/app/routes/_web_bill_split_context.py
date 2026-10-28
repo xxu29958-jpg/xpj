@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import uuid4
 
 from fastapi import Request
@@ -21,6 +22,10 @@ from app.services.spending_contract_service import accounting_zone
 from app.services.time_service import ensure_utc, now_utc
 
 _INVITE_ACTIVE_STATUSES = ("invited", "accepted")
+
+
+def _is_expired(invitation, presented_at: datetime) -> bool:
+    return invitation.status == "invited" and ensure_utc(invitation.expires_at) <= presented_at
 
 
 def _fmt_local(value) -> str:
@@ -64,7 +69,7 @@ def inbox_rows(db: Session, account_id: int, invitations: list, *, status: str) 
             "amount_cents": str(inv.amount_cents), "home_currency_code": inv.home_currency_code,
             "sender_display_name": sender_name, "sender_context": sender_context,
             "merchant": inv.merchant_snapshot or "", "expires_at": inv.expires_at,
-            "is_expired": inv.status == "invited" and ensure_utc(inv.expires_at) <= presented_at,
+            "is_expired": _is_expired(inv, presented_at),
             "accept_choices": [{"ledger_id": ledger, "name": names.get(ledger, "账本")} for ledger in writer_ids
                                if ledger != inv.sender_ledger_id],
             "received_href": flow_href(f"/web/expenses/{received['expense_id']}/edit", ledger_id=received["ledger_id"],
@@ -80,13 +85,15 @@ def _remaining_split_capacity(
     invitations: list,
     *,
     presentation_currency: str,
+    presented_at: datetime | None = None,
 ) -> tuple[str, int]:
+    presented_at = presented_at or now_utc()
     currency_code = expense.get("home_currency_code") or presentation_currency
     active_total = projection_values_sum_to_int(
         (
             getattr(invitation, "current_agreed_share_amount_cents", invitation.amount_cents)
             for invitation in invitations
-            if invitation.status in _INVITE_ACTIVE_STATUSES
+            if invitation.status in _INVITE_ACTIVE_STATUSES and not _is_expired(invitation, presented_at)
         ),
         label="web_bill_split.active_total",
     )
@@ -148,15 +155,16 @@ def build_split_invite_context(
 
     invitations = bsplit.list_sent_for_expense(db, sender_account_id=sender_account_id, expense_id=expense["id"])
     debt_links = accepted_split_debt_links(db, invitations, selected_id=selected_ledger_id, account_id=sender_account_id)
+    presented_at = now_utc()
     expense_currency, remaining_cents = _remaining_split_capacity(
         expense,
         invitations,
         presentation_currency=require_runtime_home_currency_code(db),
+        presented_at=presented_at,
     )
-    presented_at = now_utc()
     sent_rows = []
     for inv in invitations:
-        is_expired = inv.status == "invited" and ensure_utc(inv.expires_at) <= presented_at
+        is_expired = _is_expired(inv, presented_at)
         sent_rows.append(
             {
                 "public_id": inv.public_id,

@@ -8,7 +8,9 @@ import com.ticketbox.domain.model.BillSplitStatusValues
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.canInitiateBillSplit
+import com.ticketbox.domain.model.presentedStatus
 import com.ticketbox.presentation.parseAmountCents
+import java.time.Instant
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -24,12 +26,10 @@ enum class BillSplitSentLoadState {
  * 能力不丢：已发列表 / 发起 sheet / 撤回。
  * 创建意图由 Room 接收，发送和重试只由已注册的 dispatcher 执行。
  */
-internal fun List<BillSplitSent>.factActiveSplitCentsFor(expenseId: Long): Long =
-    filter { it.senderExpenseId == expenseId && it.isActiveSplit }
+internal fun List<BillSplitSent>.factActiveSplitCentsFor(expenseId: Long, now: Instant = Instant.now()): Long =
+    filter { it.senderExpenseId == expenseId &&
+        (it.status == BillSplitStatusValues.ACCEPTED || it.presentedStatus(now) == BillSplitStatusValues.INVITED) }
         .sumOf { it.currentAgreedShareAmountCents }
-
-private val BillSplitSent.isActiveSplit: Boolean
-    get() = status == BillSplitStatusValues.INVITED || status == BillSplitStatusValues.ACCEPTED
 
 private data class FactBillSplitInviteRequest(
     val expense: com.ticketbox.domain.model.Expense,

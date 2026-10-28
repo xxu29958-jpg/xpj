@@ -82,8 +82,8 @@ data class BillSplitReceivedBill(
  * accounting timezone plays no part. An unparsable expiresAt fails open
  * (returns false): the row degrades to its server status instead of locking
  * actions early. C3b 起 sent 行共享同一镜像（过期即隐藏撤回、显示已过期）；
- * 真正的落锤权威始终是服务端 sweeper 与 command-time settle（accept/reject/
- * cancel 过期一律先落 expired 再 410），这里只是把已知事实提前呈现。
+ * 服务端命令持久化过期：accept/reject/cancel 返回 410，新的容量命令在源账单锁下
+ * 结算已到期邀请。这里只呈现截止时间，不改写服务端状态。
  */
 private fun localInviteExpired(status: String, expiresAt: String, now: Instant): Boolean {
     if (status != BillSplitStatusValues.INVITED) return false

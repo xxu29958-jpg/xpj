@@ -4,16 +4,20 @@ across connections; stale reads cannot overwrite a peer's terminal result.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from threading import Event
+from time import monotonic, sleep
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import BillSplitInvitation, Expense, LedgerAuditLog
 from app.services import bill_split_service as bsplit
+from app.services.bill_split_service import _create as create_impl
 from app.services.bill_split_service import _transitions as transition_impl
 from app.services.bill_split_service._transitions import _mark_expired
 from app.services.currency_binding_service import resolve_write_capability
@@ -321,3 +325,111 @@ def test_cancel_after_ttl_marks_expired_and_returns_410(*, identity) -> None:
         assert inv.status == "expired"
         assert inv.expired_at is not None
         assert inv.cancelled_at is None
+
+
+def _assert_waiting_on_acceptance(create_pid: int, accept_pid: int) -> None:
+    with SessionLocal() as observer:
+        stop = monotonic() + 5
+        while monotonic() < stop:
+            blockers = observer.scalar(text("SELECT pg_blocking_pids(:pid)"), {"pid": create_pid})
+            if accept_pid in blockers:
+                break
+            sleep(0.01)
+        assert accept_pid in blockers, "new invitation never waited on the acceptance claim"
+
+
+@pytest.mark.real_db
+def test_accept_claim_wins_while_new_invitation_waits_across_ttl(monkeypatch, identity):
+    receiver = _seed_receiver(name="TTL winner", ledger_id="ttl_winner")
+    public_id = _create_invitation_for_race(receiver_account_id=receiver, amount_cents=5000)
+    with SessionLocal() as db:
+        invitation = bsplit.get_invitation(db, public_id)
+        source_id = invitation.sender_expense_id
+        deadline = invitation.expires_at
+    source_locked, accepted_claim, finish_accept, past_deadline = Event(), Event(), Event(), Event()
+    pids = {}
+    load_parent, claim_accept = create_impl._load_split_parent_expense, transition_impl._claim_invitation_acceptance
+
+    def load_and_hold_source(db, **kwargs):
+        parent = load_parent(db, **kwargs)
+        pids["create"] = db.scalar(text("SELECT pg_backend_pid()"))
+        source_locked.set()
+        assert accepted_claim.wait(10), "accept did not reach its invitation claim"
+        return parent
+
+    def claim_and_hold_accept(db, **kwargs):
+        claimed = claim_accept(db, **kwargs)
+        assert claimed
+        pids["accept"] = db.scalar(text("SELECT pg_backend_pid()"))
+        past_deadline.set()
+        accepted_claim.set()
+        assert finish_accept.wait(10), "accept continuation was not released"
+        return claimed
+
+    def create_competing():
+        with SessionLocal() as db:
+            db.execute(text("SET LOCAL lock_timeout = '8s'"))
+            bsplit.create_invitation(db, sender_account_id=seeded_owner_account_id(), sender_ledger_id="owner",
+                expense_id=source_id, receiver_account_id=receiver, amount_cents=1000,
+                idempotency_key=str(uuid4()), expected_row_version=1)
+
+    def accept_original():
+        with SessionLocal() as db:
+            db.execute(text("SET LOCAL lock_timeout = '8s'"))
+            _, received = bsplit.accept_invitation(db, public_id=public_id,
+                accepting_account_id=receiver, target_ledger_id="ttl_winner")
+            return received.id
+
+    monkeypatch.setattr(create_impl, "_load_split_parent_expense", load_and_hold_source)
+    monkeypatch.setattr(transition_impl, "_claim_invitation_acceptance", claim_and_hold_accept)
+    monkeypatch.setattr(transition_impl, "now_utc", lambda: deadline + timedelta(seconds=1)
+        if past_deadline.is_set() else deadline - timedelta(seconds=1))
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        creating = pool.submit(create_competing)
+        try:
+            assert source_locked.wait(10)
+            accepting = pool.submit(accept_original)
+            assert accepted_claim.wait(10)
+            _assert_waiting_on_acceptance(pids["create"], pids["accept"])
+        finally:
+            finish_accept.set()
+        received_id = accepting.result(timeout=10)
+        with pytest.raises(AppError, match="拆账邀请总额") as error:
+            creating.result(timeout=10)
+        assert error.value.error == "split_total_exceeds_parent"
+    with SessionLocal() as db:
+        invitation = bsplit.get_invitation(db, public_id)
+        assert invitation.status == "accepted" and invitation.received_expense_id == received_id
+        assert invitation.expired_at is None
+        assert len(list(db.scalars(select(BillSplitInvitation).where(BillSplitInvitation.sender_expense_id == source_id)))) == 1
+        assert list(db.scalars(select(LedgerAuditLog).where(
+            LedgerAuditLog.invitation_public_id == public_id, LedgerAuditLog.action == "bill_split_expired"))) == []
+
+
+@pytest.mark.real_db
+def test_new_invitation_expiry_wins_after_accept_passed_its_deadline_check(monkeypatch, identity):
+    receiver = _seed_receiver(name="TTL loser", ledger_id="ttl_loser")
+    public_id = _create_invitation_for_race(receiver_account_id=receiver, amount_cents=5000)
+    load_member = transition_impl._load_accept_target_member
+    replacement_ids = []
+
+    def load_then_replace(db, **kwargs):
+        member = load_member(db, **kwargs)
+        _backdate_expiry(public_id)
+        with SessionLocal() as peer:
+            old = bsplit.get_invitation(peer, public_id)
+            replacement = bsplit.create_invitation(peer, sender_account_id=old.sender_account_id,
+                sender_ledger_id=old.sender_ledger_id, expense_id=old.sender_expense_id,
+                receiver_account_id=receiver, amount_cents=5000, idempotency_key=str(uuid4()), expected_row_version=1)
+            replacement_ids.append(replacement.public_id)
+        return member
+
+    monkeypatch.setattr(transition_impl, "_load_accept_target_member", load_then_replace)
+    with SessionLocal() as db, pytest.raises(AppError) as error:
+        bsplit.accept_invitation(db, public_id=public_id, accepting_account_id=receiver, target_ledger_id="ttl_loser")
+    assert error.value.error == "invitation_expired" and error.value.status_code == 410
+    _assert_one_expiry(public_id)
+    with SessionLocal() as db:
+        assert db.scalar(select(Expense).where(Expense.split_origin_invitation_id == public_id)) is None
+        assert len(replacement_ids) == 1
+        assert bsplit.get_invitation(db, replacement_ids[0]).status == "invited"

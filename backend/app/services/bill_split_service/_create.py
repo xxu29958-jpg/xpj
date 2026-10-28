@@ -20,6 +20,7 @@ from app.services.bill_split_service._common import (
     _load_writer_member,
 )
 from app.services.bill_split_service._query import current_agreed_share_expression
+from app.services.bill_split_service._transitions import settle_expired_source_invitations
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.currency_common import normalize_currency_code
 from app.services.idempotency import (
@@ -222,6 +223,7 @@ def ensure_changed_share_capacity(
     if new_share <= previous_share:
         return  # A decrease must still help resolve an already-corrected source.
     _ensure_parent_can_be_split(expense, amount_cents=new_share)
+    settle_expired_source_invitations(db, expense)
     total = _active_split_total(db, expense.id) - previous_share + new_share
     if total > expense.amount_cents:
         raise AppError("split_total_exceeds_parent", "调整后的分摊总额不能超过原账单金额。", status_code=422)
@@ -235,6 +237,7 @@ def _ensure_invitation_capacity(
     amount_cents: int,
 ) -> None:
     assert expense.amount_cents is not None
+    settle_expired_source_invitations(db, expense)
     active_split_total = _active_split_total(db, expense.id)
     requested_total = fold_sum_to_int(
         active_split_total + amount_cents,
