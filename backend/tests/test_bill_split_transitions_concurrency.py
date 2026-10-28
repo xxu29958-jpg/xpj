@@ -327,6 +327,17 @@ def test_cancel_after_ttl_marks_expired_and_returns_410(*, identity) -> None:
         assert inv.cancelled_at is None
 
 
+def _assert_waiting_on_acceptance(create_pid: int, accept_pid: int) -> None:
+    with SessionLocal() as observer:
+        stop = monotonic() + 5
+        while monotonic() < stop:
+            blockers = observer.scalar(text("SELECT pg_blocking_pids(:pid)"), {"pid": create_pid})
+            if accept_pid in blockers:
+                break
+            sleep(0.01)
+        assert accept_pid in blockers, "new invitation never waited on the acceptance claim"
+
+
 @pytest.mark.real_db
 def test_accept_claim_wins_while_new_invitation_waits_across_ttl(monkeypatch, identity):
     receiver = _seed_receiver(name="TTL winner", ledger_id="ttl_winner")
@@ -379,14 +390,7 @@ def test_accept_claim_wins_while_new_invitation_waits_across_ttl(monkeypatch, id
             assert source_locked.wait(10)
             accepting = pool.submit(accept_original)
             assert accepted_claim.wait(10)
-            with SessionLocal() as observer:
-                stop = monotonic() + 5
-                while monotonic() < stop:
-                    blockers = observer.scalar(text("SELECT pg_blocking_pids(:pid)"), {"pid": pids["create"]})
-                    if pids["accept"] in blockers:
-                        break
-                    sleep(0.01)
-                assert pids["accept"] in blockers, "new invitation never waited on the acceptance claim"
+            _assert_waiting_on_acceptance(pids["create"], pids["accept"])
         finally:
             finish_accept.set()
         received_id = accepting.result(timeout=10)
