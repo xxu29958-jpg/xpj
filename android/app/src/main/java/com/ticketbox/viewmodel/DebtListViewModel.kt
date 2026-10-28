@@ -412,7 +412,8 @@ class DebtListViewModel(
 private fun debtBillTaskFailure(error: Exception): RepositoryException {
     if (error is RepositoryException) return error
     logNetworkWarning("operation=Debt bill task unverified", error)
-    return RepositoryException("原稿暂时未能读取，请保留当前输入后重试。", cause = error)
+    return RepositoryException("Debt bill draft is unreadable",
+        localFailure = com.ticketbox.data.repository.LocalRepositoryFailure.DebtBillDraftUnreadable, cause = error)
 }
 
 private data class DebtModelTemplate(

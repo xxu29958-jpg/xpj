@@ -73,7 +73,7 @@ internal data class DebtBillTaskResult(
 internal suspend fun runDebtBillTask(sources: com.ticketbox.data.repository.DebtBillActions,
     input: com.ticketbox.data.repository.DebtBillInput?, action: DebtBillTaskAction): Result<DebtBillTaskResult> = try {
     // A successful local lookup, not a failed capture reply, proves no input was admitted.
-    require(input != null || action == DebtBillTaskAction.Discard) { "请重新选择原账单，继续这次保存。" }
+    require(input != null || action == DebtBillTaskAction.Discard) { "Debt bill input is missing" }
     Result.success(when (action) {
         DebtBillTaskAction.Preview -> DebtBillTaskResult(preview = sources.original(requireNotNull(input)).getOrThrow())
         DebtBillTaskAction.RetryCapture -> { sources.recover(requireNotNull(input), discard = false).getOrThrow(); DebtBillTaskResult() }

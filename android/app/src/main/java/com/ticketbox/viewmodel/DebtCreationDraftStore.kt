@@ -94,7 +94,7 @@ internal class DebtCreationDraftStore(private val state: SavedStateHandle) {
 
     fun resume(input: com.ticketbox.data.repository.DebtBillInput, current: DebtCreationDraft?): DebtCreationDraft {
         if (current?.hasInput == true && current.creationKey != input.payload.creationKey) {
-            throw RepositoryException("请先保存或放弃当前原稿，再继续另一张账单。")
+            throw RepositoryException("Another debt bill draft is active", localFailure = LocalRepositoryFailure.DebtBillDraftInUse)
         }
         return restore(input.original.draftJson, input.binding)
     }

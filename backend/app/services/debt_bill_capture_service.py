@@ -97,6 +97,15 @@ def accepted_capture_command(db: Session, *, tenant_id: str, key: str, fingerpri
     return row.response_body
 
 
+def _stage_new_capture(db: Session, source: DebtBillCapture) -> None:
+    """Freeze the creation receipt before later lifecycle changes can advance the row."""
+    db.add(source)
+    db.flush()
+    source.accepted_receipt = DebtBillCaptureReceipt(public_id=source.public_id,
+        creation_key=source.creation_key, capture_key=source.capture_key, row_version=source.row_version,
+        input_sha256=source.input_sha256, image_hash=source.image_hash).model_dump(mode="json")
+
+
 def capture_bill(db: Session, *, auth: AuthContext, creation_key: str, capture_key: str,
                  data: bytes, file_name: str, media_type: str | None,
                  source_context: ImageSourceContext | None) -> DebtBillCaptureReceipt:
@@ -124,11 +133,7 @@ def capture_bill(db: Session, *, auth: AuthContext, creation_key: str, capture_k
                 accepted_receipt={}, file_name=Path(file_name).name[:255], media_type=saved.media_type,
                 input_sha256=digest, image_path=saved.relative_path, image_hash=saved.image_hash,
                 image_size_bytes=saved.size_bytes, image_evidence=saved.image_evidence)
-            db.add(source)
-            db.flush()
-            source.accepted_receipt = DebtBillCaptureReceipt(public_id=source.public_id, creation_key=creation_key,
-                capture_key=capture_key, row_version=source.row_version, input_sha256=digest,
-                image_hash=source.image_hash).model_dump(mode="json")
+            _stage_new_capture(db, source)
         elif source.request_fingerprint != fingerprint or source.created_by_account_id != auth.account_id:
             raise AppError("idempotency_key_reused", status_code=422)
         result = DebtBillCaptureReceipt.model_validate(source.accepted_receipt)
@@ -137,11 +142,13 @@ def capture_bill(db: Session, *, auth: AuthContext, creation_key: str, capture_k
         commit_attempted = True
         db.commit()
         return result
-    except Exception:  # noqa: BLE001 - preserve originals after an uncertain COMMIT
+    except Exception:
         db.rollback()
+        raise
+    finally:
+        # Only an uncommitted publication may be removed; uncertain COMMIT keeps the original.
         if saved is not None and not commit_attempted:
             delete_relative_upload(saved.relative_path)
-        raise
 
 
 def require_pending_capture(source: DebtBillCapture, expected_row_version: int) -> None:

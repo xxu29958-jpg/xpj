@@ -206,10 +206,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "Unexpected draft encoding or Room-write faults report through logNetworkWarning and retain their cause in a classified RepositoryException. The UI resolves FactInputNotSaved instead of raw SQL, local paths or private exception text. A failed original write prevents Debt admission; retry preserves the source, body and creation key. Cancellation propagates without reporting.",
     },
     (ANDROID + "viewmodel/DebtListDraftActions.kt", "runDebtBillTask"): {
-        "sha256": "db95240fe52d11546c040af24ad44bc526569187d9f5e78f9ef0f5f30805ce1e",
+        "sha256": "ff91758a7098aabba7100f28d68a7ec6e5581e33244bca4886ed240b2472c717",
         "owner": "existing DebtBillRepository NetworkErrorHandler.safeCall and original Result",
         "test": "android/app/src/test/java/com/ticketbox/viewmodel/DebtBillDraftContinuityTest.kt::editsBeforeCaptureAdmissionSurviveAColdEditorAndResumeTheOriginalTask",
-        "reason": "Every production source operation already returns the shared safeCall Result. This composition preserves that same failure without a second log or retry; its only local absence refusal is fixed user text. Cancellation propagates, and no failed refresh/parse/discard becomes an ended source or accepted Debt. The existing continuation test verifies handled failure identity and quiet cancellation through this real function.",
+        "reason": "Every production source operation already returns the shared safeCall Result. This composition preserves that same failure without a second log or retry; its local absence diagnostic is sanitized by debtBillTaskFailure into a classified resource message. Cancellation propagates, and no failed refresh/parse/discard becomes an ended source or accepted Debt. The existing continuation test verifies handled failure identity and quiet cancellation through this real function.",
     },
     (ANDROID + "viewmodel/DebtListViewModel.kt", "billTask"): {
         "sha256": "4833f47f04606c19c92e753f9191689b01b230f5deaee7e99a67c203481918b3",

@@ -42,6 +42,8 @@ private fun localFailureText(reason: LocalRepositoryFailure): UiText = UiText.re
     LocalRepositoryFailure.OriginalWriterRequired -> R.string.original_writer_required
     LocalRepositoryFailure.FactInputReviewRequired -> R.string.expense_fact_input_review_required
     LocalRepositoryFailure.FactInputNotSaved -> R.string.expense_fact_input_save_failed
+    LocalRepositoryFailure.DebtBillDraftInUse -> R.string.debt_bill_draft_in_use
+    LocalRepositoryFailure.DebtBillDraftUnreadable -> R.string.debt_bill_draft_unreadable
 })
 
 @StringRes

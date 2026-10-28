@@ -97,6 +97,7 @@ ERROR_MESSAGES = {
     "image_not_found": "图片不存在或已被清理。",
     "image_integrity_mismatch": "原件内容与保存时的记录不一致，已停止读取。请核对并补回这笔账单的同一原件。",
     "image_read_failed": "原件暂时无法读取，请稍后重试；账单记录会保留。",
+    "original_cleaned": "原件已按保留设置清理，来源记录仍保留。",
     "original_review_conflict": "原件在核对后发生了变化，请重新查看当前原件后再确认。",
     "original_already_verified": "这份原件已有内容标识，请使用原件检查；不能通过确认改写它的身份。",
     "original_already_associated": "这笔账单已有关联原件或保留记录，不能用新图片替换。请先查看原件状态，缺失时补回同一原件。",
