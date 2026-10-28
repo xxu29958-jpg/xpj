@@ -41,6 +41,7 @@ from app.services.ocr_service._models import (
     OcrFactSnapshot,
     OcrProvider,
     OcrResult,
+    OcrRun,
 )
 from app.services.ocr_service._providers import (
     EmptyOcrProvider,
@@ -59,6 +60,7 @@ __all__ = [
     "MockOcrProvider",
     "OcrProvider",
     "OcrResult",
+    "OcrRun",
     "OcrExtraction",
     "OcrApplyContractError",
     "OcrFactSnapshot",

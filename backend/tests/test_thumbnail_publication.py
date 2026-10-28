@@ -21,7 +21,7 @@ from app.services.expense_service._image import ensure_thumbnail_file
 from app.services.expense_service._thumbnail_publication import publish_claimed_thumbnail
 from app.services.file_service import resolve_upload_path_for_tenant, save_upload_bytes
 from app.services.ledger_service import find_owner_account_id_for_ledger
-from app.services.ocr_service import OcrExtraction, OcrResult
+from app.services.ocr_service import OcrExtraction, OcrResult, OcrRun
 from app.services.pending_enrichment_task_service import PENDING_EXPENSE_ENRICHMENT_TASK_TYPE
 from tests._infra.assets import PNG_BYTES
 
@@ -61,8 +61,8 @@ def _seed_queued_enrichment_task() -> tuple[int, int, int]:
         return expense_id, row_version, task.id
 
 
-def _ocr_result() -> list[OcrExtraction]:
-    return [
+def _ocr_result() -> OcrRun:
+    return OcrRun(extractions=(
         OcrExtraction(
             provider_name="mock",
             ocr_model="test-model",
@@ -72,8 +72,8 @@ def _ocr_result() -> list[OcrExtraction]:
                 amount_cents=1990,
                 merchant="盒马",
             ),
-        )
-    ]
+        ),
+    ))
 
 
 def _enable_delete_after_confirm(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -116,7 +116,7 @@ def test_enrichment_commit_failure_never_publishes_staged_thumbnail(
     monkeypatch.setattr(
         enrich_service,
         "collect_auto_ocr_extractions",
-        lambda *_args, **_kwargs: [],
+        lambda *_args, **_kwargs: OcrRun(),
     )
     monkeypatch.setattr(enrich_service, "_try_stage_thumbnail", capture_staged_attempt)
 
@@ -171,7 +171,7 @@ def test_enrichment_commit_ack_loss_leaves_thumbnail_owner_self_healing(
     monkeypatch.setattr(
         enrich_service,
         "collect_auto_ocr_extractions",
-        lambda *_args, **_kwargs: [],
+        lambda *_args, **_kwargs: OcrRun(),
     )
     monkeypatch.setattr(enrich_service, "_try_stage_thumbnail", capture_staged_attempt)
 

@@ -24,7 +24,15 @@ internal fun BackgroundTaskDto.toPendingEnrichmentTask(): PendingEnrichmentTask 
     }
     return PendingEnrichmentTask(
         status = status,
-        outcome = outcome,
+        outcome = if (outcome == PendingEnrichmentOutcome.Updated || outcome == PendingEnrichmentOutcome.NoResult) {
+            when (resultSummary?.get("ocr_notice") as? String) {
+                "enhancement_failed" -> PendingEnrichmentOutcome.EnhancementFailed
+                "provider_conflict" -> PendingEnrichmentOutcome.ProviderConflict
+                else -> outcome
+            }
+        } else {
+            outcome
+        },
     )
 }
 

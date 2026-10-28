@@ -13,6 +13,25 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class PendingEnrichmentObserverTest {
     @Test
+    fun reopeningPartialRecognitionKeepsReviewActionAndRefreshesTheDraft() = runTest {
+        for ((outcome, kind) in listOf(
+            PendingEnrichmentOutcome.EnhancementFailed to PendingEnrichmentFeedbackKind.EnhancementFailed,
+            PendingEnrichmentOutcome.ProviderConflict to PendingEnrichmentFeedbackKind.ProviderConflict,
+        )) {
+            var state = PendingEnrichmentUiState()
+            var refreshes = 0
+            val observer = PendingEnrichmentObserver(this,
+                { Result.success(PendingEnrichmentTask("completed", outcome)) },
+                { true }, { state = it }, { refreshes++ })
+            observer.restore(listOf(PendingUploadReceipt(1, "original-task")))
+            advanceUntilIdle()
+            assertEquals(kind, state.feedback?.kind)
+            assertEquals(0, state.activeCount)
+            assertEquals(1, refreshes)
+        }
+    }
+
+    @Test
     fun dismissingTerminalFeedbackKeepsAPausedTaskRetryable() = runTest {
         var online = false
         var state = PendingEnrichmentUiState()

@@ -22,6 +22,8 @@ data class PendingEnrichmentFeedback(
 enum class PendingEnrichmentFeedbackKind {
     Updated,
     NoResult,
+    EnhancementFailed,
+    ProviderConflict,
     Conflict,
     Failed,
     Cancelled,
@@ -181,6 +183,8 @@ internal fun PendingEnrichmentTask.toPendingEnrichmentFeedbackKind(): PendingEnr
     "completed" -> when (outcome) {
         PendingEnrichmentOutcome.Updated -> PendingEnrichmentFeedbackKind.Updated
         PendingEnrichmentOutcome.NoResult -> PendingEnrichmentFeedbackKind.NoResult
+        PendingEnrichmentOutcome.EnhancementFailed -> PendingEnrichmentFeedbackKind.EnhancementFailed
+        PendingEnrichmentOutcome.ProviderConflict -> PendingEnrichmentFeedbackKind.ProviderConflict
         PendingEnrichmentOutcome.Conflict -> PendingEnrichmentFeedbackKind.Conflict
         PendingEnrichmentOutcome.NotPending -> PendingEnrichmentFeedbackKind.NotPending
         null -> PendingEnrichmentFeedbackKind.Failed

@@ -103,6 +103,16 @@ private val FEEDBACK_KIND_SPECS: Map<PendingEnrichmentFeedbackKind, PendingEnric
         titleRes = R.string.pending_enrichment_no_result,
         openExpenseLabelRes = R.string.pending_enrichment_action_complete,
     ),
+    PendingEnrichmentFeedbackKind.EnhancementFailed to PendingEnrichmentKindSpec(
+        tone = PendingEnrichmentBandTone.Warn,
+        titleRes = R.string.pending_enrichment_enhancement_failed,
+        openExpenseLabelRes = R.string.pending_enrichment_action_review,
+    ),
+    PendingEnrichmentFeedbackKind.ProviderConflict to PendingEnrichmentKindSpec(
+        tone = PendingEnrichmentBandTone.Warn,
+        titleRes = R.string.pending_enrichment_provider_conflict,
+        openExpenseLabelRes = R.string.pending_enrichment_action_review,
+    ),
     PendingEnrichmentFeedbackKind.Conflict to PendingEnrichmentKindSpec(
         tone = PendingEnrichmentBandTone.Info,
         titleRes = R.string.pending_enrichment_conflict,
@@ -257,6 +267,8 @@ private fun bandIcon(kind: PendingEnrichmentFeedbackKind?): ImageVector = when (
     PendingEnrichmentFeedbackKind.NoResult -> Icons.Filled.Edit
     PendingEnrichmentFeedbackKind.Failed -> Icons.Filled.ErrorOutline
     PendingEnrichmentFeedbackKind.Conflict,
+    PendingEnrichmentFeedbackKind.EnhancementFailed,
+    PendingEnrichmentFeedbackKind.ProviderConflict,
     PendingEnrichmentFeedbackKind.Cancelled,
     PendingEnrichmentFeedbackKind.NotPending,
     PendingEnrichmentFeedbackKind.Unavailable,

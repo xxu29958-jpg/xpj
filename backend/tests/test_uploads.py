@@ -21,6 +21,7 @@ from app.services.category_common import DEFAULT_CATEGORIES
 from app.services.expense_service._enrich import PendingEnrichmentResult, enrich_pending_expense
 from app.services.file_service import resolve_protected_image, save_upload_bytes
 from app.services.identity_service import authenticate_upload_link, hash_secret
+from app.services.ocr_service import OcrRun
 from app.services.time_service import ensure_utc, now_utc
 from tests._infra.assets import PNG_BYTES
 from tests._infra.env import TEST_UPLOAD_RELATIVE
@@ -702,7 +703,7 @@ def test_auto_enrich_cleans_generated_thumbnail_when_later_step_fails(monkeypatc
     monkeypatch.setattr(
         enrich_mod,
         "collect_auto_ocr_extractions",
-        lambda *_args, **_kwargs: [],
+        lambda *_args, **_kwargs: OcrRun(),
     )
     no_result = enrich_pending_expense(expense_id, "owner")
 

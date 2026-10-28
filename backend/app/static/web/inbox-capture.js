@@ -33,6 +33,7 @@
   picker.required = false;
   task.querySelector("[data-capture-picker-hint]").textContent = "支持一次选择多张小票";
   const items = [];
+  const reviewableStates = ["updated", "no_result", "enhancement_failed", "provider_conflict"];
   let sending = false;
   let stopped = false;
   let attempted = false;
@@ -63,7 +64,7 @@
     progress.value = accepted;
     if (accepted) {
       if (accepted === items.length) status.textContent = "图片已经安全收到，可从近期上传再次打开原单。";
-      const readyToReview = accepted === items.length && items.every(item => ["updated", "no_result"].includes(item.recognition));
+      const readyToReview = accepted === items.length && items.every(item => reviewableStates.includes(item.recognition));
       task.querySelector("[data-capture-title]").textContent = readyToReview ? "小票已准备好核对" : "小票正在整理";
       task.querySelector("[data-capture-description]").textContent = readyToReview ? "核对金额、商家和日期，确认后计入流水。" : "已收到的图片会继续识别，可以离开后再回来。";
       task.querySelector("[data-capture-progress] .product-page-summary").textContent = readyToReview ? "上传和识别已完成，账单仍需你确认。" : "上传完成后，识别还会继续。重试沿用原任务。";
@@ -109,7 +110,7 @@
     link.textContent = "查看进度";
     message.addEventListener("recognitioncomplete", event => {
       item.recognition = event.detail.state;
-      link.textContent = event.detail.state === "updated" ? "去核对" : "查看原单";
+      link.textContent = reviewableStates.includes(event.detail.state) ? "去核对" : "查看原单";
       link.href = "/web/expenses/" + encodeURIComponent(result.receipt.id) + "/edit?ledger_id=" + encodeURIComponent(scope.ledgerId) + "&return_to=pending";
       update();
     });

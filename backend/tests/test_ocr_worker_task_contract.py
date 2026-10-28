@@ -14,14 +14,67 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
+from app.errors import AppError
 from app.models import BackgroundTask, Expense, LedgerMember, OcrFact
 from app.services import background_task_service, background_task_worker
 from app.services.expense_service import _enrich
+from app.services.learning_service import read_ocr_facts
+from app.services.ocr_service import OcrResult, OcrRun
 from app.services.pending_enrichment_task_service import run_pending_expense_enrichment_task
 from app.services.time_service import now_utc
+from tests.test_ocr_auto_pipeline import _providers
 from tests.test_pending_enrichment_task_service import _ocr_result, _seed_pending_enrichment_task
 
 pytestmark = pytest.mark.real_db
+
+
+@pytest.mark.parametrize("enhancement,notice,fact_count", [
+    (AppError("ocr_timeout", status_code=503), "enhancement_failed", 1),
+    (OcrResult("商户：盒马\n实付：78.00", 0.99), "provider_conflict", 2),
+])
+def test_partial_ocr_commits_primary_fact_and_notice_once(identity, monkeypatch, enhancement, notice, fact_count):
+    expense_id, predecessor, task_id = _seed_pending_enrichment_task()
+    primary = OcrResult("商户：盒马\n实付：18.00", 0.8)
+    _providers(monkeypatch, primary, enhancement)
+    monkeypatch.setattr(_enrich, "_try_stage_thumbnail", lambda *_: None)
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        task.status = "queued"
+        db.commit()
+    for _ in range(2):
+        background_task_worker.run_task(task_id, _payload(expense_id, predecessor))
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        expense = db.get(Expense, expense_id)
+        summary = json.loads(task.result_summary_json)
+        assert task.status == "completed" and summary["outcome"] == "updated"
+        assert summary["ocr_notice"] == notice
+        assert len(summary["ocr_attempts"]) == 2
+        assert expense.amount_cents == 1800 and expense.row_version == predecessor + 1
+        facts = list(db.scalars(select(OcrFact).where(OcrFact.expense_id == expense_id)))
+        assert len(facts) == fact_count
+        assert read_ocr_facts(db, tenant_id="owner", expenses=[expense])[expense_id].raw_text == primary.raw_text
+        if notice == "provider_conflict":
+            assert {fact.parsed_amount_cents for fact in facts} == {1800, 7800}
+        from app.routes._web_pending_enrichment_watch import _completed_state
+        assert _completed_state(task.result_summary_json) == notice
+
+
+def test_total_ocr_failure_records_no_prediction_or_applied_receipt(identity, monkeypatch):
+    expense_id, predecessor, task_id = _seed_pending_enrichment_task()
+    _providers(monkeypatch, OcrResult("", None), AppError("ocr_timeout", status_code=503))
+    monkeypatch.setattr(_enrich, "_try_stage_thumbnail", lambda *_: None)
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        task.status = "queued"
+        db.commit()
+    background_task_worker.run_task(task_id, _payload(expense_id, predecessor))
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        assert task.status == "failed" and task.error_code == "ocr_timeout"
+        assert task.result_summary_json is None
+        assert db.get(Expense, expense_id).row_version == predecessor
+        assert db.scalar(select(func.count()).select_from(OcrFact).where(OcrFact.expense_id == expense_id)) == 0
 
 
 def _payload(expense_id, predecessor):
@@ -130,9 +183,9 @@ def test_image_evidence_is_preserved_with_the_fact_and_task_receipt(identity, mo
                 "width": 1, "height": 1, "coordinate_space": "exif-transposed-pixels",
                 "blocks": [{"text": "盒马", "confidence": 0.98, "box": [[0, 0], [1, 0], [1, 1], [0, 1]]}],
                 "identity": {"recipe_sha256": "frozen-recipe"}}
-    extraction = _ocr_result()[0]
+    extraction = _ocr_result().extractions[0]
     extraction = replace(extraction, result=replace(extraction.result, evidence=evidence))
-    monkeypatch.setattr(_enrich, "collect_auto_ocr_extractions", lambda *_args, **_kwargs: [extraction])
+    monkeypatch.setattr(_enrich, "collect_auto_ocr_extractions", lambda *_args, **_kwargs: OcrRun(extractions=(extraction,)))
     monkeypatch.setattr(_enrich, "_try_stage_thumbnail", lambda *_: None)
     with SessionLocal() as db:
         task = db.get(BackgroundTask, task_id)
@@ -242,8 +295,8 @@ def test_original_bytes_replaced_during_compute_cannot_publish_evidence(identity
 
     def replace_source(*_args, **_kwargs):
         source_path.write_bytes(b"different bytes after inference")
-        extraction = _ocr_result()[0]
-        return [replace(extraction, result=replace(extraction.result, evidence={"input_sha256": original_digest}))]
+        extraction = _ocr_result().extractions[0]
+        return OcrRun(extractions=(replace(extraction, result=replace(extraction.result, evidence={"input_sha256": original_digest})),))
 
     monkeypatch.setattr(_enrich, "collect_auto_ocr_extractions", replace_source)
     monkeypatch.setattr(_enrich, "_try_stage_thumbnail", lambda *_: None)

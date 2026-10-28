@@ -203,7 +203,9 @@
     color: var(--state-success-fg);
 }
 
-.inbox-enrichment--no_result {
+.inbox-enrichment--no_result,
+.inbox-enrichment--enhancement_failed,
+.inbox-enrichment--provider_conflict {
     border-color: var(--state-warn-border);
     background: var(--state-warn-bg);
     color: var(--state-warn-fg);

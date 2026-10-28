@@ -17,6 +17,7 @@ from app.routes._web_session_common import resolve_web_actor_account_id
 from app.services import background_task_service
 from app.services.background_task_response import task_response_dicts
 from app.services.expense_service import fetch_expense_row_version_in_status
+from app.services.expense_service._enrichment_receipt import OCR_NOTICE_MESSAGES
 from app.services.pending_enrichment_task_service import (
     PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
 )
@@ -29,6 +30,8 @@ PendingEnrichmentState = Literal[
     "conflict",
     "failed",
     "cancelled",
+    "enhancement_failed",
+    "provider_conflict",
 ]
 _COMPLETED_OUTCOMES = frozenset({"updated", "no_result", "not_pending", "conflict"})
 
@@ -50,6 +53,7 @@ class PendingEnrichmentPresentation:
 
 
 _TERMINAL_FEEDBACK = {
+    **{key: (message, "") for key, message in OCR_NOTICE_MESSAGES.items()},
     "updated": ("识别结果已更新，请核对后确认。", "success"),
     "no_result": (
         "识别完成，当前填写没有变化；请打开账单继续核对。",
@@ -102,6 +106,9 @@ def _completed_state(raw_summary: str | None) -> PendingEnrichmentState:
     outcome = summary.get("outcome")
     if not isinstance(outcome, str) or outcome not in _COMPLETED_OUTCOMES:
         return "failed"
+    notice = summary.get("ocr_notice")
+    if outcome in {"updated", "no_result"} and isinstance(notice, str) and notice in OCR_NOTICE_MESSAGES:
+        return notice
     return outcome
 
 
