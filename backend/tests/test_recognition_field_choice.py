@@ -75,6 +75,17 @@ def test_original_amount_and_merchant_choices_are_scoped_and_replayed_once(clien
 _TWO_LINE_TOTAL = "邻里便利店\n合计 ¥{0}\n实付 ¥{0}\n人民币 CNY"
 
 
+def test_equal_amounts_sharing_a_payment_label_keep_both_original_locations(client, identity):
+    expense_id = _seed(paid=4990, raw_override="¥49.90\n支付成功\n¥49.90")
+    headers = negotiated_headers(client, identity.app_headers)
+    amounts = [item for item in client.get(f"/api/expenses/{expense_id}", headers=headers).json()["recognition_fields"]
+        if item["field"] == "amount_cents"]
+    assert len(amounts) == 2, amounts
+    assert {item["original_text"] for item in amounts} == {"¥49.90\n支付成功", "支付成功\n¥49.90"}
+    assert {(item["role"], item["value"]) for item in amounts} == {("payment", 4990)}
+    assert len({item["id"] for item in amounts}) == 2
+
+
 def _hidden_payment_choice(client, headers, expense_id):
     from app.services.learning_service import read_ocr_facts
     from app.services.recognition_field_service import recognition_fields

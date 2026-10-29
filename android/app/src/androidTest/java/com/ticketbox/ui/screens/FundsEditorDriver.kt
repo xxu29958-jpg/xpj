@@ -43,7 +43,12 @@ internal class FundsEditorDriver(private val compose: ComposeContentTestRule) : 
     }
 
     fun openAccount(id: String) {
-        compose.runOnIdle { vm.open(id) }
+        compose.runOnIdle {
+            // Clear the previous detail and cancel its pending read before
+            // awaiting this navigation; a retained matching id is not completion.
+            vm.back()
+            vm.open(id)
+        }
         compose.waitUntil(10_000) { vm.state.value.detail?.publicId == id &&
             (vm.state.value.detail?.kind != "credit" || vm.state.value.installments != null) }
     }

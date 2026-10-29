@@ -44,6 +44,12 @@
     merchant.value = candidate.value; merchant.dispatchEvent(new Event("input", {bubbles: true}));
     return true;
   }
+  function unavailableMessage(form, candidate, correction) {
+    const input = fieldInput(form, candidate.field), noun = candidate.field === "amount_cents" ? "金额" : "商户";
+    if (!input || input.disabled) return `这笔账单的${noun}不能在这里修改。`;
+    if (correction) return `${noun}还是空的：请先在上方填入你核对后的${noun}，再点“注明已对照此处纠正${noun}”。`;
+    return `无法自动填入这条${noun}，请直接修改${noun}。`;
+  }
   document.addEventListener("focusin", event => {
     const field = {amount_yuan: "amount_cents", merchant: "merchant"}[event.target.name];
     const candidates = field && event.target.form?.querySelector(`[data-recognized-fields="${field}"]`);
@@ -58,10 +64,7 @@
     const status = button.closest("[data-recognized-fields]").querySelector("[data-recognized-field-status]");
     if (!applyCandidate(form, candidate, correction)) {
       // An enabled control never fails silently: say why nothing was recorded.
-      const input = fieldInput(form, candidate.field), noun = candidate.field === "amount_cents" ? "金额" : "商户";
-      status.textContent = !input || input.disabled ? `这笔账单的${noun}不能在这里修改。`
-        : correction ? `${noun}还是空的：请先在上方填入你核对后的${noun}，再点“注明已对照此处纠正${noun}”。`
-        : `无法自动填入这条${noun}，请直接修改${noun}。`;
+      status.textContent = unavailableMessage(form, candidate, correction);
       return;
     }
     saveChoices(form, [...choices(form).filter(item => item.field !== candidate.field), {
