@@ -141,17 +141,19 @@ def test_web_pending_upload_keeps_saved_row_visible_when_task_submit_fails(
     web_client: TestClient,
     monkeypatch,
 ) -> None:
+    from app.services.background_task_recovery_service import resume_due_ocr_tasks
+    from app.services.time_service import now_utc
 
     def fail_submit(*_args, **_kwargs):
         raise RuntimeError("executor unavailable")
 
-    monkeypatch.setattr("app.services.background_task_executor.submit_task", fail_submit)
-
-    response = web_client.post(
-        "/web/pending/upload?ledger_id=owner&idempotency_key=original-native-upload",
-        files={"file": ("receipt.png", PNG_BYTES, "image/png")},
-        follow_redirects=False,
-    )
+    with monkeypatch.context() as refusal:
+        refusal.setattr("app.services.background_task_executor.submit_task", fail_submit)
+        response = web_client.post(
+            "/web/pending/upload?ledger_id=owner&idempotency_key=original-native-upload",
+            files={"file": ("receipt.png", PNG_BYTES, "image/png")},
+            follow_redirects=False,
+        )
 
     assert response.status_code == 303, response.text
     redirect_query = parse_qs(urlsplit(response.headers["location"]).query)
@@ -159,8 +161,11 @@ def test_web_pending_upload_keeps_saved_row_visible_when_task_submit_fails(
     with SessionLocal() as db:
         task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == task_public_id))
         assert task is not None
-        assert task.status == "failed"
+        assert task.status == "queued" and task.recovery_attempts == 1
         assert task.error_code == "task_submission_failed"
+        assert task.recovery_after > now_utc() and task.result_summary_json is None
+        assert json.loads(task.recovery_history_json)[0]["error_code"] == "task_submission_failed"
+        task_id, original_input = task.id, task.input_payload_json
         expense = db.scalar(
             select(Expense)
             .where(
@@ -172,11 +177,30 @@ def test_web_pending_upload_keeps_saved_row_visible_when_task_submit_fails(
         )
         assert expense is not None
         assert expense.status == "pending"
+        expense_id = expense.id
 
     page = web_client.get(response.headers["location"])
     assert page.status_code == 200
-    assert 'data-enrichment-state="failed"' in page.text
-    assert "自动识别失败，账单仍安全保留" in page.text
+    assert f'data-task-public-id="{task_public_id}"' in page.text
+    assert 'data-inbox-enrichment-watch' in page.text
+    assert 'data-enrichment-state="failed"' not in page.text
+
+    # Advance the persisted deadline; the real scanner still owns execution.
+    with SessionLocal() as db:
+        db.get(BackgroundTask, task_id).recovery_after = now_utc()
+        db.commit()
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
+    assert resume_due_ocr_tasks() == 1
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        assert (task.public_id, task.status, task.recovery_attempts) == (task_public_id, "completed", 1)
+        assert task.input_payload_json == original_input
+        assert task.source_expense_id == expense_id
+        assert json.loads(task.result_summary_json)["outcome"] == "no_result"
+        assert list(db.scalars(select(Expense.id).where(Expense.source == "网页上传"))) == [expense_id]
+    final_page = web_client.get(response.headers["location"])
+    assert final_page.status_code == 200
+    assert 'data-enrichment-state="no_result"' in final_page.text
 
 
 def test_web_pending_upload_rejects_viewer_before_multipart_parse(
