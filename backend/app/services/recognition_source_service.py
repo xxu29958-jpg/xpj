@@ -15,11 +15,7 @@ def candidate_source_location(fact, candidate: dict) -> RecognitionSourceLocatio
     indices = candidate.get("block_indices", [])
     if not indices or not blocks:
         return None
-    # This check also rejects historical/manual text whose block ordering no
-    # longer describes the original string. Equal amounts never supply a link.
-    supported = {index for index, start, end in evidence_block_spans(fact.raw_text, blocks)
-        if any(start < right and left < end for left, right in candidate.get("raw_spans", []))}
-    if set(indices) != supported or any(type(index) is not int or index < 0 or index >= len(blocks) for index in indices):
+    if not _candidate_matches_blocks(fact.raw_text, blocks, indices, candidate.get("raw_spans", [])):
         return None
     try:
         location = RecognitionSourceLocation(image_sha256=evidence.get("input_sha256"),
@@ -31,3 +27,11 @@ def candidate_source_location(fact, candidate: dict) -> RecognitionSourceLocatio
             for box in location.boxes for x, y in box):
         return None
     return location
+
+
+def _candidate_matches_blocks(raw_text: str, blocks: list, indices: list, spans: list) -> bool:
+    # Reject historical/manual text whose ordering no longer describes the
+    # original string. Equal amounts never supply a source link.
+    supported = {index for index, start, end in evidence_block_spans(raw_text, blocks)
+        if any(start < right and left < end for left, right in spans)}
+    return set(indices) == supported and all(type(index) is int and 0 <= index < len(blocks) for index in indices)
