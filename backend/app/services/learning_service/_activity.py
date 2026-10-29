@@ -15,7 +15,7 @@ def learning_activity(db: Session, *, tenant_id: str) -> dict:
     feedback = list(db.scalars(select(LedgerLearningEvent)
         .where(LedgerLearningEvent.tenant_id == tenant_id,
             LedgerLearningEvent.subject_kind.in_(("expense", "repayment_draft")),
-            LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice", "recognition_field_choice", "repayment_choice")))
+            LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice", "recognition_field_choice", "original_text_feedback", "repayment_choice")))
         .order_by(LedgerLearningEvent.created_at.desc(), LedgerLearningEvent.id.desc()).limit(10)))
     expenses = {row.id: row for row in db.scalars(select(Expense).where(Expense.tenant_id == tenant_id,
         Expense.id.in_({row.subject_id for row in feedback if row.subject_kind == "expense"})))}

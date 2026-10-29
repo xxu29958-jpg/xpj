@@ -196,7 +196,19 @@ RECOGNITION_FIELD_CHOICE = AlgorithmType(
 )
 
 
+ORIGINAL_TEXT_FEEDBACK = AlgorithmType(
+    decision_type="original_text_feedback",
+    current_version="original-pixel-feedback-v1",
+    display_label="原图文字反馈",
+    description="独立保存明确核对的原文；只有精确范围与转写同时核验才可用于文字回放。不会改写预测或账目，也不自动训练模型。",
+    subject_kinds=("expense",),
+    default_retention_days=0,
+    marker_keys=("field", "image_sha256"),
+)
+
+
 ALGORITHM_TYPES: dict[str, AlgorithmType] = {
+    ORIGINAL_TEXT_FEEDBACK.decision_type: ORIGINAL_TEXT_FEEDBACK,
     CATEGORY_SUGGESTION.decision_type: CATEGORY_SUGGESTION,
     DUPLICATE_CANDIDATE.decision_type: DUPLICATE_CANDIDATE,
     BUDGET_SUGGESTION.decision_type: BUDGET_SUGGESTION,

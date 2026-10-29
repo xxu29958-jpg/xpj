@@ -16,6 +16,7 @@
       ('category_suggestion', '少重复选分类', '记住同一家店通常归到哪类，下次核对时可一键填入。', '收件 → 打开小票 → 分类', '/web/pending', 'green'),
       ('recognition_time_choice', '少重复找时间', '记住你在同类原件中选过的位置，下一份相近材料优先展示这一处。', '收件 → 打开小票 → 原件时间', '/web/pending', 'green'),
       ('recognition_field_choice', '少重复找金额与商户', '只参考本人明确选过的原件位置，下一份相近材料优先展示这一处。', '收件 → 打开小票 → 对照原件', '/web/pending', 'green'),
+      ('original_text_feedback', '保留核对过的原文', '原图文字与记账金额分别保存；只在范围和文字均核验时用于文字回放。', '收件 → 打开小票 → 原图文字反馈', '/web/pending', 'green'),
       ('repayment_choice', '记住对应欠款', '参考本人明确选过的对应欠款；改判或撤回后不再参考。', '收件 → 还款采集 → 对应欠款', '/web/repayment-drafts', 'green'),
       ('duplicate_candidate', '让重复核对更有依据', '结合图片、金额、商家和时间提醒相似账单；你的决定只绑定当时核对的两笔。', '收件 → 相似账单', '/web/duplicates', 'apricot'),
       ('budget_suggestion', '看懂支出是否偏高', '用自己的历史支出作比较，帮助判断本月各类花费。', '洞察 → 报表 → 月报摘要与预算对照', '/web/reports', 'lilac')
@@ -52,6 +53,7 @@
         {% if row.repayment and row.payload.get('_repayment_target') %}<p class="workspace-note">当时选择：{{ row.payload._repayment_target.counterparty_label or '未命名欠款' }}。</p>{% endif %}
         <p class="workspace-note">{{ row.reason }}。{% if row.payload.get('_selected_category') %}当时选择：{{ row.payload._selected_category }}。{% endif %}{% if row.event.signal_type == 'duplicate_candidate' %}这次关系：{{ '同一交易' if row.payload.get('_relation') == 'same' else '不同交易' if row.payload.get('_relation') == 'distinct' else '证据不足' }}；不套用到其它同商家、同金额账单。{% endif %}</p>
         {% if row.event.signal_type == 'recognition_time_choice' and row.payload.get('selected') %}<p class="workspace-note">当时选择：{{ row.payload.selected.label }} · {{ row.payload.selected.original_text }}。{% if row.payload.intent == 'bookkeeping' %}保存值另有记账调整，没有把它当作原件识别纠正。{% endif %}</p>{% endif %}
+        {% if row.event.signal_type == 'original_text_feedback' %}<p class="workspace-note">核对原文：{{ row.payload.verbatim_text or '原图未提供可辨读的文字' }}。{{ row.payload.get('_qualification_reason', '') }}；后来的记账调整不会重写这段原文。</p>{% endif %}
         {% if row.eligibility in ['valid', 'quarantined'] %}
         <form method="post" action="/owner/algorithm-versions/withdraw-feedback">
           <input type="hidden" name="ledger_id" value="{{ selected_ledger.ledger_id }}">
@@ -92,7 +94,7 @@
             <div><dt>关闭但未作选择</dt><dd>{{ row.closed_without_feedback_count }}</dd></div>
           </dl>
           <p class="workspace-note">操作事件保留改判历史；已关闭不等于明确拒绝，数量不能作为准确率。</p>
-          {% if row.decision_type in ['category_suggestion', 'duplicate_candidate', 'recognition_time_choice', 'recognition_field_choice', 'repayment_choice'] %}
+          {% if row.decision_type in ['category_suggestion', 'duplicate_candidate', 'recognition_time_choice', 'recognition_field_choice', 'original_text_feedback', 'repayment_choice'] %}
           {% for axis, enabled, label, stop, resume in [('new_suggestions', row.new_suggestions_enabled, '新建议', '停止生成新建议', '恢复生成新建议'), ('training', row.training_enabled, '此版本反馈', '隔离此版本反馈', '恢复此版本反馈资格')] %}
           {% if axis == 'training' or (entry and row.algorithm_version == entry.current_version) %}
           <form method="post" action="/owner/algorithm-versions/policy">

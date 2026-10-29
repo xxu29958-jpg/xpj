@@ -160,6 +160,7 @@ data class ExpenseDraft(
     val categoryDecisionPublicId: String? = null,
     val recognitionTimeChoice: RecognitionTimeChoice? = null,
     val recognitionFieldChoices: List<RecognitionFieldChoice>? = null,
+    val originalTextFeedback: List<OriginalTextFeedback>? = null,
 )
 
 data class ExpenseItem(

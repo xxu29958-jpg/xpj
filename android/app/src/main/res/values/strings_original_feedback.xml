@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="original_feedback_open">记录原图文字（可选）</string>
+    <string name="original_feedback_pending">原文反馈将随本次保存记录</string>
+    <string name="original_feedback_help">原图实际文字可以与记账值不同。这里记录原文，随账目一起保存；定位可以跳过。</string>
+    <string name="original_feedback_text">原图实际写着</string>
+    <string name="original_feedback_text_check">我已对照原图核对这段文字</string>
+    <string name="original_feedback_region_check">我已确认此范围与这段原文对应</string>
+    <string name="original_feedback_wrong">文字读错</string>
+    <string name="original_feedback_missing">没有识别出来</string>
+    <string name="original_feedback_unreadable">看不清</string>
+    <string name="original_feedback_absent">图中没有</string>
+    <string name="original_feedback_payment">实付</string>
+    <string name="original_feedback_price">原价</string>
+    <string name="original_feedback_discount">优惠</string>
+    <string name="original_feedback_transaction_time">交易时间</string>
+    <string name="original_feedback_order_time">下单时间</string>
+    <string name="original_feedback_capture_time">截图时间</string>
+    <string name="original_feedback_point">已记下大致位置</string>
+    <string name="original_feedback_unlocated">暂不定位</string>
+    <string name="original_feedback_region_pending">范围尚未核验</string>
+    <string name="original_feedback_region_verified">已核验范围</string>
+    <string name="original_feedback_locate">查看原图并指出位置</string>
+    <string name="original_feedback_location_help">先浏览原图；选点模式下，第一点记大致位置，第二点确定范围。返回保留原文与账目填写。</string>
+    <string name="original_feedback_skip_location">不定位</string>
+    <string name="original_feedback_use_location">使用这一位置</string>
+    <string name="original_feedback_remove">移除此反馈</string>
+    <string name="original_feedback_incomplete">原文或原图尚未核对完整。请补全原文、等待原图，或移除此反馈后保存账目。</string>
+</resources>

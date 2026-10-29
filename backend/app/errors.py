@@ -16,6 +16,7 @@ class Utf8JSONResponse(JSONResponse):
 
 
 ERROR_MESSAGES = {
+    "original_feedback_source_changed": "原图或位置已变化，尚未保存这次原文反馈。当前填写仍保留，请重新对照原图，或移除反馈后保存账目。",
     "split_change_unavailable": "这笔往来没有可调整的已接受分账约定。",
     "split_change_party_only": "只有这笔分账的双方可以提出或处理新约定。",
     "split_change_not_found": "没有找到这份分账变更提议。",

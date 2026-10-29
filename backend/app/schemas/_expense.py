@@ -25,6 +25,7 @@ from app.schemas._money import (
     expense_item_money_schema_extra,
 )
 from app.schemas._ocr_region import OcrRegionRequest
+from app.schemas._original_text_feedback import OriginalTextFeedback
 from app.schemas._recognition_choice import RecognitionTimeChoice
 from app.schemas._recognition_fields import RecognitionFieldCandidate, RecognitionFieldChoice
 from app.schemas._recognition_time import RecognitionTimeResponse
@@ -159,6 +160,7 @@ class ExpenseFieldChanges(BaseModel):
 
     time_input: AccountingTimeInput | None = None
     recognition_field_choices: list[RecognitionFieldChoice] | None = Field(default=None, max_length=2)
+    original_text_feedback: list[OriginalTextFeedback] | None = Field(default=None, max_length=5)
     expected_row_version: int
     amount_cents: NonNegativeMoneyMinor | None = None
     original_currency: str | None = Field(default=None, min_length=3, max_length=3)
@@ -180,6 +182,10 @@ class ExpenseFieldChanges(BaseModel):
 
     @model_validator(mode="after")
     def explicit_category_requires_value(self):
+        if self.original_text_feedback is not None:
+            fields = [annotation.field for annotation in self.original_text_feedback]
+            if len(fields) != len(set(fields)):
+                raise ValueError("each original field can have only one annotation per submission")
         if self.recognition_field_choices is not None:
             fields = [choice.field for choice in self.recognition_field_choices]
             if len(fields) != len(set(fields)):
