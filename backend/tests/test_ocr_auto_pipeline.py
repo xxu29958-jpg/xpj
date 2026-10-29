@@ -103,3 +103,17 @@ def test_merged_enhancement_cannot_drop_usable_primary_amount(monkeypatch):
     run = collect_auto_ocr_extractions(_expense(), raise_on_failure=True)
     assert run.extractions[-1].result == primary
     assert run.notice == "provider_conflict"
+
+
+@pytest.mark.parametrize("items,selected,notice", [
+    ("", "primary", None),
+    ("苹果 x1 10.00\n咖啡 x1 2.34\n", "primary", "provider_conflict"),
+    ("苹果 x1 10.00\n牛奶 x1 2.34\n", "enhancement", None),
+])
+def test_enhancement_must_preserve_primary_line_items(monkeypatch, items, selected, notice):
+    primary = OcrResult("商户：盒马\n苹果 x1 10.00\n牛奶 x1 2.34\n实付：12.34", 0.99)
+    enhancement = OcrResult(f"商户：盒马\n{items}实付：12.34\n交易时间：2026-10-29 08:00:00", 0.1)
+    _providers(monkeypatch, primary, enhancement)
+    run = collect_auto_ocr_extractions(_expense(), timezone_name="Asia/Shanghai", raise_on_failure=True)
+    assert run.extractions[-1].result == (primary if selected == "primary" else enhancement)
+    assert run.notice == notice

@@ -245,6 +245,9 @@ def _comparison_fields(parsed: ParsedReceipt, merged: OcrResult) -> dict[str, tu
         value = getattr(merged, field)
         if value is not None and field not in fields:
             fields[field] = (value,)
+    if parsed.items:
+        fields["items"] = tuple((item.name, item.amount_cents, item.quantity_text,
+            item.unit_price_cents, normalize_category(item.category), item.kind) for item in parsed.items)
     return fields
 
 

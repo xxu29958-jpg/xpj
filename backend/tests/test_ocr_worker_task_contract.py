@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.errors import AppError
-from app.models import BackgroundTask, Expense, LedgerMember, OcrFact
+from app.models import BackgroundTask, Expense, ExpenseItem, LedgerMember, OcrFact
 from app.services import background_task_service, background_task_worker
 from app.services.expense_service import _enrich
 from app.services.learning_service import read_ocr_facts
@@ -78,6 +78,28 @@ def test_total_ocr_failure_records_no_prediction_or_applied_receipt(identity, mo
         assert task.result_summary_json is None
         assert db.get(Expense, expense_id).row_version == predecessor
         assert db.scalar(select(func.count()).select_from(OcrFact).where(OcrFact.expense_id == expense_id)) == 0
+
+
+def test_enhancement_with_fewer_items_keeps_primary_draft_items(identity, monkeypatch):
+    expense_id, predecessor, task_id = _seed_pending_enrichment_task()
+    primary = OcrResult("商户：盒马\n苹果 x1 10.00\n牛奶 x1 2.34\n实付：12.34", 0.99)
+    enhancement = OcrResult("商户：盒马\n实付：12.34\n交易时间：2026-10-29 08:00:00", 0.1)
+    _providers(monkeypatch, primary, enhancement)
+    monkeypatch.setattr(_enrich, "_try_stage_thumbnail", lambda *_: None)
+    with SessionLocal() as db:
+        db.get(BackgroundTask, task_id).status = "queued"
+        db.commit()
+    for _ in range(2):
+        background_task_worker.run_task(task_id, _payload(expense_id, predecessor))
+    with SessionLocal() as db:
+        expense = db.get(Expense, expense_id)
+        assert expense.amount_cents == 1234 and expense.row_version == predecessor + 1
+        assert read_ocr_facts(db, tenant_id="owner", expenses=[expense])[expense_id].raw_text == primary.raw_text
+        items = list(db.scalars(select(ExpenseItem).where(ExpenseItem.expense_id == expense_id).order_by(ExpenseItem.position)))
+        assert [(item.name, item.amount_cents, item.is_ocr_draft) for item in items] == [
+            ("苹果", 1000, True), ("牛奶", 234, True)]
+        assert db.scalar(select(func.count()).select_from(OcrFact).where(OcrFact.expense_id == expense_id)) == 2
+        assert db.get(BackgroundTask, task_id).status == "completed"
 
 
 def _payload(expense_id, predecessor):
