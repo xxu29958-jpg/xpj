@@ -68,6 +68,8 @@ data class DebtListUiState(
     )
 
     val activeBill: com.ticketbox.data.repository.DebtBillInput? get() = billInputs.singleOrNull { it.captureKey == activeBillCaptureKey }
+    val canPrepareBill: Boolean get() = canModify && !isParsingBill && !isSubmitting && !publicationUnverified &&
+        homeCurrencyResolved && ledgerHomeCurrency != null
     val canSubmitCreation: Boolean get() = canModify && !isSubmitting && !isParsingBill && homeCurrencyResolved &&
         (activeBillCaptureKey == null || activeBill?.source?.let { it.status == "pending" && it.originalState == "verified" } == true)
     val hasCreationDraft: Boolean get() = addDraft.userTouched || addDraft.counterpartyLabel.isNotEmpty() ||
