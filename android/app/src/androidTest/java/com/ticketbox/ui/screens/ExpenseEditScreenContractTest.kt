@@ -94,7 +94,7 @@ class ExpenseEditScreenContractTest {
         val preview = composeRule.onNode(hasContentDescription(InstrumentationRegistry.getInstrumentation().targetContext.getString(
             com.ticketbox.R.string.ocr_region_help)))
         preview.performTouchInput { click(Offset(center.x, center.y)) }
-        composeRule.onNodeWithText("返回").performScrollTo().performClick()
+        composeRule.onNode(hasText("返回") and hasAnyAncestor(isDialog())).performScrollTo().performClick()
         composeRule.onNodeWithText("保存").performClick()
         composeRule.runOnIdle {
             assertEquals(1700L, saved?.originalAmountMinor)
