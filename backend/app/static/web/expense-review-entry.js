@@ -141,7 +141,7 @@
       idField: "expense_id", titleField: "merchant", commandKeyField: saved =>
         ["keep", "reject"].includes(saved.command_action) ? saved.command_action + "_idempotency_key" : "idempotency_key", draftRefField: "draft_ref",
       submitSelector: "[data-expensereview-submit]", pendingLabel: "核实这次结果",
-      legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key", "value_score", "regret_score", "funding_json"],
+      legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key", "value_score", "regret_score", "funding_json", "original_text_feedback"],
       embedded: options.embedded, onAccepted: options.onAccepted, multiple: !options.embedded,
       action: saved => saved.command_action === "keep" ? "/web/duplicates/" + saved.expense_id + "/keep" :
         "/web/expenses/" + saved.expense_id + "/" + (saved.command_action || "confirm"),
@@ -259,7 +259,7 @@
       const scope = JSON.parse(element.dataset.expensereviewScope), list = element.querySelector("ul");
       list.replaceChildren();
       const store = window.TicketboxDraftStore.createStore({prefix: "ticketbox:expensereview-edit-draft:v1:",
-        fields: [...names, "amount_placeholder", "amount_inputmode"], legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key", "value_score", "regret_score", "funding_json"],
+        fields: [...names, "amount_placeholder", "amount_inputmode"], legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key", "value_score", "regret_score", "funding_json", "original_text_feedback"],
         validRef: /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i});
       for (const record of store.list(scope)) {
         const item = document.createElement("li"), link = document.createElement("a");
