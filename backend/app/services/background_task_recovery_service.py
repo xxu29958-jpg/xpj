@@ -170,6 +170,10 @@ def _recovery_loop(stop_event: threading.Event) -> None:
         except SQLAlchemyError as exc:
             # The owned scanner must survive a transient database refusal.
             report_error(logger, "background OCR recovery scan failed", error=exc)
+        except Exception as exc:  # noqa: BLE001 - terminal boundary of the owned scanner thread
+            report_error(logger, "background OCR recovery scanner stopped", error=exc)
+            stop_event.set()
+            return
         stop_event.wait(2)
 
 
