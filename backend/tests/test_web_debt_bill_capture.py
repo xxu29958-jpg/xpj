@@ -54,7 +54,9 @@ def upload(browser_task, *, key=None, override=None):
 
 def command(browser_task, source, action, *, key=None):
     browser, binding, _, headers = browser_task
-    return browser.post(f"/web/debt-bills/{source['public_id']}/{action}", headers=headers,
+    paths = {"parse": f"/web/debt-bills/{source['public_id']}/parse",
+        "discard": f"/web/debt-bills/{source['public_id']}/discard"}
+    return browser.post(paths[action], headers=headers,
         json={key: value for key, value in {**binding, "expected_row_version": source["row_version"],
             "idempotency_key": key or str(uuid4())}.items() if key != "csrf_token"})
 
