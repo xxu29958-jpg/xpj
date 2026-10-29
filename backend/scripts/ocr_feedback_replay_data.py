@@ -52,6 +52,8 @@ def load_replay(path: Path) -> list[ReplayMaterial]:
     if manifest.get("schema_version") != 1:
         raise ValueError("unsupported feedback replay manifest")
     material = [item for entry in manifest["recordings"] for item in _recording(entry, path.parent)]
+    if not material:
+        raise ValueError("feedback replay requires at least one recorded image")
     indexed = {item.fixture.name: item for item in material}
     order = manifest["arrival_order"]
     if len(indexed) != len(material) or len(set(order)) != len(order) or set(order) != set(indexed):

@@ -11,13 +11,15 @@ from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
+from app.errors import AppError
 from app.models import Expense, LedgerLearningEvent
 from app.schemas import ExpenseUpdateRequest
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.exchange_rate_service import apply_currency_payload
-from app.services.file_service import save_upload_bytes
+from app.services.file_service import save_original_replenishment_bytes
 from app.services.learning_service import OcrFactDraft, record_ocr_fact
 from app.services.learning_service._source_eligibility import feedback_assessments
 from app.services.learning_service._withdrawal import withdraw_feedback
@@ -31,14 +33,15 @@ def _seed(material: ReplayMaterial) -> tuple[int, list[str]]:
     body = inputs.image.read_bytes()
     if hashlib.sha256(body).hexdigest() != inputs.image_sha256:
         raise ValueError("original changed before replay")
-    saved = save_upload_bytes(body, tenant_id="owner", filename=inputs.image.name,
+    saved = save_original_replenishment_bytes(body, tenant_id="owner", expected_sha256=inputs.image_sha256,
+        filename=inputs.image.name,
         content_type="image/jpeg" if inputs.image.suffix.lower() in {".jpg", ".jpeg"} else "image/" + inputs.image.suffix[1:])
     with SessionLocal.begin() as db:
         capability = resolve_write_capability(db)
         expense = Expense(tenant_id="owner", source="camera", status="pending", category="其他",
             merchant=snapshot["parsed_merchant"] or "", amount_cents=None, original_amount_minor=None,
             original_currency_code=inputs.currency_code, home_currency_code=capability.home_currency_code,
-            image_path=saved.relative_path, image_hash=inputs.image_sha256, created_at=datetime.now(UTC))
+            image_path=saved.relative_path, image_hash=saved.image_hash, created_at=datetime.now(UTC))
         db.add(expense)
         db.flush()
         if snapshot["parsed_amount_cents"] is not None:
@@ -102,8 +105,14 @@ def _feedback_state(expense_id: int, mode: str) -> dict:
 
 def _replay_one(client, headers: dict, material: ReplayMaterial, mode: str) -> dict:
     expense_id, scopes = _seed(material)
+    original = client.get(f"/api/expenses/{expense_id}/image", headers=headers)
+    digest = material.fixture.inputs.image_sha256
+    if (original.status_code != 200 or original.headers.get("etag") != f'"{digest}"'
+            or hashlib.sha256(original.content).hexdigest() != digest):
+        raise RuntimeError("frozen original could not be read with its recorded hash")
     current = _response(client.get(f"/api/expenses/{expense_id}", headers=headers))
     result = _prediction(current, material)
+    result["original_verified_sha256"] = digest
     result["amount_context_scopes"] = scopes
     # No oracle values were used to seed the original or request the prediction.
     payload = _oracle_payload(current, material, mode)
@@ -147,7 +156,7 @@ def replay(client, headers: dict, materials: list[ReplayMaterial], mode: str) ->
                     else "new_amount_context" if scopes else "no_comparable_amount_context")
                 if material.fixture.split == "development":
                     development_scopes.update(scopes)
-        except Exception as error:  # retain every attempted arrival, including failed commands
+        except (AppError, OSError, RuntimeError, SQLAlchemyError, ValueError) as error:
             # Raw SQL/HTTP errors may contain private material. The bounded
             # type and failed sample locate the attempt without copying it.
             row.update(outcome="replay_error", error_type=type(error).__name__)

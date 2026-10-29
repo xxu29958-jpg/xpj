@@ -19,16 +19,21 @@ if str(_BACKEND_ROOT) not in sys.path:
 MODES = ("baseline", "feedback", "withdrawn")
 
 
-def source_identity() -> dict:
+def source_identity(output_dir: Path | None = None) -> dict:
     from scripts.ocr_benchmark_data import sha256
 
     def git(*args):
         return subprocess.check_output(["git", *args], cwd=_BACKEND_ROOT, text=True).strip()
 
+    status_args = ["status", "--porcelain", "--untracked-files=all", "--", ":/"]
+    root = Path(git("rev-parse", "--show-toplevel")).resolve()
+    if output_dir is not None and output_dir.resolve().is_relative_to(root):
+        relative_output = output_dir.resolve().relative_to(root).as_posix()
+        status_args.append(f":(top,literal,exclude){relative_output}")
     paths = sorted((_BACKEND_ROOT / "scripts").glob("ocr_feedback_replay*.py"))
-    paths.append(_BACKEND_ROOT / "tests/test_ocr_feedback_replay.py")
+    paths.extend(sorted((_BACKEND_ROOT / "tests").glob("test_ocr_feedback_replay*.py")))
     return {"commit": git("rev-parse", "HEAD"), "tree": git("rev-parse", "HEAD^{tree}"),
-        "working_status": git("status", "--porcelain"),
+        "working_status": git(*status_args),
         "replay_sources": {str(path.relative_to(_BACKEND_ROOT)): sha256(path) for path in paths}}
 
 
@@ -44,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     manifest, output = args.manifest.resolve(), args.output_dir.resolve()
     materials = load_replay(manifest)
-    identity = source_identity()
+    identity = source_identity(output)
     output.mkdir(parents=True, exist_ok=False)
     environment = child_environment(os.environ)
     environment.update(XPJ_OCR_REPLAY_MANIFEST=str(manifest), XPJ_OCR_REPLAY_OUTPUT=str(output))
@@ -54,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     with (output / "tests.log").open("w", encoding="utf-8") as log:
         completed = subprocess.run(command, cwd=_BACKEND_ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT, check=False)
     arms = {mode: json.loads(path.read_text(encoding="utf-8")) for mode in MODES if (path := output / f"{mode}.json").exists()}
-    stable = source_identity() == identity
+    stable = source_identity(output) == identity
     result = {"schema_version": 1, "source": identity, "source_unchanged": stable,
         "manifest_sha256": sha256(manifest), "inputs": [material.fixture.identity for material in materials],
         "test_exit_code": completed.returncode, "evaluation_completed": completed.returncode == 0 and stable and len(arms) == 3,
