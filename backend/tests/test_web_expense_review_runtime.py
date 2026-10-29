@@ -1179,23 +1179,28 @@ def test_drawer_keeps_unretained_input_when_browser_storage_fails(review_browser
 
 
 @pytest.mark.real_db
-@pytest.mark.parametrize("operation", ["save", "legacy-confirm"])
+@pytest.mark.parametrize("operation", ["save", "legacy-confirm", "legacy-edit-save"])
 def test_actual_review_browser_resolves_original_action_before_starting_next_command(
     review_browser, confirmation_store, tmp_path, operation,
 ):
     client, _ = review_browser
+    client.app.state.expense_review_probe = "review-probe.js"
     result = _run_review_page(client, tmp_path, f"/web/expenses/42/edit?ledger_id=owner&return_to=pending&probe={operation}")
     assert not result.get("error"), result
     assert result["original_removed"] and result["receipt_visible"]
     first, replay, *next_command = result["requests"]
     assert first == replay, "Recovery must submit the original action and input, not a fresh confirm"
-    assert first["path"].endswith("/save" if operation == "save" else "/confirm")
-    if operation == "save":
+    assert first["path"].endswith("/confirm" if operation == "legacy-confirm" else "/save")
+    if operation != "legacy-confirm":
         assert result["fresh_key"] != dict(first["fields"])["idempotency_key"]
         assert len(next_command) == 1 and next_command[0]["path"].endswith("/confirm")
     else:
         assert not next_command
         assert not {"value_score", "regret_score"}.intersection(dict(first["fields"]))
+    if operation.startswith("legacy"):
+        assert result["legacy_shelf_visible"] and "original_text_feedback" not in dict(first["fields"])
+    if operation == "legacy-edit-save":
+        assert result["legacy_edit_restored"]
     with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert current.status == "confirmed" and current.merchant == "浏览器原填写"
