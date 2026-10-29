@@ -19,7 +19,9 @@
 #ifndef DefaultBackendPort
 #define DefaultBackendPort "8000"
 #endif
-#define TicketboxMsvcRedistSource "..\..\..\backend\packaging\vendor\vc-runtime\vc_redist.x64.exe"
+; Resolve the snapshot root before Inno 6 opens deeply nested payload files.
+#define TicketboxRepositorySource ExtractFileDir(ExtractFileDir(ExtractFileDir(RemoveBackslashUnlessRoot(SourcePath))))
+#define TicketboxMsvcRedistSource TicketboxRepositorySource + "\backend\packaging\vendor\vc-runtime\vc_redist.x64.exe"
 #define TicketboxRequiredMsvcRuntimeVersion GetVersionNumbersString(TicketboxMsvcRedistSource)
 
 [Setup]
@@ -45,23 +47,23 @@ RestartApplications=no
 Uninstallable=no
 
 [Languages]
-Name: "chinesesimp"; MessagesFile: "..\..\..\backend\packaging\languages\ChineseSimplified.isl"
+Name: "chinesesimp"; MessagesFile: "{#TicketboxRepositorySource}\backend\packaging\languages\ChineseSimplified.isl"
 
 [Files]
 Source: "{#TicketboxMsvcRedistSource}"; DestDir: "{app}\bin"; DestName: "vc_redist.x64.exe"; Flags: ignoreversion
-Source: "..\..\..\backend\dist\ticketbox-backend\*"; DestDir: "{app}\releases\{#ReleaseId}\backend"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
-Source: "..\..\..\backend\dist\ticketbox-backend\*"; DestDir: "{app}\releases\{#ReleaseId}\backend"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
-Source: "..\..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\releases\{#ReleaseId}\manager"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
-Source: "..\..\..\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\releases\{#ReleaseId}\manager"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
-Source: "..\..\..\backend\packaging\vendor\cloudflared\*"; DestDir: "{app}\releases\{#ReleaseId}\connector"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
-Source: "..\..\..\backend\packaging\vendor\cloudflared\*"; DestDir: "{app}\releases\{#ReleaseId}\connector"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
-Source: "..\..\..\backend\packaging\vendor\pg\*"; DestDir: "{app}\postgresql"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
-Source: "..\..\..\backend\packaging\vendor\pg\*"; DestDir: "{app}\postgresql"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
-Source: "..\..\..\backend\packaging\vendor\shawl\shawl.exe"; DestDir: "{app}\bin"; DestName: "shawl.exe"; Flags: ignoreversion; Check: TicketboxFreshMaterialization
-Source: "..\..\..\backend\packaging\vendor\shawl\shawl.exe"; DestDir: "{app}\bin"; DestName: "shawl.exe"; Flags: ignoreversion onlyifdoesntexist; Check: TicketboxExactResumeMaterialization
-Source: "..\payload\TicketboxLifecycle\*"; DestDir: "{app}\bin\lifecycle"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\payload\release-manifest.json"; DestDir: "{app}\releases\{#ReleaseId}"; Flags: ignoreversion
-Source: "..\..\..\backend\packaging\ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#TicketboxRepositorySource}\backend\dist\ticketbox-backend\*"; DestDir: "{app}\releases\{#ReleaseId}\backend"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
+Source: "{#TicketboxRepositorySource}\backend\dist\ticketbox-backend\*"; DestDir: "{app}\releases\{#ReleaseId}\backend"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
+Source: "{#TicketboxRepositorySource}\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\releases\{#ReleaseId}\manager"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
+Source: "{#TicketboxRepositorySource}\desktop\dist\ticketbox-manager\*"; DestDir: "{app}\releases\{#ReleaseId}\manager"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
+Source: "{#TicketboxRepositorySource}\backend\packaging\vendor\cloudflared\*"; DestDir: "{app}\releases\{#ReleaseId}\connector"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
+Source: "{#TicketboxRepositorySource}\backend\packaging\vendor\cloudflared\*"; DestDir: "{app}\releases\{#ReleaseId}\connector"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
+Source: "{#TicketboxRepositorySource}\backend\packaging\vendor\pg\*"; DestDir: "{app}\postgresql"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: TicketboxFreshMaterialization
+Source: "{#TicketboxRepositorySource}\backend\packaging\vendor\pg\*"; DestDir: "{app}\postgresql"; Flags: ignoreversion onlyifdoesntexist recursesubdirs createallsubdirs; Check: TicketboxExactResumeMaterialization
+Source: "{#TicketboxRepositorySource}\backend\packaging\vendor\shawl\shawl.exe"; DestDir: "{app}\bin"; DestName: "shawl.exe"; Flags: ignoreversion; Check: TicketboxFreshMaterialization
+Source: "{#TicketboxRepositorySource}\backend\packaging\vendor\shawl\shawl.exe"; DestDir: "{app}\bin"; DestName: "shawl.exe"; Flags: ignoreversion onlyifdoesntexist; Check: TicketboxExactResumeMaterialization
+Source: "{#TicketboxRepositorySource}\distribution\windows\payload\TicketboxLifecycle\*"; DestDir: "{app}\bin\lifecycle"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#TicketboxRepositorySource}\distribution\windows\payload\release-manifest.json"; DestDir: "{app}\releases\{#ReleaseId}"; Flags: ignoreversion
+Source: "{#TicketboxRepositorySource}\backend\packaging\ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\小票夹\管理小票夹"; Filename: "{app}\releases\{#ReleaseId}\manager\ticketbox-manager.exe"; WorkingDir: "{app}\releases\{#ReleaseId}\manager"; IconFilename: "{app}\ticketbox.ico"
