@@ -48,7 +48,11 @@
       "Source dialog is not a readable surface within the viewport");
     window.__sourcePreviewReady = true;
     await wait(() => window.__sourcePreviewCaptured);
-    dialog.querySelector("[data-source-close]").click();
+    if (drawer) {
+      window.__sourceEscapeReady = true;
+      await wait(() => window.__sourceEscapeDispatched);
+      assert(!dialog.open && form.isConnected, "Escape closed the expense drawer instead of the source review");
+    } else dialog.querySelector("[data-source-close]").click();
     assert(amount.value === "22.00" && !form.elements.namedItem("recognition_field_choices")?.value, "Viewing source changed draft or supplied labels");
     const originalFetch = window.fetch;
     window.fetch = async (url, options) => {
