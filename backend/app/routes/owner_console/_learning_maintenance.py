@@ -25,8 +25,8 @@ import json
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi import APIRouter, Depends, Form, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -44,6 +44,7 @@ from app.services.learning_service import (
     set_decision_status,
 )
 from app.services.learning_service._source_eligibility import feedback_impact_preview
+from app.services.original_text_evaluation_service import evaluate_original_text_feedback
 
 if TYPE_CHECKING:
     from app.models import AlgorithmDecision
@@ -109,6 +110,19 @@ def owner_learning_maintenance_get(
     _local: None = LocalOnly, db: Session = Depends(get_db),
 ) -> HTMLResponse:
     return _render_maintenance(request, db, ledger_id)
+
+
+@router.get("/learning-maintenance/original-text-evaluation", response_class=JSONResponse)
+def owner_original_text_evaluation_get(
+    ledger_id: str = Query(min_length=1), actor_account_id: int = Query(gt=0),
+    event_public_id: list[str] = Query(min_length=1, max_length=50),
+    _local: None = LocalOnly, db: Session = Depends(get_db),
+) -> JSONResponse:
+    _, selected = svc.resolve_console_ledger_scope(db, ledger_id)
+    assert selected is not None
+    report = evaluate_original_text_feedback(db, tenant_id=selected.ledger_id,
+        actor_account_id=actor_account_id, event_public_ids=event_public_id)
+    return JSONResponse(report, headers={"Cache-Control": "private, no-store"})
 
 
 @router.post("/learning-maintenance/run", response_class=HTMLResponse)
