@@ -60,6 +60,7 @@ import java.io.IOException
 import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.MediaType.Companion.toMediaType
@@ -79,6 +80,7 @@ class DebtCreationNavigationRoomTest {
     private val skin = if (InstrumentationRegistry.getArguments().getString("captureSkin") == "midnight") AppSkin.Midnight else AppSkin.Paper
     private val calls = CopyOnWriteArrayList<Pair<DebtCreateRequestDto, String?>>()
     private var acceptedRead = false
+    private var listGate: CompletableDeferred<Unit>? = null
     private val response = DebtAdjustmentConnectedNetwork().current.copy(
         publicId = "created-original-debt", ledgerId = "correction-ledger", counterpartyLabel = "原往来 小王",
         direction = "i_owe", principalAmountCents = 12_345_678_901L, remainingAmountCents = 12_345_678_901L,
@@ -96,7 +98,10 @@ class DebtCreationNavigationRoomTest {
             override suspend fun runtimeCompatibility() = delegate.runtimeCompatibility().let {
                 it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = 1, debtBillSourceVersion = 1))
             }
-            override suspend fun debts(lens: String?) = DebtListResponseDto(if (acceptedRead) listOf(response) else emptyList(), "CNY")
+            override suspend fun debts(lens: String?): DebtListResponseDto {
+                listGate?.await()
+                return DebtListResponseDto(if (acceptedRead) listOf(response) else emptyList(), "CNY")
+            }
             override suspend fun debtReceivables() = DebtListResponseDto(emptyList(), "CNY")
             override suspend fun debt(publicId: String) = response
             override suspend fun ledgerCalendar(ledgerId: String, revision: Long?) =
@@ -136,6 +141,7 @@ class DebtCreationNavigationRoomTest {
     @After fun close() { compose.runOnIdle { harness.models.viewModelStore.clear() }; harness.close(); pickedFile?.delete() }
 
     @Test fun originalBillContinuesThroughCreationAndDetailRead() {
+        val initialRead = CompletableDeferred<Unit>().also { listGate = it }
         pickedFile = File(context.cacheDir, "debt-bill-navigation.jpg").apply { writeBytes(harness.fixture.network.originalImage) }
         var pickerLaunched = false
         val registry = object : ActivityResultRegistry() {
@@ -146,6 +152,12 @@ class DebtCreationNavigationRoomTest {
         }
         mount(object : ActivityResultRegistryOwner { override val activityResultRegistry = registry })
         compose.onNodeWithText(text(R.string.nav_domain_obligations)).performClick()
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasContentDescription(text(R.string.debt_list_parse_bill))).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription(text(R.string.debt_list_parse_bill)).assertIsNotEnabled()
+        assertTrue(!pickerLaunched)
+        initialRead.complete(Unit)
         compose.waitUntil(5_000) {
             compose.onAllNodes(hasContentDescription(text(R.string.debt_list_parse_bill)) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
         }
