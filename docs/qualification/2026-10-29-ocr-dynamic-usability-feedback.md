@@ -150,3 +150,5 @@ PR #706 审查的扫描饥饿反例已在真实PG复现：16个旧失败占满�
 在既有 `BackgroundTask` 增加当前 `execution_context_json`。输入和前置版本通过校验后、推理开始前独立短事务保存尝试编号、模式、配置的 provider/本地模型名、字段解析版本与 RapidOCR recipe 摘要；不启动 worker、不把配置摘要当成实际加载证明。返回后单独保存 provider 回执与实际 evidence identity；区域重识别使用 `regional_retry.identity`，不会误记为沿用的整图旧 identity。未返回的尝试不伪造 observed 字段，外部视觉服务仍只能记录配置的模型名，不宣称掌握远端权重或进程版本。
 
 恢复 owner 在同一事务中把当前上下文归档到原 `recovery_history_json` 后清空当前上下文；新尝试读取当时配置，原输入、public_id 和重试额度不变。先复现“超时前无身份留档”，再覆盖超时后 recipe 改变、成功返回身份与配置身份不同、原任务仅一次财务应用。包含旧恢复和正式迁移的 20 项 real-db 检查通过。新 schema `20261029_0002` 经既有 generation runner 保留原回执与恢复历史，有当前上下文时拒绝会抹除它的降级；不在普通用户 API 暴露诊断细节。
+
+追加 7 项区域重识别、原件与迟到编辑、推理期无事务、新旧重识别回执验证通过。运行源码 `06fe2b3797c32409907a5dca63432f80cccdf75a` 在上述同一 Windows/frozen worker 上完成 5 次真实上传和 1 次明确重识别；全部任务记录的 recipe 摘要与选定文件相符，observed identity 与各次 native 返回值逐项相等，6 项结果持久化且 owned worker 已关闭。此单批只核验留档，不另作延迟分位数或质量收益结论。
