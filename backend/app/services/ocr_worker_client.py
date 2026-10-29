@@ -266,16 +266,30 @@ atexit.register(_CLIENT.close)
 
 
 def recognize_snapshot(path: Path, digest: str) -> dict:
-    return _CLIENT.recognize(path, digest)
+    from app import config
+    from app.services.recognition_resource_admission import recognition_slot
+
+    with recognition_slot("rapidocr", limit=config.get_settings().local_llm_max_concurrent, timeout=_CLIENT.timeout_seconds):
+        return _CLIENT.recognize(path, digest)
 
 
 def recognize_region_snapshot(path: Path, digest: str, region: list[int]) -> dict:
-    return _CLIENT.recognize(path, digest, region=region)
+    from app import config
+    from app.services.recognition_resource_admission import recognition_slot
+
+    with recognition_slot("rapidocr", limit=config.get_settings().local_llm_max_concurrent, timeout=_CLIENT.timeout_seconds):
+        return _CLIENT.recognize(path, digest, region=region)
 
 
 def shutdown_ocr_worker() -> None:
+    from app.services.recognition_resource_admission import shutdown_recognition_admission
+
+    shutdown_recognition_admission()
     _CLIENT.close()
 
 
 def start_ocr_worker_service() -> None:
+    from app.services.recognition_resource_admission import start_recognition_admission
+
+    start_recognition_admission()
     _CLIENT.start_service()

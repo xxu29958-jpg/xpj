@@ -152,3 +152,15 @@ PR #706 审查的扫描饥饿反例已在真实PG复现：16个旧失败占满�
 恢复 owner 在同一事务中把当前上下文归档到原 `recovery_history_json` 后清空当前上下文；新尝试读取当时配置，原输入、public_id 和重试额度不变。先复现“超时前无身份留档”，再覆盖超时后 recipe 改变、成功返回身份与配置身份不同、原任务仅一次财务应用。包含旧恢复和正式迁移的 20 项 real-db 检查通过。新 schema `20261029_0002` 经既有 generation runner 保留原回执与恢复历史，有当前上下文时拒绝会抹除它的降级；不在普通用户 API 暴露诊断细节。
 
 追加 7 项区域重识别、原件与迟到编辑、推理期无事务、新旧重识别回执验证通过。运行源码 `06fe2b3797c32409907a5dca63432f80cccdf75a` 在上述同一 Windows/frozen worker 上完成 5 次真实上传和 1 次明确重识别；全部任务记录的 recipe 摘要与选定文件相符，observed identity 与各次 native 返回值逐项相等，6 项结果持久化且 owned worker 已关闭。此单批只核验留档，不另作延迟分位数或质量收益结论。
+
+## 第四片 C：跨识别入口准入与 Windows 压力暂缓
+
+整图、区域 RapidOCR、收据本地视觉和有图欠款的视觉请求统一经过一个进程内计数 owner。复用已有本地视觉并发配置作为总请求上限，RapidOCR 另受原单槽约束；旧视觉专用 limiter 已删除，持久接纳额度与 PG 任务 owner 不变。有图欠款保持同步建议及原件生命周期；外部视觉请求超时只释放本软件请求额度，不宣称外部模型已停止，也不终止其进程。
+
+Windows 使用 [内存高低信号](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-creatememoryresourcenotification) 和 [可用物理/提交内存](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/ns-sysinfoapi-memorystatusex)。低信号或不足现有 512 MiB worker 硬预算时暂停新识别；中间区间保持暂停，充足信号且预算恢复后才继续。CPU 以 [GetSystemTimes](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getsystemtimes) 的 idle 增量识别持续完全饱和，kernel 已含 idle，不能重复相加。采样沿用恢复扫描的 2 秒尺度，连续两个完整窗口进入或解除 CPU 暂缓；CPU 暂缓自动采集任务与可选增强，明确重识别仍受共享计数和内存保护。查询失败时暂停并记录诊断，不假报有资源。
+
+已接纳任务在原 waiting/PG 行内等待，恢复扫描重复唤醒同一任务时重新检查准入。非 OCR 工作可继续，created_at、任务身份、恢复次数与输入不因等待而改写。没有抢占正在计算的 worker、增加推理线程或改 60 秒 idle 策略。
+
+从已核验干净基线复制专用 Windows 10.0.26200、2 核/4 GiB 静态内存离线 VM，原有 VM 配置与磁盘保持原状态；248 个冻结 worker 文件在复制后逐一校验。基线轮 23 次实际 native 调用通过：热调用通常约 361–445 ms，两个受管 CPU 压力进程运行时均值约 793 ms；本轮首次冷调用 5657 ms，包括冷启动和加载，不把它称作纯推理。逐步申请并触页的压力仅在专用 guest 内执行，最低可用内存约 230 MiB，低信号之后有持续中间区间；释放后恢复充足。所有受管子进程退出。
+
+第二轮用实际当前 Windows observer（SHA256 `14e9007680f324e35dcf36b2983fec99dd42948ee14ab490901b80252ff600cb`）旁路观测同一受控过程，23 次 native 调用通过。普通批次未触发暂停；持续满载后 CPU 暂缓，恢复后解除；内存 hold 区间保持暂缓，释放并出现 high 后解除。此层证明原生信号与控制器状态，尚不等于完整安装应用的 API 压力旅程。最初跨入口测试中整图、区域均绕过视觉计数而失败；统一后相关资源/本地视觉/欠款 31 项 ordinary 通过，真实 PG 队列与公平性 11 项、主结果保留和区域入口 9 项通过。新增压力不调用可选增强，已成功主结果仍按原事务保留。低配完整 API、最终发行件与真实参与者操作计时仍属后续退出项。

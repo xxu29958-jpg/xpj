@@ -30,6 +30,49 @@ def _wait_completed(task_ids: list[int]) -> None:
     raise AssertionError("accepted tasks did not complete")
 
 
+@pytest.mark.parametrize("memory", [True, False], ids=["memory", "cpu"])
+def test_resource_pause_retains_original_queue_and_scanner_wakeup_resumes(identity, monkeypatch, memory):
+    from app.services import recognition_resource_admission as admission
+    from app.services.windows_recognition_resources import RecognitionPressure
+
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "0")
+    pressure = [RecognitionPressure(memory=memory, cpu=not memory)]
+    monkeypatch.setattr(admission._BUDGET._observer, "sample", lambda: pressure[0])
+    calls = []
+    with SessionLocal() as db:
+        tasks = [BackgroundTask(task_type=kind, initiated_by_account_id=1, tenant_id="owner")
+            for kind in ("expense_enrichment", "expense_ocr_retry", "csv_import")]
+        db.add_all(tasks)
+        db.commit()
+        ids = [task.id for task in tasks]
+        originals = [(task.public_id, task.created_at) for task in tasks]
+
+    def handler(db, task, payload):
+        calls.append(task.id)
+        db.rollback()
+
+    registry = TaskHandlerRegistry(dict.fromkeys(("expense_enrichment", "expense_ocr_retry", "csv_import"), handler))
+    pool = _ExecutorPool()
+    try:
+        for task_id in ids:
+            pool.submit(task_id, {}, registry, run_task)
+        _wait_completed(ids[2:] if memory else ids[1:])
+        with SessionLocal() as db:
+            for identifier in ids[:2] if memory else ids[:1]:
+                task = db.get(BackgroundTask, identifier)
+                assert task.status == "queued" and task.started_at is None and task.recovery_attempts == 0
+        pressure[0] = RecognitionPressure()
+        # Recovery scans re-submit the original already-known wakeup.
+        pool.submit(ids[0], {}, registry, run_task)
+        _wait_completed(ids)
+    finally:
+        pool.shutdown(wait=True)
+    assert sorted(calls) == ids
+    with SessionLocal() as db:
+        assert [(db.get(BackgroundTask, identifier).public_id, db.get(BackgroundTask, identifier).created_at)
+            for identifier in ids] == originals
+
+
 @pytest.mark.parametrize("waiting, expected", [
     ([("expense_enrichment", 2, "owner", 0), ("expense_ocr_retry", 1, "owner", 0)], [2, 1]),
     ([("expense_enrichment", 1, "owner", 61), ("expense_ocr_retry", 2, "owner", 0)], [1, 2]),

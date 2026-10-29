@@ -19,6 +19,7 @@ from app.error_reporting import report_error
 from app.models import BackgroundTask
 from app.services.background_task_handler_api import mark_failed
 from app.services.background_task_registry import OCR_TASK_TYPES, PreparedBackgroundTask, TaskHandlerRegistry
+from app.services.recognition_resource_admission import defer_ocr_dispatch
 from app.services.time_service import ensure_utc, now_utc
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,7 @@ class _ExecutorPool:
             if self._stopping:
                 raise ExecutorLifecycleError("background executor is stopping")
             if task_id in self._active or task_id in self._waiting:
+                self._dispatch()
                 return
             if self._executor is None:
                 self._executor = ThreadPoolExecutor(
@@ -142,12 +144,13 @@ class _ExecutorPool:
             future.add_done_callback(lambda finished, task_id=candidate: self._finished(task_id, finished))
 
     def _next_task(self, ocr_busy: bool) -> int | None:
-        candidate = next((task_id for task_id, wakeup in self._waiting.items()
-                          if not (ocr_busy and wakeup.task_type in OCR_TASK_TYPES)), None)
+        eligible = [task_id for task_id, wakeup in self._waiting.items()
+            if wakeup.task_type not in OCR_TASK_TYPES or not ocr_busy and not defer_ocr_dispatch(wakeup.task_type)]
+        candidate = eligible[0] if eligible else None
         if candidate is None or self._waiting[candidate].task_type not in OCR_TASK_TYPES:
             return candidate
         instant = now_utc()
-        return min((task_id for task_id, wakeup in self._waiting.items() if wakeup.task_type in OCR_TASK_TYPES),
+        return min((task_id for task_id in eligible if self._waiting[task_id].task_type in OCR_TASK_TYPES),
                    key=lambda task_id: self._ocr_order(task_id, instant))
 
     def _ocr_order(self, task_id: int, instant: datetime) -> tuple[int, bool, datetime, int]:

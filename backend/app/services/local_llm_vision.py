@@ -9,8 +9,8 @@ transport, the loopback-URL guard, the concurrency slot limiter, and the JSON
 envelope parsing live here so neither caller re-implements them.
 
 ADR-0015 pins the receipt provider/parse architecture; this module is the
-engine those providers share. It is a leaf — depends only on ``app.config`` +
-``app.errors``. The ``call_local_llm_vision`` entry point takes raw image bytes
+engine those providers share. Request capacity joins native OCR through the
+shared recognition resource owner. The ``call_local_llm_vision`` entry point takes raw image bytes
 (not an ORM row), so a transient parse (an uploaded image that is never stored)
 can drive it exactly like the stored-receipt path.
 """
@@ -20,15 +20,14 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import threading
 from contextlib import contextmanager
-from time import monotonic
 from typing import TypeAlias, cast
 from urllib import error, request
 
 from app.config import Settings, get_settings
 from app.errors import AppError
 from app.services._json_types import JsonObject
+from app.services.recognition_resource_admission import recognition_slot
 
 logger = logging.getLogger(__name__)
 
@@ -37,47 +36,10 @@ LocalVisionChatResponse: TypeAlias = JsonObject
 LocalVisionModelJson: TypeAlias = JsonObject
 
 
-class _LocalLlmSlotLimiter:
-    def __init__(self) -> None:
-        self._condition = threading.Condition()
-        self._active_slots = 0
-
-    def acquire(self, max_concurrent: int, queue_timeout_seconds: float) -> None:
-        limit = max(1, int(max_concurrent or 1))
-        timeout = max(0.0, float(queue_timeout_seconds))
-        deadline = monotonic() + timeout
-        with self._condition:
-            while limit <= self._active_slots:
-                remaining = deadline - monotonic()
-                if remaining <= 0:
-                    raise AppError(
-                        "rate_limited",
-                        "本地大模型识别队列繁忙，请稍后再试。",
-                        status_code=429,
-                    )
-                self._condition.wait(remaining)
-            self._active_slots += 1
-
-    def release(self) -> None:
-        with self._condition:
-            if self._active_slots > 0:
-                self._active_slots -= 1
-            self._condition.notify_all()
-
-
-# Process-wide slot limiter: a single-GPU local vision model cannot serve many
-# concurrent generations, so all callers (receipt OCR + debt-bill parse) share
-# ONE limiter — they contend for the same model.
-_LOCAL_LLM_SLOT_LIMITER = _LocalLlmSlotLimiter()
-
-
 @contextmanager
 def local_llm_slot(max_concurrent: int, queue_timeout_seconds: float):
-    _LOCAL_LLM_SLOT_LIMITER.acquire(max_concurrent, queue_timeout_seconds)
-    try:
+    with recognition_slot("local_llm", limit=max(1, int(max_concurrent or 1)), timeout=float(queue_timeout_seconds)):
         yield
-    finally:
-        _LOCAL_LLM_SLOT_LIMITER.release()
 
 
 def require_local_llm_base_url(base_url: str) -> None:

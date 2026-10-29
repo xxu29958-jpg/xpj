@@ -29,15 +29,18 @@ from tests.test_pending_enrichment_task_service import _ocr_result, _seed_pendin
 pytestmark = pytest.mark.real_db
 
 
-@pytest.mark.parametrize("enhancement,notice,fact_count,other_amount", [
-    (AppError("ocr_timeout", status_code=503), "enhancement_failed", 1, None),
-    (OcrResult("商户：盒马\n实付：78.00", 0.99), "provider_conflict", 2, 7800),
-    (OcrResult("商户：盒马\n实付：18.00", 0.99, amount_cents=7800), "provider_conflict", 2, None),
+@pytest.mark.parametrize("enhancement,notice,fact_count,other_amount,pressure", [
+    (AppError("ocr_timeout", status_code=503), "enhancement_failed", 1, None, False),
+    (OcrResult("商户：盒马\n实付：78.00", 0.99), "provider_conflict", 2, 7800, False),
+    (OcrResult("商户：盒马\n实付：18.00", 0.99, amount_cents=7800), "provider_conflict", 2, None, False),
+    (AssertionError("pressure must prevent optional model invocation"), "enhancement_failed", 1, None, True),
 ])
-def test_partial_ocr_commits_primary_fact_and_notice_once(identity, monkeypatch, enhancement, notice, fact_count, other_amount):
+def test_partial_ocr_commits_primary_fact_and_notice_once(identity, monkeypatch, enhancement, notice, fact_count, other_amount, pressure):
     expense_id, predecessor, task_id = _seed_pending_enrichment_task()
     primary = OcrResult("商户：盒马\n实付：18.00", 0.8)
     _providers(monkeypatch, primary, enhancement)
+    if pressure:
+        monkeypatch.setattr("app.services.recognition_resource_admission.defer_optional_enhancement", lambda: True)
     monkeypatch.setattr(_enrich, "_try_stage_thumbnail", lambda *_: None)
     with SessionLocal() as db:
         task = db.get(BackgroundTask, task_id)
