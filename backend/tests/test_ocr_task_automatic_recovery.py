@@ -30,6 +30,43 @@ from tests.test_pending_enrichment_task_service import _ocr_result, _seed_pendin
 pytestmark = pytest.mark.real_db
 
 
+@pytest.mark.parametrize("failure", [SQLAlchemyError, RuntimeError])
+def test_owned_scanner_reports_failure_and_only_retries_database_errors(monkeypatch, caplog, failure):
+    import threading
+
+    attempted = Event()
+    resumed = Event()
+    uncaught = []
+    calls = []
+
+    def scan():
+        calls.append(None)
+        if len(calls) == 1:
+            attempted.set()
+            raise failure("injected scanner boundary failure")
+        resumed.set()
+        return 0
+
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "0")
+    monkeypatch.setattr(recovery, "resume_due_ocr_tasks", scan)
+    monkeypatch.setattr(threading, "excepthook", uncaught.append)
+    scanner = recovery.start_ocr_task_recovery()
+    try:
+        assert attempted.wait(2)
+        if failure is SQLAlchemyError:
+            assert resumed.wait(4), "Transient database failure stopped discovery"
+        else:
+            scanner.thread.join(timeout=2)
+            assert not scanner.thread.is_alive()
+            assert len(calls) == 1
+    finally:
+        scanner.stop()
+    assert not scanner.thread.is_alive() and uncaught == []
+    reports = [record for record in caplog.records if record.name == recovery.__name__]
+    assert len(reports) == 1
+    assert reports[0].exc_info[0] is failure
+
+
 def _original(status="queued"):
     expense_id, predecessor, task_id = _seed_pending_enrichment_task()
     payload = {"expense_id": expense_id, "tenant_id": "owner", "timezone_name": "Asia/Shanghai",
