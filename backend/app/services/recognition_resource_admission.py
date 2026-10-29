@@ -14,6 +14,17 @@ from app.services.windows_recognition_resources import SAMPLE_SECONDS, PressureO
 logger = logging.getLogger(__name__)
 
 
+class RecognitionAdmissionDeferredError(AppError):
+    """No inference began; a durable owner can retain its existing queued intent."""
+
+    def __init__(self) -> None:
+        super().__init__("rate_limited", "本机识别暂时繁忙，原输入仍保留，可稍后再试或手动填写。", status_code=429)
+
+
+class RecognitionAdmissionLifecycleError(RuntimeError):
+    """A previous process-local request still owns the admission runtime."""
+
+
 class RecognitionBudget:
     def __init__(self) -> None:
         self._condition = threading.Condition()
@@ -47,7 +58,7 @@ class RecognitionBudget:
         with self._condition:
             while True:
                 if self._stopping:
-                    raise AppError("rate_limited", status_code=429)
+                    raise RecognitionAdmissionDeferredError()
                 pressure = self._pressure()
                 native_busy = kind == "rapidocr" and self._active["rapidocr"] > 0
                 if not pressure.memory and not native_busy and sum(self._active.values()) < max(1, limit):
@@ -55,7 +66,7 @@ class RecognitionBudget:
                     return
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    raise AppError("rate_limited", "本机识别暂时繁忙，原输入仍保留，可稍后再试或手动填写。", status_code=429)
+                    raise RecognitionAdmissionDeferredError()
                 self._condition.wait(min(remaining, SAMPLE_SECONDS))
 
     def release(self, kind: str) -> None:
@@ -66,7 +77,7 @@ class RecognitionBudget:
     def start(self) -> None:
         with self._condition:
             if any(self._active.values()):
-                raise RuntimeError("previous recognition requests have not returned")
+                raise RecognitionAdmissionLifecycleError("previous recognition requests have not returned")
             self._observer.close()
             self._observer = PressureObserver()
             self._stopping = False
