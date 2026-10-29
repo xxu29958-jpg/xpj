@@ -163,7 +163,7 @@ REVIEWED_BOUNDARIES = {
         "reason": "The request consumes the pool.map iterator and joins the bounded pool before returning. Unexpected Future errors propagate to the HTTP boundary with the original traceback and request id; no detached job or new output owner exists. Expected unavailable model services produce an empty discovery result without changing settings.",
     },
     ("backend/app/services/background_task_executor.py", "_ExecutorPool._dispatch"): {
-        "sha256": "948a9ef77b36a9e06dd4861658508212ca6242b5322ceff72ad25d8241f88f2a", "owner": "pool completion reports Future errors; inline errors propagate to submit_committed",
+        "sha256": "8667b1b921fafc4ab29835d3e1444b416edf7a1ffa786ea3ca5274574a7ef0f7", "owner": "pool completion reports Future errors; inline errors propagate to submit_committed",
         "test": "backend/tests/test_background_task_claim.py::test_claim_failure_is_observed_without_publishing_a_new_task_state",
         "reason": "Dispatch reserves capacity only for durable PG rows. Its Future callback observes outside-handler errors through _finished and _report_worker_outcome; callback dispatch refusal is also reported without inventing task completion. The common owner checks require every link. The original queued row remains recoverable after refusal.",
     },

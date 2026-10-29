@@ -183,6 +183,12 @@ def _background_tasks_respect_db_isolation(
     at startup, so ordinary app lifespans must also leave those daemons dormant.
     Explicit scheduler tests and real-db/native app lifespans remain active.
     """
+    from app.services.recognition_resource_admission import start_recognition_admission
+
+    # A previous TestClient lifespan closes the process-local budget. Direct
+    # service/pool tests also need their own live admission lifecycle, without
+    # replacing the real pressure observer or bypassing capacity decisions.
+    start_recognition_admission()
     if "real_db" in request.keywords:
         from app import main
 
