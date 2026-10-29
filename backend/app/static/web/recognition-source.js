@@ -15,7 +15,9 @@
     dialog.querySelectorAll("button").forEach(button => { button.className = "product-button product-button--quiet"; });
     form.append(dialog);
     dialog.addEventListener("keydown", event => {
-      if (event.key === "Escape" || event.key === "Tab") event.stopPropagation();
+      const confirm = event.key === "Enter" && (event.ctrlKey || event.metaKey);
+      if (confirm) event.preventDefault();
+      if (confirm || event.key === "Escape" || event.key === "Tab") event.stopPropagation();
     });
     const viewer = {dialog, form, image: dialog.querySelector("img"), svg: dialog.querySelector("svg"),
       surface: dialog.querySelector(".recognition-source-surface"), scroll: dialog.querySelector(".recognition-source-scroll"),
