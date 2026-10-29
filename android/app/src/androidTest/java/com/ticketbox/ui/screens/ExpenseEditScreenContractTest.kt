@@ -4,6 +4,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -87,23 +88,34 @@ class ExpenseEditScreenContractTest {
         }
         composeRule.onNode(hasSetTextAction() and hasText("12.34")).performScrollTo().performTextReplacement("22.00")
         closeSoftKeyboard()
-        composeRule.onNodeWithText("框选一行重识别").performScrollTo().performClick()
+        composeRule.onNodeWithText("重读一行文字").performScrollTo().performClick()
         composeRule.onNodeWithText("重读这一行").assertIsNotEnabled()
         composeRule.runOnIdle { image.value = ProtectedImage(bytes, "image/png", digest) }
         val help = InstrumentationRegistry.getInstrumentation().targetContext.getString(com.ticketbox.R.string.ocr_region_help)
+        composeRule.onNodeWithText("点选两角").performClick()
+        composeRule.onNode(hasContentDescription(help)).performTouchInput { click(center) }
+        composeRule.onNode(hasText("返回") and hasAnyAncestor(isDialog())).performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(null, requested); assertEquals(null, saved) }
+        composeRule.onNode(hasSetTextAction() and hasText("22.00")).assertExists()
+        composeRule.onNodeWithText("重读一行文字").performScrollTo().performClick()
         composeRule.onNodeWithText("放大").performClick().performClick()
-        composeRule.onNodeWithText("移动图片").performClick()
         composeRule.onNode(hasContentDescription(help)).performTouchInput {
             swipe(center, center + Offset(0f, -80f), durationMillis = 400)
         }
-        composeRule.onNodeWithText("开始框选").performClick()
+        composeRule.onNodeWithText("重读这一行").assertIsNotEnabled()
+        composeRule.onNodeWithText("点选两角").performClick()
         composeRule.onNode(hasContentDescription(help)).performTouchInput {
-            swipe(Offset(width * .2f, centerY - 20), Offset(width * .8f, centerY + 20), durationMillis = 400)
+            click(Offset(width * .2f, centerY - 20))
+        }
+        composeRule.onNodeWithText("重读这一行").assertIsNotEnabled()
+        composeRule.onNodeWithText("放大").performClick()
+        composeRule.onNode(hasContentDescription(help)).performTouchInput {
+            click(Offset(width * .8f, centerY + 20))
         }
         composeRule.onNodeWithText("重读这一行").assertIsEnabled()
         saveConsumerArtPreview("review-original-region-selected",
             composeRule.onNode(isDialog()).captureToImage().asAndroidBitmap())
-        composeRule.onNodeWithText("重读这一行").performClick()
+        composeRule.onNodeWithText("重读这一行").performScrollTo().performClick()
         composeRule.runOnIdle {
             val region = requireNotNull(requested)
             assertEquals(digest, region.imageSha256)
@@ -129,11 +141,11 @@ class ExpenseEditScreenContractTest {
             }
         }
         composeRule.onNode(hasSetTextAction() and hasText("12.34")).assertIsEnabled()
-        composeRule.onNodeWithText("框选一行重识别").assertDoesNotExist()
+        composeRule.onNodeWithText("重读一行文字").assertDoesNotExist()
         composeRule.runOnIdle { status.value = "pending" }
-        composeRule.onNodeWithText("框选一行重识别").performScrollTo().assertIsEnabled()
+        composeRule.onNodeWithText("重读一行文字").performScrollTo().assertIsEnabled()
         composeRule.runOnIdle { status.value = "confirmed" }
-        composeRule.onNodeWithText("框选一行重识别").assertDoesNotExist()
+        composeRule.onNodeWithText("重读一行文字").assertDoesNotExist()
         composeRule.runOnIdle { assertEquals(0, requests) }
     }
 

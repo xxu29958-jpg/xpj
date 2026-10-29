@@ -46,6 +46,7 @@
       acceptsDestination: (next, saved) => next.pathname === "/web/expenses/" + saved.expense_id + "/edit",
       updatePresentation(current, state) {
         current.dataset.ocrRegionEditable = state.editable ? "true" : "false";
+        if (current.dataset.ocrRegionIncomplete === "true") current.querySelector("[data-recognition-submit]").disabled = true;
         const changed = current.dataset[family + "RowVersion"] !== current.elements.expected_row_version.value;
         if (!changed && !state.rejected) {
           current.querySelector("[data-" + family + "-review]").hidden = true;
