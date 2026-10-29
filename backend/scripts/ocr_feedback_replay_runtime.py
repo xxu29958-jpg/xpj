@@ -147,7 +147,7 @@ def replay(client, headers: dict, materials: list[ReplayMaterial], mode: str) ->
                     else "new_amount_context" if scopes else "no_comparable_amount_context")
                 if material.fixture.split == "development":
                     development_scopes.update(scopes)
-        except Exception as error:  # noqa: BLE001 — retain every attempted arrival, including failed commands
+        except Exception as error:  # retain every attempted arrival, including failed commands
             # Raw SQL/HTTP errors may contain private material. The bounded
             # type and failed sample locate the attempt without copying it.
             row.update(outcome="replay_error", error_type=type(error).__name__)

@@ -16,15 +16,12 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
-from scripts.ocr_benchmark_data import sha256  # noqa: E402
-from scripts.ocr_feedback_replay_data import load_replay  # noqa: E402
-from scripts.ocr_feedback_replay_metrics import comparison_report  # noqa: E402
-from scripts.run_postgres_pytest_lane import build_pytest_command, child_environment  # noqa: E402
-
 MODES = ("baseline", "feedback", "withdrawn")
 
 
 def source_identity() -> dict:
+    from scripts.ocr_benchmark_data import sha256
+
     def git(*args):
         return subprocess.check_output(["git", *args], cwd=_BACKEND_ROOT, text=True).strip()
 
@@ -36,6 +33,11 @@ def source_identity() -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from scripts.ocr_benchmark_data import sha256
+    from scripts.ocr_feedback_replay_data import load_replay
+    from scripts.ocr_feedback_replay_metrics import comparison_report
+    from scripts.run_postgres_pytest_lane import build_pytest_command, child_environment
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path, help="A new directory; prior evidence is never replaced.")
