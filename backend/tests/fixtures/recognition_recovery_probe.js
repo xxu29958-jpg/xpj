@@ -65,6 +65,57 @@
     const suffix = familyFor(kind) === "expenseocr" ? "ocr/retry" : "recognize-text";
     document.querySelector('a[href*="/42/' + suffix + '"]').click();
   }
+  async function prepareCorners(form) {
+    form.querySelector("[data-ocr-region] summary").click();
+    const image = form.querySelector("[data-ocr-region-image]");
+    await wait(() => image.complete && image.naturalWidth, "original image");
+    form.querySelector('[data-ocr-region-zoom="2"]').click();
+    if (!image.style.touchAction.includes("pan-y")) throw Error("Long source cannot be scrolled on touch");
+    image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, isPrimary: true, clientX: 1, clientY: 1}));
+    image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, isPrimary: true, clientX: 60, clientY: 60}));
+    if (form.elements.ocr_region.value) throw Error("Moving the source changed the crop");
+    form.querySelector('[data-ocr-region-mode="corners"]').click();
+    image.scrollIntoView({block: "center", behavior: "instant"});
+    const viewport = image.parentElement.parentElement;
+    viewport.scrollTo({left: image.getBoundingClientRect().width / 2 - 50, behavior: "instant"});
+    const bounds = image.getBoundingClientRect();
+    const visible = viewport.getBoundingClientRect();
+    const endpoint = bounds.left + 110 * bounds.width / image.naturalWidth;
+    if (endpoint < visible.left || endpoint > Math.min(visible.right, innerWidth)) throw Error("Crop gesture is outside the visible source");
+    const dispatch = (name, x, y) => {
+      const actual = image.getBoundingClientRect();
+      image.dispatchEvent(new PointerEvent(name, {bubbles: true, isPrimary: true, pointerId: 1,
+        clientX: actual.left + x * actual.width / image.naturalWidth,
+        clientY: actual.top + y * actual.height / image.naturalHeight}));
+    };
+    dispatch("pointerdown", 60, 25); dispatch("pointerup", 60, 25);
+    if (form.elements.ocr_region.value) throw Error("An unfinished corner became a submitted region");
+    const submit = form.querySelector("[data-recognition-submit]");
+    if (!submit.disabled) throw Error("A first corner still allows whole-image submission");
+    form.requestSubmit(submit);
+    if (form.dataset.expenseocrDraftPhase !== "editing") throw Error("Incomplete selection was submitted through the form");
+    form.querySelector('[data-ocr-region-zoom="0.5"]').click();
+    image.scrollIntoView({block: "center", behavior: "instant"});
+    dispatch("pointerdown", 110, 50); dispatch("pointerup", 110, 50);
+    const selected = JSON.parse(form.elements.ocr_region.value);
+    if (JSON.stringify(selected.box) !== "[60,25,110,50]") throw Error("Source crop coordinates changed: " + JSON.stringify({selected,
+      before: bounds.toJSON(), after: image.getBoundingClientRect().toJSON()}));
+    if (submit.disabled) throw Error("Completed corners did not restore submission");
+    await verifyReplacementCancellation(form, dispatch);
+  }
+  async function verifyReplacementCancellation(form, dispatch) {
+    const submit = form.querySelector("[data-recognition-submit]");
+    const original = form.elements.ocr_region.value;
+    dispatch("pointerdown", 70, 30); dispatch("pointerup", 70, 30);
+    if (!submit.disabled || form.elements.ocr_region.value !== original) throw Error("Replacement corner can submit the old crop");
+    form.querySelector('[data-ocr-region-mode="browse"]').click();
+    if (submit.disabled || form.elements.ocr_region.value !== original) throw Error("Leaving corner selection did not restore the old crop");
+    form.querySelector('[data-ocr-region-mode="corners"]').click();
+    dispatch("pointerdown", 70, 30); dispatch("pointerup", 70, 30);
+    form.querySelector("[data-ocr-region-clear]").click();
+    if (submit.disabled || form.elements.ocr_region.value) throw Error("Clearing the incomplete crop did not restore whole-image submission");
+    await chooseRegion(form, [60, 25, 110, 50]);
+  }
   async function prepareOriginal(form, state) {
     if (state.phase !== "open") return false;
     if (state.kind === "text") {
@@ -75,53 +126,7 @@
         if (event.defaultPrevented) throw Error("Recognition text triggered the bill confirmation shortcut");
       }
     }
-    if (state.kind === "region") {
-      form.querySelector("[data-ocr-region] summary").click();
-      const image = form.querySelector("[data-ocr-region-image]");
-      await wait(() => image.complete && image.naturalWidth, "original image");
-      form.querySelector('[data-ocr-region-zoom="2"]').click();
-      if (!image.style.touchAction.includes("pan-y")) throw Error("Long source cannot be scrolled on touch");
-      image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, isPrimary: true, clientX: 1, clientY: 1}));
-      image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, isPrimary: true, clientX: 60, clientY: 60}));
-      if (form.elements.ocr_region.value) throw Error("Moving the source changed the crop");
-      form.querySelector('[data-ocr-region-mode="corners"]').click();
-      image.scrollIntoView({block: "center", behavior: "instant"});
-      const viewport = image.parentElement.parentElement;
-      viewport.scrollTo({left: image.getBoundingClientRect().width / 2 - 50, behavior: "instant"});
-      const bounds = image.getBoundingClientRect();
-      const visible = viewport.getBoundingClientRect();
-      const endpoint = bounds.left + 110 * bounds.width / image.naturalWidth;
-      if (endpoint < visible.left || endpoint > Math.min(visible.right, innerWidth)) throw Error("Crop gesture is outside the visible source");
-      const dispatch = (name, x, y) => {
-        const actual = image.getBoundingClientRect();
-        image.dispatchEvent(new PointerEvent(name, {bubbles: true, isPrimary: true, pointerId: 1,
-          clientX: actual.left + x * actual.width / image.naturalWidth,
-          clientY: actual.top + y * actual.height / image.naturalHeight}));
-      };
-      dispatch("pointerdown", 60, 25); dispatch("pointerup", 60, 25);
-      if (form.elements.ocr_region.value) throw Error("An unfinished corner became a submitted region");
-      const submit = form.querySelector("[data-recognition-submit]");
-      if (!submit.disabled) throw Error("A first corner still allows whole-image submission");
-      form.requestSubmit(submit);
-      if (form.dataset.expenseocrDraftPhase !== "editing") throw Error("Incomplete selection was submitted through the form");
-      form.querySelector('[data-ocr-region-zoom="0.5"]').click();
-      image.scrollIntoView({block: "center", behavior: "instant"});
-      dispatch("pointerdown", 110, 50); dispatch("pointerup", 110, 50);
-      const selected = JSON.parse(form.elements.ocr_region.value);
-      if (JSON.stringify(selected.box) !== "[60,25,110,50]") throw Error("Source crop coordinates changed: " + JSON.stringify({selected,
-        before: bounds.toJSON(), after: image.getBoundingClientRect().toJSON()}));
-      if (submit.disabled) throw Error("Completed corners did not restore submission");
-      const original = form.elements.ocr_region.value;
-      dispatch("pointerdown", 70, 30); dispatch("pointerup", 70, 30);
-      if (!submit.disabled || form.elements.ocr_region.value !== original) throw Error("Replacement corner can submit the old crop");
-      form.querySelector('[data-ocr-region-mode="browse"]').click();
-      if (submit.disabled || form.elements.ocr_region.value !== original) throw Error("Leaving corner selection did not restore the old crop");
-      form.querySelector('[data-ocr-region-mode="corners"]').click();
-      dispatch("pointerdown", 70, 30); dispatch("pointerup", 70, 30);
-      form.querySelector("[data-ocr-region-clear]").click();
-      if (submit.disabled || form.elements.ocr_region.value) throw Error("Clearing the incomplete crop did not restore whole-image submission");
-      await chooseRegion(form, [60, 25, 110, 50]);
-    }
+    if (state.kind === "region") await prepareCorners(form);
     if (state.kind === "region-invalid") await chooseRegion(form, [60, 25, 110, 600]);
     state.original = fields(form); state.phase = "send"; keep(state);
     if (state.kind === "text") { location.reload(); return true; }
