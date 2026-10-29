@@ -32,6 +32,7 @@ PYTHON_OWNERS = {
         "OcrWorkerClient._idle_stop": {"app.error_reporting.report_error", "self._stop"},
     },
     "backend/app/services/background_task_worker.py": {"run_task": {"app.error_reporting.report_error"}},
+    "backend/app/services/background_task_recovery_service.py": {"_recovery_loop": {"app.error_reporting.report_error"}},
     "backend/app/log_sanitize.py": {
         "SanitizedFormatter.format": {"sanitize_log_text", "safe_exception_text"},
         "SanitizedFormatter.__init__": {"app.diagnostic_identity.diagnostic_build_identity"},
@@ -47,6 +48,12 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # Exact-symbol evidence, never a module/directory exemption or a handler registry.
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
+    ("backend/app/services/background_task_recovery_service.py", "start_ocr_task_recovery"): {
+        "sha256": "eaa02c69cf64125e3818900a1ef07e1fab6c530f5bb486f856e4b462d6309293",
+        "owner": "the owned recovery loop and existing sanitized backend logger",
+        "test": "backend/tests/test_ocr_task_automatic_recovery.py::test_owned_scanner_reports_failure_and_only_retries_database_errors",
+        "reason": "The actual scanner thread reports transient database errors and continues discovery after its bounded wait. Unexpected scan errors report once through the same sink and terminate the scanner without an unhandled thread exception or an automatic programming-error loop. The real-thread counterexample covers both paths; no task receipt, retry budget, input or financial state is rewritten by this terminal boundary. The common contract requires the loop to retain its shared reporting call.",
+    },
     (ANDROID + "data/local/LocalSettingsStore.kt", "writeNotificationCaptureFailure"): {
         "sha256": "c35a4e431bac4724b40011c35135bfae44ac23ca21dc2fe979ad4cd570dfa4a2",
         "owner": "existing sanitized TicketboxNetwork output and Settings persistence-failure state",
