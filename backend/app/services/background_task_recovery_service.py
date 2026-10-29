@@ -196,7 +196,8 @@ def _recovery_loop(stop_event: threading.Event) -> None:
     while not stop_event.is_set():
         try:
             resume_due_ocr_tasks()
-        except Exception as exc:  # noqa: BLE001 - owned scanner must survive a transient database refusal
+        except Exception as exc:
+            # The owned scanner must survive a transient database refusal.
             report_error(logger, "background OCR recovery scan failed", error=exc)
         stop_event.wait(2)
 
