@@ -108,10 +108,8 @@ def resume_pending_expense_enrichment(
             task.status == "failed" and task.error_code in INTERRUPTED_TASK_CODES):
         return
     if task.result_summary_json is not None:
-        from app.services.background_task_worker import complete_applied_task
-
         db.rollback()
-        complete_applied_task(task.id)
+        background_task_service.complete_applied_task(task.id)
         return
     try:
         payload = json.loads(task.input_payload_json or "null")

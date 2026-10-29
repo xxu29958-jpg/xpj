@@ -42,24 +42,41 @@
     if (!viewers.has(form)) viewers.set(form, createViewer(form));
     return viewers.get(form);
   }
+  async function readOriginal(href, digest) {
+    const response = await fetch(href, {credentials: "same-origin", cache: "no-store"});
+    if (!response.ok || !/^[a-f0-9]{64}$/.test(digest) || response.headers.get("etag") !== '"' + digest + '"') throw Error("source_changed");
+    const blob = await response.blob();
+    const source = await new Promise((resolve, reject) => {
+      const reader = new FileReader(); reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob);
+    });
+    const image = new Image(); image.src = source;
+    await image.decode();
+    return {source, metadata: {image_sha256: digest, width: image.naturalWidth, height: image.naturalHeight,
+      coordinate_space: "exif-transposed-pixels"}};
+  }
+  function originalFor(viewer, href, digest) {
+    if (!viewer.original || viewer.original.href !== href || viewer.original.digest !== digest) {
+      const original = {href, digest};
+      original.promise = readOriginal(href, digest).catch(error => {
+        if (viewer.original === original) viewer.original = null;
+        throw error;
+      });
+      viewer.original = original;
+    }
+    return viewer.original.promise;
+  }
   async function loadOriginal(viewer, href, digest, revision) {
+    const original = await originalFor(viewer, href, digest);
+    if (revision !== viewer.revision) throw Error("source_changed");
     if (viewer.digest !== digest) {
       viewer.surface.hidden = true;
-      const response = await fetch(href, {credentials: "same-origin", cache: "no-store"});
-      if (!response.ok || !/^[a-f0-9]{64}$/.test(digest) || response.headers.get("etag") !== '"' + digest + '"') throw Error("source_changed");
-      const blob = await response.blob();
-      const source = await new Promise((resolve, reject) => {
-        const reader = new FileReader(); reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob);
-      });
-      if (revision !== viewer.revision) throw Error("source_changed");
-      viewer.image.src = source;
+      viewer.image.src = original.source;
       await viewer.image.decode();
       if (revision !== viewer.revision) throw Error("source_changed");
       viewer.digest = digest;
     }
-    return {image_sha256: digest, width: viewer.image.naturalWidth, height: viewer.image.naturalHeight,
-      coordinate_space: "exif-transposed-pixels"};
+    return original.metadata;
   }
   function feedbackMode(viewer, enabled) {
     viewer.feedback = enabled; viewer.mode = "browse"; viewer.image.style.touchAction = "pan-x pan-y pinch-zoom";
@@ -132,9 +149,8 @@
     viewer.dialog.querySelector("[data-feedback-use]").onclick = () => { viewer.apply(viewer.annotation); viewer.dialog.close(); };
   }
   window.TicketboxRecognitionSource = {
-    original(form, href, digest) {
-      const viewer = viewerFor(form);
-      return loadOriginal(viewer, href, digest, ++viewer.revision);
+    async original(form, href, digest) {
+      return (await originalFor(viewerFor(form), href, digest)).metadata;
     },
     async locate(form, href, annotation, apply) {
       const viewer = viewerFor(form), revision = ++viewer.revision;

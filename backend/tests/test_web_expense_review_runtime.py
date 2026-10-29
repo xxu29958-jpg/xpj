@@ -117,6 +117,7 @@ def test_no_candidate_original_feedback_survives_lost_reply_and_keeps_finance_se
     result = _run_review_page(client, tmp_path, path + "&feedback=" + location + "&feedback_action=" + action, width=1440 if entry == "drawer" else 393)
     (tmp_path / "original-feedback-result.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
     assert not result.get("error") and result["completed"], result
+    assert result["parallel_metadata_ready"]
     assert len(result["requests"]) == 2
     assert dict(result["requests"][0])["idempotency_key"] == dict(result["requests"][1])["idempotency_key"]
     assert dict(result["requests"][0])["original_text_feedback"] == dict(result["requests"][1])["original_text_feedback"]

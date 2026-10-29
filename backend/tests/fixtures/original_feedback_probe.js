@@ -16,13 +16,33 @@
     if (state.stage === "sent") { state.stage = "unknown"; save(); throw Error("Committed reply lost"); }
     return response;
   };
+  async function preparePanelsTogether(form, panel) {
+    const sibling = form.querySelector('[data-original-feedback="merchant"]'), previousFetch = window.fetch;
+    let release, requests = 0;
+    const ready = new Promise(resolve => { release = resolve; });
+    window.fetch = async (url, options) => {
+      if (new URL(url, location.href).href === new URL(panel.dataset.sourceImageHref, location.href).href) {
+        requests++; await ready;
+      }
+      return previousFetch(url, options);
+    };
+    for (const selected of [panel, sibling]) {
+      for (let parent = selected; parent; parent = parent.parentElement) if (parent.tagName === "DETAILS") parent.open = true;
+    }
+    try {
+      await wait(() => requests > 0 && [panel, sibling].every(item => item.querySelector("[data-feedback-status]").textContent.includes("正在核对")));
+      release();
+      await wait(() => [panel, sibling].every(item => item.querySelector("[data-feedback-status]").textContent.includes("可直接")));
+      state.parallel_metadata_ready = true; save();
+    } finally { release(); window.fetch = previousFetch; }
+    sibling.open = false;
+  }
   async function prepareFeedback(form, field) {
     assert(!form.querySelector("[data-recognized-field]"), "This case must have no OCR candidates");
     field("amount_yuan").value = "17.00"; field("amount_yuan").dispatchEvent(new Event("input", {bubbles: true}));
     const panel = form.querySelector('[data-original-feedback="amount_cents"]');
     assert(panel, "No-candidate feedback is missing");
-    for (let parent = panel; parent; parent = parent.parentElement) if (parent.tagName === "DETAILS") parent.open = true;
-    await wait(() => panel.querySelector("[data-feedback-status]").textContent.includes("可直接"));
+    await preparePanelsTogether(form, panel);
     const text = panel.querySelector('[data-feedback-input="verbatim_text"]');
     text.value = "实付：78.00"; text.dispatchEvent(new Event("input", {bubbles: true}));
     panel.querySelector('[data-feedback-input="text_verified"]').click();
