@@ -42,8 +42,8 @@ def test_shipped_recovery_migration_preserves_old_receipts_and_refuses_attempt_e
                 "FROM background_tasks")).one()) == (0, None, "[]")
             assert db.scalar(text("SELECT schema_revision FROM dataset_authority WHERE singleton_id=1")) == _HEAD
         program = compile_program(Path(__file__).resolve().parents[1])
-        step = program["revisions"][-1]
-        assert program["target_revision"] == _HEAD and step["postcondition"] == "assert_postcondition"
+        step = next(item for item in program["revisions"] if item["revision"] == _HEAD)
+        assert step["postcondition"] == "assert_postcondition"
         module = Path(__file__).resolve().parents[1] / step["module_path"]
         assert hashlib.sha256(module.read_bytes()).hexdigest() == step["module_sha256"]
         run_alembic(command.downgrade, _PARENT)

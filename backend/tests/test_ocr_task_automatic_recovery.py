@@ -186,6 +186,52 @@ def test_backoff_keeps_quota_and_repeated_runtime_failure_stops(client, identity
     assert calls == [task_id, task_id]
 
 
+def test_changed_recipe_retains_the_original_attempt_and_observed_success(identity, monkeypatch, clock, tmp_path):
+    import hashlib
+
+    from app import config
+    from app.services import ocr_worker_client
+
+    task_id, public_id, payload = _original()
+    recipe = tmp_path / "recipe.json"
+    recipe.write_text('{"name":"before-restart"}', encoding="utf-8")
+    original_digest = hashlib.sha256(recipe.read_bytes()).hexdigest()
+    monkeypatch.setattr(ocr_worker_client, "_runtime_command", lambda: ["worker", "--recipe", str(recipe)])
+    settings = replace(config.get_settings(), ocr_provider="rapidocr", ocr_fallback_provider="local_llm")
+    monkeypatch.setattr(config, "get_settings", lambda: settings)
+    observed = []
+
+    def extract(expense, **_):
+        with SessionLocal() as db:
+            observed.append(json.loads(getattr(db.get(BackgroundTask, task_id), "execution_context_json", "null")))
+        if len(observed) == 1:
+            raise AppError("ocr_timeout", status_code=503)
+        extraction = _ocr_result().extractions[0]
+        evidence = {"input_sha256": expense.image_hash, "identity": {"recipe_name": "actually-loaded",
+            "recipe_sha256": "f" * 64}, "blocks": []}
+        return replace(_ocr_result(), extractions=(replace(extraction, provider_name="rapidocr",
+            result=replace(extraction.result, evidence=evidence)),))
+
+    monkeypatch.setattr(_enrich, "collect_auto_ocr_extractions", extract)
+    worker.run_task(task_id, payload)
+    assert observed[0] is not None, "the interrupted attempt must have a committed identity before inference"
+    recipe.write_text('{"name":"after-restart"}', encoding="utf-8")
+    clock[0] += timedelta(seconds=11)
+    worker.run_task(task_id, payload)
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        previous = json.loads(task.recovery_history_json)[0]["execution_context"]
+        current = json.loads(task.execution_context_json)
+        assert previous == observed[0] and previous["configured"]["rapidocr"]["recipe_sha256"] == original_digest
+        assert current["configured"]["rapidocr"]["recipe_sha256"] == hashlib.sha256(recipe.read_bytes()).hexdigest()
+        assert current["observed"][0]["identity"]["recipe_name"] == "actually-loaded"
+        assert current["observed"][0]["identity"]["recipe_sha256"] == "f" * 64
+        assert "observed" not in previous and previous["attempt"] == 1 and current["attempt"] == 2
+        assert (task.status, task.public_id, task.recovery_attempts) == ("completed", public_id, 1)
+        assert json.loads(task.input_payload_json) == payload
+        assert db.scalar(select(func.count()).select_from(OcrFact)) == 1
+
+
 @pytest.mark.parametrize("code", ["ocr_model_missing", "ocr_runtime_unavailable", "image_integrity_mismatch", "ocr_inference_failed"])
 def test_nontransient_input_or_installation_failure_does_not_loop(identity, monkeypatch, code):
     task_id, _public_id, payload = _original()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import hashlib
 import importlib.util
 import json
 import logging
@@ -69,6 +70,19 @@ def ocr_runtime_available() -> bool:
         return True
     except (OSError, ValueError, KeyError, TypeError, OcrRuntimeError):
         return False
+
+
+def configured_ocr_runtime_identity() -> dict:
+    """Fingerprint configuration without starting a worker or claiming it was loaded."""
+    try:
+        command = _CLIENT.command or _runtime_command()
+        recipe_bytes = Path(command[command.index("--recipe") + 1]).read_bytes()
+        recipe = json.loads(recipe_bytes)
+        return {"recipe_sha256": hashlib.sha256(recipe_bytes).hexdigest(), "recipe_name": recipe["name"]}
+    except (OSError, ValueError, KeyError, TypeError, IndexError, OcrRuntimeError):
+        # Actual admission still reports the runtime failure; this records that
+        # no configured identity could be read, never a guessed model version.
+        return {"recipe_sha256": None, "recipe_name": None}
 
 
 class OcrWorkerClient:

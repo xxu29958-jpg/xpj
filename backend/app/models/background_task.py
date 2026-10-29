@@ -97,6 +97,8 @@ class BackgroundTask(Base):
     recovery_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     recovery_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     recovery_history_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]", nullable=False)
+    # Current OCR attempt's configured and observed identities; recovery archives it before reuse.
+    execution_context_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False

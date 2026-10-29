@@ -49,8 +49,10 @@ def schedule_task_recovery(task: BackgroundTask) -> bool:
     history = json.loads(task.recovery_history_json)
     history.append({"attempt": task.recovery_attempts + 1, "error_code": task.error_code,
         "started_at": task.started_at.isoformat() if task.started_at else None,
-        "failed_at": (task.completed_at or stamp).isoformat(), "resume_after": after.isoformat()})
+        "failed_at": (task.completed_at or stamp).isoformat(), "resume_after": after.isoformat(),
+        "execution_context": json.loads(task.execution_context_json) if task.execution_context_json else None})
     task.recovery_history_json = json.dumps(history, separators=(",", ":"), sort_keys=True)
+    task.execution_context_json = None
     task.recovery_attempts += 1
     task.recovery_after = after
     task.status = "queued"
