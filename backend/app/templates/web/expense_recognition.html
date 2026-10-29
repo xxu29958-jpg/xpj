@@ -42,15 +42,17 @@
     {% if recognition_current and recognition_current.image_hash %}
     <details data-ocr-region data-image-sha256="{{ recognition_current.image_hash }}">
       <summary>只重读一行文字</summary>
-      <p class="hint">拖出选框，包含完整的一行文字。长图可先放大、移动，再开始框选。其它区域保留原识别结果；仍需回到核对页确认。</p>
+      <p class="hint">先浏览原图，需要时点选一行文字的两个对角；也可拖动选框。其它区域保留原识别结果，返回不会清空填写。</p>
       <div class="product-form-actions">
-        <button class="product-button product-button--quiet" type="button" data-ocr-region-move>移动图片</button>
+        <button class="product-button product-button--quiet" type="button" data-ocr-region-mode="browse" aria-pressed="true">浏览图片</button>
+        <button class="product-button product-button--quiet" type="button" data-ocr-region-mode="corners" aria-pressed="false">点选两角</button>
+        <button class="product-button product-button--quiet" type="button" data-ocr-region-mode="drag" aria-pressed="false">拖动选框</button>
         <button class="product-button product-button--quiet" type="button" data-ocr-region-zoom="0.5">缩小</button>
         <button class="product-button product-button--quiet" type="button" data-ocr-region-zoom="2">放大</button>
       </div>
       <div style="max-height:420px;overflow:auto;scrollbar-gutter:stable">
         <div data-ocr-region-surface style="position:relative;line-height:0">
-          <img data-ocr-region-image loading="lazy" src="/web/expenses/{{ original_fields.expense_id }}/image?ledger_id={{ selected_ledger_id }}" alt="拖动框选要重新识别的一行文字" style="display:block;width:100%;height:auto;touch-action:none">
+          <img data-ocr-region-image loading="lazy" draggable="false" src="/web/expenses/{{ original_fields.expense_id }}/image?ledger_id={{ selected_ledger_id }}" alt="原图：可浏览、点选两角或拖动选出一行文字" style="display:block;width:100%;height:auto;touch-action:pan-x pan-y pinch-zoom">
           <span data-ocr-region-box hidden style="position:absolute;border:2px solid currentColor;background:color-mix(in srgb,currentColor 12%,transparent);pointer-events:none"></span>
         </div>
       </div>

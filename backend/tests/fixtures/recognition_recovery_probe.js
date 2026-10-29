@@ -15,6 +15,7 @@
     const panel = form.querySelector("[data-ocr-region]"), image = panel.querySelector("img");
     if (!panel.open) panel.querySelector("summary").click();
     await wait(() => image.complete && image.naturalWidth, "region source");
+    panel.querySelector('[data-ocr-region-mode="drag"]').click();
     image.scrollIntoView({block: "center", behavior: "instant"});
     const bounds = image.getBoundingClientRect();
     const point = (x, y) => ({clientX: bounds.left + x * bounds.width / image.naturalWidth,
@@ -22,9 +23,9 @@
     const start = point(box[0], box[1]), end = point(box[2], box[3]);
     if ([start, end].some(p => p.clientX < 0 || p.clientX > innerWidth || p.clientY < 0 || p.clientY > innerHeight))
       throw Error("Region gesture is outside the visible image");
-    image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, pointerId: 1, ...start}));
-    image.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 1, ...end}));
-    image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 1, ...end}));
+    image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, isPrimary: true, pointerId: 1, ...start}));
+    image.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, isPrimary: true, pointerId: 1, ...end}));
+    image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, isPrimary: true, pointerId: 1, ...end}));
     if (JSON.stringify(JSON.parse(form.elements.ocr_region.value).box) !== JSON.stringify(box)) throw Error("Region gesture was not retained");
   }
   async function recoverRegion(form, state, submit) {
@@ -79,13 +80,11 @@
       const image = form.querySelector("[data-ocr-region-image]");
       await wait(() => image.complete && image.naturalWidth, "original image");
       form.querySelector('[data-ocr-region-zoom="2"]').click();
-      const move = form.querySelector("[data-ocr-region-move]");
-      move.click();
       if (!image.style.touchAction.includes("pan-y")) throw Error("Long source cannot be scrolled on touch");
-      image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, clientX: 1, clientY: 1}));
-      image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: 60, clientY: 60}));
+      image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, isPrimary: true, clientX: 1, clientY: 1}));
+      image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, isPrimary: true, clientX: 60, clientY: 60}));
       if (form.elements.ocr_region.value) throw Error("Moving the source changed the crop");
-      move.click();
+      form.querySelector('[data-ocr-region-mode="corners"]').click();
       image.scrollIntoView({block: "center", behavior: "instant"});
       const viewport = image.parentElement.parentElement;
       viewport.scrollTo({left: image.getBoundingClientRect().width / 2 - 50, behavior: "instant"});
@@ -93,10 +92,17 @@
       const visible = viewport.getBoundingClientRect();
       const endpoint = bounds.left + 110 * bounds.width / image.naturalWidth;
       if (endpoint < visible.left || endpoint > Math.min(visible.right, innerWidth)) throw Error("Crop gesture is outside the visible source");
-      const dispatch = (name, x, y) => image.dispatchEvent(new PointerEvent(name, {bubbles: true, pointerId: 1,
-        clientX: bounds.left + x * bounds.width / image.naturalWidth,
-        clientY: bounds.top + y * bounds.height / image.naturalHeight}));
-      dispatch("pointerdown", 60, 25); dispatch("pointermove", 110, 50); dispatch("pointerup", 110, 50);
+      const dispatch = (name, x, y) => {
+        const actual = image.getBoundingClientRect();
+        image.dispatchEvent(new PointerEvent(name, {bubbles: true, isPrimary: true, pointerId: 1,
+          clientX: actual.left + x * actual.width / image.naturalWidth,
+          clientY: actual.top + y * actual.height / image.naturalHeight}));
+      };
+      dispatch("pointerdown", 60, 25); dispatch("pointerup", 60, 25);
+      if (form.elements.ocr_region.value) throw Error("An unfinished corner became a submitted region");
+      form.querySelector('[data-ocr-region-zoom="0.5"]').click();
+      image.scrollIntoView({block: "center", behavior: "instant"});
+      dispatch("pointerdown", 110, 50); dispatch("pointerup", 110, 50);
       const selected = JSON.parse(form.elements.ocr_region.value);
       if (JSON.stringify(selected.box) !== "[60,25,110,50]") throw Error("Source crop coordinates changed: " + JSON.stringify({selected,
         before: bounds.toJSON(), after: image.getBoundingClientRect().toJSON()}));
