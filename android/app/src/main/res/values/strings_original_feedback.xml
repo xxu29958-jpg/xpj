@@ -7,6 +7,8 @@
     <string name="original_feedback_text">原图实际写着</string>
     <string name="original_feedback_text_check">我已对照原图核对这段文字</string>
     <string name="original_feedback_region_check">我已确认此范围与这段原文对应</string>
+    <string name="original_feedback_issue_label">原图情况</string>
+    <string name="original_feedback_role_label">这段文字表示</string>
     <string name="original_feedback_wrong">文字读错</string>
     <string name="original_feedback_missing">没有识别出来</string>
     <string name="original_feedback_unreadable">看不清</string>

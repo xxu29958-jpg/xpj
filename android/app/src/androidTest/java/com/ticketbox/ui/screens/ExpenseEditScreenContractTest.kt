@@ -8,6 +8,8 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.isDialog
@@ -162,6 +164,7 @@ class ExpenseEditScreenContractTest {
         }
         composeRule.onNode(hasSetTextAction() and hasText("12.34")).performScrollTo().performTextReplacement("22.00")
         closeSoftKeyboard()
+        openReadings("对照原件金额")
         composeRule.onAllNodesWithText("看原图这一处")[0].performScrollTo().performClick()
         composeRule.onNodeWithText(InstrumentationRegistry.getInstrumentation().targetContext.getString(
             com.ticketbox.R.string.expense_edit_large_image_failed)).assertExists()
@@ -407,6 +410,55 @@ class ExpenseEditScreenContractTest {
     }
 
     @Test
+    fun correctionNoteNeedsAChangedValueAndSaysWhyWhenNothingIsRecorded() {
+        var saved: ExpenseDraft? = null
+        val paid = com.ticketbox.domain.model.RecognitionFieldCandidate("amount_cents", "paid", "12860", "支付金额",
+            "实付 ¥128.60", "取自原件中这一处；请核对属于本次交易。", "payment", true, "fact", "receipt-fields-v8", "CNY", 2)
+        val total = paid.copy(id = "total", label = "合计", originalText = "合计 ¥128.60", role = "total")
+        val recorded = expense().copy(amountCents = 12860L, originalAmountMinor = 12860L, recognitionFields = listOf(paid, total))
+        composeRule.setContent {
+            TicketboxTheme(skin = skin) {
+                ExpenseEditScreen(expenseEditScreenState(expense = recorded), ExpenseEditScreenActions(
+                    primary = ExpenseEditPrimaryActions(onSave = { saved = it })))
+            }
+        }
+        // Two readings of the same total stay folded until asked for.
+        composeRule.onNodeWithText("实付 ¥128.60").assertDoesNotExist()
+        composeRule.onNode(hasText("对照原件金额") and hasText("2 处原文可对照")).performScrollTo().assertIsDisplayed()
+        capture("review-amount-readings-folded")
+        openReadings("对照原件金额")
+        composeRule.onNodeWithText("实付 ¥128.60").performScrollTo().assertIsDisplayed()
+        composeRule.onAllNodesWithText("注明已对照此处纠正金额")[0].performScrollTo().performClick()
+        composeRule.onNodeWithText("金额与这处原文相同，没有需要注明的纠正；若原文读错，请先改正金额。").performScrollTo().assertIsDisplayed()
+        val amountInput = composeRule.onNode(hasSetTextAction() and hasText(InstrumentationRegistry.getInstrumentation()
+            .targetContext.getString(com.ticketbox.R.string.expense_edit_amount_field_label)))
+        amountInput.performScrollTo().performTextReplacement("")
+        closeSoftKeyboard()
+        composeRule.onAllNodesWithText("注明已对照此处纠正金额")[0].performScrollTo().performClick()
+        composeRule.onNodeWithText("金额还是空的：请先在上方填入你核对后的金额，再点“注明已对照此处纠正金额”。")
+            .performScrollTo().assertIsDisplayed()
+        amountInput.performScrollTo().performTextReplacement("126.80")
+        closeSoftKeyboard()
+        composeRule.onAllNodesWithText("注明已对照此处纠正金额")[0].performScrollTo().performClick()
+        composeRule.onNodeWithText("已注明你对照这一处原件作了纠正，请保存当前修改。").performScrollTo().assertIsDisplayed()
+        capture("review-amount-correction-recorded")
+        // Editing afterwards drops the note out loud instead of silently.
+        amountInput.performScrollTo().performTextReplacement("126.08")
+        closeSoftKeyboard()
+        composeRule.onNodeWithText("你改动了金额，之前的注明已取消；改好后可再点一次注明。").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle {
+            assertEquals(12608L, saved?.originalAmountMinor)
+            assertEquals(null, saved?.toRequest(recorded)?.recognitionFieldChoices)
+        }
+        composeRule.onAllNodesWithText("注明已对照此处纠正金额")[0].performScrollTo().performClick()
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle {
+            assertEquals(listOf(paid.choice().copy(intent = "original_correction")), saved?.toRequest(recorded)?.recognitionFieldChoices)
+        }
+    }
+
+    @Test
     fun evidenceChoicesKeepEditedAmountAndOtherDuplicateCandidatesUntilExplicitSave() {
         var saved: ExpenseDraft? = null
         var confirmed: ExpenseDraft? = null
@@ -439,11 +491,14 @@ class ExpenseEditScreenContractTest {
         composeRule.onNodeWithText("原件金额存在冲突，请核对现有草稿。").performScrollTo().assertIsDisplayed()
         composeRule.onNode(hasSetTextAction() and hasText("12.34")).performScrollTo().performTextReplacement("22.00")
         closeSoftKeyboard()
+        openReadings("对照原件金额")
         composeRule.onNodeWithText("支付金额：CNY 12.34").performScrollTo().assertIsEnabled().performClick()
         composeRule.onNode(hasSetTextAction() and hasText("12.34")).performScrollTo().performTextReplacement("22.00")
         closeSoftKeyboard()
-        composeRule.onNodeWithText("已对照此处纠正金额").performScrollTo().assertIsEnabled().performClick()
+        composeRule.onNodeWithText("注明已对照此处纠正金额").performScrollTo().assertIsEnabled().performClick()
+        composeRule.onNodeWithText("已注明你对照这一处原件作了纠正，请保存当前修改。").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("expense-edit-merchant-row").performScrollTo().performClick()
+        openReadings("对照原件商户")
         composeRule.onNodeWithText("商户：原件商户").performScrollTo().assertIsEnabled().performClick()
         composeRule.onNodeWithText("查看其他候选 #3").performScrollTo().performClick()
         composeRule.onNodeWithTag("expense-edit-time-section").performScrollTo().performClick()
@@ -702,6 +757,13 @@ class ExpenseEditScreenContractTest {
         editState = editState,
         actionAvailability = actionAvailability,
     )
+
+    /** Readings start folded and open when the amount input takes focus; open them without toggling them shut. */
+    private fun openReadings(title: String) {
+        val folded = composeRule.onAllNodes(hasText(title) and SemanticsMatcher.expectValue(
+            SemanticsProperties.StateDescription, "已收起"))
+        if (folded.fetchSemanticsNodes().isNotEmpty()) folded[0].performScrollTo().performClick()
+    }
 
     private fun capture(name: String) {
         composeRule.waitForIdle()

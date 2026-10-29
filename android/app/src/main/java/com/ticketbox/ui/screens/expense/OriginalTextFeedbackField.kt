@@ -1,5 +1,6 @@
 package com.ticketbox.ui.screens.expense
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -24,12 +25,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.ticketbox.R
 import com.ticketbox.domain.model.OriginalTextFeedback
+import com.ticketbox.ui.components.AppFilterChip
+import com.ticketbox.ui.components.AppFilterChipOptions
+import com.ticketbox.ui.design.AppSpacing
 
 private val originalFeedbackAdapter = Moshi.Builder().build().adapter<List<OriginalTextFeedback>>(
     Types.newParameterizedType(List::class.java, OriginalTextFeedback::class.java),
@@ -66,7 +72,7 @@ internal fun OriginalTextFeedbackField(state: OriginalFeedbackFieldState,
     LaunchedEffect(state.image.image, state.value) {
         if (state.value != null && draft != state.value) onChange(draft)
     }
-    TextButton(enabled = state.enabled, onClick = {
+    TextButton(enabled = state.enabled, modifier = Modifier.expansionState(expanded), onClick = {
         expanded = !expanded
         if (expanded && state.image.image == null && !state.image.loading) onLoadImage()
     }) { Text(stringResource(if (state.value == null) R.string.original_feedback_open else R.string.original_feedback_pending)) }
@@ -101,15 +107,13 @@ private fun originalFeedbackLocationLabel(state: String): Int = when (state) {
 @Composable
 private fun OriginalFeedbackInputs(value: OriginalTextFeedback, enabled: Boolean, onChange: (OriginalTextFeedback?) -> Unit) {
     val noText = value.issue in listOf("unreadable", "cropped", "absent")
-    FlowRow {
-        for ((issue, label) in listOf("transcription" to R.string.original_feedback_wrong,
-            "missing" to R.string.original_feedback_missing, "unreadable" to R.string.original_feedback_unreadable,
-            "cropped" to R.string.original_feedback_cropped, "absent" to R.string.original_feedback_absent)) {
-            TextButton(enabled = enabled && issue != value.issue, onClick = {
-                onChange(value.copy(issue = issue, verbatimText = if (issue in listOf("unreadable", "cropped", "absent")) "" else value.verbatimText,
-                    textVerified = false))
-            }) { Text(stringResource(label)) }
-        }
+    // Chips carry the selected state; a disabled button read as "unavailable", not "chosen".
+    Text(stringResource(R.string.original_feedback_issue_label), style = MaterialTheme.typography.labelLarge)
+    FeedbackChoices(listOf("transcription" to R.string.original_feedback_wrong,
+        "missing" to R.string.original_feedback_missing, "unreadable" to R.string.original_feedback_unreadable,
+        "cropped" to R.string.original_feedback_cropped, "absent" to R.string.original_feedback_absent), value.issue, enabled) { issue ->
+        onChange(value.copy(issue = issue, verbatimText = if (issue in listOf("unreadable", "cropped", "absent")) "" else value.verbatimText,
+            textVerified = false))
     }
     if (!noText) {
         OutlinedTextField(value = value.verbatimText, enabled = enabled, label = { Text(stringResource(R.string.original_feedback_text)) },
@@ -127,8 +131,19 @@ private fun OriginalFeedbackInputs(value: OriginalTextFeedback, enabled: Boolean
             "order" to R.string.original_feedback_order_time, "capture" to R.string.original_feedback_capture_time)
         else -> emptyList()
     }
-    FlowRow { for ((role, label) in roles) TextButton(enabled = enabled && value.role != role,
-        onClick = { onChange(value.copy(role = role)) }) { Text(stringResource(label)) } }
+    if (roles.isNotEmpty()) {
+        Text(stringResource(R.string.original_feedback_role_label), style = MaterialTheme.typography.labelLarge)
+        FeedbackChoices(roles, value.role, enabled) { onChange(value.copy(role = it)) }
+    }
+}
+
+@Composable
+private fun FeedbackChoices(options: List<Pair<String, Int>>, selected: String?, enabled: Boolean, onSelect: (String) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+        for ((option, label) in options) AppFilterChip(stringResource(label), selected = option == selected,
+            onClick = { if (option != selected) onSelect(option) }, options = AppFilterChipOptions(enabled = enabled))
+    }
 }
 
 @Composable
@@ -167,7 +182,9 @@ private fun OriginalFeedbackTextLines(image: OcrSourceImageState, onSelect: (Int
     if (source.imageSha256 != image.image.originalSha256 || source.width != size.width.toInt() ||
         source.height != size.height.toInt() || source.coordinateSpace != "exif-transposed-pixels") return
     var expanded by rememberSaveable { mutableStateOf(false) }
-    TextButton(onClick = { expanded = !expanded }) { Text(stringResource(R.string.original_feedback_text_lines)) }
+    TextButton(onClick = { expanded = !expanded }, modifier = Modifier.expansionState(expanded)) {
+        Text(stringResource(R.string.original_feedback_text_lines))
+    }
     if (expanded) {
         Text(stringResource(R.string.original_feedback_text_lines_help), style = MaterialTheme.typography.bodySmall)
         source.lines.forEach { line ->
@@ -176,4 +193,11 @@ private fun OriginalFeedbackTextLines(image: OcrSourceImageState, onSelect: (Int
             }
         }
     }
+}
+
+/** These toggles fold a section open like the Web form's <details>; say which state it is in. */
+@Composable
+private fun Modifier.expansionState(expanded: Boolean): Modifier {
+    val state = stringResource(if (expanded) R.string.expense_edit_details_row_expanded else R.string.expense_edit_details_row_collapsed)
+    return semantics { stateDescription = state }
 }
