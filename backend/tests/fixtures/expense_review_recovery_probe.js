@@ -14,7 +14,7 @@
   const state = JSON.parse(sessionStorage.getItem(stateKey) || "null") || {
     operation: new URL(location.href).searchParams.get("probe"), stage: "edit", requests: [],
   };
-  const saving = ["save", "missing-amount-save"].includes(state.operation);
+  const saving = ["save", "missing-amount-save", "legacy-edit-save"].includes(state.operation);
   const save = () => sessionStorage.setItem(stateKey, JSON.stringify(state));
   const assert = (condition, message) => { if (!condition) throw Error(message); };
   const wait = async predicate => {
@@ -42,6 +42,16 @@
     }
     return response;
   };
+  function retainLegacyDraft(phase) {
+    const record = JSON.parse(localStorage.getItem(prefix + state.ref));
+    const laterFields = phase === "submitted" ?
+      ["command_action", "keep_idempotency_key", "reject_idempotency_key", "value_score", "regret_score", "original_text_feedback"] : ["original_text_feedback"];
+    laterFields.forEach(name => delete record.values[name]);
+    record.values.present_fields = JSON.stringify(JSON.parse(record.values.present_fields).filter(name => !laterFields.includes(name)));
+    localStorage.setItem(prefix + state.ref, JSON.stringify(record));
+    state.stage = phase + "-shelf"; save();
+    location.assign("/web/pending?ledger_id=owner");
+  }
   async function submitFirstOriginal(form, primary) {
     const field = name => form.elements.namedItem(name);
     if (["missing-amount", "missing-amount-save"].includes(state.operation)) {
@@ -60,7 +70,7 @@
       }
     }
     if (state.operation === "legacy-confirm") {
-      form.querySelectorAll('[name="value_score"], [name="regret_score"]').forEach(input => input.remove());
+      form.querySelectorAll('[name="value_score"], [name="regret_score"], [name="original_text_feedback"]').forEach(input => input.remove());
     }
     field("merchant").value = "浏览器原填写";
     field("merchant").dispatchEvent(new Event("input", {bubbles: true}));
@@ -68,16 +78,15 @@
     field("accounting_date").dispatchEvent(new Event("input", {bubbles: true}));
     assert(form.querySelector('.review-date-fields > summary').textContent.includes("2026-09-30"), "date summary hid the selected accounting date");
     state.key = field("idempotency_key").value; state.ref = field("draft_ref").value;
+    if (state.operation === "legacy-edit-save" && state.stage === "edit") {
+      retainLegacyDraft("editing"); return;
+    }
     state.stage = "lost"; save();
     const submit = saving ? [...form.querySelectorAll("button")].find(button => button.textContent === "保存草稿") : primary;
     form.requestSubmit(submit);
     await wait(() => state.stage === "unknown" && form.querySelector("[data-expensereview-draft-status]").textContent.includes("暂未收到"));
     if (state.operation === "legacy-confirm") {
-      const record = JSON.parse(localStorage.getItem(prefix + state.ref));
-      const laterFields = ["command_action", "keep_idempotency_key", "reject_idempotency_key", "value_score", "regret_score"];
-      laterFields.forEach(name=>delete record.values[name]);
-      record.values.present_fields = JSON.stringify(JSON.parse(record.values.present_fields).filter(name => !laterFields.includes(name)));
-      localStorage.setItem(prefix + state.ref, JSON.stringify(record));
+      retainLegacyDraft("submitted"); return;
     }
     location.reload();
   }
@@ -95,7 +104,25 @@
     state.stage = "confirm"; save();
     form.requestSubmit(primary);
   }
+  async function resumeLegacyEdit(form, primary) {
+    const field = name => form.elements.namedItem(name);
+    assert(form.dataset.expensereviewDraftPhase === "editing", "Unsent legacy draft lost its editable state");
+    assert(field("merchant").value === "浏览器原填写" && field("accounting_date").value === "2026-09-30", "Unsent legacy input changed");
+    assert(field("idempotency_key").value === state.key && field("expected_row_version").value === "4", "Unsent legacy identity changed");
+    state.legacy_edit_restored = true;
+    await submitFirstOriginal(form, primary);
+  }
+  function openLegacyFromShelf() {
+    const link = document.querySelector('[data-expensereview-ref="' + state.ref + '"]');
+    assert(link, "Legacy review draft is missing from the shelf");
+    state.legacy_shelf_visible = true;
+    state.stage = state.stage === "editing-shelf" ? "editing-restored" : "unknown"; save();
+    location.assign(link.href);
+  }
   try {
+    if (state.stage.endsWith("-shelf")) {
+      openLegacyFromShelf(); return;
+    }
     if (document.querySelector("[data-expense-confirmation]")) {
       assert(state.stage === "confirm" || state.stage === "replay", "unexpected financial receipt");
       window.__expenseReviewResult = {...state, original_removed: !localStorage.getItem(prefix + state.ref),
@@ -105,7 +132,9 @@
     const form = document.querySelector("form.edit-form"), field = name => form.elements.namedItem(name);
     const primary = form.querySelector("[data-expensereview-submit]");
     await wait(() => form.dataset.expensereviewDraftPhase && !primary.disabled);
-    if (state.stage === "edit") {
+    if (state.stage === "editing-restored") {
+      await resumeLegacyEdit(form, primary);
+    } else if (state.stage === "edit") {
       await submitFirstOriginal(form, primary);
     } else if (state.stage === "unknown") {
       assert(form.dataset.expensereviewDraftPhase === "submitted", "original submission was replaced by an editable draft");
