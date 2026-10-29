@@ -58,7 +58,7 @@ fun FundsScreen(viewModel: FundsViewModel, onBack: () -> Unit, onExpense: (Long)
         refresh = AppSecondaryRefreshState(state.loading, viewModel::refresh),
         slots = AppSecondaryPageSlots(bottomBar = fundsBottomAction(state, viewModel)),
     ) {
-        state.error?.let { message -> item { Text(message.asString(), color = MaterialTheme.colorScheme.error) } }
+        state.pageError()?.let { message -> item { Text(message.asString(), color = MaterialTheme.colorScheme.error) } }
         if (state.fromCache) item { Text(stringResource(R.string.funds_cached_note), style = MaterialTheme.typography.bodySmall) }
         when {
             state.editing && input != null -> item { FundsEditor(state, input, viewModel) }
@@ -98,8 +98,13 @@ private fun FundingReadPanel(state: FundsUiState, viewModel: FundsViewModel) {
 
 }
 
-/** Adding an account stays reachable at the bottom of a filled overview; the empty state carries its own. */
+/**
+ * An open editor keeps its confirm in the bar, above the keyboard while an amount is typed.
+ * Adding an account stays reachable at the bottom of a filled overview; the empty state carries its own.
+ */
 private fun fundsBottomAction(state: FundsUiState, viewModel: FundsViewModel): (@Composable () -> Unit)? {
+    val input = state.task.input
+    if (state.editing && input != null) return { AppFloatingActionBar { FundsSubmission(state, input, viewModel) } }
     val overview = !state.editing && state.envelopeMonth == null && !state.fundingPage && !state.captureRequested && state.detail == null
     if (!overview || state.accounts.isEmpty() || state.access?.canModify != true) return null
     return { AppFloatingActionBar { AppPrimaryButton(stringResource(R.string.funds_add_account), modifier = Modifier.fillMaxWidth()) { viewModel.start("create") } } }

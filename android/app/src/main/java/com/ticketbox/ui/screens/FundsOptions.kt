@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +29,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import com.ticketbox.R
+import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.AppSwitch
+import com.ticketbox.ui.design.AppTextHierarchy
 import com.ticketbox.ui.design.AppIconSize
 import com.ticketbox.ui.design.AppSpacing
 
@@ -60,3 +64,27 @@ internal fun FundsOptions(title: String, filled: String?, empty: String, content
 
 /** What the folded line shows once something inside is filled: the values themselves, joined. */
 internal fun filledSummary(vararg values: String): String? = values.map { it.trim() }.filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { null }
+
+/** A yes/no choice in a funds form: the statement reads first and the whole row toggles, as the envelope sources do. */
+@Composable
+internal fun FundsSwitchRow(label: String, checked: Boolean, enabled: Boolean, change: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = AppSpacing.controlMinHeight)
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = change),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        AppSwitch(checked = checked, onCheckedChange = null, enabled = enabled)
+    }
+}
+
+/** A chosen account keeps its role above it like a field label, so a bare account name never has to explain itself. */
+@Composable
+internal fun FundsAccountChoice(label: String, chosen: String, placeholder: String, enabled: Boolean, choose: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge,
+            fontWeight = AppTextHierarchy.body.weight)
+        AppSecondaryButton(chosen.ifBlank { placeholder }, enabled = enabled, onClick = choose)
+    }
+}
