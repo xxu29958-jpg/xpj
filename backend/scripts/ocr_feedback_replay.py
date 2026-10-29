@@ -50,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
     manifest, output = args.manifest.resolve(), args.output_dir.resolve()
     materials = load_replay(manifest)
     identity = source_identity(output)
+    if identity["working_status"]:
+        parser.error("feedback replay requires a clean source tree outside the output directory")
     output.mkdir(parents=True, exist_ok=False)
     environment = child_environment(os.environ)
     environment.update(XPJ_OCR_REPLAY_MANIFEST=str(manifest), XPJ_OCR_REPLAY_OUTPUT=str(output))

@@ -20,7 +20,8 @@ def test_empty_manifest_cannot_report_a_completed_evaluation(tmp_path):
         load_replay(manifest)
 
 
-def test_replay_output_is_excluded_but_real_source_edits_remain_visible(tmp_path, monkeypatch):
+@pytest.fixture
+def replay_source_repository(tmp_path, monkeypatch):
     # A tiny independent Git fixture exercises native path filtering, without copying the application.
     root = tmp_path / "source"
     backend = root / "backend"
@@ -29,20 +30,43 @@ def test_replay_output_is_excluded_but_real_source_edits_remain_visible(tmp_path
     source = backend / "scripts/ocr_feedback_replay_fixture.py"
     source.write_text("# original source\n", encoding="utf-8")
     (backend / "tests/test_ocr_feedback_replay.py").write_text("# replay test fixture\n", encoding="utf-8")
+    (backend / "production.py").write_text("# original production source\n", encoding="utf-8")
     for arguments in (("init",), ("add", "."),
             ("-c", "user.name=Replay Contract", "-c", "user.email=replay@example.invalid", "commit", "-m", "fixture")):
         subprocess.run(["git", *arguments], cwd=root, check=True, capture_output=True)
     monkeypatch.setattr(replay_cli, "_BACKEND_ROOT", backend)
+    return backend
+
+
+def test_replay_output_is_excluded_but_real_source_edits_remain_visible(replay_source_repository):
+    backend = replay_source_repository
     output = backend / "replay-results"
     before = replay_cli.source_identity(output)
     output.mkdir()
     (output / "tests.log").write_text("generated evaluation output", encoding="utf-8")
     assert replay_cli.source_identity(output) == before
-    unrelated = root / "outside-backend.py"
+    unrelated = backend.parent / "outside-backend.py"
     unrelated.write_text("# an actual new source file\n", encoding="utf-8")
     assert replay_cli.source_identity(output) != before
-    source.write_text("# changed replay source\n", encoding="utf-8")
+    (backend / "scripts/ocr_feedback_replay_fixture.py").write_text("# changed replay source\n", encoding="utf-8")
     assert replay_cli.source_identity(output)["replay_sources"] != before["replay_sources"]
+
+
+def test_dirty_production_source_is_rejected_before_output_or_tests(replay_source_repository, monkeypatch, capsys):
+    from scripts import ocr_feedback_replay_data, run_postgres_pytest_lane
+
+    backend = replay_source_repository
+    (backend / "production.py").write_text("# an uncommitted production change\n", encoding="utf-8")
+    # Only material loading is controlled; the CLI must reject the real Git state before executing any arm.
+    monkeypatch.setattr(ocr_feedback_replay_data, "load_replay", lambda _: [object()])
+    monkeypatch.setattr(run_postgres_pytest_lane, "build_pytest_command",
+        lambda **_: pytest.fail("dirty production source reached test execution"))
+    output = backend / "new-report"
+    with pytest.raises(SystemExit) as rejected:
+        replay_cli.main(["--manifest", str(backend / "material.json"), "--output-dir", str(output)])
+    assert rejected.value.code == 2
+    assert "clean source tree" in capsys.readouterr().err
+    assert not output.exists()
 
 
 def test_frozen_replay_original_remains_readable_with_metadata(client, identity, tmp_path):

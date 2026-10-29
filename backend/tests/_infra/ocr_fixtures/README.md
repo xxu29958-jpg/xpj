@@ -33,7 +33,7 @@ Example from backend/:
 
 ### 生产反馈回放
 
-在既有 owned PostgreSQL 测试环境中运行 `python scripts/ocr_feedback_replay.py --manifest <frozen-manifest.json> --output-dir <new-output-directory>`。入口复用 real-db lane 的身份、数据库隔离和清理合同；每个对照组重建测试状态。不得连接日常安装。未显式传入 manifest 时 CI 跳过真实图片回放，不宣称执行了该材料。
+在既有 owned PostgreSQL 测试环境中运行 `python scripts/ocr_feedback_replay.py --manifest <frozen-manifest.json> --output-dir <new-output-directory>`。必须从干净源码树开始，已修改或未跟踪的非输出文件会在创建报告及启动测试前被拒绝；无需清除用户工作，应先保留并正常提交待验证的源码。入口复用 real-db lane 的身份、数据库隔离和清理合同；每个对照组重建测试状态。不得连接日常安装。未显式传入 manifest 时 CI 跳过真实图片回放，不宣称执行了该材料。
 
 manifest 使用 `schema_version: 1`，包含 `recordings` 和 `arrival_order`，至少包含一张已记录原图。每份 recording 指定原 benchmark `report`、`report_sha256`、对应事实 `snapshots`（JSONL）、`snapshots_sha256`、原 `fixtures` 目录；路径相对 manifest。report 须保留原 benchmark 的 `manifest`、`rows` 及 `source_unchanged`、`worker_closed`，snapshots 为同次真实 native 调用的 `ocr_fact_snapshot`，以 `evidence.input_sha256` 关联原图。输入、标签、图片和记录摘要必须与冻结值一致。`arrival_order` 精确列出全部 sample_id，每交易组和原图仅出现一次，development 在 holdout 前。
 
