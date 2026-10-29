@@ -329,6 +329,33 @@ button[disabled] {
     padding: var(--space-6);
 }
 
+/* Original-source review is shared by the full editor and inbox drawer. */
+.recognition-source-dialog {
+    width: min(760px, calc(100vw - 32px));
+    max-height: 90dvh;
+    margin: auto;
+    padding: var(--space-4);
+    overflow: auto;
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-card);
+    background: var(--surface-card);
+    color: var(--text-default);
+    box-shadow: var(--shadow-raised);
+}
+.recognition-source-dialog::backdrop { background: var(--drawer-overlay-bg); }
+.recognition-source-dialog > p { margin-block: var(--space-2); }
+.recognition-source-scroll {
+    height: min(50dvh, 420px);
+    min-height: 160px;
+    overflow: auto;
+    margin-block: var(--space-3);
+    touch-action: pan-x pan-y pinch-zoom;
+}
+.recognition-source-surface { position: relative; }
+.recognition-source-surface img { width: 100%; display: block; }
+.recognition-source-surface svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.recognition-source-surface polygon { fill: rgb(20 120 120 / 18%); stroke: #087c7c; stroke-width: 2px; vector-effect: non-scaling-stroke; }
+
 .money-context {
     margin-block-end: var(--space-4);
     color: var(--text-muted);

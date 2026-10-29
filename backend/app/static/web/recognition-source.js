@@ -4,7 +4,7 @@
   const viewers = new WeakMap();
   function createViewer(form) {
     const dialog = document.createElement("dialog");
-    dialog.className = "recognition-source-dialog product-panel";
+    dialog.className = "recognition-source-dialog";
     dialog.setAttribute("aria-label", "对照原图来源");
     dialog.innerHTML = '<strong data-source-title></strong><p data-source-text></p>' +
       '<p role="status" data-source-status></p><div class="recognition-source-scroll"><div class="recognition-source-surface">' +
@@ -47,6 +47,7 @@
     viewer.dialog.querySelector("[data-source-text]").textContent = candidate.original_text;
     if (!viewer.dialog.open) viewer.dialog.showModal();
     viewer.status.textContent = "正在对照原图…";
+    viewer.dialog.querySelectorAll("[data-source-zoom]").forEach(control => { control.disabled = true; });
     viewer.svg.replaceChildren();
     try {
       if (viewer.digest !== location.image_sha256) {
@@ -61,12 +62,14 @@
         if (revision !== viewer.revision) return;
         viewer.image.src = source;
         await viewer.image.decode();
+        if (revision !== viewer.revision) return;
         viewer.digest = location.image_sha256;
       }
       if (revision !== viewer.revision) return;
       if (viewer.image.naturalWidth !== location.width || viewer.image.naturalHeight !== location.height ||
           location.coordinate_space !== "exif-transposed-pixels") throw Error("geometry_changed");
       viewer.surface.hidden = false;
+      viewer.dialog.querySelectorAll("[data-source-zoom]").forEach(control => { control.disabled = false; });
       viewer.svg.setAttribute("viewBox", `0 0 ${location.width} ${location.height}`);
       for (const box of location.boxes) {
         const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");

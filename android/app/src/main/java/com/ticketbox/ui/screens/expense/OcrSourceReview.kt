@@ -20,26 +20,32 @@ import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RecognitionSourceLocation
 
 internal data class OcrSourceEntry(val id: String, val label: String, val text: String, val location: RecognitionSourceLocation)
+internal data class OcrSourceImageState(val image: ProtectedImage?, val expectedHash: String?, val loading: Boolean)
 
 @Composable
-internal fun OcrSourceReview(image: ProtectedImage?, expectedHash: String?, entries: List<OcrSourceEntry>,
-    selectedId: String, onSelect: (String) -> Unit, onDismiss: () -> Unit) {
+internal fun OcrSourceReview(state: OcrSourceImageState, entries: List<OcrSourceEntry>,
+    selectedId: String, onSelect: (String?) -> Unit) {
+    val image = state.image
     val entry = entries.firstOrNull { it.id == selectedId }
     val location = entry?.location
     val size = image?.let(::sourceSize)
-    val ready = location != null && location.imageSha256 == expectedHash && image?.originalSha256 == expectedHash &&
+    val ready = location != null && location.imageSha256 == state.expectedHash && image?.originalSha256 == state.expectedHash &&
         size?.width == location.width.toFloat() && size.height == location.height.toFloat() &&
         location.coordinateSpace == "exif-transposed-pixels"
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = { onSelect(null) }) {
         Surface(shape = MaterialTheme.shapes.large) {
             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(entry?.label ?: stringResource(R.string.recognition_source_open), style = MaterialTheme.typography.titleLarge)
                 Text(entry?.text.orEmpty())
-                if (ready) RegionSelectionImage(requireNotNull(image), requireNotNull(size), intArrayOf(), true, location) {}
-                else Text(stringResource(if (image == null) R.string.expense_edit_large_image_loading else R.string.recognition_source_unavailable))
+                if (ready) RegionSelectionImage(requireNotNull(image), intArrayOf(), true, location) {}
+                else Text(stringResource(when {
+                    state.loading -> R.string.expense_edit_large_image_loading
+                    image == null -> R.string.expense_edit_large_image_failed
+                    else -> R.string.recognition_source_unavailable
+                }))
                 Text(stringResource(R.string.recognition_source_help))
                 FlowRow {
-                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.ocr_region_cancel)) }
+                    TextButton(onClick = { onSelect(null) }) { Text(stringResource(R.string.ocr_region_cancel)) }
                     val index = entries.indexOfFirst { it.id == selectedId }
                     TextButton(enabled = index > 0, onClick = { onSelect(entries[index - 1].id) }) {
                         Text(stringResource(R.string.recognition_source_previous))

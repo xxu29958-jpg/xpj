@@ -80,7 +80,7 @@ internal fun OcrRegionPicker(image: ProtectedImage?, expectedHash: String?, enab
             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.ocr_region_open), style = MaterialTheme.typography.titleLarge)
                 Text(stringResource(R.string.ocr_region_help))
-                if (ready) RegionSelectionImage(requireNotNull(image), requireNotNull(source), selection, enabled) { selection = it }
+                if (ready) RegionSelectionImage(requireNotNull(image), selection, enabled) { selection = it }
                 else Text(stringResource(if (image == null) R.string.expense_edit_large_image_loading else R.string.expense_edit_large_image_failed))
                 Text(stringResource(when (selection.size) {
                     4 -> R.string.ocr_region_selected
@@ -99,8 +99,9 @@ internal fun OcrRegionPicker(image: ProtectedImage?, expectedHash: String?, enab
 }
 
 @Composable
-internal fun RegionSelectionImage(image: ProtectedImage, source: Size, selected: IntArray,
+internal fun RegionSelectionImage(image: ProtectedImage, selected: IntArray,
     enabled: Boolean, location: RecognitionSourceLocation? = null, onSelected: (IntArray) -> Unit) {
+    val source = remember(image) { requireNotNull(sourceSize(image)) }
     var viewport by remember { mutableStateOf(Size.Zero) }
     var start by remember { mutableStateOf(Offset.Zero) }
     var end by remember { mutableStateOf(Offset.Zero) }
@@ -111,31 +112,10 @@ internal fun RegionSelectionImage(image: ProtectedImage, source: Size, selected:
     val request = remember(image) { ImageRequest.Builder(context).data(image.bytes).size(coil3.size.Size.ORIGINAL).build() }
     val color = MaterialTheme.colorScheme.primary
     LaunchedEffect(location, viewport) {
-        if (location != null && viewport != Size.Zero) {
-            val points = location.boxes.flatten()
-            val left = points.minOf { it[0] }; val right = points.maxOf { it[0] }
-            val top = points.minOf { it[1] }; val bottom = points.maxOf { it[1] }
-            val base = OcrRegionTransform().scale(viewport, source)
-            val zoom = (minOf(viewport.width / (right - left).coerceAtLeast(1f),
-                viewport.height / (bottom - top).coerceAtLeast(1f)) * .8f / base).coerceIn(1f, 16f)
-            val pan = Offset((source.width - left - right) / 2, (source.height - top - bottom) / 2) * (base * zoom)
-            transform = OcrRegionTransform(zoom, pan).adjusted(1f, Offset.Zero, Offset.Zero, viewport, source)
-        }
+        if (location != null && viewport != Size.Zero) transform = focusSourceLocation(location, viewport)
     }
-    FlowRow {
-        if (location == null) for ((target, label) in listOf(RegionGestureMode.Browse to R.string.ocr_region_move,
-            RegionGestureMode.Corners to R.string.ocr_region_select, RegionGestureMode.Drag to R.string.ocr_region_drag)) {
-            TextButton(onClick = { mode = target; dragging = false }, enabled = enabled && target != mode) {
-                Text(stringResource(label))
-            }
-        }
-        for ((factor, label) in listOf(.5f to R.string.ocr_region_zoom_out, 2f to R.string.ocr_region_zoom_in)) {
-            TextButton(onClick = { transform = transform.adjusted(factor, Offset.Zero,
-                Offset(viewport.width / 2, viewport.height / 2), viewport, source) }, enabled = enabled) {
-                Text(stringResource(label))
-            }
-        }
-    }
+    RegionImageControls(mode, enabled, location == null, onMode = { mode = it; dragging = false },
+        onZoom = { transform = transform.adjusted(it, Offset.Zero, Offset(viewport.width / 2, viewport.height / 2), viewport, source) })
     Box(Modifier.fillMaxWidth().height(320.dp).clipToBounds().onSizeChanged { viewport = Size(it.width.toFloat(), it.height.toFloat()) }) {
         AsyncImage(model = request, contentDescription = stringResource(R.string.ocr_region_help),
             modifier = Modifier.fillMaxSize().graphicsLayer {
@@ -167,6 +147,20 @@ internal fun RegionSelectionImage(image: ProtectedImage, source: Size, selected:
         }) {
             if (location != null) drawSourceLocation(location, transform, color)
             drawRegionSelection(source, transform, selected, if (dragging) start to end else null, color)
+        }
+    }
+}
+
+@Composable
+private fun RegionImageControls(mode: RegionGestureMode, enabled: Boolean, allowSelection: Boolean,
+    onMode: (RegionGestureMode) -> Unit, onZoom: (Float) -> Unit) {
+    FlowRow {
+        if (allowSelection) for ((target, label) in listOf(RegionGestureMode.Browse to R.string.ocr_region_move,
+            RegionGestureMode.Corners to R.string.ocr_region_select, RegionGestureMode.Drag to R.string.ocr_region_drag)) {
+            TextButton(onClick = { onMode(target) }, enabled = enabled && target != mode) { Text(stringResource(label)) }
+        }
+        for ((factor, label) in listOf(.5f to R.string.ocr_region_zoom_out, 2f to R.string.ocr_region_zoom_in)) {
+            TextButton(onClick = { onZoom(factor) }, enabled = enabled) { Text(stringResource(label)) }
         }
     }
 }

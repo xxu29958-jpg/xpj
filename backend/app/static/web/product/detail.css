@@ -1,25 +1,5 @@
 /* 二、三级页：稳定的工作区骨架，不复制首屏卡片布局。 */
 
-.recognition-source-dialog {
-    width: min(760px, calc(100vw - 32px));
-    max-height: 90dvh;
-    padding: var(--space-4);
-    overflow: auto;
-}
-
-.recognition-source-scroll {
-    height: min(55dvh, 500px);
-    min-height: 240px;
-    overflow: auto;
-    margin-block: var(--space-3);
-    touch-action: pan-x pan-y pinch-zoom;
-}
-
-.recognition-source-surface { position: relative; }
-.recognition-source-surface img { width: 100%; display: block; }
-.recognition-source-surface svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.recognition-source-surface polygon { fill: rgb(20 120 120 / 18%); stroke: #087c7c; stroke-width: 2px; vector-effect: non-scaling-stroke; }
-
 .detail-layout {
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(calc(var(--space-12) * 4), .6fr);

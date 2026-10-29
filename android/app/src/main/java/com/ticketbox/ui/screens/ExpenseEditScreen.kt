@@ -232,8 +232,9 @@ fun ExpenseEditScreen(
         if (state.fullImage == null) mediaActions.onLoadFullImage()
     }
     sourceCandidateId?.let { selected ->
-        com.ticketbox.ui.screens.expense.OcrSourceReview(state.fullImage, currentExpense.imageHash, sourceEntries, selected,
-            onSelect = { sourceCandidateId = it }, onDismiss = { sourceCandidateId = null })
+        com.ticketbox.ui.screens.expense.OcrSourceReview(
+            com.ticketbox.ui.screens.expense.OcrSourceImageState(state.fullImage, currentExpense.imageHash, state.imageLoading), sourceEntries, selected,
+            onSelect = { sourceCandidateId = it })
     }
     val formIdentity = ExpenseEditFormValues.identity(currentExpense, state.formRevision, state.preservedFormTimestamp)
     val initialFormValues = remember(formIdentity) {
