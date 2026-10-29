@@ -172,8 +172,7 @@ private fun DebtListContent(
             actions = if (state.canModify || state.hasCreationDraft) {
                 {
                     DebtListHeaderActions(
-                        isParsingBill = state.isParsingBill,
-                        canParse = state.canModify,
+                        state = state,
                         onParseBillImage = callbacks.onParseBillImage,
                         onAddDebt = callbacks.onAddDebt,
                     )
@@ -247,8 +246,7 @@ private fun DebtListEmbeddedContent(
 /** 二级页头部动作：单主 CTA「记一笔欠款」+ OCR 安静图标入口（不再两颗整行大按钮上下堆挤）。 */
 @Composable
 private fun DebtListHeaderActions(
-    isParsingBill: Boolean,
-    canParse: Boolean,
+    state: DebtListUiState,
     onParseBillImage: () -> Unit,
     onAddDebt: () -> Unit,
 ) {
@@ -260,10 +258,10 @@ private fun DebtListHeaderActions(
             text = stringResource(R.string.debt_list_add),
             icon = Icons.Default.Add,
             modifier = Modifier.weight(1f),
-            enabled = !isParsingBill,
+            enabled = !state.isParsingBill,
             onClick = onAddDebt,
         )
-        if (canParse) DebtBillParseIconButton(isParsingBill = isParsingBill, onClick = onParseBillImage)
+        if (state.canModify) DebtBillParseIconButton(state = state, onClick = onParseBillImage)
     }
 }
 
@@ -272,19 +270,19 @@ private fun DebtListHeaderActions(
  * 控件内（小型进度指示替代图标），不与主 CTA 争视觉。图形沿用产品既有 ReceiptLong 票据语言。
  */
 @Composable
-internal fun DebtBillParseIconButton(isParsingBill: Boolean, onClick: () -> Unit) {
+internal fun DebtBillParseIconButton(state: DebtListUiState, onClick: () -> Unit) {
     val description = stringResource(
-        if (isParsingBill) R.string.debt_list_parse_bill_busy else R.string.debt_list_parse_bill,
+        if (state.isParsingBill) R.string.debt_list_parse_bill_busy else R.string.debt_list_parse_bill,
     )
     Box(
         modifier = Modifier
             .size(AppSpacing.controlMinHeight)
             .clip(RoundedCornerShape(AppRadius.extraSmall))
-            .clickable(role = Role.Button, enabled = !isParsingBill, onClick = onClick)
+            .clickable(role = Role.Button, enabled = state.canPrepareBill, onClick = onClick)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        if (isParsingBill) {
+        if (state.isParsingBill) {
             CircularProgressIndicator(modifier = Modifier.size(AppIconSize.standard), strokeWidth = 2.dp)
         } else {
             Icon(
