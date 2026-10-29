@@ -1197,7 +1197,9 @@ jobs:
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.android_apk != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Both observed 15-minute cancellations reached the second flavor's lint.
+    # Keep the memory-safe serial build and allow its release checks to finish.
+    timeout-minutes: 20
     outputs:
       qualification_sha: ${{ steps.qualification.outputs.sha }}
       qualification_source_sha: ${{ steps.qualification.outputs.source_sha }}
