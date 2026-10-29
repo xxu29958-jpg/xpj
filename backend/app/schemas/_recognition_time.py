@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field
 
+from app.schemas._recognition_source import RecognitionSourceLocation
+
 
 class RecognitionTimeCandidate(BaseModel):
     id: str
@@ -21,6 +23,7 @@ class RecognitionTimeCandidate(BaseModel):
     requires_year: bool = False
     event_id: str | None = None
     event_selected: bool = False
+    source_location: RecognitionSourceLocation | None = None
 
 
 class RecognitionTimeResponse(BaseModel):

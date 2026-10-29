@@ -347,6 +347,11 @@
     <string name="ocr_region_cancel">返回</string>
     <string name="ocr_region_clear">清除选框</string>
     <string name="ocr_region_submit">重读这一行</string>
+    <string name="recognition_source_open">看原图这一处</string>
+    <string name="recognition_source_help">高亮来自这一候选的识别文字框。可继续浏览原图；返回保留当前填写。</string>
+    <string name="recognition_source_unavailable">原图与这次识别来源不一致，暂不显示位置。仍可返回填写。</string>
+    <string name="recognition_source_previous">上一处</string>
+    <string name="recognition_source_next">下一处</string>
     <string name="financial_month_label">选择月份</string>
     <string name="financial_month_format">YYYY-MM</string>
     <string name="financial_month_choose">尚未取得账本月份，请明确选择要查看或填写的月份。</string>

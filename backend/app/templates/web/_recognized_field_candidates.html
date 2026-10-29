@@ -8,6 +8,7 @@
     <strong>{{ candidate.label }}</strong>
     <p>{{ candidate.original_text }}</p>
     <p class="meta">{{ candidate.explanation }}</p>
+    {% include "_recognition_source_button.html" %}
     {% if candidate.can_apply and can_write and not expense_review_basis_changed %}
     <button type="button" class="product-button product-button--secondary" data-recognized-field='{{ candidate.model_dump() | tojson }}'>{{ '采用此金额' if candidate.field == 'amount_cents' else '采用此商户' }}</button>
     <button type="button" class="product-button product-button--secondary" data-recognized-field-correction='{{ candidate.model_dump() | tojson }}'>{{ '已对照此处纠正金额' if candidate.field == 'amount_cents' else '已对照此处纠正商户' }}</button>

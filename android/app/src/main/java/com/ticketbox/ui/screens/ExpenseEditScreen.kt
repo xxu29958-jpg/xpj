@@ -221,6 +221,20 @@ fun ExpenseEditScreen(
     }
 
     val currentExpense = state.expense ?: expense
+    var sourceCandidateId by rememberSaveable(currentExpense.id) { mutableStateOf<String?>(null) }
+    val sourceEntries = currentExpense.recognitionFields.mapNotNull { candidate ->
+        candidate.sourceLocation?.let { com.ticketbox.ui.screens.expense.OcrSourceEntry(candidate.id, candidate.label, candidate.originalText, it) }
+    } + currentExpense.recognitionTime?.candidates.orEmpty().mapNotNull { candidate ->
+        candidate.sourceLocation?.let { com.ticketbox.ui.screens.expense.OcrSourceEntry(candidate.id, candidate.label, candidate.originalText, it) }
+    }
+    fun openCandidateSource(id: String) {
+        sourceCandidateId = id
+        if (state.fullImage == null) mediaActions.onLoadFullImage()
+    }
+    sourceCandidateId?.let { selected ->
+        com.ticketbox.ui.screens.expense.OcrSourceReview(state.fullImage, currentExpense.imageHash, sourceEntries, selected,
+            onSelect = { sourceCandidateId = it }, onDismiss = { sourceCandidateId = null })
+    }
     val formIdentity = ExpenseEditFormValues.identity(currentExpense, state.formRevision, state.preservedFormTimestamp)
     val initialFormValues = remember(formIdentity) {
         ExpenseEditFormValues.fromExpense(currentExpense)
@@ -548,7 +562,7 @@ fun ExpenseEditScreen(
         if (isPendingExpense) {
             RecognizedEventDrafts(currentExpense.recognitionFields, currentExpense.recognitionTime,
                 !readOnly, ::chooseOriginalField, ::chooseEventTime)
-            RecognizedFieldCandidates(currentExpense.recognitionFields, !readOnly, ::chooseOriginalField) { candidate ->
+            RecognizedFieldCandidates(currentExpense.recognitionFields, !readOnly, ::chooseOriginalField, ::openCandidateSource) { candidate ->
                 fieldChoicesJson = updateFieldChoice(fieldChoicesJson, candidate.field,
                     candidate.choice().copy(intent = "original_correction"))
             }
@@ -579,7 +593,7 @@ fun ExpenseEditScreen(
             modifier = Modifier.testTag("expense-edit-time-section"),
         ) {
             if (currentExpense.status == "pending") com.ticketbox.ui.screens.expense.RecognizedTimeCandidates(
-                currentExpense.recognitionTime, timeForm, setTimeForm, !readOnly,
+                currentExpense.recognitionTime, timeForm, setTimeForm, !readOnly, ::openCandidateSource,
             )
             com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, !readOnly, showTitle = false)
         }

@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas._recognition_source import RecognitionSourceLocation
+
 
 class RecognitionFieldChoice(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -31,3 +33,4 @@ class RecognitionFieldCandidate(BaseModel):
     parser_version: str
     source: Literal["image", "notification"] = "image"
     selection_intent: Literal["candidate", "bookkeeping"] = "candidate"
+    source_location: RecognitionSourceLocation | None = None

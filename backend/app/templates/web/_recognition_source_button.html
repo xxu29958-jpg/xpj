@@ -1,0 +1,4 @@
+{% if candidate.source_location and expense is defined and expense.has_image %}
+<button type="button" class="product-button product-button--quiet" data-recognition-source='{{ candidate.model_dump() | tojson }}'
+  data-source-image-href="/web/expenses/{{ expense.id }}/image?ledger_id={{ selected_ledger_id }}">看原图这一处</button>
+{% endif %}
