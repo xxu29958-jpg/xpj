@@ -103,6 +103,38 @@ def test_invalid_original_does_not_partially_save_finance_or_feedback(client, id
         assert not list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == expense_id)))
 
 
+def test_multiple_original_fields_preserve_independent_revisions_and_reject_foreign_evidence(client, identity):
+    expense_id, digest = seed_original()
+    other_id, _ = seed_original()
+    with SessionLocal() as db:
+        local_fact = record_ocr_fact(db, OcrFactDraft(tenant_id="owner", expense_id=expense_id,
+            ocr_provider="mock", raw_text="实付：78.00 商店原名"))
+        other_fact = record_ocr_fact(db, OcrFactDraft(tenant_id="owner", expense_id=other_id,
+            ocr_provider="mock", raw_text="另一张票据"))
+        local_public_id, other_public_id = local_fact.public_id, other_fact.public_id
+        db.commit()
+    headers = negotiated_headers(client, identity.app_headers)
+    amount = {**annotation(digest), "evidence_public_id": local_public_id}
+    merchant = {**amount, "field": "merchant", "role": "merchant", "verbatim_text": "商店原名"}
+    first, _ = save(client, {**headers, "Idempotency-Key": str(uuid4())}, expense_id, [amount, merchant])
+    assert first.status_code == 200, first.text
+    rejected, _ = save(client, {**headers, "Idempotency-Key": str(uuid4())}, expense_id,
+        [amount, {**merchant, "evidence_public_id": other_public_id}], amount=9900)
+    assert rejected.status_code == 409, rejected.text
+    unchanged = client.get(f"/api/expenses/{expense_id}", headers=headers).json()
+    assert (unchanged["original_amount_minor"], unchanged["row_version"]) == (1700, first.json()["row_version"])
+    second, _ = save(client, {**headers, "Idempotency-Key": str(uuid4())}, expense_id,
+        [{**merchant, "verbatim_text": "商店完整原名"}, {**amount, "verbatim_text": "实付：78.80"}])
+    assert second.status_code == 200, second.text
+    with SessionLocal() as db:
+        events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == expense_id,
+            LedgerLearningEvent.signal_type == "original_text_feedback").order_by(LedgerLearningEvent.id)))
+        payloads = [json.loads(row.after_payload) for row in events]
+        assert [item["field"] for item in payloads] == ["amount_cents", "merchant", "merchant", "amount_cents"]
+        assert [item["_feedback_revision"] for item in payloads] == [1, 1, 2, 2]
+        assert [item["_supersedes_event_public_id"] for item in payloads] == [None, None, events[1].public_id, events[0].public_id]
+
+
 def test_pixel_annotation_survives_financial_edit_and_new_ocr_but_stops_on_replacement_or_withdrawal(client, identity):
     expense_id, digest = seed_original()
     headers = negotiated_headers(client, identity.app_headers)
