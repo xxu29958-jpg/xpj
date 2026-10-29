@@ -76,12 +76,12 @@ def test_frozen_cohort_keeps_denominator_when_feedback_loses_eligibility(local_c
     with SessionLocal.begin() as db:
         if control == "withdraw":
             withdraw_feedback(db, tenant_id="owner", public_id=public_id)
-        elif control == "quarantine":
+        if control == "quarantine":
             set_policy(db, tenant_id="owner", decision_type="original_text_feedback",
                 version=ORIGINAL_TEXT_FEEDBACK.current_version, axis="training", enabled=False)
-        elif control == "replace_original":
+        if control == "replace_original":
             db.get(Expense, expense_id).image_hash = "e" * 64
-        elif control == "remove_original":
+        if control == "remove_original":
             db.get(Expense, expense_id).image_path = None
     if control == "supersede":
         headers = {**negotiated_headers(local_client, identity.app_headers), "Idempotency-Key": str(uuid4())}

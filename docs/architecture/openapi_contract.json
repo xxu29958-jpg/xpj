@@ -60388,6 +60388,71 @@
         ]
       }
     },
+    "/owner/learning-maintenance/original-text-evaluation": {
+      "get": {
+        "operationId": "owner_original_text_evaluation_get_owner_learning_maintenance_original_text_evaluation_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_account_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Actor Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "event_public_id",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "minItems": 1,
+              "title": "Event Public Id",
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Owner Original Text Evaluation Get",
+        "tags": [
+          "owner-console"
+        ]
+      }
+    },
     "/owner/learning-maintenance/run": {
       "post": {
         "operationId": "owner_learning_maintenance_run_post_owner_learning_maintenance_run_post",
