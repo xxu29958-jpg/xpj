@@ -1,10 +1,10 @@
 package com.ticketbox.ui.screens
 
 import com.ticketbox.R
+import com.ticketbox.ui.asString
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -12,7 +12,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,9 +45,15 @@ import com.ticketbox.viewmodel.FundsUiState
 import com.ticketbox.viewmodel.FundsViewModel
 import com.ticketbox.viewmodel.choosePayer
 
+internal fun fundsEditable(state: FundsUiState, input: FundsInput) =
+    !state.task.frozen && !state.busy && state.access?.canModify == true && state.access.binding == input.binding
+
+/** An open editor shows its error in the bottom bar beside the action that caused it; other pages show it at the top. */
+internal fun FundsUiState.pageError() = error.takeUnless { editing && task.input != null }
+
 @Composable
 internal fun FundsEditor(state: FundsUiState, input: FundsInput, vm: FundsViewModel) {
-    val enabled = !state.task.frozen && !state.busy && state.access?.canModify == true && state.access.binding == input.binding
+    val enabled = fundsEditable(state, input)
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.contentGap)) {
         if (input.binding != state.access?.binding) Text(stringResource(R.string.funds_original_binding_note))
         key(input.key) {
@@ -60,7 +65,6 @@ internal fun FundsEditor(state: FundsUiState, input: FundsInput, vm: FundsViewMo
         if (!state.task.frozen && state.task.original?.status != PendingMutationStatus.Done)
             FundsChangeSummary(input, input.envelopeAmounts.keys.associateWith { purpose ->
                 state.envelopes?.purposes?.firstOrNull { it.purpose == purpose }?.label ?: retainedPurpose(purpose) })
-        FundsSubmission(state, enabled, vm)
     }
 }
 
@@ -70,9 +74,7 @@ private fun FundsInputFields(state: FundsUiState, input: FundsInput, enabled: Bo
             "apply_credit", "void_credit" -> CreditApplicationFields(state, input, enabled, vm)
             "incur_fee" -> CreditFeeFields(state, input, enabled, vm)
             "envelopes" -> EnvelopeFields(state, input, enabled, vm)
-            "void_repayment" -> {
-                FundsVoidPaymentFields(input, enabled, vm)
-            }
+            "void_repayment" -> FundsVoidPaymentFields(input, state.detail, enabled, vm)
             "void_activity" -> FundsActivityCorrectionFields(input, enabled, vm)
             "funding" -> {
                 CurrencyCode.fromStorageKeyOrNull(input.currency)?.let { currency ->
@@ -138,15 +140,11 @@ private fun FundsAccountFields(input: FundsInput, enabled: Boolean, vm: FundsVie
         FundsField(if (input.kind == "credit") stringResource(R.string.funds_opening_debt, input.currency) else stringResource(R.string.funds_opening_balance, input.currency), input.opening, enabled, money = true) { value -> vm.edit { it.copy(opening = value) } }
         Text(stringResource(R.string.funds_opening_unknown_note), style = MaterialTheme.typography.bodySmall)
         FundsField(stringResource(R.string.funds_opening_source), input.source, enabled) { value -> vm.edit { it.copy(source = value) } }
-    } else Row {
-        Switch(input.archived, { value -> vm.edit { it.copy(archived = value) } }, enabled = enabled)
-        Text(stringResource(R.string.funds_archive_note))
-    }
-    Row { Switch((input.visibilityEdit ?: input.visibility) == "ledger", { shared -> vm.edit {
+    } else FundsSwitchRow(stringResource(R.string.funds_archive_note), input.archived, enabled) { value -> vm.edit { it.copy(archived = value) } }
+    FundsSwitchRow(stringResource(R.string.funds_share_with_ledger), (input.visibilityEdit ?: input.visibility) == "ledger", enabled) { shared -> vm.edit {
         val value = if (shared) "ledger" else "private"
         if (it.mode == "edit") it.copy(visibilityEdit = value) else it.copy(visibility = value)
-    } }, enabled = enabled)
-        Text(stringResource(R.string.funds_share_with_ledger)) }
+    } }
     Text(stringResource(R.string.funds_privacy_note), style = MaterialTheme.typography.bodySmall)
     FundsOptions(stringResource(R.string.funds_bank_tail_options), filledSummary(input.institution, input.tail), stringResource(R.string.funds_options_optional)) {
         FundsField(stringResource(R.string.funds_institution), input.institution, enabled) { value -> vm.edit { it.copy(institution = value) } }
@@ -159,7 +157,7 @@ private fun FundsAccountFields(input: FundsInput, enabled: Boolean, vm: FundsVie
 private fun FundsPaymentFields(input: FundsInput, accounts: List<FinancialAccount>, enabled: Boolean, vm: FundsViewModel) {
     var choosing by rememberSaveable { mutableStateOf(false) }
     Text(stringResource(R.string.funds_payment_note, input.name))
-    AppSecondaryButton(input.payerName.ifBlank { stringResource(R.string.funds_choose_payer) }, enabled = enabled) { choosing = true }
+    FundsAccountChoice(stringResource(R.string.funds_payer_account), input.payerName, stringResource(R.string.funds_choose_payer), enabled) { choosing = true }
     if (choosing) AlertDialog(onDismissRequest = { choosing = false }, title = { Text(stringResource(R.string.funds_payer_account)) },
         text = { androidx.compose.foundation.lazy.LazyColumn {
             items(accounts.filter { it.kind != "credit" && !it.archived }, key = { it.publicId }) { account ->
@@ -180,24 +178,28 @@ private fun FundsPaymentFields(input: FundsInput, accounts: List<FinancialAccoun
     }
 }
 
+/** The editor's outcome and its next step, kept in the page's bottom bar so they stay above the keyboard. */
 @Composable
-private fun FundsSubmission(state: FundsUiState, editable: Boolean, vm: FundsViewModel) {
+internal fun FundsSubmission(state: FundsUiState, input: FundsInput, vm: FundsViewModel) {
     val original = state.task.original
+    val wide = Modifier.fillMaxWidth()
+    // A refused confirm is explained where it was pressed, not at the top of an already scrolled form.
+    state.error?.let { message -> Text(message.asString(), color = MaterialTheme.colorScheme.error) }
     when {
         original?.status == PendingMutationStatus.Done -> {
             Text(stringResource(R.string.funds_saved))
-            AppPrimaryButton(stringResource(R.string.funds_finish_view), enabled = !state.busy, onClick = vm::finish)
+            AppPrimaryButton(stringResource(R.string.funds_finish_view), modifier = wide, enabled = !state.busy, onClick = vm::finish)
         }
         state.task.frozen -> {
             Text(original?.lastError ?: stringResource(R.string.funds_receipt_pending))
-            if (original == null) AppPrimaryButton(stringResource(R.string.funds_continue_original), enabled = !state.busy, onClick = vm::submit)
-            if (original?.status == PendingMutationStatus.Failed) AppSecondaryButton(stringResource(R.string.funds_retry_original), enabled = !state.busy, onClick = vm::retry)
+            if (original == null) AppPrimaryButton(stringResource(R.string.funds_continue_original), modifier = wide, enabled = !state.busy, onClick = vm::submit)
+            if (original?.status == PendingMutationStatus.Failed) AppSecondaryButton(stringResource(R.string.funds_retry_original), modifier = wide, enabled = !state.busy, onClick = vm::retry)
             if (original?.status == PendingMutationStatus.Conflict || original?.lastError?.startsWith(com.ticketbox.data.repository.FUNDS_REFUSED) == true)
-                AppSecondaryButton(stringResource(R.string.funds_review_continue), enabled = !state.busy, onClick = vm::review)
+                AppSecondaryButton(stringResource(R.string.funds_review_continue), modifier = wide, enabled = !state.busy, onClick = vm::review)
         }
         else -> {
-            AppPrimaryButton(stringResource(R.string.funds_confirm_save), enabled = editable, onClick = vm::submit)
-            AppSecondaryButton(stringResource(R.string.funds_abandon_input), enabled = !state.busy, onClick = vm::finish)
+            AppPrimaryButton(stringResource(R.string.funds_confirm_save), modifier = wide, enabled = fundsEditable(state, input), onClick = vm::submit)
+            AppSecondaryButton(stringResource(R.string.funds_abandon_input), modifier = wide, enabled = !state.busy, onClick = vm::finish)
         }
     }
 }

@@ -83,9 +83,8 @@ private fun FundingPartFields(row: ExpenseFundingInput, editable: Boolean, refun
                 label = { Text("${if (refund) stringResource(R.string.funds_refund_received) else stringResource(R.string.funds_actual_debit)}（${row.accountCurrency}）") }, enabled = editable, modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
             TextButton(onClick = { remove() }, enabled = editable) { Text(stringResource(R.string.funds_remove_part)) }
-            if (!refund) androidx.compose.foundation.layout.Row {
-                androidx.compose.material3.Switch(row.includedInOpening, { put(row.copy(includedInOpening = it)) }, enabled = editable)
-                Text(stringResource(R.string.funds_included_opening))
+            if (!refund) FundsSwitchRow(stringResource(R.string.funds_included_opening), row.includedInOpening, editable) {
+                put(row.copy(includedInOpening = it))
             }
 
 }

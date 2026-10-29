@@ -1,11 +1,14 @@
 package com.ticketbox.ui.screens
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.repository.FundsInput
+import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.viewmodel.FundsUiState
 import com.ticketbox.viewmodel.FundsViewModel
 
@@ -16,16 +19,18 @@ internal fun CreditFeeFields(state: FundsUiState, input: FundsInput, enabled: Bo
         vm.edit { it.copy(activityAmount = value) }
     }
     FundsField(stringResource(R.string.funds_fee_source), input.note, enabled) { value -> vm.edit { it.copy(note = value) } }
-    Text(if (input.feePeriodId.isEmpty()) stringResource(R.string.funds_fee_no_period) else
-        stringResource(R.string.funds_fee_period_selected, input.feePeriodLabel))
-    TextButton(enabled = enabled, onClick = { vm.edit { it.copy(feePeriodId = "", feePeriodLabel = "") } }) {
-        Text(stringResource(R.string.funds_fee_no_period))
-    }
-    state.installments?.agreements.orEmpty().filter { it.active }.forEach { agreement ->
-        agreement.periods.forEach { period ->
-            val label = stringResource(R.string.funds_fee_period_choice, agreement.name, period.position,
-                money(period.unincurredFeeMinor, input.currency))
-            TextButton(enabled = enabled, onClick = { vm.edit { it.copy(feePeriodId = period.publicId, feePeriodLabel = label) } }) { Text(label) }
+    val none = stringResource(R.string.funds_fee_no_period)
+    Text(stringResource(R.string.funds_fee_period_selected, input.feePeriodLabel.ifEmpty { none }))
+    // The choices show which one is chosen, so the line above reads as a label rather than a repeated option.
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+        FilterChip(input.feePeriodId.isEmpty(), { vm.edit { it.copy(feePeriodId = "", feePeriodLabel = "") } }, { Text(none) }, enabled = enabled)
+        state.installments?.agreements.orEmpty().filter { it.active }.forEach { agreement ->
+            agreement.periods.forEach { period ->
+                val label = stringResource(R.string.funds_fee_period_choice, agreement.name, period.position,
+                    money(period.unincurredFeeMinor, input.currency))
+                FilterChip(input.feePeriodId == period.publicId, { vm.edit { it.copy(feePeriodId = period.publicId, feePeriodLabel = label) } },
+                    { Text(label) }, enabled = enabled)
+            }
         }
     }
 }

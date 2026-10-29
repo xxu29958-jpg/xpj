@@ -26,8 +26,12 @@ internal fun FundsPriorRepayments(detail: FinancialAccount, canModify: Boolean, 
 }
 
 @Composable
-internal fun FundsVoidPaymentFields(input: FundsInput, enabled: Boolean, vm: FundsViewModel) {
+internal fun FundsVoidPaymentFields(input: FundsInput, account: FinancialAccount?, enabled: Boolean, vm: FundsViewModel) {
     Text(stringResource(if (input.legacyRepayment) R.string.funds_void_prior_note else R.string.funds_void_payment_note))
+    // Name the repayment being undone exactly as the account's change list showed it.
+    account?.movements?.firstOrNull { it.repaymentPublicId == input.repaymentId }?.let { row ->
+        FundsMovementRow(row, account, FundsMovementActions(openExpense = {}, voidActivity = null, voidPayment = null, reconcile = null))
+    }
     if (input.legacyRepayment) {
         FundsField(stringResource(R.string.funds_reviewed_debt, input.currency), input.reviewedDebtAmount, enabled, money = true) {
             value -> vm.edit { it.copy(reviewedDebtAmount = value) }
