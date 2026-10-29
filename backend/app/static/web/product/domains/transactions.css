@@ -448,6 +448,7 @@
 
 .import-schema-body {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-2);
     margin-block-start: var(--space-4);
     color: var(--text-muted);
@@ -463,6 +464,11 @@
 .import-schema code {
     color: var(--text-default);
     font-family: var(--font-numeric);
+}
+
+/* CSV 示例保持一行一条记录；放不下时在示例内横向滚动，不撑宽整页。 */
+.import-schema pre {
+    overflow-x: auto;
 }
 
 .import-export-note {
