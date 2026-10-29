@@ -19,7 +19,7 @@ from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service import stage_pending_expense
 from app.services.file_service import resolve_upload_path_for_tenant, save_upload_bytes
 from app.services.ledger_service import find_owner_account_id_for_ledger
-from app.services.ocr_service import OcrExtraction, OcrResult
+from app.services.ocr_service import OcrExtraction, OcrResult, OcrRun
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.pending_enrichment_task_service import (
     PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
@@ -150,8 +150,8 @@ def _seed_pending_enrichment_task() -> tuple[int, int, int]:
         return expense.id, expense.row_version, task.id
 
 
-def _ocr_result() -> list[OcrExtraction]:
-    return [
+def _ocr_result() -> OcrRun:
+    return OcrRun(extractions=(
         OcrExtraction(
             provider_name="mock",
             ocr_model="test-model",
@@ -161,8 +161,8 @@ def _ocr_result() -> list[OcrExtraction]:
                 amount_cents=1990,
                 merchant="盒马",
             ),
-        )
-    ]
+        ),
+    ))
 
 
 @pytest.mark.real_db
@@ -300,7 +300,7 @@ def test_enrichment_conflict_discards_unpublished_thumbnail(
     monkeypatch.setattr(
         enrich_service,
         "collect_auto_ocr_extractions",
-        lambda *_args, **_kwargs: [],
+        lambda *_args, **_kwargs: OcrRun(),
     )
 
     result = enrich_service.enrich_pending_expense(
@@ -451,7 +451,7 @@ def test_thumbnail_io_finishes_before_expense_apply_lock(
     monkeypatch.setattr(
         enrich_service,
         "collect_auto_ocr_extractions",
-        lambda *_args, **_kwargs: [],
+        lambda *_args, **_kwargs: OcrRun(),
     )
     monkeypatch.setattr(
         enrich_service,

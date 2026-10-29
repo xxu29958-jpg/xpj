@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict
+import time
+from dataclasses import asdict, replace
 from decimal import Decimal
 
 from sqlalchemy import inspect as sa_inspect
@@ -22,10 +23,12 @@ from app.services.exchange_rate_service import expense_rate_date
 from app.services.ocr_service._draft_fields import _write_ocr_draft_fields, ocr_draft_fields
 from app.services.ocr_service._merge import _best_confidence, _safe_category
 from app.services.ocr_service._models import (
+    OcrAttempt,
     OcrExtraction,
     OcrFactSnapshot,
     OcrProvider,
     OcrResult,
+    OcrRun,
 )
 from app.services.ocr_service._providers import get_ocr_provider
 from app.services.receipt_parse_common import FIELD_PARSE_VERSION, ParsedReceipt
@@ -169,15 +172,16 @@ def collect_auto_ocr_extractions(
     timezone_name: str | None = None,
     *,
     raise_on_failure: bool = False,
-) -> list[OcrExtraction]:
+) -> OcrRun:
     """Run configured OCR providers and return draft results with provenance."""
     settings = get_settings()
     if not settings.ocr_auto_run:
-        return []
+        return OcrRun()
     primary_name = _normalise_provider_name(settings.ocr_provider)
     if primary_name == "empty":
-        return []
+        return OcrRun()
 
+    started = time.monotonic()
     try:
         primary_result = get_ocr_provider(primary_name).extract(
             expense, timezone_name=timezone_name
@@ -189,57 +193,81 @@ def collect_auto_ocr_extractions(
                 result=primary_result,
             )
         ]
-
-        draft = Expense(
-            amount_cents=expense.amount_cents,
-            home_currency_code=expense.home_currency_code,
-            original_currency_code=expense.original_currency_code,
-            original_amount_minor=expense.original_amount_minor,
-            merchant=expense.merchant,
-            category=expense.category,
-            raw_text=expense.raw_text,
-            image_evidence=expense.image_evidence,
-            confidence=expense.confidence,
-            expense_time=expense.expense_time,
-            time_precision=expense.time_precision,
-            user_local_date=expense.user_local_date,
-            accounting_date=expense.accounting_date,
-            calendar_revision=expense.calendar_revision,
-            source_timezone=expense.source_timezone,
-            source_utc_offset_seconds=expense.source_utc_offset_seconds,
-            accounting_date_basis=expense.accounting_date_basis,
-            ocr_draft_fields=expense.ocr_draft_fields,
-            status="pending",
-        )
-        apply_ocr_result(draft, primary_result, timezone_name=timezone_name)
-        fallback_name = _normalise_provider_name(settings.ocr_fallback_provider)
-        if (
-            _needs_fallback(draft)
-            and fallback_name not in {"", "empty", primary_name}
-        ):
-            fallback_result = get_ocr_provider(fallback_name).extract(
-                expense, timezone_name=timezone_name
-            )
-            if _fallback_confidence_is_not_worse(
-                primary_result,
-                fallback_result,
-                expense=expense,
-                timezone_name=timezone_name,
-            ):
-                results.append(
-                    OcrExtraction(
-                        provider_name=fallback_name,
-                        ocr_model=_provider_model(fallback_name),
-                        result=fallback_result,
-                    )
-                )
-        return results
-    except _AUTO_OCR_FAILURES:
-        # Upload must stay reliable. Manual retry exposes provider errors to the user.
-        logger.exception("auto OCR failed for expense=%s ledger=%s", expense.id, expense.tenant_id)
+    except _AUTO_OCR_FAILURES as exc:
+        logger.warning("auto OCR primary failed provider=%s error_type=%s", primary_name, type(exc).__name__)
         if raise_on_failure:
             raise
-        return []
+        return OcrRun(attempts=(_ocr_attempt(primary_name, "primary", started, error=exc),))
+
+    attempts = [_ocr_attempt(primary_name, "primary", started, result=primary_result)]
+    draft = Expense(**{column.key: getattr(expense, column.key) for column in Expense.__table__.columns})
+    apply_ocr_result(draft, primary_result, timezone_name=timezone_name)
+    fallback_name = _normalise_provider_name(settings.ocr_fallback_provider)
+    if not _needs_fallback(draft) or fallback_name in {"", "empty", primary_name}:
+        return OcrRun(tuple(results), tuple(attempts))
+
+    started = time.monotonic()
+    try:
+        fallback_result = get_ocr_provider(fallback_name).extract(expense, timezone_name=timezone_name)
+    except _AUTO_OCR_FAILURES as exc:
+        logger.warning("auto OCR enhancement failed provider=%s error_type=%s", fallback_name, type(exc).__name__)
+        attempts.append(_ocr_attempt(fallback_name, "enhancement", started, error=exc))
+        if not primary_result.raw_text.strip():
+            if raise_on_failure:
+                raise
+            return OcrRun(attempts=tuple(attempts))
+        return OcrRun(tuple(results), tuple(attempts), "enhancement_failed")
+
+    attempts.append(_ocr_attempt(fallback_name, "enhancement", started, result=fallback_result))
+    fallback = OcrExtraction(provider_name=fallback_name, ocr_model=_provider_model(fallback_name), result=fallback_result)
+    promote, conflict = _compare_ocr_results(expense, primary_result, fallback_result, timezone_name)
+    selected, other = (fallback, results[0]) if promote else (results[0], fallback)
+    # Both predictions remain immutable. Only one coherent extraction supplies
+    # the draft; append it last for the existing canonical meaningful-fact read.
+    return OcrRun((replace(other, apply_to_draft=False), selected), tuple(attempts),
+                  "provider_conflict" if conflict else None)
+
+
+def _ocr_attempt(provider_name, purpose, started, *, result=None, error=None) -> OcrAttempt:
+    return OcrAttempt(provider_name=provider_name, purpose=purpose,
+        outcome="failed" if error else "succeeded" if result.raw_text.strip() else "no_result",
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+        error_code=(error.error if isinstance(error, AppError) else "ocr_inference_failed") if error else None)
+
+
+def _comparison_fields(parsed: ParsedReceipt, merged: OcrResult) -> dict[str, tuple]:
+    selected = {decision.selected_id for decision in parsed.decisions if decision.selected_id}
+    fields = {candidate.field: (candidate.value, candidate.currency_code, candidate.role,
+        candidate.precision, candidate.local_value, candidate.timezone_name, candidate.inferred_components,
+        getattr(merged, candidate.field, None))
+        for candidate in parsed.candidates if candidate.id in selected}
+    for field in ("amount_cents", "merchant", "expense_time", "category"):
+        value = getattr(merged, field)
+        if value is not None and field not in fields:
+            fields[field] = (value,)
+    if parsed.items:
+        fields["items"] = tuple((item.name, item.amount_cents, item.quantity_text,
+            item.unit_price_cents, normalize_category(item.category), item.kind) for item in parsed.items)
+    return fields
+
+
+def _compare_ocr_results(expense, primary, fallback, timezone_name) -> tuple[bool, bool]:
+    if not primary.raw_text.strip():
+        return bool(fallback.raw_text.strip()), False
+    if not fallback.raw_text.strip():
+        return False, False
+    first, first_merged, _context = _parse_and_merge_for_expense(expense, primary, timezone_name=timezone_name)
+    second, second_merged, _context = _parse_and_merge_for_expense(expense, fallback, timezone_name=timezone_name)
+    first_fields = _comparison_fields(first, first_merged)
+    second_fields = _comparison_fields(second, second_merged)
+    conflict = any(first_fields[key] != second_fields[key] for key in first_fields.keys() & second_fields.keys())
+    unresolved = any(item.status == "ambiguous" for item in (*first.decisions, *second.decisions))
+    # An enhancement cannot silently resolve a different transaction or a
+    # parser abstention, nor win because of an uncalibrated provider confidence.
+    conflict = conflict or bool((unresolved or first.events or second.events) and primary.raw_text != fallback.raw_text)
+    covers_primary = all(second_fields.get(key) == value for key, value in first_fields.items())
+    improves = bool(second_fields.keys() - first_fields.keys())
+    return covers_primary and improves and not conflict, conflict
 
 
 def apply_ocr_result(expense: Expense, result: OcrResult, timezone_name: str | None = None) -> None:
@@ -398,41 +426,6 @@ def _needs_fallback(expense: Expense) -> bool:
         or not (expense.merchant or "").strip()
         or (expense.expense_time is None and expense.time_precision != "date_only")
     )
-
-
-def _fallback_confidence_is_not_worse(
-    primary_result: OcrResult,
-    fallback_result: OcrResult,
-    *,
-    expense: Expense,
-    timezone_name: str | None = None,
-) -> bool:
-    return (
-        _effective_ocr_confidence(
-            fallback_result,
-            expense=expense,
-            timezone_name=timezone_name,
-        )
-        >= _effective_ocr_confidence(
-            primary_result,
-            expense=expense,
-            timezone_name=timezone_name,
-        )
-    )
-
-
-def _effective_ocr_confidence(
-    result: OcrResult,
-    *,
-    expense: Expense,
-    timezone_name: str | None = None,
-) -> float:
-    parsed, merged, _materialization_context = _parse_and_merge_for_expense(
-        expense,
-        result,
-        timezone_name=timezone_name,
-    )
-    return _best_confidence(merged.confidence, parsed.confidence, result.confidence) or 0.0
 
 
 def ocr_fact_snapshot(

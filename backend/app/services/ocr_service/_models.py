@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Protocol
+from typing import Literal, Protocol
 
 from app.models import Expense
 
@@ -25,6 +25,23 @@ class OcrExtraction:
     provider_name: str
     ocr_model: str | None
     result: OcrResult
+    apply_to_draft: bool = True
+
+
+@dataclass(frozen=True)
+class OcrAttempt:
+    provider_name: str
+    purpose: Literal["primary", "enhancement"]
+    outcome: Literal["succeeded", "no_result", "failed"]
+    elapsed_ms: int
+    error_code: str | None = None
+
+
+@dataclass(frozen=True)
+class OcrRun:
+    extractions: tuple[OcrExtraction, ...] = ()
+    attempts: tuple[OcrAttempt, ...] = ()
+    notice: Literal["enhancement_failed", "provider_conflict"] | None = None
 
 
 @dataclass(frozen=True)

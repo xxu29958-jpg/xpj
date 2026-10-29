@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Literal
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -25,13 +25,13 @@ from app.services.expense_service._enrichment_receipt import (
 from app.services.expense_service._helpers import (
     _replace_ocr_draft_items_from_text,
 )
-from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
+from app.services.expense_service._ocr_facts import append_ocr_fact, apply_ocr_result_and_append_fact
 from app.services.expense_service._thumbnail_publication import (
     claim_staged_thumbnail,
     publish_claimed_thumbnail,
 )
 from app.services.ocr_retry_receipt import stage_legacy_retry_receipt
-from app.services.ocr_service import OcrExtraction, collect_auto_ocr_extractions
+from app.services.ocr_service import OcrRun, collect_auto_ocr_extractions
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.original_read_service import read_original_snapshot
 from app.services.rule_service import classify_expense
@@ -61,6 +61,8 @@ class PendingEnrichmentResult:
     expense_id: int
     outcome: Literal["updated", "no_result", "not_pending", "conflict", "failed"]
     row_version: int | None
+    ocr_notice: str | None = None
+    ocr_attempts: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +71,7 @@ class _PreparedEnrichment:
     thumbnail_source_path: str | None
     thumbnail_source_hash: str | None
     thumbnail_needed: bool
-    ocr_extractions: tuple[OcrExtraction, ...]
+    ocr_run: OcrRun
 
 
 def _enrichment_occ_snapshot(expense: Expense) -> tuple[tuple[str, object], ...]:
@@ -149,19 +151,19 @@ def _prepare_enrichment(
     if ocr_region is not None:
         from app.services.ocr_region_service import extract_region
 
-        extractions = [extract_region(snapshot, ocr_region, base_evidence)]
+        run = OcrRun(extractions=(extract_region(snapshot, ocr_region, base_evidence),))
     elif explicit_retry:
         from app.services.expense_service._ocr import extract_explicit_ocr
 
-        extractions = [extract_explicit_ocr(snapshot, timezone_name)]
+        run = OcrRun(extractions=(extract_explicit_ocr(snapshot, timezone_name),))
     else:
-        extractions = collect_auto_ocr_extractions(snapshot, timezone_name=timezone_name, raise_on_failure=raise_on_failure)
+        run = collect_auto_ocr_extractions(snapshot, timezone_name=timezone_name, raise_on_failure=raise_on_failure)
     return _PreparedEnrichment(
         predecessor_row_version=predecessor_row_version,
         thumbnail_source_path=snapshot.image_path,
         thumbnail_source_hash=snapshot.image_hash,
         thumbnail_needed=not snapshot.thumbnail_path,
-        ocr_extractions=tuple(extractions),
+        ocr_run=run,
     )
 
 
@@ -187,7 +189,7 @@ def _complete_without_inference(task_id: int | None, expense_id: int, tenant_id:
 
 
 def _verify_extraction_source(expense: Expense, prepared: _PreparedEnrichment) -> None:
-    for extraction in prepared.ocr_extractions:
+    for extraction in prepared.ocr_run.extractions:
         evidence = extraction.result.evidence
         if evidence is not None:
             with read_original_snapshot(relative_path=expense.image_path, tenant_id=expense.tenant_id,
@@ -200,7 +202,11 @@ def _apply_extractions(db: Session, expense: Expense, prepared: _PreparedEnrichm
                        timezone_name: str | None) -> bool:
     """Stage draft fields and immutable facts under the caller's apply locks."""
     occ_snapshot = _enrichment_occ_snapshot(expense)
-    for extraction in prepared.ocr_extractions:
+    for extraction in prepared.ocr_run.extractions:
+        if not extraction.apply_to_draft:
+            append_ocr_fact(db, expense=expense, result=extraction.result,
+                provider_name=extraction.provider_name, ocr_model=extraction.ocr_model, timezone_name=timezone_name)
+            continue
         if extraction.result.evidence and extraction.result.evidence.get("regional_retry"):
             from app.services.ocr_region_service import region_base
 
@@ -251,7 +257,7 @@ def _apply_enrichment(
         _verify_extraction_source(expense, prepared)
         user_visible_changed = _apply_extractions(db, expense, prepared, timezone_name)
         result_row_version = prepared.predecessor_row_version
-        if prepared.ocr_extractions or user_visible_changed:
+        if prepared.ocr_run.extractions or user_visible_changed:
             expense.updated_at = now_utc()
             bump_row_version(expense)
             result_row_version += 1
@@ -266,6 +272,8 @@ def _apply_enrichment(
             expense_id=expense.id,
             outcome="updated" if user_visible_changed else "no_result",
             row_version=result_row_version,
+            ocr_notice=prepared.ocr_run.notice,
+            ocr_attempts=tuple(asdict(attempt) for attempt in prepared.ocr_run.attempts),
         )
         _commit_result(db, task, result)
         if thumbnail_to_publish is not None:

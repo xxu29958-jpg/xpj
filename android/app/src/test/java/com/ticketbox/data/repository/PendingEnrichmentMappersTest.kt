@@ -32,6 +32,19 @@ internal class PendingEnrichmentMappersTest {
         }
     }
 
+    @Test
+    fun partialResultAndProviderDisagreementRemainReviewable() {
+        for ((notice, expected) in listOf(
+            "enhancement_failed" to PendingEnrichmentOutcome.EnhancementFailed,
+            "provider_conflict" to PendingEnrichmentOutcome.ProviderConflict,
+        )) {
+            val summary = mapOf("outcome" to "updated", "ocr_notice" to notice)
+            assertEquals(expected, backgroundTask(resultSummary = summary).toPendingEnrichmentTask().outcome)
+            val conflict = summary + ("outcome" to "conflict")
+            assertEquals(PendingEnrichmentOutcome.Conflict, backgroundTask(resultSummary = conflict).toPendingEnrichmentTask().outcome)
+        }
+    }
+
     private fun uploadResponse() = UploadResponseDto(
         id = 41L,
         publicId = "expense-41",

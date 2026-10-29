@@ -143,6 +143,24 @@ def _snapshot():
             for model in (BackgroundTask, Expense)}
 
 
+@pytest.mark.parametrize("notice,expected", [
+    ("enhancement_failed", "补充识别未完成"), ("provider_conflict", "两次识别存在不同结果"),
+])
+def test_partial_recognition_remains_visible_on_reopening(notice, expected):
+    summary = {"outcome": "updated", "ocr_notice": notice}
+    state = recognition._completed_state(json.dumps(summary))
+    now = datetime(2026, 10, 29, tzinfo=UTC)
+    task = {"public_id": str(uuid4()), "status": "completed", "recognition_state": state,
+        "source_expense_id": 41, "created_at": now}
+    html = _render(templates, "pending.html", {"selected_ledger_id": "owner", "expenses": [],
+        "pending_count": 1, "pending_expenses": [{"id": 41}], "filter": "all", "can_write": False,
+        "recent_recognition_tasks": [task]})
+    fragment = _task_fragment(html, task["public_id"])
+    assert expected in fragment and "核对" in fragment
+    assert "/web/expenses/41/edit" in fragment
+    assert recognition._completed_state(json.dumps(summary | {"outcome": "conflict"})) == "conflict"
+
+
 def _read_as_current_account(web_client, identity):
     token = mint_session(web_client, identity=identity)
     browser = public_client()

@@ -21,6 +21,10 @@ PROGRESS_MESSAGES = {
     "not_pending": "账单已不在待确认队列。",
     "conflict": "用户后续修改已保留，识别结果未覆盖账单。",
 }
+OCR_NOTICE_MESSAGES = {
+    "enhancement_failed": "已有识别结果，补充识别未完成；请核对并补全。",
+    "provider_conflict": "两次识别存在不同结果，已保留主结果；请对照原图核对。",
+}
 
 
 def require_enrichment_actor(db: Session, task_id: int | None, tenant_id: str) -> None:
@@ -64,6 +68,10 @@ def lock_enrichment_receipt(db: Session, task_id: int | None, expense_id: int) -
 def stage_enrichment_receipt(task: BackgroundTask | None, result) -> None:
     if task is None:
         return
-    task.result_summary_json = json.dumps(asdict(result), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    summary = asdict(result)
+    for key in ("ocr_notice", "ocr_attempts"):
+        if not summary.get(key):
+            summary.pop(key, None)
+    task.result_summary_json = json.dumps(summary, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     task.progress_current = task.progress_total = 1
-    task.progress_message = PROGRESS_MESSAGES[result.outcome]
+    task.progress_message = OCR_NOTICE_MESSAGES.get(summary.get("ocr_notice"), PROGRESS_MESSAGES[result.outcome])

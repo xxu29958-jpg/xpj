@@ -14,10 +14,12 @@ from sqlalchemy import select
 
 import app.services.expense_service._enrich as enrichment_service
 from app.database import SessionLocal
+from app.errors import AppError
 from app.models import BackgroundTask, Expense
 from app.services.ledger_service import find_owner_account_id_for_ledger
-from app.services.ocr_service import OcrExtraction, OcrResult
+from app.services.ocr_service import OcrResult
 from tests._infra.assets import PNG_BYTES
+from tests.test_ocr_auto_pipeline import _providers
 
 
 def test_inbox_duplicate_action_targets_the_real_review_case(
@@ -156,27 +158,22 @@ def test_pending_feedback_retires_when_original_leaves_queue(web_client, identit
 
 
 @pytest.mark.real_db
+@pytest.mark.parametrize("notice,message", [
+    (None, "识别结果已更新，请核对后确认"),
+    ("enhancement_failed", "已有识别结果，补充识别未完成"),
+    ("provider_conflict", "两次识别存在不同结果，已保留主结果"),
+])
 def test_web_upload_enrichment_task_presents_real_ocr_success(
     web_client: TestClient,
     monkeypatch,
+    notice,
+    message,
 ) -> None:
     monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
-    monkeypatch.setattr(
-        enrichment_service,
-        "collect_auto_ocr_extractions",
-        lambda *_args, **_kwargs: [
-            OcrExtraction(
-                provider_name="mock",
-                ocr_model="test-model",
-                result=OcrResult(
-                    raw_text="盒马\n交易金额：19.90",
-                    confidence=0.98,
-                    amount_cents=1990,
-                    merchant="盒马",
-                ),
-            )
-        ],
-    )
+    primary = OcrResult("商户：盒马\n交易金额：19.90", 0.8)
+    enhancement = AppError("ocr_timeout", status_code=503) if notice == "enhancement_failed" else (
+        OcrResult("商户：盒马\n交易金额：99.90", 0.99) if notice == "provider_conflict" else primary)
+    _providers(monkeypatch, primary, enhancement)
 
     response = web_client.post(
         "/web/pending/upload?ledger_id=owner&idempotency_key=original-upload&timezone=Asia%2FShanghai",
@@ -188,8 +185,8 @@ def test_web_upload_enrichment_task_presents_real_ocr_success(
     page = web_client.get(response.headers["location"])
     assert page.status_code == 200
     assert "data-inbox-enrichment-watch" not in page.text
-    assert 'data-enrichment-state="updated"' in page.text
-    assert "识别结果已更新，请核对后确认" in page.text
+    assert f'data-enrichment-state="{notice or "updated"}"' in page.text
+    assert message in page.text
 
     task_public_id = parse_qs(urlsplit(response.headers["location"]).query)["watch"][0]
     with SessionLocal() as db:
@@ -200,6 +197,7 @@ def test_web_upload_enrichment_task_presents_real_ocr_success(
         assert task.status == "completed"
         result = json.loads(task.result_summary_json or "{}")
         assert result["outcome"] == "updated"
+        assert result.get("ocr_notice") == notice
         expense = db.get(Expense, result["expense_id"])
         assert expense is not None
         assert expense.amount_cents == 1990

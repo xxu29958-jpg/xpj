@@ -183,7 +183,7 @@ def test_ocr_fact_snapshot_does_not_record_zero_amount() -> None:
     assert snapshot.parsed_amount_cents is None
 
 
-def test_low_confidence_fallback_does_not_override_better_primary(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_conflicting_fallback_does_not_override_primary(monkeypatch: pytest.MonkeyPatch) -> None:
     class FixedProvider:
         def __init__(self, result: OcrResult) -> None:
             self._result = result
@@ -213,7 +213,10 @@ def test_low_confidence_fallback_does_not_override_better_primary(monkeypatch: p
         _expense(status="pending", category=DEFAULT_CATEGORIES[-1], raw_text="")
     )
 
-    assert [extraction.provider_name for extraction in extractions] == ["mock"]
+    assert [extraction.provider_name for extraction in extractions.extractions] == ["rapidocr", "mock"]
+    assert not extractions.extractions[0].apply_to_draft
+    assert extractions.extractions[1].apply_to_draft
+    assert extractions.notice == "provider_conflict"
 
 
 def test_local_llm_prompt_uses_canonical_categories_and_server_owned_source() -> None:
