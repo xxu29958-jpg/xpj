@@ -80,7 +80,9 @@ def _oracle_payload(current: dict, material: ReplayMaterial, mode: str) -> dict 
     if material.fixture.split == "holdout" or label.state != "present":
         return None
     payload = {"expected_row_version": current["row_version"], "original_currency_code": label.value["currency"],
-        "original_amount_minor": label.value["minor"], "manual_exchange_rate": "1"}
+        "original_amount_minor": label.value["minor"]}
+    if label.value["currency"] != current["home_currency"]:
+        payload["manual_exchange_rate"] = "1"
     choices = [row for row in current["recognition_fields"] if row["field"] == "amount_cents" and row["can_apply"]
         and row["value"] == label.value["minor"] and row["currency_code"] == label.value["currency"]]
     if mode != "baseline" and len(choices) == 1:
@@ -166,5 +168,5 @@ def replay(client, headers: dict, materials: list[ReplayMaterial], mode: str) ->
         "limitations": ["Reuses hash-bound actual native recordings; does not rerun inference",
             "Declared replay arrival order, not a reconstruction of historical user arrivals",
             "Publisher oracle actions, not human feedback, operation counts or time",
-            "Explicit controlled FX rate 1 for replay accounting only; not a market-rate claim",
+            "Controlled FX rate 1 only for foreign-currency corrections; not a market-rate claim",
             "Amount suggestion ranking is separate from the retained original prediction and financial fact"]}

@@ -10,7 +10,7 @@ from PIL import Image
 from scripts import ocr_feedback_replay as replay_cli
 from scripts.ocr_benchmark_data import FIELDS, BenchmarkInput, Fixture, Label
 from scripts.ocr_feedback_replay_data import ReplayMaterial, load_replay
-from scripts.ocr_feedback_replay_runtime import _seed
+from scripts.ocr_feedback_replay_runtime import _seed, replay
 
 
 def test_empty_manifest_cannot_report_a_completed_evaluation(tmp_path):
@@ -86,3 +86,26 @@ def test_frozen_replay_original_remains_readable_with_metadata(client, identity,
     response = client.get(f"/api/expenses/{expense_id}/image", headers=identity.app_headers)
     assert response.status_code == 200, response.text
     assert response.content == body and response.headers["etag"] == f'"{digest}"'
+
+
+@pytest.mark.parametrize("currency", ["CNY", "MYR"])
+@pytest.mark.parametrize("mode", ["baseline", "feedback", "withdrawn"])
+def test_replay_correction_respects_active_home_currency(client, identity, tmp_path, currency, mode):
+    # Synthetic protocol diagnostic, not native OCR or image-quality evidence.
+    image = tmp_path / "currency-diagnostic.jpg"
+    Image.new("RGB", (40, 80), "white").save(image, format="JPEG")
+    digest = hashlib.sha256(image.read_bytes()).hexdigest()
+    labels = {field: Label("unlabeled") for field in FIELDS}
+    labels["amount"] = Label("present", {"minor": 1234, "currency": currency})
+    fixture = Fixture("currency-diagnostic", "currency-diagnostic", "synthetic", "development", "test-created",
+        BenchmarkInput(image, None, currency, "Asia/Shanghai", digest), labels, {"sample_id": "currency-diagnostic"})
+    snapshot = {"raw_text": f"TOTAL 1.00 {currency}", "parsed_amount_cents": 100, "parsed_merchant": "Diagnostic",
+        "parsed_category": "其他", "parse_confidence": .9, "parsed_expense_time": None,
+        "evidence": {"input_sha256": digest, "blocks": []}}
+    result = replay(client, identity.app_headers, [ReplayMaterial(fixture, snapshot, "success")], mode)
+    assert result["attempted"] == 1
+    row = result["rows"][0]
+    assert row["outcome"] == "success", row
+    assert row["original_verified_sha256"] == digest
+    assert row["saved_financial_minor"] == 1234
+    assert row["receipt_sha256"]
