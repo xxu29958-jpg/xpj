@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import BackgroundTask, Expense
-from app.services.background_task_recovery_service import can_recover_task, schedule_task_recovery
+from app.services.background_task_handler_api import can_recover_task, schedule_task_recovery
 from app.services.file_service import require_upload_storage, resolve_upload_path_for_tenant
 from app.services.time_service import now_utc
 

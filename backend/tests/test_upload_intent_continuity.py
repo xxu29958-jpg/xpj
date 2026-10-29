@@ -356,16 +356,15 @@ def test_restart_replay_respects_capacity_cancellation_and_terminal_outcomes(
                 assert (task.status, task.error_code) == ("failed", "orphaned_after_restart")
                 db.get(BackgroundTask, other_id).status = "cancelled"
                 db.commit()
-            for _ in range(2):
-                replay = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
-                assert replay.status_code == 200
-                assert replay.json() == receipt
-                with SessionLocal() as db:
-                    task = db.get(BackgroundTask, task_id)
-                    if task.recovery_after is not None:
-                        assert task.status == "queued" and task.recovery_attempts == 1
-                        task.recovery_after = now_utc()
-                        db.commit()
+            replay = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
+            assert replay.status_code == 200 and replay.json() == receipt
+            with SessionLocal() as db:
+                task = db.get(BackgroundTask, task_id)
+                assert task.status == "queued" and task.recovery_attempts == 1 and task.recovery_after is not None
+                task.recovery_after = now_utc()
+                db.commit()
+            replay = client.post("/api/app/upload-screenshot", headers=headers, content=PNG_BYTES)
+            assert replay.status_code == 200 and replay.json() == receipt
             assert executions == [(task_id, json.loads(original_input))]
         else:
             assert replay.json() == receipt

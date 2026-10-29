@@ -39,9 +39,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.database import SessionLocal
 from app.errors import AppError
 from app.models import BackgroundTask
-from app.services import background_task_executor
+from app.services import background_task_executor, background_task_worker
 from app.services.background_task_admission import stage_queued_task
 from app.services.background_task_executor import BackgroundTaskSubmissionError as BackgroundTaskSubmissionError
 from app.services.background_task_executor import (
@@ -200,6 +201,16 @@ def submit_existing(db: Session, task: BackgroundTask, payload: dict[str, object
         task=task, task_id=task.id, task_public_id=task.public_id,
         payload=dict(payload), registry=_current_handler_registry(),
     ))
+
+
+def complete_applied_task(task_id: int) -> None:
+    """Finish only a committed OCR receipt after process death, without inference."""
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        if (task is None or task.task_type not in background_task_executor.OCR_TASK_TYPES
+                or task.result_summary_json is None):
+            return
+        background_task_worker._mark_completed(db, task_id, _runtime_handler_registry(), recover_applied=True)
 
 
 def get_task(db: Session, public_id: str, *, account_id: int | None, tenant_id: str | None) -> BackgroundTask:

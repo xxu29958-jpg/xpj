@@ -12,7 +12,6 @@ from app.models import BackgroundTask
 
 TaskHandler = Callable[[Session, BackgroundTask, dict[str, Any]], None]
 TaskCompletion = Callable[[Session, BackgroundTask], "PreparedBackgroundTask | None"]
-OCR_TASK_TYPES = frozenset({"expense_enrichment", "expense_ocr_retry"})
 
 
 class TaskHandlerRegistry:
