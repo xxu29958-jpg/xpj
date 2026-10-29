@@ -43,15 +43,15 @@ def test_unreliable_location_does_not_invent_a_box(change):
     candidate = next(item for item in evidence["field_parse"]["candidates"] if item["field"] == "amount_cents")
     if change == "no_blocks":
         evidence.pop("blocks")
-    elif change == "manual_text":
+    if change == "manual_text":
         fact.raw_text += "\n人工补充"
-    elif change == "outside":
+    if change == "outside":
         evidence["width"] = 20
-    elif change == "wrong_space":
+    if change == "wrong_space":
         evidence["coordinate_space"] = "screen"
-    elif change == "wrong_index":
+    if change == "wrong_index":
         candidate["block_indices"] = [0]
-    elif change == "notification":
+    if change == "notification":
         fact.source = "notification"
     fact.evidence_json = json.dumps(evidence)
     assert candidate_source_location(fact, candidate) is None
