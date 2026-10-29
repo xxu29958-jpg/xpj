@@ -41,6 +41,11 @@
     merchant.value = candidate.value; merchant.dispatchEvent(new Event("input", {bubbles: true}));
     return true;
   }
+  document.addEventListener("focusin", event => {
+    const field = {amount_yuan: "amount_cents", merchant: "merchant"}[event.target.name];
+    const candidates = field && event.target.form?.querySelector(`[data-recognized-fields="${field}"]`);
+    if (candidates) candidates.open = true;
+  });
   document.addEventListener("click", event => {
     const button = event.target.closest("[data-recognized-field], [data-recognized-field-correction]");
     if (!button || button.disabled || button.closest("fieldset")?.disabled) return;

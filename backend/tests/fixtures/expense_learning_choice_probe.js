@@ -76,7 +76,14 @@
       }
       button.scrollIntoView({block: "center"});
       assert(!button.disabled && button.getClientRects().length, "Source field is not actionable");
-      button.click();
+      if (!correction) {
+        const sourceText = button.querySelector("span");
+        assert(sourceText && button.getBoundingClientRect().height >= 48, "Candidate has no full-row click target");
+        const group = button.closest("[data-recognized-fields]");
+        assert(group?.dataset.recognizedFields === JSON.parse(button.dataset.recognizedField).field,
+          "Candidate is not beside its matching field");
+        sourceText.click();
+      } else button.click();
     }
     state.fieldChoices = field("recognition_field_choices")?.value;
     assert(JSON.parse(state.fieldChoices).length === 2, "Explicit source choices are missing");

@@ -343,6 +343,21 @@ button[disabled] {
     box-shadow: var(--shadow-raised);
 }
 .recognition-source-dialog::backdrop { background: var(--drawer-overlay-bg); }
+.recognition-candidate {
+    display: grid;
+    width: 100%;
+    min-height: 48px;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-md);
+    background: var(--surface-card);
+    color: var(--text-default);
+    text-align: start;
+    white-space: normal;
+}
+button.recognition-candidate:hover { background: var(--brand-primary-bg); }
+.recognition-candidate-action { color: var(--brand-primary); }
 .recognition-source-dialog > p { margin-block: var(--space-2); }
 .recognition-source-scroll {
     height: min(50dvh, 420px);

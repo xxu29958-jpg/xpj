@@ -51,9 +51,14 @@ private fun RecognizedTimeRow(candidate: RecognitionTimeCandidate, enabled: Bool
     onSource: ((String) -> Unit)?,
     onChoose: ((RecognitionTimeCandidate) -> Unit)?) {
     var year by rememberSaveable(candidate.id) { mutableStateOf("") }
-    Text("${candidate.label} · ${candidate.localValue}")
-    Text(candidate.originalText, style = MaterialTheme.typography.bodySmall)
-    Text(candidate.explanation, style = MaterialTheme.typography.bodySmall)
+    val choice = if (candidate.requiresYear) candidate.withYear(year) else candidate.takeIf { it.canApply }
+    RecognitionCandidateCard(enabled && choice != null, onChoose?.let { { choice?.let(it) } }) {
+        Text("${candidate.label} · ${candidate.localValue}", style = MaterialTheme.typography.titleSmall)
+        Text(candidate.originalText, style = MaterialTheme.typography.bodyMedium)
+        Text(candidate.explanation, style = MaterialTheme.typography.bodySmall)
+        if (onChoose != null && (candidate.canApply || candidate.requiresYear)) Text(stringResource(
+            if (dateOnly) R.string.recognition_time_use_date else R.string.recognition_time_use), color = MaterialTheme.colorScheme.primary)
+    }
     if (candidate.sourceLocation != null && onSource != null) TextButton(onClick = { onSource(candidate.id) }) {
         Text(stringResource(R.string.recognition_source_open))
     }
@@ -62,11 +67,6 @@ private fun RecognizedTimeRow(candidate: RecognitionTimeCandidate, enabled: Bool
         year = it.filter(Char::isDigit).take(4)
     }, enabled = enabled, label = { Text(stringResource(R.string.recognition_time_year)) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
-    val choice = if (candidate.requiresYear) candidate.withYear(year) else candidate.takeIf { it.canApply }
-    if (candidate.canApply || candidate.requiresYear) TextButton(enabled = enabled && choice != null,
-        onClick = { choice?.let(onChoose) }) {
-        Text(stringResource(if (dateOnly) R.string.recognition_time_use_date else R.string.recognition_time_use))
-    }
 }
 
 internal fun RecognitionTimeCandidate.withYear(year: String): RecognitionTimeCandidate? {
