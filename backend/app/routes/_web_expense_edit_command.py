@@ -513,16 +513,13 @@ def prepare_web_expense_form(
     form_values.update(score_fields or {})
     if funding_json is not None:
         form_values["funding_json"] = funding_json
-    if category_choice:
-        form_values["category_choice"] = category_choice
-    if category_decision_public_id:
-        form_values["category_decision_public_id"] = category_decision_public_id
-    if recognition_time_choice:
-        form_values["recognition_time_choice"] = recognition_time_choice
-    if recognition_field_choices:
-        form_values["recognition_field_choices"] = recognition_field_choices
-    if original_text_feedback:
-        form_values["original_text_feedback"] = original_text_feedback
+    form_values.update({name: value for name, value in {
+        "category_choice": category_choice,
+        "category_decision_public_id": category_decision_public_id,
+        "recognition_time_choice": recognition_time_choice,
+        "recognition_field_choices": recognition_field_choices,
+        "original_text_feedback": original_text_feedback,
+    }.items() if value})
     try:
         expense = get_expense(db, expense_id, selected_ledger_id)
         time_input = None

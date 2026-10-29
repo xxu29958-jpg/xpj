@@ -16,32 +16,7 @@
     if (state.stage === "sent") { state.stage = "unknown"; save(); throw Error("Committed reply lost"); }
     return response;
   };
-  try {
-    if (document.querySelector("[data-expense-confirmation]")) {
-      assert(state.requests.length === 2 && document.body.textContent.includes("原文反馈已保留"), "Confirmation omitted the original feedback receipt");
-      window.__expenseReviewResult = {...state, completed: true}; return;
-    }
-    const drawer = location.pathname === "/web/pending";
-    if (drawer) { document.querySelector('.exp-row[data-expense-id="42"] .exp-row-detail').click(); await wait(() => document.querySelector("#drawer [data-drawer-form]")); }
-    const form = document.querySelector(drawer ? "#drawer [data-drawer-form]" : "form.edit-form"), field = name => form.elements.namedItem(name);
-    const primary = form.querySelector("[data-expensereview-submit]");
-    await wait(() => form.dataset.expensereviewDraftPhase && !primary.disabled);
-    if (state.stage === "replay") {
-      assert(!field("original_text_feedback")?.value, "Accepted feedback was copied into the next command");
-      assert(document.body.textContent.includes("原文反馈已保留"), "Accepted feedback has no truthful acknowledgement");
-      window.__expenseReviewResult = {...state, completed: true}; return;
-    }
-    if (state.stage === "unknown") {
-      assert(form.dataset.expensereviewDraftPhase === "submitted", "Lost reply replaced original command");
-      assert(field("original_text_feedback").value === state.feedback, "Reload lost the independent original text");
-      state.stage = "replay"; save(); form.requestSubmit(primary);
-      if (drawer) {
-        await wait(() => !form.isConnected);
-        assert(document.body.textContent.includes("原文反馈已保留"), "Drawer did not acknowledge the committed feedback");
-        window.__expenseReviewResult = {...state, completed: true};
-      }
-      return;
-    }
+  async function prepareFeedback(form, field) {
     assert(!form.querySelector("[data-recognized-field]"), "This case must have no OCR candidates");
     field("amount_yuan").value = "17.00"; field("amount_yuan").dispatchEvent(new Event("input", {bubbles: true}));
     const panel = form.querySelector('[data-original-feedback="amount_cents"]');
@@ -79,6 +54,34 @@
     if (mode === "verified_region") assert(JSON.stringify(feedback.box) === "[20,50,390,75]", "Zoom mixed coordinate spaces");
     panel.scrollIntoView({block: "center"}); window.__originalFeedbackPreviewReady = true;
     await wait(() => window.__originalFeedbackPreviewCaptured);
+  }
+  try {
+    if (document.querySelector("[data-expense-confirmation]")) {
+      assert(state.requests.length === 2 && document.body.textContent.includes("原文反馈已保留"), "Confirmation omitted the original feedback receipt");
+      window.__expenseReviewResult = {...state, completed: true}; return;
+    }
+    const drawer = location.pathname === "/web/pending";
+    if (drawer) { document.querySelector('.exp-row[data-expense-id="42"] .exp-row-detail').click(); await wait(() => document.querySelector("#drawer [data-drawer-form]")); }
+    const form = document.querySelector(drawer ? "#drawer [data-drawer-form]" : "form.edit-form"), field = name => form.elements.namedItem(name);
+    const primary = form.querySelector("[data-expensereview-submit]");
+    await wait(() => form.dataset.expensereviewDraftPhase && !primary.disabled);
+    if (state.stage === "replay") {
+      assert(!field("original_text_feedback")?.value, "Accepted feedback was copied into the next command");
+      assert(document.body.textContent.includes("原文反馈已保留"), "Accepted feedback has no truthful acknowledgement");
+      window.__expenseReviewResult = {...state, completed: true}; return;
+    }
+    if (state.stage === "unknown") {
+      assert(form.dataset.expensereviewDraftPhase === "submitted", "Lost reply replaced original command");
+      assert(field("original_text_feedback").value === state.feedback, "Reload lost the independent original text");
+      state.stage = "replay"; save(); form.requestSubmit(primary);
+      if (drawer) {
+        await wait(() => !form.isConnected);
+        assert(document.body.textContent.includes("原文反馈已保留"), "Drawer did not acknowledge the committed feedback");
+        window.__expenseReviewResult = {...state, completed: true};
+      }
+      return;
+    }
+    await prepareFeedback(form, field);
     state.feedback = field("original_text_feedback").value; state.stage = "sent"; save();
     form.requestSubmit(action === "confirm" ? primary : [...form.querySelectorAll("button")].find(button => button.textContent === "保存草稿"));
     await wait(() => state.stage === "unknown" && form.querySelector("[data-expensereview-draft-status]").textContent.includes("暂未收到"));

@@ -464,11 +464,7 @@
         clearTaskAnchor();
         drawer.innerHTML = html; bindFragment(); resyncRowConsumers(); focusDrawer();
         if (!confirmation) {
-          if (values.command_action === "save" && values.original_text_feedback && values.original_text_feedback !== "[]") {
-            const notice = document.createElement("p"); notice.className = "product-feedback product-feedback--success";
-            notice.setAttribute("role", "status"); notice.textContent = "草稿已保存，原文反馈已保留。";
-            drawer.querySelector("[data-drawer-form]").prepend(notice);
-          }
+          announceSavedFeedback(values);
           await refreshReviewRow(generation, values.command_action);
           return;
         }
@@ -494,6 +490,13 @@
         back.type = "button"; back.textContent = "返回收件箱"; back.className = "product-button product-button--quiet"; back.onclick = close;
         panel.append(title, notice, link, back); drawer.replaceChildren(panel); focusDrawer();
       }
+    }
+
+    function announceSavedFeedback(values) {
+      if (values.command_action !== "save" || !values.original_text_feedback || values.original_text_feedback === "[]") return;
+      const notice = document.createElement("p"); notice.className = "product-feedback product-feedback--success";
+      notice.setAttribute("role", "status"); notice.textContent = "草稿已保存，原文反馈已保留。";
+      drawer.querySelector("[data-drawer-form]").prepend(notice);
     }
 
     async function refreshReviewRow(generation, action) {
