@@ -94,7 +94,7 @@ class ExpenseEditScreenContractTest {
         val help = InstrumentationRegistry.getInstrumentation().targetContext.getString(com.ticketbox.R.string.ocr_region_help)
         composeRule.onNodeWithText("点选两角").performClick()
         composeRule.onNode(hasContentDescription(help)).performTouchInput { click(center) }
-        composeRule.onNodeWithText("返回").performScrollTo().performClick()
+        composeRule.onNode(hasText("返回") and hasAnyAncestor(isDialog())).performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(null, requested); assertEquals(null, saved) }
         composeRule.onNode(hasSetTextAction() and hasText("22.00")).assertExists()
         composeRule.onNodeWithText("重读一行文字").performScrollTo().performClick()

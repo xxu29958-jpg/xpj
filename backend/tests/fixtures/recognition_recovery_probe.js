@@ -100,12 +100,27 @@
       };
       dispatch("pointerdown", 60, 25); dispatch("pointerup", 60, 25);
       if (form.elements.ocr_region.value) throw Error("An unfinished corner became a submitted region");
+      const submit = form.querySelector("[data-recognition-submit]");
+      if (!submit.disabled) throw Error("A first corner still allows whole-image submission");
+      form.requestSubmit(submit);
+      if (form.dataset.expenseocrDraftPhase !== "editing") throw Error("Incomplete selection was submitted through the form");
       form.querySelector('[data-ocr-region-zoom="0.5"]').click();
       image.scrollIntoView({block: "center", behavior: "instant"});
       dispatch("pointerdown", 110, 50); dispatch("pointerup", 110, 50);
       const selected = JSON.parse(form.elements.ocr_region.value);
       if (JSON.stringify(selected.box) !== "[60,25,110,50]") throw Error("Source crop coordinates changed: " + JSON.stringify({selected,
         before: bounds.toJSON(), after: image.getBoundingClientRect().toJSON()}));
+      if (submit.disabled) throw Error("Completed corners did not restore submission");
+      const original = form.elements.ocr_region.value;
+      dispatch("pointerdown", 70, 30); dispatch("pointerup", 70, 30);
+      if (!submit.disabled || form.elements.ocr_region.value !== original) throw Error("Replacement corner can submit the old crop");
+      form.querySelector('[data-ocr-region-mode="browse"]').click();
+      if (submit.disabled || form.elements.ocr_region.value !== original) throw Error("Leaving corner selection did not restore the old crop");
+      form.querySelector('[data-ocr-region-mode="corners"]').click();
+      dispatch("pointerdown", 70, 30); dispatch("pointerup", 70, 30);
+      form.querySelector("[data-ocr-region-clear]").click();
+      if (submit.disabled || form.elements.ocr_region.value) throw Error("Clearing the incomplete crop did not restore whole-image submission");
+      await chooseRegion(form, [60, 25, 110, 50]);
     }
     if (state.kind === "region-invalid") await chooseRegion(form, [60, 25, 110, 600]);
     state.original = fields(form); state.phase = "send"; keep(state);
