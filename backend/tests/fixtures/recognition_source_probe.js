@@ -27,6 +27,23 @@
       Math.abs(picture.height - overlay.height) < 1, "Source overlay does not align with the visible original");
   }
   const key = "recognition-source-probe";
+  async function pressSourceKey(key, modifiers = 0) {
+    window.__sourceKeyDispatched = false;
+    window.__sourceKeyRequest = {key, code: key, modifiers, windowsVirtualKeyCode: key === "Enter" ? 13 : 27};
+    await wait(() => window.__sourceKeyDispatched);
+  }
+  async function verifyModalKeys(form, dialog) {
+    let submissions = 0;
+    const count = () => { submissions++; };
+    form.addEventListener("submit", count);
+    for (const modifiers of [2, 4]) {
+      await pressSourceKey("Enter", modifiers);
+      assert(submissions === 0 && dialog.open && form.isConnected, "Source-dialog shortcut submitted the underlying expense");
+    }
+    await pressSourceKey("Escape");
+    assert(!dialog.open && form.isConnected, "Escape closed the expense drawer instead of the source review");
+    form.removeEventListener("submit", count);
+  }
   if (sessionStorage.getItem(key) === "submitted") { window.__expenseReviewResult = {completed: true}; return; }
   try {
     if (document.readyState === "loading") await new Promise(resolve => document.addEventListener("DOMContentLoaded", resolve, {once: true}));
@@ -52,9 +69,7 @@
     window.__sourcePreviewReady = true;
     await wait(() => window.__sourcePreviewCaptured);
     if (drawer) {
-      window.__sourceEscapeReady = true;
-      await wait(() => window.__sourceEscapeDispatched);
-      assert(!dialog.open && form.isConnected, "Escape closed the expense drawer instead of the source review");
+      await verifyModalKeys(form, dialog);
     } else dialog.querySelector("[data-source-close]").click();
     assert(amount.value === "22.00" && !form.elements.namedItem("recognition_field_choices")?.value, "Viewing source changed draft or supplied labels");
     const originalFetch = window.fetch;
