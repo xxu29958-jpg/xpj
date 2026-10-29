@@ -58,7 +58,7 @@ def test_acceptance_replay_and_atomic_completion_keep_protocols_distinct(retry_i
     def extract(expense):
         assert inspect(expense).transient
         calls.append(expense.id)
-        return _ocr_result()[0].result
+        return _ocr_result().extractions[0].result
 
     monkeypatch.setattr(_ocr, "extract_ocr_result", extract)
     with SessionLocal() as db:
@@ -123,7 +123,7 @@ def test_legacy_failed_attempt_remains_retryable_without_acknowledging_failure(r
         second = submit_expense_ocr_task(db, **retry_input, legacy=True)
         second_id, payload = second.id, json.loads(second.input_payload_json)
         assert second_id != first_id
-    monkeypatch.setattr(_ocr, "extract_ocr_result", lambda _expense: _ocr_result()[0].result)
+    monkeypatch.setattr(_ocr, "extract_ocr_result", lambda _expense: _ocr_result().extractions[0].result)
     background_task_worker.run_task(second_id, payload)
     with SessionLocal() as db:
         assert db.get(BackgroundTask, first_id).status == "failed"
