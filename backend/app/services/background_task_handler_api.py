@@ -2,19 +2,59 @@
 
 from __future__ import annotations
 
+import json
+from datetime import timedelta
 from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask
-from app.services.background_task_recovery_service import schedule_task_recovery
-from app.services.background_task_registry import OCR_TASK_TYPES
 from app.services.time_service import now_utc
+
+OCR_TASK_TYPES = frozenset({"expense_enrichment", "expense_ocr_retry"})
+OCR_RECOVERY_DELAYS = (10, 30, 90)
+_TRANSIENT_CODES = frozenset({"orphaned_after_restart", "task_submission_failed", "ocr_timeout", "ocr_worker_exited"})
+_STOP_ON_REPEAT = frozenset({"ocr_timeout", "ocr_worker_exited"})
 
 
 class TaskCancelledError(Exception):
     """Raised by a task handler after observing a cancellation request."""
+
+
+def can_recover_task(task: BackgroundTask) -> bool:
+    """One total budget across worker failure, restart and original-request replay."""
+    if (task.task_type not in OCR_TASK_TYPES or not task.input_payload_json
+            or task.result_summary_json is not None or task.cancellation_requested_at is not None
+            or task.error_code not in _TRANSIENT_CODES or task.recovery_attempts >= len(OCR_RECOVERY_DELAYS)):
+        return False
+    try:
+        history = json.loads(task.recovery_history_json)
+        return isinstance(history, list) and not (task.error_code in _STOP_ON_REPEAT
+            and any(entry["error_code"] == task.error_code for entry in history))
+    except (TypeError, ValueError, KeyError):
+        return False
+
+
+def schedule_task_recovery(task: BackgroundTask) -> bool:
+    """Keep accepted work in its durable quota; preserve the failed attempt separately."""
+    if not can_recover_task(task):
+        return False
+    stamp = now_utc()
+    after = stamp + timedelta(seconds=OCR_RECOVERY_DELAYS[task.recovery_attempts])
+    history = json.loads(task.recovery_history_json)
+    history.append({"attempt": task.recovery_attempts + 1, "error_code": task.error_code,
+        "started_at": task.started_at.isoformat() if task.started_at else None,
+        "failed_at": (task.completed_at or stamp).isoformat(), "resume_after": after.isoformat()})
+    task.recovery_history_json = json.dumps(history, separators=(",", ":"), sort_keys=True)
+    task.recovery_attempts += 1
+    task.recovery_after = after
+    task.status = "queued"
+    task.started_at = task.completed_at = None
+    task.last_progress_at = stamp
+    task.progress_current = 0
+    task.progress_message = "上次识别中断，稍后自动继续；也可先手填核对。"
+    return True
 
 
 def update_progress(
@@ -90,4 +130,5 @@ def retire_obsolete_task(db: Session, task: BackgroundTask) -> None:
 
 
 __all__ = ["TaskCancelledError", "check_cancellation_requested", "mark_failed", "retire_obsolete_task",
-           "stage_task_cancellation", "update_progress"]
+           "stage_task_cancellation", "update_progress", "can_recover_task", "schedule_task_recovery",
+           "OCR_TASK_TYPES", "OCR_RECOVERY_DELAYS"]
