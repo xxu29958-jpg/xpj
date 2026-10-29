@@ -226,10 +226,11 @@ def web_refresh_expense_fx(
 
 
 def _saved_pending_destination(expense_id: int, selected_id: str, form: WebExpenseEditForm) -> str:
+    feedback_notice = "原文反馈已保留。" if form.original_text_feedback and form.original_text_feedback != "[]" else ""
     href = _with_ledger(f"/web/expenses/{expense_id}/edit", selected_id, new_expensereview="1",
-        msg="这次草稿保存已完成。请核对账单当前记录，再继续操作。", **edit_context_params(**form.return_context.as_kwargs()))
+        msg="这次草稿保存已完成。" + feedback_notice + "请核对账单当前记录，再继续操作。", **edit_context_params(**form.return_context.as_kwargs()))
     if form.funding_json and form.funding_json != "[]":
         href = _with_ledger(f"/web/expenses/{expense_id}/edit", selected_id, confirmation_task="1",
-            msg="草稿已保存，付款来源仍在原核对任务中，确认消费时才会记账。",
+            msg="草稿已保存，付款来源仍在原核对任务中，确认消费时才会记账。" + feedback_notice,
             **edit_context_params(**form.return_context.as_kwargs())) + f"#expensereview-edit-{form.draft_ref}"
     return href

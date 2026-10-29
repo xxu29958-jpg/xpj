@@ -166,6 +166,7 @@
         }
         for (const input of [...current.elements].filter(input => input.name.startsWith("return_"))) input.remove();
         for (const [name, value] of Object.entries(JSON.parse(values.return_context))) put(current, name, value);
+        current.dispatchEvent(new Event("ticketbox:original-feedback-state", {bubbles: true}));
       },
       body(body, values) {
         for (const name of ["funding_json", "category_choice", "category_decision_public_id", "duplicate_decision_public_id", "recognition_time_choice", "recognition_field_choices", "original_text_feedback"]) {

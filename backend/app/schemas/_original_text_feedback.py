@@ -16,7 +16,7 @@ class OriginalTextFeedback(BaseModel):
     box: tuple[float, float, float, float] | None = None
     verbatim_text: str = Field(default="", max_length=2000)
     role: str = Field(min_length=1, max_length=64)
-    issue: Literal["transcription", "missing", "unreadable", "absent"] = "transcription"
+    issue: Literal["transcription", "missing", "unreadable", "cropped", "absent"] = "transcription"
     text_verified: bool = False
     evidence_public_id: str | None = Field(default=None, min_length=1, max_length=36)
 
@@ -32,7 +32,7 @@ class OriginalTextFeedback(BaseModel):
             left, top, right, bottom = self.box
             if not (0 <= left < right <= self.width and 0 <= top < bottom <= self.height):
                 raise ValueError("region is outside the original")
-        if self.issue in {"unreadable", "absent"}:
+        if self.issue in {"unreadable", "cropped", "absent"}:
             if self.verbatim_text.strip() or self.text_verified:
                 raise ValueError("unreadable or absent text cannot supply a transcription")
         elif not self.verbatim_text.strip():

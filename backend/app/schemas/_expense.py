@@ -386,6 +386,9 @@ class ExpenseConfirmationReceipt(BaseModel):
 class ExpenseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    # Only an accepted composite confirmation sets this receipt marker; current expense reads do not infer it.
+    original_text_feedback_saved: bool = False
+
     recognition_time: RecognitionTimeResponse | None = None
     recognition_fields: list[RecognitionFieldCandidate] = Field(default_factory=list)
     recognition_notes: list[str] = Field(default_factory=list)
@@ -450,6 +453,8 @@ class ExpenseResponse(BaseModel):
             data.pop("recognition_fields", None)
         if "recognition_notes" not in self.model_fields_set:
             data.pop("recognition_notes", None)
+        if "original_text_feedback_saved" not in self.model_fields_set:
+            data.pop("original_text_feedback_saved", None)
         return data
 
     @field_serializer(

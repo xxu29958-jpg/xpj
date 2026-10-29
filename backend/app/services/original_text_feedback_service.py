@@ -14,7 +14,7 @@ def record_original_text_feedback(db, *, expense, annotations, actor_account_id)
     if not annotations:
         return
     if actor_account_id is None:
-        raise AppError("forbidden", status_code=403)
+        raise AppError("permission_denied", status_code=403)
     if expense.image_deleted_at or not expense.image_path:
         raise AppError("original_feedback_source_changed", status_code=409)
     with read_original_snapshot(relative_path=expense.image_path, tenant_id=expense.tenant_id,

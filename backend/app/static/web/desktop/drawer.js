@@ -464,6 +464,11 @@
         clearTaskAnchor();
         drawer.innerHTML = html; bindFragment(); resyncRowConsumers(); focusDrawer();
         if (!confirmation) {
+          if (values.command_action === "save" && values.original_text_feedback && values.original_text_feedback !== "[]") {
+            const notice = document.createElement("p"); notice.className = "product-feedback product-feedback--success";
+            notice.setAttribute("role", "status"); notice.textContent = "草稿已保存，原文反馈已保留。";
+            drawer.querySelector("[data-drawer-form]").prepend(notice);
+          }
           await refreshReviewRow(generation, values.command_action);
           return;
         }

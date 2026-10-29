@@ -103,6 +103,11 @@ def test_pixel_annotation_survives_financial_edit_and_new_ocr_but_stops_on_repla
         db.flush()
         assert feedback_assessments(db, tenant_id="owner", events=[event])[event.id][0] == "superseded"
         db.rollback()
+        expense = db.get(Expense, expense_id)
+        expense.image_deleted_at = datetime.now(UTC)
+        db.flush()
+        assert feedback_assessments(db, tenant_id="owner", events=[event])[event.id][0] == "invalid"
+        db.rollback()
         withdraw_feedback(db, tenant_id="owner", public_id=event.public_id)
         db.commit()
         assert feedback_assessments(db, tenant_id="owner", events=[event])[event.id][0] == "invalid"
@@ -121,3 +126,44 @@ def test_stale_original_feedback_command_cannot_overwrite_a_later_edit(client, i
     with SessionLocal() as db:
         assert db.get(Expense, expense_id).original_amount_minor == 2300
         assert not list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == expense_id)))
+
+
+@pytest.mark.parametrize("issue", ["unreadable", "cropped", "absent"])
+def test_missing_source_information_has_a_diagnostic_exit_without_false_transcription(client, identity, issue):
+    expense_id, digest = seed_original()
+    headers = {**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())}
+    feedback = {**annotation(digest, "unlocated"), "issue": issue, "verbatim_text": "", "text_verified": False}
+    response, _ = save(client, headers, expense_id, [feedback])
+    assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        event = db.scalar(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == expense_id,
+            LedgerLearningEvent.signal_type == "original_text_feedback"))
+        assert json.loads(event.after_payload)["label_usage"] == "diagnostic"
+        assert db.get(Expense, expense_id).original_amount_minor == 1700
+        assert feedback_assessments(db, tenant_id="owner", events=[event])[event.id][0] == "needs_review"
+
+
+def test_confirmed_correction_keeps_original_annotation_revision_independent(client, identity):
+    expense_id, digest = seed_original()
+    headers = negotiated_headers(client, identity.app_headers)
+    saved, _ = save(client, {**headers, "Idempotency-Key": str(uuid4())}, expense_id, [annotation(digest)])
+    confirmed = client.post(f"/api/expenses/{expense_id}/confirm", headers={**headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": saved.json()["row_version"]})
+    assert confirmed.status_code == 200, confirmed.text
+    correction = {"expected_row_version": confirmed.json()["row_version"], "reason": "核对原件后调整记账",
+        "original_currency_code": "CNY", "original_amount_minor": 2200,
+        "original_text_feedback": [{**annotation(digest), "verbatim_text": "实付：78.80"}]}
+    correction_headers = {**headers, "Idempotency-Key": str(uuid4())}
+    result = client.post(f"/api/expenses/{expense_id}/corrections", headers=correction_headers, json=correction)
+    assert result.status_code == 201, result.text
+    assert client.post(f"/api/expenses/{expense_id}/corrections", headers=correction_headers, json=correction).json() == result.json()
+    with SessionLocal() as db:
+        events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == expense_id,
+            LedgerLearningEvent.signal_type == "original_text_feedback").order_by(LedgerLearningEvent.id)))
+        assert len(events) == 2
+        payloads = [json.loads(row.after_payload) for row in events]
+        assert [item["verbatim_text"] for item in payloads] == ["实付：78.00", "实付：78.80"]
+        assert payloads[1]["_supersedes_event_public_id"] == events[0].public_id
+        assert payloads[1]["_feedback_revision"] == 2
+        assert [feedback_assessments(db, tenant_id="owner", events=events)[row.id][0] for row in events] == ["superseded", "valid"]
+        assert db.get(Expense, expense_id).original_amount_minor == 2200

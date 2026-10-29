@@ -225,6 +225,22 @@ internal class ExpenseEditViewModelTest {
     }
 
     @Test
+    fun originalFeedbackAcknowledgementRequiresTheOriginalCommandToComplete() = edit { fake ->
+        val vm = viewModel(fake)
+        fake.saveOfflineResponder = { _, _, _ -> Result.success(ExpenseCommandAcceptance(fake.baseExpense, listOf(11L))) }
+        vm.save(draft())
+        advanceUntilIdle()
+        val command = observedExpenseCommand(11L, fake.baseExpense, PendingMutationType.PatchExpense,
+            PendingMutationStatus.Pending, fake.binding).copy(hasOriginalTextFeedback = true)
+        fake.commands.value = fake.commands.value.copy(commands = listOf(command))
+        advanceUntilIdle()
+        assertEquals(UiText.res(R.string.expense_command_accepted), vm.uiState.value.message)
+        fake.commands.value = fake.commands.value.copy(commands = listOf(command.copy(row = command.row.copy(status = PendingMutationStatus.Done))))
+        advanceUntilIdle()
+        assertEquals(UiText.res(R.string.original_feedback_saved), vm.uiState.value.message)
+    }
+
+    @Test
     fun saveFailureKeepsPageOpenWithError() = edit { fake ->
         val vm = viewModel(fake)
         fake.saveOfflineResponder = { _, _, _ -> Result.failure(RuntimeException("boom")) }

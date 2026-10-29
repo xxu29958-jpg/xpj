@@ -271,6 +271,8 @@ def confirm_expense_submission(
                 funding=reviewed_funding,
             )
         receipt = expense_to_response(db, tenant_id=tenant_id, expense=confirmed)
+        if update_payload and update_payload.original_text_feedback:
+            receipt.original_text_feedback_saved = True
         if claim is not None:
             mark_idempotency_succeeded(
                 db,

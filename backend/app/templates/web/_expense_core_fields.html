@@ -121,6 +121,7 @@
   {% with recognition_fields=recognition_fields|default([])|selectattr('field', 'equalto', 'amount_cents')|list, recognition_field_name='amount_cents', recognition_field_label='金额' %}
   {% include '_recognized_field_candidates.html' %}
   {% endwith %}
+  {% with feedback_field='amount_cents' %}{% include '_original_text_feedback.html' %}{% endwith %}
   {% if core_fields_compact|default(false) %}</details>{% endif %}
 
   {% include "_expense_fx.html" %}
@@ -176,6 +177,7 @@
   {% with recognition_fields=recognition_fields|default([])|selectattr('field', 'equalto', 'merchant')|list, recognition_field_name='merchant', recognition_field_label='商户' %}
   {% include '_recognized_field_candidates.html' %}
   {% endwith %}
+  {% with feedback_field='merchant' %}{% include '_original_text_feedback.html' %}{% endwith %}
   {% if core_fields_compact|default(false) %}</details>{% endif %}
 
   {% if core_fields_compact|default(false) %}
@@ -234,6 +236,7 @@
     </summary>
   {% endif %}
   {% with time_prefix=_p, time_name='expense_time', time_disabled=(not can_write or e.is_split_received) %}{% include '_accounting_time_fields.html' %}{% endwith %}
+  {% with feedback_field='expense_time' %}{% include '_original_text_feedback.html' %}{% endwith %}
   {% if core_fields_compact|default(false) %}</details>{% endif %}
   {% else %}
   <label class="product-field" for="{{ _p }}-expense-time">

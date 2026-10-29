@@ -53,6 +53,12 @@ import com.ticketbox.ui.screens.expense.ExpenseEditFormValues
 import com.ticketbox.ui.screens.expense.RecognizedFieldCandidates
 import com.ticketbox.ui.screens.expense.readFieldChoices
 import com.ticketbox.ui.screens.expense.updateFieldChoice
+import com.ticketbox.ui.screens.expense.OriginalFeedbackFieldState
+import com.ticketbox.ui.screens.expense.OriginalTextFeedbackField
+import com.ticketbox.ui.screens.expense.OcrSourceImageState
+import com.ticketbox.ui.screens.expense.readOriginalFeedback
+import com.ticketbox.ui.screens.expense.updateOriginalFeedback
+import com.ticketbox.ui.screens.expense.readyForSave
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBar
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarActions
 import com.ticketbox.ui.screens.expense.ExpenseEditActionBarState
@@ -271,6 +277,7 @@ fun ExpenseEditScreen(
     }
     var categoryChoice by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
     var fieldChoicesJson by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
+    var originalFeedbackJson by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
     var categoryDecisionPublicId by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
     var note by rememberSaveable(formIdentity) { mutableStateOf(initialFormValues.note) }
     val (timeForm, setTimeForm) = com.ticketbox.ui.screens.expense.rememberExpenseTimeForm(
@@ -321,6 +328,7 @@ fun ExpenseEditScreen(
     val currencyUnsupportedMessage = stringResource(R.string.expense_edit_currency_unsupported)
     val manualExchangeRateInvalidMessage = stringResource(R.string.expense_edit_manual_rate_invalid)
     val timeErrorMessage = time.error?.let { stringResource(it) }
+    val originalFeedbackIncomplete = stringResource(R.string.original_feedback_incomplete)
     val isPendingExpense = currentExpense.status == "pending"
     val homeCurrencyCode = currentExpense.homeCurrencyCode
         ?.takeIf { it.isNotBlank() }
@@ -328,7 +336,7 @@ fun ExpenseEditScreen(
     val foreignCurrency = currency.storageKey != homeCurrencyCode
     val formValues = ExpenseEditFormValues(
         currency, amountText, manualExchangeRateText, merchant, category, note, expenseTime, tags, valueScoreText, regretScoreText,
-        categoryChoice, categoryDecisionPublicId, fieldChoicesJson,
+        categoryChoice, categoryDecisionPublicId, fieldChoicesJson, originalFeedbackJson,
     )
     val fxIdentityChanged = formValues.changesFxIdentity(currentExpense)
     val manualExchangeRateVisible = manualExchangeRateEditorVisible(
@@ -403,6 +411,11 @@ fun ExpenseEditScreen(
         val valueScore = if (valueScoreText.isBlank()) null else (parseScore(valueScoreText, valueScoreLabel) ?: return null)
         val regretScore = if (regretScoreText.isBlank()) null else (parseScore(regretScoreText, regretScoreLabel) ?: return null)
         if (timeErrorMessage != null) { message = timeErrorMessage; return null }
+        val originalFeedback = readOriginalFeedback(originalFeedbackJson)
+        if (originalFeedback.any { !it.readyForSave(currentExpense.imageHash) }) {
+            message = originalFeedbackIncomplete
+            return null
+        }
         val funding = if (confirming) runCatching { com.ticketbox.data.repository.readExpenseFunding(state.fundingJson, currency) }
             .getOrElse { message = it.message; return null } else emptyList()
         return ExpenseDraft(
@@ -425,6 +438,7 @@ fun ExpenseEditScreen(
             categoryDecisionPublicId = categoryDecisionPublicId,
             recognitionTimeChoice = timeForm.recognitionChoice,
             recognitionFieldChoices = readFieldChoices(fieldChoicesJson).takeIf { it.isNotEmpty() },
+            originalTextFeedback = originalFeedback.takeIf { it.isNotEmpty() },
             note = note,
             expenseTime = expenseTime.ifBlank { null },
             timeInput = time.input,
@@ -512,6 +526,15 @@ fun ExpenseEditScreen(
         fieldChoicesJson = updateFieldChoice(fieldChoicesJson, candidate.field,
             candidate.choice().copy(intent = "original_correction"))
     }
+    val originalFeedbackField: @Composable (String) -> Unit = { field ->
+        if (isPendingExpense && currentExpense.hasUndeletedImage) androidx.compose.runtime.key(formIdentity, field) {
+            OriginalTextFeedbackField(OriginalFeedbackFieldState(field,
+                OcrSourceImageState(state.fullImage, currentExpense.imageHash, state.imageLoading),
+                readOriginalFeedback(originalFeedbackJson).firstOrNull { it.field == field }, !readOnly && !state.saving),
+                onChange = { originalFeedbackJson = updateOriginalFeedback(originalFeedbackJson, field, it) },
+                onLoadImage = mediaActions.onLoadFullImage)
+        }
+    }
     val formSections: @Composable () -> Unit = {
         if (currentExpense.status == "pending") currentExpense.recognitionNotes.forEach { note ->
             androidx.compose.material3.Text(note, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
@@ -558,6 +581,7 @@ fun ExpenseEditScreen(
             candidates = {
                 if (isPendingExpense) RecognizedFieldCandidates(currentExpense.recognitionFields.filter { it.field == "amount_cents" },
                     !readOnly, ::chooseOriginalField, ::openCandidateSource, ::correctOriginalField)
+                originalFeedbackField("amount_cents")
             },
         )
         SettingsDetailRow(
@@ -571,6 +595,7 @@ fun ExpenseEditScreen(
             }, enabled = !readOnly)
             if (isPendingExpense) RecognizedFieldCandidates(currentExpense.recognitionFields.filter { it.field == "merchant" },
                 !readOnly, ::chooseOriginalField, ::openCandidateSource, ::correctOriginalField)
+            originalFeedbackField("merchant")
         }
         ExpenseEditCategorySelector(
             state = ExpenseEditCategorySelectorState(
@@ -601,6 +626,7 @@ fun ExpenseEditScreen(
                 currentExpense.recognitionTime, timeForm, setTimeForm, !readOnly, ::openCandidateSource,
             )
             com.ticketbox.ui.screens.expense.ExpenseTimeEditor(timeForm, setTimeForm, !readOnly, showTitle = false)
+            originalFeedbackField("expense_time")
         }
         if (timeForm.changed) androidx.compose.material3.TextButton(enabled = !readOnly, onClick = {
             com.ticketbox.viewmodel.readExpenseTimeForm(baselineTimeFormJson)?.let(setTimeForm)

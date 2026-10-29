@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.squareup.moshi.Moshi
@@ -38,13 +40,17 @@ internal fun updateOriginalFeedback(raw: String?, field: String, feedback: Origi
     (readOriginalFeedback(raw).filter { it.field != field } + listOfNotNull(feedback))
         .takeIf { it.isNotEmpty() }?.let(originalFeedbackAdapter::toJson)
 
+internal fun OriginalTextFeedback.readyForSave(expectedHash: String?): Boolean =
+    imageSha256 == expectedHash && imageSha256.length == 64 && width > 0 && height > 0 &&
+        (issue in listOf("unreadable", "cropped", "absent") || verbatimText.isNotBlank())
+
 internal data class OriginalFeedbackFieldState(val field: String, val image: OcrSourceImageState,
     val value: OriginalTextFeedback?, val enabled: Boolean) {
     fun draft(): OriginalTextFeedback {
         val size = image.image?.takeIf { it.originalSha256 == image.expectedHash }?.let(::sourceSize)
         val initial = value ?: OriginalTextFeedback(field, image.expectedHash.orEmpty(), 0, 0,
             role = when (field) { "amount_cents" -> "payment"; "expense_time" -> "transaction"; else -> field })
-        return if (size == null) initial else initial.copy(imageSha256 = image.expectedHash.orEmpty(),
+        return if (size == null || initial.width > 0 || initial.imageSha256 != image.expectedHash) initial else initial.copy(
             width = size.width.toInt(), height = size.height.toInt())
     }
 }
@@ -65,19 +71,14 @@ internal fun OriginalTextFeedbackField(state: OriginalFeedbackFieldState,
     if (expanded) Column {
         Text(stringResource(R.string.original_feedback_help), style = MaterialTheme.typography.bodySmall)
         OriginalFeedbackInputs(draft, state.enabled, onChange)
-        Text(stringResource(when (draft.locationState) {
-            "coarse_point" -> R.string.original_feedback_point
-            "suggested_region" -> R.string.original_feedback_region_pending
-            "verified_region" -> R.string.original_feedback_region_verified
-            else -> R.string.original_feedback_unlocated
-        }))
+        Text(stringResource(originalFeedbackLocationLabel(draft.locationState)))
         TextButton(enabled = state.enabled, onClick = {
             positionOpen = true
             if (state.image.image == null && !state.image.loading) onLoadImage()
         }) { Text(stringResource(R.string.original_feedback_locate)) }
-        if (draft.box != null) Row {
-            Checkbox(checked = draft.locationState == "verified_region", enabled = state.enabled,
-                onCheckedChange = { onChange(draft.copy(locationState = if (it) "verified_region" else "suggested_region")) })
+        if (draft.box != null) Row(Modifier.toggleable(draft.locationState == "verified_region", enabled = state.enabled,
+            role = Role.Checkbox, onValueChange = { onChange(draft.copy(locationState = if (it) "verified_region" else "suggested_region")) })) {
+            Checkbox(checked = draft.locationState == "verified_region", enabled = state.enabled, onCheckedChange = null)
             Text(stringResource(R.string.original_feedback_region_check))
         }
         TextButton(enabled = state.enabled, onClick = { onChange(null); expanded = false }) {
@@ -88,15 +89,22 @@ internal fun OriginalTextFeedbackField(state: OriginalFeedbackFieldState,
         onDismiss = { positionOpen = false })
 }
 
+private fun originalFeedbackLocationLabel(state: String): Int = when (state) {
+    "coarse_point" -> R.string.original_feedback_point
+    "suggested_region" -> R.string.original_feedback_region_pending
+    "verified_region" -> R.string.original_feedback_region_verified
+    else -> R.string.original_feedback_unlocated
+}
+
 @Composable
 private fun OriginalFeedbackInputs(value: OriginalTextFeedback, enabled: Boolean, onChange: (OriginalTextFeedback?) -> Unit) {
-    val noText = value.issue == "unreadable" || value.issue == "absent"
+    val noText = value.issue in listOf("unreadable", "cropped", "absent")
     FlowRow {
         for ((issue, label) in listOf("transcription" to R.string.original_feedback_wrong,
             "missing" to R.string.original_feedback_missing, "unreadable" to R.string.original_feedback_unreadable,
-            "absent" to R.string.original_feedback_absent)) {
+            "cropped" to R.string.original_feedback_cropped, "absent" to R.string.original_feedback_absent)) {
             TextButton(enabled = enabled && issue != value.issue, onClick = {
-                onChange(value.copy(issue = issue, verbatimText = if (issue in listOf("unreadable", "absent")) "" else value.verbatimText,
+                onChange(value.copy(issue = issue, verbatimText = if (issue in listOf("unreadable", "cropped", "absent")) "" else value.verbatimText,
                     textVerified = false))
             }) { Text(stringResource(label)) }
         }
@@ -104,9 +112,9 @@ private fun OriginalFeedbackInputs(value: OriginalTextFeedback, enabled: Boolean
     if (!noText) {
         OutlinedTextField(value = value.verbatimText, enabled = enabled, label = { Text(stringResource(R.string.original_feedback_text)) },
             onValueChange = { onChange(value.copy(verbatimText = it, textVerified = false)) })
-        Row {
-            Checkbox(checked = value.textVerified, enabled = enabled && value.verbatimText.isNotBlank(),
-                onCheckedChange = { onChange(value.copy(textVerified = it)) })
+        Row(Modifier.toggleable(value.textVerified, enabled = enabled && value.verbatimText.isNotBlank(), role = Role.Checkbox,
+            onValueChange = { onChange(value.copy(textVerified = it)) })) {
+            Checkbox(checked = value.textVerified, enabled = enabled && value.verbatimText.isNotBlank(), onCheckedChange = null)
             Text(stringResource(R.string.original_feedback_text_check))
         }
     }

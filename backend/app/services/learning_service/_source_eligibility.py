@@ -166,6 +166,9 @@ def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, re
     result = _source_qualification(expense, payload.get("_source_context"), tenant_id=event.tenant_id,
         reversed_ids=reversed_ids, required=required, deliberately_discarded=resolution == "keep_candidate")
     if result[0] != "valid" or event.signal_type != "duplicate_candidate":
+        if result[0] == "valid" and event.signal_type == "original_text_feedback" and (
+                expense.image_deleted_at is not None or not expense.image_path):
+            return "invalid", "原图已移除；保留原文记录，不再作为视觉转写标签", result[2]
         return result
     context = payload.get("_candidate_context")
     if not isinstance(context, dict):

@@ -134,6 +134,7 @@ private fun expenseCommandProgress(originals: List<PendingExpenseCommand>, ids: 
         },
         confirmed = complete && originals.any { it.row.type == PendingMutationType.ConfirmExpense },
         message = when {
+            complete && originals.any { it.hasOriginalTextFeedback } -> R.string.original_feedback_saved
             complete -> R.string.expense_command_completed
             failed -> R.string.expense_command_needs_attention
             else -> R.string.expense_command_accepted

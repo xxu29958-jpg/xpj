@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="original_feedback_saved">这次保存已完成，原文反馈已保留。</string>
     <string name="original_feedback_open">记录原图文字（可选）</string>
     <string name="original_feedback_pending">原文反馈将随本次保存记录</string>
     <string name="original_feedback_help">原图实际文字可以与记账值不同。这里记录原文，随账目一起保存；定位可以跳过。</string>
@@ -9,6 +10,7 @@
     <string name="original_feedback_wrong">文字读错</string>
     <string name="original_feedback_missing">没有识别出来</string>
     <string name="original_feedback_unreadable">看不清</string>
+    <string name="original_feedback_cropped">图片没截全</string>
     <string name="original_feedback_absent">图中没有</string>
     <string name="original_feedback_payment">实付</string>
     <string name="original_feedback_price">原价</string>

@@ -1,0 +1,25 @@
+{% if e.status == 'pending' and e.has_image and e.image_hash and can_write and not e.is_split_received %}
+<details class="original-feedback" data-original-feedback="{{ feedback_field }}" data-image-sha256="{{ e.image_hash }}"
+  data-source-image-href="/web/expenses/{{ e.id }}/image?ledger_id={{ selected_ledger_id }}">
+  <summary>记录原图文字（可选）</summary>
+  <p class="meta">原图实际文字可以与记账值不同。只在你希望纠正原件文字时填写；定位可以跳过。</p>
+  <label class="product-field"><span>原图情况</span><select class="product-input" data-feedback-input="issue">
+    <option value="transcription">文字读错了</option><option value="missing">漏识别了</option>
+    <option value="unreadable">原图看不清</option><option value="cropped">图片没截全</option><option value="absent">原图没有这项</option>
+  </select></label>
+  <label class="product-field" data-feedback-text-label><span>原图实际写着</span>
+    <textarea class="product-input" rows="2" maxlength="2000" data-feedback-input="verbatim_text"></textarea></label>
+  {% if feedback_field in ['amount_cents', 'expense_time'] %}
+  <label class="product-field"><span>这段文字表示</span><select class="product-input" data-feedback-input="role">
+    {% if feedback_field == 'amount_cents' %}<option value="payment">实付</option><option value="original_price">原价</option><option value="discount">优惠</option>
+    {% else %}<option value="transaction">交易时间</option><option value="order">下单时间</option><option value="capture">截图时间</option>{% endif %}
+  </select></label>
+  {% endif %}
+  <label data-feedback-text-check><input type="checkbox" data-feedback-input="text_verified">我已核对原图文字</label>
+  <p class="meta" data-feedback-location>尚未定位，可以直接保存。</p>
+  <label data-feedback-region-check hidden><input type="checkbox" data-feedback-input="region_verified">我已核对范围与这段文字对应</label>
+  <div class="product-form-actions"><button type="button" class="product-button product-button--quiet" data-feedback-locate>查看原图并指出位置</button>
+    <button type="button" class="product-button product-button--quiet" data-feedback-remove>移除此反馈</button></div>
+  <p class="meta" role="status" data-feedback-status></p>
+</details>
+{% endif %}
