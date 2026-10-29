@@ -107,6 +107,11 @@ def test_candidate_source_review_preserves_draft_and_verifies_original_geometry(
         if preview.get("result", {}).get("value"):
             (tmp_path / "source-review.png").write_bytes(base64.b64decode(page.request("Page.captureScreenshot", {"format": "png"})["data"]))
             page.request("Runtime.evaluate", {"expression": "window.__sourcePreviewCaptured = true"})
+        escape = page.request("Runtime.evaluate", {"expression": "window.__sourceEscapeReady && !window.__sourceEscapeDispatched", "returnByValue": True})
+        if escape.get("result", {}).get("value"):
+            page.request("Input.dispatchKeyEvent", {"type": "keyDown", "key": "Escape", "code": "Escape", "windowsVirtualKeyCode": 27})
+            page.request("Input.dispatchKeyEvent", {"type": "keyUp", "key": "Escape", "code": "Escape", "windowsVirtualKeyCode": 27})
+            page.request("Runtime.evaluate", {"expression": "window.__sourceEscapeDispatched = true"})
         return value
 
     monkeypatch.setattr(cdp, "_evaluate_script", capture)

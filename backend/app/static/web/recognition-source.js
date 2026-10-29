@@ -14,6 +14,9 @@
       '<button type="button" data-source-zoom="0.5">缩小</button><button type="button" data-source-zoom="2">放大</button></div>';
     dialog.querySelectorAll("button").forEach(button => { button.className = "product-button product-button--quiet"; });
     form.append(dialog);
+    dialog.addEventListener("keydown", event => {
+      if (event.key === "Escape" || event.key === "Tab") event.stopPropagation();
+    });
     const viewer = {dialog, form, image: dialog.querySelector("img"), svg: dialog.querySelector("svg"),
       surface: dialog.querySelector(".recognition-source-surface"), scroll: dialog.querySelector(".recognition-source-scroll"),
       status: dialog.querySelector("[data-source-status]"), zoom: 1, digest: null, selected: null, revision: 0};
