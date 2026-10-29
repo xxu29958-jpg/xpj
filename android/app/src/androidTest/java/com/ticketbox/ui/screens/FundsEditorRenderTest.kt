@@ -38,8 +38,7 @@ class FundsEditorRenderTest {
         capture("funds-editor-create")
         field(text(R.string.funds_account_name)).performTextInput("工资卡")
         field(text(R.string.funds_opening_balance, "CNY")).performScrollTo().performTextInput("1200.00")
-        scrollToEnd()
-        compose.onNodeWithText("将添加银行卡「工资卡」，CNY，期初余额 1200.00 CNY（2026-10-19），仅我自己可见。").assertIsDisplayed()
+        summary("将添加银行卡「工资卡」，CNY，期初余额 1200.00 CNY（2026-10-19），仅我自己可见。").assertIsDisplayed()
         compose.onNodeWithText(text(R.string.funds_confirm_save)).assertIsDisplayed()
         capture("funds-editor-create-summary")
     }
@@ -87,8 +86,7 @@ class FundsEditorRenderTest {
         compose.onNodeWithText(text(R.string.funds_record_income)).performClick()
         awaitEditor("income")
         field("${text(R.string.funds_income_received)}（CNY）").performTextInput("8650.00")
-        scrollToEnd()
-        compose.onNodeWithText("「招商银行」将增加 8650.00 CNY。实际收入不算消费，也不改变收入计划。").assertIsDisplayed()
+        summary("「招商银行」将增加 8650.00 CNY。实际收入不算消费，也不改变收入计划。").assertIsDisplayed()
         capture("funds-editor-income")
         abandon()
 
@@ -99,8 +97,7 @@ class FundsEditorRenderTest {
         compose.onNodeWithText(text(R.string.funds_choose_receiver)).performScrollTo().performClick()
         compose.onNodeWithText("现金 · CNY").performClick()
         field(text(R.string.funds_receiver_amount, "CNY")).performScrollTo().performTextInput("500.00")
-        scrollToEnd()
-        compose.onNodeWithText("从「招商银行」转出 500.00 CNY，「现金」到账 500.00 CNY。不算收入或消费。").assertIsDisplayed()
+        summary("从「招商银行」转出 500.00 CNY，「现金」到账 500.00 CNY。不算收入或消费。").assertIsDisplayed()
         capture("funds-editor-transfer")
         abandon()
 
@@ -117,7 +114,7 @@ class FundsEditorRenderTest {
         compose.runOnIdle { vm.start("reconciliation") }
         awaitEditor("reconciliation")
         field("${text(R.string.funds_observed_debt)}（CNY）").performTextInput("37.90")
-        scrollToEnd()
+        summary(text(R.string.funds_preview_reconcile_snapshot, "37.90 CNY")).assertIsDisplayed()
         capture("funds-editor-reconciliation")
     }
 
@@ -131,8 +128,7 @@ class FundsEditorRenderTest {
         compose.onNodeWithText("招商银行 · CNY").performClick()
         field(text(R.string.funds_principal, "CNY")).performScrollTo().performTextInput("37.90")
         capture("funds-editor-repay-large-text")
-        scrollToEnd()
-        compose.onNodeWithText("从「招商银行」扣款", substring = true).assertIsDisplayed()
+        summary("从「招商银行」扣款").assertIsDisplayed()
         capture("funds-editor-repay-large-text-summary")
     }
 

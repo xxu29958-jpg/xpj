@@ -4,20 +4,20 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.lifecycle.viewModelScope
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ticketbox.R
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.ui.saveConsumerArtPreview
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.FundsViewModel
@@ -39,7 +39,8 @@ internal class FundsEditorDriver(private val compose: ComposeContentTestRule) : 
                 TicketboxTheme(skin = skin) { FundsScreen(vm, onBack = {}, onExpense = {}) }
             }
         }
-        compose.waitUntil(10_000) { vm.state.value.accounts.isNotEmpty() && !vm.state.value.loading }
+        compose.waitUntil(10_000) { vm.state.value.accounts.isNotEmpty() && !vm.state.value.loading &&
+            (expenseId != null || vm.state.value.overview != null) }
     }
 
     fun openAccount(id: String) {
@@ -64,10 +65,10 @@ internal class FundsEditorDriver(private val compose: ComposeContentTestRule) : 
         compose.waitUntil(10_000) { vm.state.value.task.input == null && !vm.state.value.busy }
     }
 
-    /** Bring the end of the form, where the change summary sits, right above the bottom bar. */
-    fun scrollToEnd() {
-        compose.onNode(hasScrollToIndexAction()).performTouchInput { repeat(8) { swipeUp() } }
-        compose.waitForIdle()
+    /** Finish typing, then scroll to the actual summary instead of guessing a gesture count. */
+    fun summary(label: String): SemanticsNodeInteraction {
+        RealKeyboard().dismissAndWait(compose)
+        return compose.onNodeWithText(label, substring = true).performScrollTo()
     }
 
     fun field(label: String) = compose.onNode(hasSetTextAction() and hasText(label))
