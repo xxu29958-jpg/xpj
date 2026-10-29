@@ -35,6 +35,7 @@ from app.services.expense_split_service import (
 from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
 from app.services.idempotency import claim_idempotent_request, mark_idempotency_succeeded
 from app.services.optimistic_concurrency import claim_row_with_token
+from app.services.original_text_feedback_service import record_original_text_feedback
 from app.services.pending_suggestion_service import record_category_choice
 from app.services.receipt_item_service import apply_expense_items_to_claimed_row
 from app.services.recognition_field_service import record_field_choices
@@ -421,6 +422,7 @@ def _apply_correction_sections(
         validate_current_expense_split_allocation(db, expense=expense)
     apply_funding_correction(db, expense=expense, before_money=before_money, payload=payload, actor_account_id=actor_account_id)
     record_field_choices(db, expense=expense, choices=payload.recognition_field_choices, actor_account_id=actor_account_id)
+    record_original_text_feedback(db, expense=expense, annotations=payload.original_text_feedback, actor_account_id=actor_account_id)
     if payload.category is not None:
         record_category_choice(db, expense=expense, previous_category=category_before,
             previous_merchant=merchant_before, actor_account_id=actor_account_id,

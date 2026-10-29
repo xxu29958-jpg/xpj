@@ -55,7 +55,8 @@ data class ExpenseCommandObservation(val access: LedgerAccessContext?, val comma
 
 /** Command receipts remain distinct from the latest expense query. */
 data class PendingExpenseCommand(val row: OutboxRow, val acceptedExpense: Expense?,
-    val confirmationReceipt: com.ticketbox.domain.model.ExpenseConfirmationReceipt? = null)
+    val confirmationReceipt: com.ticketbox.domain.model.ExpenseConfirmationReceipt? = null,
+    val hasOriginalTextFeedback: Boolean = false)
 
 internal val PENDING_EXPENSE_COMMAND_TYPES = setOf(
     PendingMutationType.PatchExpense, PendingMutationType.ConfirmExpense, PendingMutationType.RejectExpense,

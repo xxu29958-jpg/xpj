@@ -26,6 +26,7 @@ from app.services.expense_service._helpers import (
 from app.services.expense_service._query import get_expense, resolve_expense
 from app.services.expense_split_service import validate_current_expense_split_allocation
 from app.services.optimistic_concurrency import claim_row_with_token
+from app.services.original_text_feedback_service import record_original_text_feedback
 from app.services.pending_suggestion_service import record_category_choice
 from app.services.recognition_choice_service import record_time_choice
 from app.services.recognition_field_service import record_field_choices
@@ -131,6 +132,7 @@ def update_expense(
             actor_account_id=actor_account_id, choice=payload.category_choice, decision_public_id=payload.category_decision_public_id)
     record_time_choice(db, expense=expense, choice=payload.recognition_time_choice, actor_account_id=actor_account_id)
     record_field_choices(db, expense=expense, choices=payload.recognition_field_choices, actor_account_id=actor_account_id)
+    record_original_text_feedback(db, expense=expense, annotations=payload.original_text_feedback, actor_account_id=actor_account_id)
 
     if commit:
         db.commit()

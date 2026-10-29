@@ -53,6 +53,80 @@ first_original_web = original_tests.first_original_web
 
 
 @pytest.mark.real_db
+@pytest.mark.parametrize("entry,location,action", [("full", "unlocated", "save"), ("full", "coarse_point", "save"),
+    ("drawer", "verified_region", "save"), ("full", "unlocated", "confirm")])
+def test_no_candidate_original_feedback_survives_lost_reply_and_keeps_finance_separate(
+        review_browser, confirmation_store, monkeypatch, tmp_path, entry, location, action):
+    from PIL import Image, ImageDraw
+
+    from app.models import LedgerLearningEvent, OcrFact
+    from app.routes import web_expense_edit, web_expense_lifecycle, web_media
+    from app.services.exchange_rate_service import apply_currency_payload
+    from app.services.file_service import save_upload_bytes
+    from app.services.learning_service._source_eligibility import feedback_assessments
+
+    client, _ = review_browser
+    image = Image.new("RGB", (400, 800), "white")
+    ImageDraw.Draw(image).text((20, 50), "78.00", fill="black")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    saved = save_upload_bytes(buffer.getvalue(), tenant_id="owner", filename="feedback.png", content_type="image/png")
+    with confirmation_store() as db:
+        actor = confirmation_actor(db)
+        resolve_write_capability(db)
+        row = db.get(Expense, 42)
+        row.image_path, row.image_hash, row.raw_text = saved.relative_path, saved.image_hash, None
+        apply_currency_payload(db, tenant_id="owner", home_currency_code="CNY", expense=row,
+            payload=SimpleNamespace(amount_cents=1234), amount_was_explicit=True)
+        db.commit()
+    monkeypatch.setattr(web_expense_edit, "resolve_web_actor", lambda *args: (actor.account_id, actor.device_id))
+    monkeypatch.setattr(web_expense_lifecycle, "resolve_web_actor", lambda *args: (actor.account_id, actor.device_id))
+    client.app.include_router(web_media.router)
+    monkeypatch.setattr(web_media, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
+    client.app.state.expense_review_probe = "original-feedback-probe.js"
+
+    @client.app.get("/original-feedback-probe.js")
+    def feedback_probe():
+        return FileResponse(Path(__file__).parent / "fixtures/original_feedback_probe.js", media_type="text/javascript")
+
+    cdp = browser_runtime._edge_cdp()
+    evaluate = cdp._evaluate_script
+
+    def capture(page, expression):
+        result = evaluate(page, expression)
+        if action == "confirm" and not result:
+            diagnostic = page.request("Runtime.evaluate", {"expression": "JSON.stringify({href:location.href, text:document.body.innerText.slice(-3000),state:sessionStorage.getItem('original-feedback-probe')})", "returnByValue": True})
+            (tmp_path / "feedback-confirm-diagnostic.json").write_text(diagnostic.get("result", {}).get("value", "null"), encoding="utf-8")
+        preview = page.request("Runtime.evaluate", {"expression": "window.__originalFeedbackPreviewReady && !window.__originalFeedbackPreviewCaptured", "returnByValue": True})
+        if preview.get("result", {}).get("value"):
+            (tmp_path / "original-feedback.png").write_bytes(base64.b64decode(page.request("Page.captureScreenshot", {"format": "png"})["data"]))
+            page.request("Runtime.evaluate", {"expression": "window.__originalFeedbackPreviewCaptured = true"})
+        return result
+
+    monkeypatch.setattr(cdp, "_evaluate_script", capture)
+    path = "/web/pending?ledger_id=owner&filter=ready" if entry == "drawer" else "/web/expenses/42/edit?ledger_id=owner"
+    result = _run_review_page(client, tmp_path, path + "&feedback=" + location + "&feedback_action=" + action, width=1440 if entry == "drawer" else 393)
+    (tmp_path / "original-feedback-result.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+    assert not result.get("error") and result["completed"], result
+    assert result["parallel_metadata_ready"]
+    assert len(result["requests"]) == 2
+    assert dict(result["requests"][0])["idempotency_key"] == dict(result["requests"][1])["idempotency_key"]
+    assert dict(result["requests"][0])["original_text_feedback"] == dict(result["requests"][1])["original_text_feedback"]
+    with confirmation_store() as db:
+        assert db.get(Expense, 42).original_amount_minor == 1700
+        assert db.get(Expense, 42).status == ("confirmed" if action == "confirm" else "pending")
+        assert not list(db.scalars(select(OcrFact).where(OcrFact.expense_id == 42)))
+        events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == 42,
+            LedgerLearningEvent.signal_type == "original_text_feedback")))
+        assert len(events) == 1
+        payload = json.loads(events[0].after_payload)
+        assert payload["verbatim_text"] == "实付：78.00" and payload["location_state"] == location
+        assert payload["_learning_qualified"] == (location == "verified_region")
+        assert feedback_assessments(db, tenant_id="owner", events=events)[events[0].id][0] == (
+            "valid" if location == "verified_region" else "needs_review")
+
+
+@pytest.mark.real_db
 @pytest.mark.parametrize("entry,stale,rotated", [("full", False, False), ("drawer", False, True), ("full", True, False)])
 def test_candidate_source_review_preserves_draft_and_verifies_original_geometry(
         review_browser, confirmation_store, monkeypatch, tmp_path, entry, stale, rotated):
@@ -1097,23 +1171,28 @@ def test_drawer_keeps_unretained_input_when_browser_storage_fails(review_browser
 
 
 @pytest.mark.real_db
-@pytest.mark.parametrize("operation", ["save", "legacy-confirm"])
+@pytest.mark.parametrize("operation", ["save", "legacy-confirm", "legacy-edit-save"])
 def test_actual_review_browser_resolves_original_action_before_starting_next_command(
     review_browser, confirmation_store, tmp_path, operation,
 ):
     client, _ = review_browser
+    client.app.state.expense_review_probe = "review-probe.js"
     result = _run_review_page(client, tmp_path, f"/web/expenses/42/edit?ledger_id=owner&return_to=pending&probe={operation}")
     assert not result.get("error"), result
     assert result["original_removed"] and result["receipt_visible"]
     first, replay, *next_command = result["requests"]
     assert first == replay, "Recovery must submit the original action and input, not a fresh confirm"
-    assert first["path"].endswith("/save" if operation == "save" else "/confirm")
-    if operation == "save":
+    assert first["path"].endswith("/confirm" if operation == "legacy-confirm" else "/save")
+    if operation != "legacy-confirm":
         assert result["fresh_key"] != dict(first["fields"])["idempotency_key"]
         assert len(next_command) == 1 and next_command[0]["path"].endswith("/confirm")
     else:
         assert not next_command
         assert not {"value_score", "regret_score"}.intersection(dict(first["fields"]))
+    if operation.startswith("legacy"):
+        assert result["legacy_shelf_visible"] and "original_text_feedback" not in dict(first["fields"])
+    if operation == "legacy-edit-save":
+        assert result["legacy_edit_restored"]
     with confirmation_store() as db:
         current = db.get(Expense, 42)
         assert current.status == "confirmed" and current.merchant == "浏览器原填写"

@@ -152,6 +152,8 @@ data class ExpenseUpdateRequest(
     val recognitionTimeChoice: com.ticketbox.domain.model.RecognitionTimeChoice? = null,
     @param:Json(name = "recognition_field_choices")
     val recognitionFieldChoices: List<com.ticketbox.domain.model.RecognitionFieldChoice>? = null,
+    @param:Json(name = "original_text_feedback")
+    val originalTextFeedback: List<com.ticketbox.domain.model.OriginalTextFeedback>? = null,
     @param:Json(name = "category_choice")
     val categoryChoice: String? = null,
     @param:Json(name = "category_decision_public_id")

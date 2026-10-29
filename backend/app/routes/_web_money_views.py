@@ -282,6 +282,7 @@ def _expense_view(
         **_expense_time_view(expense),
         "row_version": getattr(expense, "row_version", None),
         "has_image": has_image,
+        "image_hash": getattr(expense, "image_hash", None) if has_image else None,
         "image_state": image_state,
         "duplicate_status": expense.duplicate_status,
         "duplicate_of_id": getattr(expense, "duplicate_of_id", None),

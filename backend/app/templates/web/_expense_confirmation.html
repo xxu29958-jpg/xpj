@@ -5,6 +5,7 @@
     <span class="expense-confirmation-mark"><svg width="36" height="36" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#check"/></svg></span>
     <h1>这张，记好了</h1>
     <p>{{ receipt.merchant or '未填写商家' }} · {{ selected_ledger_name }}</p>
+    {% if receipt.original_text_feedback_saved %}<p>原文反馈已保留。</p>{% endif %}
   </div>
   <div class="product-surface">
     <p>本次已入账 · {{ receipt.home_currency }}</p>

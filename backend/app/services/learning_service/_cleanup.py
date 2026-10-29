@@ -231,7 +231,7 @@ def _unreferenced_ocr_fact() -> ColumnElement[bool]:
         LedgerLearningEvent.tenant_id == OcrFact.tenant_id,
         LedgerLearningEvent.subject_kind == "expense",
         LedgerLearningEvent.subject_id == OcrFact.expense_id,
-        LedgerLearningEvent.signal_type.in_(("recognition_time_choice", "recognition_field_choice")),
+        LedgerLearningEvent.signal_type.in_(("recognition_time_choice", "recognition_field_choice", "original_text_feedback")),
         payload["source"].astext == "image",
         or_(referenced.id == OcrFact.id, OcrFact.id == current_id),
     ).exists()

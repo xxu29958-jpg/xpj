@@ -43,9 +43,13 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
                 ExpenseCommandObservation(current, if (current == null) emptyList() else rows.filter {
                     it.ownerKey == current.binding.ownerKey && it.ledgerId == current.binding.ledgerId
                 }.map { row -> PendingExpenseCommand(row, expenseAcceptanceReceiptSnapshot(row)?.toDomain(),
-                    expenseConfirmationReceiptSnapshot(row)) })
+                    expenseConfirmationReceiptSnapshot(row), hasOriginalTextFeedback(row)) })
             }.distinctUntilChanged()
         }.distinctUntilChanged()
+
+    private fun hasOriginalTextFeedback(row: OutboxRow): Boolean = row.type == PendingMutationType.PatchExpense &&
+        runCatching { !core.offlineMutations.patchExpenseAdapter.fromJson(row.payloadJson)?.originalTextFeedback.isNullOrEmpty() }
+            .getOrDefault(false)
 
     override suspend fun saveExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,

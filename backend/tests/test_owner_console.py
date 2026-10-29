@@ -120,6 +120,45 @@ def local_client(client: TestClient) -> TestClient:
     app.dependency_overrides.pop(_require_local, None)
 
 
+def test_original_text_version_can_be_quarantined_and_restored_without_changing_saved_facts(local_client, identity):
+    from sqlalchemy import select
+
+    from app.database import SessionLocal
+    from app.models import Expense, LedgerLearningEvent
+    from app.services.learning_service._algorithm_registry import ORIGINAL_TEXT_FEEDBACK
+    from app.services.learning_service._source_eligibility import feedback_assessments
+    from tests._runtime_protocol import negotiated_headers
+    from tests.test_original_text_feedback import annotation, save, seed_original
+
+    expense_id, digest = seed_original()
+    headers = {**negotiated_headers(local_client, identity.app_headers), "Idempotency-Key": str(uuid4())}
+    response, _ = save(local_client, headers, expense_id, [annotation(digest)])
+    assert response.status_code == 200
+    page = local_client.get("/owner/algorithm-versions?ledger_id=owner")
+    row = next((section for section in re.findall(r"<h3>原图文字反馈</h3>(.*?)</section>", page.text, re.S)
+        if 'name="algorithm_version"' in section), None)
+    assert row is not None, "Feedback without an AlgorithmDecision still requires an Owner policy row"
+    assert 'name="axis" value="training"' in row
+    assert 'name="axis" value="new_suggestions"' not in row, "A transcription record is not a suggestion producer"
+    policy = {"ledger_id": "owner", "decision_type": "original_text_feedback", "algorithm_version": ORIGINAL_TEXT_FEEDBACK.current_version}
+    with SessionLocal() as db:
+        event = db.scalar(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == expense_id,
+            LedgerLearningEvent.signal_type == "original_text_feedback"))
+        event_id, original_payload = event.id, event.after_payload
+        before = db.get(Expense, expense_id).row_version
+    for enabled, status in (("false", "quarantined"), ("true", "valid")):
+        changed = local_client.post("/owner/algorithm-versions/policy", data={**policy, "axis": "training", "enabled": enabled})
+        assert changed.status_code == 200, changed.text
+        with SessionLocal() as db:
+            event = db.get(LedgerLearningEvent, event_id)
+            assert feedback_assessments(db, tenant_id="owner", events=[event])[event_id][0] == status
+            assert event.after_payload == original_payload and event.decision_id is None
+            expense = db.get(Expense, expense_id)
+            assert (expense.row_version, expense.original_amount_minor) == (before, 1700)
+    assert local_client.post("/owner/algorithm-versions/policy",
+        data={**policy, "axis": "new_suggestions", "enabled": "false"}).status_code == 404
+
+
 @pytest.fixture()
 def phone_mobile_endpoint(monkeypatch: pytest.MonkeyPatch):
     from app import config as app_config

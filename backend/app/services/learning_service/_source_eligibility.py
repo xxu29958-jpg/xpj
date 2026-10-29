@@ -122,6 +122,8 @@ def _event_qualification(event: LedgerLearningEvent, latest_ids: set[int] | None
 
 
 def _choice_qualification(event: LedgerLearningEvent, payload: dict) -> tuple[str, str, dict] | None:
+    if event.signal_type == "original_text_feedback" and not payload.get("_learning_qualified"):
+        return "needs_review", "原文反馈已保留；未同时核验精确范围与文字，不作为视觉转写标签", {}
     if event.signal_type == "category_suggestion" and (
             payload.get("_category_intent") == "one_off"
             or (event.event_type == "manual_override" and payload.get("_category_intent") != "manual")):
@@ -135,6 +137,8 @@ def _choice_qualification(event: LedgerLearningEvent, payload: dict) -> tuple[st
 
 
 def _required_source_fields(event: LedgerLearningEvent, payload: dict) -> tuple[str, ...]:
+    if event.signal_type == "original_text_feedback":
+        return ("image_hash",)
     if event.signal_type == "category_suggestion":
         return ("merchant", "category")
     if event.signal_type == "recognition_time_choice":
@@ -162,6 +166,9 @@ def feedback_eligibility(event: LedgerLearningEvent, expense: Expense | None, re
     result = _source_qualification(expense, payload.get("_source_context"), tenant_id=event.tenant_id,
         reversed_ids=reversed_ids, required=required, deliberately_discarded=resolution == "keep_candidate")
     if result[0] != "valid" or event.signal_type != "duplicate_candidate":
+        if result[0] == "valid" and event.signal_type == "original_text_feedback" and (
+                expense.image_deleted_at is not None or not expense.image_path):
+            return "invalid", "原图已移除；保留原文记录，不再作为视觉转写标签", result[2]
         return result
     context = payload.get("_candidate_context")
     if not isinstance(context, dict):
@@ -178,13 +185,13 @@ def _latest_feedback_ids(db, *, tenant_id: str, events: list[LedgerLearningEvent
         return set()
     rows = db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == tenant_id,
         LedgerLearningEvent.subject_kind.in_(("expense", "repayment_draft")), LedgerLearningEvent.subject_id.in_(identifiers),
-        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice", "recognition_field_choice", "repayment_choice")),
+        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice", "recognition_field_choice", "original_text_feedback", "repayment_choice")),
         LedgerLearningEvent.event_type.in_(("accept", "reject", "edit", "manual_override", "withdraw")),
         LedgerLearningEvent.created_at <= now_utc()).order_by(LedgerLearningEvent.id.desc()))
     current = {}
     for row in rows:
         pair = _event_payload(row).get("candidate_id") if row.signal_type == "duplicate_candidate" else None
-        if row.signal_type == "recognition_field_choice":
+        if row.signal_type in {"recognition_field_choice", "original_text_feedback"}:
             pair = _event_payload(row).get("field")
         current.setdefault((row.actor_account_id, row.subject_kind, row.subject_id, row.signal_type, pair), row.id)
     return set(current.values())
@@ -295,6 +302,6 @@ def feedback_impact_preview(db, *, tenant_id):
     # sees counts; original individual feedback stays in its existing history.
     events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == tenant_id,
         LedgerLearningEvent.subject_kind.in_(("expense", "repayment_draft")),
-        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice", "recognition_field_choice", "repayment_choice")))))
+        LedgerLearningEvent.signal_type.in_(("category_suggestion", "duplicate_candidate", "recognition_time_choice", "recognition_field_choice", "original_text_feedback", "repayment_choice")))))
     counts = Counter(result[0] for result in feedback_assessments(db, tenant_id=tenant_id, events=events).values())
     return {name: counts[name] for name in ("valid", "invalid", "superseded", "needs_review", "quarantined")}

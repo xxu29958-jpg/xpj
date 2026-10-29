@@ -1612,6 +1612,13 @@ details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); 
 
 .score-fields { display: grid; gap: var(--space-5); }
 
+.original-feedback { margin-block: var(--space-3); }
+.original-feedback > summary { min-height: 44px; align-content: center; cursor: pointer; color: var(--text-muted); }
+.original-feedback > label { display: flex; gap: var(--space-2); margin-block: var(--space-3); }
+.original-feedback > .product-field { flex-direction: column; }
+.original-feedback [hidden] { display: none; }
+.recognition-source-surface svg circle { fill: var(--brand-primary); stroke: var(--text-on-primary); stroke-width: 2; }
+
 /* 评价 radiogroup：原生语义 + pill 视觉（radio 透明覆盖，:checked/:focus-visible
    驱动 pill 态；键盘方向键与读屏走原生 input）。 */
 .score-row {

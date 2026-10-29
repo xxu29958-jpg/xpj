@@ -2,7 +2,7 @@
 (function (window, document) {
   "use strict";
   const fields = ["ledger_id", "expense_id", "expected_row_version", "idempotency_key", "keep_idempotency_key", "reject_idempotency_key", "draft_ref", "save_before_confirm", "command_action",
-    "amount_yuan", "original_currency", "manual_exchange_rate", "merchant", "category", "category_choice", "category_decision_public_id", "recognition_time_choice", "recognition_field_choices", "note", "tags", "expense_time", "funding_json",
+    "amount_yuan", "original_currency", "manual_exchange_rate", "merchant", "category", "category_choice", "category_decision_public_id", "recognition_time_choice", "recognition_field_choices", "original_text_feedback", "note", "tags", "expense_time", "funding_json",
     "time_precision", "calendar_revision", "user_local_date", "source_timezone", "source_utc_offset_seconds", "accounting_date", "value_score", "regret_score", "duplicate_decision_public_id"];
   const names = [...fields, "return_context", "present_fields", "reject_row_version", "undo_idempotency_key"];
   document.addEventListener("click", event => {
@@ -41,7 +41,7 @@
           case "keep": return {...saved, command_action: "confirm"};
           case "save":
             if (saved.funding_json && saved.funding_json !== "[]") {
-              return {...saved, category_choice: "", category_decision_public_id: "", recognition_time_choice: "", recognition_field_choices: "", command_action: "confirm", idempotency_key: window.crypto.randomUUID()};
+              return {...saved, category_choice: "", category_decision_public_id: "", recognition_time_choice: "", recognition_field_choices: "", original_text_feedback: "", command_action: "confirm", idempotency_key: window.crypto.randomUUID()};
             }
         }
       }
@@ -141,7 +141,7 @@
       idField: "expense_id", titleField: "merchant", commandKeyField: saved =>
         ["keep", "reject"].includes(saved.command_action) ? saved.command_action + "_idempotency_key" : "idempotency_key", draftRefField: "draft_ref",
       submitSelector: "[data-expensereview-submit]", pendingLabel: "核实这次结果",
-      legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key", "value_score", "regret_score", "funding_json"],
+      legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key", "value_score", "regret_score", "funding_json", "original_text_feedback"],
       embedded: options.embedded, onAccepted: options.onAccepted, multiple: !options.embedded,
       action: saved => saved.command_action === "keep" ? "/web/duplicates/" + saved.expense_id + "/keep" :
         "/web/expenses/" + saved.expense_id + "/" + (saved.command_action || "confirm"),
@@ -153,7 +153,7 @@
         const present = JSON.parse(values.present_fields);
         const oneOff = current.querySelector("[data-category-one-off]");
         if (oneOff) oneOff.checked = values.category_choice === "one_off";
-        for (const name of ["category_choice", "category_decision_public_id", "duplicate_decision_public_id", "recognition_time_choice", "recognition_field_choices"]) {
+        for (const name of ["category_choice", "category_decision_public_id", "duplicate_decision_public_id", "recognition_time_choice", "recognition_field_choices", "original_text_feedback"]) {
           if (!present.includes(name)) current.elements.namedItem(name)?.remove();
         }
         for (const name of present) put(current, name, values[name]);
@@ -166,9 +166,10 @@
         }
         for (const input of [...current.elements].filter(input => input.name.startsWith("return_"))) input.remove();
         for (const [name, value] of Object.entries(JSON.parse(values.return_context))) put(current, name, value);
+        current.dispatchEvent(new Event("ticketbox:original-feedback-state", {bubbles: true}));
       },
       body(body, values) {
-        for (const name of ["funding_json", "category_choice", "category_decision_public_id", "duplicate_decision_public_id", "recognition_time_choice", "recognition_field_choices"]) {
+        for (const name of ["funding_json", "category_choice", "category_decision_public_id", "duplicate_decision_public_id", "recognition_time_choice", "recognition_field_choices", "original_text_feedback"]) {
           if (!JSON.parse(values.present_fields).includes(name)) body.delete(name);
         }
         for (const name of JSON.parse(values.present_fields)) body.set(name, values[name]);
@@ -258,7 +259,7 @@
       const scope = JSON.parse(element.dataset.expensereviewScope), list = element.querySelector("ul");
       list.replaceChildren();
       const store = window.TicketboxDraftStore.createStore({prefix: "ticketbox:expensereview-edit-draft:v1:",
-        fields: [...names, "amount_placeholder", "amount_inputmode"], legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key", "value_score", "regret_score", "funding_json"],
+        fields: [...names, "amount_placeholder", "amount_inputmode"], legacyMissing: ["command_action", "keep_idempotency_key", "reject_idempotency_key", "reject_row_version", "undo_idempotency_key", "value_score", "regret_score", "funding_json", "original_text_feedback"],
         validRef: /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i});
       for (const record of store.list(scope)) {
         const item = document.createElement("li"), link = document.createElement("a");

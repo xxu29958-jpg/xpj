@@ -62,6 +62,61 @@ class ExpenseEditScreenContractTest {
         AppSkin.Midnight else AppSkin.Default
 
     @Test
+    fun noCandidateOriginalTextAndFinancialDraftSurviveRestoreAndCancelledLocation() {
+        val bitmap = android.graphics.Bitmap.createBitmap(400, 800, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.WHITE)
+        android.graphics.Canvas(bitmap).drawText("78.00", 20f, 60f,
+            android.graphics.Paint().apply { color = android.graphics.Color.BLACK; textSize = 20f })
+        val bytes = java.io.ByteArrayOutputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it); it.toByteArray() }
+        bitmap.recycle()
+        val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val recorded = expense().copy(imagePath = "original.png", imageHash = digest, hasImage = true)
+        var saved: ExpenseDraft? = null
+        val restore = androidx.compose.ui.test.junit4.StateRestorationTester(composeRule)
+        restore.setContent {
+            TicketboxTheme(skin = skin) {
+                ExpenseEditScreen(expenseEditScreenState(expense = recorded, editState = ExpenseEditUiState(
+                    fullImage = ProtectedImage(bytes, "image/png", digest))), ExpenseEditScreenActions(
+                    primary = ExpenseEditPrimaryActions(onSave = { saved = it })))
+            }
+        }
+        composeRule.onNode(hasSetTextAction() and hasText("12.34")).performScrollTo().performTextReplacement("17.00")
+        closeSoftKeyboard()
+        composeRule.onAllNodesWithText("记录原图文字（可选）")[0].performScrollTo().performClick()
+        composeRule.onNodeWithText("原图实际写着").performScrollTo().performTextReplacement("实付：78.00")
+        closeSoftKeyboard()
+        composeRule.onNodeWithText("我已对照原图核对这段文字").performScrollTo().performClick()
+        restore.emulateSavedInstanceStateRestore()
+        composeRule.onNode(hasSetTextAction() and hasText("实付：78.00")).assertExists()
+        composeRule.onNodeWithText("查看原图并指出位置").performScrollTo().performClick()
+        composeRule.onNodeWithText("浏览图片").assertIsNotEnabled()
+        composeRule.onNodeWithText("点选两角").performScrollTo().performClick()
+        val preview = composeRule.onNode(hasContentDescription(InstrumentationRegistry.getInstrumentation().targetContext.getString(
+            com.ticketbox.R.string.ocr_region_help)))
+        preview.performTouchInput { click(Offset(center.x, center.y)) }
+        composeRule.onNode(hasText("返回") and hasAnyAncestor(isDialog())).performScrollTo().performClick()
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle {
+            assertEquals(1700L, saved?.originalAmountMinor)
+            val feedback = requireNotNull(saved?.toRequest(recorded)?.originalTextFeedback).single()
+            assertEquals("实付：78.00", feedback.verbatimText)
+            assertEquals("unlocated", feedback.locationState)
+            assertEquals(true, feedback.textVerified)
+            assertEquals(null, saved?.recognitionFieldChoices)
+        }
+        composeRule.onNodeWithText("查看原图并指出位置").performScrollTo().performClick()
+        composeRule.onNodeWithText("点选两角").performScrollTo().performClick()
+        preview.performTouchInput { click(Offset(center.x, center.y)) }
+        composeRule.onNodeWithText("使用这一位置").performScrollTo().performClick()
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle {
+            assertEquals("coarse_point", saved?.originalTextFeedback?.single()?.locationState)
+            assertEquals(listOf(200f, 400f), saved?.originalTextFeedback?.single()?.point)
+            assertEquals(1700L, saved?.originalAmountMinor)
+        }
+    }
+
+    @Test
     fun sourceReviewRejectsWrongImageAndKeepsManualDraftAcrossCandidates() {
         val digest = "a".repeat(64)
         val bitmap = android.graphics.Bitmap.createBitmap(400, 800, android.graphics.Bitmap.Config.ARGB_8888)

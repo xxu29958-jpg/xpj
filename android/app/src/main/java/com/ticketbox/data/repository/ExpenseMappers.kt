@@ -367,6 +367,7 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
     return ExpenseUpdateRequest(
         recognitionTimeChoice = recognitionTimeChoice,
         recognitionFieldChoices = recognitionFieldChoices,
+        originalTextFeedback = originalTextFeedback,
         categoryChoice = categoryChoice,
         categoryDecisionPublicId = categoryDecisionPublicId,
         timeInput = changedTimeInput?.toRequest(),
