@@ -18,7 +18,7 @@ from tests._infra.assets import _camera_jpeg
 
 @pytest.fixture
 def upload_store(monkeypatch, tmp_path):
-    settings = SimpleNamespace(upload_dir=tmp_path / "uploads", max_upload_size_bytes=1024 * 1024)
+    settings = SimpleNamespace(upload_dir=tmp_path / "uploads", max_upload_size_bytes=1024 * 1024, upload_min_free_bytes=0)
     monkeypatch.setattr(file_service, "get_settings", lambda: settings)
     return settings
 

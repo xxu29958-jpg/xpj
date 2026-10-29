@@ -86,6 +86,10 @@ class Settings:
     orphan_upload_grace_hours: int
     background_task_orphan_grace_seconds: int
     background_task_max_active: int
+    background_task_max_ledger_active: int
+    background_task_max_image_bytes: int
+    background_task_max_ledger_image_bytes: int
+    upload_min_free_bytes: int
     ocr_provider: str
     ocr_auto_run: bool
     ocr_fallback_provider: str
@@ -352,6 +356,10 @@ def get_settings() -> Settings:
             1,
             int(os.getenv("BACKGROUND_TASK_MAX_ACTIVE", "8")),
         ),
+        background_task_max_ledger_active=max(1, int(os.getenv("BACKGROUND_TASK_MAX_LEDGER_ACTIVE", "8"))),
+        background_task_max_image_bytes=max(1, int(os.getenv("BACKGROUND_TASK_MAX_IMAGE_BYTES", str(64 * 1024 * 1024)))),
+        background_task_max_ledger_image_bytes=max(1, int(os.getenv("BACKGROUND_TASK_MAX_LEDGER_IMAGE_BYTES", str(32 * 1024 * 1024)))),
+        upload_min_free_bytes=max(0, int(os.getenv("UPLOAD_MIN_FREE_BYTES", str(512 * 1024 * 1024)))),
         ocr_provider=recognition.ocr_provider,
         ocr_auto_run=recognition.ocr_auto_run,
         ocr_fallback_provider=recognition.ocr_fallback_provider,

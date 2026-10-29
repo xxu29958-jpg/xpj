@@ -66,6 +66,7 @@ ERROR_MESSAGES = {
     "connector_projection_unavailable": "暂时无法确认公网连接状态，请刷新；仍不可用时请导出诊断。",
     "rate_limited": "尝试太频繁，请稍后再试。",
     "enrichment_capacity_full": "识别队列暂时已满，这张小票还没有保存，请稍后再试。",
+    "upload_storage_full": "服务器可用存储空间不足，这张原图尚未保存。请释放空间后重试。",
     "file_too_large": "图片太大，请换一张较小的截图。",
     "unsupported_file_type": "暂不支持这种图片格式。",
     "expense_not_found": "没有找到这笔账单。",

@@ -173,7 +173,7 @@ def replenishment_case(verification_case, monkeypatch):
     case.expense.image_hash = hashlib.sha256(PNG_BYTES).hexdigest()
     case.path.write_bytes(b"damaged original")
     monkeypatch.setattr(file_service, "get_settings", lambda: SimpleNamespace(
-        upload_dir=case.path.parents[1], max_upload_size_bytes=1024 * 1024))
+        upload_dir=case.path.parents[1], max_upload_size_bytes=1024 * 1024, upload_min_free_bytes=0))
     return case
 
 

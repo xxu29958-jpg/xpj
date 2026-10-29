@@ -61,7 +61,7 @@ class UploadScreenshotDispatcherTest {
 
     @Test
     fun capacityAndProtocolRefusalsKeepTheOriginalCommandWithoutASuccessExit() = runTest {
-        for ((status, code) in listOf(503 to "enrichment_capacity_full", 409 to "runtime_version_mismatch",
+        for ((status, code) in listOf(503 to "enrichment_capacity_full", 507 to "upload_storage_full", 409 to "runtime_version_mismatch",
             409 to "client_upgrade_required")) {
             val failure = dispatcher(uploadApi { _, _, _ -> throw refusal(status, code) }).dispatch(originalRow())
             assertEquals(DispatchResult.Failure(code), failure)

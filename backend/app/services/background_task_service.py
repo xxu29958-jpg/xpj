@@ -182,6 +182,7 @@ def prepare_enqueue(
         initiator_device_id=initiator_device_id,
         ledger_id=ledger_id,
         progress_total=progress_total,
+        source_expense_id=payload_copy.get("expense_id") if task_type in background_task_executor.OCR_TASK_TYPES else None,
     )
     return PreparedBackgroundTask(
         task=task,

@@ -100,12 +100,13 @@ async def web_pending_upload(
     except AppError as exc:
         if "application/json" in request.headers.get("accept", ""):
             raise
-        if exc.error != "enrichment_capacity_full":
+        if exc.error not in {"enrichment_capacity_full", "upload_storage_full"}:
             raise
         return _web_redirect(
             "/web/pending",
             selected_id,
-            msg="识别队列暂时已满，这张小票还没有保存；请稍等片刻重新选择上传。",
+            msg=("服务器可用存储空间不足，这张原图尚未保存。请释放空间后重新选择上传。"
+                if exc.error == "upload_storage_full" else "识别队列暂时已满，这张小票还没有保存；请稍等片刻重新选择上传。"),
             flash_type="error",
         )
     redirect = _web_redirect(

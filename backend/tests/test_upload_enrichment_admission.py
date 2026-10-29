@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 import pytest
 from api_contract_helpers import _stored_upload_files
@@ -15,7 +17,7 @@ from app.config import reset_settings_cache
 from app.database import SessionLocal
 from app.errors import AppError
 from app.main import app
-from app.models import BackgroundTask, Expense, UploadLink, UploadLinkDailyUsage
+from app.models import ApiIdempotencyKey, BackgroundTask, Expense, UploadLink, UploadLinkDailyUsage
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.identity_service import hash_secret
 from app.services.pending_enrichment_task_service import prepare_pending_expense_enrichment
@@ -40,6 +42,71 @@ def _seed_active_task(*, ledger_id: str = "owner") -> int:
         db.add(task)
         db.commit()
         return task.id
+
+
+@pytest.mark.real_db
+@pytest.mark.parametrize("budget", ["ledger_count", "bytes", "ledger_bytes", "disk"])
+def test_durable_limits_preserve_accepted_receipts_and_refused_original_keys(client, monkeypatch, identity, budget):
+    from app.config import get_settings
+    from app.services import file_service
+
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", lambda *_args, **_kwargs: None)
+    keys = [str(uuid4()), str(uuid4())]
+
+    def upload(key):
+        return client.post("/api/app/upload-screenshot", content=PNG_BYTES,
+            headers={**identity.app_headers, "Content-Type": "image/png", "Idempotency-Key": key})
+
+    # A different ledger's task does not consume this ledger's allowance.
+    if budget == "ledger_count":
+        _seed_active_task(ledger_id="another-ledger")
+    first = upload(keys[0])
+    assert first.status_code == 200, first.text
+    rows, files = _row_counts(), _stored_upload_files()
+    variables = {"ledger_count": ("BACKGROUND_TASK_MAX_LEDGER_ACTIVE", "1"),
+        "bytes": ("BACKGROUND_TASK_MAX_IMAGE_BYTES", str(len(PNG_BYTES) * 2 - 1)),
+        "ledger_bytes": ("BACKGROUND_TASK_MAX_LEDGER_IMAGE_BYTES", str(len(PNG_BYTES) * 2 - 1))}
+    with monkeypatch.context() as limits:
+        if budget == "disk":
+            free = get_settings().upload_min_free_bytes
+            limits.setattr(file_service.shutil, "disk_usage", lambda _: SimpleNamespace(free=free))
+        else:
+            name, value = variables[budget]
+            limits.setenv(name, value)
+        reset_settings_cache()
+        try:
+            refused = upload(keys[1])
+            assert refused.status_code == (507 if budget == "disk" else 503), refused.text
+            assert refused.json()["error"] == ("upload_storage_full" if budget == "disk" else "enrichment_capacity_full")
+            assert _row_counts() == rows and _stored_upload_files() == files
+            with SessionLocal() as db:
+                assert db.scalar(select(ApiIdempotencyKey).where(ApiIdempotencyKey.idempotency_key == keys[1])) is None
+            replay = upload(keys[0])
+            assert replay.status_code == 200 and replay.json() == first.json()
+        finally:
+            reset_settings_cache()
+    reset_settings_cache()
+    second = upload(keys[1])
+    assert second.status_code == 200 and second.json()["id"] != first.json()["id"]
+    assert upload(keys[1]).json() == second.json()
+    assert _row_counts() == (rows[0] + 1, rows[1] + 1)
+
+
+@pytest.mark.real_db
+def test_busy_execution_slots_do_not_refuse_an_available_persistent_allowance(client, monkeypatch, identity):
+    monkeypatch.setattr("app.services.background_task_executor.submit_task", lambda *_args, **_kwargs: None)
+    with SessionLocal() as db:
+        db.add_all([BackgroundTask(task_type=kind, tenant_id="owner", status="running")
+            for kind in ("expense_enrichment", "csv_import")])
+        db.commit()
+    response = client.post("/api/app/upload-screenshot", content=PNG_BYTES,
+        headers={**identity.app_headers, "Content-Type": "image/png", "Idempotency-Key": str(uuid4())})
+    assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        task = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == response.json()["enrichment_task_public_id"]))
+        assert task.status == "queued" and task.source_expense_id == response.json()["id"]
+        expense = db.get(Expense, task.source_expense_id)
+        assert expense.status == "pending" and expense.image_hash == response.json()["image_hash"]
 
 
 @pytest.fixture()
