@@ -7,7 +7,7 @@ import pytest
 from app.models import Expense
 from app.services.ocr_service import OcrResult, ocr_fact_snapshot
 from app.services.recognition_field_service import recognition_fields
-from app.services.recognition_source_service import candidate_source_location
+from app.services.recognition_source_service import candidate_source_location, original_text_lines
 from app.services.recognition_time_service import recognition_time
 
 
@@ -55,3 +55,29 @@ def test_unreliable_location_does_not_invent_a_box(change):
         fact.source = "notification"
     fact.evidence_json = json.dumps(evidence)
     assert candidate_source_location(fact, candidate) is None
+
+
+def test_original_lines_are_available_without_parsed_field_candidates():
+    fact = source_fact()
+    evidence = json.loads(fact.evidence_json)
+    evidence["field_parse"]["candidates"] = []
+    fact.evidence_json = json.dumps(evidence)
+    assert recognition_fields(fact) == []
+    result = original_text_lines(fact, "a" * 64)
+    assert result.evidence_public_id == fact.public_id
+    assert [line.text for line in result.lines] == fact.raw_text.splitlines()
+    assert result.lines[2].box == (10, 80, 390, 110)
+
+
+@pytest.mark.parametrize("change", ["wrong_hash", "manual_text", "outside", "notification"])
+def test_original_line_list_does_not_claim_unrelated_pixels(change):
+    fact = source_fact()
+    evidence = json.loads(fact.evidence_json)
+    if change == "manual_text":
+        fact.raw_text += "\n人工补充"
+    if change == "outside":
+        evidence["width"] = 20
+    if change == "notification":
+        fact.source = "notification"
+    fact.evidence_json = json.dumps(evidence)
+    assert original_text_lines(fact, ("b" if change == "wrong_hash" else "a") * 64) is None

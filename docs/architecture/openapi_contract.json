@@ -19150,6 +19150,16 @@
             "title": "Recognition Notes",
             "type": "array"
           },
+          "recognition_text_lines": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecognitionTextLines"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "recognition_time": {
             "anyOf": [
               {
@@ -26894,6 +26904,82 @@
           "boxes"
         ],
         "title": "RecognitionSourceLocation",
+        "type": "object"
+      },
+      "RecognitionTextLine": {
+        "properties": {
+          "box": {
+            "maxItems": 4,
+            "minItems": 4,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Box",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "box"
+        ],
+        "title": "RecognitionTextLine",
+        "type": "object"
+      },
+      "RecognitionTextLines": {
+        "properties": {
+          "coordinate_space": {
+            "const": "exif-transposed-pixels",
+            "title": "Coordinate Space",
+            "type": "string"
+          },
+          "evidence_public_id": {
+            "title": "Evidence Public Id",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "image_sha256": {
+            "title": "Image Sha256",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/RecognitionTextLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evidence_public_id",
+          "image_sha256",
+          "width",
+          "height",
+          "coordinate_space",
+          "lines"
+        ],
+        "title": "RecognitionTextLines",
         "type": "object"
       },
       "RecognitionTimeCandidate": {

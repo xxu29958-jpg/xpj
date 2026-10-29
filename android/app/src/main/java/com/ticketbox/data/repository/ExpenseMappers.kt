@@ -58,6 +58,7 @@ fun ExpenseDto.toDomain(): Expense {
         recognitionTime = recognitionTime,
         recognitionNotes = recognitionNotes,
         recognitionFields = recognitionFields,
+        recognitionTextLines = recognitionTextLines,
         id = id,
         publicId = requiredPublicId(),
         amountCents = amountCents,

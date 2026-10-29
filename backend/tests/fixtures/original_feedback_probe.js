@@ -39,10 +39,20 @@
       const options = {bubbles: true, isPrimary: true, button: 0, pointerId: 1, clientX: bounds.left + x / image.naturalWidth * bounds.width, clientY: bounds.top + y / image.naturalHeight * bounds.height};
       image.dispatchEvent(new PointerEvent("pointerdown", options)); image.dispatchEvent(new PointerEvent("pointerup", options));
     };
-    let dialog = await open(); tap(dialog, 20, 50); dialog.querySelector("[data-source-close]").click();
+    const chooseLine = dialog => {
+      const group = dialog.querySelector("[data-feedback-lines]");
+      assert(!group.hidden, "Original OCR text lines are missing without parsed candidates"); group.open = true;
+      const choices = [...dialog.querySelectorAll("[data-feedback-line]")];
+      assert(choices.length === 2 && choices.every(button => button.getBoundingClientRect().height >= 48), "Text line targets are too small");
+      choices.find(button => button.textContent === "实付：7B.OO").click();
+    };
+    let dialog = await open();
+    if (mode === "suggested_region") chooseLine(dialog); else tap(dialog, 20, 50);
+    dialog.querySelector("[data-source-close]").click();
     assert(JSON.parse(field("original_text_feedback").value)[0].location_state === "unlocated", "Cancel committed an unaccepted location");
     if (mode !== "unlocated") {
-      dialog = await open(); tap(dialog, 20, 50);
+      dialog = await open();
+      if (mode === "suggested_region") chooseLine(dialog); else tap(dialog, 20, 50);
       if (mode === "verified_region") { dialog.querySelector('[data-source-zoom="2"]').click(); tap(dialog, 390, 75); }
       dialog.querySelector("[data-feedback-use]").click();
       if (mode === "verified_region") panel.querySelector('[data-feedback-input="region_verified"]').click();
@@ -52,6 +62,8 @@
     assert(field("amount_yuan").value === "17.00" && !field("recognition_field_choices")?.value, "Annotation rewrote finance or forged a candidate");
     if (mode === "coarse_point") assert(JSON.stringify(feedback.point) === "[20,50]", "Point not in original pixels");
     if (mode === "verified_region") assert(JSON.stringify(feedback.box) === "[20,50,390,75]", "Zoom mixed coordinate spaces");
+    if (mode === "suggested_region") assert(JSON.stringify(feedback.box) === "[20,50,390,75]" &&
+      !panel.querySelector('[data-feedback-input="region_verified"]').checked, "Selecting an OCR line incorrectly verified it");
     panel.scrollIntoView({block: "center"}); window.__originalFeedbackPreviewReady = true;
     await wait(() => window.__originalFeedbackPreviewCaptured);
   }

@@ -28,6 +28,7 @@ from app.schemas._ocr_region import OcrRegionRequest
 from app.schemas._original_text_feedback import OriginalTextFeedback
 from app.schemas._recognition_choice import RecognitionTimeChoice
 from app.schemas._recognition_fields import RecognitionFieldCandidate, RecognitionFieldChoice
+from app.schemas._recognition_source import RecognitionTextLines
 from app.schemas._recognition_time import RecognitionTimeResponse
 from app.schemas.funds import FundingPart
 from app.services.time_service import to_iso
@@ -391,6 +392,7 @@ class ExpenseResponse(BaseModel):
 
     recognition_time: RecognitionTimeResponse | None = None
     recognition_fields: list[RecognitionFieldCandidate] = Field(default_factory=list)
+    recognition_text_lines: RecognitionTextLines | None = None
     recognition_notes: list[str] = Field(default_factory=list)
 
     accounting_time: AccountingTimeSnapshot | None = None
@@ -451,6 +453,8 @@ class ExpenseResponse(BaseModel):
             data.pop("recognition_time", None)
         if "recognition_fields" not in self.model_fields_set:
             data.pop("recognition_fields", None)
+        if "recognition_text_lines" not in self.model_fields_set:
+            data.pop("recognition_text_lines", None)
         if "recognition_notes" not in self.model_fields_set:
             data.pop("recognition_notes", None)
         if "original_text_feedback_saved" not in self.model_fields_set:

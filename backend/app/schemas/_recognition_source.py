@@ -11,3 +11,17 @@ class RecognitionSourceLocation(BaseModel):
     height: int = Field(gt=0)
     coordinate_space: Literal["exif-transposed-pixels"]
     boxes: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]] = Field(min_length=1)
+
+
+class RecognitionTextLine(BaseModel):
+    text: str
+    box: tuple[int, int, int, int]
+
+
+class RecognitionTextLines(BaseModel):
+    evidence_public_id: str
+    image_sha256: str
+    width: int
+    height: int
+    coordinate_space: Literal["exif-transposed-pixels"]
+    lines: list[RecognitionTextLine]

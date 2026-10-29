@@ -54,7 +54,8 @@ first_original_web = original_tests.first_original_web
 
 @pytest.mark.real_db
 @pytest.mark.parametrize("entry,location,action", [("full", "unlocated", "save"), ("full", "coarse_point", "save"),
-    ("drawer", "verified_region", "save"), ("full", "unlocated", "confirm")])
+    ("drawer", "verified_region", "save"), ("full", "unlocated", "confirm"),
+    ("full", "suggested_region", "save"), ("drawer", "suggested_region", "save")])
 def test_no_candidate_original_feedback_survives_lost_reply_and_keeps_finance_separate(
         review_browser, confirmation_store, monkeypatch, tmp_path, entry, location, action):
     from PIL import Image, ImageDraw
@@ -63,6 +64,7 @@ def test_no_candidate_original_feedback_survives_lost_reply_and_keeps_finance_se
     from app.routes import web_expense_edit, web_expense_lifecycle, web_media
     from app.services.exchange_rate_service import apply_currency_payload
     from app.services.file_service import save_upload_bytes
+    from app.services.learning_service import OcrFactDraft, record_ocr_fact
     from app.services.learning_service._source_eligibility import feedback_assessments
 
     client, _ = review_browser
@@ -78,6 +80,13 @@ def test_no_candidate_original_feedback_survives_lost_reply_and_keeps_finance_se
         row.image_path, row.image_hash, row.raw_text = saved.relative_path, saved.image_hash, None
         apply_currency_payload(db, tenant_id="owner", home_currency_code="CNY", expense=row,
             payload=SimpleNamespace(amount_cents=1234), amount_was_explicit=True)
+        if location == "suggested_region":
+            record_ocr_fact(db, OcrFactDraft(tenant_id="owner", expense_id=42, ocr_provider="mock",
+                raw_text="实付：7B.OO\n原价：9B.OO", evidence_json=json.dumps({
+                    "width": 400, "height": 800, "input_sha256": saved.image_hash,
+                    "coordinate_space": "exif-transposed-pixels", "blocks": [
+                        {"text": "实付：7B.OO", "box": [[20, 50], [390, 50], [390, 75], [20, 75]]},
+                        {"text": "原价：9B.OO", "box": [[20, 100], [390, 100], [390, 125], [20, 125]]}]})))
         db.commit()
     monkeypatch.setattr(web_expense_edit, "resolve_web_actor", lambda *args: (actor.account_id, actor.device_id))
     monkeypatch.setattr(web_expense_lifecycle, "resolve_web_actor", lambda *args: (actor.account_id, actor.device_id))
@@ -114,7 +123,7 @@ def test_no_candidate_original_feedback_survives_lost_reply_and_keeps_finance_se
     with confirmation_store() as db:
         assert db.get(Expense, 42).original_amount_minor == 1700
         assert db.get(Expense, 42).status == ("confirmed" if action == "confirm" else "pending")
-        assert not list(db.scalars(select(OcrFact).where(OcrFact.expense_id == 42)))
+        assert len(list(db.scalars(select(OcrFact).where(OcrFact.expense_id == 42)))) == int(location == "suggested_region")
         events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == 42,
             LedgerLearningEvent.signal_type == "original_text_feedback")))
         assert len(events) == 1

@@ -12,6 +12,7 @@
 {% set e = expense %}
 {% set _p = core_fields_prefix %}
 <div class="expense-core-fields{% if core_fields_compact|default(false) %} expense-core-fields--compact{% endif %}" data-expense-core-fields>
+  {% if recognition_text_lines %}<script type="application/json" data-recognition-text-lines>{{ recognition_text_lines|tojson }}</script>{% endif %}
   {% if conflict_current %}
   {% set _currency_conflict = e.original_currency_code != conflict_current.original_currency_code %}
   {# OCC 409: 写入被拒绝 = role="alert"; 数据主权事件 = warning tone, 不升级

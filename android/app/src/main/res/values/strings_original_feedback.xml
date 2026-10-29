@@ -24,6 +24,8 @@
     <string name="original_feedback_region_verified">已核验范围</string>
     <string name="original_feedback_locate">查看原图并指出位置</string>
     <string name="original_feedback_location_help">先浏览原图；选点模式下，第一点记大致位置，第二点确定范围。返回保留原文与账目填写。</string>
+    <string name="original_feedback_text_lines">从已识别文字中选位置</string>
+    <string name="original_feedback_text_lines_help">点选文字行可指出范围，仍需对照原图核对。</string>
     <string name="original_feedback_skip_location">不定位</string>
     <string name="original_feedback_use_location">使用这一位置</string>
     <string name="original_feedback_remove">移除此反馈</string>

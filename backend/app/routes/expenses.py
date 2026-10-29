@@ -427,7 +427,8 @@ def get_expense_detail(
     db: Session = Depends(get_db),
 ) -> ExpenseResponse:
     expense = get_expense(db, expense_id, auth.tenant_id)
-    response = _expense_response_with_suggestions(db, tenant_id=auth.tenant_id, expense=expense, actor_account_id=auth.account_id)
+    response = _expense_response_with_suggestions(db, tenant_id=auth.tenant_id, expense=expense,
+        actor_account_id=auth.account_id, include_text_lines=True)
     db.commit()
     return response
 
@@ -767,6 +768,7 @@ def _expense_response_with_suggestions(
     notification_times_by_id: dict[str, RecognitionTimeResponse] | None = None,
     time_memory: TimeMemory | None = None,
     field_memory: FieldMemory | None = None,
+    include_text_lines: bool = False,
 ) -> ExpenseResponse:
     if notification_times_by_id is None:
         notification_times_by_id = notification_times_for_expenses(db, tenant_id=tenant_id,
@@ -786,6 +788,10 @@ def _expense_response_with_suggestions(
         fact=ocr_facts_by_id.get(expense.id), response=dto.recognition_time, memory=time_memory)
     dto.recognition_fields = recall_field_choices(db, expense=expense, actor_account_id=actor_account_id,
         fact=ocr_facts_by_id.get(expense.id), candidates=dto.recognition_fields, memory=field_memory)
+    if include_text_lines:
+        from app.services.recognition_source_service import original_text_lines
+
+        dto.recognition_text_lines = original_text_lines(ocr_facts_by_id.get(expense.id), expense.image_hash)
     if suggestions.category_suggestion is not None:
         dto.category_suggestion = PendingCategorySuggestionResponse(
             decision_public_id=suggestions.category_suggestion.decision_public_id,
