@@ -6,6 +6,26 @@
     for (let n = 0; n < 250; n++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 25)); }
     throw Error("Source review timed out");
   };
+  async function verifySourceGeometry(dialog, status, stale) {
+    if (stale) {
+      assert(status.textContent.includes("无法核对") && dialog.querySelector("svg").children.length === 0, "Stale hash displayed a location");
+      return;
+    }
+    assert(dialog.querySelector("polygon").getAttribute("points").startsWith("10,80"), "Equal amount linked to the wrong original block");
+    assert(dialog.querySelector("img").naturalWidth === 400 && dialog.querySelector("img").naturalHeight === 800, "EXIF geometry changed");
+    const oldPoints = dialog.querySelector("polygon").getAttribute("points");
+    dialog.querySelector('[data-source-zoom="2"]').click();
+    assert(dialog.querySelector("polygon").getAttribute("points") === oldPoints, "Zoom changed original coordinates");
+    const next = dialog.querySelector("[data-source-next]");
+    if (!next.disabled) {
+      next.click(); await wait(() => !status.textContent.includes("正在"));
+      assert(dialog.querySelector("polygon").getAttribute("points") !== oldPoints, "Next source kept the previous location");
+    }
+    assert(dialog.scrollWidth <= dialog.clientWidth + 2, "Source review overflows the narrow screen");
+    const picture = dialog.querySelector("img").getBoundingClientRect(), overlay = dialog.querySelector("svg").getBoundingClientRect();
+    assert(Math.abs(picture.left - overlay.left) < 1 && Math.abs(picture.top - overlay.top) < 1 &&
+      Math.abs(picture.height - overlay.height) < 1, "Source overlay does not align with the visible original");
+  }
   const key = "recognition-source-probe";
   if (sessionStorage.getItem(key) === "submitted") { window.__expenseReviewResult = {completed: true}; return; }
   try {
@@ -25,24 +45,7 @@
     paid.closest("details").open = true; paid.click();
     const dialog = form.querySelector(".recognition-source-dialog"), status = dialog.querySelector("[data-source-status]");
     await wait(() => !status.textContent.includes("正在"));
-    if (stale) {
-      assert(status.textContent.includes("无法核对") && dialog.querySelector("svg").children.length === 0, "Stale hash displayed a location");
-    } else {
-      assert(dialog.querySelector("polygon").getAttribute("points").startsWith("10,80"), "Equal amount linked to the wrong original block");
-      assert(dialog.querySelector("img").naturalWidth === 400 && dialog.querySelector("img").naturalHeight === 800, "EXIF geometry changed");
-      const oldPoints = dialog.querySelector("polygon").getAttribute("points");
-      dialog.querySelector('[data-source-zoom="2"]').click();
-      assert(dialog.querySelector("polygon").getAttribute("points") === oldPoints, "Zoom changed original coordinates");
-      const next = dialog.querySelector("[data-source-next]");
-      if (!next.disabled) {
-        next.click(); await wait(() => !status.textContent.includes("正在"));
-        assert(dialog.querySelector("polygon").getAttribute("points") !== oldPoints, "Next source kept the previous location");
-      }
-      assert(dialog.scrollWidth <= dialog.clientWidth + 2, "Source review overflows the narrow screen");
-      const picture = dialog.querySelector("img").getBoundingClientRect(), overlay = dialog.querySelector("svg").getBoundingClientRect();
-      assert(Math.abs(picture.left - overlay.left) < 1 && Math.abs(picture.top - overlay.top) < 1 &&
-        Math.abs(picture.height - overlay.height) < 1, "Source overlay does not align with the visible original");
-    }
+    await verifySourceGeometry(dialog, status, stale);
     const bounds = dialog.getBoundingClientRect();
     assert(bounds.top >= 0 && bounds.bottom <= innerHeight && getComputedStyle(dialog).backgroundColor !== "rgba(0, 0, 0, 0)",
       "Source dialog is not a readable surface within the viewport");

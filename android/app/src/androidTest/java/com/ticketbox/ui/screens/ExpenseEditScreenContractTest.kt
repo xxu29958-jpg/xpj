@@ -94,7 +94,7 @@ class ExpenseEditScreenContractTest {
         val preview = composeRule.onNode(hasContentDescription(InstrumentationRegistry.getInstrumentation().targetContext.getString(
             com.ticketbox.R.string.ocr_region_help)))
         preview.performTouchInput { click(Offset(center.x, center.y)) }
-        composeRule.onNodeWithText("返回").performScrollTo().performClick()
+        composeRule.onNode(hasText("返回") and hasAnyAncestor(isDialog())).performScrollTo().performClick()
         composeRule.onNodeWithText("保存").performClick()
         composeRule.runOnIdle {
             assertEquals(1700L, saved?.originalAmountMinor)
@@ -156,7 +156,7 @@ class ExpenseEditScreenContractTest {
         composeRule.onNodeWithText("下一处").performScrollTo().performClick()
         composeRule.onNode(hasText("原价：49.90") and hasAnyAncestor(isDialog())).assertExists()
         saveConsumerArtPreview("review-source-equal-amounts-large-font", composeRule.onNode(isDialog()).captureToImage().asAndroidBitmap())
-        composeRule.onNodeWithText("返回").performScrollTo().performClick()
+        composeRule.onNode(hasText("返回") and hasAnyAncestor(isDialog())).performScrollTo().performClick()
         composeRule.runOnIdle { assertEquals(null, saved) }
         composeRule.onNodeWithText("保存").performClick()
         composeRule.runOnIdle { assertEquals(2200L, saved?.originalAmountMinor); assertEquals(null, saved?.recognitionFieldChoices) }
