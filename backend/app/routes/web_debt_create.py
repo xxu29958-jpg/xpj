@@ -34,6 +34,7 @@ from app.routes.web_common import (
 from app.routes.web_debt_actions import _actor_account_id, _error_message
 from app.routes.web_debts import _debt_create_context
 from app.schemas import DebtCreateRequest, DebtResponse
+from app.schemas._debts import DebtBillSourceReference
 from app.services.currency_common import (
     major_amount_to_minor,
     normalize_currency_code,
@@ -59,6 +60,8 @@ class DebtCreationForm(BaseModel):
     draft_scope: str = ""
     csrf_token: str = ""
     review_new: bool = False
+    bill_source_public_id: str = ""
+    bill_source_row_version: str = ""
 
 
 def _positive_int_or_none(raw: str, *, label: str, maximum: int) -> int | None:
@@ -123,6 +126,8 @@ def _create_payload(
     installment_period_months: str,
     home_currency: str,
     calendar_revision: str | None = None,
+    bill_source_public_id: str = "",
+    bill_source_row_version: str = "",
 ) -> DebtCreateRequest:
     code = normalize_currency_code(currency_code)
     amount_text = amount_major or ""
@@ -154,6 +159,8 @@ def _create_payload(
         original_amount=Decimal(amount_text) if code != home_currency else None,
         **occurrence,
         source_type="manual",
+        **({"bill_source": DebtBillSourceReference(public_id=bill_source_public_id,
+            expected_row_version=bill_source_row_version)} if bill_source_public_id or bill_source_row_version else {}),
         debt_kind=(debt_kind or "").strip(),
         installment_count=_positive_int_or_none(
             installment_count,
@@ -187,8 +194,11 @@ def web_create_debt(
     if retained is not None:
         return retained
     try:
-        if form.draft_scope or "application/json" in request.headers.get("accept", ""):
-            require_draft_binding(db, request, ledger_id=selected_id, draft_scope=form.draft_scope, require_session=False)
+        auth = None
+        has_bill_source = bool(form.bill_source_public_id or form.bill_source_row_version)
+        if has_bill_source or form.draft_scope or "application/json" in request.headers.get("accept", ""):
+            auth = require_draft_binding(db, request, ledger_id=selected_id, draft_scope=form.draft_scope,
+                require_session=has_bill_source)
         _require_selected_ledger_write(options, selected_id)
         if form.review_new:
             return _render_create_error(request, db, options=options, selected_id=selected_id, values=values,
@@ -206,6 +216,7 @@ def web_create_debt(
             actor_account_id=_actor_account_id(request, db, selected_id),
             payload=payload,
             idempotency_key=form.idempotency_key.strip(),
+            auth=auth,
         )
     except (AppError, ValidationError, InvalidOperation) as exc:
         db.rollback()
