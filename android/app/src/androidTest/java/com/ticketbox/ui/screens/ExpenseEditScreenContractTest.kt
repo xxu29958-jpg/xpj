@@ -121,7 +121,7 @@ class ExpenseEditScreenContractTest {
         composeRule.onNodeWithText("从已识别文字中选位置").performScrollTo().performClick()
         composeRule.onNodeWithText("实付：7B.OO").performScrollTo().performClick()
         composeRule.onNodeWithText("使用这一位置").performScrollTo().performClick()
-        composeRule.onNodeWithText("保存").performScrollTo().performClick()
+        composeRule.onNodeWithText("保存").assertIsDisplayed().performClick()
         composeRule.runOnIdle {
             val feedback = requireNotNull(saved?.originalTextFeedback).single()
             assertEquals("suggested_region", feedback.locationState)
