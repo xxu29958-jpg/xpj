@@ -7,6 +7,7 @@ from threading import Event
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
 from app.errors import AppError
@@ -68,6 +69,37 @@ def test_old_capacity_blocked_failures_do_not_starve_already_admitted_work(ident
         assert len(tasks) == 24 and all(task.status == "completed" for task in tasks)
         assert all(task.recovery_attempts == 1 for task in tasks if task.id in historical)
         assert db.scalar(select(func.count()).select_from(OcrFact)) == 24
+
+
+def test_scanner_finishes_applied_receipt_after_completion_write_fails_without_restart(identity, monkeypatch):
+    task_id, public_id, payload = _original()
+    still_running = _original("running")[0]
+    calls = []
+    complete = worker._mark_completed
+
+    def extract(expense, **_):
+        calls.append(expense.id)
+        return _ocr_result()
+
+    def fail_completion(*_args, **_kwargs):
+        raise SQLAlchemyError("injected failure after committed OCR result")
+
+    monkeypatch.setattr(_enrich, "collect_auto_ocr_extractions", extract)
+    monkeypatch.setattr(_enrich, "_try_stage_thumbnail", lambda *_: None)
+    monkeypatch.setattr(worker, "_mark_completed", fail_completion)
+    with pytest.raises(SQLAlchemyError):
+        worker.run_task(task_id, payload)
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        assert task.status == "running" and task.result_summary_json is not None
+    monkeypatch.setattr(worker, "_mark_completed", complete)
+    assert recovery.resume_due_ocr_tasks() == 1
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        assert task.status == "completed" and task.public_id == public_id and task.recovery_attempts == 0
+        assert db.get(BackgroundTask, still_running).status == "running"
+        assert db.scalar(select(func.count()).select_from(OcrFact)) == 1
+    assert calls == [payload["expense_id"]]
 
 
 @pytest.mark.parametrize("interrupted_phase", ["queued", "running"])

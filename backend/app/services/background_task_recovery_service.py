@@ -133,17 +133,21 @@ def resume_due_ocr_tasks() -> int:
     """Discover bounded original inputs, then submit through the existing executor."""
     from app.services.background_task_admission import INTERRUPTED_TASK_CODES
 
+    applied = and_(BackgroundTask.status.in_(("queued", "running", "failed")),
+                   BackgroundTask.result_summary_json.is_not(None))
+    resumable = and_(BackgroundTask.input_payload_json.is_not(None),
+        BackgroundTask.cancellation_requested_at.is_(None),
+        or_(and_(BackgroundTask.status == "queued", or_(BackgroundTask.recovery_after.is_(None),
+                    BackgroundTask.recovery_after <= now_utc())),
+            and_(BackgroundTask.status == "failed", BackgroundTask.error_code.in_(INTERRUPTED_TASK_CODES),
+                 BackgroundTask.recovery_attempts < len(_RETRY_DELAYS))))
     with SessionLocal() as db:
         identifiers = list(db.scalars(select(BackgroundTask.id).where(
-            BackgroundTask.task_type.in_(OCR_TASK_TYPES), BackgroundTask.input_payload_json.is_not(None),
-            BackgroundTask.cancellation_requested_at.is_(None),
-            or_(and_(BackgroundTask.status == "queued", or_(BackgroundTask.recovery_after.is_(None),
-                        BackgroundTask.recovery_after <= now_utc())),
-                and_(BackgroundTask.status == "failed", BackgroundTask.error_code.in_(INTERRUPTED_TASK_CODES),
-                     BackgroundTask.recovery_attempts < len(_RETRY_DELAYS))),
+            BackgroundTask.task_type.in_(OCR_TASK_TYPES), or_(applied, resumable),
         # Already-admitted work must release capacity before historical failures
         # compete for re-admission; blocked old rows cannot consume the whole scan.
-        ).order_by((BackgroundTask.status == "queued").desc(), BackgroundTask.created_at,
+        ).order_by(BackgroundTask.result_summary_json.is_not(None).desc(),
+                   (BackgroundTask.status == "queued").desc(), BackgroundTask.created_at,
                    BackgroundTask.id).limit(_SCAN_BATCH)))
     return sum(_wake_original_task(identifier) for identifier in identifiers)
 
@@ -155,12 +159,14 @@ def _wake_original_task(task_id: int) -> bool:
 
     with SessionLocal() as db:
         task = db.get(BackgroundTask, task_id)
-        if task is None or task.status not in {"queued", "failed"}:
+        if task is None or task.status not in {"queued", "running", "failed"}:
             return False
         if task.result_summary_json is not None:
             db.rollback()
             complete_applied_task(task_id)
             return True
+        if task.status == "running":
+            return False
         try:
             payload = json.loads(task.input_payload_json)
             if not isinstance(payload, dict):
