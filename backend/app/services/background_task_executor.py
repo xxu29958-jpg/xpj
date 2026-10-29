@@ -16,12 +16,12 @@ from app.database import SessionLocal
 from app.error_reporting import report_error
 from app.models import BackgroundTask
 from app.services.background_task_handler_api import mark_failed
-from app.services.background_task_registry import PreparedBackgroundTask, TaskHandlerRegistry
+from app.services.background_task_registry import OCR_TASK_TYPES, PreparedBackgroundTask, TaskHandlerRegistry
+from app.services.time_service import ensure_utc, now_utc
 
 logger = logging.getLogger(__name__)
 
 MAX_WORKERS = 2
-OCR_TASK_TYPES = frozenset({"expense_enrichment", "expense_ocr_retry"})
 
 TaskRunner = Callable[[int, dict[str, Any], TaskHandlerRegistry], None]
 
@@ -87,6 +87,8 @@ class _ExecutorPool:
         with SessionLocal() as db:
             task = db.get(BackgroundTask, task_id)
             if task is None or task.status != "queued":
+                return
+            if task.recovery_after is not None and ensure_utc(task.recovery_after) > now_utc():
                 return
             task_type = task.task_type
         with self._lock:

@@ -6,6 +6,7 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import timedelta
 from threading import Event
 
 import pytest
@@ -256,6 +257,11 @@ def test_original_receipt_recovers_submission_refusal_without_duplicate_applicat
     for _ in range(2):
         with SessionLocal() as db:
             resume_pending_expense_enrichment(db, task_public_id=public_id, expense_id=expense_id, tenant_id="owner")
+            task = db.get(BackgroundTask, task_id)
+            if not applied and task.status == "queued":
+                assert task.recovery_attempts == 1 and task.recovery_after > now_utc()
+                task.recovery_after = now_utc() - timedelta(seconds=1)
+                db.commit()
     with SessionLocal() as db:
         assert db.get(BackgroundTask, task_id).status == "completed"
         assert db.get(Expense, expense_id).row_version == predecessor + 1

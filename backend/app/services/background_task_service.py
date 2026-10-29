@@ -22,19 +22,11 @@ Cancellation contract:
 
 Orphan recovery:
     :func:`recover_orphaned_tasks` is called from the FastAPI lifespan and
-    finishes committed OCR applied receipts, including their FX handoff, and
-    force-fails other tasks in ``running`` or ``queued`` state. The
-    in-process executor model means that a backend restart immediately
-    voids every in-flight task (the ThreadPoolExecutor died with the
-    previous process; nothing in this process can resume it) and every
-    queued-but-not-yet-started task (executor never dequeued it; on
-    restart the queue is empty). By default both states are therefore
-    orphans the moment startup begins. Cloud/multi-worker deployments may
-    set ``BACKGROUND_TASK_ORPHAN_GRACE_SECONDS`` to avoid a newly started
-    worker force-failing fresh work still heartbeating in another process.
-    The upload domain may explicitly readmit its original restart-orphaned
-    enrichment from durable input and through the same capacity authority.
-    Startup never reruns OCR for an applied receipt or restarts terminal work.
+    finishes committed OCR receipts, including their FX handoff. Durable OCR
+    input is discovered by the same recovery owner, preserving queued work and
+    bounding interrupted attempts; replay cannot reset its budget or deadline.
+    Other domains retain original-request recovery and the configurable orphan
+    grace window. Startup never repeats inference for an applied receipt.
 """
 
 from __future__ import annotations
@@ -257,8 +249,12 @@ def request_cancellation(
         return task
     if task.cancellation_requested_at is None:
         task.cancellation_requested_at = now_utc()
-        db.commit()
-        db.refresh(task)
+    if task.status == "queued" and task.task_type in background_task_executor.OCR_TASK_TYPES:
+        from app.services.background_task_handler_api import stage_task_cancellation
+
+        stage_task_cancellation(task)
+    db.commit()
+    db.refresh(task)
     return task
 
 
@@ -269,8 +265,8 @@ def request_cancellation(
 def recover_orphaned_tasks() -> int:
     """Recover active tasks that the current deployment should treat as dead.
 
-    Complete OCR rows that already own an applied receipt; fence the other
-    ``running`` and ``queued`` rows because their old executor is gone. When
+    Complete OCR rows that already own an applied receipt, retain queued input
+    and bound interrupted OCR attempts; fence work owned by other domains. When
     ``BACKGROUND_TASK_ORPHAN_GRACE_SECONDS`` is positive, fresh active rows are
     preserved and only rows whose heartbeat/creation timestamp exceeded the
     grace window are failed. That is the cloud/multi-worker compatibility

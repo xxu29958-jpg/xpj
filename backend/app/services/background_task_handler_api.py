@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-from sqlalchemy import update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask
+from app.services.background_task_recovery_service import schedule_task_recovery
+from app.services.background_task_registry import OCR_TASK_TYPES
 from app.services.time_service import now_utc
 
 
@@ -50,12 +52,24 @@ def mark_failed(
     error_code: str, error_message: str,
 ) -> None:
     """Publish failure only while the caller still owns the expected task phase."""
-    db.execute(
-        update(BackgroundTask)
-        .where(BackgroundTask.id == task_id, BackgroundTask.status == expected_status)
-        .values(status="failed", completed_at=now_utc(), error_code=error_code, error_message=error_message)
-    )
+    task = db.scalar(select(BackgroundTask).where(BackgroundTask.id == task_id)
+        .with_for_update().execution_options(populate_existing=True))
+    if task is not None and task.status == expected_status:
+        if task.task_type in OCR_TASK_TYPES and task.cancellation_requested_at is not None:
+            stage_task_cancellation(task)
+        else:
+            task.status, task.completed_at, task.recovery_after = "failed", now_utc(), None
+            task.error_code, task.error_message = error_code, error_message
+            schedule_task_recovery(task)
     db.commit()
+
+
+def stage_task_cancellation(task: BackgroundTask) -> None:
+    """End a cancelled task in its current owner's transaction, including deferred wakeups."""
+    task.status, task.completed_at, task.recovery_after = "cancelled", now_utc(), None
+    if task.task_type in OCR_TASK_TYPES:
+        task.error_code = task.error_message = None
+        task.progress_message = "识别已取消，账单仍保留。"
 
 
 def retire_obsolete_task(db: Session, task: BackgroundTask) -> None:
@@ -75,4 +89,5 @@ def retire_obsolete_task(db: Session, task: BackgroundTask) -> None:
         task.cancellation_requested_at = task.cancellation_requested_at or task.completed_at
 
 
-__all__ = ["TaskCancelledError", "check_cancellation_requested", "mark_failed", "retire_obsolete_task", "update_progress"]
+__all__ = ["TaskCancelledError", "check_cancellation_requested", "mark_failed", "retire_obsolete_task",
+           "stage_task_cancellation", "update_progress"]

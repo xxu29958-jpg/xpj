@@ -12,11 +12,11 @@ from api_contract_helpers import (
     reject_expense_api,
 )
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuthToken, BackgroundTask, Device, Expense, LedgerMember, UploadLink
+from app.models import AuthToken, BackgroundTask, Device, Expense, LedgerMember, OcrFact, UploadLink
 from app.services.category_common import DEFAULT_CATEGORIES
 from app.services.expense_service._enrich import PendingEnrichmentResult, enrich_pending_expense
 from app.services.file_service import resolve_protected_image, save_upload_bytes
@@ -149,7 +149,7 @@ def test_every_upload_consumer_returns_its_durable_enrichment_task(
         ("upload-link", "upload"),
     ],
 )
-def test_upload_submission_failure_returns_failed_task_receipt_without_losing_expense(
+def test_upload_submission_failure_keeps_receipt_and_recovers_original_without_client_replay(
     client: TestClient,
     monkeypatch,
     *,
@@ -157,17 +157,23 @@ def test_upload_submission_failure_returns_failed_task_receipt_without_losing_ex
     path: str,
     headers: str,
 ) -> None:
+    from app.services import background_task_recovery_service as recovery
+    from app.services.expense_service import _enrich as execution
+    from tests.test_pending_enrichment_task_service import _ocr_result
 
     def fail_submit(*_args, **_kwargs):
         raise RuntimeError("executor unavailable")
 
     monkeypatch.setattr("app.services.background_task_executor.submit_task", fail_submit)
     request_path = identity.upload_url_path if path == "upload-link" else path
-    request_headers = identity.upload_headers if headers == "upload" else identity.app_headers
+    request_headers = {**(identity.upload_headers if headers == "upload" else identity.app_headers),
+        "Content-Type": "image/png"}
+    if headers == "app":
+        request_headers["Idempotency-Key"] = "80000000-0000-4000-8000-000000000041"
 
     response = client.post(
         request_path,
-        headers={**request_headers, "Content-Type": "image/png"},
+        headers=request_headers,
         content=PNG_BYTES,
     )
 
@@ -181,10 +187,29 @@ def test_upload_submission_failure_returns_failed_task_receipt_without_losing_ex
         )
         expense = db.get(Expense, body["id"])
         assert task is not None
-        assert task.status == "failed"
+        assert task.status == "queued" and task.recovery_attempts == 1
         assert task.error_code == "task_submission_failed"
         assert expense is not None
         assert expense.status == "pending"
+        task_id, original_input, original_hash = task.id, task.input_payload_json, expense.image_hash
+    assert recovery.resume_due_ocr_tasks() == 0, "A client-independent scan must honor backoff"
+    with SessionLocal() as db:
+        db.get(BackgroundTask, task_id).recovery_after = now_utc() - timedelta(seconds=1)
+        db.commit()
+    monkeypatch.setattr("app.services.background_task_executor.submit_task",
+        lambda identifier, original, *, registry, runner: runner(identifier, original, registry))
+    monkeypatch.setattr(execution, "collect_auto_ocr_extractions", lambda *_args, **_kwargs: _ocr_result())
+    monkeypatch.setattr(execution, "_try_stage_thumbnail", lambda *_args: None)
+    assert recovery.resume_due_ocr_tasks() == 1
+    if headers == "app":
+        replay = client.post(request_path, headers=request_headers, content=PNG_BYTES)
+        assert replay.status_code == 200 and replay.json() == body
+    with SessionLocal() as db:
+        task, expense = db.get(BackgroundTask, task_id), db.get(Expense, body["id"])
+        assert task.status == "completed" and task.input_payload_json == original_input
+        assert task.error_code is None and task.recovery_attempts == 1
+        assert expense.amount_cents == 1990 and expense.image_hash == original_hash
+        assert db.scalar(select(func.count()).select_from(OcrFact).where(OcrFact.expense_id == expense.id)) == 1
 
 
 def test_upload_screenshot_accepts_ios_image_form_field(client: TestClient, *, identity) -> None:

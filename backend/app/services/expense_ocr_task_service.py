@@ -49,7 +49,8 @@ def _existing_task(db: Session, claim, *, legacy: bool) -> BackgroundTask | Expe
     # Legacy errors were never successful command acknowledgements. A later
     # retry may compute again, but cancellation and an applied receipt are final.
     if (legacy and task.status == "failed" and task.error_code not in INTERRUPTED_TASK_CODES
-            and task.result_summary_json is None and task.cancellation_requested_at is None):
+            and task.result_summary_json is None and task.cancellation_requested_at is None
+            and task.recovery_attempts == 0):
         return None
     return task
 
@@ -88,6 +89,13 @@ def _prepare_retry(db: Session, claim: ApiIdempotencyKey, *, expense_id: int, te
 
 def _resume_retry(db: Session, task: BackgroundTask) -> BackgroundTask:
     task_id = task.id
+    if task.result_summary_json is not None:
+        from app.services.background_task_worker import complete_applied_task
+
+        db.rollback()
+        complete_applied_task(task_id)
+        db.refresh(task)
+        return task
     if task.status == "failed" and task.error_code in INTERRUPTED_TASK_CODES:
         task = readmit_orphaned_task(db, task_id) or task
     db.commit()

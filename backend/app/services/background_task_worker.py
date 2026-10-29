@@ -6,7 +6,7 @@ import logging
 from contextlib import suppress
 from typing import Any
 
-from sqlalchemy import update
+from sqlalchemy import or_, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,7 @@ from app.errors import AppError
 from app.models import BackgroundTask
 from app.services import background_task_executor
 from app.services.background_task_executor import BackgroundTaskSubmissionError
-from app.services.background_task_handler_api import TaskCancelledError
+from app.services.background_task_handler_api import TaskCancelledError, stage_task_cancellation
 from app.services.background_task_handler_api import mark_failed as _mark_failed
 from app.services.background_task_registry import TaskHandlerRegistry, runtime_handler_registry
 from app.services.time_service import now_utc
@@ -91,26 +91,31 @@ def claim_queued_task(db: Session, task_id: int) -> BackgroundTask | None:
     result = db.execute(
         update(BackgroundTask)
         .where(BackgroundTask.id == task_id, BackgroundTask.status == "queued")
+        .where(or_(BackgroundTask.recovery_after.is_(None), BackgroundTask.recovery_after <= claimed_at))
         .values(
             status="running",
             started_at=claimed_at,
             last_progress_at=claimed_at,
+            recovery_after=None,
+            error_code=None,
+            error_message=None,
         )
     )
     db.commit()
     return db.get(BackgroundTask, task_id) if result.rowcount == 1 else None
 
 
-def _mark_completed(db: Session, task_id: int, registry: TaskHandlerRegistry) -> None:
+def _mark_completed(db: Session, task_id: int, registry: TaskHandlerRegistry, *, recover_applied: bool = False) -> None:
     task = db.get(BackgroundTask, task_id)
     if task is None:
         return
     db.refresh(task, with_for_update=True)
-    if task.status in _TERMINAL_STATUSES:
+    if task.status in _TERMINAL_STATUSES and not (recover_applied and task.status == "failed"):
         return
     try:
         task.status = "completed"
         task.completed_at = now_utc()
+        task.error_code = task.error_message = task.recovery_after = None
         # Admission counts our flushed terminal transition in this transaction;
         # other sessions see the parent active until parent + child commit together.
         db.flush()
@@ -132,7 +137,7 @@ def complete_applied_task(task_id: int) -> None:
         if (task is None or task.task_type not in background_task_executor.OCR_TASK_TYPES
                 or task.result_summary_json is None):
             return
-        _mark_completed(db, task_id, runtime_handler_registry())
+        _mark_completed(db, task_id, runtime_handler_registry(), recover_applied=True)
 
 
 def _mark_cancelled(db: Session, task_id: int) -> None:
@@ -142,8 +147,7 @@ def _mark_cancelled(db: Session, task_id: int) -> None:
     db.refresh(task, with_for_update=True)
     if task.status in _TERMINAL_STATUSES:
         return
-    task.status = "cancelled"
-    task.completed_at = now_utc()
+    stage_task_cancellation(task)
     db.commit()
 
 

@@ -39,13 +39,11 @@ class BackgroundTask(Base):
 
     ``queued`` -> ``running`` -> ``completed`` | ``failed`` | ``cancelled``
 
-    Orphan recovery: on startup, active rows are force-failed by default
-    because the in-process executor that owned them died with the old process.
-    Cloud / multi-worker deployments can configure a grace window for fresh
-    heartbeating rows; every runner still has to atomically claim ``queued``.
-    An explicit original upload receipt replay may readmit its restart-orphaned
-    enrichment from validated durable input through bounded task admission.
-    Other failed/completed/cancelled outcomes are not restart instructions.
+    OCR recovery keeps durable queued input and schedules bounded retries of
+    interrupted inference. Other orphaned work is force-failed for its domain.
+    Every runner atomically claims ``queued`` only after its recovery deadline.
+    Replays and automatic scans share the same durable attempt budget; applied
+    receipts complete without inference. Terminal outcomes are not retry commands.
     """
 
     __tablename__ = "background_tasks"
@@ -62,6 +60,7 @@ class BackgroundTask(Base):
             "progress_total IS NULL OR progress_total >= 0",
             name="ck_background_tasks_progress_total_non_negative",
         ),
+        CheckConstraint("recovery_attempts >= 0", name="ck_background_tasks_recovery_non_negative"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -94,6 +93,10 @@ class BackgroundTask(Base):
     input_payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # JSON-encoded; per-task shape (e.g. csv_import returns rows_imported / errors).
     result_summary_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Retry scheduling belongs to this same durable task, never its input or applied receipt.
+    recovery_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    recovery_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    recovery_history_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]", nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False
