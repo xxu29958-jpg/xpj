@@ -280,13 +280,16 @@ class DebtListViewModelCurrencyTest {
         advanceUntilIdle()
 
         assertEquals(false, viewModel.state.value.homeCurrencyResolved)
+        assertEquals(false, viewModel.state.value.canPrepareBill)
         assertNull(viewModel.markBillParsePreparing())
         assertEquals(false, viewModel.state.value.isParsingBill)
 
         repo.listResult = Result.success(listOf(sampleDebt("jpy-debt").copy(homeCurrencyCode = "JPY")))
         viewModel.refresh()
         advanceUntilIdle()
+        assertEquals(true, viewModel.state.value.canPrepareBill)
         assertTrue(viewModel.markBillParsePreparing() != null)
         assertEquals(true, viewModel.state.value.isParsingBill)
+        assertEquals(false, viewModel.state.value.canPrepareBill)
     }
 }

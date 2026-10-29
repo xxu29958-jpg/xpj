@@ -171,7 +171,7 @@ internal fun relationsListChrome(
                         onClick = composer.actions.onAddDebt,
                     )
                     if (composer.state.canModify) DebtBillParseIconButton(
-                        isParsingBill = composer.state.isParsingBill,
+                        state = composer.state,
                         onClick = composer.actions.onParseBillImage,
                     )
                 }
