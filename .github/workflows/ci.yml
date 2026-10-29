@@ -765,9 +765,10 @@ jobs:
     needs: scope
     if: ${{ always() && !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.postgres != 'false') }}
     runs-on: ubuntu-latest
-    # A real-db shard exceeded 12m on #424 without a test failure. Keep all four
-    # serial partitions and allow the same bounded headroom as the ordinary lane.
-    timeout-minutes: 15
+    # #702: all 186 cases in shard 2 passed in 14m06s, then the 15m watchdog
+    # cancelled cleanup; shard 3 also reached the deadline without a test failure.
+    # Keep every case and serial partition, with bounded setup/cleanup headroom.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
