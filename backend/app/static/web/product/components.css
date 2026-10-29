@@ -1450,8 +1450,9 @@ details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); 
 .review-amount-value > svg { flex: none; align-self: center; width: var(--space-5); height: var(--space-5); margin-inline-start: var(--space-3); color: var(--text-meta); }
 .review-amount-field .product-drawer-field-row { grid-template-columns: minmax(0, 1fr); margin-top: var(--space-3); }
 .review-amount-field .product-drawer-field-row > label:last-child { display: none; }
-/* 行标题已经说明字段; 展开后的输入不再重复一遍可见标签 (读屏仍读到)。 */
-.review-amount-field .product-field > span:first-child,
+/* 行标题已经说明字段; 展开后的输入不再重复一遍可见标签 (读屏仍读到)。
+   只限金额输入行: 同一折叠区内的原图文字反馈等嵌套表单仍需可见标签。 */
+.review-amount-field .product-drawer-field-row > .product-field > span:first-child,
 .review-edit-field > .product-field > span:first-child {
     position: absolute;
     width: 1px;
