@@ -40,6 +40,25 @@ def annotation(digest, location="verified_region"):
         "role": "payment", "issue": "missing", "text_verified": True}
 
 
+def test_text_lines_are_detail_only_and_keep_original_pixels(client, identity):
+    expense_id, digest = seed_original()
+    with SessionLocal.begin() as db:
+        record_ocr_fact(db, OcrFactDraft(tenant_id="owner", expense_id=expense_id, ocr_provider="mock",
+            raw_text="实付：7B.OO", evidence_json=json.dumps({"width": 400, "height": 800,
+                "input_sha256": digest, "coordinate_space": "exif-transposed-pixels", "blocks": [
+                    {"text": "实付：7B.OO", "box": [[20, 50], [390, 50], [390, 75], [20, 75]]}]})))
+    headers = negotiated_headers(client, identity.app_headers)
+    detail = client.get(f"/api/expenses/{expense_id}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["recognition_fields"] == []
+    source = detail.json()["recognition_text_lines"]
+    assert source["image_sha256"] == digest and (source["width"], source["height"]) == (400, 800)
+    assert source["lines"] == [{"text": "实付：7B.OO", "box": [20, 50, 390, 75]}]
+    pending = client.get("/api/expenses/pending", headers=headers)
+    assert pending.status_code == 200, pending.text
+    assert all("recognition_text_lines" not in row for row in pending.json())
+
+
 def test_heic_feedback_does_not_depend_on_an_earlier_upload_registering_the_decoder(client, identity, monkeypatch):
     from pillow_heif import register_heif_opener
 

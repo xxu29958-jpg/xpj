@@ -87,6 +87,7 @@ data class Expense(
     val recognitionTime: RecognitionTime? = null,
     val recognitionNotes: List<String> = emptyList(),
     val recognitionFields: List<RecognitionFieldCandidate> = emptyList(),
+    val recognitionTextLines: RecognitionTextLines? = null,
 ) {
     // Metadata permits an image request; the protected reader still checks access and bytes.
     val hasUndeletedImage: Boolean get() = hasImage && imageDeletedAt == null

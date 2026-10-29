@@ -6,6 +6,8 @@ import logging
 import os
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from threading import RLock
 from typing import Any
 
@@ -15,15 +17,29 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.error_reporting import report_error
 from app.models import BackgroundTask
-from app.services.background_task_handler_api import mark_failed
+from app.services.background_task_handler_api import OCR_TASK_TYPES, mark_failed
 from app.services.background_task_registry import PreparedBackgroundTask, TaskHandlerRegistry
+from app.services.recognition_resource_admission import defer_ocr_dispatch
+from app.services.time_service import ensure_utc, now_utc
 
 logger = logging.getLogger(__name__)
 
 MAX_WORKERS = 2
-OCR_TASK_TYPES = frozenset({"expense_enrichment", "expense_ocr_retry"})
+# After one existing native execution deadline, age takes precedence over
+# fresh interactive work. This is a fairness bound, not a latency claim.
+_OCR_AGING_DELAY = timedelta(seconds=60)
 
 TaskRunner = Callable[[int, dict[str, Any], TaskHandlerRegistry], None]
+
+
+@dataclass(frozen=True)
+class _TaskWakeup:
+    task_type: str
+    payload: dict[str, Any]
+    registry: TaskHandlerRegistry
+    runner: TaskRunner
+    created_at: datetime
+    actor: tuple[str | None, int | None]
 
 
 class ExecutorLifecycleError(RuntimeError):
@@ -62,7 +78,8 @@ class _ExecutorPool:
         self._executor: ThreadPoolExecutor | None = None
         self._lock = RLock()
         self._active: dict[int, str] = {}
-        self._waiting: dict[int, tuple[str, dict[str, Any], TaskHandlerRegistry, TaskRunner]] = {}
+        self._waiting: dict[int, _TaskWakeup] = {}
+        self._last_ocr_actor: tuple[str | None, int | None] | None = None
         self._stopping = False
 
     def start(self) -> None:
@@ -88,11 +105,15 @@ class _ExecutorPool:
             task = db.get(BackgroundTask, task_id)
             if task is None or task.status != "queued":
                 return
-            task_type = task.task_type
+            if task.recovery_after is not None and ensure_utc(task.recovery_after) > now_utc():
+                return
+            wakeup = _TaskWakeup(task.task_type, payload, registry, runner,
+                ensure_utc(task.created_at), (task.tenant_id, task.initiated_by_account_id))
         with self._lock:
             if self._stopping:
                 raise ExecutorLifecycleError("background executor is stopping")
             if task_id in self._active or task_id in self._waiting:
+                self._dispatch()
                 return
             if self._executor is None:
                 self._executor = ThreadPoolExecutor(
@@ -102,24 +123,42 @@ class _ExecutorPool:
             # These are wakeup bindings for already durable PG rows. They have
             # not been submitted to a pool and remain queued until capacity is
             # reserved. Startup recovery still uses the original PG receipt.
-            self._waiting[task_id] = (task_type, payload, registry, runner)
+            self._waiting[task_id] = wakeup
             self._dispatch()
 
     def _dispatch(self) -> None:
         while not self._stopping and len(self._active) < MAX_WORKERS:
             ocr_busy = any(kind in OCR_TASK_TYPES for kind in self._active.values())
-            candidate = next((task_id for task_id, value in self._waiting.items()
-                              if not (ocr_busy and value[0] in OCR_TASK_TYPES)), None)
+            candidate = self._next_task(ocr_busy)
             if candidate is None:
                 return
-            task_type, payload, registry, runner = self._waiting.pop(candidate)
-            self._active[candidate] = task_type
+            wakeup = self._waiting.pop(candidate)
+            self._active[candidate] = wakeup.task_type
             try:
-                future = self._executor.submit(runner, candidate, payload, registry)
+                future = self._executor.submit(wakeup.runner, candidate, wakeup.payload, wakeup.registry)
             except RuntimeError:
                 self._active.pop(candidate)
                 raise
+            if wakeup.task_type in OCR_TASK_TYPES:
+                self._last_ocr_actor = wakeup.actor
             future.add_done_callback(lambda finished, task_id=candidate: self._finished(task_id, finished))
+
+    def _next_task(self, ocr_busy: bool) -> int | None:
+        eligible = [task_id for task_id, wakeup in self._waiting.items()
+            if wakeup.task_type not in OCR_TASK_TYPES or not ocr_busy and not defer_ocr_dispatch(wakeup.task_type)]
+        candidate = eligible[0] if eligible else None
+        if candidate is None or self._waiting[candidate].task_type not in OCR_TASK_TYPES:
+            return candidate
+        instant = now_utc()
+        return min((task_id for task_id in eligible if self._waiting[task_id].task_type in OCR_TASK_TYPES),
+                   key=lambda task_id: self._ocr_order(task_id, instant))
+
+    def _ocr_order(self, task_id: int, instant: datetime) -> tuple[int, bool, datetime, int]:
+        wakeup = self._waiting[task_id]
+        aged = instant - wakeup.created_at >= _OCR_AGING_DELAY
+        # The task type and principal come from the validated PG row, never payload hints.
+        tier = 0 if aged else 1 if wakeup.task_type == "expense_ocr_retry" else 2
+        return tier, not aged and wakeup.actor == self._last_ocr_actor, wakeup.created_at, task_id
 
     def _finished(self, task_id: int, future: Future[None]) -> None:
         _report_worker_outcome(task_id, future)

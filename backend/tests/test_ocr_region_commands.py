@@ -84,6 +84,10 @@ def test_region_replay_keeps_one_append_only_source_and_original_intent(region_i
         facts = list(db.scalars(select(OcrFact).where(OcrFact.expense_id == request["expense_id"]).order_by(OcrFact.id)))
         assert [fact.raw_text for fact in facts] == ["商户：青禾超市\n实付\n21", "商户：青禾超市\n实付\n216.75"]
         current = json.loads(facts[-1].evidence_json)
+        execution = json.loads(db.get(BackgroundTask, task_id).execution_context_json)
+        assert execution["mode"] == "region"
+        assert execution["observed"][0]["identity"] == current["regional_retry"]["identity"]
+        assert execution["observed"][0]["identity"] != current["identity"]
         assert current["blocks"][:2] == evidence["blocks"][:2]
         assert current["regional_retry"]["base_evidence_public_id"] == facts[0].public_id
         assert current["regional_retry"]["previous_blocks"] == evidence["blocks"][2:]

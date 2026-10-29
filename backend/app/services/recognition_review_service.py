@@ -6,6 +6,7 @@ from app.services.notification_time_service import notification_times_for_expens
 from app.services.recognition_field_memory import recall_field_choices
 from app.services.recognition_field_service import recognition_fields
 from app.services.recognition_memory_service import recall_time_choice
+from app.services.recognition_source_service import original_text_lines
 from app.services.recognition_time_service import recognition_amount_notes, recognition_time
 
 
@@ -22,5 +23,7 @@ def recognition_review_context(*, tenant_id: str, expense_id: int, actor_account
             fact=fact, response=recognition_time(fact, notification=notification))
         fields = recall_field_choices(db, expense=expense, actor_account_id=actor_account_id,
             fact=fact, candidates=recognition_fields(fact))
+        lines = original_text_lines(fact, expense.image_hash)
         return {"recognition_time": time, "recognition_fields": fields,
+            "recognition_text_lines": lines.model_dump(mode="json") if lines else None,
             "recognition_notes": recognition_amount_notes(fact)}

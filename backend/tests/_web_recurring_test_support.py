@@ -233,7 +233,11 @@ def _definition_payment(client, identity, *, currency="CNY", amount=1200, month=
         "merchant": "真实付款", "category": "其他", "expense_time": f"{month}-05T12:00:00Z",
     })
     assert response.status_code == 200, response.text
-    return response.json()
+    # Compare the same current-detail projection before and after planning.
+    # The creation receipt intentionally omits detail-only OCR text lines.
+    detail = client.get(f"/api/expenses/{response.json()['id']}", headers=identity.app_headers)
+    assert detail.status_code == 200, detail.text
+    return detail.json()
 
 
 def _create_series(client: TestClient, identity) -> dict:
@@ -260,7 +264,9 @@ def _occurrence_payment(client: TestClient, identity) -> dict:
         },
     )
     assert response.status_code == 200, response.json()
-    return response.json()
+    detail = client.get(f"/api/expenses/{response.json()['id']}", headers=identity.app_headers)
+    assert detail.status_code == 200, detail.text
+    return detail.json()
 
 
 def _form(body, action):

@@ -24,6 +24,7 @@ from app.services.background_task_handler_api import (
 )
 from app.services.expense_query import resolve_expense
 from app.services.expense_service import enrich_pending_expense
+from app.services.expense_service._enrichment_receipt import require_enrichment_actor
 from app.services.pending_fx_task_service import prepare_pending_expense_fx
 
 PENDING_EXPENSE_ENRICHMENT_TASK_TYPE = "expense_enrichment"
@@ -106,6 +107,10 @@ def resume_pending_expense_enrichment(
     if task is None or not (task.status == "queued" or
             task.status == "failed" and task.error_code in INTERRUPTED_TASK_CODES):
         return
+    if task.result_summary_json is not None:
+        db.rollback()
+        background_task_service.complete_applied_task(task.id)
+        return
     try:
         payload = json.loads(task.input_payload_json or "null")
         if not isinstance(payload, dict) or _task_payload(task, payload)[0] != expense_id:
@@ -136,6 +141,8 @@ def _task_payload(
     expense_id = payload.get("expense_id")
     if isinstance(expense_id, bool) or not isinstance(expense_id, int) or expense_id <= 0:
         raise ValueError("expense_enrichment requires a positive expense_id")
+    if task.source_expense_id not in {None, expense_id}:
+        raise ValueError("original task input does not match its source expense")
 
     tenant_id = task.tenant_id
     if not tenant_id or payload.get("tenant_id") != tenant_id:
@@ -170,6 +177,7 @@ def run_pending_expense_enrichment_task(
     task_id = task.id
     if check_cancellation_requested(db, task_id):
         raise TaskCancelledError
+    require_enrichment_actor(db, task_id, tenant_id)
     # The handler's read transaction must not remain idle during OCR. The
     # expense owner reacquires identity/expense/task locks for atomic apply.
     db.rollback()

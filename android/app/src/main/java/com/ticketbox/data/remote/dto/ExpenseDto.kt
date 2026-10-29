@@ -144,6 +144,8 @@ data class ExpenseDto(
     val recognitionNotes: List<String> = emptyList(),
     @param:Json(name = "recognition_fields")
     val recognitionFields: List<com.ticketbox.domain.model.RecognitionFieldCandidate> = emptyList(),
+    @param:Json(name = "recognition_text_lines")
+    val recognitionTextLines: com.ticketbox.domain.model.RecognitionTextLines? = null,
 )
 
 @JsonClass(generateAdapter = true)

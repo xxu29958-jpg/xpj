@@ -54,8 +54,8 @@ def test_debt_bill_migration_preserves_original_data_and_refuses_evidence_downgr
             assert db.scalar(text("SELECT version_num FROM alembic_version")) == "20261028_0001"
             assert db.scalar(text("SELECT schema_revision FROM dataset_authority WHERE singleton_id=1")) == "20261028_0001"
         program = compile_program(Path(__file__).resolve().parents[1])
-        step = program["revisions"][-1]
-        assert program["target_revision"] == "20261028_0001" and step["postcondition"] == "assert_postcondition"
+        step = next(item for item in program["revisions"] if item["revision"] == "20261028_0001")
+        assert step["postcondition"] == "assert_postcondition"
         module = Path(__file__).resolve().parents[1] / step["module_path"]
         assert hashlib.sha256(module.read_bytes()).hexdigest() == step["module_sha256"]
         # Empty-schema downgrade is legitimate, but a retained new source may never be erased.

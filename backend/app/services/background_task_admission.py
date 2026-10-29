@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import BackgroundTask, Expense
+from app.services.background_task_handler_api import can_recover_task, schedule_task_recovery
 from app.services.file_service import require_upload_storage, resolve_upload_path_for_tenant
 from app.services.time_service import now_utc
 
@@ -70,15 +71,20 @@ def readmit_orphaned_task(db: Session, task_id: int) -> BackgroundTask | None:
     if (task.status != "failed" or task.error_code not in INTERRUPTED_TASK_CODES
             or task.cancellation_requested_at is not None):
         return None
+    if task.task_type in _IMAGE_TASK_TYPES and not can_recover_task(task):
+        return None
     _reserve_active_slot(db, ledger_id=task.tenant_id,
         source_expense_id=task.source_expense_id if task.task_type in _IMAGE_TASK_TYPES else None)
-    task.status = "queued"
-    task.started_at = task.completed_at = None
-    task.last_progress_at = now_utc()
-    task.error_code = task.error_message = None
-    if task.result_summary_json is None:
-        task.progress_current = 0
-        task.progress_message = None
+    if task.task_type in _IMAGE_TASK_TYPES:
+        schedule_task_recovery(task)
+    else:
+        # FX and other domains retain their existing original-request recovery.
+        task.status = "queued"
+        task.started_at = task.completed_at = None
+        task.last_progress_at = now_utc()
+        task.error_code = task.error_message = None
+        if task.result_summary_json is None:
+            task.progress_current, task.progress_message = 0, None
     db.flush()
     return task
 

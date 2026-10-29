@@ -9,6 +9,7 @@
     dialog.innerHTML = '<strong data-source-title></strong><p data-source-text></p>' +
       '<p role="status" data-source-status></p><div class="recognition-source-scroll"><div class="recognition-source-surface">' +
       '<img alt="候选对应的实际原图" draggable="false"><svg aria-hidden="true"></svg></div></div>' +
+      '<details data-feedback-lines hidden><summary>从已识别文字中选位置</summary><p>点选文字行可指出范围，仍需对照原图核对。</p><div data-feedback-line-list></div></details>' +
       '<div class="product-form-actions"><button type="button" data-source-close>返回填写</button>' +
       '<button type="button" data-source-previous>上一处</button><button type="button" data-source-next>下一处</button>' +
       '<button type="button" data-source-zoom="0.5">缩小</button><button type="button" data-source-zoom="2">放大</button>' +
@@ -81,6 +82,7 @@
     viewer.feedback = enabled; viewer.mode = "browse"; viewer.image.style.touchAction = "pan-x pan-y pinch-zoom";
     viewer.dialog.querySelectorAll("[data-feedback-mode], [data-feedback-clear], [data-feedback-use]").forEach(item => { item.hidden = !enabled; });
     viewer.dialog.querySelectorAll("[data-source-previous], [data-source-next]").forEach(item => { item.hidden = enabled; });
+    viewer.dialog.querySelector("[data-feedback-lines]").hidden = true;
     viewer.dialog.querySelectorAll("[data-feedback-mode]").forEach(item => { item.setAttribute("aria-pressed", String(item.dataset.feedbackMode === "browse")); });
   }
   function drawFeedback(viewer) {
@@ -98,6 +100,25 @@
     if (shape) viewer.svg.append(shape);
     viewer.status.textContent = value.box ? "范围尚待你核对。返回后可确认它与原文对应。"
       : value.point ? "已记录大致位置。可以直接使用，也可再点另一角划出范围。" : "可以只浏览。位置可跳过；点一下记录大致位置，两点调整范围。";
+  }
+  function showTextLines(viewer) {
+    const source = JSON.parse(viewer.form.querySelector("[data-recognition-text-lines]")?.textContent || "null");
+    const group = viewer.dialog.querySelector("[data-feedback-lines]"), list = group.querySelector("[data-feedback-line-list]");
+    list.replaceChildren(); group.open = false;
+    if (!source || source.image_sha256 !== viewer.digest || source.width !== viewer.image.naturalWidth ||
+        source.height !== viewer.image.naturalHeight || source.coordinate_space !== "exif-transposed-pixels") return;
+    group.hidden = source.lines.length === 0;
+    source.lines.forEach(line => {
+      const button = document.createElement("button");
+      button.type = "button"; button.className = "recognition-candidate"; button.dataset.feedbackLine = "";
+      button.textContent = line.text;
+      button.onclick = () => {
+        viewer.annotation = {...viewer.annotation, box: [...line.box], point: null, location_state: "suggested_region"};
+        drawFeedback(viewer);
+        resize(viewer, viewer.zoom, [(line.box[0] + line.box[2]) / 2, (line.box[1] + line.box[3]) / 2]);
+      };
+      list.append(button);
+    });
   }
   function installFeedbackSelection(viewer) {
     let origin = null;
@@ -147,6 +168,7 @@
         viewer.surface.hidden = false; resize(viewer, 1, [source.width / 2, source.height / 2]);
         viewer.dialog.querySelectorAll("[data-source-zoom], [data-feedback-use]").forEach(item => { item.disabled = false; });
         drawFeedback(viewer);
+        showTextLines(viewer);
       } catch (_) { if (revision === viewer.revision) viewer.status.textContent = "原图暂时无法核对。返回后仍保留填写；可稍后重试或移除此反馈。"; }
     }
   };

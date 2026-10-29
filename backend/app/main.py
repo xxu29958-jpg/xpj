@@ -218,6 +218,9 @@ async def lifespan(_: FastAPI):
     from app.services.ocr_worker_client import shutdown_ocr_worker, start_ocr_worker_service
 
     start_ocr_worker_service()
+    from app.services.background_task_recovery_service import start_ocr_task_recovery
+
+    ocr_recovery = start_ocr_task_recovery()
     fx_scheduler = start_fx_rate_scheduler()
     # v1.2 ops: optional daily learning-table cleanup. Disabled by
     # default; opt in via LEARNING_CLEANUP_AUTO_ENABLED=true.
@@ -236,13 +239,10 @@ async def lifespan(_: FastAPI):
     try:
         yield
     finally:
-        if fx_scheduler is not None:
-            fx_scheduler.stop()
-        if learning_scheduler is not None:
-            learning_scheduler.stop()
-        advisor_audit_scheduler.stop()
-        device_cleanup_scheduler.stop()
-        soft_delete_purge_scheduler.stop()
+        for scheduler in (ocr_recovery, fx_scheduler, learning_scheduler, advisor_audit_scheduler,
+                          device_cleanup_scheduler, soft_delete_purge_scheduler):
+            if scheduler is not None:
+                scheduler.stop()
         shutdown_executor(wait=False)
         shutdown_ocr_worker()
 

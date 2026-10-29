@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import threading
 import time
+from datetime import timedelta
 
 import pytest
 
 from app.database import SessionLocal
 from app.log_sanitize import SanitizedFormatter
 from app.models import BackgroundTask
+from app.services import background_task_executor as executor
 from app.services.background_task_executor import _ExecutorPool
 from app.services.background_task_registry import TaskHandlerRegistry
 from app.services.background_task_worker import run_task
+from app.services.time_service import now_utc
 
 pytestmark = pytest.mark.real_db
 
@@ -25,6 +28,98 @@ def _wait_completed(task_ids: list[int]) -> None:
                 return
         time.sleep(0.01)
     raise AssertionError("accepted tasks did not complete")
+
+
+@pytest.mark.parametrize("memory", [True, False], ids=["memory", "cpu"])
+def test_resource_pause_retains_original_queue_and_scanner_wakeup_resumes(identity, monkeypatch, memory):
+    from app.services import recognition_resource_admission as admission
+    from app.services.windows_recognition_resources import RecognitionPressure
+
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "0")
+    pressure = [RecognitionPressure(memory=memory, cpu=not memory)]
+    monkeypatch.setattr(admission._BUDGET._observer, "sample", lambda: pressure[0])
+    calls = []
+    with SessionLocal() as db:
+        tasks = [BackgroundTask(task_type=kind, initiated_by_account_id=1, tenant_id="owner")
+            for kind in ("expense_enrichment", "expense_ocr_retry", "csv_import")]
+        db.add_all(tasks)
+        db.commit()
+        ids = [task.id for task in tasks]
+        originals = [(task.public_id, task.created_at) for task in tasks]
+
+    def handler(db, task, payload):
+        calls.append(task.id)
+        db.rollback()
+
+    registry = TaskHandlerRegistry(dict.fromkeys(("expense_enrichment", "expense_ocr_retry", "csv_import"), handler))
+    pool = _ExecutorPool()
+    try:
+        for task_id in ids:
+            pool.submit(task_id, {}, registry, run_task)
+        _wait_completed(ids[2:] if memory else ids[1:])
+        with SessionLocal() as db:
+            for identifier in ids[:2] if memory else ids[:1]:
+                task = db.get(BackgroundTask, identifier)
+                assert task.status == "queued" and task.started_at is None and task.recovery_attempts == 0
+        pressure[0] = RecognitionPressure()
+        # Recovery scans re-submit the original already-known wakeup.
+        pool.submit(ids[0], {}, registry, run_task)
+        _wait_completed(ids)
+    finally:
+        pool.shutdown(wait=True)
+    assert sorted(calls) == ids
+    with SessionLocal() as db:
+        assert [(db.get(BackgroundTask, identifier).public_id, db.get(BackgroundTask, identifier).created_at)
+            for identifier in ids] == originals
+
+
+@pytest.mark.parametrize("waiting, expected", [
+    ([("expense_enrichment", 2, "owner", 0), ("expense_ocr_retry", 1, "owner", 0)], [2, 1]),
+    ([("expense_enrichment", 1, "owner", 61), ("expense_ocr_retry", 2, "owner", 0)], [1, 2]),
+    ([("expense_enrichment", 1, "owner", 61), ("expense_ocr_retry", 2, "owner", 60)], [1, 2]),
+    ([("expense_ocr_retry", 1, "owner", 0), ("expense_ocr_retry", 2, "owner", 0)], [2, 1]),
+    ([("expense_enrichment", 1, "owner", 0), ("expense_enrichment", 2, "owner", 0)], [2, 1]),
+    ([("expense_enrichment", 1, "owner", 0), ("expense_enrichment", 1, "another", 0)], [2, 1]),
+], ids=["interactive", "aging", "aged-oldest-first", "interactive-member", "upload-member", "ledger"])
+def test_ocr_next_slot_uses_server_intent_age_and_actor(identity, monkeypatch, waiting, expected):
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "0")
+    instant = now_utc()
+    monkeypatch.setattr(executor, "now_utc", lambda: instant)
+    entered, release, calls = threading.Event(), threading.Event(), []
+    with SessionLocal() as db:
+        tasks = [BackgroundTask(task_type=kind, initiated_by_account_id=actor, tenant_id=ledger,
+            created_at=instant - timedelta(seconds=age))
+            for kind, actor, ledger, age in [("expense_enrichment", 1, "owner", 0), *waiting]]
+        db.add_all(tasks)
+        db.commit()
+        ids = [task.id for task in tasks]
+
+    def handler(db, task, payload):
+        calls.append(task.id)
+        db.rollback()
+        if task.id == ids[0]:
+            entered.set()
+            assert release.wait(timeout=10)
+
+    registry = TaskHandlerRegistry({"expense_enrichment": handler, "expense_ocr_retry": handler})
+    pool = _ExecutorPool()
+    try:
+        pool.submit(ids[0], {}, registry, run_task)
+        assert entered.wait(timeout=5)
+        # Client-like payload claims cannot change the durable server task's class/actor.
+        forged = {"priority": "interactive", "task_type": "expense_ocr_retry", "initiated_by_account_id": 999}
+        pool.submit(ids[1], forged, registry, run_task)
+        pool.submit(ids[2], {}, registry, run_task)
+        pool.submit(ids[1], forged, registry, run_task)
+        with SessionLocal() as db:
+            assert all(db.get(BackgroundTask, identifier).status == "queued" for identifier in ids[1:])
+        assert calls == ids[:1], "The current inference was preempted or a second OCR started"
+        release.set()
+        _wait_completed(ids)
+    finally:
+        release.set()
+        pool.shutdown(wait=True)
+    assert calls == [ids[index] for index in [0, *expected]]
 
 
 def test_waiting_ocr_does_not_occupy_non_ocr_worker(identity, monkeypatch):

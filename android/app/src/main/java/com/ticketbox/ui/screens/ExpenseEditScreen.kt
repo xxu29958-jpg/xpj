@@ -529,7 +529,7 @@ fun ExpenseEditScreen(
     val originalFeedbackField: @Composable (String) -> Unit = { field ->
         if (isPendingExpense && currentExpense.hasUndeletedImage) androidx.compose.runtime.key(formIdentity, field) {
             OriginalTextFeedbackField(OriginalFeedbackFieldState(field,
-                OcrSourceImageState(state.fullImage, currentExpense.imageHash, state.imageLoading),
+                OcrSourceImageState(state.fullImage, currentExpense.imageHash, state.imageLoading, currentExpense.recognitionTextLines),
                 readOriginalFeedback(originalFeedbackJson).firstOrNull { it.field == field }, !readOnly && !state.saving),
                 onChange = { originalFeedbackJson = updateOriginalFeedback(originalFeedbackJson, field, it) },
                 onLoadImage = mediaActions.onLoadFullImage)

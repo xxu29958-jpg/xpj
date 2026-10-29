@@ -123,6 +123,7 @@ def _prepare_enrichment(
     raise_on_failure: bool,
     explicit_retry: bool = False,
     ocr_region: dict | None = None,
+    task_id: int | None = None,
 ) -> _PreparedEnrichment | PendingEnrichmentResult:
     from app.database import SessionLocal
 
@@ -148,6 +149,9 @@ def _prepare_enrichment(
             from app.services.ocr_region_service import region_base
 
             _public_id, base_evidence = region_base(db, expense, ocr_region)
+    from app.services.ocr_execution_context import begin_ocr_execution, finish_ocr_execution
+
+    begin_ocr_execution(task_id, mode="region" if ocr_region is not None else "explicit" if explicit_retry else "automatic")
     if ocr_region is not None:
         from app.services.ocr_region_service import extract_region
 
@@ -158,6 +162,7 @@ def _prepare_enrichment(
         run = OcrRun(extractions=(extract_explicit_ocr(snapshot, timezone_name),))
     else:
         run = collect_auto_ocr_extractions(snapshot, timezone_name=timezone_name, raise_on_failure=raise_on_failure)
+    finish_ocr_execution(task_id, run)
     return _PreparedEnrichment(
         predecessor_row_version=predecessor_row_version,
         thumbnail_source_path=snapshot.image_path,
@@ -326,6 +331,7 @@ def enrich_pending_expense(
             raise_on_failure=raise_on_failure,
             explicit_retry=explicit_retry,
             ocr_region=ocr_region,
+            task_id=task_id,
         )
         if isinstance(prepared, PendingEnrichmentResult):
             return _complete_without_inference(task_id, expense_id, tenant_id, prepared)
@@ -346,9 +352,12 @@ def enrich_pending_expense(
             before_apply,
             task_id,
         )
-    except _AUTO_ENRICHMENT_FAILURES:
+    except _AUTO_ENRICHMENT_FAILURES as exc:
         if raise_on_failure:
-            _failed_enrichment_result(expense_id, tenant_id)
+            from app.services.recognition_resource_admission import RecognitionAdmissionDeferredError
+
+            if not isinstance(exc, RecognitionAdmissionDeferredError):
+                _failed_enrichment_result(expense_id, tenant_id)
             raise
         return _failed_enrichment_result(expense_id, tenant_id)
     finally:

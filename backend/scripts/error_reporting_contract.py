@@ -32,6 +32,7 @@ PYTHON_OWNERS = {
         "OcrWorkerClient._idle_stop": {"app.error_reporting.report_error", "self._stop"},
     },
     "backend/app/services/background_task_worker.py": {"run_task": {"app.error_reporting.report_error"}},
+    "backend/app/services/background_task_recovery_service.py": {"_recovery_loop": {"app.error_reporting.report_error"}},
     "backend/app/log_sanitize.py": {
         "SanitizedFormatter.format": {"sanitize_log_text", "safe_exception_text"},
         "SanitizedFormatter.__init__": {"app.diagnostic_identity.diagnostic_build_identity"},
@@ -47,6 +48,12 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # Exact-symbol evidence, never a module/directory exemption or a handler registry.
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
+    ("backend/app/services/background_task_recovery_service.py", "start_ocr_task_recovery"): {
+        "sha256": "eaa02c69cf64125e3818900a1ef07e1fab6c530f5bb486f856e4b462d6309293",
+        "owner": "the owned recovery loop and existing sanitized backend logger",
+        "test": "backend/tests/test_ocr_task_automatic_recovery.py::test_owned_scanner_reports_failure_and_only_retries_database_errors",
+        "reason": "The actual scanner thread reports transient database errors and continues discovery after its bounded wait. Unexpected scan errors report once through the same sink and terminate the scanner without an unhandled thread exception or an automatic programming-error loop. The real-thread counterexample covers both paths; no task receipt, retry budget, input or financial state is rewritten by this terminal boundary. The common contract requires the loop to retain its shared reporting call.",
+    },
     (ANDROID + "data/local/LocalSettingsStore.kt", "writeNotificationCaptureFailure"): {
         "sha256": "c35a4e431bac4724b40011c35135bfae44ac23ca21dc2fe979ad4cd570dfa4a2",
         "owner": "existing sanitized TicketboxNetwork output and Settings persistence-failure state",
@@ -156,7 +163,7 @@ REVIEWED_BOUNDARIES = {
         "reason": "The request consumes the pool.map iterator and joins the bounded pool before returning. Unexpected Future errors propagate to the HTTP boundary with the original traceback and request id; no detached job or new output owner exists. Expected unavailable model services produce an empty discovery result without changing settings.",
     },
     ("backend/app/services/background_task_executor.py", "_ExecutorPool._dispatch"): {
-        "sha256": "948a9ef77b36a9e06dd4861658508212ca6242b5322ceff72ad25d8241f88f2a", "owner": "pool completion reports Future errors; inline errors propagate to submit_committed",
+        "sha256": "8667b1b921fafc4ab29835d3e1444b416edf7a1ffa786ea3ca5274574a7ef0f7", "owner": "pool completion reports Future errors; inline errors propagate to submit_committed",
         "test": "backend/tests/test_background_task_claim.py::test_claim_failure_is_observed_without_publishing_a_new_task_state",
         "reason": "Dispatch reserves capacity only for durable PG rows. Its Future callback observes outside-handler errors through _finished and _report_worker_outcome; callback dispatch refusal is also reported without inventing task completion. The common owner checks require every link. The original queued row remains recoverable after refusal.",
     },

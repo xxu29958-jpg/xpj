@@ -70,7 +70,10 @@ class ExpenseEditScreenContractTest {
         val bytes = java.io.ByteArrayOutputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it); it.toByteArray() }
         bitmap.recycle()
         val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        val recorded = expense().copy(imagePath = "original.png", imageHash = digest, hasImage = true)
+        val lines = com.ticketbox.domain.model.RecognitionTextLines("fact", digest, 400, 800, "exif-transposed-pixels",
+            listOf(com.ticketbox.domain.model.RecognitionTextLine("实付：7B.OO", listOf(20, 50, 390, 75)),
+                com.ticketbox.domain.model.RecognitionTextLine("原价：9B.OO", listOf(20, 100, 390, 125))))
+        val recorded = expense().copy(imagePath = "original.png", imageHash = digest, hasImage = true, recognitionTextLines = lines)
         var saved: ExpenseDraft? = null
         val restore = androidx.compose.ui.test.junit4.StateRestorationTester(composeRule)
         restore.setContent {
@@ -113,6 +116,19 @@ class ExpenseEditScreenContractTest {
             assertEquals("coarse_point", saved?.originalTextFeedback?.single()?.locationState)
             assertEquals(listOf(200f, 400f), saved?.originalTextFeedback?.single()?.point)
             assertEquals(1700L, saved?.originalAmountMinor)
+        }
+        composeRule.onNodeWithText("查看原图并指出位置").performScrollTo().performClick()
+        composeRule.onNodeWithText("从已识别文字中选位置").performScrollTo().performClick()
+        composeRule.onNodeWithText("实付：7B.OO").performScrollTo().performClick()
+        composeRule.onNodeWithText("使用这一位置").performScrollTo().performClick()
+        composeRule.onNodeWithText("保存").assertIsDisplayed().performClick()
+        composeRule.runOnIdle {
+            val feedback = requireNotNull(saved?.originalTextFeedback).single()
+            assertEquals("suggested_region", feedback.locationState)
+            assertEquals(listOf(20f, 50f, 390f, 75f), feedback.box)
+            assertEquals("实付：78.00", feedback.verbatimText)
+            assertEquals(1700L, saved?.originalAmountMinor)
+            assertEquals(null, saved?.recognitionFieldChoices)
         }
     }
 

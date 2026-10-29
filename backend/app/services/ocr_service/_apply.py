@@ -208,6 +208,13 @@ def collect_auto_ocr_extractions(
 
     started = time.monotonic()
     try:
+        from app.services.recognition_resource_admission import (
+            RecognitionAdmissionDeferredError,
+            defer_optional_enhancement,
+        )
+
+        if defer_optional_enhancement():
+            raise RecognitionAdmissionDeferredError()
         fallback_result = get_ocr_provider(fallback_name).extract(expense, timezone_name=timezone_name)
     except _AUTO_OCR_FAILURES as exc:
         logger.warning("auto OCR enhancement failed provider=%s error_type=%s", fallback_name, type(exc).__name__)

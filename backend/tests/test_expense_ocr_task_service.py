@@ -132,6 +132,22 @@ def test_legacy_failed_attempt_remains_retryable_without_acknowledging_failure(r
         assert db.get(Expense, retry_input["expense_id"]).row_version == retry_input["expected_row_version"] + 1
 
 
+def test_legacy_replay_cannot_reset_an_exhausted_original_recovery_budget(retry_input):
+    with SessionLocal() as db:
+        original = submit_expense_ocr_task(db, **retry_input, legacy=True)
+        identifier, original_input = original.id, original.input_payload_json
+        original.status, original.error_code, original.recovery_attempts = "failed", "ocr_timeout", 1
+        original.recovery_history_json = '[{"attempt":1,"error_code":"ocr_timeout"}]'
+        db.commit()
+        for _ in range(2):
+            repeated = submit_expense_ocr_task(db, **retry_input, legacy=True)
+            assert repeated.id == identifier and repeated.input_payload_json == original_input
+            assert repeated.status == "failed" and repeated.recovery_attempts == 1
+        assert db.scalar(select(func.count()).select_from(BackgroundTask)
+            .where(BackgroundTask.task_type == "expense_ocr_retry")) == 1
+        assert db.scalar(select(ApiIdempotencyKey)).status == "in_progress"
+
+
 def test_same_key_with_changed_predecessor_cannot_enqueue_another_intent(retry_input):
     with SessionLocal() as db:
         submit_expense_ocr_task(db, **retry_input)

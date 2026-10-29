@@ -6,6 +6,7 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import timedelta
 from threading import Event
 
 import pytest
@@ -28,15 +29,18 @@ from tests.test_pending_enrichment_task_service import _ocr_result, _seed_pendin
 pytestmark = pytest.mark.real_db
 
 
-@pytest.mark.parametrize("enhancement,notice,fact_count,other_amount", [
-    (AppError("ocr_timeout", status_code=503), "enhancement_failed", 1, None),
-    (OcrResult("商户：盒马\n实付：78.00", 0.99), "provider_conflict", 2, 7800),
-    (OcrResult("商户：盒马\n实付：18.00", 0.99, amount_cents=7800), "provider_conflict", 2, None),
+@pytest.mark.parametrize("enhancement,notice,fact_count,other_amount,pressure", [
+    (AppError("ocr_timeout", status_code=503), "enhancement_failed", 1, None, False),
+    (OcrResult("商户：盒马\n实付：78.00", 0.99), "provider_conflict", 2, 7800, False),
+    (OcrResult("商户：盒马\n实付：18.00", 0.99, amount_cents=7800), "provider_conflict", 2, None, False),
+    (AssertionError("pressure must prevent optional model invocation"), "enhancement_failed", 1, None, True),
 ])
-def test_partial_ocr_commits_primary_fact_and_notice_once(identity, monkeypatch, enhancement, notice, fact_count, other_amount):
+def test_partial_ocr_commits_primary_fact_and_notice_once(identity, monkeypatch, enhancement, notice, fact_count, other_amount, pressure):
     expense_id, predecessor, task_id = _seed_pending_enrichment_task()
     primary = OcrResult("商户：盒马\n实付：18.00", 0.8)
     _providers(monkeypatch, primary, enhancement)
+    if pressure:
+        monkeypatch.setattr("app.services.recognition_resource_admission.defer_optional_enhancement", lambda: True)
     monkeypatch.setattr(_enrich, "_try_stage_thumbnail", lambda *_: None)
     with SessionLocal() as db:
         task = db.get(BackgroundTask, task_id)
@@ -256,6 +260,11 @@ def test_original_receipt_recovers_submission_refusal_without_duplicate_applicat
     for _ in range(2):
         with SessionLocal() as db:
             resume_pending_expense_enrichment(db, task_public_id=public_id, expense_id=expense_id, tenant_id="owner")
+            task = db.get(BackgroundTask, task_id)
+            if not applied and task.status == "queued":
+                assert task.recovery_attempts == 1 and task.recovery_after > now_utc()
+                task.recovery_after = now_utc() - timedelta(seconds=1)
+                db.commit()
     with SessionLocal() as db:
         assert db.get(BackgroundTask, task_id).status == "completed"
         assert db.get(Expense, expense_id).row_version == predecessor + 1

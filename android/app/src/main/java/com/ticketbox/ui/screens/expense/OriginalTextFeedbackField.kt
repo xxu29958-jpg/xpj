@@ -3,6 +3,8 @@ package com.ticketbox.ui.screens.expense
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -139,7 +141,10 @@ private fun OriginalFeedbackPosition(image: OcrSourceImageState, value: Original
             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
                 Text(stringResource(R.string.original_feedback_locate), style = MaterialTheme.typography.titleLarge)
                 Text(stringResource(R.string.original_feedback_location_help))
-                if (ready) RegionSelectionImage(requireNotNull(image.image), selected, true) { selected = it }
+                if (ready) {
+                    RegionSelectionImage(requireNotNull(image.image), selected, true) { selected = it }
+                    OriginalFeedbackTextLines(image) { selected = it }
+                }
                 else Text(stringResource(if (image.loading) R.string.expense_edit_large_image_loading else R.string.expense_edit_large_image_failed))
                 FlowRow {
                     TextButton(onClick = onDismiss) { Text(stringResource(R.string.ocr_region_cancel)) }
@@ -150,6 +155,24 @@ private fun OriginalFeedbackPosition(image: OcrSourceImageState, value: Original
                             box = selected.takeIf { it.size == 4 }?.map(Int::toFloat)))
                     }) { Text(stringResource(R.string.original_feedback_use_location)) }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OriginalFeedbackTextLines(image: OcrSourceImageState, onSelect: (IntArray) -> Unit) {
+    val source = image.textLines ?: return
+    val size = image.image?.let(::sourceSize) ?: return
+    if (source.imageSha256 != image.image.originalSha256 || source.width != size.width.toInt() ||
+        source.height != size.height.toInt() || source.coordinateSpace != "exif-transposed-pixels") return
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    TextButton(onClick = { expanded = !expanded }) { Text(stringResource(R.string.original_feedback_text_lines)) }
+    if (expanded) {
+        Text(stringResource(R.string.original_feedback_text_lines_help), style = MaterialTheme.typography.bodySmall)
+        source.lines.forEach { line ->
+            TextButton(modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), onClick = { onSelect(line.box.toIntArray()) }) {
+                Text(line.text, modifier = Modifier.fillMaxWidth())
             }
         }
     }

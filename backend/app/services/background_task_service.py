@@ -22,19 +22,11 @@ Cancellation contract:
 
 Orphan recovery:
     :func:`recover_orphaned_tasks` is called from the FastAPI lifespan and
-    finishes committed OCR applied receipts, including their FX handoff, and
-    force-fails other tasks in ``running`` or ``queued`` state. The
-    in-process executor model means that a backend restart immediately
-    voids every in-flight task (the ThreadPoolExecutor died with the
-    previous process; nothing in this process can resume it) and every
-    queued-but-not-yet-started task (executor never dequeued it; on
-    restart the queue is empty). By default both states are therefore
-    orphans the moment startup begins. Cloud/multi-worker deployments may
-    set ``BACKGROUND_TASK_ORPHAN_GRACE_SECONDS`` to avoid a newly started
-    worker force-failing fresh work still heartbeating in another process.
-    The upload domain may explicitly readmit its original restart-orphaned
-    enrichment from durable input and through the same capacity authority.
-    Startup never reruns OCR for an applied receipt or restarts terminal work.
+    finishes committed OCR receipts, including their FX handoff. Durable OCR
+    input is discovered by the same recovery owner, preserving queued work and
+    bounding interrupted attempts; replay cannot reset its budget or deadline.
+    Other domains retain original-request recovery and the configurable orphan
+    grace window. Startup never repeats inference for an applied receipt.
 """
 
 from __future__ import annotations
@@ -47,9 +39,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.database import SessionLocal
 from app.errors import AppError
 from app.models import BackgroundTask
-from app.services import background_task_executor
+from app.services import background_task_executor, background_task_worker
 from app.services.background_task_admission import stage_queued_task
 from app.services.background_task_executor import BackgroundTaskSubmissionError as BackgroundTaskSubmissionError
 from app.services.background_task_executor import (
@@ -210,6 +203,16 @@ def submit_existing(db: Session, task: BackgroundTask, payload: dict[str, object
     ))
 
 
+def complete_applied_task(task_id: int) -> None:
+    """Finish only a committed OCR receipt after process death, without inference."""
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        if (task is None or task.task_type not in background_task_executor.OCR_TASK_TYPES
+                or task.result_summary_json is None):
+            return
+        background_task_worker._mark_completed(db, task_id, _runtime_handler_registry(), recover_applied=True)
+
+
 def get_task(db: Session, public_id: str, *, account_id: int | None, tenant_id: str | None) -> BackgroundTask:
     """Owner-scoped fetch. account_id=None means caller is system-scoped
     (no enforcement) — only safe in tests / startup hooks. When account_id is
@@ -257,8 +260,12 @@ def request_cancellation(
         return task
     if task.cancellation_requested_at is None:
         task.cancellation_requested_at = now_utc()
-        db.commit()
-        db.refresh(task)
+    if task.status == "queued" and task.task_type in background_task_executor.OCR_TASK_TYPES:
+        from app.services.background_task_handler_api import stage_task_cancellation
+
+        stage_task_cancellation(task)
+    db.commit()
+    db.refresh(task)
     return task
 
 
@@ -269,8 +276,8 @@ def request_cancellation(
 def recover_orphaned_tasks() -> int:
     """Recover active tasks that the current deployment should treat as dead.
 
-    Complete OCR rows that already own an applied receipt; fence the other
-    ``running`` and ``queued`` rows because their old executor is gone. When
+    Complete OCR rows that already own an applied receipt, retain queued input
+    and bound interrupted OCR attempts; fence work owned by other domains. When
     ``BACKGROUND_TASK_ORPHAN_GRACE_SECONDS`` is positive, fresh active rows are
     preserved and only rows whose heartbeat/creation timestamp exceeded the
     grace window are failed. That is the cloud/multi-worker compatibility

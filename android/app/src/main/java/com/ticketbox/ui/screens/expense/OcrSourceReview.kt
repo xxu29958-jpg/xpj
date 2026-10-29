@@ -20,7 +20,8 @@ import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.RecognitionSourceLocation
 
 internal data class OcrSourceEntry(val id: String, val label: String, val text: String, val location: RecognitionSourceLocation)
-internal data class OcrSourceImageState(val image: ProtectedImage?, val expectedHash: String?, val loading: Boolean)
+internal data class OcrSourceImageState(val image: ProtectedImage?, val expectedHash: String?, val loading: Boolean,
+    val textLines: com.ticketbox.domain.model.RecognitionTextLines? = null)
 
 @Composable
 internal fun OcrSourceReview(state: OcrSourceImageState, entries: List<OcrSourceEntry>,
