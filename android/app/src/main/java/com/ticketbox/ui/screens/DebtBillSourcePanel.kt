@@ -1,8 +1,6 @@
 package com.ticketbox.ui.screens
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,18 +32,22 @@ internal fun DebtBillSourcePanel(state: DebtDetailUiState, sources: DebtBillActi
             error = result.isFailure
         }
         Column {
-            if (error) TextButton(onClick = { refresh++ }) { Text(stringResource(R.string.debt_bill_retry_original)) }
-            rows.forEach { source ->
-                Text(stringResource(R.string.debt_bill_originals))
-                Text(source.fileName)
-                if (source.originalState == "verified") {
-                    TextButton(onClick = { scope.launch {
+            if (error) DebtBillOriginalRow(listOf(stringResource(R.string.debt_bill_retry_original)), readable = false,
+                showDivider = rows.isNotEmpty(), onClick = { refresh++ })
+            rows.forEachIndexed { index, source ->
+                val readable = source.originalState == "verified"
+                DebtBillOriginalRow(
+                    lines = if (readable) listOf(source.fileName) else listOf(source.fileName, stringResource(
+                        if (source.originalState == "cleaned") R.string.debt_bill_original_cleaned
+                        else R.string.debt_bill_original_unavailable)),
+                    readable = readable,
+                    showDivider = index < rows.lastIndex,
+                    onClick = if (readable) { { scope.launch {
                         val result = sources.original(binding, source.publicId)
                         preview = result.getOrNull()
                         error = result.isFailure
-                    } }) { Text(stringResource(R.string.debt_bill_view_original)) }
-                } else Text(stringResource(if (source.originalState == "cleaned") R.string.debt_bill_original_cleaned
-                    else R.string.debt_bill_original_unavailable))
+                    } } } else null,
+                )
             }
         }
         preview?.let { bytes -> DebtBillOriginalDialog(bytes) { preview = null } }
