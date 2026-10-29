@@ -23,7 +23,7 @@ internal fun DebtBillInputPanel(state: DebtListUiState, model: DebtListViewModel
         Text(stringResource(R.string.debt_bill_originals), style = MaterialTheme.typography.titleSmall)
         if (state.activeBillCaptureKey != null && state.activeBill == null) {
             Text(stringResource(R.string.debt_bill_local_save_unverified), style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = onPickOriginal, enabled = state.canModify && !state.isSubmitting && !state.isParsingBill) {
+            TextButton(onClick = onPickOriginal, enabled = state.canPrepareBill) {
                 Text(stringResource(R.string.debt_bill_retry_capture))
             }
         }

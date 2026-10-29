@@ -272,8 +272,7 @@ class DebtListViewModel(
         val access = creation.currentAccess() ?: return null
         // homeCurrencyResolved 门与 submitDraft 对齐（PR#255 R5 P3）：币种未确认时预填必按
         // 兜底口径格式化，重绑后金额文本静默变义（JPY 账本的 "1200.00" 重绑后非法/变值）。
-        if (!access.canModify || access.binding != activeAccess?.binding || current.isParsingBill ||
-            current.isSubmitting || current.publicationUnverified || !current.homeCurrencyResolved) {
+        if (!access.canModify || access.binding != activeAccess?.binding || !current.canPrepareBill) {
             return null
         }
         val currency = current.ledgerHomeCurrency ?: return null
