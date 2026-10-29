@@ -1,6 +1,8 @@
 # Ticketbox 当前产品地图与修订规划
 
-2026-10-29 OCR 专项整合候选：#700–#705 已合并；余下自动续办、交互调度、共享资源准入、尝试版本、无候选文字行反馈和冻结回放，经 #706–#711 分片审查后由 #712 统一完成主线门禁与合并。原 PG task、原件、幂等回执、反馈资格及财务事实继续各有单一责任；原图浏览、点选与直接填写保持普通核对入口。当前责任表、逐片失败/修复证据和受限收益见 [OCR 专项资格记录](../qualification/2026-10-29-ocr-dynamic-usability-feedback.md)。真实材料回放仅证明一项局部候选排序改善及撤回对照，尚未证明真人用时或普遍OCR准确率提升；最终安装/API恢复与发行件资格仍在收口，不据此提高全产品发布状态。
+2026-10-30 当前状态：Owner 已明确 RC 验收通过。已完成的非苹果整包旅程对应 source `c67594104ebd3f2a9be4ddf0adac9f65fca75af7`、tree `8aaf4b2f302dcfef7d410e0507e42cb47660a2b7`；实际 Setup、APK、清单、schema、环境和证据完整性见 [RC 接受记录](../qualification/2026-10-30-rc-acceptance-record.md)。iPhone/iPad 延期未验，R2/U1/C1 HOLD 保持；不将后续 main 当作已验二进制，也不宣称所有平台 `INTERNAL_BETA_READY`。Post-RC 生命周期、原文反馈消费、泛化评估和 Web 票据创建借还按新授权继续。
+
+2026-10-29 OCR 专项已完成范围内资格：#700–#705 已合并；余下自动续办、交互调度、共享资源准入、尝试版本、无候选文字行反馈和冻结回放，经 #706–#711 分片审查后由 #712 合入 `0286620cd8df6da999d54f3122f9d37067b660dd`。该 main 的实际 Setup 已完成专用干净 Windows VM 安装及 API 基线，压力/恢复证据保留各自实际执行候选；不混同前述 RC 接受物。原 PG task、原件、幂等回执、反馈资格及财务事实继续各有单一责任；原图浏览、点选与直接填写保持普通核对入口。责任表、逐片失败/修复证据和受限收益见 [OCR 专项资格记录](../qualification/2026-10-29-ocr-dynamic-usability-feedback.md)，其中提交前“待验”保留为阶段快照。真实材料回放仅证明一项局部候选排序改善及撤回对照，尚未证明真人用时或普遍 OCR 准确率提升。
 
 2026-10-27 公网专项：普通 Manager 已通过既有 Lifecycle 接管固定版本连接器，按需短时 UAC，旧手动入口已退役。实际 Windows 安装、服务、秘密 ACL、暂停/移除、凭据轮换、双实例身份负控、Web 上传与回复丢失续办，以及 Android 正式 Release 真机扫码上传、真实续期后再鉴权读取原图均已取得限定资格。Android 续期用同签名测试组件触发发行件已有协程，协议、凭证保存及随后普通 UI 原图读取均为实际执行；没有等待自然计时到期。源码、发行件、复用和清理限制、Q01–Q15 结果见[公网接入资格记录](../qualification/2026-10-26-public-connectivity.md)。这不改变 iPhone 未实机、iPad 后补、R2/U1/C1 HOLD 及 `INTERNAL_BETA_READY=false`。
 
@@ -8,7 +10,7 @@
 
 已有能力的边界收尾：CSV 独立行事务的普通 App/Web 撤权重验已由 #667 合入并通过独立主线资格；七天以上通用 Outbox 的原结果恢复已由 #668 正常合入 `db5a1ed9f1eccf2c027126f77f7af615417d5d4e`，保留原身份、原稿、key、OCC 和既有回执，不另建队列。Web 资金/信封领域导航映射在本次提交补齐，正常、输入错误和冲突恢复页面的既有业务回归已通过；Android 还债目标的真实返回与原稿恢复验证通过，无需追加产品修改。每片源码资格与最终发行件资格分别核准。真实图片的额外准确率收益及原 30%/50% 试验目标尚未获证明，不把功能交付或 CI 通过写成算法效果提升。
 
-最终 exact Internal Beta RC 尚未退出：必须冻结同一候选的 Setup、Backend/Manager manifests、Android Release APK、schema、工具链和 release profile，完成所承诺整包旅程及后置核验；iPhone 实机采集回执和错误分支不得由 API 或模拟器代替。R1 同环境完整恢复已按 2026-10-25 用户授权完成有界资格：独立 main `f8191b51` 的实际 Setup 从 `edad37ef` 完整冷备恢复原 Owner、角色、事实、历史与原件，普通桌面/Web 和保留数据的 Android Release 已重连；旧意图隔离、新业务恰好一次及正常宿主重启后保留均已证明。已验证 Windows/PG/schema 组合、恢复点、实际构建和失败反例见 [R1 资格记录](../qualification/2026-10-25-r1-same-environment.md)，入口与材料要求见 [Windows 数据保护](../runbook/WINDOWS_BACKUP_TASK.md)。R2 异机恢复、U1 升级失败恢复、C1 独立加密副本继续 HOLD；iPad 验收按用户要求单独后补，iPhone 实机仍未验证，不由 R1 代替。
+历史状态（2026-10-25，RC 状态由顶部接受记录接替）：当时最终 exact Internal Beta RC 尚未退出，要求冻结同一候选的 Setup、Backend/Manager manifests、Android Release APK、schema、工具链和 release profile，完成所承诺整包旅程及后置核验。R1 同环境完整恢复已按当日用户授权完成有界资格：独立 main `f8191b51` 的实际 Setup 从 `edad37ef` 完整冷备恢复原 Owner、角色、事实、历史与原件，普通桌面/Web 和保留数据的 Android Release 已重连；旧意图隔离、新业务恰好一次及正常宿主重启后保留均已证明。已验证 Windows/PG/schema 组合、恢复点、实际构建和失败反例见 [R1 资格记录](../qualification/2026-10-25-r1-same-environment.md)，入口与材料要求见 [Windows 数据保护](../runbook/WINDOWS_BACKUP_TASK.md)。R2 异机恢复、U1 升级失败恢复、C1 独立加密副本继续 HOLD；后续 Owner 将 iPhone/iPad 一并延期，两者未验状态不由 R1 或模拟器代替。
 
 历史记录（2026-10-18，已由上述当前状态接替）：[信用消费、还款、分期与资金账户的完整研判和施工定义](TICKETBOX_CREDIT_PAYMENT_CONTINUITY_CONTRACT.md)当时记录 CreditDraw/授信关系/真实分期/还款分配/账户现金流尚未完整实现，图片去重 V2 与学习算法等待 Owner 研判。该记录说明当时缺口，不能用于否认后续主线交付。
 
