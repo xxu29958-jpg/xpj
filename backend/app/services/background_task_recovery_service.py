@@ -16,6 +16,7 @@ from app.database import SessionLocal
 from app.error_reporting import report_error
 from app.models import BackgroundTask
 from app.services.background_task_registry import OCR_TASK_TYPES
+from app.services.recognition_resource_admission import defer_ocr_dispatch
 from app.services.time_service import ensure_utc, now_utc
 
 _RECOVERABLE_STATUSES = frozenset({"running", "queued"})
@@ -137,7 +138,8 @@ def resume_due_ocr_tasks() -> int:
 
     applied = and_(BackgroundTask.status.in_(("queued", "running", "failed")),
                    BackgroundTask.result_summary_json.is_not(None))
-    resumable = and_(BackgroundTask.input_payload_json.is_not(None),
+    eligible_types = [kind for kind in OCR_TASK_TYPES if not defer_ocr_dispatch(kind)]
+    resumable = and_(BackgroundTask.task_type.in_(eligible_types), BackgroundTask.input_payload_json.is_not(None),
         BackgroundTask.cancellation_requested_at.is_(None),
         or_(and_(BackgroundTask.status == "queued", or_(BackgroundTask.recovery_after.is_(None),
                     BackgroundTask.recovery_after <= now_utc())),

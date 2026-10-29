@@ -352,9 +352,12 @@ def enrich_pending_expense(
             before_apply,
             task_id,
         )
-    except _AUTO_ENRICHMENT_FAILURES:
+    except _AUTO_ENRICHMENT_FAILURES as exc:
         if raise_on_failure:
-            _failed_enrichment_result(expense_id, tenant_id)
+            from app.services.recognition_resource_admission import RecognitionAdmissionDeferredError
+
+            if not isinstance(exc, RecognitionAdmissionDeferredError):
+                _failed_enrichment_result(expense_id, tenant_id)
             raise
         return _failed_enrichment_result(expense_id, tenant_id)
     finally:

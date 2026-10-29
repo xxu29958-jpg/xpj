@@ -16,11 +16,14 @@ from app.services import background_task_admission as admission
 from app.services import background_task_executor as executor
 from app.services import background_task_recovery_service as recovery
 from app.services import background_task_worker as worker
+from app.services import recognition_resource_admission as resource_admission
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.expense_service import _enrich
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.pending_enrichment_task_service import resume_pending_expense_enrichment
 from app.services.time_service import now_utc
+from app.services.windows_recognition_resources import RecognitionPressure
+from tests.test_background_task_fairness import _wait_completed
 from tests.test_pending_enrichment_task_service import _ocr_result, _seed_pending_enrichment_task
 
 pytestmark = pytest.mark.real_db
@@ -43,6 +46,86 @@ def clock(monkeypatch):
     for module in (recovery, worker, executor):
         monkeypatch.setattr(module, "now_utc", lambda: value[0])
     return value
+
+
+@pytest.fixture
+def resource_pressure(monkeypatch):
+    budget = resource_admission.RecognitionBudget()
+    value = [RecognitionPressure()]
+    monkeypatch.setattr(resource_admission, "_BUDGET", budget)
+    monkeypatch.setattr(budget._observer, "sample", lambda: value[0])
+    yield value
+    budget.close()
+
+
+def test_memory_race_after_dispatch_keeps_original_task_until_resources_return(identity, monkeypatch, clock, resource_pressure):
+    task_id, public_id, payload = _original()
+    calls = []
+    race = [True]
+
+    def extract(expense, **_):
+        if race:
+            race.pop()
+            resource_pressure[0] = RecognitionPressure(memory=True)
+        with resource_admission.recognition_slot("rapidocr", limit=1, timeout=0):
+            calls.append(expense.id)
+            return _ocr_result()
+
+    monkeypatch.setattr(_enrich, "collect_auto_ocr_extractions", extract)
+    monkeypatch.setattr(_enrich, "_try_stage_thumbnail", lambda *_: None)
+    monkeypatch.setattr(executor, "submit_task", lambda identifier, original, *, registry, runner: runner(identifier, original, registry))
+    assert not resource_admission.defer_ocr_dispatch("expense_enrichment")
+    worker.run_task(task_id, payload)
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        assert (task.status, task.recovery_attempts, task.error_code) == ("queued", 0, None)
+        assert task.recovery_after > clock[0] and task.result_summary_json is None
+        assert json.loads(task.recovery_history_json) == [] and json.loads(task.input_payload_json) == payload
+        assert db.scalar(select(func.count()).select_from(OcrFact)) == 0
+    clock[0] += timedelta(seconds=3)
+    assert recovery.resume_due_ocr_tasks() == 0 and calls == []
+    resource_pressure[0] = RecognitionPressure()
+    assert recovery.resume_due_ocr_tasks() == 1
+    with SessionLocal() as db:
+        task = db.get(BackgroundTask, task_id)
+        assert (task.status, task.public_id, task.recovery_attempts) == ("completed", public_id, 0)
+        assert json.loads(task.input_payload_json) == payload and task.result_summary_json is not None
+        assert db.scalar(select(func.count()).select_from(OcrFact)) == 1
+    assert calls == [payload["expense_id"]]
+
+
+def test_cpu_paused_scan_batch_cannot_hide_a_later_explicit_retry(identity, monkeypatch, resource_pressure):
+    from app.services.expense_service import _ocr
+
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "0")
+    automatic = [_original()[0] for _ in range(recovery._SCAN_BATCH)]
+    explicit = _original()[0]
+    with SessionLocal() as db:
+        for task in db.scalars(select(BackgroundTask).where(BackgroundTask.id.in_(automatic))):
+            task.created_at = now_utc() - timedelta(minutes=5)
+        db.get(BackgroundTask, explicit).task_type = "expense_ocr_retry"
+        db.commit()
+    settings = replace(admission.get_settings(), background_task_max_active=32, background_task_max_ledger_active=32)
+    monkeypatch.setattr(admission, "get_settings", lambda: settings)
+    monkeypatch.setattr(_enrich, "collect_auto_ocr_extractions", lambda *_args, **_kwargs: _ocr_result())
+    monkeypatch.setattr(_enrich, "_try_stage_thumbnail", lambda *_: None)
+    monkeypatch.setattr(_ocr, "extract_explicit_ocr", lambda *_args, **_kwargs: _ocr_result().extractions[0])
+    pool = executor._ExecutorPool()
+    monkeypatch.setattr(executor, "submit_task", lambda identifier, original, *, registry, runner: pool.submit(identifier, original, registry, runner))
+    resource_pressure[0] = RecognitionPressure(cpu=True)
+    try:
+        assert recovery.resume_due_ocr_tasks() == 1
+        _wait_completed([explicit])
+        with SessionLocal() as db:
+            assert all(db.get(BackgroundTask, identifier).status == "queued" for identifier in automatic)
+        resource_pressure[0] = RecognitionPressure()
+        assert recovery.resume_due_ocr_tasks() == len(automatic)
+        _wait_completed(automatic)
+        with SessionLocal() as db:
+            assert db.scalar(select(func.count()).select_from(OcrFact)) == len(automatic) + 1
+            assert all(task.recovery_attempts == 0 for task in db.scalars(select(BackgroundTask)))
+    finally:
+        pool.shutdown(wait=True)
 
 
 def test_old_capacity_blocked_failures_do_not_starve_already_admitted_work(identity, monkeypatch, clock):
@@ -232,7 +315,7 @@ def test_changed_recipe_retains_the_original_attempt_and_observed_success(identi
         assert db.scalar(select(func.count()).select_from(OcrFact)) == 1
 
 
-@pytest.mark.parametrize("code", ["ocr_model_missing", "ocr_runtime_unavailable", "image_integrity_mismatch", "ocr_inference_failed"])
+@pytest.mark.parametrize("code", ["ocr_model_missing", "ocr_runtime_unavailable", "image_integrity_mismatch", "ocr_inference_failed", "rate_limited"])
 def test_nontransient_input_or_installation_failure_does_not_loop(identity, monkeypatch, code):
     task_id, _public_id, payload = _original()
 
@@ -325,12 +408,15 @@ def test_cancellation_during_backoff_releases_quota_without_waiting_for_a_worker
         assert admitted.status == "queued"
 
 
-def test_cancellation_during_a_failing_inference_wins_over_automatic_recovery(client, identity, monkeypatch):
+@pytest.mark.parametrize("deferred", [False, True])
+def test_cancellation_during_a_failing_inference_wins_over_automatic_recovery(client, identity, monkeypatch, deferred):
     task_id, public_id, payload = _original()
 
     def fail_after_cancellation(*_, **__):
         response = client.post(f"/api/tasks/{public_id}/cancel", headers=identity.app_headers)
         assert response.status_code == 200 and response.json()["cancellation_requested_at"] is not None
+        if deferred:
+            raise resource_admission.RecognitionAdmissionDeferredError()
         raise AppError("ocr_timeout", status_code=503)
 
     monkeypatch.setattr(_enrich, "collect_auto_ocr_extractions", fail_after_cancellation)

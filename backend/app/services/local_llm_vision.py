@@ -129,7 +129,7 @@ def extract_message_content(response: LocalVisionChatResponse) -> str:
     raise AppError("server_error", "本地大模型没有返回文本内容。", status_code=500)
 
 
-def rewrap_code_fence(content: str) -> str:
+def _rewrap_code_fence(content: str) -> str:
     lines = content.splitlines()
     if lines and lines[0].strip().startswith("```"):
         lines = lines[1:]
@@ -141,7 +141,7 @@ def rewrap_code_fence(content: str) -> str:
 def parse_json_object(content: str) -> LocalVisionModelJson:
     cleaned = content.strip()
     if cleaned.startswith("```"):
-        cleaned = rewrap_code_fence(cleaned)
+        cleaned = _rewrap_code_fence(cleaned)
     start = cleaned.find("{")
     end = cleaned.rfind("}")
     if start < 0 or end <= start:
