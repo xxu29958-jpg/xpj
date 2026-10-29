@@ -96,7 +96,7 @@
           <p class="workspace-note">操作事件保留改判历史；已关闭不等于明确拒绝，数量不能作为准确率。</p>
           {% if row.decision_type in ['category_suggestion', 'duplicate_candidate', 'recognition_time_choice', 'recognition_field_choice', 'original_text_feedback', 'repayment_choice'] %}
           {% for axis, enabled, label, stop, resume in [('new_suggestions', row.new_suggestions_enabled, '新建议', '停止生成新建议', '恢复生成新建议'), ('training', row.training_enabled, '此版本反馈', '隔离此版本反馈', '恢复此版本反馈资格')] %}
-          {% if axis == 'training' or (entry and row.algorithm_version == entry.current_version) %}
+          {% if axis == 'training' or (row.decision_type != 'original_text_feedback' and entry and row.algorithm_version == entry.current_version) %}
           <form method="post" action="/owner/algorithm-versions/policy">
             <input type="hidden" name="ledger_id" value="{{ selected_ledger.ledger_id }}">
             <input type="hidden" name="decision_type" value="{{ row.decision_type }}">
