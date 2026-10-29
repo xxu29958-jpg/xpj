@@ -179,6 +179,12 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # ADR-0038 create_row / WEB_DEBT_BILL_CAPTURE.md: POST /web/debt-bills
+    # is the Web adapter to the existing private capture/key/receipt owner.
+    # No predecessor row exists; parse/discard add two source OCC carriers.
+    # test_web_debt_bill_capture proves refusal, replay, lost ACK, adoption
+    # OCC and discard. Admit only this base/count edge; retain all 161 carriers.
+    ("b114234f1d4a07cd646f84697e621c31dd6fffb9", 157, 158),
     # ADR-0038 create_row / Rev3.2 original-before-suggestion lifecycle:
     # POST /api/debt-bills creates a private source and frozen receipt under
     # the original actor/key/body claim. No predecessor source exists; later
