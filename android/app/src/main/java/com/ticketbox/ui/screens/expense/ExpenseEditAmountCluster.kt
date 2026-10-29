@@ -59,6 +59,7 @@ internal data class ExpenseEditAmountClusterActions(
 internal fun ExpenseEditAmountCluster(
     state: ExpenseEditAmountClusterState,
     actions: ExpenseEditAmountClusterActions,
+    candidates: @Composable () -> Unit = {},
 ) {
     AppPaperCard {
         Column(
@@ -105,6 +106,7 @@ internal fun ExpenseEditAmountCluster(
             if (state.manualExchangeRateVisible) {
                 ExpenseEditManualExchangeRateInput(state = state, actions = actions)
             }
+            candidates()
         }
     }
 }

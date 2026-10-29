@@ -508,6 +508,10 @@ fun ExpenseEditScreen(
     fun chooseEventTime(candidate: com.ticketbox.domain.model.RecognitionTimeCandidate) {
         setTimeForm(timeForm.withEventTime(candidate))
     }
+    fun correctOriginalField(candidate: com.ticketbox.domain.model.RecognitionFieldCandidate) {
+        fieldChoicesJson = updateFieldChoice(fieldChoicesJson, candidate.field,
+            candidate.choice().copy(intent = "original_correction"))
+    }
     val formSections: @Composable () -> Unit = {
         if (currentExpense.status == "pending") currentExpense.recognitionNotes.forEach { note ->
             androidx.compose.material3.Text(note, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
@@ -518,6 +522,8 @@ fun ExpenseEditScreen(
             hasDraftChanges = hasDraftChanges,
             actions = primaryActions,
         )
+        if (isPendingExpense) RecognizedEventDrafts(currentExpense.recognitionFields, currentExpense.recognitionTime,
+            !readOnly, ::chooseOriginalField, ::chooseEventTime)
         ExpenseEditAmountCluster(
             state = ExpenseEditAmountClusterState(
                 currency = currency,
@@ -549,6 +555,10 @@ fun ExpenseEditScreen(
                 onManualExchangeRateFocusChanged = { amountFocused = it },
                 onToggleCurrency = { currencyExpanded = !currencyExpanded },
             ),
+            candidates = {
+                if (isPendingExpense) RecognizedFieldCandidates(currentExpense.recognitionFields.filter { it.field == "amount_cents" },
+                    !readOnly, ::chooseOriginalField, ::openCandidateSource, ::correctOriginalField)
+            },
         )
         SettingsDetailRow(
             title = stringResource(R.string.expense_edit_merchant_field_label),
@@ -559,14 +569,8 @@ fun ExpenseEditScreen(
             ExpenseEditMerchantField(merchant = merchant, onMerchantChange = {
                 merchant = it; fieldChoicesJson = updateFieldChoice(fieldChoicesJson, "merchant")
             }, enabled = !readOnly)
-        }
-        if (isPendingExpense) {
-            RecognizedEventDrafts(currentExpense.recognitionFields, currentExpense.recognitionTime,
-                !readOnly, ::chooseOriginalField, ::chooseEventTime)
-            RecognizedFieldCandidates(currentExpense.recognitionFields, !readOnly, ::chooseOriginalField, ::openCandidateSource) { candidate ->
-                fieldChoicesJson = updateFieldChoice(fieldChoicesJson, candidate.field,
-                    candidate.choice().copy(intent = "original_correction"))
-            }
+            if (isPendingExpense) RecognizedFieldCandidates(currentExpense.recognitionFields.filter { it.field == "merchant" },
+                !readOnly, ::chooseOriginalField, ::openCandidateSource, ::correctOriginalField)
         }
         ExpenseEditCategorySelector(
             state = ExpenseEditCategorySelectorState(

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="recognition_fields_title">对照原件金额与商户</string>
+    <string name="recognition_fields_amount_title">对照原件金额</string>
+    <string name="recognition_fields_merchant_title">对照原件商户</string>
     <string name="recognition_fields_help">选择属于本次交易的内容填入草稿，保存后才会修改账单。</string>
     <string name="recognition_fields_amount">采用此金额</string>
     <string name="recognition_fields_merchant">采用此商户</string>

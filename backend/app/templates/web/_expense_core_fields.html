@@ -118,6 +118,9 @@
              disabled>
     </label>
   </div>
+  {% with recognition_fields=recognition_fields|default([])|selectattr('field', 'equalto', 'amount_cents')|list, recognition_field_name='amount_cents', recognition_field_label='金额' %}
+  {% include '_recognized_field_candidates.html' %}
+  {% endwith %}
   {% if core_fields_compact|default(false) %}</details>{% endif %}
 
   {% include "_expense_fx.html" %}
@@ -170,6 +173,9 @@
            {% if not can_write or e.is_split_received %}disabled{% endif %}>
     {% if field_errors.get('merchant') %}<span id="{{ _p }}-merchant-error" class="error-text">{{ field_errors.get('merchant') }}</span>{% endif %}
   </label>
+  {% with recognition_fields=recognition_fields|default([])|selectattr('field', 'equalto', 'merchant')|list, recognition_field_name='merchant', recognition_field_label='商户' %}
+  {% include '_recognized_field_candidates.html' %}
+  {% endwith %}
   {% if core_fields_compact|default(false) %}</details>{% endif %}
 
   {% if core_fields_compact|default(false) %}
@@ -212,8 +218,6 @@
   </div>
   {% endif %}
   {% if core_fields_compact|default(false) %}</details>{% endif %}
-
-  {% include '_recognized_field_candidates.html' %}
 
   {% if time_form %}
   {% if core_fields_compact|default(false) %}
