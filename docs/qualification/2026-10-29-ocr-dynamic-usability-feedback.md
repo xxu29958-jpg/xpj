@@ -1,5 +1,20 @@
 # OCR 动态调度、可用性与反馈专项
 
+## 当前整合与责任边界（2026-10-29）
+
+#700–#705 已进入主线。按用户“用最快方法完成”的要求，余下已分片审查的 #706–#711 与安装来源修复 #712 统一由 #712 对 main 完成最终检查和合并；原 PR、提交及失败/通过证据保留，确认整合合入后才关闭被接替的 PR。此处记录整合候选，最终 Windows 安装/API 恢复及发行件资格仍须实际完成。
+
+| 责任 | 唯一写入或执行入口 | 消费者与保留条件 |
+| --- | --- | --- |
+| 原图、Pending、幂等回执与接纳额度 | `routes/_upload_request.py`、`background_task_admission.py` | Android/Web 原请求续办；执行忙可排队，持久数量/字节/账本/磁盘额度满准确拒绝 |
+| 下一任务与恢复 | `background_task_executor.py`、`background_task_recovery_service.py`，状态规则在 `background_task_handler_api.py` | 原 PG task 与原输入；交互优先、等待老化、公平推进；退避有限，取消/撤权/OCC 和已应用回执优先 |
+| 资源与尝试身份 | `recognition_resource_admission.py`、`windows_recognition_resources.py`、`ocr_execution_context.py` | 单 RapidOCR 槽与外部视觉请求共享准入；配置版本和本次实际结果分开，旧尝试归档；压力恢复不增加模型并发 |
+| 原 OCR 与人工纠正 | `recognition_source_service.py`、`recognition_field_service.py` | Android/Web 原图浏览、点选或直填；无候选文字行仍可反馈，取消/返回保留草稿；财务值不由建议静默覆盖 |
+| 合格反馈和撤回 | `learning_service` 的资格/撤回 owner，`recognition_field_memory.py` 的现有消费者 | 原预测、反馈与财务值分别保留；采集、可消费和真实收益各自验证 |
+| 评估与发行 | 既有 `ocr_feedback_replay` CLI、Windows 官方构建/校验入口 | 冻结输入与清洁源码、全队列分母、生产 API 和撤回对照；Setup/APK/原生设备证据分别绑定其实际候选 |
+
+上述服务路径均相对于 `backend/app/services`，路由路径相对于 `backend/app`。没有增加第二队列、第二图片库或新的学习权威。iPhone/iPad deferred 与 R2/U1/C1 HOLD 保持；本专项合并不等于完整产品或 Internal Beta 资格。
+
 范围权威为用户指定的[完整方案](https://chatgpt.com/space/page_3ead8cb265408191bae986ec5587d8c6)第 1–412 行，2026-10-29 核对 sequence 3。启动基线 `c67594104ebd3f2a9be4ddf0adac9f65fca75af7`。本记录不代替完整方案，也不宣布全专项退出。
 
 - **Goal**：可靠保留原图和主识别结果，点选/直输完成纠错，在既有单槽与 PG task owner 上有界接纳、恢复和调度，让合格反馈通过真实后续消费者发挥作用。
@@ -212,3 +227,5 @@ PR #711 审查发现三项回放完整性缺口：空清单被接受、仓库内
 入口修复提交 `270e541c49253babc8a74b330c613123ff311d29`（tree `e043e22cf867db7853daaf0f72908f6f270aeecd`）再次完成相同120组×3臂，3项真实PG测试通过（64.53秒）；入口接受干净源码，结束时身份保持，原图校验仍逐次通过，所有对照统计与e29e41结果完全相等。此次验证只补充当前入口的完整性，未增加独立样本数量。
 
 后续审查发现回放纠正无条件附带人工汇率，导致本位币金额通过生产PATCH时被拒绝。新增合成协议诊断分别通过实际API回放CNY和MYR的三种模式，先复现CNY三项失败、MYR三项通过（14.65秒）；现仅在原币不同于当前账单本位币时附带受控汇率。修复后的完整性合同与这六个API反例共10项通过（14.23秒），Ruff/diff通过。合成图片只证明协议边界，不计入真实OCR质量样本；既有MYR冻结材料仍绑定其原报告，修复后的完整回放另行核验。
+
+本位币修复后的完整回放已在干净且稳定的整合源码 `18204fd6f649f295118a0b97774609fa4cde628a`（tree `a6e0d5dc4f52b5401903422575234a0252eb571a`）完成：同一冻结manifest，120组×3臂、360次原图摘要/ETag检查，3项真实PG通过。`feedback-replay-home-currency-r4` 的全部对照统计与270e541的r3逐项相等；新增CNY协议反例补齐适用范围，没有增加独立图片数或收益结论。
