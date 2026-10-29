@@ -105,7 +105,7 @@ def first_original_web(confirmation_store, confirmation_web, monkeypatch, tmp_pa
     monkeypatch.setattr(web_originals, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
     monkeypatch.setattr(manual_expense_draft_presenter, "manual_draft_scope", lambda *args: SCOPE)
     monkeypatch.setattr(file_service, "get_settings", lambda: SimpleNamespace(upload_dir=state.uploads,
-                                                                            max_upload_size_bytes=1024 * 1024))
+                                                                            max_upload_size_bytes=1024 * 1024, upload_min_free_bytes=0))
     with state.session_factory() as db:
         resolve_write_capability(db)
         expense = db.get(Expense, 42)

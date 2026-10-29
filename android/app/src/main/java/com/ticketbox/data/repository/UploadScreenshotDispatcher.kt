@@ -69,7 +69,7 @@ class UploadScreenshotDispatcher(
         return when {
             code in NON_RETRYABLE_UPLOAD_ERRORS ->
                 DispatchResult.Failure(requireNotNull(code), blocksFollowing = code == "idempotency_key_reused")
-            code in setOf(UPLOAD_CAPACITY_FULL, "runtime_version_mismatch", "client_upgrade_required") ->
+            code in setOf(UPLOAD_CAPACITY_FULL, "upload_storage_full", "runtime_version_mismatch", "client_upgrade_required") ->
                 DispatchResult.Failure(requireNotNull(code))
             code == "idempotency_key_in_progress" -> DispatchResult.RetryableFailure(code)
             else -> DispatchResult.Failure(code ?: parsed.message, blocksFollowing = error.code() in setOf(401, 403, 409))

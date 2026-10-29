@@ -117,8 +117,10 @@ def resume_pending_expense_enrichment(
     if task.status == "failed":
         try:
             task = readmit_orphaned_task(db, task.id)
-        except BackgroundTaskCapacityFullError as exc:
-            raise AppError("enrichment_capacity_full", status_code=503) from exc
+        except BackgroundTaskCapacityFullError:
+            # A recovery wakeup cannot revoke the already accepted upload receipt.
+            db.rollback()
+            return
         if task is None:
             return
         db.commit()

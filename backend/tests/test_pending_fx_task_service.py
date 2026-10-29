@@ -264,7 +264,8 @@ def test_optional_admission_capacity_does_not_rollback_staged_bill(identity, mon
 def test_edit_with_auto_sync_off_excludes_old_task_and_manual_request_uses_new_input(
     client, identity, monkeypatch, finish_stale_task,
 ):
-    monkeypatch.setattr(background_task_admission, "get_settings", lambda: SimpleNamespace(background_task_max_active=1))
+    admission_settings = replace(background_task_admission.get_settings(), background_task_max_active=1)
+    monkeypatch.setattr(background_task_admission, "get_settings", lambda: admission_settings)
     expense_id, version, task_id, _ = _seed_pending_task(identity)
     submitted = Mock()
     monkeypatch.setattr("app.services.background_task_executor.submit_task", submitted)
@@ -296,7 +297,8 @@ def test_edit_with_auto_sync_off_excludes_old_task_and_manual_request_uses_new_i
 
 
 def test_repeated_pending_edits_replace_obsolete_tasks_within_one_active_slot(client, identity, monkeypatch):
-    monkeypatch.setattr(background_task_admission, "get_settings", lambda: SimpleNamespace(background_task_max_active=1))
+    admission_settings = replace(background_task_admission.get_settings(), background_task_max_active=1)
+    monkeypatch.setattr(background_task_admission, "get_settings", lambda: admission_settings)
     submitted = Mock()
     monkeypatch.setattr("app.services.background_task_executor.submit_task", submitted)
     expense_id, version, task_id, _ = _seed_pending_task(identity)
@@ -343,7 +345,8 @@ def test_repeated_pending_edits_replace_obsolete_tasks_within_one_active_slot(cl
 
 @pytest.mark.parametrize("edit_at", ["provider", "apply"])
 def test_edit_during_running_fx_releases_original_slot_without_applying_old_result(client, identity, monkeypatch, edit_at):
-    monkeypatch.setattr(background_task_admission, "get_settings", lambda: SimpleNamespace(background_task_max_active=1))
+    admission_settings = replace(background_task_admission.get_settings(), background_task_max_active=1)
+    monkeypatch.setattr(background_task_admission, "get_settings", lambda: admission_settings)
     monkeypatch.setattr("app.services.background_task_executor.submit_task", Mock())
     expense_id, version, task_id, _ = _seed_pending_task(identity)
     with SessionLocal() as db:
@@ -390,7 +393,8 @@ def test_edit_during_running_fx_releases_original_slot_without_applying_old_resu
 
 
 def test_replacement_preserves_committed_fx_receipt_before_old_worker_terminal_publication(client, identity, monkeypatch):
-    monkeypatch.setattr(background_task_admission, "get_settings", lambda: SimpleNamespace(background_task_max_active=1))
+    admission_settings = replace(background_task_admission.get_settings(), background_task_max_active=1)
+    monkeypatch.setattr(background_task_admission, "get_settings", lambda: admission_settings)
     monkeypatch.setattr("app.services.background_task_executor.submit_task", Mock())
     monkeypatch.setattr(service, "fetch_pending_fx_reference", Mock(return_value=_daily()))
     expense_id, version, task_id, _ = _seed_pending_task(identity)

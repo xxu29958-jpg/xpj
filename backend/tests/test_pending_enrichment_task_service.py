@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
@@ -38,7 +39,8 @@ def test_one_slot_enrichment_hands_off_one_durable_fx_task_after_completion(monk
     expense_id, predecessor, task_id = _seed_pending_enrichment_task()
     payload = {"expense_id": expense_id, "tenant_id": "owner", "timezone_name": "Asia/Shanghai",
         "expected_row_version": predecessor}
-    monkeypatch.setattr(background_task_admission, "get_settings", lambda: SimpleNamespace(background_task_max_active=1))
+    admission_settings = replace(background_task_admission.get_settings(), background_task_max_active=1)
+    monkeypatch.setattr(background_task_admission, "get_settings", lambda: admission_settings)
     monkeypatch.setattr(pending_fx_task_service, "get_settings", lambda: SimpleNamespace(fx_rate_auto_sync_enabled=True))
     calls = []
 

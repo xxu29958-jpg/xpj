@@ -107,6 +107,7 @@ private val backendErrorUserMessages = mapOf(
     "rate_limited" to "尝试太频繁，请稍后再试。",
     // Mirrors the backend copy for the pre-commit capacity rejection.
     "enrichment_capacity_full" to "识别队列暂时已满，这张小票还没有保存，请稍后再试。",
+    "upload_storage_full" to "服务器可用存储空间不足，这张原图尚未保存。请释放空间后重试。",
     "file_too_large" to "上传文件超过大小限制。",
     "unsupported_file_type" to "不支持的图片格式。",
     "expense_not_found" to "账单不存在。",

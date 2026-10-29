@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -281,6 +282,7 @@ def _store_admitted_image(data: bytes, *, tenant_id: str, ext: str,
     now = datetime.now(UTC)
     target_dir = settings.upload_dir / tenant_id / now.strftime("%Y") / now.strftime("%m")
     target_dir.mkdir(parents=True, exist_ok=True)
+    require_upload_storage(bytes_to_write=len(data))
 
     filename = f"{secrets.token_hex(16)}.{ext}"
     target_path = target_dir / filename
@@ -309,6 +311,13 @@ def _store_admitted_image(data: bytes, *, tenant_id: str, ext: str,
         size_bytes=len(data),
         image_evidence=image_evidence,
     )
+
+
+def require_upload_storage(*, bytes_to_write: int = 0) -> None:
+    """Keep the configured original-store reserve before publication and admission."""
+    settings = get_settings()
+    if shutil.disk_usage(settings.upload_dir).free - bytes_to_write < settings.upload_min_free_bytes:
+        raise AppError("upload_storage_full", status_code=507)
 
 
 def upload_reference_for_path(path: Path) -> str:
