@@ -270,7 +270,7 @@ def test_elevated_lifecycle_is_an_installed_onedir_payload() -> None:
     assert "exclude_binaries=True" in spec
     assert "COLLECT(" in spec
     assert "PyInstaller onefile" not in spec
-    assert 'Source: "..\\payload\\TicketboxLifecycle\\*"' in installer
+    assert 'Source: "{#TicketboxRepositorySource}\\distribution\\windows\\payload\\TicketboxLifecycle\\*"' in installer
     assert "recursesubdirs createallsubdirs" in installer
     assert 'Filename: "{app}\\bin\\lifecycle\\TicketboxLifecycle.exe"' in installer
     assert 'WorkingDir: "{app}\\bin\\lifecycle"' in installer
