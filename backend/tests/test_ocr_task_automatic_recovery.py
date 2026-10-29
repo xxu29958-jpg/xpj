@@ -14,6 +14,7 @@ from app.errors import AppError
 from app.models import BackgroundTask, Expense, LedgerMember, OcrFact
 from app.services import background_task_admission as admission
 from app.services import background_task_executor as executor
+from app.services import background_task_handler_api as handler_api
 from app.services import background_task_recovery_service as recovery
 from app.services import background_task_worker as worker
 from app.services.currency_binding_service import resolve_write_capability
@@ -40,7 +41,7 @@ def _original(status="queued"):
 @pytest.fixture
 def clock(monkeypatch):
     value = [now_utc()]
-    for module in (recovery, worker, executor):
+    for module in (handler_api, recovery, worker, executor):
         monkeypatch.setattr(module, "now_utc", lambda: value[0])
     return value
 

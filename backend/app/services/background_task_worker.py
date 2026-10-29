@@ -130,16 +130,6 @@ def _mark_completed(db: Session, task_id: int, registry: TaskHandlerRegistry, *,
             background_task_executor.submit_committed(db, continuation, runner=run_task)
 
 
-def complete_applied_task(task_id: int) -> None:
-    """Finish only a committed OCR receipt after process death, without inference."""
-    with SessionLocal() as db:
-        task = db.get(BackgroundTask, task_id)
-        if (task is None or task.task_type not in background_task_executor.OCR_TASK_TYPES
-                or task.result_summary_json is None):
-            return
-        _mark_completed(db, task_id, runtime_handler_registry(), recover_applied=True)
-
-
 def _mark_cancelled(db: Session, task_id: int) -> None:
     task = db.get(BackgroundTask, task_id)
     if task is None:
