@@ -18,10 +18,11 @@ from app.services.learning_service._withdrawal import withdraw_feedback
 from tests._runtime_protocol import negotiated_headers
 
 
-def seed_original():
+def seed_original(*, image_format="PNG"):
     data = io.BytesIO()
-    Image.new("RGB", (400, 800), "white").save(data, format="PNG")
-    image = save_upload_bytes(data.getvalue(), tenant_id="owner", filename="original.png", content_type="image/png")
+    Image.new("RGB", (400, 800), "white").save(data, format=image_format)
+    extension = "heic" if image_format == "HEIF" else "png"
+    image = save_upload_bytes(data.getvalue(), tenant_id="owner", filename=f"original.{extension}", content_type=f"image/{extension}")
     with SessionLocal() as db:
         resolve_write_capability(db)
         expense = Expense(tenant_id="owner", source="camera", status="pending", category="其他",
@@ -37,6 +38,23 @@ def annotation(digest, location="verified_region"):
         "location_state": location, "box": [10, 40, 390, 70] if "region" in location else None,
         "point": [20, 50] if location == "coarse_point" else None, "verbatim_text": "实付：78.00",
         "role": "payment", "issue": "missing", "text_verified": True}
+
+
+def test_heic_feedback_does_not_depend_on_an_earlier_upload_registering_the_decoder(client, identity, monkeypatch):
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    expense_id, digest = seed_original(image_format="HEIF")
+    # Model a new backend process that has only read an existing original/thumbnail.
+    monkeypatch.delitem(Image.OPEN, "HEIF")
+    monkeypatch.setattr(Image, "ID", [name for name in Image.ID if name != "HEIF"])
+    headers = {**negotiated_headers(client, identity.app_headers), "Idempotency-Key": str(uuid4())}
+    saved, _ = save(client, headers, expense_id, [annotation(digest)])
+    assert saved.status_code == 200, saved.text
+    with SessionLocal() as db:
+        event = db.scalar(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == expense_id,
+            LedgerLearningEvent.signal_type == "original_text_feedback"))
+        assert feedback_assessments(db, tenant_id="owner", events=[event])[event.id][0] == "valid"
 
 
 def save(client, headers, expense_id, feedback, *, expected=None, amount=1700):

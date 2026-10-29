@@ -4,6 +4,7 @@ from sqlalchemy import select
 
 from app.errors import AppError
 from app.models import LedgerLearningEvent, OcrFact
+from app.services.file_service import _register_pil_decoders
 from app.services.learning_service import EventDraft, record_event
 from app.services.learning_service._algorithm_registry import ORIGINAL_TEXT_FEEDBACK
 from app.services.learning_service._source_eligibility import _event_payload
@@ -22,6 +23,7 @@ def record_original_text_feedback(db, *, expense, annotations, actor_account_id)
         if not original.verified:
             raise AppError("original_feedback_source_changed", status_code=409)
         try:
+            _register_pil_decoders(original.path.suffix.lower().lstrip("."))
             with Image.open(original.path) as image:
                 image.verify()
             with Image.open(original.path) as image:
