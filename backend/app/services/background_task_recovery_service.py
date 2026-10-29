@@ -141,7 +141,10 @@ def resume_due_ocr_tasks() -> int:
                         BackgroundTask.recovery_after <= now_utc())),
                 and_(BackgroundTask.status == "failed", BackgroundTask.error_code.in_(INTERRUPTED_TASK_CODES),
                      BackgroundTask.recovery_attempts < len(_RETRY_DELAYS))),
-        ).order_by(BackgroundTask.created_at, BackgroundTask.id).limit(_SCAN_BATCH)))
+        # Already-admitted work must release capacity before historical failures
+        # compete for re-admission; blocked old rows cannot consume the whole scan.
+        ).order_by((BackgroundTask.status == "queued").desc(), BackgroundTask.created_at,
+                   BackgroundTask.id).limit(_SCAN_BATCH)))
     return sum(_wake_original_task(identifier) for identifier in identifiers)
 
 

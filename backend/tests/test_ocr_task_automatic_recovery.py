@@ -44,6 +44,32 @@ def clock(monkeypatch):
     return value
 
 
+def test_old_capacity_blocked_failures_do_not_starve_already_admitted_work(identity, monkeypatch, clock):
+    historical = [_original("failed")[0] for _ in range(16)]
+    admitted = [_original()[0] for _ in range(8)]
+    with SessionLocal() as db:
+        for task in db.scalars(select(BackgroundTask).where(BackgroundTask.id.in_(historical))):
+            task.error_code = "orphaned_after_restart"
+            task.created_at = clock[0] - timedelta(hours=1)
+        db.commit()
+    settings = replace(admission.get_settings(), background_task_max_active=8)
+    monkeypatch.setattr(admission, "get_settings", lambda: settings)
+    monkeypatch.setattr(_enrich, "collect_auto_ocr_extractions", lambda *_args, **_kwargs: _ocr_result())
+    monkeypatch.setattr(_enrich, "_try_stage_thumbnail", lambda *_: None)
+    monkeypatch.setattr(executor, "submit_task", lambda identifier, original, *, registry, runner: runner(identifier, original, registry))
+    assert recovery.resume_due_ocr_tasks() == len(admitted)
+    with SessionLocal() as db:
+        assert all(db.get(BackgroundTask, identifier).status == "completed" for identifier in admitted)
+    for _ in range(2):
+        clock[0] += timedelta(seconds=11)
+        assert recovery.resume_due_ocr_tasks() == 8
+    with SessionLocal() as db:
+        tasks = list(db.scalars(select(BackgroundTask)))
+        assert len(tasks) == 24 and all(task.status == "completed" for task in tasks)
+        assert all(task.recovery_attempts == 1 for task in tasks if task.id in historical)
+        assert db.scalar(select(func.count()).select_from(OcrFact)) == 24
+
+
 @pytest.mark.parametrize("interrupted_phase", ["queued", "running"])
 def test_owned_scanner_continues_original_without_client_replay(identity, monkeypatch, clock, interrupted_phase):
     task_id, public_id, payload = _original(interrupted_phase)
