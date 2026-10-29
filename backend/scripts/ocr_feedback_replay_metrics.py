@@ -7,20 +7,33 @@ def summarize(rows: list[dict]) -> dict:
     labeled = [row for row in rows if row["label_state"] != "unlabeled"]
     present = [row for row in rows if row["label_state"] == "present"]
     absent = [row for row in rows if row["label_state"] == "absent"]
-    recalled = [row for row in present if row.get("correct_candidate_count", 0) > 0]
-    exposed = [row for row in labeled if row.get("memory_suggested")]
     return {"attempted": len(rows), "independent_groups": len({row["group_id"] for row in rows}),
         "outcomes": dict(Counter(row["outcome"] for row in rows)),
         "labeled": len(labeled), "unlabeled": len(rows) - len(labeled),
         "expected_present": len(present), "expected_absent": len(absent),
+        **_ranking_counts(labeled, present), **_failure_counts(present, absent), **_feedback_counts(rows, labeled)}
+
+
+def _ranking_counts(labeled: list[dict], present: list[dict]) -> dict:
+    recalled = [row for row in present if row.get("correct_candidate_count", 0) > 0]
+    return {
         "raw_correct": sum(row.get("raw_correct") is True for row in labeled),
         "first_candidate_correct": sum(row.get("candidate_correct") is True for row in labeled),
         "correct_candidate_recalled": len(recalled),
         "correct_candidate_missing": len(present) - len(recalled),
-        "correct_candidate_below_first": sum(row.get("candidate_correct") is False for row in recalled),
+        "correct_candidate_below_first": sum(row.get("candidate_correct") is False for row in recalled)}
+
+
+def _failure_counts(present: list[dict], absent: list[dict]) -> dict:
+    return {
         "abstained_or_failed": sum(row.get("first_candidate") is None for row in present),
         "wrong_nonempty": sum(row.get("first_candidate") is not None and row.get("candidate_correct") is False for row in present),
-        "false_fill": sum(row.get("first_candidate") is not None for row in absent),
+        "false_fill": sum(row.get("first_candidate") is not None for row in absent)}
+
+
+def _feedback_counts(rows: list[dict], labeled: list[dict]) -> dict:
+    exposed = [row for row in labeled if row.get("memory_suggested")]
+    return {
         "memory_exposed_labeled": len(exposed),
         "needs_correction_after_memory": sum(row.get("candidate_correct") is False for row in exposed),
         "feedback_events": sum(row.get("feedback", {}).get("events", 0) for row in rows),

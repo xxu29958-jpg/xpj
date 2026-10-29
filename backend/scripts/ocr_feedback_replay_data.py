@@ -13,7 +13,7 @@ class ReplayMaterial:
     original_outcome: str
 
 
-def _recording(entry: dict, root: Path) -> list[ReplayMaterial]:
+def _read_recording(entry: dict, root: Path) -> tuple[dict, dict, dict]:
     report_path, snapshots_path = root / entry["report"], root / entry["snapshots"]
     if sha256(report_path) != entry["report_sha256"] or sha256(snapshots_path) != entry["snapshots_sha256"]:
         raise ValueError("recording changed after replay manifest was frozen")
@@ -25,6 +25,11 @@ def _recording(entry: dict, root: Path) -> list[ReplayMaterial]:
     by_hash = {item["evidence"]["input_sha256"]: item for item in snapshots}
     if len(by_hash) != len(snapshots):
         raise ValueError("duplicate recorded image snapshots")
+    return report, fixtures, by_hash
+
+
+def _recording(entry: dict, root: Path) -> list[ReplayMaterial]:
+    report, fixtures, by_hash = _read_recording(entry, root)
     identities = {item["sample_id"]: item for item in report["manifest"]}
     result = []
     for row in report["rows"]:
@@ -52,6 +57,11 @@ def load_replay(path: Path) -> list[ReplayMaterial]:
     if len(indexed) != len(material) or len(set(order)) != len(order) or set(order) != set(indexed):
         raise ValueError("arrival order must contain every input exactly once")
     ordered = [indexed[name] for name in order]
+    _validate_sequence(ordered)
+    return ordered
+
+
+def _validate_sequence(ordered: list[ReplayMaterial]) -> None:
     groups, images = set(), set()
     holdout_started = False
     for item in ordered:
@@ -65,4 +75,3 @@ def load_replay(path: Path) -> list[ReplayMaterial]:
         holdout_started = holdout_started or fixture.split == "holdout"
         groups.add(fixture.group_id)
         images.add(fixture.inputs.image_sha256)
-    return ordered
