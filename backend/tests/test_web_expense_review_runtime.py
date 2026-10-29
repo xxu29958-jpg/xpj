@@ -53,6 +53,79 @@ first_original_web = original_tests.first_original_web
 
 
 @pytest.mark.real_db
+@pytest.mark.parametrize("entry,stale,rotated", [("full", False, False), ("drawer", False, True), ("full", True, False)])
+def test_candidate_source_review_preserves_draft_and_verifies_original_geometry(
+        review_browser, confirmation_store, monkeypatch, tmp_path, entry, stale, rotated):
+    from PIL import Image, ImageDraw
+
+    from app.models import LedgerLearningEvent
+    from app.routes import web_media
+    from app.services.exchange_rate_service import apply_currency_payload
+    from app.services.file_service import save_upload_bytes
+    from app.services.learning_service import OcrFactDraft, record_ocr_fact
+    from tests.test_recognition_source import source_fact
+
+    client, _ = review_browser
+    image = Image.new("RGB", (400, 800), "white")
+    for y in (40, 80):
+        ImageDraw.Draw(image).text((10, y), "49.90", fill="black")
+    buffer = io.BytesIO()
+    if rotated:
+        exif = Image.Exif()
+        exif[274] = 6
+        image.transpose(Image.Transpose.ROTATE_90).save(buffer, format="JPEG", exif=exif)
+    else:
+        image.save(buffer, format="PNG")
+    saved = save_upload_bytes(buffer.getvalue(), tenant_id="owner", filename="source.jpg" if rotated else "source.png",
+        content_type="image/jpeg" if rotated else "image/png")
+    fact = source_fact()
+    evidence = json.loads(fact.evidence_json)
+    evidence["input_sha256"] = "b" * 64 if stale else saved.image_hash
+    with confirmation_store() as db:
+        resolve_write_capability(db)
+        row = db.get(Expense, 42)
+        row.image_path, row.image_hash = saved.relative_path, saved.image_hash
+        apply_currency_payload(db, tenant_id="owner", home_currency_code="CNY", expense=row,
+            payload=SimpleNamespace(amount_cents=1234), amount_was_explicit=True)
+        record_ocr_fact(db, OcrFactDraft(tenant_id="owner", expense_id=42, ocr_provider="mock",
+            raw_text=fact.raw_text, evidence_json=json.dumps(evidence)))
+        db.commit()
+    client.app.include_router(web_media.router)
+    monkeypatch.setattr(web_media, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
+    client.app.state.expense_review_probe = "source-review-probe.js"
+
+    @client.app.get("/source-review-probe.js")
+    def source_probe():
+        return FileResponse(Path(__file__).parent / "fixtures/recognition_source_probe.js", media_type="text/javascript")
+
+    cdp = browser_runtime._edge_cdp()
+    evaluate = cdp._evaluate_script
+
+    def capture(page, expression):
+        value = evaluate(page, expression)
+        preview = page.request("Runtime.evaluate", {"expression": "window.__sourcePreviewReady && !window.__sourcePreviewCaptured", "returnByValue": True})
+        if preview.get("result", {}).get("value"):
+            (tmp_path / "source-review.png").write_bytes(base64.b64decode(page.request("Page.captureScreenshot", {"format": "png"})["data"]))
+            page.request("Runtime.evaluate", {"expression": "window.__sourcePreviewCaptured = true"})
+        key_request = page.request("Runtime.evaluate", {"expression": "window.__sourceKeyRequest", "returnByValue": True})
+        if key_value := key_request.get("result", {}).get("value"):
+            page.request("Input.dispatchKeyEvent", {"type": "keyDown", **key_value})
+            page.request("Input.dispatchKeyEvent", {"type": "keyUp", **key_value})
+            page.request("Runtime.evaluate", {"expression": "window.__sourceKeyRequest = null; window.__sourceKeyDispatched = true"})
+        return value
+
+    monkeypatch.setattr(cdp, "_evaluate_script", capture)
+    path = "/web/pending?ledger_id=owner&filter=ready" if entry == "drawer" else "/web/expenses/42/edit?ledger_id=owner&return_to=pending"
+    result = _run_review_page(client, tmp_path, path + ("&stale=1" if stale else ""), width=1440 if entry == "drawer" else 393)
+    assert not result.get("error") and result["completed"], result
+    with confirmation_store() as db:
+        row = db.get(Expense, 42)
+        assert (row.original_amount_minor, row.status) == (2200, "confirmed")
+        assert not list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == 42,
+            LedgerLearningEvent.signal_type.in_(["recognition_field_choice", "recognition_time_choice"]))))
+
+
+@pytest.mark.real_db
 @pytest.mark.parametrize("entry", ["full", "drawer"])
 def test_browser_event_choice_preserves_one_transaction_and_replays_without_training_defaults(
         review_browser, confirmation_store, monkeypatch, tmp_path, entry):

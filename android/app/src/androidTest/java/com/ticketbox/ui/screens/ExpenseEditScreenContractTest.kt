@@ -62,6 +62,52 @@ class ExpenseEditScreenContractTest {
         AppSkin.Midnight else AppSkin.Default
 
     @Test
+    fun sourceReviewRejectsWrongImageAndKeepsManualDraftAcrossCandidates() {
+        val digest = "a".repeat(64)
+        val bitmap = android.graphics.Bitmap.createBitmap(400, 800, android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.WHITE)
+        for (y in listOf(62f, 102f)) android.graphics.Canvas(bitmap).drawText("49.90", 10f, y,
+            android.graphics.Paint().apply { color = android.graphics.Color.BLACK; textSize = 20f })
+        val bytes = java.io.ByteArrayOutputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it); it.toByteArray() }
+        bitmap.recycle()
+        val image = mutableStateOf<ProtectedImage?>(null)
+        fun location(top: Float) = com.ticketbox.domain.model.RecognitionSourceLocation(digest, 400, 800,
+            "exif-transposed-pixels", listOf(listOf(listOf(10f, top), listOf(390f, top), listOf(390f, top + 30), listOf(10f, top + 30))))
+        val paid = com.ticketbox.domain.model.RecognitionFieldCandidate("amount_cents", "paid", "4990", "实付",
+            "实付：49.90", "原件文字", "payment", true, "fact", "receipt-fields-v8", "CNY", 2, sourceLocation = location(80f))
+        val price = paid.copy(id = "price", label = "原价", originalText = "原价：49.90", canApply = false, sourceLocation = location(40f))
+        val recorded = expense().copy(imagePath = "original.png", imageHash = digest, hasImage = true, recognitionFields = listOf(paid, price))
+        var saved: ExpenseDraft? = null
+        composeRule.setContent {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides
+                androidx.compose.ui.unit.Density(density.density, fontScale = 1.6f)) {
+                TicketboxTheme(skin = skin) {
+                    ExpenseEditScreen(expenseEditScreenState(expense = recorded,
+                        editState = ExpenseEditUiState(fullImage = image.value)), ExpenseEditScreenActions(
+                        primary = ExpenseEditPrimaryActions(onSave = { saved = it })))
+                }
+            }
+        }
+        composeRule.onNode(hasSetTextAction() and hasText("12.34")).performScrollTo().performTextReplacement("22.00")
+        closeSoftKeyboard()
+        composeRule.onAllNodesWithText("看原图这一处")[0].performScrollTo().performClick()
+        composeRule.onNodeWithText(InstrumentationRegistry.getInstrumentation().targetContext.getString(
+            com.ticketbox.R.string.expense_edit_large_image_failed)).assertExists()
+        composeRule.runOnIdle { image.value = ProtectedImage(bytes, "image/png", "b".repeat(64)) }
+        composeRule.onNodeWithText("原图与这次识别来源不一致，暂不显示位置。仍可返回填写。").assertExists()
+        composeRule.runOnIdle { image.value = ProtectedImage(bytes, "image/png", digest) }
+        composeRule.onNodeWithText("放大").performScrollTo().performClick()
+        composeRule.onNodeWithText("下一处").performScrollTo().performClick()
+        composeRule.onNode(hasText("原价：49.90") and hasAnyAncestor(isDialog())).assertExists()
+        saveConsumerArtPreview("review-source-equal-amounts-large-font", composeRule.onNode(isDialog()).captureToImage().asAndroidBitmap())
+        composeRule.onNode(hasText("返回") and hasAnyAncestor(isDialog())).performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(null, saved) }
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle { assertEquals(2200L, saved?.originalAmountMinor); assertEquals(null, saved?.recognitionFieldChoices) }
+    }
+
+    @Test
     fun regionalRetryUsesOriginalPixelsAndKeepsTheUnsavedFinancialDraft() {
         val digest = "a".repeat(64)
         val bitmap = android.graphics.Bitmap.createBitmap(1000, 4000, android.graphics.Bitmap.Config.ARGB_8888)

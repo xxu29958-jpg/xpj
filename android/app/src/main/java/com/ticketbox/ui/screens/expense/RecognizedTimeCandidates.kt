@@ -24,12 +24,14 @@ import java.time.LocalTime
 @Composable
 internal fun RecognizedTimeCandidates(
     evidence: RecognitionTime?, form: ExpenseTimeForm, onChange: (ExpenseTimeForm) -> Unit, enabled: Boolean,
+    onSource: (String) -> Unit = {},
 ) {
-    RecognizedTimeChoices(evidence, enabled = enabled) { candidate -> onChange(form.withRecognizedTime(candidate)) }
+    RecognizedTimeChoices(evidence, enabled = enabled, onSource = onSource) { candidate -> onChange(form.withRecognizedTime(candidate)) }
 }
 
 @Composable
 internal fun RecognizedTimeChoices(evidence: RecognitionTime?, enabled: Boolean, dateOnly: Boolean = false,
+    onSource: ((String) -> Unit)? = null,
     onChoose: ((RecognitionTimeCandidate) -> Unit)? = null) {
     if (evidence == null) return
     Column {
@@ -39,18 +41,22 @@ internal fun RecognizedTimeChoices(evidence: RecognitionTime?, enabled: Boolean,
         if (evidence.status == "incomplete") Text(stringResource(R.string.recognition_time_incomplete))
         if (dateOnly) Text(stringResource(R.string.recognition_time_date_help), style = MaterialTheme.typography.bodySmall)
         evidence.candidates.forEach { candidate ->
-            RecognizedTimeRow(candidate, enabled, dateOnly, onChoose)
+            RecognizedTimeRow(candidate, enabled, dateOnly, onSource, onChoose)
         }
     }
 }
 
 @Composable
 private fun RecognizedTimeRow(candidate: RecognitionTimeCandidate, enabled: Boolean, dateOnly: Boolean,
+    onSource: ((String) -> Unit)?,
     onChoose: ((RecognitionTimeCandidate) -> Unit)?) {
     var year by rememberSaveable(candidate.id) { mutableStateOf("") }
     Text("${candidate.label} · ${candidate.localValue}")
     Text(candidate.originalText, style = MaterialTheme.typography.bodySmall)
     Text(candidate.explanation, style = MaterialTheme.typography.bodySmall)
+    if (candidate.sourceLocation != null && onSource != null) TextButton(onClick = { onSource(candidate.id) }) {
+        Text(stringResource(R.string.recognition_source_open))
+    }
     if (onChoose == null) return
     if (candidate.requiresYear) OutlinedTextField(value = year, onValueChange = {
         year = it.filter(Char::isDigit).take(4)

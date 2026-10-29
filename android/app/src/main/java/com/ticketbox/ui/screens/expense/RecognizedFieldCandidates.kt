@@ -26,7 +26,8 @@ internal fun updateFieldChoice(raw: String?, field: String, choice: RecognitionF
 
 @Composable
 internal fun RecognizedFieldCandidates(candidates: List<RecognitionFieldCandidate>, enabled: Boolean,
-    onChoose: (RecognitionFieldCandidate) -> Unit, onCorrect: (RecognitionFieldCandidate) -> Unit) {
+    onChoose: (RecognitionFieldCandidate) -> Unit, onSource: (String) -> Unit = {},
+    onCorrect: (RecognitionFieldCandidate) -> Unit) {
     if (candidates.isEmpty()) return
     Column {
         Text(stringResource(R.string.recognition_fields_title), style = MaterialTheme.typography.titleSmall)
@@ -36,6 +37,9 @@ internal fun RecognizedFieldCandidates(candidates: List<RecognitionFieldCandidat
             Text(candidate.label)
             Text(candidate.originalText, style = MaterialTheme.typography.bodySmall)
             Text(candidate.explanation, style = MaterialTheme.typography.bodySmall)
+            if (candidate.sourceLocation != null) TextButton(onClick = { onSource(candidate.id) }) {
+                Text(stringResource(R.string.recognition_source_open))
+            }
             if (candidate.canApply) TextButton(enabled = enabled, onClick = { onChoose(candidate) }) {
                 Text(stringResource(if (candidate.field == "amount_cents") R.string.recognition_fields_amount else R.string.recognition_fields_merchant))
             }

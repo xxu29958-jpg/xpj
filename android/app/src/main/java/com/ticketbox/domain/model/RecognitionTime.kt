@@ -41,4 +41,5 @@ data class RecognitionTimeCandidate(
     @param:Json(name = "requires_year") val requiresYear: Boolean = false,
     @param:Json(name = "event_id") val eventId: String? = null,
     @param:Json(name = "event_selected") val eventSelected: Boolean = false,
+    @param:Json(name = "source_location") val sourceLocation: RecognitionSourceLocation? = null,
 )

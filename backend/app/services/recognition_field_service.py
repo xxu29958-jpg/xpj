@@ -12,6 +12,7 @@ from app.services.notification_field_service import field_case_key, notification
 from app.services.recognition_amount_case import amount_case_contexts
 from app.services.recognition_decision_service import bind_source_choice
 from app.services.recognition_memory_service import time_candidate_key
+from app.services.recognition_source_service import candidate_source_location
 from app.services.recognition_time_service import _AMOUNT_ROLES, _event_prefixes
 
 
@@ -48,7 +49,8 @@ def _field_candidate(fact, item, events, version, selected_merchants):
         original_text="\n".join(fact.raw_text[start:end] for start, end in item["raw_spans"]),
         explanation="取自原件中这一处；请核对属于本次交易。", can_apply=can_apply,
         currency_code=item.get("currency_code"), minor_unit_exponent=item.get("minor_unit_exponent"),
-        evidence_public_id=fact.public_id, parser_version=version, source=source)
+        evidence_public_id=fact.public_id, parser_version=version, source=source,
+        source_location=candidate_source_location(fact, item))
 
 
 def field_value(expense, field, currency_code):

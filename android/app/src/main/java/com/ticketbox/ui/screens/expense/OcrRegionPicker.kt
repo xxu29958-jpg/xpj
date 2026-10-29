@@ -21,6 +21,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +32,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -47,12 +49,13 @@ import coil3.request.ImageRequest
 import com.ticketbox.R
 import com.ticketbox.domain.model.OcrRegionSelection
 import com.ticketbox.domain.model.ProtectedImage
+import com.ticketbox.domain.model.RecognitionSourceLocation
 import java.io.IOException
 import kotlin.math.roundToInt
 
 private enum class RegionGestureMode { Browse, Corners, Drag }
 
-private fun sourceSize(image: ProtectedImage): Size? {
+internal fun sourceSize(image: ProtectedImage): Size? {
     val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(image.bytes, 0, image.bytes.size, options)
     if (options.outWidth <= 0 || options.outHeight <= 0) return null
@@ -77,7 +80,7 @@ internal fun OcrRegionPicker(image: ProtectedImage?, expectedHash: String?, enab
             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.ocr_region_open), style = MaterialTheme.typography.titleLarge)
                 Text(stringResource(R.string.ocr_region_help))
-                if (ready) RegionSelectionImage(requireNotNull(image), requireNotNull(source), selection, enabled) { selection = it }
+                if (ready) RegionSelectionImage(requireNotNull(image), selection, enabled) { selection = it }
                 else Text(stringResource(if (image == null) R.string.expense_edit_large_image_loading else R.string.expense_edit_large_image_failed))
                 Text(stringResource(when (selection.size) {
                     4 -> R.string.ocr_region_selected
@@ -96,8 +99,9 @@ internal fun OcrRegionPicker(image: ProtectedImage?, expectedHash: String?, enab
 }
 
 @Composable
-private fun RegionSelectionImage(image: ProtectedImage, source: Size, selected: IntArray,
-    enabled: Boolean, onSelected: (IntArray) -> Unit) {
+internal fun RegionSelectionImage(image: ProtectedImage, selected: IntArray,
+    enabled: Boolean, location: RecognitionSourceLocation? = null, onSelected: (IntArray) -> Unit) {
+    val source = remember(image) { requireNotNull(sourceSize(image)) }
     var viewport by remember { mutableStateOf(Size.Zero) }
     var start by remember { mutableStateOf(Offset.Zero) }
     var end by remember { mutableStateOf(Offset.Zero) }
@@ -107,20 +111,11 @@ private fun RegionSelectionImage(image: ProtectedImage, source: Size, selected: 
     val context = LocalContext.current
     val request = remember(image) { ImageRequest.Builder(context).data(image.bytes).size(coil3.size.Size.ORIGINAL).build() }
     val color = MaterialTheme.colorScheme.primary
-    FlowRow {
-        for ((target, label) in listOf(RegionGestureMode.Browse to R.string.ocr_region_move,
-            RegionGestureMode.Corners to R.string.ocr_region_select, RegionGestureMode.Drag to R.string.ocr_region_drag)) {
-            TextButton(onClick = { mode = target; dragging = false }, enabled = enabled && target != mode) {
-                Text(stringResource(label))
-            }
-        }
-        for ((factor, label) in listOf(.5f to R.string.ocr_region_zoom_out, 2f to R.string.ocr_region_zoom_in)) {
-            TextButton(onClick = { transform = transform.adjusted(factor, Offset.Zero,
-                Offset(viewport.width / 2, viewport.height / 2), viewport, source) }, enabled = enabled) {
-                Text(stringResource(label))
-            }
-        }
+    LaunchedEffect(location, viewport) {
+        if (location != null && viewport != Size.Zero) transform = focusSourceLocation(location, viewport)
     }
+    RegionImageControls(mode, enabled, location == null, onMode = { mode = it; dragging = false },
+        onZoom = { transform = transform.adjusted(it, Offset.Zero, Offset(viewport.width / 2, viewport.height / 2), viewport, source) })
     Box(Modifier.fillMaxWidth().height(320.dp).clipToBounds().onSizeChanged { viewport = Size(it.width.toFloat(), it.height.toFloat()) }) {
         AsyncImage(model = request, contentDescription = stringResource(R.string.ocr_region_help),
             modifier = Modifier.fillMaxSize().graphicsLayer {
@@ -150,8 +145,40 @@ private fun RegionSelectionImage(image: ProtectedImage, source: Size, selected: 
                 },
             ) { change, _ -> if (dragging) { end = change.position; change.consume() } }
         }) {
+            if (location != null) drawSourceLocation(location, transform, color)
             drawRegionSelection(source, transform, selected, if (dragging) start to end else null, color)
         }
+    }
+}
+
+@Composable
+private fun RegionImageControls(mode: RegionGestureMode, enabled: Boolean, allowSelection: Boolean,
+    onMode: (RegionGestureMode) -> Unit, onZoom: (Float) -> Unit) {
+    FlowRow {
+        if (allowSelection) for ((target, label) in listOf(RegionGestureMode.Browse to R.string.ocr_region_move,
+            RegionGestureMode.Corners to R.string.ocr_region_select, RegionGestureMode.Drag to R.string.ocr_region_drag)) {
+            TextButton(onClick = { onMode(target) }, enabled = enabled && target != mode) { Text(stringResource(label)) }
+        }
+        for ((factor, label) in listOf(.5f to R.string.ocr_region_zoom_out, 2f to R.string.ocr_region_zoom_in)) {
+            TextButton(onClick = { onZoom(factor) }, enabled = enabled) { Text(stringResource(label)) }
+        }
+    }
+}
+
+private fun DrawScope.drawSourceLocation(location: RecognitionSourceLocation, transform: OcrRegionTransform, color: Color) {
+    val source = Size(location.width.toFloat(), location.height.toFloat())
+    val scale = transform.scale(size, source)
+    val margin = transform.margin(size, source)
+    location.boxes.forEach { box ->
+        val path = Path().apply {
+            box.forEachIndexed { index, point ->
+                val position = margin + Offset(point[0], point[1]) * scale
+                if (index == 0) moveTo(position.x, position.y) else lineTo(position.x, position.y)
+            }
+            close()
+        }
+        drawPath(path, color.copy(alpha = .15f))
+        drawPath(path, color, style = Stroke(2.dp.toPx()))
     }
 }
 
