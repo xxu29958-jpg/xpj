@@ -33,6 +33,33 @@ def recognition_fields(fact) -> list[RecognitionFieldCandidate]:
             and (item["value"], item.get("event_id")) in named_merchants)]
 
 
+def review_fields(fact, candidates) -> list[RecognitionFieldCandidate]:
+    # Display projection only: several parse strategies can read one original
+    # amount. The first listed reading stays; choices and memory still resolve
+    # against the full recognition_fields list so saved draft ids keep working.
+    if fact is None or not fact.evidence_json:
+        return list(candidates)
+    evidence = json.loads(fact.evidence_json).get("field_parse", {})
+    spans = {item["id"]: item["raw_spans"] for item in evidence.get("candidates", [])}
+    kept = []
+    for item in candidates:
+        index = next((i for i, other in enumerate(kept) if _same_reading(item, other, spans, fact.raw_text)), None)
+        if index is None:
+            kept.append(item)
+        elif item.event_selected and not kept[index].event_selected:
+            kept[index] = kept[index].model_copy(update={"event_selected": True})
+    return kept
+
+
+def _same_reading(item, other, spans, raw_text):
+    key = ("field", "role", "value", "currency_code", "event_id", "evidence_public_id", "source")
+    # Amount evidence also contains word-only role labels. Two different
+    # amounts can share "支付成功"; only overlapping numeric text is a reading.
+    return item.field == "amount_cents" and all(getattr(item, name) == getattr(other, name) for name in key) and any(
+        any(char.isdecimal() for char in raw_text[max(left, other_left):min(end, other_end)])
+        for left, end in spans.get(item.id, []) for other_left, other_end in spans.get(other.id, []))
+
+
 def _field_candidate(fact, item, events, version, selected_merchants):
     field, role = item["field"], item.get("role") or "unknown"
     label = _AMOUNT_ROLES.get(role, "金额") if field == "amount_cents" else "商户"

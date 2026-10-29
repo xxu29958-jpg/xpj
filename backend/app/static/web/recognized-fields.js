@@ -30,9 +30,12 @@
     }
     return true;
   }
+  function fieldInput(form, field) {
+    return form.elements.namedItem(field === "amount_cents" ? "amount_yuan" : "merchant");
+  }
   function applyCandidate(form, candidate, correction) {
     if (correction) {
-      const input = form.elements.namedItem(candidate.field === "amount_cents" ? "amount_yuan" : "merchant");
+      const input = fieldInput(form, candidate.field);
       return Boolean(input && !input.disabled && input.value.trim());
     }
     if (candidate.field === "amount_cents") return copyMoney(form, candidate);
@@ -40,6 +43,12 @@
     if (!merchant || merchant.disabled) return false;
     merchant.value = candidate.value; merchant.dispatchEvent(new Event("input", {bubbles: true}));
     return true;
+  }
+  function unavailableMessage(form, candidate, correction) {
+    const input = fieldInput(form, candidate.field), noun = candidate.field === "amount_cents" ? "金额" : "商户";
+    if (!input || input.disabled) return `这笔账单的${noun}不能在这里修改。`;
+    if (correction) return `${noun}还是空的：请先在上方填入你核对后的${noun}，再点“注明已对照此处纠正${noun}”。`;
+    return `无法自动填入这条${noun}，请直接修改${noun}。`;
   }
   document.addEventListener("focusin", event => {
     const field = {amount_yuan: "amount_cents", merchant: "merchant"}[event.target.name];
@@ -51,13 +60,19 @@
     if (!button || button.disabled || button.closest("fieldset")?.disabled) return;
     const correction = button.hasAttribute("data-recognized-field-correction");
     const form = button.closest("form"), candidate = JSON.parse(button.dataset.recognizedField || button.dataset.recognizedFieldCorrection);
-    if (!form || !candidate.can_apply || !applyCandidate(form, candidate, correction)) return;
+    if (!form || !candidate.can_apply) return;
+    const status = button.closest("[data-recognized-fields]").querySelector("[data-recognized-field-status]");
+    if (!applyCandidate(form, candidate, correction)) {
+      // An enabled control never fails silently: say why nothing was recorded.
+      status.textContent = unavailableMessage(form, candidate, correction);
+      return;
+    }
     saveChoices(form, [...choices(form).filter(item => item.field !== candidate.field), {
       field: candidate.field, candidate_id: candidate.id, evidence_public_id: candidate.evidence_public_id,
       parser_version: candidate.parser_version, source: candidate.source,
       intent: button.dataset.eventDraftApply ? "bookkeeping" : correction ? "original_correction" : (candidate.selection_intent || "candidate"),
     }]);
-    button.closest("[data-recognized-fields]").querySelector("[data-recognized-field-status]").textContent = correction
+    status.textContent = correction
       ? "已注明你对照这一处原件作了纠正，请保存当前修改。" : "已填入当前草稿，请核对后保存。";
   });
   document.addEventListener("input", event => {

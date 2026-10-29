@@ -209,9 +209,13 @@ class DebtCreationNavigationRoomTest {
         waitFor("我欠原往来 小王")
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("我欠原往来 小王"))
         compose.onNodeWithText("我欠原往来 小王").performClick()
-        waitFor(text(R.string.debt_bill_view_original))
-        compose.onNodeWithText(text(R.string.debt_bill_view_original)).performScrollTo().performClick()
-        waitFor(context.getString(android.R.string.ok))
+        // The original is an entry row after the balance and actions; the lazy detail composes it once scrolled to.
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("bank.jpg")) }.isSuccess
+        }
+        capture("debt-bill-detail-entry")
+        compose.onNodeWithText("bank.jpg").performClick()
+        waitFor(text(R.string.common_confirm))
         assertEquals(listOf("bill-source"), originalReads)
         assertTrue(sourceBytes.isNotEmpty())
         assertEquals(original.payloadJson, runBlocking { requireNotNull(harness.fixture.debtBillInputDao.input(original.captureKey)).payloadJson })

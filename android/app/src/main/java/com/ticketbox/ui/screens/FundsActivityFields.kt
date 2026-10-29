@@ -2,11 +2,9 @@ package com.ticketbox.ui.screens
 
 import com.ticketbox.R
 import androidx.compose.ui.res.stringResource
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -17,7 +15,6 @@ import androidx.compose.runtime.setValue
 import com.ticketbox.domain.model.FinancialAccount
 import com.ticketbox.data.repository.FundsInput
 import com.ticketbox.domain.model.CurrencyCode
-import com.ticketbox.ui.components.AppSecondaryButton
 import com.ticketbox.ui.components.CurrencyChoiceField
 import com.ticketbox.viewmodel.FundsViewModel
 import com.ticketbox.viewmodel.choosePayer
@@ -45,9 +42,8 @@ internal fun FundsActivityFields(input: FundsInput, accounts: List<FinancialAcco
             Text(stringResource(R.string.funds_loan_amount_note))
         }
         "reconciliation" -> {
-            Row {
-                Switch(input.applyAdjustment, { value -> vm.edit { it.copy(applyAdjustment = value) } }, enabled = enabled)
-                Text(stringResource(R.string.funds_apply_adjustment))
+            FundsSwitchRow(stringResource(R.string.funds_apply_adjustment), input.applyAdjustment, enabled) { value ->
+                vm.edit { it.copy(applyAdjustment = value) }
             }
             Text(stringResource(R.string.funds_observation_only_note))
         }
@@ -58,7 +54,7 @@ internal fun FundsActivityFields(input: FundsInput, accounts: List<FinancialAcco
 @Composable
 private fun FundsTransferFields(input: FundsInput, accounts: List<FinancialAccount>, enabled: Boolean, vm: FundsViewModel) {
     var choosing by rememberSaveable { mutableStateOf(false) }
-    AppSecondaryButton(input.payerName.ifBlank { stringResource(R.string.funds_choose_receiver) }, enabled = enabled) { choosing = true }
+    FundsAccountChoice(stringResource(R.string.funds_receiver_account), input.payerName, stringResource(R.string.funds_choose_receiver), enabled) { choosing = true }
     if (choosing) AlertDialog(onDismissRequest = { choosing = false }, title = { Text(stringResource(R.string.funds_receiver_account)) },
         text = { LazyColumn { items(accounts.filter { it.kind != "credit" && !it.archived && it.publicId != input.accountId }) { account ->
             TextButton(onClick = { vm.choosePayer(account); choosing = false }) { Text("${account.name} · ${account.currencyCode}") }

@@ -166,7 +166,6 @@ private fun LazyListScope.debtDetailBodyItems(
         }
         DebtDetailBodyState.Content -> state.debt?.let { loaded ->
             panels.splitAgreement?.let { section -> item { section() } }
-            panels.billSources?.let { section -> item { section() } }
             item { DebtReadSource(state.fetchedAt, state.fromCache, state.isLoading) }
             if (loaded.sourceType == "credit_facility") {
                 item { DebtRemainingCard(loaded) }
@@ -187,6 +186,8 @@ private fun LazyListScope.debtDetailBodyItems(
                     callbacks = callbacks,
                 )
             }
+            // 建债原账单是金额与操作之后的条目行，不挡在未结金额前面（同 Web 往来详情）。
+            panels.billSources?.let { section -> item { section() } }
             // 完整历史对 member/external 同源呈现：member 只读历史，external/manual
             // 的 active 还款另有单笔作废入口（repaymentVoidActionAllowed 门内）。
             item {

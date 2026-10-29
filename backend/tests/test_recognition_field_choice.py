@@ -72,6 +72,54 @@ def test_original_amount_and_merchant_choices_are_scoped_and_replayed_once(clien
             assert data["field"] in {"amount_cents", "merchant"} and data["_action_outcome"] == "committed"
 
 
+_TWO_LINE_TOTAL = "邻里便利店\n合计 ¥{0}\n实付 ¥{0}\n人民币 CNY"
+
+
+def test_equal_amounts_sharing_a_payment_label_keep_both_original_locations(client, identity):
+    expense_id = _seed(paid=4990, raw_override="¥49.90\n支付成功\n¥49.90")
+    headers = negotiated_headers(client, identity.app_headers)
+    amounts = [item for item in client.get(f"/api/expenses/{expense_id}", headers=headers).json()["recognition_fields"]
+        if item["field"] == "amount_cents"]
+    assert len(amounts) == 2, amounts
+    assert {item["original_text"] for item in amounts} == {"¥49.90\n支付成功", "支付成功\n¥49.90"}
+    assert {(item["role"], item["value"]) for item in amounts} == {("payment", 4990)}
+    assert len({item["id"] for item in amounts}) == 2
+
+
+def _hidden_payment_choice(client, headers, expense_id):
+    from app.services.learning_service import read_ocr_facts
+    from app.services.recognition_field_service import recognition_fields
+
+    before = client.get(f"/api/expenses/{expense_id}", headers=headers).json()
+    shown = [c for c in before["recognition_fields"] if c["field"] == "amount_cents"]
+    with SessionLocal() as db:
+        fact = read_ocr_facts(db, tenant_id="owner", expenses=[db.get(Expense, expense_id)])[expense_id]
+        hidden = next(c for c in recognition_fields(fact) if c.field == "amount_cents" and c.role == "payment"
+            and c.id not in {item["id"] for item in shown})
+    # A browser draft or queued Android intent from before the projection may hold a hidden reading.
+    saved = client.patch(f"/api/expenses/{expense_id}", headers={**headers, "Idempotency-Key": str(uuid4())},
+        json={"expected_row_version": before["row_version"], "original_currency_code": "CNY",
+            "original_amount_minor": hidden.value, "recognition_field_choices": [_choice(hidden.model_dump())]})
+    assert saved.status_code == 200, saved.text
+    return shown, hidden
+
+
+def test_repeated_readings_collapse_for_review_but_a_saved_duplicate_id_still_records(client, identity):
+    expense_id = _seed("邻里便利店", paid=12860, raw_override=_TWO_LINE_TOTAL.format("128.60"))
+    headers = negotiated_headers(client, identity.app_headers)
+    shown, hidden = _hidden_payment_choice(client, headers, expense_id)
+    assert [(c["role"], c["original_text"]) for c in shown] == [("payment", "实付 ¥128.60"), ("total", "合计 ¥128.60")], shown
+    with SessionLocal() as db:
+        events = list(db.scalars(select(LedgerLearningEvent).where(
+            LedgerLearningEvent.subject_id == expense_id, LedgerLearningEvent.signal_type == "recognition_field_choice")))
+    assert [json.loads(event.after_payload)["selected"]["id"] for event in events] == [hidden.id]
+    # The next receipt of this layout recalls that hidden reading first, still without a repeated card.
+    next_id = _seed("邻里便利店", paid=9900, raw_override=_TWO_LINE_TOTAL.format("99.00"))
+    amounts = [c for c in client.get(f"/api/expenses/{next_id}", headers=headers).json()["recognition_fields"]
+        if c["field"] == "amount_cents"]
+    assert [c["role"] for c in amounts] == ["payment", "total"] and "同类原件" in amounts[0]["explanation"], amounts
+
+
 @pytest.mark.parametrize("source_change", ["amount", "ocr_fact", "ocr_fact_tie"])
 def test_personal_field_case_reorders_a_new_source_and_stops_when_its_source_changes(client, identity, source_change):
     from app.services.learning_service._cleanup import cleanup_expired_learning_tables
