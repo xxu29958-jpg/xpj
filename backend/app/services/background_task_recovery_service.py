@@ -10,55 +10,18 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from sqlalchemy import and_, or_, select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
 from app.database import SessionLocal
 from app.error_reporting import report_error
 from app.models import BackgroundTask
-from app.services.background_task_registry import OCR_TASK_TYPES
+from app.services.background_task_handler_api import OCR_RECOVERY_DELAYS, OCR_TASK_TYPES, schedule_task_recovery
 from app.services.time_service import ensure_utc, now_utc
 
 _RECOVERABLE_STATUSES = frozenset({"running", "queued"})
-_RETRY_DELAYS = (10, 30, 90)
-_TRANSIENT_CODES = frozenset({"orphaned_after_restart", "task_submission_failed", "ocr_timeout", "ocr_worker_exited"})
-_STOP_ON_REPEAT = frozenset({"ocr_timeout", "ocr_worker_exited"})
 _SCAN_BATCH = 16
 logger = logging.getLogger(__name__)
-
-
-def can_recover_task(task: BackgroundTask) -> bool:
-    """One total budget across worker failure, restart and original-request replay."""
-    if (task.task_type not in OCR_TASK_TYPES or not task.input_payload_json
-            or task.result_summary_json is not None or task.cancellation_requested_at is not None
-            or task.error_code not in _TRANSIENT_CODES or task.recovery_attempts >= len(_RETRY_DELAYS)):
-        return False
-    try:
-        history = json.loads(task.recovery_history_json)
-        return isinstance(history, list) and not (task.error_code in _STOP_ON_REPEAT
-            and any(entry["error_code"] == task.error_code for entry in history))
-    except (TypeError, ValueError, KeyError):
-        return False
-
-
-def schedule_task_recovery(task: BackgroundTask) -> bool:
-    """Keep accepted work in its durable quota; preserve the failed attempt separately."""
-    if not can_recover_task(task):
-        return False
-    stamp = now_utc()
-    after = stamp + timedelta(seconds=_RETRY_DELAYS[task.recovery_attempts])
-    history = json.loads(task.recovery_history_json)
-    history.append({"attempt": task.recovery_attempts + 1, "error_code": task.error_code,
-        "started_at": task.started_at.isoformat() if task.started_at else None,
-        "failed_at": (task.completed_at or stamp).isoformat(), "resume_after": after.isoformat()})
-    task.recovery_history_json = json.dumps(history, separators=(",", ":"), sort_keys=True)
-    task.recovery_attempts += 1
-    task.recovery_after = after
-    task.status = "queued"
-    task.started_at = task.completed_at = None
-    task.last_progress_at = stamp
-    task.progress_current = 0
-    task.progress_message = "上次识别中断，稍后自动继续；也可先手填核对。"
-    return True
 
 
 def _should_recover_active_task(task: BackgroundTask, *, grace_seconds: int) -> bool:
@@ -122,10 +85,10 @@ def recover_orphaned_tasks() -> int:
             schedule_task_recovery(task)
         if orphans:
             db.commit()
-    from app.services.background_task_worker import complete_applied_task
+    from app.services import background_task_service
 
     for task_id in applied:
-        complete_applied_task(task_id)
+        background_task_service.complete_applied_task(task_id)
     return len(orphans)
 
 
@@ -140,7 +103,7 @@ def resume_due_ocr_tasks() -> int:
         or_(and_(BackgroundTask.status == "queued", or_(BackgroundTask.recovery_after.is_(None),
                     BackgroundTask.recovery_after <= now_utc())),
             and_(BackgroundTask.status == "failed", BackgroundTask.error_code.in_(INTERRUPTED_TASK_CODES),
-                 BackgroundTask.recovery_attempts < len(_RETRY_DELAYS))))
+                 BackgroundTask.recovery_attempts < len(OCR_RECOVERY_DELAYS))))
     with SessionLocal() as db:
         identifiers = list(db.scalars(select(BackgroundTask.id).where(
             BackgroundTask.task_type.in_(OCR_TASK_TYPES), or_(applied, resumable),
@@ -155,7 +118,6 @@ def resume_due_ocr_tasks() -> int:
 def _wake_original_task(task_id: int) -> bool:
     from app.services import background_task_service
     from app.services.background_task_admission import BackgroundTaskCapacityFullError, readmit_orphaned_task
-    from app.services.background_task_worker import complete_applied_task
 
     with SessionLocal() as db:
         task = db.get(BackgroundTask, task_id)
@@ -163,7 +125,7 @@ def _wake_original_task(task_id: int) -> bool:
             return False
         if task.result_summary_json is not None:
             db.rollback()
-            complete_applied_task(task_id)
+            background_task_service.complete_applied_task(task_id)
             return True
         if task.status == "running":
             return False
@@ -205,7 +167,7 @@ def _recovery_loop(stop_event: threading.Event) -> None:
     while not stop_event.is_set():
         try:
             resume_due_ocr_tasks()
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             # The owned scanner must survive a transient database refusal.
             report_error(logger, "background OCR recovery scan failed", error=exc)
         stop_event.wait(2)

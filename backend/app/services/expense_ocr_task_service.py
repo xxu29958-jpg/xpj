@@ -90,10 +90,8 @@ def _prepare_retry(db: Session, claim: ApiIdempotencyKey, *, expense_id: int, te
 def _resume_retry(db: Session, task: BackgroundTask) -> BackgroundTask:
     task_id = task.id
     if task.result_summary_json is not None:
-        from app.services.background_task_worker import complete_applied_task
-
         db.rollback()
-        complete_applied_task(task_id)
+        background_task_service.complete_applied_task(task_id)
         db.refresh(task)
         return task
     if task.status == "failed" and task.error_code in INTERRUPTED_TASK_CODES:

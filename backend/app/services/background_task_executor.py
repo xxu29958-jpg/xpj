@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.error_reporting import report_error
 from app.models import BackgroundTask
-from app.services.background_task_handler_api import mark_failed
-from app.services.background_task_registry import OCR_TASK_TYPES, PreparedBackgroundTask, TaskHandlerRegistry
+from app.services.background_task_handler_api import OCR_TASK_TYPES, mark_failed
+from app.services.background_task_registry import PreparedBackgroundTask, TaskHandlerRegistry
 from app.services.time_service import ensure_utc, now_utc
 
 logger = logging.getLogger(__name__)
