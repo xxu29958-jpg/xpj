@@ -4196,6 +4196,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "original_text_feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Text Feedback"
+          },
           "recognition_field_choices": {
             "anyOf": [
               {
@@ -5621,6 +5632,17 @@
             "default": "",
             "title": "Original Currency",
             "type": "string"
+          },
+          "original_text_feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Text Feedback"
           },
           "recognition_field_choices": {
             "anyOf": [
@@ -7819,6 +7841,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "original_text_feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Text Feedback"
+          },
           "recognition_field_choices": {
             "anyOf": [
               {
@@ -8177,6 +8210,17 @@
             "title": "Original Currency",
             "type": "string"
           },
+          "original_text_feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Text Feedback"
+          },
           "recognition_field_choices": {
             "anyOf": [
               {
@@ -8513,6 +8557,17 @@
             "default": "",
             "title": "Original Currency",
             "type": "string"
+          },
+          "original_text_feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Text Feedback"
           },
           "recognition_field_choices": {
             "anyOf": [
@@ -9005,6 +9060,17 @@
             "default": "",
             "title": "Original Currency",
             "type": "string"
+          },
+          "original_text_feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Text Feedback"
           },
           "recognition_field_choices": {
             "anyOf": [
@@ -17194,6 +17260,21 @@
             ],
             "title": "Original Currency Code"
           },
+          "original_text_feedback": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OriginalTextFeedback"
+                },
+                "maxItems": 5,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Text Feedback"
+          },
           "reason": {
             "maxLength": 500,
             "minLength": 1,
@@ -19035,6 +19116,11 @@
             "title": "Original Currency Code",
             "type": "string"
           },
+          "original_text_feedback_saved": {
+            "default": false,
+            "title": "Original Text Feedback Saved",
+            "type": "boolean"
+          },
           "public_id": {
             "title": "Public Id",
             "type": "string"
@@ -19763,6 +19849,21 @@
               }
             ],
             "title": "Original Currency Code"
+          },
+          "original_text_feedback": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OriginalTextFeedback"
+                },
+                "maxItems": 5,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Text Feedback"
           },
           "recognition_field_choices": {
             "anyOf": [
@@ -25515,6 +25616,153 @@
         "title": "OriginalHealthResponse",
         "type": "object"
       },
+      "OriginalTextFeedback": {
+        "additionalProperties": false,
+        "properties": {
+          "box": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Box"
+          },
+          "coordinate_space": {
+            "const": "exif-transposed-pixels",
+            "default": "exif-transposed-pixels",
+            "title": "Coordinate Space",
+            "type": "string"
+          },
+          "evidence_public_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Public Id"
+          },
+          "field": {
+            "enum": [
+              "amount_cents",
+              "merchant",
+              "expense_time",
+              "original_currency_code",
+              "transaction_kind"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "height": {
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "image_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Image Sha256",
+            "type": "string"
+          },
+          "issue": {
+            "default": "transcription",
+            "enum": [
+              "transcription",
+              "missing",
+              "unreadable",
+              "cropped",
+              "absent"
+            ],
+            "title": "Issue",
+            "type": "string"
+          },
+          "location_state": {
+            "default": "unlocated",
+            "enum": [
+              "unlocated",
+              "coarse_point",
+              "suggested_region",
+              "verified_region"
+            ],
+            "title": "Location State",
+            "type": "string"
+          },
+          "point": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Point"
+          },
+          "role": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "text_verified": {
+            "default": false,
+            "title": "Text Verified",
+            "type": "boolean"
+          },
+          "verbatim_text": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Verbatim Text",
+            "type": "string"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "field",
+          "image_sha256",
+          "width",
+          "height",
+          "role"
+        ],
+        "title": "OriginalTextFeedback",
+        "type": "object"
+      },
       "OriginalVerificationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -26456,6 +26704,16 @@
             "title": "Source",
             "type": "string"
           },
+          "source_location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecognitionSourceLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "value": {
             "anyOf": [
               {
@@ -26539,6 +26797,103 @@
           "parser_version"
         ],
         "title": "RecognitionFieldChoice",
+        "type": "object"
+      },
+      "RecognitionSourceLocation": {
+        "properties": {
+          "boxes": {
+            "items": {
+              "maxItems": 4,
+              "minItems": 4,
+              "prefixItems": [
+                {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                },
+                {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                },
+                {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                },
+                {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ],
+                  "type": "array"
+                }
+              ],
+              "type": "array"
+            },
+            "minItems": 1,
+            "title": "Boxes",
+            "type": "array"
+          },
+          "coordinate_space": {
+            "const": "exif-transposed-pixels",
+            "title": "Coordinate Space",
+            "type": "string"
+          },
+          "height": {
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "image_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Image Sha256",
+            "type": "string"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "image_sha256",
+          "width",
+          "height",
+          "coordinate_space",
+          "boxes"
+        ],
+        "title": "RecognitionSourceLocation",
         "type": "object"
       },
       "RecognitionTimeCandidate": {
@@ -26636,6 +26991,16 @@
               }
             ],
             "title": "Source"
+          },
+          "source_location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecognitionSourceLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "source_timezone": {
             "anyOf": [

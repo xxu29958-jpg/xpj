@@ -9,6 +9,7 @@
     const surface = panel.querySelector("[data-ocr-region-surface]");
     const editable = () => form.dataset.ocrRegionEditable === "true";
     function draw(selected = field.value ? JSON.parse(field.value).box : null) {
+      form.dataset.ocrRegionIncomplete = corner ? "true" : "false";
       box.hidden = !selected;
       if (selected && image.naturalWidth) {
         box.style.left = 100 * selected[0] / image.naturalWidth + "%";
@@ -27,7 +28,7 @@
     function setSelection(selection) {
       corner = null;
       field.value = selection ? JSON.stringify({image_sha256: panel.dataset.imageSha256, box: selection}) : "";
-      field.dispatchEvent(new Event("input", {bubbles: true})); draw();
+      draw(); field.dispatchEvent(new Event("input", {bubbles: true}));
     }
     function rectangle(start, end) {
       return [Math.min(start[0], end[0]), Math.min(start[1], end[1]),
@@ -48,7 +49,10 @@
       if (!origin || !editable() || event.pointerId !== origin.id) return;
       const end = point(event), start = origin.point;
       origin = null;
-      if (mode === "corners" && !corner) { corner = end; draw(rectangle(end, end)); return; }
+      if (mode === "corners" && !corner) {
+        corner = end; draw(rectangle(end, end));
+        field.dispatchEvent(new Event("input", {bubbles: true})); return;
+      }
       const selection = rectangle(mode === "corners" ? corner : start, end);
       if (selection[2] - selection[0] < 4 || selection[3] - selection[1] < 4) return;
       setSelection(selection);
@@ -62,11 +66,17 @@
     });
     for (const button of panel.querySelectorAll("[data-ocr-region-mode]")) button.addEventListener("click", () => {
       if (!editable()) return;
-      mode = button.dataset.ocrRegionMode; origin = null;
+      const wasIncomplete = !!corner;
+      mode = button.dataset.ocrRegionMode; origin = null; corner = null;
       image.style.touchAction = mode === "browse" ? "pan-x pan-y pinch-zoom" : mode === "corners" ? "pinch-zoom" : "none";
       for (const item of panel.querySelectorAll("[data-ocr-region-mode]")) item.setAttribute("aria-pressed", String(item === button));
       draw();
+      if (wasIncomplete) field.dispatchEvent(new Event("input", {bubbles: true}));
     });
+    form.addEventListener("submit", event => {
+      if (!corner || event.submitter?.name === "review_latest") return;
+      event.preventDefault(); event.stopImmediatePropagation(); draw();
+    }, true);
     panel.querySelector("[data-ocr-region-clear]").addEventListener("click", () => { if (editable()) setSelection(null); });
     form.addEventListener("ocr-region-restored", () => draw());
     draw();
