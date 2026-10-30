@@ -208,6 +208,17 @@ def test_currency_changes_preserve_the_active_bill_operation(tmp_path: Path, sce
         ("CNY", "66.00", "切换币种保留的对方")
 
 
+def test_a_parse_result_not_retained_can_be_explicitly_recovered(tmp_path: Path) -> None:
+    result, bills = _run(tmp_path, "parse-storage")
+    assert not result.get("error") and result["completed"], result
+    parses = _posts(bills, "/web/debt-bills/source-1/parse")
+    assert len(parses) == 2 and parses[0] == parses[1], "Explicit recovery keeps the original attempt and version"
+    created = _posts(bills, "/web/debts")
+    assert len(created) == len(_posts(bills, "/web/debt-bills")) == 1
+    assert (created[0]["bill_source_public_id"], created[0]["bill_source_row_version"], created[0]["amount_major"]) == \
+        ("source-1", "2", "66.00")
+
+
 @pytest.mark.parametrize("scenario", ["delayed", "lost", "storage", "storage-release", "parse-failed", "revolving"])
 def test_the_debt_command_waits_for_the_chosen_bill_and_carries_it_once(tmp_path: Path, scenario: str) -> None:
     result, bills = _run(tmp_path, scenario)

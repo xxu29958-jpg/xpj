@@ -115,7 +115,10 @@
       say(form, "这次没有解析：" + refusal(response, "原账单刚有变化，请再试一次。"));
       render(form); return;
     }
-    retain(form, {bill_source_row_version: String(response.body.row_version), bill_parse_key: ""});
+    if (!retain(form, {bill_source_row_version: String(response.body.row_version), bill_parse_key: ""})) {
+      say(form, "原件已保存，但识别结果尚未保留到本机原稿；请恢复浏览器存储后点“解析原账单建议”继续原请求。");
+      render(form); return;
+    }
     view(form).outcome = response.body;
     say(form, suggest(form, response.body));
     render(form);
@@ -214,7 +217,7 @@
     original.hidden = !has;
     if (has) original.href = "/web/debt-bills/" + encodeURIComponent(current.bill_source_public_id) + "/original" + ledgerQuery(form);
     const parseButton = form.querySelector("[data-debtbill-parse]");
-    parseButton.hidden = !has || outcome?.status === "succeeded";
+    parseButton.hidden = !has || (!current.bill_parse_key && outcome?.status === "succeeded");
     parseButton.disabled = !usable;
     form.querySelector("[data-debtbill-discard]").disabled = !usable;
   }

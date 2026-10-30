@@ -11,6 +11,34 @@
     throw Error("Timed out waiting for " + label);
   };
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+  async function completeParseRetention(form, field, submit) {
+    const setItem = Storage.prototype.setItem;
+    let refused = false;
+    Storage.prototype.setItem = function (name, value) {
+      if (String(value).includes('"bill_source_row_version":"2"') && String(value).includes('"bill_parse_key":""')) {
+        refused = true; throw Error("QuotaExceededError");
+      }
+      return setItem.call(this, name, value);
+    };
+    field("counterparty_label").value = "解析后保留恢复";
+    field("amount_major").value = "66.00";
+    field("amount_major").dispatchEvent(new Event("input", {bubbles: true}));
+    const canvas = document.createElement("canvas"); canvas.width = 120; canvas.height = 80;
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+    const files = new DataTransfer(); files.items.add(new File([blob], "借条.png", {type: "image/png"}));
+    const input = form.querySelector("[data-debtbill-file]");
+    input.files = files.files; input.dispatchEvent(new Event("change", {bubbles: true}));
+    await wait(() => refused, "the failed parse-result retention");
+    const attempt = field("bill_parse_key").value, retry = form.querySelector("[data-debtbill-parse]");
+    assert(attempt && field("bill_source_row_version").value === "1" && submit.disabled, "The unretained result released the command");
+    assert(!retry.hidden && !retry.disabled, "Failed retention hid the explicit recovery action");
+    assert(form.querySelector("[data-debtbill-status]").textContent.includes("本机原稿"), "Retention failure was presented as ready to submit");
+    Storage.prototype.setItem = setItem;
+    retry.click();
+    await wait(() => field("bill_source_row_version").value === "2" && !field("bill_parse_key").value && !submit.disabled,
+      "the same parse result to be retained");
+    submit.click();
+  }
   async function completeCurrencyRace(form, field, submit) {
     const heldPath = scenario === "currency-capture" ? "/web/debt-bills" : "/web/debt-bills/source-1/parse";
     const calls = [], originalFetch = window.fetch;
@@ -50,6 +78,10 @@
     submit.click();
   }
   async function completeRestoredDraft(form, field, submit) {
+    if (scenario === "parse-storage") {
+      await completeParseRetention(form, field, submit);
+      return true;
+    }
     if (scenario.startsWith("currency-")) {
       await completeCurrencyRace(form, field, submit);
       return true;
