@@ -1,6 +1,5 @@
 package com.ticketbox.ui.screens
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.ImeAction
@@ -35,6 +33,8 @@ import com.ticketbox.R
 import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.ui.components.AppPageChrome
+import com.ticketbox.ui.components.BrandArt
+import com.ticketbox.ui.components.BrandArtKind
 import com.ticketbox.ui.components.AppPageHeader
 import com.ticketbox.ui.components.AppPageScrollableColumn
 import com.ticketbox.ui.components.AppScrollablePageChrome
@@ -252,7 +252,6 @@ private fun BindingIntroduction() {
             Text(stringResource(R.string.bind_server_intro_body),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
         }
-        Image(painterResource(R.drawable.receipt_tray), contentDescription = null,
-            modifier = Modifier.size(width = 108.dp, height = 110.dp))
+        BrandArt(BrandArtKind.Pair, Modifier.size(width = 108.dp, height = 94.dp))
     }
 }

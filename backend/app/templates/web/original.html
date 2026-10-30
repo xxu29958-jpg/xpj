@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import 'partials/brand_art.html' as brand_art %}
 {% from '_history_time.html' import saved_time %}
 {% set page_surface = 'tertiary' %}
 {% set product_body_domain = 'transactions' %}
@@ -46,7 +47,7 @@
   <label class="file-picker file-picker--featured" for="original-{{ action }}-file">
     <strong>{{ '选择小票或截图' if action == 'attach' else '选择同一张小票' }}</strong>
     <span>{{ '只添加原件，不会重新记账或改变已填内容。' if action == 'attach' else '补回前，请再核对一次；账单与历史记录仍会保留。' }}</span>
-    <img src="/static/web/product/art/receipt-clip.png" alt="" aria-hidden="true">
+    {{ brand_art.stub_pair() }}
     <input class="file-picker-input" id="original-{{ action }}-file" type="file" name="file" accept="image/*" required>
   </label>
   {% with original_confirmation=true %}{% include '_original_selection.html' %}{% endwith %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import 'partials/brand_art.html' as brand_art %}
 {% from '_history_time.html' import saved_time %}
 {% from 'partials/import_counts.html' import summary %}
 {% set page_title = '导入导出' %}
@@ -53,7 +54,7 @@
 <section class="stack" aria-label="带走账本数据">
   <div class="product-panel product-panel--padded product-panel--highlight import-export-cover">
     <div><h2 class="product-panel-title">你的记录，随时带走</h2><p>{{ selected_ledger_name }} · 当前有权访问的内容</p></div>
-    <img src="/static/web/product/art/receipt-clip.png" alt="" width="1280" height="1280">
+    {{ brand_art.stub_box() }}
   </div>
   <div>
   {% for title, hint, icon, tone in [

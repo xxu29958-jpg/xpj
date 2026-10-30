@@ -11,7 +11,6 @@
 }
 .insight-hero > .product-panel-header { flex: 0 0 100%; margin-bottom: 0; }
 .insight-hero h2 { font-size: var(--type-body-size); line-height: var(--type-body-line); font-weight: var(--type-body-weight); }
-.insight-hero-art { display: none; order: 2; align-self: center; max-width: 100%; }
 .insight-hero-value { order: 1; flex: 1 1 auto; width: max-content; max-width: 100%; }
 .insight-hero .insight-module-foot { order: 3; flex-basis: 100%; }
 .insight-module-icon { display: grid; place-items: center; width: var(--space-9); height: var(--space-9); border-radius: var(--radius-lg); background: var(--brand-primary-bg); }
@@ -225,7 +224,6 @@
     .insight-grid > [data-overview-card="budget"],
     .insight-grid > [data-overview-card="reports"] { flex: 2 1 26rem; }
     .insight-grid > .insight-hero { min-height: calc(var(--space-12) * 4); background: var(--brand-primary-bg); }
-    .insight-hero-art { display: block; width: calc(var(--space-12) * 2); }
     .insight-grid > [data-overview-card="pending"] { flex-direction: column; align-items: stretch; gap: var(--space-5); }
     .insight-pending-copy { flex: 1; min-width: 0; }
     .insight-pending-icon { display: none; }

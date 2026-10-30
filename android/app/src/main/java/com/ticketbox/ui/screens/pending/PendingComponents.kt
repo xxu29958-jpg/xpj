@@ -2,7 +2,6 @@ package com.ticketbox.ui.screens.pending
 
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -20,12 +19,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.BrandArt
+import com.ticketbox.ui.components.BrandArtKind
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.presentation.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.AppRadius
@@ -133,7 +133,7 @@ private fun PendingCaptureHero(
                         color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                     AppPrimaryButton(text = text, enabled = state.canStartUpload, onClick = onUploadScreenshot)
                 }
-                if (showArt) Image(painterResource(R.drawable.receipt_clip), contentDescription = null, modifier = Modifier.size(96.dp))
+                if (showArt) BrandArt(BrandArtKind.Pair, Modifier.size(width = 96.dp, height = 84.dp))
             }
         }
     }

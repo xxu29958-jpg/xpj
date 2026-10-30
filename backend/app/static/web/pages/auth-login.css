@@ -23,7 +23,7 @@
 }
 .auth-welcome > div { flex: 1 1 18ch; min-width: 0; }
 .auth-welcome p { margin: 0; color: var(--text-muted); }
-.auth-welcome > img { width: clamp(var(--space-10), 20%, var(--space-12)); height: auto; flex-shrink: 0; margin-inline-start: auto; }
+.auth-welcome > .brand-art { width: clamp(var(--space-10), 20%, var(--space-12)); flex-shrink: 0; margin-inline-start: auto; }
 .auth-alternatives { margin-block: var(--space-7); }
 .auth-ledger-option > input { width: var(--space-5); height: var(--space-5); accent-color: var(--brand-primary); }
 .auth-ledger-option:has(input:checked) { background: var(--brand-primary-bg); }
