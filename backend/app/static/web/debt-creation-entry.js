@@ -38,6 +38,14 @@
     // Opening the form selects nothing yet: a draft starts with the first input, and the rate
     // lookup round trip retains the form itself (relatedAction).
     submitSelector: "[data-debtcreation-submit]", pendingLabel: "核实这笔往来",
+    // An original bill still being saved, read back, parsed or discarded must settle before the debt
+    // command, or the debt would be created without the source the person chose.
+    holdCommand(values) {
+      if (values.bill_capture_key) return "原账单还在保存或待核实；确认后才能记下这笔往来。";
+      if (values.bill_parse_key) return "原账单识别结果待核实；确认后才能记下这笔往来。";
+      if (values.bill_discard_key) return "正在核实是否已放弃这张账单；确认后才能记下这笔往来。";
+      return "";
+    },
     href(record, scope) {
       const next = new URL("/web/debts/new", window.location.href);
       next.searchParams.set("ledger_id", scope.ledgerId);

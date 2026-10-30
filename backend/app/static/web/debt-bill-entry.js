@@ -16,16 +16,20 @@
     return views.get(form);
   }
   function say(form, text) { form.querySelector("[data-debtbill-status]").textContent = text; }
-  // A change counts only once the draft store holds it; a key a reload cannot find is never sent.
+  // A change counts only once the draft store holds it; a key a reload cannot find is never sent, and
+  // a change the draft could not keep is taken back so the page never shows or holds more than it.
   function retain(form, changes) {
-    const names = Object.keys(changes);
+    const names = Object.keys(changes), previous = Object.fromEntries(names.map(name => [name, field(form, name).value]));
     names.forEach(name => { field(form, name).value = changes[name]; });
     if (names.length) field(form, names[0]).dispatchEvent(new Event("input", {bubbles: true}));
+    let kept = false;
     try {
       const raw = window.localStorage.getItem("ticketbox:debtcreation-create-draft:v1:" + field(form, "idempotency_key").value);
       const record = raw && JSON.parse(raw);
-      return Boolean(record) && names.every(name => record.values?.[name] === changes[name]);
-    } catch (_) { return false; }
+      kept = Boolean(record) && names.every(name => record.values?.[name] === changes[name]);
+    } catch (_) { kept = false; }
+    if (!kept) names.forEach(name => { field(form, name).value = previous[name]; });
+    return kept;
   }
   async function call(form, path, options = {}) {
     const headers = {Accept: "application/json", "X-CSRF-Token": field(form, "csrf_token").value};
@@ -48,7 +52,6 @@
     if (!state.editable || state.busy || values(form).bill_source_public_id) return;
     const key = uuid();
     if (!retain(form, {bill_capture_key: key, bill_file_name: file.name})) {
-      retain(form, {bill_capture_key: "", bill_file_name: ""});
       say(form, "原稿暂时未能保留，没有发送原账单；请稍后再选择图片。");
       return;
     }
@@ -68,8 +71,13 @@
     });
   }
   async function adopt(form, source) {
-    retain(form, {bill_source_public_id: source.public_id, bill_source_row_version: String(source.row_version), bill_capture_key: ""});
     view(form).source = source;
+    // The capture key is released only after the draft holds the source reference it resolved to.
+    if (!retain(form, {bill_source_public_id: source.public_id, bill_source_row_version: String(source.row_version)})) {
+      say(form, "原账单已保存，但本机原稿未能记下它；请恢复浏览器存储后重新打开此页继续，在此之前不会记下这笔往来。");
+      render(form); return;
+    }
+    retain(form, {bill_capture_key: ""});
     render(form);
     await parse(form);
   }
