@@ -413,7 +413,8 @@ class ExpenseEditScreenContractTest {
     fun correctionNoteNeedsAChangedValueAndSaysWhyWhenNothingIsRecorded() {
         var saved: ExpenseDraft? = null
         val paid = com.ticketbox.domain.model.RecognitionFieldCandidate("amount_cents", "paid", "12860", "支付金额",
-            "实付 ¥128.60", "取自原件中这一处；请核对属于本次交易。", "payment", true, "fact", "receipt-fields-v8", "CNY", 2)
+            "实付 ¥128.60", "取自原件中这一处；请核对属于本次交易。", "payment", true, "fact", "receipt-fields-v8", "CNY", 2,
+            sourceReadingValue = "12860")
         val total = paid.copy(id = "total", label = "合计", originalText = "合计 ¥128.60", role = "total")
         val recorded = expense().copy(amountCents = 12860L, originalAmountMinor = 12860L, recognitionFields = listOf(paid, total))
         composeRule.setContent {
@@ -459,6 +460,45 @@ class ExpenseEditScreenContractTest {
     }
 
     @Test
+    fun recalledSuggestionIsNotedAgainstTheParsersOwnReading() {
+        var saved: ExpenseDraft? = null
+        // The parser read 18.00 / 海棠咖吽; this user's earlier correction is recalled as 1.80 / 海棠咖啡.
+        val amount = com.ticketbox.domain.model.RecognitionFieldCandidate("amount_cents", "paid", "180", "支付金额",
+            "支付金额：18.00元", "你曾对照同类原件纠正为 ¥1.80。", "payment", true, "fact", "receipt-fields-v8", "CNY", 2,
+            sourceReadingValue = "1800", selectionIntent = "bookkeeping")
+        val merchant = amount.copy(field = "merchant", id = "merchant", value = "海棠咖啡", sourceReadingValue = "海棠咖吽",
+            label = "商户", originalText = "商户：海棠咖吽", explanation = "你曾对照同类原件纠正为 海棠咖啡。", role = "merchant",
+            currencyCode = null, minorUnitExponent = null)
+        val recorded = expense().copy(amountCents = 1800L, originalAmountMinor = 1800L, merchant = "海棠咖吽",
+            recognitionFields = listOf(amount, merchant))
+        composeRule.setContent {
+            TicketboxTheme(skin = skin) {
+                ExpenseEditScreen(expenseEditScreenState(expense = recorded), ExpenseEditScreenActions(
+                    primary = ExpenseEditPrimaryActions(onSave = { saved = it })))
+            }
+        }
+        // A recalled suggestion starts open; noting the parser's own reading is not a correction of it.
+        composeRule.onNodeWithText("注明已对照此处纠正金额").performScrollTo().performClick()
+        composeRule.onNodeWithText("金额与这处原文相同，没有需要注明的纠正；若原文读错，请先改正金额。").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("支付金额：18.00元").performScrollTo().performClick()
+        composeRule.onNodeWithText("注明已对照此处纠正金额").performScrollTo().performClick()
+        composeRule.onNodeWithText("已注明你对照这一处原件作了纠正，请保存当前修改。").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("expense-edit-merchant-row").performScrollTo().performClick()
+        composeRule.onNodeWithText("注明已对照此处纠正商户").performScrollTo().performClick()
+        composeRule.onNodeWithText("商户与这处原文相同，没有需要注明的纠正；若原文读错，请先改正商户。").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("商户：海棠咖吽").performScrollTo().performClick()
+        composeRule.onNodeWithText("注明已对照此处纠正商户").performScrollTo().performClick()
+        capture("review-recalled-suggestion-noted")
+        composeRule.onNodeWithText("保存").performClick()
+        composeRule.runOnIdle {
+            assertEquals(180L, saved?.originalAmountMinor)
+            assertEquals("海棠咖啡", saved?.merchant)
+            assertEquals(listOf(amount.choice().copy(intent = "original_correction"), merchant.choice().copy(intent = "original_correction")),
+                saved?.toRequest(recorded)?.recognitionFieldChoices)
+        }
+    }
+
+    @Test
     fun evidenceChoicesKeepEditedAmountAndOtherDuplicateCandidatesUntilExplicitSave() {
         var saved: ExpenseDraft? = null
         var confirmed: ExpenseDraft? = null
@@ -470,8 +510,8 @@ class ExpenseEditScreenContractTest {
         val notification = day.copy(id = "notice-day", label = "通知 · 交易日期", localValue = "2026-01-01",
             originalText = "交易日期：2026-01-01", evidencePublicId = "capture", source = "notification")
         val amount = com.ticketbox.domain.model.RecognitionFieldCandidate("amount_cents", "payment", "1234", "支付金额",
-            "支付金额：CNY 12.34", "图片原文", "payment", true, "fact", "receipt-fields-v5", "CNY", 2)
-        val merchant = amount.copy(field = "merchant", id = "merchant", value = "原件商户", label = "商户",
+            "支付金额：CNY 12.34", "图片原文", "payment", true, "fact", "receipt-fields-v5", "CNY", 2, sourceReadingValue = "1234")
+        val merchant = amount.copy(field = "merchant", id = "merchant", value = "原件商户", sourceReadingValue = "原件商户", label = "商户",
             originalText = "商户：原件商户", role = "merchant", currencyCode = null, minorUnitExponent = null)
         val recorded = expense().copy(expenseTime = null, originalAmountMinor = 1234L,
             accountingTime = com.ticketbox.domain.model.ExpenseAccountingTime("unknown", calendarRevision = 1L),

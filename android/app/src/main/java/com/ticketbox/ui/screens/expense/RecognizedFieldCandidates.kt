@@ -55,22 +55,26 @@ internal fun updateFieldChoice(raw: String?, field: String, choice: RecognitionF
 }
 
 /** What the last tap on a reading, or an edit after it, did to this field's recorded choice. */
-internal enum class FieldChoiceStatus { Applied, Recorded, Empty, Unchanged, OtherCurrency, Cancelled }
+internal enum class FieldChoiceStatus { Applied, Recorded, Empty, Unchanged, OtherCurrency, SourceUnavailable, Cancelled }
 
 /**
  * Same rule as the Web form and the backend's learning qualification: a correction is only worth
- * recording when the field holds a value that differs from this reading, in the reading's currency.
+ * recording when the field holds a value that differs from the parser's own reading, in that reading's
+ * currency. A recalled suggestion replaces `value`, never the source reading, so only the latter counts.
  */
 internal fun correctionStatus(candidate: RecognitionFieldCandidate, amountText: String, currency: CurrencyCode,
-    merchant: String): FieldChoiceStatus = if (candidate.field == "amount_cents") when {
-    amountText.isBlank() -> FieldChoiceStatus.Empty
-    CurrencyCode.fromStorageKeyOrNull(candidate.currencyCode) != currency -> FieldChoiceStatus.OtherCurrency
-    parseMinorAmount(amountText, currency) == candidate.value.toLongOrNull() -> FieldChoiceStatus.Unchanged
-    else -> FieldChoiceStatus.Recorded
-} else when {
-    merchant.isBlank() -> FieldChoiceStatus.Empty
-    merchant.trim() == candidate.value.trim() -> FieldChoiceStatus.Unchanged
-    else -> FieldChoiceStatus.Recorded
+    merchant: String): FieldChoiceStatus {
+    val reading = candidate.sourceReadingValue
+    val input = if (candidate.field == "amount_cents") amountText else merchant
+    return when {
+        input.isBlank() -> FieldChoiceStatus.Empty
+        reading == null -> FieldChoiceStatus.SourceUnavailable
+        candidate.field != "amount_cents" -> if (merchant.trim() == reading.trim()) FieldChoiceStatus.Unchanged
+            else FieldChoiceStatus.Recorded
+        CurrencyCode.fromStorageKeyOrNull(candidate.currencyCode) != currency -> FieldChoiceStatus.OtherCurrency
+        parseMinorAmount(amountText, currency) == reading.toLongOrNull() -> FieldChoiceStatus.Unchanged
+        else -> FieldChoiceStatus.Recorded
+    }
 }
 
 internal data class RecognizedFieldCandidatesState(
@@ -158,6 +162,7 @@ private fun fieldChoiceStatusText(status: FieldChoiceStatus, amount: Boolean): S
         FieldChoiceStatus.Empty -> stringResource(R.string.recognition_fields_status_empty, noun)
         FieldChoiceStatus.Unchanged -> stringResource(R.string.recognition_fields_status_unchanged, noun)
         FieldChoiceStatus.OtherCurrency -> stringResource(R.string.recognition_fields_status_other_currency)
+        FieldChoiceStatus.SourceUnavailable -> stringResource(R.string.recognition_fields_status_source_unavailable)
         FieldChoiceStatus.Cancelled -> stringResource(R.string.recognition_fields_status_cancelled, noun)
     }
 }

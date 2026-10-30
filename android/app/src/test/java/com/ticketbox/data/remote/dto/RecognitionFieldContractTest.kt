@@ -12,11 +12,12 @@ class RecognitionFieldContractTest {
     @Test fun originalNumericTokenAndChoiceSurviveDraftAndWireWithoutRelabelingLegacy() {
         val moshi = Moshi.Builder().build()
         val candidate = moshi.adapter(RecognitionFieldCandidate::class.java).fromJson("""
-            {"field":"amount_cents","id":"candidate","value":9007199254740991,"label":"支付金额",
+            {"field":"amount_cents","id":"candidate","value":9007199254740991,"source_reading_value":9007199254740990,"label":"支付金额",
              "original_text":"支付金额","explanation":"原件","role":"payment","can_apply":true,
              "evidence_public_id":"source","parser_version":"parser","currency_code":"CNY","minor_unit_exponent":2}
         """.trimIndent())!!
         assertEquals("9007199254740991", candidate.value)
+        assertEquals("9007199254740990", candidate.sourceReadingValue)
         val saved = updateFieldChoice(null, candidate.field, candidate.choice())
         val legacy = ExpenseUpdateRequest(expectedRowVersion = 8, merchant = null, category = null, note = null,
             expenseTime = null, tags = null, valueScore = null, regretScore = null)

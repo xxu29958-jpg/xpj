@@ -42,17 +42,20 @@
     return Number((match[1] || "0") + (match[2] || "").padEnd(exponent, "0"));
   }
   // Same rule as Android and the backend's learning qualification: a correction only counts when the
-  // field holds a value that differs from this reading, in the reading's currency.
+  // field holds a value that differs from the parser's own reading, in that reading's currency. A
+  // recalled suggestion replaces `value`, never `source_reading_value`, so only the latter is compared.
   function correctionProblem(form, candidate) {
     const input = fieldInput(form, candidate.field), name = noun(candidate.field), value = input?.value.trim();
+    const reading = candidate.source_reading_value;
     if (!input || input.disabled) return `这笔账单的${name}不能在这里修改。`;
     if (!value) return `${name}还是空的：请先在上方填入你核对后的${name}，再点“注明已对照此处纠正${name}”。`;
+    if (reading === null || reading === undefined) return "暂时无法核对这处原文的读数，没有注明；请刷新页面后再试。";
     const unchanged = `${name}与这处原文相同，没有需要注明的纠正；若原文读错，请先改正${name}。`;
-    if (candidate.field !== "amount_cents") return value === String(candidate.value).trim() ? unchanged : "";
+    if (candidate.field !== "amount_cents") return value === String(reading).trim() ? unchanged : "";
     if (form.elements.namedItem("original_currency")?.value !== candidate.currency_code) {
       return "这处原文的币种与当前填写不同；只有在同一币种下改正了金额，才能注明对照纠正。";
     }
-    return minorUnits(value, candidate.minor_unit_exponent) === candidate.value ? unchanged : "";
+    return minorUnits(value, candidate.minor_unit_exponent) === reading ? unchanged : "";
   }
   function applyCandidate(form, candidate) {
     if (candidate.field === "amount_cents") return copyMoney(form, candidate);
