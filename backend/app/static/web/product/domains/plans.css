@@ -2,21 +2,48 @@
    金额面、进度行、列表行、历史、表单和动作条都来自 components.css；这里只留计划域独有的几处。 */
 
 /* ===== 预算根页 (25) =====
-   宽屏两栏: 左边读数与目录, 右边执行进度; 窄屏依次排开。 */
+   计划域首页先给状态: 预算读数, 再是下一笔固定支出与本月消费目标, 然后才是目录。
+   宽屏两栏: 左边读数、状态与目录, 右边执行进度; 窄屏依次排开。 */
 .budget-layout { display: grid; gap: var(--space-6); min-width: 0; }
 
 @media (width > 64rem) {
     .budget-layout {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-template-rows: auto 1fr;
-        grid-template-areas: "summary execution" "directory execution";
+        grid-template-rows: auto auto 1fr;
+        grid-template-areas: "summary execution" "status execution" "directory execution";
         column-gap: var(--space-8);
         align-items: start;
     }
     .budget-layout > .product-surface { grid-area: summary; }
+    .budget-layout > .plan-status { grid-area: status; }
     .budget-execution { grid-area: execution; }
     .budget-directory { grid-area: directory; }
 }
+
+/* 状态格: 两项读数并排 (放不下时上下排), 整格是进入对应页面的链接; 不另起强调色面。 */
+.plan-status {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+    gap: var(--space-4);
+    min-width: 0;
+}
+
+.plan-status-item {
+    display: grid;
+    align-content: start;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: var(--space-5) var(--space-6);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-xl);
+    background: var(--surface-card);
+    color: var(--text-default);
+    text-decoration: none;
+}
+
+.plan-status-item:hover { border-color: var(--brand-primary-strong); }
+.plan-status-item > strong { font-size: var(--type-subtitle-size); font-weight: var(--type-title-weight); overflow-wrap: anywhere; }
+.plan-status-item > .hint { margin: 0; }
 
 /* 编辑器是同一页里的专注视图: 展开后页面只剩编辑器, 折叠行变成返回行。
    无脚本时就是原生 details; 输入始终留在表单里。 */

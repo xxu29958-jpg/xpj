@@ -32,6 +32,13 @@
     <string name="plan_income_error">收入计划暂时无法读取</string>
     <string name="plan_income_empty">还没有收入安排</string>
     <string name="plan_income_summary">%3$s · %1$d 项有效 · 预计 %2$s</string>
+    <!-- P6：计划首页状态卡（预算之后先给下一笔固定支出与本月消费目标，再列入口）。 -->
+    <string name="plan_status_next_payment_label">下一笔固定支出</string>
+    <string name="plan_status_next_payment_undated">%1$d 项生效，未留下次日期</string>
+    <string name="plan_status_goals_label">本月消费目标</string>
+    <string name="plan_status_goal_used">已用 %1$d%%</string>
+    <string name="plan_status_goal_used_state">已用 %1$d%% · %2$s</string>
+    <string name="plan_status_goals_more">另有 %1$d 个目标</string>
     <!-- W2-C：入口行动词统一为 chevron（旧 设置/调整/查看/管理/打开/读取中 动词族退役）。 -->
     <string name="budget_advice_page_title">给本月做个安排</string>
     <string name="budget_advice_page_subtitle">%1$s · 储蓄目标、备用金与可支配金额</string>
