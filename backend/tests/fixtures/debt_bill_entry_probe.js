@@ -16,6 +16,13 @@
     const who = field("counterparty_label"), status = form.querySelector("[data-debtbill-status]");
     const submit = document.querySelector("[data-debtcreation-submit]");
     await wait(() => !who.readOnly && !who.disabled, "an editable form");
+    if (window.__staleKeyDraft) {
+      // Saved before the single adopt write: a source beside the capture key it already resolved.
+      await wait(() => !field("bill_capture_key").value && field("bill_source_public_id").value === "source-1", "the stale key to clear");
+      await wait(() => !submit.disabled, "submission to reopen for a known source");
+      submit.click();
+      return;
+    }
     if (window.__legacyDraft) {
       assert(who.value === "旧原稿里的对方" && field("amount_major").value === "88.00", "An older draft lost its inputs");
       assert(!form.querySelector("[data-debtbill]").hidden && !form.querySelector("[data-debtbill-picker]").hidden,
@@ -40,7 +47,11 @@
       await wait(() => status.textContent.includes(filled ? "已按原账单建议补全空白项" : "建议暂不可用"), "the parse outcome");
       assert(who.value === "我自己填的对方", "The person's counterparty was overwritten");
       assert(field("bill_source_public_id").value === "source-1", "The retained source is missing");
-      if (filled) {
+      if (filled && scenario === "revolving") {
+        assert(field("amount_major").value === "1200.00" && field("debt_kind").value === "revolving" &&
+          !field("installment_count").value && !field("installment_period_months").value &&
+          status.textContent.includes("未填入期数"), "An installment suggestion overrode the chosen revolving kind");
+      } else if (filled) {
         assert(field("amount_major").value === "1200.00" && field("installment_count").value === "12" &&
           field("installment_period_months").value === "1" && field("debt_kind").value === "installment", "Blanks were not completed");
       }
@@ -49,13 +60,20 @@
     }
     if (stage === "reloaded") { await finish(true); return; }
     who.value = "我自己填的对方"; who.dispatchEvent(new Event("input", {bubbles: true}));
+    if (scenario === "revolving") {
+      field("debt_kind").value = "revolving"; field("debt_kind").dispatchEvent(new Event("change", {bubbles: true}));
+    }
     if (scenario === "parse-failed") {
       const amount = field("amount_major"); amount.value = "66.00"; amount.dispatchEvent(new Event("input", {bubbles: true}));
     }
     const setItem = Storage.prototype.setItem;
-    if (scenario === "storage") {
+    // "storage" refuses every write naming the source; "storage-release" only the write that names it
+    // and releases the capture key, which is where a two-step adopt left the draft stuck.
+    const refused = {storage: value => value.includes('"bill_source_public_id":"source-1"'),
+      "storage-release": value => value.includes('"bill_source_public_id":"source-1"') && value.includes('"bill_capture_key":""')}[scenario];
+    if (refused) {
       Storage.prototype.setItem = function (name, value) {
-        if (String(value).includes('"bill_source_public_id":"source-1"')) throw Error("QuotaExceededError");
+        if (refused(String(value))) throw Error("QuotaExceededError");
         return setItem.call(this, name, value);
       };
     }
@@ -72,13 +90,13 @@
       await wait(() => status.textContent.includes("暂时无法确认原账单是否已保存"), "the inconclusive read-back");
       await tryToSubmitEarly("the bill could not be confirmed");
       sessionStorage.setItem(key, "reloaded"); location.reload();
-    } else if (scenario === "storage") {
+    } else if (scenario === "storage" || scenario === "storage-release") {
       await wait(() => status.textContent.includes("本机原稿未能记下它"), "the unretained source");
       assert(field("bill_source_public_id").value === "" && field("bill_capture_key").value, "The page shows more than the draft holds");
       await tryToSubmitEarly("the draft could not keep the source");
       Storage.prototype.setItem = setItem;
       sessionStorage.setItem(key, "reloaded"); location.reload();
-    } else await finish(false);
+    } else await finish(scenario !== "parse-failed");
   } catch (error) {
     window.__debtBillResult = {error: String(error && error.stack || error), stage};
   }

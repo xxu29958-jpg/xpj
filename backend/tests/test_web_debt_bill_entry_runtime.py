@@ -62,6 +62,8 @@ class BillServer:
             return 200, "text/javascript", (ROOT / "backend/tests/fixtures/debt_bill_entry_probe.js").read_text()
         if path.startswith("/web/debt-bills/by-key/"):
             return self.read_back(path.rsplit("/", 1)[1])
+        if path == "/web/debt-bills/source-1":
+            return 200, "application/json", {**SOURCE, "row_version": 2, "file_name": "借条.png"}
         if path.startswith("/web/debts/"):
             return 200, "text/html; charset=utf-8", "<!doctype html><body><script>window.__debtBillResult = {completed: true};</script></body>"
         resource = (STATIC / path.removeprefix("/static/")).resolve()
@@ -176,7 +178,7 @@ def _posts(bills: BillServer, path: str) -> list[dict]:
     return [values for method, call, values in bills.calls if (method, call) == ("POST", path)]
 
 
-@pytest.mark.parametrize("scenario", ["delayed", "lost", "storage", "parse-failed"])
+@pytest.mark.parametrize("scenario", ["delayed", "lost", "storage", "storage-release", "parse-failed", "revolving"])
 def test_the_debt_command_waits_for_the_chosen_bill_and_carries_it_once(tmp_path: Path, scenario: str) -> None:
     result, bills = _run(tmp_path, scenario)
     assert not result.get("error") and result["completed"], result
@@ -187,9 +189,12 @@ def test_the_debt_command_waits_for_the_chosen_bill_and_carries_it_once(tmp_path
     assert (body["bill_source_public_id"], body["bill_source_row_version"]) == ("source-1", "2")
     assert body["counterparty_label"] == "我自己填的对方"
     assert body["amount_major"] == ("66.00" if scenario == "parse-failed" else "1200.00")
+    if scenario == "revolving":
+        assert (body["debt_kind"], body["installment_count"], body["installment_period_months"]) == ("revolving", "", ""), \
+            "An installment suggestion must not turn a chosen revolving debt into an invalid installment pair"
     assert not {"bill_capture_key", "bill_parse_key", "bill_discard_key", "bill_file_name"} & set(body), \
         "Draft-only task keys leaked into the debt command"
-    if scenario in {"lost", "storage"}:
+    if scenario in {"lost", "storage", "storage-release"}:
         assert bills.read_backs >= (2 if scenario == "lost" else 1), "The original was read back by its key, not re-sent"
 
 
@@ -204,3 +209,22 @@ def test_an_older_draft_without_bill_fields_still_restores(tmp_path: Path) -> No
         + json.dumps(json.dumps(record, ensure_ascii=False)) + ");window.__legacyDraft = true;</script>")
     result, _ = _run(tmp_path, "legacy", seed, "#debtcreation-create-" + ref)
     assert not result.get("error") and result["completed"], result
+
+
+def test_a_draft_holding_a_source_beside_its_resolved_capture_key_is_released(tmp_path: Path) -> None:
+    ref = "c79fc5f1-9c08-46a4-b2c6-712bc130e8f5"
+    values = {"ledger_id": "owner", "home_currency_code": "CNY", "currency_code": "CNY", "currency_minor_digits": "2",
+        "amount_major": "37.76", "direction": "i_owe", "counterparty_label": "旧键原稿", "event_time": "2026-10-30",
+        "calendar_revision": "1", "debt_kind": "one_off", "installment_count": "", "installment_period_months": "", "note": "",
+        "bill_source_public_id": "source-1", "bill_source_row_version": "2", "bill_capture_key": "4f9a7c1e-0d2b-4c6a-9e1f-3b5d7a9c2e40",
+        "bill_parse_key": "", "bill_discard_key": "", "bill_file_name": "借条.png",
+        "amount_placeholder": "输入金额", "amount_inputmode": "decimal"}
+    record = {"version": 1, "scope": SCOPE, "clientRef": ref, "phase": "editing", "values": values, "updatedAt": 1}
+    seed = ("<script>localStorage.setItem(" + json.dumps("ticketbox:debtcreation-create-draft:v1:" + ref) + ","
+        + json.dumps(json.dumps(record, ensure_ascii=False)) + ");window.__staleKeyDraft = true;</script>")
+    result, bills = _run(tmp_path, "stale-key", seed, "#debtcreation-create-" + ref)
+    assert not result.get("error") and result["completed"], result
+    created = _posts(bills, "/web/debts")
+    assert len(created) == 1 and not _posts(bills, "/web/debt-bills"), "A known source is neither re-uploaded nor held"
+    assert (created[0]["bill_source_public_id"], created[0]["bill_source_row_version"], created[0]["idempotency_key"]) == \
+        ("source-1", "2", ref)

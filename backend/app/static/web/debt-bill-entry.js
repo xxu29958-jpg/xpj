@@ -71,13 +71,14 @@
     });
   }
   async function adopt(form, source) {
-    view(form).source = source;
-    // The capture key is released only after the draft holds the source reference it resolved to.
-    if (!retain(form, {bill_source_public_id: source.public_id, bill_source_row_version: String(source.row_version)})) {
+    // One draft write records the source and releases the capture key it resolved: a failed write
+    // leaves the key alone, so a reload reads the same source back by it instead of holding forever.
+    if (!retain(form, {bill_source_public_id: source.public_id, bill_source_row_version: String(source.row_version),
+      bill_capture_key: ""})) {
       say(form, "原账单已保存，但本机原稿未能记下它；请恢复浏览器存储后重新打开此页继续，在此之前不会记下这笔往来。");
       render(form); return;
     }
-    retain(form, {bill_capture_key: ""});
+    view(form).source = source;
     render(form);
     await parse(form);
   }
@@ -135,13 +136,24 @@
       const fen = String(suggestion.principal_amount_cents).padStart(3, "0");
       fill("amount_major", fen.slice(0, -2) + "." + fen.slice(-2));
     }
-    fill("installment_count", suggestion.installment_count);
-    fill("installment_period_months", suggestion.installment_period_months);
-    if (filled.includes("installment_count") && field(form, "debt_kind").value === "one_off") {
-      field(form, "debt_kind").value = "installment";
-      field(form, "debt_kind").dispatchEvent(new Event("change", {bubbles: true}));
+    const installment = installmentSuggestion(form, suggestion, fill);
+    return (filled.length ? "已按原账单建议补全空白项，请核对后提交。" : "原件已保存；建议没有可补全的空白项，请对照原图核对。") + installment;
+  }
+  // Installment fields belong to the installment kind (a count needs it, a period needs a count): the
+  // untouched default may become installment, but a person's own other choice is never overridden.
+  function installmentSuggestion(form, suggestion, fill) {
+    const count = suggestion.installment_count, period = suggestion.installment_period_months;
+    const valid = (value, max) => Number.isInteger(value) && value >= 1 && value <= max;
+    if (!valid(count, 600)) return "";
+    const kind = field(form, "debt_kind"), current = field(form, "installment_count");
+    let switched = false;
+    if (kind.value === "one_off" && !current.value.trim()) {
+      kind.value = "installment"; kind.dispatchEvent(new Event("change", {bubbles: true})); switched = true;
     }
-    return filled.length ? "已按原账单建议补全空白项，请核对后提交。" : "原件已保存；建议没有可补全的空白项，请对照原图核对。";
+    if (kind.value !== "installment") return "原账单显示分 " + count + " 期；当前偿还方式不是分期，未填入期数。";
+    fill("installment_count", count);
+    if (current.value.trim() && valid(period, 120)) fill("installment_period_months", period);
+    return switched ? "偿还方式已按原账单改为分期还款。" : "";
   }
 
   async function discard(form) {
@@ -206,7 +218,10 @@
   }
   // Restored drafts and native round trips both arrive here: read back what the page cannot know.
   async function resume(form) {
-    const current = values(form), state = view(form);
+    const state = view(form);
+    // A draft from before the single adopt write may hold a source beside its resolved capture key.
+    if (values(form).bill_source_public_id && values(form).bill_capture_key && state.editable) retain(form, {bill_capture_key: ""});
+    const current = values(form);
     if (current.bill_capture_key && !current.bill_source_public_id) { await resumeCapture(form); return; }
     if (!current.bill_source_public_id) { render(form); return; }
     const response = await refresh(form);
@@ -233,7 +248,8 @@
       const opened = editable && !state.editable;
       state.editable = editable;
       render(form);
-      if (opened && values(form).bill_parse_key) resume(form);
+      const current = values(form);
+      if (opened && (current.bill_parse_key || current.bill_source_public_id && current.bill_capture_key)) resume(form);
     },
   };
   document.querySelectorAll("form[data-debtcreation-draft-scope]").forEach(form => {
