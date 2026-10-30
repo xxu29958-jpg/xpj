@@ -1,0 +1,33 @@
+{# 计划状态 (P6): 预算读数之后先看下一笔固定支出和本月消费目标, 再进入目录。
+   只列固定支出页、目标页同一服务给出的事实; 每格整格进入对应页面。
+   上下文: plan_status (web_budgets._plan_status), month。 #}
+{% from '_month_label.html' import month_label %}
+{% set status = plan_status %}
+<section class="plan-status budget-reading" aria-label="本月计划状态">
+  <a class="plan-status-item" href="{{ status.recurring_href }}">
+    <span class="product-amount-label">下一笔固定支出</span>
+    {% if status.next_due %}
+    {% set due = status.next_due %}
+    <span class="product-entry-heading"><strong>{{ due.merchant }}</strong><span class="product-entry-amount">{{ due.home_currency_code or '' }} {{ due.amount_yuan|grouped }}</span></span>
+    <span class="hint">{% if due.date < status.today %}预计 {{ due.date }} 已过，本期还没有对应付款{% else %}下次预计 {{ due.date }}{% endif %}</span>
+    {% elif status.recurring_active_count %}
+    <strong>{{ status.recurring_active_count }} 项生效</strong>
+    <span class="hint">未留日期，不提醒</span>
+    {% else %}
+    <strong>还没有固定支出</strong>
+    {% endif %}
+  </a>
+  <a class="plan-status-item" href="{{ status.goals_href }}">
+    <span class="product-amount-label">{{ month_label(month) }}消费目标</span>
+    {% for goal in status.goals %}
+    <span class="product-meter">
+      <span class="product-entry-heading"><strong>{{ goal.name }}</strong><span>{% if goal.progress_percent is not none %}已用 {{ goal.progress_percent }}%{% else %}暂不可计算{% endif %}</span></span>
+      {% if goal.progress_percent is not none %}<progress class="product-progress{% if goal.is_over_limit %} is-over{% endif %}" value="{{ goal.bar_percent }}" max="100" aria-label="{{ goal.name }}额度已用 {{ goal.progress_percent }}%"></progress>{% endif %}
+      {% if goal.is_over_limit %}<span class="product-status product-status--danger">已超出</span>{% endif %}
+    </span>
+    {% else %}
+    <strong>这个月还没有消费目标</strong>
+    {% endfor %}
+    {% if status.more_goal_count %}<span class="hint">另有 {{ status.more_goal_count }} 个目标</span>{% endif %}
+  </a>
+</section>

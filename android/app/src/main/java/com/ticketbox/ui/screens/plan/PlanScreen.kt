@@ -25,6 +25,7 @@ import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.viewmodel.BudgetUiState
 import com.ticketbox.viewmodel.IncomePlanUiState
 import com.ticketbox.viewmodel.RecurringUiState
+import com.ticketbox.viewmodel.SpendingGoalsUiState
 
 internal object PlanDestinationTestTags {
     const val Budget = "plan_destination_budget"
@@ -39,9 +40,10 @@ internal data class PlanScreenData(
     val budget: BudgetUiState,
     val recurring: RecurringUiState,
     val income: IncomePlanUiState,
+    val goals: SpendingGoalsUiState,
 ) {
     val refreshing: Boolean
-        get() = budget.loading || recurring.loading || income.isLoading
+        get() = budget.loading || recurring.loading || income.isLoading || goals.isLoading
 }
 
 internal data class PlanBudgetNavigationActions(
@@ -127,6 +129,14 @@ private fun PlanPrimaryPane(
                     PlanMonthlyArrangement(onOpenAdvice = actions.budgetNavigation.onOpenAdvice, titled = false)
                 }
             }
+        }
+        item {
+            PlanStatusCard(
+                recurring = data.recurring,
+                goals = data.goals,
+                onOpenRecurring = actions.onOpenRecurring,
+                onOpenSpendingGoal = actions.onOpenSpendingGoal,
+            )
         }
         item {
             PlanGoalsSection(
