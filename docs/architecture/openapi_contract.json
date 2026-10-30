@@ -3999,6 +3999,46 @@
         "title": "Body_web_budgets_save_web_budgets_save_post",
         "type": "object"
       },
+      "Body_web_capture_debt_bill_web_debt_bills_post": {
+        "properties": {
+          "creation_key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Creation Key",
+            "type": "string"
+          },
+          "draft_scope": {
+            "minLength": 1,
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "minLength": 1,
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "creation_key",
+          "idempotency_key",
+          "ledger_id",
+          "draft_scope"
+        ],
+        "title": "Body_web_capture_debt_bill_web_debt_bills_post",
+        "type": "object"
+      },
       "Body_web_category_preference_delete_web_categories_preferences__public_id__delete_post": {
         "properties": {
           "expected_row_version": {
@@ -14946,6 +14986,16 @@
           "amount_major": {
             "default": "",
             "title": "Amount Major",
+            "type": "string"
+          },
+          "bill_source_public_id": {
+            "default": "",
+            "title": "Bill Source Public Id",
+            "type": "string"
+          },
+          "bill_source_row_version": {
+            "default": "",
+            "title": "Bill Source Row Version",
             "type": "string"
           },
           "counterparty_label": {
@@ -32819,6 +32869,40 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WebDebtBillCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "draft_scope": {
+            "minLength": 1,
+            "title": "Draft Scope",
+            "type": "string"
+          },
+          "expected_row_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Row Version",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "ledger_id": {
+            "minLength": 1,
+            "title": "Ledger Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_row_version",
+          "ledger_id",
+          "draft_scope",
+          "idempotency_key"
+        ],
+        "title": "WebDebtBillCommand",
         "type": "object"
       }
     }
@@ -63621,6 +63705,413 @@
           }
         },
         "summary": "Web Data Quality",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-bills": {
+      "get": {
+        "operationId": "web_debt_bill_captures_web_debt_bills_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "creation_key",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Creation Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillCaptureListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Bill Captures",
+        "tags": [
+          "web"
+        ]
+      },
+      "post": {
+        "operationId": "web_capture_debt_bill_web_debt_bills_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_web_capture_debt_bill_web_debt_bills_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillCaptureReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Capture Debt Bill",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-bills/by-key/{capture_key}": {
+      "get": {
+        "operationId": "web_debt_bill_by_key_web_debt_bills_by_key__capture_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "capture_key",
+            "required": true,
+            "schema": {
+              "title": "Capture Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillCaptureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Bill By Key",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-bills/{public_id}": {
+      "get": {
+        "operationId": "web_debt_bill_detail_web_debt_bills__public_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillCaptureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Bill Detail",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-bills/{public_id}/discard": {
+      "post": {
+        "operationId": "web_discard_debt_bill_web_debt_bills__public_id__discard_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebDebtBillCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillCaptureResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Discard Debt Bill",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-bills/{public_id}/original": {
+      "get": {
+        "operationId": "web_debt_bill_original_web_debt_bills__public_id__original_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Bill Original",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-bills/{public_id}/parse": {
+      "post": {
+        "operationId": "web_parse_debt_bill_web_debt_bills__public_id__parse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebDebtBillCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillParseOutcome"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Parse Debt Bill",
+        "tags": [
+          "web"
+        ]
+      }
+    },
+    "/web/debt-bills/{public_id}/parse-attempts/{attempt_key}": {
+      "get": {
+        "operationId": "web_debt_bill_parse_outcome_web_debt_bills__public_id__parse_attempts__attempt_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "public_id",
+            "required": true,
+            "schema": {
+              "title": "Public Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attempt_key",
+            "required": true,
+            "schema": {
+              "title": "Attempt Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ledger_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Ledger Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebtBillParseOutcome"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Web Debt Bill Parse Outcome",
         "tags": [
           "web"
         ]

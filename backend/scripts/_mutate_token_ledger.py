@@ -328,6 +328,8 @@ ALLOWLIST: dict[str, Exempt] = {
     # Web form twins of the API entries above (same shared command service;
     # the Idempotency-Key travels as a hidden per-render form field).
     "POST /web/debts": Exempt("create_row", "debts", _DEBTS),
+    # Web adapter uses the same new-source claim and receipt as POST /api/debt-bills.
+    "POST /web/debt-bills": Exempt("create_row", "debts", ("debt_bill_captures", "api_idempotency_keys")),
     "POST /web/debts/{public_id}/repayment-proposals": Exempt(
         "create_row", "debts", _MEMBER_REPAYMENT_PROPOSAL
     ),
