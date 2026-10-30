@@ -11,25 +11,27 @@
     throw Error("Timed out waiting for " + label);
   };
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-  try {
-    const form = document.querySelector("#debt-creation"), field = name => form.elements.namedItem(name);
-    const who = field("counterparty_label"), status = form.querySelector("[data-debtbill-status]");
-    const submit = document.querySelector("[data-debtcreation-submit]");
-    await wait(() => !who.readOnly && !who.disabled, "an editable form");
+  async function completeRestoredDraft(form, field, submit) {
     if (window.__staleKeyDraft) {
       // Saved before the single adopt write: a source beside the capture key it already resolved.
       await wait(() => !field("bill_capture_key").value && field("bill_source_public_id").value === "source-1", "the stale key to clear");
       await wait(() => !submit.disabled, "submission to reopen for a known source");
       submit.click();
-      return;
+      return true;
     }
-    if (window.__legacyDraft) {
-      assert(who.value === "旧原稿里的对方" && field("amount_major").value === "88.00", "An older draft lost its inputs");
-      assert(!form.querySelector("[data-debtbill]").hidden && !form.querySelector("[data-debtbill-picker]").hidden,
-        "An older draft hid the bill entry");
-      window.__debtBillResult = {completed: true};
-      return;
-    }
+    if (!window.__legacyDraft) return false;
+    assert(field("counterparty_label").value === "旧原稿里的对方" && field("amount_major").value === "88.00", "An older draft lost its inputs");
+    assert(!form.querySelector("[data-debtbill]").hidden && !form.querySelector("[data-debtbill-picker]").hidden,
+      "An older draft hid the bill entry");
+    window.__debtBillResult = {completed: true};
+    return true;
+  }
+  try {
+    const form = document.querySelector("#debt-creation"), field = name => form.elements.namedItem(name);
+    const who = field("counterparty_label"), status = form.querySelector("[data-debtbill-status]");
+    const submit = document.querySelector("[data-debtcreation-submit]");
+    await wait(() => !who.readOnly && !who.disabled, "an editable form");
+    if (await completeRestoredDraft(form, field, submit)) return;
     let creates = 0;
     const fetchOriginal = window.fetch;
     window.fetch = (url, options) => {
