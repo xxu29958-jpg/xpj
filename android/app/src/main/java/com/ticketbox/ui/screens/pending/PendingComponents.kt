@@ -131,7 +131,12 @@ private fun PendingCaptureHero(
                     Text(stringResource(R.string.pending_capture_hero_title), style = MaterialTheme.typography.titleLarge)
                     Text(stringResource(R.string.pending_capture_hero_body),
                         color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-                    AppPrimaryButton(text = text, enabled = state.canStartUpload, onClick = onUploadScreenshot)
+                    // With a queue, 「开始核对」 is the screen's one primary; upload steps back to tonal.
+                    if (state.counts.all > 0) {
+                        AppSecondaryButton(text = text, enabled = state.canStartUpload, onClick = onUploadScreenshot)
+                    } else {
+                        AppPrimaryButton(text = text, enabled = state.canStartUpload, onClick = onUploadScreenshot)
+                    }
                 }
                 if (showArt) Image(painterResource(R.drawable.receipt_clip), contentDescription = null, modifier = Modifier.size(96.dp))
             }
