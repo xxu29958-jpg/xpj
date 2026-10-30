@@ -28,11 +28,13 @@ def _save(client, headers, expense_id, candidate, value, intent):
 @pytest.mark.parametrize("field,original,corrected", [
     ("amount_cents", 1800, 180), ("merchant", "海棠咖吽", "海棠咖啡"),
 ])
-def test_original_correction_is_scoped_rejectable_and_does_not_self_train(client, identity, field, original, corrected):
+@pytest.mark.parametrize("review", ["adopt", "verify_correction", "verify_unchanged"])
+def test_original_correction_keeps_source_reading_separate_from_recall(client, identity, field, original, corrected, review):
     headers = negotiated_headers(client, identity.app_headers)
     source = _seed(merchant="海棠咖吽")
     before = client.get(f"/api/expenses/{source}", headers=headers).json()
     chosen = next(c for c in before["recognition_fields"] if c["field"] == field and c["value"] == original)
+    assert chosen["source_reading_value"] == original
     _save(client, headers, source, chosen, corrected, "original_correction")
 
     target = _seed(merchant="海棠咖吽")
@@ -40,6 +42,7 @@ def test_original_correction_is_scoped_rejectable_and_does_not_self_train(client
     corrections = [c for c in proposed["recognition_fields"] if c["field"] == field and c["value"] == corrected]
     assert len(corrections) == 1, "Explicit source correction never reaches the next similar original"
     correction = corrections[0]
+    assert correction["source_reading_value"] == original
     assert correction["selection_intent"] == "bookkeeping", "Accepting a learned value is not a new source annotation"
     assert "纠正" in correction["explanation"] and correction["original_text"] == chosen["original_text"]
     assert proposed["amount_cents"] == 1800 and proposed["merchant"] == "海棠咖吽"
@@ -50,13 +53,22 @@ def test_original_correction_is_scoped_rejectable_and_does_not_self_train(client
     unrelated = client.get(f"/api/expenses/{other}", headers=headers).json()
     assert not any(c["field"] == field and c["value"] == corrected for c in unrelated["recognition_fields"])
 
-    _save(client, headers, target, correction, corrected, correction["selection_intent"])
+    final = original if review == "verify_unchanged" else corrected
+    intent = correction["selection_intent"] if review == "adopt" else "original_correction"
+    _save(client, headers, target, correction, final, intent)
     with SessionLocal() as db:
         origin = db.query(LedgerLearningEvent).filter_by(subject_id=source, signal_type="recognition_field_choice").one()
         accepted = db.query(LedgerLearningEvent).filter_by(subject_id=target, signal_type="recognition_field_choice").one()
-        assert json.loads(origin.after_payload)["_learning_qualified"] is True
-        assert json.loads(accepted.after_payload)["_learning_qualified"] is False
+        original_payload, accepted_payload = json.loads(origin.after_payload), json.loads(accepted.after_payload)
+        assert original_payload["_learning_qualified"] is True
+        assert "source_reading_value" not in original_payload["selected"], "Wire diagnostics must not change stored feedback"
+        assert accepted_payload["selected"]["value"] == original
+        assert accepted_payload["_learning_qualified"] is (review == "verify_correction")
         withdraw_feedback(db, tenant_id="owner", public_id=origin.public_id)
+        if review == "verify_correction":
+            # This second explicit verification is independent feedback; revoke
+            # it too before asserting that no qualified correction remains.
+            withdraw_feedback(db, tenant_id="owner", public_id=accepted.public_id)
         db.commit()
     fresh = _seed(merchant="海棠咖吽")
     after = client.get(f"/api/expenses/{fresh}", headers=headers).json()
