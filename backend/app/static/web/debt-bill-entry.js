@@ -216,28 +216,53 @@
     parseButton.disabled = !usable;
     form.querySelector("[data-debtbill-discard]").disabled = !usable;
   }
-  // Restored drafts and native round trips both arrive here: read back what the page cannot know.
-  async function resume(form) {
+  // One recovery at a time per form: restore and the editability update that follows both ask for it,
+  // and a parse attempt it replays must be sent once. A request made meanwhile runs once afterwards.
+  function resume(form) {
     const state = view(form);
-    // A draft from before the single adopt write may hold a source beside its resolved capture key.
-    if (values(form).bill_source_public_id && values(form).bill_capture_key && state.editable) retain(form, {bill_capture_key: ""});
+    if (state.recovery) { state.recoverAgain = true; return state.recovery; }
+    state.recovery = (async () => {
+      try {
+        do { state.recoverAgain = false; await recover(form); } while (state.recoverAgain);
+      } finally { state.recovery = null; }
+    })();
+    return state.recovery;
+  }
+  // Restored drafts and native round trips both arrive here: read back what the page cannot know.
+  async function recover(form) {
+    const state = view(form);
+    releaseResolvedKey(form);
     const current = values(form);
     if (current.bill_capture_key && !current.bill_source_public_id) { await resumeCapture(form); return; }
     if (!current.bill_source_public_id) { render(form); return; }
     const response = await refresh(form);
-    if (response && !response.ok && response.status < 500) {
-      say(form, "这张原账单当前不可用：" + refusal(response, "可选择其他图片或手填。"));
-    } else if (state.source?.status === "rejected") {
+    if (current.bill_parse_key && state.editable && response?.ok && state.source.status === "pending") {
+      await busy(form, "正在核实识别结果…", () => parse(form)); return;
+    }
+    const text = settle(form, response);
+    if (text) say(form, text);
+    render(form);
+  }
+  // A draft from before the single adopt write may hold a source beside its resolved capture key.
+  function releaseResolvedKey(form) {
+    const current = values(form);
+    if (current.bill_source_public_id && current.bill_capture_key && view(form).editable) retain(form, {bill_capture_key: ""});
+  }
+  // What a restored source now is, as far as the page can tell without sending another command.
+  function settle(form, response) {
+    const state = view(form), source = state.source;
+    if (response && !response.ok && response.status < 500) return "这张原账单当前不可用：" + refusal(response, "可选择其他图片或手填。");
+    if (source?.status === "rejected") {
       if (state.editable) {
         retain(form, Object.fromEntries(KEYS.map(name => [name, ""])));
         state.source = null;
       }
-      say(form, "这张账单已放弃，不会关联这笔往来。");
-    } else if (state.source?.adopted_debt_public_id) say(form, "这张原账单已用于一笔往来。");
-    else if (current.bill_parse_key && state.editable) { await parse(form); return; }
-    else if (state.source?.parse_outcome) say(form, state.source.parse_outcome.status === "succeeded"
-      ? "原件已保存。建议仅供填写参考，提交前请核对。" : "原件已保存，建议暂不可用；可按原图手填后提交。");
-    render(form);
+      return "这张账单已放弃，不会关联这笔往来。";
+    }
+    if (source?.adopted_debt_public_id) return "这张原账单已用于一笔往来。";
+    if (!source?.parse_outcome) return "";
+    return source.parse_outcome.status === "succeeded"
+      ? "原件已保存。建议仅供填写参考，提交前请核对。" : "原件已保存，建议暂不可用；可按原图手填后提交。";
   }
 
   window.TicketboxDebtBill = {

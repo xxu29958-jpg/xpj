@@ -7,6 +7,7 @@ chosen bill is settled, a lost reply is read back by its key, and a suggestion o
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 import time
@@ -63,7 +64,7 @@ class BillServer:
         if path.startswith("/web/debt-bills/by-key/"):
             return self.read_back(path.rsplit("/", 1)[1])
         if path == "/web/debt-bills/source-1":
-            return 200, "application/json", {**SOURCE, "row_version": 2, "file_name": "借条.png"}
+            return self.restored_source()
         if path.startswith("/web/debts/"):
             return 200, "text/html; charset=utf-8", "<!doctype html><body><script>window.__debtBillResult = {completed: true};</script></body>"
         resource = (STATIC / path.removeprefix("/static/")).resolve()
@@ -71,6 +72,13 @@ class BillServer:
             kind = "text/css" if resource.suffix == ".css" else "image/svg+xml" if resource.suffix == ".svg" else "text/javascript"
             return 200, kind, resource.read_text()
         return 404, "text/plain", "not found"
+
+    def restored_source(self):
+        if self.scenario != "parse-replay":
+            return 200, "application/json", {**SOURCE, "row_version": 2, "file_name": "借条.png"}
+        # Slow enough that the restore and the following editability update both ask to recover.
+        time.sleep(0.4)
+        return 200, "application/json", {**SOURCE, "file_name": "借条.png"}
 
     def read_back(self, key: str):
         self.read_backs += 1
@@ -99,6 +107,8 @@ class BillServer:
 
     def parse(self, values: dict) -> dict:
         assert values["expected_row_version"] == 1, values
+        if self.scenario == "parse-replay":
+            time.sleep(0.8)  # A model call: long enough for a second recovery to overlap it.
         outcome = {"public_id": "source-1", "attempt_key": values["idempotency_key"], "row_version": 2, "provider": "mock",
             "completed_at": "2026-10-30T00:00:00Z", "status": "succeeded", "error_code": None,
             "suggestion": {"merchant": "原账单上的出借人", "principal_amount_cents": 120000, "installment_count": 12,
@@ -141,7 +151,9 @@ def _handler(bills: BillServer):
             self.send_header("Content-Type", kind)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            # The page may move on (e.g. to the created debt) before a late read finishes.
+            with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+                self.wfile.write(body)
 
         def do_GET(self):
             path = urlsplit(self.path).path
@@ -228,3 +240,21 @@ def test_a_draft_holding_a_source_beside_its_resolved_capture_key_is_released(tm
     assert len(created) == 1 and not _posts(bills, "/web/debt-bills"), "A known source is neither re-uploaded nor held"
     assert (created[0]["bill_source_public_id"], created[0]["bill_source_row_version"], created[0]["idempotency_key"]) == \
         ("source-1", "2", ref)
+
+
+def test_reopening_a_draft_replays_its_unanswered_parse_attempt_once(tmp_path: Path) -> None:
+    ref, attempt = "7d1c2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f", "9e8d7c6b-5a49-4382-a716-152433425160"
+    values = {"ledger_id": "owner", "home_currency_code": "CNY", "currency_code": "CNY", "currency_minor_digits": "2",
+        "amount_major": "", "direction": "i_owe", "counterparty_label": "等识别的原稿", "event_time": "2026-10-30",
+        "calendar_revision": "1", "debt_kind": "one_off", "installment_count": "", "installment_period_months": "", "note": "",
+        "bill_source_public_id": "source-1", "bill_source_row_version": "1", "bill_capture_key": "", "bill_parse_key": attempt,
+        "bill_discard_key": "", "bill_file_name": "借条.png", "amount_placeholder": "输入金额", "amount_inputmode": "decimal"}
+    record = {"version": 1, "scope": SCOPE, "clientRef": ref, "phase": "editing", "values": values, "updatedAt": 1}
+    seed = ("<script>localStorage.setItem(" + json.dumps("ticketbox:debtcreation-create-draft:v1:" + ref) + ","
+        + json.dumps(json.dumps(record, ensure_ascii=False)) + ");window.__parseReplayDraft = true;</script>")
+    result, bills = _run(tmp_path, "parse-replay", seed, "#debtcreation-create-" + ref)
+    assert not result.get("error") and result["completed"], result
+    parses = _posts(bills, "/web/debt-bills/source-1/parse")
+    assert [values["idempotency_key"] for values in parses] == [attempt], "The unanswered attempt is replayed exactly once"
+    created = _posts(bills, "/web/debts")
+    assert len(created) == 1 and (created[0]["bill_source_row_version"], created[0]["amount_major"]) == ("2", "1200.00")

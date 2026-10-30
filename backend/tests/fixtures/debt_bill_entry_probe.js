@@ -19,6 +19,13 @@
       submit.click();
       return true;
     }
+    if (window.__parseReplayDraft) {
+      // Reopened with a parse attempt whose outcome never arrived: replayed once, not once per wake-up.
+      await wait(() => form.querySelector("[data-debtbill-status]").textContent.includes("已按原账单建议补全空白项"), "the replayed parse");
+      await wait(() => !submit.disabled, "submission after the replayed parse");
+      submit.click();
+      return true;
+    }
     if (!window.__legacyDraft) return false;
     assert(field("counterparty_label").value === "旧原稿里的对方" && field("amount_major").value === "88.00", "An older draft lost its inputs");
     assert(!form.querySelector("[data-debtbill]").hidden && !form.querySelector("[data-debtbill-picker]").hidden,
