@@ -11,7 +11,49 @@
     throw Error("Timed out waiting for " + label);
   };
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+  async function completeCurrencyRace(form, field, submit) {
+    const heldPath = scenario === "currency-capture" ? "/web/debt-bills" : "/web/debt-bills/source-1/parse";
+    const calls = [], originalFetch = window.fetch;
+    let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    window.fetch = (url, options) => {
+      const path = new URL(url, location.href).pathname;
+      if (options?.method === "POST") calls.push(path);
+      return path === heldPath ? pending.then(() => originalFetch(url, options)) : originalFetch(url, options);
+    };
+    field("counterparty_label").value = "切换币种保留的对方";
+    field("amount_major").value = "66.00";
+    field("amount_major").dispatchEvent(new Event("input", {bubbles: true}));
+    const canvas = document.createElement("canvas"); canvas.width = 120; canvas.height = 80;
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+    const files = new DataTransfer(); files.items.add(new File([blob], "借条.png", {type: "image/png"}));
+    const input = form.querySelector("[data-debtbill-file]");
+    input.files = files.files; input.dispatchEvent(new Event("change", {bubbles: true}));
+    await wait(() => calls.includes(heldPath), "the active operation before its reply");
+    const retainedKey = field(scenario === "currency-capture" ? "bill_capture_key" : "bill_parse_key");
+    const attempt = retainedKey.value;
+    for (const currency of ["JPY", "CNY"]) {
+      field("currency_code").value = currency;
+      field("currency_code").dispatchEvent(new Event("change", {bubbles: true}));
+    }
+    await pause(300);
+    assert(attempt && retainedKey.value === attempt, "Changing currency released the still-active operation key");
+    assert(calls.filter(path => path === heldPath).length === 1, "Changing currency started the same operation again");
+    assert(submit.disabled, "Changing currency released the debt command before its bill settled");
+    submit.click(); form.requestSubmit();
+    assert(!calls.includes("/web/debts"), "A debt was sent before the selected original settled");
+    release();
+    await wait(() => field("bill_source_row_version").value === "2" && !field("bill_parse_key").value && !submit.disabled,
+      "the original operation to settle");
+    assert(field("amount_major").value === "66.00" && field("counterparty_label").value === "切换币种保留的对方",
+      "The currency round trip lost manual fields");
+    submit.click();
+  }
   async function completeRestoredDraft(form, field, submit) {
+    if (scenario.startsWith("currency-")) {
+      await completeCurrencyRace(form, field, submit);
+      return true;
+    }
     if (window.__staleKeyDraft) {
       // Saved before the single adopt write: a source beside the capture key it already resolved.
       await wait(() => !field("bill_capture_key").value && field("bill_source_public_id").value === "source-1", "the stale key to clear");

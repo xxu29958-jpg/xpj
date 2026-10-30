@@ -193,7 +193,9 @@
 
   async function busy(form, text, task) {
     const state = view(form);
-    state.busy = true; say(form, text); render(form);
+    state.busy = true;
+    if (text !== null) say(form, text);
+    render(form);
     try { await task(); } finally { state.busy = false; render(form); }
   }
   function render(form) {
@@ -221,12 +223,15 @@
   function resume(form) {
     const state = view(form);
     if (state.recovery) { state.recoverAgain = true; return state.recovery; }
+    // The active operation owns its reply and read-back. A presentation change (e.g. currency)
+    // must not recover an upload before it commits or send the parse that is already running.
+    if (state.busy) return;
     const replayed = new Set();
-    state.recovery = (async () => {
+    state.recovery = busy(form, null, async () => {
       try {
         do { state.recoverAgain = false; await recover(form, replayed); } while (state.recoverAgain);
       } finally { state.recovery = null; }
-    })();
+    });
     return state.recovery;
   }
   // Restored drafts and native round trips both arrive here: read back what the page cannot know.
@@ -243,7 +248,8 @@
     const response = await refresh(form);
     if (current.bill_parse_key && state.editable && response?.ok && state.source.status === "pending") {
       replayed.add(attempt);
-      await busy(form, "正在核实识别结果…", () => parse(form)); return;
+      say(form, "正在核实识别结果…");
+      await parse(form); return;
     }
     const text = settle(form, response);
     if (text) say(form, text);

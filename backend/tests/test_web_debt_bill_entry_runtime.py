@@ -194,6 +194,20 @@ def _posts(bills: BillServer, path: str) -> list[dict]:
     return [values for method, call, values in bills.calls if (method, call) == ("POST", path)]
 
 
+@pytest.mark.parametrize("scenario", ["currency-capture", "currency-parse"])
+def test_currency_changes_preserve_the_active_bill_operation(tmp_path: Path, scenario: str) -> None:
+    result, bills = _run(tmp_path, scenario)
+    assert not result.get("error") and result["completed"], result
+    assert len(_posts(bills, "/web/debt-bills")) == len(_posts(bills, "/web/debt-bills/source-1/parse")) == 1
+    assert bills.read_backs == 0, "An active upload is not recovered before its reply arrives"
+    created = _posts(bills, "/web/debts")
+    assert len(created) == 1
+    assert (created[0]["bill_source_public_id"], created[0]["bill_source_row_version"], created[0]["idempotency_key"]) == \
+        ("source-1", "2", CREATION_KEY)
+    assert (created[0]["currency_code"], created[0]["amount_major"], created[0]["counterparty_label"]) == \
+        ("CNY", "66.00", "切换币种保留的对方")
+
+
 @pytest.mark.parametrize("scenario", ["delayed", "lost", "storage", "storage-release", "parse-failed", "revolving"])
 def test_the_debt_command_waits_for_the_chosen_bill_and_carries_it_once(tmp_path: Path, scenario: str) -> None:
     result, bills = _run(tmp_path, scenario)
