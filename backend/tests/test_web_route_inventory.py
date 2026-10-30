@@ -11,9 +11,9 @@ axes:
   Only safe to publish after a Web session forces ``selected_ledger_id``
   to the logged-in account's ledger.
 
-- ``writer-only`` — state-changing endpoint that already calls
-  :func:`app.routes.web_common._require_selected_ledger_write` against the
-  resolved ledger. Going public still requires a Web session (so the
+- ``writer-only`` — state-changing endpoint that already calls the selected
+  ledger guard or the retained-bill owner's atomic writer authorization
+  against the resolved ledger. Going public still requires a Web session (so the
   caller is a known account), but the ledger-write boundary is already in
   place.
 
@@ -46,9 +46,9 @@ tests below assert:
    whenever a new route is added).
 2. No duplicate ``(method, path)`` pair is registered; FastAPI would otherwise
    silently let the first endpoint win.
-3. Every ``writer-only`` route endpoint, or a local helper it directly calls,
-   references ``_require_selected_ledger_write`` (so the classification
-   doesn't drift away from the code while route adapters remain small).
+3. Every ``writer-only`` route endpoint reaches the selected-ledger guard or
+   the retained-bill owner's writer guard (so the classification doesn't drift
+   away from the code while route adapters reuse the transaction owner).
 
 Adding a route without classifying it = pytest red, which is the entire
 point.
@@ -64,9 +64,11 @@ from collections.abc import Callable
 from typing import Literal
 
 import pytest
+from fastapi.routing import APIRoute
 from starlette.routing import Route
 
 from app.main import app
+from scripts.public_surface import route_catalog
 
 Classification = Literal[
     "local-only-rendering",
@@ -156,6 +158,14 @@ _WEB_ROUTE_CLASSIFICATION: dict[tuple[str, str], Classification] = {
     # Data quality
     ("GET", "/web/data-quality"): "local-only-rendering",
     # Debts (ADR-0049 债务域 web 面 slice 1 列表 + slice 2a 只读详情)
+    ("GET", "/web/debt-bills"): "principal-read",
+    ("GET", "/web/debt-bills/by-key/{capture_key}"): "principal-read",
+    ("GET", "/web/debt-bills/{public_id}"): "principal-read",
+    ("GET", "/web/debt-bills/{public_id}/original"): "media",
+    ("GET", "/web/debt-bills/{public_id}/parse-attempts/{attempt_key}"): "principal-read",
+    ("POST", "/web/debt-bills"): "writer-only",
+    ("POST", "/web/debt-bills/{public_id}/discard"): "writer-only",
+    ("POST", "/web/debt-bills/{public_id}/parse"): "writer-only",
     ("GET", "/web/debts"): "local-only-rendering",
     ("GET", "/web/debts/new"): "local-only-rendering",
     ("GET", "/web/debts/{public_id}"): "local-only-rendering",
@@ -407,13 +417,13 @@ def _uses_writer_guard(
     *,
     visited: set[Callable[..., object]] | None = None,
 ) -> bool:
-    """Follow local function calls until the selected-ledger guard is found."""
+    """Follow route adapters and the retained-bill owner to their writer guard."""
     seen = visited if visited is not None else set()
     if function in seen:
         return False
     seen.add(function)
     source = inspect.getsource(function)
-    if "_require_selected_ledger_write(" in source:
+    if "_require_selected_ledger_write(" in source or "authorize_capture_write(" in source:
         return True
 
     tree = ast.parse(textwrap.dedent(source))
@@ -424,11 +434,20 @@ def _uses_writer_guard(
         helper = function.__globals__.get(name)
         if not inspect.isfunction(helper):
             continue
-        if not helper.__module__.startswith("app.routes."):
+        if not helper.__module__.startswith(("app.routes.", "app.services.debt_bill_capture_service",
+                                             "app.services.debt_bill_source_parse")):
             continue
         if _uses_writer_guard(helper, visited=seen):
             return True
     return False
+
+
+def test_all_backend_routes_have_reviewed_public_policy() -> None:
+    """Backend-only changes must also pass this when Windows build is scoped out."""
+    registered = {(method, route.path) for route in app.routes if isinstance(route, APIRoute) for method in route.methods}
+    reviewed = [(route.method, route.path) for route in route_catalog()]
+    assert len(reviewed) == len(set(reviewed)), "Duplicate public route policy"
+    assert set(reviewed) == registered, "Registered routes and reviewed public ingress policy differ"
 
 
 def test_every_web_route_is_classified() -> None:
@@ -462,5 +481,5 @@ def test_writer_only_routes_actually_check_writer(method: str, path: str) -> Non
     assert _uses_writer_guard(endpoint), (
         f"{method} {path} is classified as writer-only but its handler "
         f"({endpoint.__module__}.{endpoint.__name__}) does not reach "
-        "_require_selected_ledger_write through its local call chain."
+        "the selected-ledger or retained-bill writer guard through its call chain."
     )

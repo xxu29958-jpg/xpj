@@ -282,6 +282,11 @@ GET /web/categories/uncategorized
 GET /web/confirmed
 GET /web/dashboard/cards
 GET /web/data-quality
+GET /web/debt-bills
+GET /web/debt-bills/by-key/{capture_key}
+GET /web/debt-bills/{public_id}
+GET /web/debt-bills/{public_id}/original
+GET /web/debt-bills/{public_id}/parse-attempts/{attempt_key}
 GET /web/debt-goals
 GET /web/debt-goals/new
 GET /web/debt-goals/{public_id}/links
@@ -373,6 +378,9 @@ POST /web/debt-goals/{public_id}/review/acknowledge
 POST /web/debt-goals/{public_id}/review/remove-voided
 POST /web/debt-goals/{public_id}/target-date
 POST /web/debts
+POST /web/debt-bills
+POST /web/debt-bills/{public_id}/discard
+POST /web/debt-bills/{public_id}/parse
 POST /web/debts/rate
 POST /web/debts/{public_id}/adjustments
 POST /web/debts/{public_id}/forgive
@@ -502,6 +510,7 @@ GET /owner/devices
 GET /owner/diagnostics
 GET /owner/fx
 GET /owner/learning-maintenance
+GET /owner/learning-maintenance/original-text-evaluation
 GET /owner/ledgers
 GET /owner/ledgers/{ledger_id}/calendar
 GET /owner/local-models

@@ -299,6 +299,7 @@ Cloudflare ingress 只匹配 hostname/path；方法、鉴权、角色、账本�
 | POST | `/owner/fx/settings` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | GET | `/owner/learning-maintenance` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | POST | `/owner/learning-maintenance/dismiss-decision` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
+| GET | `/owner/learning-maintenance/original-text-evaluation` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | POST | `/owner/learning-maintenance/run` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | GET | `/owner/ledgers` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | POST | `/owner/ledgers` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
@@ -379,6 +380,14 @@ Cloudflare ingress 只匹配 hostname/path；方法、鉴权、角色、账本�
 | POST | `/web/dashboard/cards/reset` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | POST | `/web/dashboard/cards/save` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | GET | `/web/data-quality` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| GET | `/web/debt-bills` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| POST | `/web/debt-bills` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| GET | `/web/debt-bills/by-key/{capture_key}` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| GET | `/web/debt-bills/{public_id}` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| POST | `/web/debt-bills/{public_id}/discard` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| GET | `/web/debt-bills/{public_id}/original` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| POST | `/web/debt-bills/{public_id}/parse` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| GET | `/web/debt-bills/{public_id}/parse-attempts/{attempt_key}` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | GET | `/web/debt-goals` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | POST | `/web/debt-goals/create` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | GET | `/web/debt-goals/new` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |

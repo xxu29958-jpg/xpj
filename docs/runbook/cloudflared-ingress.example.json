@@ -232,6 +232,11 @@
     },
     {
       "hostname": "ticketbox.example.com",
+      "path": "^(/web/debt\\-bills|/web/debt\\-bills/[^/]+|/web/debt\\-bills/[^/]+/discard|/web/debt\\-bills/[^/]+/original|/web/debt\\-bills/[^/]+/parse|/web/debt\\-bills/[^/]+/parse\\-attempts/[^/]+|/web/debt\\-bills/by\\-key/[^/]+)$",
+      "service": "http://127.0.0.1:8000"
+    },
+    {
+      "hostname": "ticketbox.example.com",
       "path": "^(/web/debt\\-goals|/web/debt\\-goals/[^/]+/archive|/web/debt\\-goals/[^/]+/links|/web/debt\\-goals/[^/]+/restore|/web/debt\\-goals/[^/]+/review/acknowledge|/web/debt\\-goals/[^/]+/review/remove\\-voided|/web/debt\\-goals/[^/]+/target\\-date|/web/debt\\-goals/create|/web/debt\\-goals/new)$",
       "service": "http://127.0.0.1:8000"
     },
