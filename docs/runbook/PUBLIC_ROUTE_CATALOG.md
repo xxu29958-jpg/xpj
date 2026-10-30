@@ -379,6 +379,14 @@ Cloudflare ingress 只匹配 hostname/path；方法、鉴权、角色、账本�
 | POST | `/web/dashboard/cards/reset` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | POST | `/web/dashboard/cards/save` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | GET | `/web/data-quality` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| GET | `/web/debt-bills` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| POST | `/web/debt-bills` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| GET | `/web/debt-bills/by-key/{capture_key}` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| GET | `/web/debt-bills/{public_id}` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| POST | `/web/debt-bills/{public_id}/discard` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| GET | `/web/debt-bills/{public_id}/original` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| POST | `/web/debt-bills/{public_id}/parse` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
+| GET | `/web/debt-bills/{public_id}/parse-attempts/{attempt_key}` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | GET | `/web/debt-goals` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | POST | `/web/debt-goals/create` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
 | GET | `/web/debt-goals/new` | 允许 | Web HttpOnly cookie；写操作 CSRF；角色与账本隔离 |
