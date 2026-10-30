@@ -3,7 +3,7 @@
 <a class="product-entry{% if debt.recede %} is-receded{% endif %}"
    href="/web/debts/{{ debt.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}"
    aria-label="{{ debt.direction_sentence }}，{{ debt.status_label }}，剩余 {{ debt.currency_code }} {{ debt.remaining_label }}，{% if debt.is_credit_account %}信用账户{% else %}本金 {{ debt.principal_label }}{% endif %}">
-  <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
+  <span class="product-entry-icon{% if not debt.is_member %} product-entry-icon--external{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
   <span class="product-entry-copy">
     <span class="product-entry-heading"><strong>{{ debt.name }}</strong><strong class="product-entry-amount">{{ debt.remaining_label }}</strong></span>
     {# 普通未结状态由金额与所在分区表达; 只有需要留意的状态 (已结清、待确认、作废等) 才出状态胶囊。完整状态始终在 aria-label 里。 #}

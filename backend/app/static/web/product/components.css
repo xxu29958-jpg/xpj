@@ -1383,6 +1383,8 @@ details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); 
 .product-entry-icon--receipt { position: relative; height: auto; aspect-ratio: 3 / 4; overflow: hidden; border-radius: var(--radius-sm); background: var(--surface-sunken); }
 .product-entry-icon--receipt > img { position: absolute; width: 100%; height: 100%; object-fit: contain; }
 .product-entry-icon--receipt.is-loaded > svg { visibility: hidden; }
+/* 往来对象不是家庭成员: 与 Android DebtListRows 同一规则; 其余图标底统一鼠尾草。 */
+.product-entry-icon--external { background: var(--surface-lilac); }
 .product-entry-icon--hero {
     width: var(--space-12);
     height: var(--space-12);
