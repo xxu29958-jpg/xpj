@@ -299,6 +299,7 @@ Cloudflare ingress 只匹配 hostname/path；方法、鉴权、角色、账本�
 | POST | `/owner/fx/settings` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | GET | `/owner/learning-maintenance` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | POST | `/owner/learning-maintenance/dismiss-decision` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
+| GET | `/owner/learning-maintenance/original-text-evaluation` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | POST | `/owner/learning-maintenance/run` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | GET | `/owner/ledgers` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |
 | POST | `/owner/ledgers` | 拒绝 | 不进公网 ingress；原有本机/Owner/Desktop 权限边界继续执行 |

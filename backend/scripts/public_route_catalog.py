@@ -502,6 +502,7 @@ GET /owner/devices
 GET /owner/diagnostics
 GET /owner/fx
 GET /owner/learning-maintenance
+GET /owner/learning-maintenance/original-text-evaluation
 GET /owner/ledgers
 GET /owner/ledgers/{ledger_id}/calendar
 GET /owner/local-models
