@@ -147,6 +147,9 @@
       return editsAllowed && !blocked && phase === "editing" && (held || onlineOnly);
     }
     function commandAllowed() { return canWrite && (!archived || phase !== "editing"); }
+    // A definition may hold a new command while related work it must carry is still unresolved;
+    // an original command already submitted is never held.
+    function commandHold() { return phase === "editing" ? definition.holdCommand?.(values()) || "" : ""; }
     function actionUnavailable() { return blocked || busy || accepted || (!held && !onlineOnly); }
     function reviewAvailable() {
       if (!editsAllowed || blocked) return false;
@@ -169,7 +172,7 @@
       if (disposed) return;
       updateFields(fieldsEditable());
       submit.hidden = !canWrite || (archived && phase === "editing");
-      submit.disabled = !commandAllowed() || actionUnavailable();
+      submit.disabled = !commandAllowed() || actionUnavailable() || Boolean(commandHold());
       if (phase === "editing") submit.replaceChildren(...nativeContent);
       else submit.textContent = definition.pendingLabel || "核实原" + taskLabel;
       review.hidden = !reviewAvailable();
@@ -375,6 +378,8 @@
       if (allowNativeSubmission(event.submitter)) return;
       event.preventDefault();
       if (!commandAllowed() || !held || busy || accepted || blocked) return;
+      const waiting = commandHold();
+      if (waiting) { notice(waiting); return; }
       busy = true; controls(); notice("正在提交原" + taskLabel + "…");
       try { await send(); }
       catch (_) { notice(accepted ? "这次操作已接受，本地原稿暂未处理完；请恢复浏览器存储后重新打开核实。" :
