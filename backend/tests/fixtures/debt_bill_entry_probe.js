@@ -21,6 +21,14 @@
     }
     if (window.__parseReplayDraft) {
       // Reopened with a parse attempt whose outcome never arrived: replayed once, not once per wake-up.
+      if (scenario === "parse-replay-unknown") {
+        await wait(() => form.querySelector("[data-debtbill-status]").textContent.includes("暂时无法确认识别结果"), "the unanswered replay");
+        await pause(1500); // A queued recovery must not turn an unknown reply into an automatic retry.
+        assert(field("bill_parse_key").value && field("bill_source_row_version").value === "1", "An unknown reply was replayed again without the person asking");
+        const retry = form.querySelector("[data-debtbill-parse]");
+        assert(!retry.hidden && !retry.disabled, "The retained attempt cannot be explicitly resumed");
+        retry.click();
+      }
       await wait(() => form.querySelector("[data-debtbill-status]").textContent.includes("已按原账单建议补全空白项"), "the replayed parse");
       await wait(() => !submit.disabled, "submission after the replayed parse");
       submit.click();

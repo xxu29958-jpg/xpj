@@ -55,6 +55,7 @@ class BillServer:
         self.calls: list[tuple[str, str, dict]] = []
         self.captures: dict[str, dict] = {}
         self.read_backs = 0
+        self.parse_requests = 0
 
     def get(self, path: str):
         if path == "/web/debts/new":
@@ -74,7 +75,7 @@ class BillServer:
         return 404, "text/plain", "not found"
 
     def restored_source(self):
-        if self.scenario != "parse-replay":
+        if self.scenario not in {"parse-replay", "parse-replay-unknown"}:
             return 200, "application/json", {**SOURCE, "row_version": 2, "file_name": "借条.png"}
         # Slow enough that the restore and the following editability update both ask to recover.
         time.sleep(0.4)
@@ -91,6 +92,9 @@ class BillServer:
         if path == "/web/debt-bills":
             return self.capture(values)
         if path == "/web/debt-bills/source-1/parse":
+            self.parse_requests += 1
+            if self.scenario == "parse-replay-unknown" and self.parse_requests == 1:
+                return 503, "application/json", {"error": "server_error"}  # An outcome is not yet readable.
             return 200, "application/json", self.parse(values)
         if path == "/web/debts":
             return 200, "application/json", self.create(values)
@@ -107,7 +111,7 @@ class BillServer:
 
     def parse(self, values: dict) -> dict:
         assert values["expected_row_version"] == 1, values
-        if self.scenario == "parse-replay":
+        if self.scenario in {"parse-replay", "parse-replay-unknown"}:
             time.sleep(0.8)  # A model call: long enough for a second recovery to overlap it.
         outcome = {"public_id": "source-1", "attempt_key": values["idempotency_key"], "row_version": 2, "provider": "mock",
             "completed_at": "2026-10-30T00:00:00Z", "status": "succeeded", "error_code": None,
@@ -242,7 +246,8 @@ def test_a_draft_holding_a_source_beside_its_resolved_capture_key_is_released(tm
         ("source-1", "2", ref)
 
 
-def test_reopening_a_draft_replays_its_unanswered_parse_attempt_once(tmp_path: Path) -> None:
+@pytest.mark.parametrize("scenario", ["parse-replay", "parse-replay-unknown"])
+def test_reopening_a_draft_replays_its_unanswered_parse_attempt_once(tmp_path: Path, scenario: str) -> None:
     ref, attempt = "7d1c2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f", "9e8d7c6b-5a49-4382-a716-152433425160"
     values = {"ledger_id": "owner", "home_currency_code": "CNY", "currency_code": "CNY", "currency_minor_digits": "2",
         "amount_major": "", "direction": "i_owe", "counterparty_label": "等识别的原稿", "event_time": "2026-10-30",
@@ -252,9 +257,10 @@ def test_reopening_a_draft_replays_its_unanswered_parse_attempt_once(tmp_path: P
     record = {"version": 1, "scope": SCOPE, "clientRef": ref, "phase": "editing", "values": values, "updatedAt": 1}
     seed = ("<script>localStorage.setItem(" + json.dumps("ticketbox:debtcreation-create-draft:v1:" + ref) + ","
         + json.dumps(json.dumps(record, ensure_ascii=False)) + ");window.__parseReplayDraft = true;</script>")
-    result, bills = _run(tmp_path, "parse-replay", seed, "#debtcreation-create-" + ref)
-    assert not result.get("error") and result["completed"], result
+    result, bills = _run(tmp_path, scenario, seed, "#debtcreation-create-" + ref)
+    assert not result.get("error") and result["completed"], {"browser": result, "parse_requests": bills.parse_requests}
     parses = _posts(bills, "/web/debt-bills/source-1/parse")
-    assert [values["idempotency_key"] for values in parses] == [attempt], "The unanswered attempt is replayed exactly once"
+    expected_attempts = [attempt] * (2 if scenario == "parse-replay-unknown" else 1)
+    assert [values["idempotency_key"] for values in parses] == expected_attempts, "Recovery and an explicit retry retain the original attempt"
     created = _posts(bills, "/web/debts")
     assert len(created) == 1 and (created[0]["bill_source_row_version"], created[0]["amount_major"]) == ("2", "1200.00")

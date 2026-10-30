@@ -221,22 +221,28 @@
   function resume(form) {
     const state = view(form);
     if (state.recovery) { state.recoverAgain = true; return state.recovery; }
+    const replayed = new Set();
     state.recovery = (async () => {
       try {
-        do { state.recoverAgain = false; await recover(form); } while (state.recoverAgain);
+        do { state.recoverAgain = false; await recover(form, replayed); } while (state.recoverAgain);
       } finally { state.recovery = null; }
     })();
     return state.recovery;
   }
   // Restored drafts and native round trips both arrive here: read back what the page cannot know.
-  async function recover(form) {
+  async function recover(form, replayed) {
     const state = view(form);
     releaseResolvedKey(form);
     const current = values(form);
+    const attempt = current.bill_source_public_id + ":" + current.bill_parse_key;
+    // A queued wake-up is still the same recovery, even if its first reply remains unknown. Keep
+    // that attempt available for the person's explicit retry rather than immediately sending it again.
+    if (replayed.has(attempt)) { render(form); return; }
     if (current.bill_capture_key && !current.bill_source_public_id) { await resumeCapture(form); return; }
     if (!current.bill_source_public_id) { render(form); return; }
     const response = await refresh(form);
     if (current.bill_parse_key && state.editable && response?.ok && state.source.status === "pending") {
+      replayed.add(attempt);
       await busy(form, "正在核实识别结果…", () => parse(form)); return;
     }
     const text = settle(form, response);
