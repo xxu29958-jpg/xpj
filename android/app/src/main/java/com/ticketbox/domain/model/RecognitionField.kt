@@ -33,6 +33,8 @@ data class RecognitionFieldCandidate(
     @param:Json(name = "selection_intent") val selectionIntent: String = "candidate",
     @param:Json(name = "event_selected") val eventSelected: Boolean = false,
     @param:Json(name = "source_location") val sourceLocation: RecognitionSourceLocation? = null,
+    // The parser's reading before personal recall replaced `value`; null when the server did not send it.
+    @param:Json(name = "source_reading_value") val sourceReadingValue: String? = null,
 ) {
     fun choice() = RecognitionFieldChoice(field, id, evidencePublicId, parserVersion, source, selectionIntent)
 }

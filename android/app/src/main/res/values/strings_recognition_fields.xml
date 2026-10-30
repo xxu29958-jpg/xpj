@@ -5,4 +5,14 @@
     <string name="recognition_fields_help">选择属于本次交易的内容填入草稿，保存后才会修改账单。</string>
     <string name="recognition_fields_amount">采用此金额</string>
     <string name="recognition_fields_merchant">采用此商户</string>
+    <string name="recognition_fields_count">%1$d 处原文可对照</string>
+    <string name="recognition_fields_noun_amount">金额</string>
+    <string name="recognition_fields_noun_merchant">商户</string>
+    <string name="recognition_fields_status_applied">已填入当前草稿，请核对后保存。</string>
+    <string name="recognition_fields_status_recorded">已注明你对照这一处原件作了纠正，请保存当前修改。</string>
+    <string name="recognition_fields_status_empty">%1$s还是空的：请先在上方填入你核对后的%1$s，再点“注明已对照此处纠正%1$s”。</string>
+    <string name="recognition_fields_status_unchanged">%1$s与这处原文相同，没有需要注明的纠正；若原文读错，请先改正%1$s。</string>
+    <string name="recognition_fields_status_other_currency">这处原文的币种与当前填写不同；只有在同一币种下改正了金额，才能注明对照纠正。</string>
+    <string name="recognition_fields_status_source_unavailable">暂时无法核对这处原文的读数，没有注明；请刷新后再试。</string>
+    <string name="recognition_fields_status_cancelled">你改动了%1$s，之前的注明已取消；改好后可再点一次注明。</string>
 </resources>

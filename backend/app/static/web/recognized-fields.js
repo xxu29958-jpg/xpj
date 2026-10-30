@@ -33,22 +33,41 @@
   function fieldInput(form, field) {
     return form.elements.namedItem(field === "amount_cents" ? "amount_yuan" : "merchant");
   }
-  function applyCandidate(form, candidate, correction) {
-    if (correction) {
-      const input = fieldInput(form, candidate.field);
-      return Boolean(input && !input.disabled && input.value.trim());
+  function noun(field) {
+    return field === "amount_cents" ? "金额" : "商户";
+  }
+  function minorUnits(text, exponent) {
+    const match = /^(\d*)(?:\.(\d*))?$/.exec(text);
+    if (!match || (match[2] || "").length > exponent) return null;
+    return Number((match[1] || "0") + (match[2] || "").padEnd(exponent, "0"));
+  }
+  // Same rule as Android and the backend's learning qualification: a correction only counts when the
+  // field holds a value that differs from the parser's own reading, in that reading's currency. A
+  // recalled suggestion replaces `value`, never `source_reading_value`, so only the latter is compared.
+  function correctionProblem(form, candidate) {
+    const input = fieldInput(form, candidate.field), name = noun(candidate.field), value = input?.value.trim();
+    const reading = candidate.source_reading_value;
+    if (!input || input.disabled) return `这笔账单的${name}不能在这里修改。`;
+    if (!value) return `${name}还是空的：请先在上方填入你核对后的${name}，再点“注明已对照此处纠正${name}”。`;
+    if (reading === null || reading === undefined) return "暂时无法核对这处原文的读数，没有注明；请刷新页面后再试。";
+    const unchanged = `${name}与这处原文相同，没有需要注明的纠正；若原文读错，请先改正${name}。`;
+    if (candidate.field !== "amount_cents") return value === String(reading).trim() ? unchanged : "";
+    if (form.elements.namedItem("original_currency")?.value !== candidate.currency_code) {
+      return "这处原文的币种与当前填写不同；只有在同一币种下改正了金额，才能注明对照纠正。";
     }
+    return minorUnits(value, candidate.minor_unit_exponent) === reading ? unchanged : "";
+  }
+  function applyCandidate(form, candidate) {
     if (candidate.field === "amount_cents") return copyMoney(form, candidate);
     const merchant = form.elements.namedItem("merchant");
     if (!merchant || merchant.disabled) return false;
     merchant.value = candidate.value; merchant.dispatchEvent(new Event("input", {bubbles: true}));
     return true;
   }
-  function unavailableMessage(form, candidate, correction) {
-    const input = fieldInput(form, candidate.field), noun = candidate.field === "amount_cents" ? "金额" : "商户";
-    if (!input || input.disabled) return `这笔账单的${noun}不能在这里修改。`;
-    if (correction) return `${noun}还是空的：请先在上方填入你核对后的${noun}，再点“注明已对照此处纠正${noun}”。`;
-    return `无法自动填入这条${noun}，请直接修改${noun}。`;
+  function unavailableMessage(form, candidate) {
+    const input = fieldInput(form, candidate.field), name = noun(candidate.field);
+    if (!input || input.disabled) return `这笔账单的${name}不能在这里修改。`;
+    return `无法自动填入这条${name}，请直接修改${name}。`;
   }
   document.addEventListener("focusin", event => {
     const field = {amount_yuan: "amount_cents", merchant: "merchant"}[event.target.name];
@@ -62,9 +81,11 @@
     const form = button.closest("form"), candidate = JSON.parse(button.dataset.recognizedField || button.dataset.recognizedFieldCorrection);
     if (!form || !candidate.can_apply) return;
     const status = button.closest("[data-recognized-fields]").querySelector("[data-recognized-field-status]");
-    if (!applyCandidate(form, candidate, correction)) {
-      // An enabled control never fails silently: say why nothing was recorded.
-      status.textContent = unavailableMessage(form, candidate, correction);
+    // An enabled control never fails silently: say why nothing was recorded.
+    const problem = correction ? correctionProblem(form, candidate)
+      : !applyCandidate(form, candidate) && unavailableMessage(form, candidate);
+    if (problem) {
+      status.textContent = problem;
       return;
     }
     saveChoices(form, [...choices(form).filter(item => item.field !== candidate.field), {
@@ -78,6 +99,12 @@
   document.addEventListener("input", event => {
     if (!event.isTrusted || !event.target.form) return;
     const field = {amount_yuan: "amount_cents", original_currency: "amount_cents", merchant: "merchant"}[event.target.name];
-    if (field) saveChoices(event.target.form, choices(event.target.form).filter(item => item.field !== field));
+    if (!field) return;
+    // Typing drops this field's choice; a dropped correction says so instead of leaving "已注明" on screen.
+    const form = event.target.form, current = choices(form);
+    const corrected = current.some(item => item.field === field && item.intent === "original_correction");
+    saveChoices(form, current.filter(item => item.field !== field));
+    const status = form.querySelector(`[data-recognized-fields="${field}"] [data-recognized-field-status]`);
+    if (status && corrected) status.textContent = `你改动了${noun(field)}，之前的注明已取消；改好后可再点一次注明。`;
   });
 })();
