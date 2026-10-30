@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Protocol
 
 from backend_manager.app_controller import ManagerShuttingDownError
+from backend_manager.brand_icon import FAVICON_LINK
 from backend_manager.product_data import ProductDataError
 from backend_manager.web_bff import (
     ASSET_SESSION_COOKIE,
@@ -368,7 +369,7 @@ def _recovery_page(message: str, *, portable_available: bool = False) -> bytes:
                      '<p><a href="/web/settings">设置与设备</a></p>') if portable_available else ""
     return (
         "<!doctype html><meta charset=utf-8>"
-        "<title>小票夹需要恢复</title><h1>暂时无法打开账本</h1>"
+        f"<title>小票夹需要恢复</title>{FAVICON_LINK}<h1>暂时无法打开账本</h1>"
         f"<p>{html.escape(message)}</p>"
         f"{portable_link}"
         '<p><a href="/">打开系统管理</a></p>'
@@ -443,10 +444,10 @@ class _Handler(BaseHTTPRequestHandler):
             return
         session_ids = srv.issue_web_session()
         body = (
-            b"<!doctype html><meta charset=utf-8>"
-            b"<title>Opening Ticketbox</title>"
-            b"<script>location.replace('/web')</script>"
-        )
+            "<!doctype html><meta charset=utf-8>"
+            f"<title>Opening Ticketbox</title>{FAVICON_LINK}"
+            "<script>location.replace('/web')</script>"
+        ).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header(
@@ -716,7 +717,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(
             200,
             (
-                "<!doctype html><meta charset=utf-8><title>已打开系统管理</title>"
+                f"<!doctype html><meta charset=utf-8><title>已打开系统管理</title>{FAVICON_LINK}"
                 "<h1>已在本机默认浏览器打开系统管理页面</h1>"
                 '<p><a href="/web">返回日常账务</a> · <a href="/">返回管理器</a></p>'
             ).encode(),
@@ -1074,7 +1075,7 @@ class ControlServer(ThreadingHTTPServer):
         action = f"{self.expected_origin}/api/bootstrap"
         document = (
             '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
-            "<title>正在打开小票夹</title></head><body>"
+            f"<title>正在打开小票夹</title>{FAVICON_LINK}</head><body>"
             f'<form method="post" action="{html.escape(action)}">'
             f'<input type="hidden" name="bootstrap_token" value="{html.escape(token)}">'
             "</form><script>document.forms[0].submit()</script></body></html>"

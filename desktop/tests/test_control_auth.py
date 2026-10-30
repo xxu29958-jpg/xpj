@@ -10,6 +10,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from backend_manager.app_controller import AppController
+from backend_manager.brand_icon import FAVICON_LINK
 from backend_manager.control_server import (
     ControlServer,
     is_authorized,
@@ -170,6 +171,8 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         assert _INSTANCE_SECRET not in str(bootstrap_path)
         bootstrap_html = bootstrap_path.read_text(encoding="utf-8")
         assert _INSTANCE_SECRET not in bootstrap_html
+        # Edge takes the app window's icon from the page; without one it shows a globe.
+        assert FAVICON_LINK in bootstrap_html
         match = re.search(r'name="bootstrap_token" value="([^"]+)"', bootstrap_html)
         assert match is not None
         bootstrap_body = urllib.parse.urlencode({"bootstrap_token": match.group(1)}).encode()
@@ -193,7 +196,9 @@ def test_control_server_never_serves_token_to_noncanonical_host(tmp_path) -> Non
         session_ids = [cookie.partition(";")[0].partition("=")[2] for cookie in cookies]
         assert len(set(session_ids)) == 3
         assert all(session_id not in repr(server._web_session_digests) for session_id in session_ids)
-        assert _TOKEN.encode() not in response.read()
+        opening_page = response.read()
+        assert _TOKEN.encode() not in opening_page
+        assert FAVICON_LINK.encode() in opening_page
         connection.close()
         assert not bootstrap_path.exists()
 

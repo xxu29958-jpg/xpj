@@ -44,8 +44,14 @@ launcher masks, themed icons and at 16/24/32/48 px.
 | `android/.../mipmap-anydpi/ic_launcher*.xml` | Adaptive icon; background `@color/ic_launcher_background` |
 | `android/.../drawable/ic_notification_receipt.xml` | Status-bar icon: one upright stub |
 | `backend/packaging/ticketbox.ico` | Manager and lifecycle exe (PyInstaller), Start-menu shortcut, installer `SetupIconFile` |
-| `desktop/backend_manager/ui.html` inline icon | Desktop Manager Edge app window: title bar and taskbar |
+| `desktop/backend_manager/ui.html` and `brand_icon.py` | Desktop Manager Edge app window icon, on every page the Manager writes itself |
 | `backend/app/static/web/product/brand/*.png` | Web favicon, PWA icons (any and maskable), sidebar mark (paper and midnight) |
+
+The Manager window belongs to `msedge.exe`, so its icon alone is not enough:
+`desktop_shell.py` also stamps the window with the Ticketbox app ID
+(`Ticketbox.Manager`) and relaunch details, and the installer's Start-menu
+shortcut carries the same ID. Windows then groups and pins the window as
+Ticketbox and relaunches `ticketbox-manager.exe`, not a throwaway Edge profile.
 
 The ICO holds 16, 20, 24, 32, 40, 48, 64, 96, 128 and 256. Sizes 16, 20 and 24
 are pixel-grid drawings (`masters/ticketbox-icon-{16,20,24}px.svg`): upright
