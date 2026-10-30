@@ -22,8 +22,8 @@ import com.ticketbox.ui.design.LocalAppSkin
 import com.ticketbox.ui.design.LocalReduceMotion
 
 /**
- * 状态 × 渲染主题到真实图片资产的唯一映射。可见态只有两族:空态 Dozing(平静闭眼)
- * 与里程碑 Celebrating(弯眼+彩带);其余状态(含事件发射前的 Neutral 首帧)一律落
+ * 状态 × 渲染主题到真实图片资产的唯一映射。可见态只有两族:Dozing(抱着票根闭眼打盹)
+ * 与里程碑 Celebrating(弯眼举起票根+彩纸);其余状态(含事件发射前的 Neutral 首帧)一律落
  * Dozing 平静脸,不留「无资产可显」的第三分支。映射有 [MascotArtTest] 钉死。
  */
 internal fun mascotArtRes(state: MascotState, skin: AppSkin): Int = when (state) {
@@ -38,10 +38,10 @@ internal fun mascotArtRes(state: MascotState, skin: AppSkin): Int = when (state)
 }
 
 /**
- * 夹夹的正式渲染宿主:W2-A 起由原生 Compose 线稿切换为品牌原生图片资产
- * (剪影与 Web brand mark 同源的四张品牌 PNG),paper/midnight 按 [LocalAppSkin]
+ * 夹夹的正式渲染宿主:夹夹是一只用钳子夹着票根的小螃蟹,四张矢量由
+ * docs/design_reference/brand-icon/render_mascot.py 生成,paper/midnight 按 [LocalAppSkin]
  * 自动换源。动效只做整体 transform(呼吸级缓慢浮动),不做形变、不烘焙多帧;
- * 状态表达(闭眼/弯眼/彩带)全部在资产里。事件线仍是 [MascotController] →
+ * 状态表达(闭眼吐泡泡/弯眼举票根/彩纸)全部在资产里。事件线仍是 [MascotController] →
  * [MascotStateMachine],这里只消费 state,不回写任何业务状态。
  *
  * 「减少动态效果」([LocalReduceMotion],owner=BackgroundSettings)开启时不启动
