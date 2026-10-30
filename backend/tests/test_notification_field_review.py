@@ -68,6 +68,7 @@ def test_notification_source_correction_reaches_consumer_without_self_training(c
     source_id = original["expense_id"]
     current = client.get(f"/api/expenses/{source_id}", headers=headers).json()
     chosen = next(c for c in current["recognition_fields"] if c["field"] == field)
+    assert chosen["source_reading_value"] == chosen["value"]
     assert chosen["source"] == "notification" and chosen["evidence_public_id"] == original["public_id"]
     assert "通知" in chosen["label"] and current["raw_text"] is None
     # Redelivery cannot replace the original fragments, even with a different amount.
@@ -79,6 +80,7 @@ def test_notification_source_correction_reaches_consumer_without_self_training(c
     target_id = target["expense_id"]
     suggested = client.get(f"/api/expenses/{target_id}", headers=headers).json()
     correction = next(c for c in suggested["recognition_fields"] if c["field"] == field and c["value"] == corrected)
+    assert correction["source_reading_value"] == chosen["value"]
     assert correction["selection_intent"] == "bookkeeping"
     assert suggested["amount_cents"] == 1800 and suggested["merchant"] == "海棠咖吽"
     _save(client, headers, target_id, correction, corrected, correction["selection_intent"])

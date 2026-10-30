@@ -20,6 +20,9 @@ class RecognitionFieldCandidate(BaseModel):
     field: Literal["amount_cents", "merchant"]
     id: str
     value: int | str
+    source_reading_value: int | str | None = Field(default=None, json_schema_extra={"readOnly": True},
+        description="Bound source parser value before personal recall, in the same units as value. "
+        "Null means unavailable; this is a parser reading, not independently verified original text.")
     label: str
     original_text: str
     explanation: str

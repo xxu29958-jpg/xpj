@@ -71,6 +71,7 @@ def _field_candidate(fact, item, events, version, selected_merchants):
         can_apply = can_apply and not json.loads(fact.evidence_json)["input"]["truncated"]
         label = "通知 · " + label
     return RecognitionFieldCandidate(field=field, id=item["id"], value=item["value"], role=role,
+        source_reading_value=item["value"],
         label=events.get(item.get("event_id"), "") + label, event_id=item.get("event_id"),
         event_selected=bool(item.get("event_selected") or item["id"] in selected_merchants) and can_apply,
         original_text="\n".join(fact.raw_text[start:end] for start, end in item["raw_spans"]),
@@ -123,7 +124,7 @@ def _record_field_choice(db, expense, choice, candidate, fact, actor) -> None:
     final = field_value(expense, choice.field, candidate.currency_code)
     raw_candidate = next(item for item in json.loads(fact.evidence_json)["field_parse"]["candidates"] if item["id"] == candidate.id)
     payload = {**choice.model_dump(), **_field_learning(choice, candidate, final),
-        "selected": candidate.model_dump(), "final_value": final,
+        "selected": candidate.model_dump(exclude={"source_reading_value"}), "final_value": final,
         "_algorithm_version": RECOGNITION_FIELD_CHOICE.current_version, "_action_outcome": "committed",
         "_case_key": field_case_key(fact), "_candidate_key": time_candidate_key(fact.raw_text, raw_candidate),
         "_amount_context": amount_case_contexts(fact).get(candidate.id) if choice.field == "amount_cents" else None,

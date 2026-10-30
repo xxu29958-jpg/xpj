@@ -26774,6 +26774,22 @@
               }
             ]
           },
+          "source_reading_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bound source parser value before personal recall, in the same units as value. Null means unavailable; this is a parser reading, not independently verified original text.",
+            "readOnly": true,
+            "title": "Source Reading Value"
+          },
           "value": {
             "anyOf": [
               {
