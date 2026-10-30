@@ -28,8 +28,14 @@ def _save(client, headers, expense_id, candidate, value, intent):
 @pytest.mark.parametrize("field,original,corrected", [
     ("amount_cents", 1800, 180), ("merchant", "海棠咖吽", "海棠咖啡"),
 ])
-@pytest.mark.parametrize("review", ["adopt", "verify_correction", "verify_unchanged"])
-def test_original_correction_keeps_source_reading_separate_from_recall(client, identity, field, original, corrected, review):
+@pytest.mark.parametrize("review_value,intent,qualified", [
+    ("corrected", "bookkeeping", False),
+    ("corrected", "original_correction", True),
+    ("original", "original_correction", False),
+])
+def test_original_correction_keeps_source_reading_separate_from_recall(
+    client, identity, field, original, corrected, review_value, intent, qualified,
+):
     headers = negotiated_headers(client, identity.app_headers)
     source = _seed(merchant="海棠咖吽")
     before = client.get(f"/api/expenses/{source}", headers=headers).json()
@@ -53,8 +59,7 @@ def test_original_correction_keeps_source_reading_separate_from_recall(client, i
     unrelated = client.get(f"/api/expenses/{other}", headers=headers).json()
     assert not any(c["field"] == field and c["value"] == corrected for c in unrelated["recognition_fields"])
 
-    final = original if review == "verify_unchanged" else corrected
-    intent = correction["selection_intent"] if review == "adopt" else "original_correction"
+    final = {"original": original, "corrected": corrected}[review_value]
     _save(client, headers, target, correction, final, intent)
     with SessionLocal() as db:
         origin = db.query(LedgerLearningEvent).filter_by(subject_id=source, signal_type="recognition_field_choice").one()
@@ -63,12 +68,10 @@ def test_original_correction_keeps_source_reading_separate_from_recall(client, i
         assert original_payload["_learning_qualified"] is True
         assert "source_reading_value" not in original_payload["selected"], "Wire diagnostics must not change stored feedback"
         assert accepted_payload["selected"]["value"] == original
-        assert accepted_payload["_learning_qualified"] is (review == "verify_correction")
+        assert accepted_payload["_learning_qualified"] is qualified
         withdraw_feedback(db, tenant_id="owner", public_id=origin.public_id)
-        if review == "verify_correction":
-            # This second explicit verification is independent feedback; revoke
-            # it too before asserting that no qualified correction remains.
-            withdraw_feedback(db, tenant_id="owner", public_id=accepted.public_id)
+        # Revoke both events, including independent verification when qualified.
+        withdraw_feedback(db, tenant_id="owner", public_id=accepted.public_id)
         db.commit()
     fresh = _seed(merchant="海棠咖吽")
     after = client.get(f"/api/expenses/{fresh}", headers=headers).json()
