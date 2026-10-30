@@ -149,7 +149,6 @@ fun SettingsEntryRow(
             SettingsEntryIcon(
                 icon = ImageVector.vectorResource(icon),
                 modifier = Modifier.size(40.dp),
-                background = settingsEntryBackground(icon),
                 shape = RoundedCornerShape(AppRadius.medium),
             )
             val labels: @Composable () -> Unit = {
@@ -185,18 +184,6 @@ fun SettingsEntryRow(
     }
 }
 
-@Composable
-private fun settingsEntryBackground(@DrawableRes icon: Int): Color {
-    val tint = when (icon) {
-        R.drawable.ic_lucide_users, R.drawable.ic_lucide_info, R.drawable.ic_lucide_image,
-        R.drawable.ic_lucide_git_branch, R.drawable.ic_lucide_shopping_bag -> SettingsColors.householdEntry
-        R.drawable.ic_lucide_palette, R.drawable.ic_lucide_images, R.drawable.ic_lucide_wifi,
-        R.drawable.ic_lucide_calendar_check -> SettingsColors.appearanceEntry
-        R.drawable.ic_lucide_refresh_cw, R.drawable.ic_lucide_user_round_x -> SettingsColors.connectionEntry
-        else -> SettingsColors.generalEntry
-    }
-    return tint
-}
 
 @Composable
 internal fun SettingsPageFrame(

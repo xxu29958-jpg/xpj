@@ -207,8 +207,7 @@ private fun CategoryPreferenceRow(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SettingsEntryIcon(ImageVector.vectorResource(R.drawable.ic_lucide_shapes),
-                background = LocalThemeVisuals.current.surfaceApricot)
+            SettingsEntryIcon(ImageVector.vectorResource(R.drawable.ic_lucide_shapes))
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),

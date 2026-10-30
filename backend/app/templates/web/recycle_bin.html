@@ -32,7 +32,7 @@
   {% set icon = {'monthly_budget':'calendar-check', 'income_plan':'book-open', 'recurring_item':'refresh-cw', 'goal':'target', 'category_preference':'shapes', 'merchant_catalog':'store', 'merchant_alias':'store', 'category_rule':'wand-sparkles', 'tag_mutation':'tag'}.get(row.kind, 'archive') %}
   <section data-restore-key="{{ row_key }}"{% if row_error %} aria-invalid="true" aria-describedby="recycle-restore-error"{% endif %}>
     <div class="product-entry product-entry--static product-entry--actions">
-      <span class="product-entry-icon{% if row.kind in ['goal', 'category_preference'] %} product-entry-icon--apricot{% elif row.kind == 'tag_mutation' %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ icon }}"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ icon }}"/></svg></span>
       <div class="product-entry-copy">
         <strong>{{ row.title }}</strong>
         <span>{{ row.detail }}</span>

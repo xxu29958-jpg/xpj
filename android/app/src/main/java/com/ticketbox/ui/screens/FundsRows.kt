@@ -111,7 +111,7 @@ internal fun FundsMovementRow(row: FundMovement, account: FinancialAccount, acti
         title = row.label(account.kind),
         subtitle = if (row.note.isBlank()) row.occurredOn else stringResource(R.string.funds_movement_meta, row.occurredOn, row.note),
         amount = signedMoney(row.amountMinor, account.currencyCode),
-    ), onClick = null, iconBackground = LocalThemeVisuals.current.surfaceSand) {
+    ), onClick = null) {
         if (row.voided) Text(stringResource(R.string.funds_activity_voided), style = MaterialTheme.typography.bodySmall)
         val voidActivity = actions.voidActivity?.takeIf { row.correctionParts.isNotEmpty() }
         val voidPayment = actions.voidPayment?.takeIf { row.canVoidRepayment }

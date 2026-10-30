@@ -24,14 +24,6 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalThemeVisuals
 
-@Composable
-internal fun expenseCategorySurface(category: String) = with(LocalThemeVisuals.current) {
-    when (category) {
-        DefaultExpenseCategories.DINING, DefaultExpenseCategories.HOUSING -> surfaceApricot
-        DefaultExpenseCategories.TRANSIT, DefaultExpenseCategories.OTHER -> surfaceLilac
-        else -> brandPrimaryBg
-    }
-}
 
 /**
  * W2-B: 默认分类从单调首字块升级为语义图标（展示助读，分类文本仍是事实）；
@@ -57,7 +49,7 @@ private val expenseCategoryIcons: Map<String, Int> = mapOf(
 internal fun ExpenseCategoryMark(category: String, density: AppListDensity) {
     val visuals = LocalThemeVisuals.current
     val rowMetrics = AppDensity.rowMetrics(density)
-    val background = expenseCategorySurface(category)
+    val background = visuals.brandPrimaryBg
     Box(
         modifier = Modifier
             .size(rowMetrics.markSize)

@@ -70,7 +70,7 @@
     <div class="product-entry-list">
     {% for link in goal.links %}
     <a class="product-entry{% if link.recede %} is-receded{% endif %}" {% if link.can_open %}href="{% if link.source_id %}/web/funds?account_id={{ link.source_id|urlencode }}&amp;ledger_id={{ selected_ledger_id|urlencode }}{% else %}/web/debts/{{ link.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}{% endif %}"{% else %}aria-disabled="true"{% endif %}>
-      <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
       <span class="product-entry-copy">
         <span class="product-entry-heading"><strong>{{ link.name }}</strong>{{ status_pill(link.status_tone, link.status_label) }}</span>
         {% if link.show_bar %}
@@ -139,7 +139,7 @@
 <div class="product-entry-list">
 <details>
   <summary class="product-entry">
-    <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#archive"/></svg></span>
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#archive"/></svg></span>
     <span class="product-entry-copy"><strong>查看已归档目标{% if goals_archived %} · {{ goals_archived | length }}{% endif %}</strong><span>恢复不会改动关联欠款。</span></span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </summary>

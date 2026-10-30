@@ -121,8 +121,7 @@ private fun LazyListScope.accountDetail(state: FundsUiState, detail: FinancialAc
     }
     items(detail.feeObligations, key = { "fee:${it.expenseId}" }) { fee ->
         FundsIconRow(FundsRowModel(R.drawable.ic_lucide_receipt_text, fee.note, fee.occurredOn,
-            stringResource(R.string.funds_fee_remaining, money(fee.remainingMinor, detail.currencyCode))), onClick = null,
-            iconBackground = LocalThemeVisuals.current.surfaceApricot) {
+            stringResource(R.string.funds_fee_remaining, money(fee.remainingMinor, detail.currencyCode))), onClick = null) {
             FundsRowLink(stringResource(R.string.funds_view_fee_expense)) { onExpense(fee.expenseId) }
         }
     }

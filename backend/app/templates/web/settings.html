@@ -55,7 +55,7 @@
     <article class="settings-device" data-device-id="{{ device.public_id }}">
       <details class="settings-device-actions"{% if device_form.public_id == device.public_id %} open{% endif %}>
         <summary class="product-entry" aria-label="管理 {{ device.device_name }}">
-          <span class="product-entry-icon{% if device.revoked_at %} product-entry-icon--apricot{% elif device.platform != 'android' %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ 'smartphone' if device.platform == 'android' else 'monitor' }}"/></svg></span>
+          <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ 'smartphone' if device.platform == 'android' else 'monitor' }}"/></svg></span>
           <span class="product-entry-copy"><strong>{{ device.device_name }}</strong>
             <span>{{ platforms.get(device.platform, device.platform) }} · {% if item.is_current %}当前设备{% elif device.revoked_at %}已停用 · {{ moment(device.revoked_at) }}{% else %}已连接{% endif %}</span>
           </span>
@@ -122,7 +122,7 @@
   <form method="post" action="/web/auth/logout" class="settings-exit">
     {{ csrf_field|safe }}
     <button class="product-entry" type="submit">
-      <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></span>
       <span class="product-entry-copy"><strong>退出当前浏览器</strong><span>只退出当前会话</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </button>
@@ -156,20 +156,20 @@
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </a>
     <a class="product-entry" href="/web/auth/join">
-      <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
       <span class="product-entry-copy"><strong>加入家庭账本</strong><span>接受家人发来的邀请</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </a>
     {% endif %}
     {% if can_pair_devices %}
     <a class="product-entry" href="/web/family{{ q }}">
-      <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
       <span class="product-entry-copy"><strong>家庭成员</strong><span>查看成员与账本权限</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </a>
     {% endif %}
     <a class="product-entry" href="/web/exports">
-      <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#download"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#download"/></svg></span>
       <span class="product-entry-copy"><strong>带走账本数据</strong><span>导出记录与原件</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </a>

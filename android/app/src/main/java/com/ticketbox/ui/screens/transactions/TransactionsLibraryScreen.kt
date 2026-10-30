@@ -58,21 +58,18 @@ fun TransactionsLibraryScreen(
                     title = stringResource(R.string.transactions_library_categories_title),
                     subtitle = stringResource(R.string.transactions_library_categories_subtitle),
                     icon = ImageVector.vectorResource(R.drawable.ic_lucide_shapes),
-                    background = visuals.surfaceApricot,
                     onClick = actions.onOpenCategories,
                 ),
                 TransactionsLibraryEntry(
                     title = stringResource(R.string.transactions_library_merchants_title),
                     subtitle = stringResource(R.string.transactions_library_merchants_subtitle),
                     icon = ImageVector.vectorResource(R.drawable.ic_lucide_store),
-                    background = MaterialTheme.colorScheme.primaryContainer,
                     onClick = actions.onOpenMerchants,
                 ),
                 TransactionsLibraryEntry(
                     title = stringResource(R.string.transactions_library_tags_title),
                     subtitle = stringResource(R.string.transactions_library_tags_subtitle),
                     icon = ImageVector.vectorResource(R.drawable.ic_lucide_tag),
-                    background = visuals.surfaceLilac,
                     onClick = actions.onOpenTags,
                 ),
             ),
@@ -84,14 +81,12 @@ fun TransactionsLibraryScreen(
                     title = stringResource(R.string.transactions_library_rules_title),
                     subtitle = stringResource(R.string.transactions_library_rules_subtitle),
                     icon = ImageVector.vectorResource(R.drawable.ic_lucide_wand_sparkles),
-                    background = MaterialTheme.colorScheme.primaryContainer,
                     onClick = actions.onOpenRules,
                 ),
                 TransactionsLibraryEntry(
                     title = stringResource(R.string.transactions_library_recycle_bin_title),
                     subtitle = stringResource(R.string.transactions_library_recycle_bin_subtitle),
                     icon = ImageVector.vectorResource(R.drawable.ic_lucide_trash_2),
-                    background = visuals.surfaceApricot,
                     onClick = actions.onOpenRecycleBin,
                 ),
             ),
@@ -103,7 +98,6 @@ private data class TransactionsLibraryEntry(
     val title: String,
     val subtitle: String,
     val icon: ImageVector,
-    val background: Color,
     val onClick: () -> Unit,
 )
 
@@ -135,7 +129,7 @@ private fun TransactionsLibraryEntryContent(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.compactGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SettingsEntryIcon(entry.icon, background = entry.background)
+        SettingsEntryIcon(entry.icon)
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),

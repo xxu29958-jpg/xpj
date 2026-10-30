@@ -42,12 +42,12 @@
 <section aria-label="商家目录" class="product-entry-list">
 {% for item in visible_catalog %}
 <a class="product-entry" data-catalog-key="{{ item.public_id }}" aria-label="{{ item.display_name }}" href="{{ directory_href }}&amp;view=merchant&amp;merchant={{ item.public_id }}">
-<span class="product-entry-icon{% if loop.index0 % 3 == 0 %} product-entry-icon--apricot{% elif loop.index0 % 3 == 2 %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#store"/></svg></span>
+<span class="product-entry-icon{% if loop.index0 % 3 == 0 %}{% elif loop.index0 % 3 == 2 %}{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#store"/></svg></span>
 <span class="product-entry-copy"><strong>{{ item.display_name }}</strong><span>{{ item.usage_count }} 笔记录 · {{ '显示中' if item.status == 'active' else '隐藏' if item.status == 'hidden' else '已合并' }}</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
 {% else %}<div class="product-state"><h2 class="product-state-title">{{ '没有找到商家' if catalog else '还没有商家目录' }}</h2><p class="product-state-body">{{ '试试其它名称，或切换筛选。独立添加的别名仍可在「全部别名」查看。' if catalog else '先添加常去的店，之后统一名字、整理别名。' }}</p></div>{% endfor %}
 </section>
 <section class="stack"><h2 class="product-section-title">整理</h2>
-<a class="product-entry" href="/web/merchants{{ q }}&amp;view=aliases"><span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="product-entry-copy"><strong>全部别名</strong><span>{{ aliases|length }} 条 · 包括独立添加的别名</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+<a class="product-entry" href="/web/merchants{{ q }}&amp;view=aliases"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="product-entry-copy"><strong>全部别名</strong><span>{{ aliases|length }} 条 · 包括独立添加的别名</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
 <a class="product-entry" href="/web/recycle-bin{{ q }}&amp;group=reference"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span><span class="product-entry-copy"><strong>账本回收站</strong><span>在保留期内恢复原商家或别名</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
 </section>
 

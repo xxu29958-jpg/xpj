@@ -56,13 +56,13 @@
     <img src="/static/web/product/art/receipt-clip.png" alt="" width="1280" height="1280">
   </div>
   <div>
-  {% for title, hint, icon, tone in [
-    ('结构化记录', '账单、资金账户、分期、信封、历史和关联关系；仅含你有权读取的内容', 'database', ''),
-    ('可用原件', '附件文件与逐条状态清单', 'files', 'apricot'),
-    ('缺失原件', '清单中明确标注，业务记录仍可带走', 'file-question', 'lilac')
+  {% for title, hint, icon in [
+    ('结构化记录', '账单、资金账户、分期、信封、历史和关联关系；仅含你有权读取的内容', 'database'),
+    ('可用原件', '附件文件与逐条状态清单', 'files'),
+    ('缺失原件', '清单中明确标注，业务记录仍可带走', 'file-question')
   ] %}
   <div class="product-entry product-entry--static">
-    <span class="product-entry-icon{% if tone %} product-entry-icon--{{ tone }}{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ icon }}"/></svg></span>
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ icon }}"/></svg></span>
     <span class="product-entry-copy"><strong>{{ title }}</strong><span>{{ hint }}</span></span>
   </div>
   {% endfor %}
@@ -121,7 +121,7 @@
     {% endif %}
 </section>
 <nav aria-label="其他数据任务">
-  <a class="product-entry" href="/web/import{{ q }}&amp;task=export"><span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#file-spreadsheet"/></svg></span><span class="product-entry-copy"><strong>导出分析数据</strong><span>按月份、分类和标签下载 CSV</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+  <a class="product-entry" href="/web/import{{ q }}&amp;task=export"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#file-spreadsheet"/></svg></span><span class="product-entry-copy"><strong>导出分析数据</strong><span>按月份、分类和标签下载 CSV</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
   <a class="product-entry" href="/web/import{{ q }}&amp;task=portable"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#archive"/></svg></span><span class="product-entry-copy"><strong>带走完整账本</strong><span>记录、历史与可用原件，一起保存</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
 </nav>
 <section aria-label="导入记录" class="stack">

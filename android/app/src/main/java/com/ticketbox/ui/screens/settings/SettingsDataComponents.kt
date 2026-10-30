@@ -51,13 +51,6 @@ internal fun SettingsDataRow(
     action: SettingsDataAction,
     onClick: (() -> Unit)?,
 ) {
-    val badge = when (icon) {
-        Icons.Outlined.Sync, Icons.Outlined.VpnKey, Icons.Outlined.MailOutline,
-        Icons.Outlined.PersonOutline -> SettingsColors.appearanceEntry
-        Icons.Outlined.Storage, Icons.AutoMirrored.Outlined.Send, Icons.Outlined.Group -> SettingsColors.householdEntry
-        Icons.Outlined.Inventory2 -> SettingsColors.connectionEntry
-        else -> SettingsColors.generalEntry
-    }
     Column {
         AppAdaptiveContentActionRow(
             modifier = Modifier.fillMaxWidth().clickable(enabled = onClick != null, role = Role.Button) { onClick?.invoke() }
@@ -66,7 +59,7 @@ internal fun SettingsDataRow(
             style = AppAdaptiveContentActionStyle(compactAction = true),
             content = {
                 Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap), verticalAlignment = Alignment.CenterVertically) {
-                    SettingsEntryIcon(icon, Modifier.size(40.dp), background = badge,
+                    SettingsEntryIcon(icon, Modifier.size(40.dp),
                         shape = RoundedCornerShape(14.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
                         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = AppTextHierarchy.heading.weight)

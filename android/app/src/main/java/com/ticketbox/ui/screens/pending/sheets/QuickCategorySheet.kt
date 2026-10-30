@@ -34,12 +34,12 @@ import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.DefaultExpenseCategories
 import com.ticketbox.domain.model.isUncategorizedExpenseCategory
 import com.ticketbox.ui.components.ExpenseCategoryMark
-import com.ticketbox.ui.components.expenseCategorySurface
 import com.ticketbox.ui.components.AppSheetAction
 import com.ticketbox.ui.components.AppTextInput
 import com.ticketbox.ui.components.AppTextInputActions
 import com.ticketbox.ui.components.AppTextInputState
 import com.ticketbox.ui.design.AppSpacing
+import com.ticketbox.ui.design.LocalThemeVisuals
 import com.ticketbox.ui.design.AppListDensity
 import com.ticketbox.ui.design.AppRadius
 
@@ -125,7 +125,7 @@ private fun QuickCategoryOptions(
                 onClick = { onSelect(option) }, enabled = enabled,
                 modifier = Modifier.weight(1f).widthIn(min = AppSpacing.controlMinHeight * 2 * LocalDensity.current.fontScale.coerceAtLeast(1f))
                     .semantics { this.selected = selected == option; role = Role.RadioButton },
-                shape = RoundedCornerShape(AppRadius.medium), color = expenseCategorySurface(option),
+                shape = RoundedCornerShape(AppRadius.medium), color = LocalThemeVisuals.current.brandPrimaryBg,
                 border = if (selected == option) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
             ) {
                 Column(modifier = Modifier.padding(AppSpacing.compactGap), horizontalAlignment = Alignment.CenterHorizontally,

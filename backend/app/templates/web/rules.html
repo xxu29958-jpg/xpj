@@ -84,8 +84,8 @@
 
 <nav class="fact-entries library-section" aria-label="规则应用">
 <a class="product-entry" href="/web/rules{{ q }}&amp;apply_preview=1"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#search"/></svg></span><span class="product-entry-copy"><strong>预览待确认账单</strong><span>先看影响，再决定是否更新分类。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
-<a class="product-entry" href="/web/rules{{ q }}&amp;confirmed_preview=1"><span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#check"/></svg></span><span class="product-entry-copy"><strong>预览已确认账单</strong><span>只有明确确认后才会应用到历史记录。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
-<a class="product-entry" href="/web/rules{{ q }}&amp;view=history"><span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span><span class="product-entry-copy"><strong>规则应用记录</strong><span>查看各次应用，以及首次回退的实际结果。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+<a class="product-entry" href="/web/rules{{ q }}&amp;confirmed_preview=1"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#check"/></svg></span><span class="product-entry-copy"><strong>预览已确认账单</strong><span>只有明确确认后才会应用到历史记录。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
+<a class="product-entry" href="/web/rules{{ q }}&amp;view=history"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span><span class="product-entry-copy"><strong>规则应用记录</strong><span>查看各次应用，以及首次回退的实际结果。</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
 </nav>
 
 <section class="product-section" aria-label="当前规则">
@@ -107,7 +107,7 @@
         {% if r.source_contains %}{% set _ = conditions.append('来源含「' ~ r.source_contains ~ '」') %}{% endif %}
         {% if r.tag_contains %}{% set _ = conditions.append('标签「' ~ r.tag_contains ~ '」') %}{% endif %}
         <li class="product-entry product-entry--static product-entry--actions{% if not r.enabled %} is-receded{% endif %}"{% if _toggle_error %} aria-invalid="true" aria-describedby="rule-toggle-error"{% endif %}>
-          <span class="product-entry-icon{% if not r.enabled %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#wand-sparkles"/></svg></span>
+          <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#wand-sparkles"/></svg></span>
           <div class="product-entry-copy">
             <div class="product-entry-heading"><strong><code>{{ r.keyword }}</code></strong><span class="product-status product-status--info">{{ r.category }}</span></div>
             <span>优先级 {{ r.priority }}{% if conditions %} · {{ conditions|join(' · ') }}{% endif %}</span>

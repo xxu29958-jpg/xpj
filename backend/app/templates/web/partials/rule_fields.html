@@ -13,7 +13,7 @@
   <input type="text" inputmode="numeric" name="priority"{% if definition_frozen or not can_write %} readonly{% endif %} value="{{ rule_draft.get('priority', '100') }}">
 </label>
 <details{% if rule_draft.get('amount_min_yuan') or rule_draft.get('amount_max_yuan') %} open{% endif %}>
-<summary class="product-entry"><span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#sliders-horizontal"/></svg></span><span class="product-entry-copy"><strong>金额范围</strong><span>可选</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-down"/></svg></summary>
+<summary class="product-entry"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#sliders-horizontal"/></svg></span><span class="product-entry-copy"><strong>金额范围</strong><span>可选</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-down"/></svg></summary>
 <div class="library-field-pair">
   <label class="product-field">
     <span>金额下限（<span data-rule-currency>{{ rule_draft.get('home_currency_code') or '币种待确认' }}</span>，可选）</span>

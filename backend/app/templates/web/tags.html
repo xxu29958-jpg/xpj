@@ -43,7 +43,7 @@
   {% for item in tags %}
   <details id="tag-{{ item.public_id }}" data-tag-key="{{ item.public_id }}">
     <summary class="product-entry">
-      <span class="product-entry-icon{% if loop.index0 % 3 == 1 %} product-entry-icon--apricot{% elif loop.index0 % 3 == 2 %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span>
+      <span class="product-entry-icon{% if loop.index0 % 3 == 1 %}{% elif loop.index0 % 3 == 2 %}{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span>
       <span class="product-entry-copy"><strong>{{ item.name }}</strong><span>{{ item.usage_count ~ ' 笔引用' if item.usage_count else '未使用' }}</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </summary>
