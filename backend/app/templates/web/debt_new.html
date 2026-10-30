@@ -9,6 +9,7 @@
 {% if debtcreation_draft_scope %}
 <script defer src="/static/web/manual-drafts.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/plan-entry.js?v={{ asset_version }}"></script>
+<script defer src="/static/web/debt-bill-entry.js?v={{ asset_version }}"></script>
 <script defer src="/static/web/debt-creation-entry.js?v={{ asset_version }}"></script>
 {% endif %}
 {% endblock %}
@@ -52,6 +53,32 @@
     <button type="submit" hidden tabindex="-1" aria-hidden="true"></button>
     <p class="hint" role="status" hidden data-debtcreation-draft-status></p>
     {% include '_fact_rate_recovery.html' %}
+    {# 原账单来源随原生表单往返（错误/汇率重渲染保留）；上传、解析和放弃需要脚本与原稿，故入口只在脚本接管后显示。 #}
+    <input type="hidden" name="bill_source_public_id" value="{{ values.bill_source_public_id or '' }}">
+    <input type="hidden" name="bill_source_row_version" value="{{ values.bill_source_row_version or '' }}">
+    {% if debtcreation_draft_scope %}
+    <section class="debt-bill-entry" data-debtbill aria-labelledby="debt-bill-title" hidden>
+      <input type="hidden" name="bill_capture_key" value="">
+      <input type="hidden" name="bill_parse_key" value="">
+      <input type="hidden" name="bill_discard_key" value="">
+      <input type="hidden" name="bill_file_name" value="">
+      <label class="file-picker" for="debt-bill-file" data-debtbill-picker>
+        <strong id="debt-bill-title">从账单图片填写（可选）</strong>
+        <span>先保存原账单，再按识别建议补全空白项；提交前请核对。</span>
+        <input class="file-picker-input" id="debt-bill-file" type="file" accept="image/*" data-debtbill-file>
+      </label>
+      <div class="product-entry" data-debtbill-source hidden>
+        <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#scan-line"/></svg></span>
+        <span class="product-entry-copy"><strong>建债原账单</strong><span data-debtbill-file-name></span></span>
+      </div>
+      <p class="hint" role="status" data-debtbill-status></p>
+      <div class="product-form-actions" data-debtbill-actions hidden>
+        <a class="product-button product-button--quiet" data-debtbill-original target="_blank" rel="noopener" hidden>查看原账单</a>
+        <button class="product-button product-button--quiet" type="button" data-debtbill-parse hidden>解析原账单建议</button>
+        <button class="product-button product-button--quiet" type="button" data-debtbill-discard>不用这张账单</button>
+      </div>
+    </section>
+    {% endif %}
     <fieldset class="product-field">
       <legend>谁欠谁</legend>
       <div class="product-segments">
