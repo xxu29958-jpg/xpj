@@ -11,14 +11,11 @@
 }
 .insight-hero > .product-panel-header { flex: 0 0 100%; margin-bottom: 0; }
 .insight-hero h2 { font-size: var(--type-body-size); line-height: var(--type-body-line); font-weight: var(--type-body-weight); }
-.insight-hero-art { display: none; order: 2; align-self: center; max-width: 100%; }
 .insight-hero-value { order: 1; flex: 1 1 auto; width: max-content; max-width: 100%; }
 .insight-hero .insight-module-foot { order: 3; flex-basis: 100%; }
 .insight-module-icon { display: grid; place-items: center; width: var(--space-9); height: var(--space-9); border-radius: var(--radius-lg); background: var(--brand-primary-bg); }
 .insight-module-icon svg { width: var(--space-7); height: var(--space-7); }
-[data-overview-card="recurring"] .insight-module-icon { background: var(--surface-apricot); }
-[data-overview-card="recent_uploads"] .insight-module-icon { background: var(--surface-lilac); }
-[data-overview-card="backup_status"] .insight-module-icon { background: var(--surface-sand); }
+/* 模块图标底只标识入口，统一鼠尾草；备份等状态由卡内 product-status 表达，与列表图标同一规则。 */
 /* 窄屏: 模块不是卡片, 只靠留白分组; 宽屏才各自成卡 (见下方媒体查询)。 */
 .insight-grid > .product-panel { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 0; }
 .insight-grid > .insight-hero { padding: var(--space-6); border-radius: var(--radius-xl); background: var(--brand-primary-bg); }
@@ -212,8 +209,12 @@
     font-variant-numeric: tabular-nums;
 }
 
-@media (min-width: 64rem) {
+/* 与壳的窄屏断点 (max-width: 64rem) 严格互补: 窄屏记一笔在顶栏「+」, 宽屏在页头。 */
+@media not all and (max-width: 64rem) {
     .insight-page-actions { display: flex; }
+}
+
+@media (min-width: 64rem) {
     /* 模块顺序由用户决定: 用可换行的一行行排布, 每行都铺满, 不留空格子。 */
     .insight-grid { display: flex; flex-wrap: wrap; }
     .insight-grid > * { flex: 1 1 16rem; min-width: 0; }
@@ -225,7 +226,6 @@
     .insight-grid > [data-overview-card="budget"],
     .insight-grid > [data-overview-card="reports"] { flex: 2 1 26rem; }
     .insight-grid > .insight-hero { min-height: calc(var(--space-12) * 4); background: var(--brand-primary-bg); }
-    .insight-hero-art { display: block; width: calc(var(--space-12) * 2); }
     .insight-grid > [data-overview-card="pending"] { flex-direction: column; align-items: stretch; gap: var(--space-5); }
     .insight-pending-copy { flex: 1; min-width: 0; }
     .insight-pending-icon { display: none; }

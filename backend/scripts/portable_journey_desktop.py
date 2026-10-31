@@ -22,7 +22,9 @@ def desktop_browser(browser, backend_url, ledger_id, evidence):
 
     from tests.desktop_activation_support import _mint_principal
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "desktop"))
+    repository = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(repository / "desktop"))
+    sys.path.insert(0, str(repository / "distribution" / "windows" / "lifecycle"))
     from backend_manager.control_server import ControlServer
     from backend_manager.web_bff import SESSION_COOKIE, BridgeContext
 

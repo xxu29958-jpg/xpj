@@ -593,6 +593,42 @@
     overflow-wrap: anywhere;
 }
 .fact-balances { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-6); margin: 0; }
+/* 票根: the original spend is the paper body; refunds and the current net are
+   the kept tail below a perforated tear, finished with the coral foot of a kept
+   record. Notches are masks, so they cut through to whatever sits behind
+   (custom backgrounds included). Decoration only: every amount keeps its label. */
+.fact-stub { --stub-notch: var(--space-4); display: grid; filter: var(--stub-shadow); }
+.fact-stub > .fact-hero {
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+    box-shadow: none;
+    -webkit-mask: var(--stub-mask-foot);
+    mask: var(--stub-mask-foot);
+    --stub-mask-foot:
+        radial-gradient(circle at 0 100%, transparent var(--stub-notch), black calc(var(--stub-notch) + 0.5px)) left / 51% 100% no-repeat,
+        radial-gradient(circle at 100% 100%, transparent var(--stub-notch), black calc(var(--stub-notch) + 0.5px)) right / 51% 100% no-repeat;
+}
+.fact-stub > .fact-balances {
+    position: relative;
+    padding: var(--space-6);
+    border-end-start-radius: var(--radius-card);
+    border-end-end-radius: var(--radius-card);
+    background: var(--surface-card);
+    box-shadow: inset 0 calc(var(--space-2) * -1) 0 var(--brand-clip);
+    -webkit-mask: var(--stub-mask-head);
+    mask: var(--stub-mask-head);
+    --stub-mask-head:
+        radial-gradient(circle at 0 0, transparent var(--stub-notch), black calc(var(--stub-notch) + 0.5px)) left / 51% 100% no-repeat,
+        radial-gradient(circle at 100% 0, transparent var(--stub-notch), black calc(var(--stub-notch) + 0.5px)) right / 51% 100% no-repeat;
+}
+.fact-stub > .fact-balances::before {
+    content: "";
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: calc(var(--stub-notch) + var(--space-2));
+    block-size: var(--space-2);
+    background: radial-gradient(circle, var(--border-input) 34%, transparent 44%) left center / var(--space-3) 100% repeat-x;
+}
 .fact-balances > div { flex: 1 1 10ch; min-width: 0; }
 .fact-balances dt { color: var(--text-meta); font-size: var(--type-body-size); }
 .fact-balances dd { margin: var(--space-2) 0 0; font-family: var(--font-numeric); font-size: var(--type-title-size); font-weight: var(--type-title-weight); overflow-wrap: anywhere; }
@@ -1119,7 +1155,7 @@
 .import-task > .import-schema { margin-block-start: 0; }
 .import-export-cover { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
 .import-export-cover > div { flex: 1 1 12em; min-inline-size: 0; }
-.import-export-cover img { inline-size: 25%; block-size: auto; margin-inline-start: auto; }
+.import-export-cover .brand-art { inline-size: 25%; margin-inline-start: auto; }
 
 .rule-impact-total { display: grid; gap: var(--space-3); padding: var(--space-6); border-radius: var(--radius-lg); background: var(--brand-primary-bg); }
 .rule-impact-total strong { font-family: var(--font-numeric); font-size: var(--type-display-size); line-height: var(--type-display-line); }

@@ -98,6 +98,7 @@ class BudgetJourney:
 
     def open_native(self, kind):
         self.native.plan_home()
+        self.native.reveal_any(CARDS[kind], toward_start=kind == "budget", exact=True)
         self.native.click(CARDS[kind], stable=True)
         if kind == "arrangement":
             wait_for(lambda: self.native.has("给本月做个安排"), "The actual monthly arrangement page did not open")
@@ -199,10 +200,11 @@ class BudgetJourney:
         for theme in ("paper", "midnight"):
             page.set_viewport_size({"width": 1280, "height": 960})
             self.goto(PAGES["budget"])
+            page.locator("#ledger-switcher > summary").click()
             page.locator("#appearance > summary").click()
             page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
             page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)
-            page.locator("#appearance > summary").click()
+            page.locator("#ledger-switcher > summary").click()
             for width in (1280, 390):
                 page.set_viewport_size({"width": width, "height": 960})
                 for kind, path in PAGES.items():

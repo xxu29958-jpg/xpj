@@ -22,6 +22,7 @@ from app.routes._web_draft_binding import (
     require_draft_binding,
     reviewed_draft_scope,
 )
+from app.routes._web_recurring_presenter import next_due_view
 from app.routes._web_session_common import resolve_web_actor_account_id
 from app.routes.web_common import (
     LocalOnly,
@@ -37,13 +38,17 @@ from app.routes.web_common import (
     preserve_original_ledger_form,
     templates,
 )
+from app.routes.web_goals import _goal_view
 from app.schemas import BudgetCategoryRequest, BudgetMonthlyResponse, BudgetMonthlyUpdateRequest
 from app.services.budget_command_service import review_monthly_budget_save, save_monthly_budget
 from app.services.budget_history_service import budget_history
 from app.services.budget_service import archive_monthly_budget, get_monthly_budget
 from app.services.category_service import list_ledger_category_options
 from app.services.currency_common import major_amount_to_minor, minor_amount_label, normalize_currency_code
-from app.services.ledger_calendar_service import current_ledger_month
+from app.services.goal_service import list_goals
+from app.services.ledger_calendar_service import current_ledger_date, current_ledger_month
+from app.services.recurring_occurrence_query import next_due_dates
+from app.services.recurring_service import list_recurring_items
 from app.services.spending_contract_service import (
     clean_month,
     default_accounting_timezone_name,
@@ -271,6 +276,29 @@ def _budget_view(budget: BudgetMonthlyResponse, *, currency_code: str) -> dict:
     }
 
 
+_PLAN_STATUS_GOAL_LIMIT = 2
+# 状态读数先列需要留意的目标; 其余保持服务端顺序 (总目标在前)。
+_GOAL_ATTENTION_ORDER = {"over_limit": 0, "near_limit": 1}
+
+
+def _plan_status(db: Session, *, selected_id: str, month: str, timezone_name: str) -> dict:
+    """计划根页的状态读数: 下一笔固定支出与本月消费目标, 只读固定支出/目标页同一服务。"""
+    active = list_recurring_items(db, tenant_id=selected_id, status="active")
+    goals = sorted(
+        (_goal_view(goal) for goal in list_goals(db, tenant_id=selected_id, month=month, timezone_name=timezone_name)),
+        key=lambda goal: _GOAL_ATTENTION_ORDER.get(goal["progress_state"], len(_GOAL_ATTENTION_ORDER)),
+    )
+    return {
+        "recurring_active_count": len(active),
+        "next_due": next_due_view(active, due_dates=next_due_dates(db, tenant_id=selected_id, items=active)),
+        "today": current_ledger_date(db, ledger_id=selected_id).isoformat(),
+        "goals": goals[:_PLAN_STATUS_GOAL_LIMIT],
+        "more_goal_count": max(len(goals) - _PLAN_STATUS_GOAL_LIMIT, 0),
+        "recurring_href": _with_ledger("/web/recurring", selected_id),
+        "goals_href": _with_ledger("/web/goals", selected_id, month=month),
+    }
+
+
 def _render_budgets(
     *,
     request: Request,
@@ -324,6 +352,7 @@ def _render_budgets(
     category_options = list_ledger_category_options(db, tenant_id=selected_id)
     category_options.extend(category for category in selected_exclusions if category not in category_options)
     ctx["budget"] = budget_view
+    ctx["plan_status"] = _plan_status(db, selected_id=selected_id, month=month, timezone_name=timezone_name)
     ctx["budget_archive_version"] = budget.row_version
     ctx["budget_archive_scope"] = browser_draft_scope(db, request)
     ctx["excluded_category_options"] = [

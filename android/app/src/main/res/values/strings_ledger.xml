@@ -80,7 +80,6 @@
     <string name="ledger_header_month_all">全部月份</string>
     <string name="ledger_header_status_syncing">更新中</string>
     <string name="ledger_header_status_synced">已同步 %1$s</string>
-    <string name="ledger_header_status_offline">离线数据</string>
     <string name="ledger_header_eyebrow">小票夹</string>
     <string name="ledger_header_total_suffix">%1$s 支出</string>
     <string name="ledger_header_total_current_list">当前列表合计</string>

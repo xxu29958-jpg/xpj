@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import 'partials/brand_art.html' as brand_art %}
 {% set bulk_versions = bulk_versions|default({}) %}
 {% if bulk_versions %}
 {% set page_surface = 'tertiary' %}
@@ -28,7 +29,8 @@
       {% if bulk_versions %}
       {{ bulk_versions|length }} 张待继续，已完成的不会重复处理
       {% elif pending_count %}
-      <span data-pending-count>{{ pending_count }}</span> 张待整理，确认后计入流水
+      {# 张数在下方「全部」筛选上 (drawer.js 就地递减)，这里只说清规则。 #}
+      确认后才计入流水
       {% else %}
       当前账本没有待处理记录。
       {% endif %}
@@ -64,7 +66,7 @@
   <summary class="inbox-capture-cover">
     <span class="inbox-capture-back"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 收件箱</span>
     <span><strong>收好生活里的小票</strong><span>拍下来，稍后慢慢整理。</span><span class="inbox-capture-label">拍照或选照片 <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-right"/></svg></span></span>
-    <img src="/static/web/product/art/receipt-clip.png" width="1280" height="1280" alt="">
+    {{ brand_art.stub_pair() }}
   </summary>
   <div class="inbox-capture-content">
     {% include "_inbox_capture.html" %}

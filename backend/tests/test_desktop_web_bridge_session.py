@@ -85,6 +85,7 @@ def test_valid_desktop_bridge_projects_bound_viewer_and_its_ledger(
     assert "ledger-role-viewer" in response.text
     # The desktop product surface carries the route back to the manager UI.
     assert 'class="manager-home-link" href="/"' in response.text
+    assert '<meta name="google" content="notranslate">' in response.text
     # The console roster's other ledgers never reach a bridged desktop page.
     assert "不应泄漏的本机账本" not in response.text
     assert "tester_1" not in response.text
@@ -166,6 +167,8 @@ def test_loopback_without_marker_preserves_legacy_owner_mode(
     # The manager link is a desktop-bridge affordance only: the loopback owner
     # console and public cookie flows never render it.
     assert "manager-home-link" not in response.text
+    assert '<meta name="google" content="notranslate">' not in response.text
+    assert 'translate="no"' not in response.text
 
 
 @pytest.mark.parametrize(

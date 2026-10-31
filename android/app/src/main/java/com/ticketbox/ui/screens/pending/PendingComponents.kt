@@ -2,7 +2,6 @@ package com.ticketbox.ui.screens.pending
 
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -20,12 +19,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.ticketbox.R
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.ui.components.AppSecondaryButton
+import com.ticketbox.ui.components.BrandArt
+import com.ticketbox.ui.components.BrandArtKind
 import com.ticketbox.ui.components.AppPrimaryButton
 import com.ticketbox.presentation.formatExpensePrimaryAmount
 import com.ticketbox.ui.design.AppRadius
@@ -89,7 +89,7 @@ internal fun PendingTop(
             Text(
                 modifier = Modifier.weight(1f),
                 text = when {
-                    pendingCount > 0 -> stringResource(R.string.pending_top_subtitle_count, pendingCount)
+                    pendingCount > 0 -> stringResource(R.string.pending_top_subtitle_queue)
                     state.readOnly -> stringResource(R.string.pending_top_subtitle_empty_readonly)
                     else -> stringResource(R.string.pending_top_subtitle_empty)
                 },
@@ -131,9 +131,14 @@ private fun PendingCaptureHero(
                     Text(stringResource(R.string.pending_capture_hero_title), style = MaterialTheme.typography.titleLarge)
                     Text(stringResource(R.string.pending_capture_hero_body),
                         color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-                    AppPrimaryButton(text = text, enabled = state.canStartUpload, onClick = onUploadScreenshot)
+                    // With a queue, 「开始核对」 is the screen's one primary; upload steps back to tonal.
+                    if (state.counts.all > 0) {
+                        AppSecondaryButton(text = text, enabled = state.canStartUpload, onClick = onUploadScreenshot)
+                    } else {
+                        AppPrimaryButton(text = text, enabled = state.canStartUpload, onClick = onUploadScreenshot)
+                    }
                 }
-                if (showArt) Image(painterResource(R.drawable.receipt_clip), contentDescription = null, modifier = Modifier.size(96.dp))
+                if (showArt) BrandArt(BrandArtKind.Pair, Modifier.size(width = 96.dp, height = 84.dp))
             }
         }
     }

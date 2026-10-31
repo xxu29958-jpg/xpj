@@ -17,6 +17,7 @@ from tests._local_web_identity_support import _connect_local_session, installed_
 from tests._web_budget_test_support import _save_budget
 from tests._web_native_form_support import hidden_post_forms
 from tests.family_ledger_test_support import set_owner_ledger_role
+from tests.spending_goal_test_support import _goal
 
 
 def _owner_budget_total() -> int | None:
@@ -221,6 +222,32 @@ def test_web_budgets_save_and_display_budget_dashboard(web_client: TestClient, *
     assert page.text.count('name="category_budget_remove"') == 2
     assert re.search(r'<details[^>]+id="budget-options"[^>]*data-start-expanded="false"', page.text)
     assert re.search(r'<details[^>]+id="budget-editor">', page.text)
+
+
+def test_web_budgets_leads_with_next_fixed_payment_and_goal_progress(web_client: TestClient, *, identity) -> None:
+    empty = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
+    assert empty.status_code == 200
+    assert "还没有固定支出" in empty.text and "这个月还没有消费目标" in empty.text
+
+    series = web_client.post("/api/recurring/items", headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"home_currency_code": "CNY", "merchant": "房租", "baseline_amount_cents": 10_000, "next_expected_date": "2026-01-05"})
+    assert series.status_code == 201, series.text
+    spent = web_client.post("/api/expenses/manual", headers=identity.app_headers, json={
+        "client_ref": str(uuid4()), "home_currency_code": "CNY", "amount_cents": 15_000,
+        "merchant": "五月餐饮", "category": "餐饮", "expense_time": "2026-05-05T12:00:00Z"})
+    assert spent.status_code == 200, spent.text
+    _goal(web_client, identity)
+
+    page = web_client.get("/web/budgets?ledger_id=owner&month=2026-05")
+    assert page.status_code == 200
+    status = re.search(r'<section class="plan-status[^"]*" aria-label="本月计划状态">(.*?)</section>', page.text, re.S)
+    assert status is not None
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", status.group(1)))
+    assert "下一笔固定支出 房租 CNY 100.00 预计 2026-01-05 已过，本期还没有对应付款" in text
+    assert "2026年5月消费目标 原消费目标 已用 75%" in text
+    assert re.search(r'<progress[^>]+value="75" max="100" aria-label="原消费目标额度已用 75%"', status.group(1))
+    assert 'href="/web/recurring?ledger_id=owner"' in status.group(1)
+    assert 'href="/web/goals?ledger_id=owner&amp;month=2026-05"' in status.group(1)
 
 
 def test_first_budget_total_only_save_and_optional_error_remain_operable(web_client: TestClient) -> None:

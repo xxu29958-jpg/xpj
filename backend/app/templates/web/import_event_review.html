@@ -49,7 +49,7 @@
 <section class="stack-tight" aria-label="当前账本原单">
   <h2 class="product-panel-title" data-import-root-title>对应的原消费</h2>
   <a class="product-entry" href="{{ root_edit_href }}">
-    <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg></span>
     <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ root.merchant or '未填写商家' }}</strong><span class="product-entry-amount">{{ root.original_currency_code }} {{ root.original_amount_value }}</span></span><span>账务日期 {{ root.accounting_date or '待核对' }} · {{ root.category }}</span><span{% if root.status != 'pending' %} class="sr-only"{% endif %}>{{ '复核并确认原单，完成后返回' if root.status == 'pending' else '查看原单与退款记录' }}</span></span>
     <span class="product-entry-chevron" aria-hidden="true">›</span>
   </a>
@@ -58,7 +58,7 @@
 </section>
 {% endif %}
 <div class="product-entry product-entry--static" data-import-source-row hidden>
-  <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#undo-2"/></svg></span>
+  <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#undo-2"/></svg></span>
   <span class="product-entry-copy"><span class="product-entry-heading"><strong>本次{{ event_label }}</strong><span class="product-entry-amount">{{ '冲销原消费' if row.offset_kind == 'reversal' else source_amount }}</span></span><span>{{ row.original_currency_code or '币种未提供' }} · {{ row.accounting_date or '生效日期未提供' }}</span></span>
 </div>
 {% if row.entry_kind == 'offset' and not row.resolved_expense_id and row.status not in ['applied', 'matched'] %}

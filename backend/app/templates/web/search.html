@@ -53,7 +53,7 @@
       <div class="ledger-search-results">
         {% for result in group.results %}
         <a class="product-entry" href="{{ result.href }}">
-          <span class="product-entry-icon{% if group.key == 'rules' %} product-entry-icon--apricot{% elif group.key == 'goals' %} product-entry-icon--lilac{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ {'pending':'inbox','confirmed':'receipt-text','rules':'list-filter','goals':'flag'}.get(group.key, 'search') }}"/></svg></span>
+          <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ {'pending':'inbox','confirmed':'receipt-text','rules':'list-filter','goals':'flag'}.get(group.key, 'search') }}"/></svg></span>
           <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ result.title }}</strong>
           {% if result.amount_cents is not none %}
           <span class="product-entry-amount">{% if result.group == 'goals' and not result.currency_code %}{{ result.amount_cents }}（最小单位，币种待确认）{% else %}{{ search_amount_label(result.amount_cents, result.currency_code or home_currency_code) }}{% if result.currency_code %} <small>{{ result.currency_code }}</small>{% endif %}{% endif %}</span>

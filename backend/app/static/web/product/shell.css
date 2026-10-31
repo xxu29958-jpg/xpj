@@ -392,18 +392,13 @@ a {
 .topbar-create-menu { position: absolute; z-index: var(--z-sticky); top: 100%; right: 0; display: grid; width: calc(var(--space-12) * 3); padding: var(--space-3); border-radius: var(--radius-lg); border: 1px solid var(--border-card); background: var(--surface-raised); box-shadow: var(--shadow-raised); }
 .topbar-create-menu > a { display: flex; min-height: var(--target-min); align-items: center; padding: var(--space-3) var(--space-4); color: var(--text-default); font-size: var(--type-body-size); }
 .topbar-create > summary > svg { width: var(--space-7); height: var(--space-7); flex: none; }
+/* 宽屏页头自带「记一笔」的页面 (base.html page_owns_create) 不再并排「+」;
+   ≤64rem 页头主按钮让位, 「+」恢复为该页记账入口 (见下方媒体查询)。 */
+.topbar-create--narrow-only { display: none; }
 
-/* 外观 popover (主题/质感/强调色三轴, <details> 原生开合, 无 JS 可用)。
-   三轴语义: theme.js 写入 localStorage + <html data-*>, tokens.css 外观轴段
-   承载全部值; 这里只摆 chrome。 */
-.appearance {
-    position: relative;
-}
-
-/* W1 chrome 披露原语: 顶栏安静文本触发器 + 浮层面板, 当前两个真实 consumer
-   (外观 / 「我」账户面板), 无真实消费者不扩 API。<details> 原生开合,
-   关闭态由浏览器 details 语义保证, 无 JS 可用。各组件规则只留差异
-   (原生 marker / 尺寸 / 密度 / 嵌套铺开)。 */
+/* W1 chrome 披露原语: 顶栏安静文本触发器 + 浮层面板, 当前真实 consumer 是
+   「我」账户面板, 无真实消费者不扩 API。<details> 原生开合, 关闭态由浏览器
+   details 语义保证, 无 JS 可用。组件规则只留差异 (原生 marker / 尺寸 / 密度)。 */
 .chrome-trigger {
     display: inline-flex;
     min-height: var(--space-9);
@@ -438,42 +433,43 @@ details[open] > .chrome-trigger {
     box-shadow: var(--shadow-raised);
 }
 
-/* 外观触发器差异: 纯文字入口抑制原生 marker (「我」trigger 保留 marker
-   承担披露可感知性)。 */
-.appearance-trigger {
+/* 外观 (主题/质感/强调色/背景四轴, _appearance_control.html): 账户面板里的
+   一行披露, 展开后在面板内就地铺开。轴语义: theme.js / background.js 写入,
+   tokens.css 外观轴段承载全部值; 这里只摆 chrome。行几何沿用 .ledger-popover
+   .row, 只把列改成「文字 + 展开箭头」并换掉原生 marker (选择器需高于后文的
+   .ledger-popover .row)。 */
+details.appearance > .appearance-trigger {
+    grid-template-columns: minmax(0, 1fr) auto;
     list-style: none;
+    cursor: pointer;
 }
 
 .appearance-trigger::-webkit-details-marker {
     display: none;
 }
 
-/* W1: 「我」popover 内的嵌套实例 (≤40rem) — 静态铺开, 不再绝对定位。 */
-.appearance--nested,
-.appearance--nested .appearance-trigger {
-    width: 100%;
+.appearance-trigger .meta > span {
+    display: block;
 }
 
-.appearance--nested .appearance-trigger {
-    justify-content: flex-start;
-    padding-inline: var(--space-3);
+.appearance[open] > .appearance-trigger {
+    background: var(--surface-sunken);
+    color: var(--text-default);
 }
 
-.appearance--nested .appearance-popover {
-    position: static;
-    min-width: 0;
-    max-inline-size: none;
-    margin-block-start: var(--space-2);
-    padding: var(--space-2) 0 0;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
+.appearance-chevron {
+    flex: none;
+    transition: transform var(--motion-fast) var(--ease-standard);
+}
+
+.appearance[open] .appearance-chevron {
+    transform: rotate(180deg);
 }
 
 .appearance-popover {
-    min-width: calc(var(--space-12) * 4);
+    display: grid;
     gap: var(--space-4);
-    padding: var(--space-4);
+    padding: var(--space-3) var(--space-3) var(--space-4);
 }
 
 .appearance-group {
@@ -607,10 +603,6 @@ details[open] > .chrome-trigger {
     display: none;
 }
 
-/* W1: ≤40rem 收进「我」面板的搜索/外观入口, 宽屏隐藏 (topbar 承担)。 */
-.ledger-mobile-links {
-    display: none;
-}
 
 .ledger-avatar {
     display: grid;
@@ -727,6 +719,20 @@ details[open] > .chrome-trigger {
     font-size: var(--type-caption-size);
 }
 
+/* 面板工具区 (外观 + ≤40rem 的搜索): 顶发丝分隔, 与账本列表分组。 */
+.ledger-popover-section {
+    display: grid;
+    gap: var(--space-1);
+    margin-block-start: var(--space-2);
+    padding-block-start: var(--space-2);
+    border-block-start: 1px solid var(--border-card);
+}
+
+/* W1: ≤40rem 收进「我」面板的搜索入口, 宽屏隐藏 (topbar 承担)。 */
+.ledger-popover .row.ledger-mobile-link {
+    display: none;
+}
+
 /* W1 repair: 面板底部登出区 — 顶发丝分隔, 安静全宽文本动作 (tonal, 无描边)。 */
 .ledger-popover-foot {
     margin-block-start: var(--space-2);
@@ -782,6 +788,10 @@ details[open] > .chrome-trigger {
 }
 
 @media (max-width: 64rem) {
+    .topbar-create--narrow-only {
+        display: block;
+    }
+
     html {
         scroll-padding-block:
             calc(max(var(--mobile-chrome-block-size), 1lh + var(--space-2) + var(--space-2)) + var(--space-3))
@@ -956,11 +966,10 @@ details[open] > .chrome-trigger {
     }
 
     /* W1 IA-B: ≤40rem topbar = 品牌 mark / 当前域 + 记账 / 收票 / 我。
-       搜索与外观让位进「我」popover (ledger-mobile-links), 品牌名与
-       顶栏账本名隐藏 (域名保留, 位置感不丢)。 */
+       搜索让位进「我」popover (ledger-mobile-link), 品牌名与顶栏账本名
+       隐藏 (域名保留, 位置感不丢)。 */
     .topbar-brand-name,
-    .product-topbar > .topbar-search,
-    .product-topbar > .appearance {
+    .product-topbar > .topbar-search {
         display: none;
     }
 
@@ -968,12 +977,8 @@ details[open] > .chrome-trigger {
         display: none;
     }
 
-    .ledger-mobile-links {
+    .ledger-popover .row.ledger-mobile-link {
         display: grid;
-        gap: var(--space-1);
-        margin-block-start: var(--space-2);
-        padding-block-start: var(--space-2);
-        border-block-start: 1px solid var(--border-card);
     }
 
     /* 只收触发器内文字, 不波及 popover rows 的账本名/角色 chip。 */

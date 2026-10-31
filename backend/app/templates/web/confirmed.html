@@ -3,6 +3,10 @@
 {% set product_body_domain = 'transactions' %}
 {% set manual_create_href = '/web/expenses/new?' ~ confirmed_edit_query %}
 {% set _date_review_query = '&' ~ (date_review_origin|urlencode) if date_review_origin|default({}) else '' %}
+{# 本页自带唯一「记一笔」: 有流水或处于标签/待核对清单时在页头, 本月为空时在空态;
+   只有搜索落空时两者都不渲染, 宽屏顶栏「+」照常承担。 #}
+{% set _header_creates = expenses or tag or filter in ['missing_category', 'missing_accounting_date'] %}
+{% set page_owns_create = can_write and request.state.web_session_auth and (_header_creates or not (query_text or category)) %}
 {% block title %}已确认 · 小票夹{% endblock %}
 
 {# C6 流水主入口迁入 product 正文栈:
@@ -40,7 +44,7 @@
     <p class="product-page-summary">{% if not can_write %}{{ selected_ledger_name|default('当前账本') }} · 只读{% else %}每笔花费，都有来处。{% endif %}</p>
     {% endif %}
   </div>
-  {% if can_write and request.state.web_session_auth and (expenses or tag or filter in ['missing_category', 'missing_accounting_date']) %}
+  {% if page_owns_create and _header_creates %}
   <div class="product-page-actions">
     <a class="product-button product-button--primary" href="{{ manual_create_href }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>记一笔</a>
   </div>
@@ -77,7 +81,7 @@
 {% endif %}
 {% if filter not in ['missing_category', 'missing_accounting_date'] and not _has_search %}
 <section class="product-surface product-surface--plain ledger-summary" aria-label="本月净支出">
-  <p class="product-amount-label">本月净支出 · {{ home_currency_code }}</p>
+  <p class="product-amount-label">本月净支出{% if show_home_currency_code %} · {{ home_currency_code }}{% endif %}</p>
   <p class="product-amount"><span class="sr-only">{{ month }} 合计 </span>{% if month_total_amount_yuan is not none %}<span>{{ home_currency_symbol }}</span><span>{{ month_total_amount_yuan|grouped }}</span>{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p>
 {% endif %}
 {% if can_write %}

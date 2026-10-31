@@ -25,6 +25,20 @@ from backend_manager.runtime import RuntimeControlError
 from backend_manager.runtime_factory import build_provider
 
 _UI_HTML = Path(__file__).resolve().parent / "ui.html"
+# One icon for the executable, the installer and the Manager window: the frozen bundle
+# carries backend/packaging/ticketbox.ico beside ui.html (ticketbox-manager.spec); a
+# source checkout serves that packaging original directly.
+_WINDOW_ICON = next(
+    (
+        path
+        for path in (
+            _UI_HTML.with_name("ticketbox.ico"),
+            Path(__file__).resolve().parents[2] / "backend" / "packaging" / "ticketbox.ico",
+        )
+        if path.is_file()
+    ),
+    None,
+)
 ManagerEndpointConfig: TypeAlias = ManagerConfig | MaintenanceManagerConfig
 
 
@@ -152,6 +166,7 @@ def _bind_control_server(
             token=token,
             instance_secret=instance_secret,
             ui_html=_UI_HTML,
+            window_icon=_WINDOW_ICON,
             request_window=request_window,
         )
     except OSError:
@@ -162,6 +177,7 @@ def _bind_control_server(
             token=token,
             instance_secret=instance_secret,
             ui_html=_UI_HTML,
+            window_icon=_WINDOW_ICON,
             request_window=request_window,
         )
 

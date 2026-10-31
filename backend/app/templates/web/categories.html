@@ -21,7 +21,7 @@
 </form>
 {% if uncategorized_pending or other_pending %}
 <a class="product-entry" href="/web/categories/uncategorized{{ q }}{% if not uncategorized_pending %}&amp;filter=including_other{% endif %}">
-  <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#shapes"/></svg></span>
+  <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#shapes"/></svg></span>
   <span class="product-entry-copy"><strong>{% if uncategorized_pending %}{{ uncategorized_pending }} 条待确认还未分类{% else %}{{ other_pending }} 条待确认使用「其他」分类{% endif %}</strong><span>{{ '去整理' if can_write else '查看分类' }}</span></span>
   <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
 </a>
@@ -62,7 +62,7 @@
   {% if inspected %}{% set item = inspected_category %}{% endif %}
   <div id="category-{{ item.public_id }}" data-category-key="{{ item.public_id }}"{% if row_error %} aria-invalid="true" aria-describedby="category-preference-error"{% endif %}>
     <a class="product-entry" href="/web/categories?ledger_id={{ selected_ledger_id }}&amp;month={{ target_month }}&amp;inspect={{ item.public_id }}#category-{{ item.public_id }}"{% if inspected %} aria-current="true"{% endif %}>
-      <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#shapes"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#shapes"/></svg></span>
       <span class="product-entry-copy"><strong>{{ item.name }}</strong><span>{{ '已被 ' ~ item.usage_count ~ ' 笔流水使用' if item.usage_count else '暂无流水使用' }}</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </a>

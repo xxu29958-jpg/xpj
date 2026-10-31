@@ -40,6 +40,7 @@ DisableProgramGroupPage=yes
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile={#TicketboxRepositorySource}\backend\packaging\ticketbox.ico
 OutputBaseFilename=Ticketbox-Setup-{#AppVersion}
 SetupLogging=yes
 CloseApplications=no
@@ -66,7 +67,9 @@ Source: "{#TicketboxRepositorySource}\distribution\windows\payload\release-manif
 Source: "{#TicketboxRepositorySource}\backend\packaging\ticketbox.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\小票夹\管理小票夹"; Filename: "{app}\releases\{#ReleaseId}\manager\ticketbox-manager.exe"; WorkingDir: "{app}\releases\{#ReleaseId}\manager"; IconFilename: "{app}\ticketbox.ico"
+; AppUserModelID must equal backend_manager.desktop_shell.MANAGER_APP_ID: the Manager's
+; Edge window carries it, so Windows groups and pins that window under this shortcut.
+Name: "{autoprograms}\小票夹\管理小票夹"; Filename: "{app}\releases\{#ReleaseId}\manager\ticketbox-manager.exe"; WorkingDir: "{app}\releases\{#ReleaseId}\manager"; IconFilename: "{app}\ticketbox.ico"; AppUserModelID: "Ticketbox.Manager"
 
 [Registry]
 Root: HKLM; Subkey: "Software\Ticketbox"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"

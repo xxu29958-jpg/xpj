@@ -180,10 +180,7 @@ private fun TagRow(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SettingsEntryIcon(
-            ImageVector.vectorResource(R.drawable.ic_lucide_tag),
-            background = LocalThemeVisuals.current.surfaceLilac,
-        )
+        SettingsEntryIcon(ImageVector.vectorResource(R.drawable.ic_lucide_tag))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
             Text(
                 text = tag.name,

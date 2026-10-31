@@ -61,6 +61,9 @@
   {% endif %}
   <span class="product-amount-meta">已用 {{ budget.spent_yuan|money(budget_currency_symbol) }} · 可用 {{ budget.available_yuan|money(budget_currency_symbol) }}</span>
 </section>
+{% endif %}
+{% include '_plan_status.html' %}
+{% if budget.configured %}
 
 <section class="product-flow budget-execution budget-reading" aria-label="本月预算执行">
   <div class="product-meter">
@@ -172,7 +175,7 @@
     <div class="product-entry-list">
     <details id="budget-options" data-budget-options open data-start-expanded="{{ 'true' if error else 'false' }}">
       <summary class="product-entry" hidden>
-        <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#layers"/></svg></span>
+        <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#layers"/></svg></span>
         <span class="product-entry-copy"><strong>结转与预留</strong><span>为这个月留一点余地</span></span>
         <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
       </summary>
@@ -189,7 +192,7 @@
     </details>
     <details data-budget-options open data-start-expanded="{{ 'true' if error else 'false' }}">
       <summary class="product-entry" hidden>
-        <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list-filter"/></svg></span>
+        <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list-filter"/></svg></span>
         <span class="product-entry-copy"><strong>不计入预算的分类</strong><span>查看与调整排除范围</span></span>
         <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
       </summary>
@@ -226,13 +229,13 @@
 {% endif %}
 {% if budget.configured %}
 <a class="product-entry budget-reading" href="/web/budgets/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ month }}">
-  <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span>
+  <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span>
   <span class="product-entry-copy"><strong>预算修改记录</strong><span>查看之前的安排</span></span>
   <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
 </a>
 <details class="budget-reading">
   <summary class="product-entry">
-    <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#layers"/></svg></span>
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#layers"/></svg></span>
     <span class="product-entry-copy"><strong>结转、固定支出与预留</strong><span>月度总预算 {{ budget.total_yuan|money(budget_currency_symbol) }}</span></span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </summary>
@@ -246,7 +249,7 @@
 {% if budget.excluded_breakdown %}
 <details class="budget-reading">
   <summary class="product-entry">
-    <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list-filter"/></svg></span>
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list-filter"/></svg></span>
     <span class="product-entry-copy"><strong>不计入预算的支出</strong><span>这些分类的支出不计入「本月已花」。</span></span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </summary>

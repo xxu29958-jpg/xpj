@@ -38,7 +38,7 @@ from contextlib import suppress
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from backend_manager.app_controller import ManagerShuttingDownError
 from backend_manager.product_data import ProductDataError
@@ -367,7 +367,7 @@ def _recovery_page(message: str, *, portable_available: bool = False) -> bytes:
     portable_link = ('<p><a href="/web/exports">下载有权访问的账本数据</a></p>'
                      '<p><a href="/web/settings">设置与设备</a></p>') if portable_available else ""
     return (
-        "<!doctype html><meta charset=utf-8>"
+        '<!doctype html><meta charset=utf-8><meta name="google" content="notranslate">'
         "<title>小票夹需要恢复</title><h1>暂时无法打开账本</h1>"
         f"<p>{html.escape(message)}</p>"
         f"{portable_link}"
@@ -443,7 +443,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         session_ids = srv.issue_web_session()
         body = (
-            b"<!doctype html><meta charset=utf-8>"
+            b'<!doctype html><meta charset=utf-8><meta name="google" content="notranslate">'
             b"<title>Opening Ticketbox</title>"
             b"<script>location.replace('/web')</script>"
         )
@@ -716,7 +716,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(
             200,
             (
-                "<!doctype html><meta charset=utf-8><title>已打开系统管理</title>"
+                '<!doctype html><meta charset=utf-8><meta name="google" content="notranslate"><title>已打开系统管理</title>'
                 "<h1>已在本机默认浏览器打开系统管理页面</h1>"
                 '<p><a href="/web">返回日常账务</a> · <a href="/">返回管理器</a></p>'
             ).encode(),
@@ -885,6 +885,15 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             self._send_json(srv.controller.status())
         else:
+            self._serve_unrouted(parsed_path)
+
+    def _serve_unrouted(self, parsed_path: urllib.parse.SplitResult) -> None:
+        # Edge app windows take their window and taskbar icon from /favicon.ico;
+        # without it Windows shows Edge's generic globe for the Manager.
+        window_icon = cast(ControlServer, self.server).window_icon
+        if parsed_path.path == "/favicon.ico" and not parsed_path.query and window_icon is not None:
+            self._send(200, window_icon, "image/x-icon")
+        else:
             self._send(404, b"not found", "text/plain; charset=utf-8")
 
     def do_HEAD(self) -> None:
@@ -996,6 +1005,7 @@ class ControlServer(ThreadingHTTPServer):
         token: str,
         instance_secret: str,
         ui_html: Path,
+        window_icon: Path | None = None,
         request_window: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__((host, port), _Handler)
@@ -1003,6 +1013,7 @@ class ControlServer(ThreadingHTTPServer):
         self.token = token
         self.instance_secret = instance_secret
         self.ui_html = ui_html
+        self.window_icon = window_icon.read_bytes() if window_icon is not None else None
         self.request_window = request_window or (lambda: False)
         self.action_lock = threading.Lock()
         self._web_session_lock = threading.Lock()
@@ -1073,7 +1084,8 @@ class ControlServer(ThreadingHTTPServer):
         token = secrets.token_urlsafe(32)
         action = f"{self.expected_origin}/api/bootstrap"
         document = (
-            '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+            '<!doctype html><html lang="zh-CN" translate="no"><head><meta charset="utf-8">'
+            '<meta name="google" content="notranslate">'
             "<title>正在打开小票夹</title></head><body>"
             f'<form method="post" action="{html.escape(action)}">'
             f'<input type="hidden" name="bootstrap_token" value="{html.escape(token)}">'

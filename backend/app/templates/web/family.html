@@ -116,7 +116,7 @@
   <p class="hint">{{ members | length }} 人，包括已停用成员。</p>
   <div class="product-entry-list">
   {% for member in members %}
-    {% set tone = '' if member.role == 'owner' else (' product-entry-icon--lilac' if member.role == 'viewer' else ' product-entry-icon--apricot') %}
+    {% set tone = '' if member.role == 'owner' else ('' if member.role == 'viewer' else '') %}
     {% if can_manage_family and not member.disabled_at and member.role != 'owner' and not member.is_self %}
     <details>
       <summary class="product-entry" aria-label="管理 {{ member.account_name }}：{{ role_label(member.role) }}">
@@ -211,7 +211,7 @@
 
     <details{% if submitted_ledger_name is not none %} open{% endif %}>
       <summary class="product-entry">
-        <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#pencil"/></svg></span>
+        <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#pencil"/></svg></span>
         <span class="product-entry-copy"><strong>账本名称</strong><span>当前名称：{{ ledger_name }}</span></span>
         <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
       </summary>

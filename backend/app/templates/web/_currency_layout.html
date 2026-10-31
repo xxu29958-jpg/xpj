@@ -2,6 +2,7 @@
 <html lang="zh-CN" data-theme="{{ ui_theme or 'paper' }}">
 <head>
   <meta charset="UTF-8">
+  {% if request.state.web_session_platform == 'desktop' %}<meta name="google" content="notranslate">{% endif %}
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="csrf-token" content="{{ csrf_token }}">
   <title>{% block title %}本机币种{% endblock %} · 小票夹</title>

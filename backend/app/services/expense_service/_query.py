@@ -6,7 +6,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.ledger_scope import ledger_scoped_select
@@ -35,6 +35,7 @@ __all__ = [
     "filtered_confirmed_stream",
     "get_expense",
     "ledger_has_any_expense",
+    "ledger_records_other_currency",
     "list_confirmed",
     "list_expenses_by_ids",
     "list_pending",
@@ -62,6 +63,26 @@ def ledger_has_any_expense(db: Session, tenant_id: str) -> bool:
         )
         is not None
     )
+
+
+def ledger_records_other_currency(db: Session, tenant_id: str, currency_code: str) -> bool:
+    """Display-only predicate: does this ledger hold money in any currency other than [currency_code]?
+
+    Web summaries name their currency code only when it tells the reader something:
+    the ledger records more than one currency (expenses or their refunds), or the
+    page totals are shown in a currency the records were not kept in. Amounts and
+    their sources are untouched. One ``EXISTS`` statement covers both tables.
+    """
+
+    return bool(db.scalar(select(or_(
+        ledger_scoped_select(Expense, tenant_id).with_only_columns(Expense.id).where(or_(
+            Expense.original_currency_code != currency_code, Expense.home_currency_code != currency_code,
+        )).exists(),
+        ledger_scoped_select(ExpenseOffsetFact, tenant_id).with_only_columns(ExpenseOffsetFact.id).where(or_(
+            ExpenseOffsetFact.original_currency_code != currency_code,
+            ExpenseOffsetFact.home_currency_code != currency_code,
+        )).exists(),
+    ))))
 
 
 def fetch_expense_row_version_in_status(

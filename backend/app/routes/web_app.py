@@ -48,7 +48,7 @@ from app.routes.web_saved_views import confirmed_save_context
 from app.services.category_service import list_ledger_category_options
 from app.services.currency_binding_service import require_runtime_home_currency_code
 from app.services.currency_common import average_minor_amount, normalize_currency_code
-from app.services.expense_service import list_confirmed
+from app.services.expense_service import ledger_records_other_currency, list_confirmed
 from app.services.ledger_calendar_service import current_ledger_month
 from app.services.money_projection_service import ordered_projection_gaps, sum_projected_amounts
 from app.services.spending_contract_service import (
@@ -321,6 +321,7 @@ def _render_confirmed_page(
     )
     ctx.update(
         projected_money_context(home),
+        show_home_currency_code=ledger_records_other_currency(db, selected_id, home),
         expenses=items,
         page=page,
         total_pages=total_pages,

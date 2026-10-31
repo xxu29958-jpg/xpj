@@ -18,7 +18,7 @@
   <div role="list">
     {% for split in visible_splits %}
     <div class="product-entry product-entry--static" role="listitem">
-      <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
       <div class="product-entry-copy">
         <div class="product-entry-heading"><strong>{{ split.account_name or '原成员' }}</strong><span class="product-entry-amount">{% if split.amount_yuan %}{{ split.amount_yuan|money(currency_input.currency_symbol) }}{% else %}金额未填{% endif %}</span></div>
         {% if split.disabled %}<span>已停用，原记录保留</span>{% endif %}

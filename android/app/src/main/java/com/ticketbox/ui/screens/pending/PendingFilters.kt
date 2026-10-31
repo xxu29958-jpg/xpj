@@ -151,12 +151,14 @@ private fun PendingQueueCounts.countFor(filter: NeedsReviewFilter): Int = when (
     NeedsReviewFilter.ReadyToConfirm -> readyToConfirm
 }
 
+// Same order as the Web inbox (全部 · 相似 · 可确认 …): the actionable count stays on screen
+// at phone width instead of scrolling off behind the issue chips.
 private val pendingSignalFilters = listOf(
+    NeedsReviewFilter.ReadyToConfirm,
     NeedsReviewFilter.NeedsAmount,
     NeedsReviewFilter.NeedsFx,
     NeedsReviewFilter.NeedsMerchant,
     NeedsReviewFilter.NeedsCategory,
-    NeedsReviewFilter.ReadyToConfirm,
 )
 
 @Composable

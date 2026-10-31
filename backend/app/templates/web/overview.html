@@ -2,6 +2,8 @@
 {% from '_month_label.html' import month_label %}
 {% from 'partials/category_icon.html' import category_icon %}
 {% block title %}总览 · 洞察 · 小票夹{% endblock %}
+{# 本页自带唯一「记一笔」(有流水时在页头, 空账本在开始引导); 宽屏顶栏「+」让位。 #}
+{% set page_owns_create = can_write and request.state.web_session_auth %}
 
 {# 查询金额与模块顺序由 _dashboard_data_payload 提供；视图不再二次分组重排。
    分类图仅在对应模块可见且具有可绘制的数据时加载。 #}
@@ -29,7 +31,7 @@
     </p>
   </div>
   <div class="product-page-actions insight-page-actions">
-    {% if can_write and request.state.web_session_auth %}<a class="product-button product-button--primary" href="/web/expenses/new?ledger_id={{ selected_ledger_id|urlencode }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>记一笔</a>{% endif %}
+    {% if page_owns_create and has_any_expense %}<a class="product-button product-button--primary" href="/web/expenses/new?ledger_id={{ selected_ledger_id|urlencode }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>记一笔</a>{% endif %}
     <a class="product-button product-button--quiet" href="/web/reports?{{ money_task|urlencode }}">分析</a>
   </div>
 </header>
@@ -79,12 +81,11 @@
            data-overview-card="monthly_spend">
     <div class="product-panel-header">
       <div>
-        <h2 class="product-panel-subtitle">本月净支出 · {{ home_currency_code }}</h2>
+        <h2 class="product-panel-subtitle">本月净支出{% if show_home_currency_code %} · {{ home_currency_code }}{% endif %}</h2>
       </div>
       <a class="product-panel-subtitle"
          href="/web/confirmed?{{ money_task|urlencode }}">查看流水</a>
     </div>
-    <img class="insight-hero-art" src="/static/web/product/art/receipt-clip.png" alt="">
     <div class="insight-hero-value{% if hero_amount and hero_amount.int|length > 12 %} insight-hero-value--long{% endif %}">
       {% if hero_amount is not none %}{{ hero_amount.sign }}<small>{{ hero_amount.cur }}</small>{{ hero_amount.int }}{% if hero_amount.dec %}<small>{{ hero_amount.dec }}</small>{% endif %}{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}
     </div>
@@ -108,7 +109,7 @@
   {% elif item.key == 'pending' %}
   <article class="product-panel product-panel--padded insight-brief"
            data-overview-card="pending">
-    <span class="product-entry-icon product-entry-icon--apricot insight-pending-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#inbox"/></svg></span>
+    <span class="product-entry-icon insight-pending-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#inbox"/></svg></span>
     <div class="insight-pending-copy">
       <div class="insight-brief-title"><h2 class="product-panel-title">{{ cards.pending_count }} 张小票待整理</h2></div>
       <div class="product-panel-subtitle">{{ '当前账本全部日期，核对后计入流水' if cards.pending_count else '没有待整理的记录' }}</div>

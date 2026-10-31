@@ -209,6 +209,7 @@ def test_clear_tag_links_keep_only_the_current_month_or_all_month_scope(filter, 
             page=1, tag="Shared", filter=filter, home_currency_code="JPY"),
         home_currency_symbol="¥", month_total_amount_yuan="0.00", month_total_count=0,
         by_day=[], source_breakdown=[], calendar_max=0, home_currency_code="JPY", missing_rates=[],
+        show_home_currency_code=True,
         money_task={"ledger_id": "family", "month": month, "home_currency_code": "JPY", "return_to": "confirmed"},
     )
     hrefs = re.findall(r'<a[^>]*href="([^"]+)"[^>]*>清除[^<]*</a>', body)

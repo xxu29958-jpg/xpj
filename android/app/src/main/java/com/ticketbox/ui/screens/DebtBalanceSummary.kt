@@ -56,10 +56,10 @@ internal fun DebtSummaryCard(debt: Debt) {
                 formatDisplayAmount(debt.paidAmountCents, recordDisplay), R.drawable.ic_lucide_check)
             DebtBalanceFact(stringResource(R.string.debt_detail_forgiven),
                 debt.forgivenAmountCents?.let { formatDisplayAmount(it, recordDisplay) } ?: unknown,
-                R.drawable.ic_lucide_heart_handshake, visuals.surfaceApricot)
+                R.drawable.ic_lucide_heart_handshake)
             DebtBalanceFact(stringResource(R.string.debt_detail_adjustment),
                 debt.adjustmentAmountCents?.let { (if (it > 0) "+" else "") + formatDisplayAmount(it, recordDisplay) } ?: unknown,
-                R.drawable.ic_lucide_sliders_horizontal, visuals.surfaceLilac)
+                R.drawable.ic_lucide_sliders_horizontal)
         }
         Text(stringResource(R.string.debt_detail_component_hint), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)

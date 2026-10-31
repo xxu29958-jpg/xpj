@@ -2,7 +2,7 @@
    键盘方向键/读屏原生成立；空值 = 清空评分（absent/clear/value 三态由
    _web_expense_form.score_change 裁决）；field_errors 行内定位。 #}
 <details {% if field_errors.get('value_score') or field_errors.get('regret_score') %}open{% endif %}>
-  <summary class="product-entry"><span class="product-entry-icon product-entry-icon--lilac"><svg><use href="/static/shared/vendor/lucide/icons.svg#sparkles"/></svg></span><span class="product-entry-copy"><strong>评价</strong><span>值回票价与后悔指数</span></span><svg><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
+  <summary class="product-entry"><span class="product-entry-icon"><svg><use href="/static/shared/vendor/lucide/icons.svg#sparkles"/></svg></span><span class="product-entry-copy"><strong>评价</strong><span>值回票价与后悔指数</span></span><svg><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></summary>
   <div class="score-fields">
     <fieldset class="product-field score-row"{% if not can_write %} disabled{% endif %}>
       <legend>值回票价</legend>

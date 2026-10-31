@@ -58,15 +58,12 @@
       <div class="meta"><div class="name">默认币种</div><div class="sub">安装拥有者设置</div></div>
     </a>
     {% endif %}
-    {# ≤40rem 顶栏只留 收票/我 — 搜索与外观收进本面板 (shell.css 的
-       .ledger-mobile-links 仅在 ≤40rem 显示; 宽屏由 topbar 独立入口承担)。
-       搜索是真实路由链接; 外观与 topbar 实例共用同一 _appearance_control.html
-       partial + theme.js 多实例绑定。 #}
-    <div class="ledger-mobile-links">
+    {# 工具区: 外观 (本机个人偏好, 不占顶栏全局位) 与 ≤40rem 让出顶栏的搜索
+       (.ledger-mobile-link 仅在 ≤40rem 显示; 宽屏由 topbar 搜索入口承担)。 #}
+    <div class="ledger-popover-section">
       <a class="row ledger-mobile-link" href="/web/search{{ q }}">
         <div class="meta"><div class="name">搜索</div></div>
       </a>
-      {% set _appearance_nested = true %}
       {% include "_appearance_control.html" %}
     </div>
     {# 只有真实 browser session 才渲染登出 (既有 POST /web/auth/logout,

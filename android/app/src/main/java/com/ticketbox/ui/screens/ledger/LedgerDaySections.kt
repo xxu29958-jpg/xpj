@@ -27,6 +27,7 @@ internal data class LedgerDaySectionState(
     val selectedIds: Set<Long>,
     val compactGroups: Boolean,
     val expanded: Boolean,
+    val showCurrencyCode: Boolean,
 )
 
 internal data class LedgerDaySectionActions(
@@ -56,6 +57,7 @@ internal fun LazyListScope.ledgerDaySection(
                 previewText = group.previewText().takeUnless { sectionState.expanded },
                 expandable = sectionState.compactGroups,
                 expanded = sectionState.expanded,
+                showCurrencyCode = sectionState.showCurrencyCode,
             ),
             onToggle = actions.onToggleGroup.takeIf { sectionState.compactGroups },
         )
@@ -73,6 +75,7 @@ internal fun LazyListScope.ledgerDaySection(
                             selected = item.root.id in sectionState.selectedIds,
                         ),
                         lineageStatus = item.lineageStatus,
+                        groupDay = item.streamDate,
                     ),
                     actions = actions,
                 )
@@ -93,6 +96,7 @@ private data class LedgerExpenseRowState(
     val viewMode: LedgerViewMode,
     val selection: LedgerExpenseSelectionState,
     val lineageStatus: ExpenseLineageStatus,
+    val groupDay: String?,
 )
 
 @Composable
@@ -105,6 +109,7 @@ private fun LedgerExpenseRow(
         expense = expense,
         selection = state.selection,
         lineageStatus = state.lineageStatus,
+        groupDay = state.groupDay,
     )
     val itemActions = LedgerExpenseItemActions(
         onOpen = { actions.onEdit(expense) },

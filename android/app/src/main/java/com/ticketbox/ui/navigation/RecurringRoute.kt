@@ -88,7 +88,7 @@ internal fun RecurringRoute(
 }
 
 @Composable
-private fun ObserveRecurringCalendar(model: RecurringViewModel) {
+internal fun ObserveRecurringCalendar(model: RecurringViewModel) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { model.refresh(preserveFeedback = true) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle, model) {

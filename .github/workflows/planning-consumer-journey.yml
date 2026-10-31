@@ -120,7 +120,8 @@ jobs:
     name: Actual Web and Android consumers / ${{ matrix.group }}
     needs: [selection, postgres_policy, app]
     if: ${{ needs.selection.outputs.consumers == 'true' }}
-    runs-on: ubuntu-latest
+    # Playwright 1.58's browser/dependency bundle supports this fixed runner image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -171,6 +172,12 @@ jobs:
           python -m venv .ci-venv
           ./.ci-venv/bin/python -m pip install -r requirements-dev.txt playwright==1.58.0
           ./.ci-venv/bin/python -m playwright install --with-deps chromium
+      - name: Prepare the actual Desktop bridge for portable downloads
+        if: ${{ env.TICKETBOX_JOURNEY_GROUP == 'portable-downloads' }}
+        working-directory: backend
+        run: |
+          ./.ci-venv/bin/python -m pip install -r ../desktop/requirements.txt
+          PYTHONPATH=../desktop:../distribution/windows/lifecycle ./.ci-venv/bin/python -c "from backend_manager.control_server import ControlServer"
       - name: Install the actual OCR provider for the Backstage journey
         if: ${{ env.TICKETBOX_JOURNEY_GROUP == 'backstage' }}
         working-directory: backend

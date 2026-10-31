@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,7 +16,7 @@ import com.ticketbox.domain.model.ExpenseFactBundle
 import com.ticketbox.domain.model.ExpenseLineageStatus
 import com.ticketbox.domain.model.recordCurrencyDisplay
 import com.ticketbox.ui.components.AppAmountText
-import com.ticketbox.ui.components.AppPaperCard
+import com.ticketbox.ui.components.TicketStub
 import com.ticketbox.ui.components.StatusPill
 import com.ticketbox.presentation.displayDateTime
 import com.ticketbox.presentation.formatDisplayAmount
@@ -62,9 +61,10 @@ internal fun FactSummarySection(expense: Expense, state: ExpenseFactUiState, onR
             else -> null
         }
     status?.let { StatusPill(text = stringResource(it), active = false) }
-    AppPaperCard {
-        Column(Modifier.fillMaxWidth().padding(AppSpacing.cardPadding),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
+    val kept: (@Composable () -> Unit)? =
+        if (amounts.refunded != null && amounts.net != null) { { FactOffsetSummary(amounts) } } else null
+    TicketStub(tail = kept) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap)) {
             Text(stringResource(R.string.expense_fact_original_spend),
                 color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             AppAmountText(amounts.original, role = AppAmountRole.Hero)
@@ -74,7 +74,6 @@ internal fun FactSummarySection(expense: Expense, state: ExpenseFactUiState, onR
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
-    FactOffsetSummary(amounts)
     FactOffsetReadStatus(state, onRetryBundle)
 }
 
