@@ -74,6 +74,7 @@ internal data class LedgerDayHeaderUi(
     val previewText: String? = null,
     val expandable: Boolean = false,
     val expanded: Boolean = true,
+    val showCurrencyCode: Boolean = false,
 )
 
 internal data class LedgerExpenseSelectionState(
@@ -201,6 +202,7 @@ private fun LedgerDayHeaderAmount(
             amounts = state.amountsByCurrency,
             role = AppAmountRole.Compact,
             endAligned = true,
+            showCurrencyCode = state.showCurrencyCode,
         )
     }
 }

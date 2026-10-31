@@ -18,13 +18,18 @@ import com.ticketbox.presentation.formatDisplayAmount
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 
-/** The same recorded-currency display is used by the page and each day header. */
+/**
+ * The same recorded-currency display is used by the page and each day header. The ISO code appears
+ * only when it tells the reader something: the ledger holds more than one currency, or this block
+ * lists several. A single-currency ledger shows the symbol alone.
+ */
 @Composable
 internal fun LedgerAmounts(
     amounts: Map<String?, Long?>,
     role: AppAmountRole,
     modifier: Modifier = Modifier,
     endAligned: Boolean = false,
+    showCurrencyCode: Boolean = false,
 ) {
     if (amounts.isEmpty()) {
         // Nothing recorded is not an amount: a quiet line rather than the amount type.
@@ -37,7 +42,8 @@ internal fun LedgerAmounts(
         )
         return
     }
-    val lines = amounts.map { (code, amount) -> ledgerRecordedAmountText(code, amount) }
+    val labelled = showCurrencyCode || amounts.size > 1
+    val lines = amounts.map { (code, amount) -> ledgerRecordedAmountText(code, amount, labelled) }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
         lines.forEach { text ->
             if (endAligned) AppEndAlignedAmountText(text = text, role = role, modifier = Modifier.fillMaxWidth())
@@ -47,9 +53,9 @@ internal fun LedgerAmounts(
 }
 
 @Composable
-private fun ledgerRecordedAmountText(code: String?, amount: Long?): String {
+private fun ledgerRecordedAmountText(code: String?, amount: Long?, labelled: Boolean): String {
     if (code.isNullOrBlank()) return stringResource(R.string.ledger_total_unknown_currency)
     if (amount == null) return stringResource(R.string.ledger_total_unavailable, code)
     val formatted = formatDisplayAmount(amount, CurrencyDisplay.forRecord(code))
-    return if (CurrencyCode.fromStorageKeyOrNull(code) != null) "$code $formatted" else formatted
+    return if (labelled && CurrencyCode.fromStorageKeyOrNull(code) != null) "$code $formatted" else formatted
 }

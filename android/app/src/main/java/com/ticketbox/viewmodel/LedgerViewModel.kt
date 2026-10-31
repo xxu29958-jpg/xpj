@@ -20,6 +20,7 @@ import com.ticketbox.domain.model.RecentMerchant
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.asExpenseRoot
 import com.ticketbox.domain.model.confirmedStreamAmountsByCurrency
+import com.ticketbox.domain.model.confirmedStreamRecordsSeveralCurrencies
 import com.ticketbox.domain.model.expenseLedgerMonth
 import com.ticketbox.domain.model.filterConfirmedStreamItems
 import com.ticketbox.domain.model.isUncategorizedExpenseCategory
@@ -133,6 +134,8 @@ data class LedgerUiState(
      *  （JPY 安装下速记不再按 CNY 默认币种落 FX 放大）。 */
     val ledgerCurrency: CurrencyCode? = null,
     val undatedExpenseCountsByCurrency: Map<String?, Int> = emptyMap(),
+    /** Display only, from the whole synced stream (not the filtered view): totals then name their ISO code. */
+    val multiCurrencyLedger: Boolean = false,
 ) {
     val undatedExpenseCount: Int get() = undatedExpenseCountsByCurrency.values.sum()
     val selectedCount: Int get() = selectedIds.size
@@ -239,6 +242,7 @@ class LedgerViewModel(
                         // root carried by every entry so a much-refunded bill
                         // can't dominate the chips.
                         recentMerchants = recentLedgerMerchants(streamItems.map { it.root }.distinctBy { it.id }),
+                        multiCurrencyLedger = confirmedStreamRecordsSeveralCurrencies(streamItems),
                     ).withFilteredItems(streamItems)
                 }
             }
