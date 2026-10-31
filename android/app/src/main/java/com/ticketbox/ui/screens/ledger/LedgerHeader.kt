@@ -41,6 +41,7 @@ internal fun LedgerHeader(
                 amounts = summary.amountsByCurrency,
                 modifier = Modifier.fillMaxWidth(),
                 role = AppAmountRole.Hero,
+                showCurrencyCode = state.multiCurrencyLedger,
             )
             if (state.undatedExpenseCount > 0) com.ticketbox.ui.components.AccountingDateNotice(state.undatedExpenseCount)
             Text(

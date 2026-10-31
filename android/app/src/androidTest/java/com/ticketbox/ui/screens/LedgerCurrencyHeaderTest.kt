@@ -66,6 +66,23 @@ class LedgerCurrencyHeaderTest {
     }
 
     @Test
+    fun singleCurrencyLedgerShowsTheSymbolAloneWhileAMixedLedgerNamesEveryTotal() {
+        val root = ledgerHeaderConfirmedRow(100L)
+        composeRule.setContent {
+            TicketboxTheme(skin = AppSkin.Default) {
+                androidx.compose.foundation.layout.Column(Modifier.width(328.dp)) {
+                    LedgerHeader(LedgerUiState(items = listOf(root)))
+                    // A CNY-only day inside a ledger that also records another currency.
+                    LedgerDayHeader(LedgerDayHeaderUi("9月1日", mapOf("CNY" to 100L), 1, showCurrencyCode = true))
+                }
+            }
+        }
+        composeRule.onNodeWithText("¥1.00").assertIsDisplayed()
+        composeRule.onNodeWithText("CNY ¥1.00").assertIsDisplayed()
+        composeRule.onAllNodesWithText("CNY", substring = true).assertCountEquals(1)
+    }
+
+    @Test
     fun unknownCurrencyNeverRendersAnAmbientYuanTotal() {
         val root = ledgerHeaderConfirmedRow(100L) as ConfirmedStreamItem.ExpenseRow
         composeRule.setContent {

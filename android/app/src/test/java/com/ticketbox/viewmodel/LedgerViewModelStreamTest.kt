@@ -31,6 +31,8 @@ import kotlinx.coroutines.test.setMain
 import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * Refund/Chargeback/Reversal 纵向片：LedgerViewModel 消费 typed confirmed
@@ -131,6 +133,29 @@ class LedgerViewModelStreamTest {
         // 12000 - 3000 + 0 + 0：reversed root 的 gross 8000 与 reversal 事件都
         // 不再贡献；lineageHomeNetCents 绝不进页头聚合。
         assertEquals(mapOf<String?, Long?>("CNY" to 9000L), state.summary.amountsByCurrency)
+    }
+
+    @Test
+    fun currencyCodeFollowsTheWholeLedgerNotTheVisibleFilter() = streamTest {
+        val yuan = streamExpense(id = 1, amountCents = 12000, merchant = "超市")
+        val single = LedgerViewModel(
+            StreamLedgerActions(listOf(rootRow(yuan), refundRow("off-1", yuan, "2026-05-18", 3000))),
+            StreamDebtActions(),
+        )
+        advanceUntilIdle()
+        assertFalse(single.uiState.value.multiCurrencyLedger)
+
+        // A June bill paid in USD: May's list holds only CNY, but the ledger records two currencies.
+        val dollars = streamExpense(id = 2, amountCents = 7250, merchant = "订阅").copy(originalCurrencyCodeRaw = "USD")
+        val mixed = LedgerViewModel(
+            StreamLedgerActions(listOf(rootRow(yuan), rootRow(dollars, streamDate = "2026-06-02"))),
+            StreamDebtActions(),
+        )
+        advanceUntilIdle()
+        mixed.setMonthFilter(FIXTURE_STREAM_MONTH)
+        advanceUntilIdle()
+        assertEquals(mapOf<String?, Long?>("CNY" to 12000L), mixed.uiState.value.summary.amountsByCurrency)
+        assertTrue(mixed.uiState.value.multiCurrencyLedger)
     }
 
     @Test

@@ -27,6 +27,7 @@ internal data class LedgerDaySectionState(
     val selectedIds: Set<Long>,
     val compactGroups: Boolean,
     val expanded: Boolean,
+    val showCurrencyCode: Boolean,
 )
 
 internal data class LedgerDaySectionActions(
@@ -56,6 +57,7 @@ internal fun LazyListScope.ledgerDaySection(
                 previewText = group.previewText().takeUnless { sectionState.expanded },
                 expandable = sectionState.compactGroups,
                 expanded = sectionState.expanded,
+                showCurrencyCode = sectionState.showCurrencyCode,
             ),
             onToggle = actions.onToggleGroup.takeIf { sectionState.compactGroups },
         )

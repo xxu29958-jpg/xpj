@@ -190,6 +190,7 @@ private fun LazyListScope.ledgerDaySectionsContent(
                 selectedIds = state.selectedIds,
                 compactGroups = compactDayGroups,
                 expanded = expanded,
+                showCurrencyCode = state.multiCurrencyLedger,
             ),
             actions = LedgerDaySectionActions(
                 onEdit = actions.onEdit,
