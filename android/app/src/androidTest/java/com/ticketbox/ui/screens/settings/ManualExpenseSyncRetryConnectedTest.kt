@@ -24,6 +24,17 @@ class ManualExpenseSyncRetryConnectedTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun widgetFailureFilterOpensTheExistingRetryWithoutSubmittingOnNavigation() {
+        var retries = 0
+        show("temporary failure", initialFilter = com.ticketbox.domain.model.SyncQueueFilter.Failed) { retries++ }
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        composeRule.onNodeWithText(context.getString(R.string.widget_queue_process)).performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(0, retries) }
+        composeRule.onNodeWithText(context.getString(R.string.sync_status_failed_button_retry)).performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(1, retries) }
+    }
+
+    @Test
     fun unverifiableMoneyShowsReviewCopyAndNoRetry() {
         var retries = 0
         show("manual_create_original_unverified", "{\"client_ref\":\"original\",\"amount_cents\":1200}") { retries += 1 }
@@ -68,6 +79,7 @@ class ManualExpenseSyncRetryConnectedTest {
         lastError: String,
         payloadJson: String = "{\"client_ref\":\"original\",\"original_currency\":\"CNY\",\"original_amount\":\"12.00\"}",
         open: (Long) -> Unit = {},
+        initialFilter: com.ticketbox.domain.model.SyncQueueFilter = com.ticketbox.domain.model.SyncQueueFilter.All,
         retry: () -> Unit,
     ) {
         val row = OutboxRow(id = 11, serverUrl = "https://qa.invalid", ledgerId = "ledger",
@@ -76,6 +88,7 @@ class ManualExpenseSyncRetryConnectedTest {
             retryCount = 0, lastError = lastError, createdAt = "2026-09-09T00:00:00Z",
             attemptedAt = null, completedAt = null)
         composeRule.setContent {
+            val filter = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(initialFilter) }
             TicketboxTheme(skin = AppSkin.Default) {
                 SyncStatusScreenContent(
                     state = OutboxStatusUiState(bindingReady = true, status = OutboxStatus(0, emptyList(), listOf(row)),
@@ -85,6 +98,7 @@ class ManualExpenseSyncRetryConnectedTest {
                         onOpenRecurring = {}, onOpenBudget = {}, onOpenExpense = open, onKeepMine = {},
                         onDropMine = {}, onRetry = { retry() }, onDropFailed = {}, onClearQuarantined = {}),
                     onBack = {}, onOpenInbox = {},
+                    options = SyncStatusScreenOptions(queueFilter = filter.value, onQueueFilterChange = { filter.value = it }),
                 )
             }
         }

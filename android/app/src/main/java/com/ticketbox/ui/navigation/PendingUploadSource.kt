@@ -63,6 +63,7 @@ internal fun releaseUploadSourceGrants(context: Context, state: LaunchActionStat
     val held = resolver.persistedUriPermissions.filter { it.isReadPermission }.map { it.uri }.toSet()
     for (source in selection.uris.distinct().filterNot(state::referencesUploadSource)) {
         val uri = Uri.parse(source)
+        com.ticketbox.upload.ReceiptCaptureStore(context.applicationContext).release(uri)
         if (uri !in held) continue
         try {
             resolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)

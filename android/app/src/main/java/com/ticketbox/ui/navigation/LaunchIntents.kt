@@ -110,6 +110,12 @@ enum class ShortcutTarget(val id: String) {
 
     /** 桌面摘要：打开当前账本本月、无标签筛选的统计。 */
     MonthlyOverview("monthly_overview"),
+    CaptureReceipt("capture_receipt"),
+    EntryTemplates("entry_templates"),
+    SyncStatus("sync_status"),
+    PendingUploads("pending_uploads"),
+    PendingRecords("pending_records"),
+    FailedOperations("failed_operations"),
 }
 
 /**

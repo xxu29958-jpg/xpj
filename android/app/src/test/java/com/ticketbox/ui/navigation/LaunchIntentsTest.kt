@@ -130,7 +130,13 @@ class LaunchIntentsTest {
         assertEquals("manual_entry", ShortcutTarget.ManualEntry.id)
         assertEquals("review_pending", ShortcutTarget.ReviewPending.id)
         assertEquals("monthly_overview", ShortcutTarget.MonthlyOverview.id)
-        assertTrue(ShortcutTarget.entries.size == 4)
+        assertEquals("capture_receipt", ShortcutTarget.CaptureReceipt.id)
+        assertEquals("entry_templates", ShortcutTarget.EntryTemplates.id)
+        assertEquals("sync_status", ShortcutTarget.SyncStatus.id)
+        assertEquals("pending_uploads", ShortcutTarget.PendingUploads.id)
+        assertEquals("pending_records", ShortcutTarget.PendingRecords.id)
+        assertEquals("failed_operations", ShortcutTarget.FailedOperations.id)
+        assertTrue(ShortcutTarget.entries.size == 10)
     }
 
     @Test

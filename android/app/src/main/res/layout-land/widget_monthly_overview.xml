@@ -25,7 +25,8 @@
     </LinearLayout>
     <LinearLayout android:layout_width="180dp" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center_vertical">
         <LinearLayout android:layout_width="match_parent" android:layout_height="48dp" android:gravity="end">
-            <ImageButton android:id="@+id/widget_refresh" style="@style/WidgetIconButton"
+            <ImageButton android:id="@+id/widget_privacy" style="@style/WidgetIconButton" android:src="@drawable/ic_lucide_eye" android:contentDescription="@string/widget_reveal" />
+        <ImageButton android:id="@+id/widget_refresh" style="@style/WidgetIconButton"
                 android:src="@drawable/ic_lucide_refresh_cw" android:contentDescription="@string/widget_refresh" />
             <ImageButton android:id="@+id/widget_configure" style="@style/WidgetIconButton"
                 android:src="@drawable/ic_lucide_sliders_horizontal" android:contentDescription="@string/widget_configure" />

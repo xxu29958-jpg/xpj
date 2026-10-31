@@ -895,6 +895,7 @@ data class OutboxStatus(
     val writeBlock: OutboxWriteBlock? = null,
     val binding: OutboxBinding? = null,
     val refreshRequired: List<OutboxRow> = emptyList(),
+    val queuedRows: List<OutboxRow> = emptyList(),
 ) {
     val needsUserAction: Boolean
         get() = conflicts.isNotEmpty() || failed.isNotEmpty() || quarantinedCount > 0 || refreshRequired.isNotEmpty()

@@ -29,7 +29,11 @@ internal data class WidgetOverviewState(
 )
 
 internal fun quickEntryViews(context: Context): RemoteViews = RemoteViews(context.packageName, R.layout.widget_quick_entry)
-    .apply { bindQuickActions(context) }
+    .apply {
+        bindQuickActions(context)
+        setOnClickPendingIntent(R.id.widget_camera, launchPendingIntent(context, ShortcutTarget.CaptureReceipt))
+        setOnClickPendingIntent(R.id.widget_templates, launchPendingIntent(context, ShortcutTarget.EntryTemplates))
+    }
 
 internal fun widgetLaunchIntent(context: Context, target: ShortcutTarget): Intent =
     Intent(context, MainActivity::class.java).apply {
@@ -40,7 +44,7 @@ internal fun widgetLaunchIntent(context: Context, target: ShortcutTarget): Inten
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
     }
 
-private fun launchPendingIntent(context: Context, target: ShortcutTarget): PendingIntent = PendingIntent.getActivity(
+internal fun launchPendingIntent(context: Context, target: ShortcutTarget): PendingIntent = PendingIntent.getActivity(
     context, 0, widgetLaunchIntent(context, target), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
 )
 
@@ -54,16 +58,8 @@ internal fun monthlyOverviewViews(context: Context, id: Int, state: WidgetOvervi
     RemoteViews(context.packageName, R.layout.widget_monthly_overview).apply {
         bindQuickActions(context)
         setOnClickPendingIntent(R.id.widget_summary, launchPendingIntent(context, ShortcutTarget.MonthlyOverview))
-        val configure = Intent(context, WidgetConfigurationActivity::class.java)
-            .putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-            .setData(Uri.parse("ticketbox-widget://${context.packageName}/configure/$id"))
-        setOnClickPendingIntent(R.id.widget_configure, PendingIntent.getActivity(context, id, configure,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
-        val refresh = Intent(context, MonthlyOverviewWidgetProvider::class.java)
-            .setAction(MonthlyOverviewWidgetProvider.ACTION_REFRESH)
-        setOnClickPendingIntent(R.id.widget_refresh, PendingIntent.getBroadcast(context, 0, refresh,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
         bindSummary(context, state)
+        bindWidgetControls(context, id, WidgetKind.Monthly, state.showSummary)
     }
 
 private fun RemoteViews.bindSummary(context: Context, state: WidgetOverviewState) {

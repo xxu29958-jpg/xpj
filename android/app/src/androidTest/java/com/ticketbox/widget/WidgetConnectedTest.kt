@@ -39,13 +39,14 @@ class WidgetConnectedTest {
         val names = manager.installedProviders.map { it.provider }
         assertTrue(ComponentName(context, QuickEntryWidgetProvider::class.java) in names)
         assertTrue(ComponentName(context, MonthlyOverviewWidgetProvider::class.java) in names)
+        WidgetKind.entries.forEach { assertTrue(ComponentName(context, it.provider) in names) }
         val intents = ShortcutTarget.entries.map { target ->
             val intent = widgetLaunchIntent(context, target)
             assertEquals(context.packageName, intent.component?.packageName)
             assertEquals(target.id, intent.getStringExtra(EXTRA_SHORTCUT_TARGET))
             PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
-        assertEquals(4, intents.toSet().size)
+        assertEquals(ShortcutTarget.entries.size, intents.toSet().size)
     }
 
     @Test fun privacyConsentIsPerWidgetAndDoesNotFollowRebindingOrRestoration() {

@@ -7,6 +7,7 @@
         <TextView android:id="@+id/widget_ledger" android:layout_width="0dp" android:layout_height="wrap_content"
             android:layout_weight="1" android:text="@string/widget_brand" android:textSize="14sp"
             android:textStyle="bold" android:textColor="@color/widget_text" android:maxLines="1" android:ellipsize="end" />
+        <ImageButton android:id="@+id/widget_privacy" style="@style/WidgetIconButton" android:src="@drawable/ic_lucide_eye" android:contentDescription="@string/widget_reveal" />
         <ImageButton android:id="@+id/widget_refresh" style="@style/WidgetIconButton"
             android:src="@drawable/ic_lucide_refresh_cw" android:contentDescription="@string/widget_refresh" />
         <ImageButton android:id="@+id/widget_configure" style="@style/WidgetIconButton"

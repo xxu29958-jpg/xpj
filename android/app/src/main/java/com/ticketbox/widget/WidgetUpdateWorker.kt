@@ -11,6 +11,12 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.ticketbox.TicketboxApplication
 import com.ticketbox.data.repository.readWidgetMonthlySummary
+import com.ticketbox.data.repository.readWidgetSpendingTrend
+import com.ticketbox.data.repository.ReadSnapshot
+import com.ticketbox.domain.model.MonthlyStats
+import com.ticketbox.security.LocalSessionRecord
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import com.ticketbox.security.isBusinessReady
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,24 +30,45 @@ class WidgetUpdateWorker(context: Context, params: WorkerParameters) : Coroutine
         val container = (context as TicketboxApplication).container
         val session = container.sessionStore.currentSession()
         val preferences = WidgetPreferences(context)
-        if (!session.isBusinessReady() || overviewWidgetIds(context).none { preferences.allowsSummary(it, session?.version) }) {
+        val kinds = dataWidgetInstances(context).filterKeys { preferences.allowsSummary(it, session?.version) }.values.toSet()
+        if (!session.isBusinessReady() || kinds.isEmpty()) {
             renderWidgetPlaceholders(context)
             cancel(context, removePeriodic = true)
             return Result.success()
         }
-        val snapshot = readWidgetMonthlySummary(container.expenseRepository, container.ledgerCalendarRepository).getOrNull()
+        val binding = container.expenseRepository.statsBinding() ?: return Result.success()
+        val queue = if (WidgetKind.Tasks in kinds || WidgetKind.Sync in kinds) withTimeoutOrNull(3_000) {
+            container.outboxRepository.observeStatus().first {
+                it.binding?.owner?.storageKey == binding.ownerKey && it.binding?.ledgerId == binding.ledgerId
+            }
+        } else null
+        publish(session, publication, null, WidgetExtraData(queue = queue), loading = true)
+        val snapshot = if (WidgetKind.Monthly in kinds)
+            readWidgetMonthlySummary(container.expenseRepository, container.ledgerCalendarRepository).getOrNull() else null
+        val pending = if (WidgetKind.Tasks in kinds) container.expenseRepository.dataQualitySummary().getOrNull() else null
+        val trend = if (WidgetKind.Trend in kinds)
+            readWidgetSpendingTrend(container.reportsRepository, container.ledgerCalendarRepository, binding).getOrNull() else null
+        publish(session, publication, snapshot, WidgetExtraData(queue, pending, trend), loading = false)
+        return Result.success()
+    }
+
+    private suspend fun publish(session: LocalSessionRecord?, publication: Long, snapshot: ReadSnapshot<MonthlyStats>?,
+        data: WidgetExtraData, loading: Boolean) {
+        val context = applicationContext
+        val container = (context as TicketboxApplication).container
+        val preferences = WidgetPreferences(context)
         withContext(Dispatchers.Main.immediate) {
             // A late response never repaints a signed-out or newly selected ledger.
             if (isStopped || publication != publicationRevision.get() ||
                 container.sessionStore.currentSession()?.version != session?.version) return@withContext
             val manager = AppWidgetManager.getInstance(context)
-            overviewWidgetIds(context).forEach { id ->
+            dataWidgetInstances(context).forEach { (id, kind) ->
                 val visible = preferences.allowsSummary(id, session?.version)
-                manager.updateAppWidget(id, monthlyOverviewViews(context, id,
-                    WidgetOverviewState(session, snapshot, visible, loading = false)))
+                val state = WidgetOverviewState(session, snapshot, visible, loading)
+                manager.updateAppWidget(id, if (kind == WidgetKind.Monthly) monthlyOverviewViews(context, id, state)
+                    else extraWidgetViews(context, id, kind, state, data))
             }
         }
-        return Result.success()
     }
 
     companion object {
@@ -53,7 +80,7 @@ class WidgetUpdateWorker(context: Context, params: WorkerParameters) : Coroutine
         internal fun enqueue(context: Context) {
             val session = (context.applicationContext as TicketboxApplication).container.sessionStore.currentSession()
             val preferences = WidgetPreferences(context)
-            if (!session.isBusinessReady() || overviewWidgetIds(context).none { preferences.allowsSummary(it, session?.version) }) {
+            if (!session.isBusinessReady() || dataWidgetInstances(context).keys.none { preferences.allowsSummary(it, session?.version) }) {
                 cancel(context, removePeriodic = true)
                 renderWidgetPlaceholders(context)
                 return

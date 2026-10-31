@@ -37,6 +37,7 @@ internal data class WidgetConfigurationState(
     val ledgerName: String? = null,
     val showSummary: Boolean = false,
     val error: String? = null,
+    val canAuthenticate: Boolean = false,
 )
 
 @Composable
@@ -45,8 +46,9 @@ internal fun WidgetConfigurationScreen(
     onSave: (Boolean) -> Unit,
     onOpenApp: () -> Unit,
     onCancel: () -> Unit,
+    onSecuritySettings: () -> Unit = {},
 ) {
-    var showSummary by rememberSaveable(state.version, state.showSummary) { mutableStateOf(state.showSummary) }
+    var showSummary by rememberSaveable(state.version, state.showSummary, state.error) { mutableStateOf(state.showSummary) }
     TicketboxTheme(skin = if (isSystemInDarkTheme()) AppSkin.Midnight else AppSkin.Paper) {
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(Modifier.safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -55,12 +57,17 @@ internal fun WidgetConfigurationScreen(
                 Text(stringResource(R.string.widget_configure_description))
                 Text(state.ledgerName ?: stringResource(if (state.version == null) R.string.widget_bind_first else R.string.widget_bound_private),
                     style = MaterialTheme.typography.titleMedium)
-                Row(modifier = Modifier.fillMaxWidth().toggleable(value = showSummary, enabled = state.version != null,
+                val canShow = state.version != null && state.canAuthenticate
+                Row(modifier = Modifier.fillMaxWidth().toggleable(value = showSummary, enabled = canShow || showSummary,
                     role = Role.Checkbox, onValueChange = { showSummary = it }), verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = showSummary, enabled = state.version != null, onCheckedChange = null)
+                    Checkbox(checked = showSummary, enabled = canShow || showSummary, onCheckedChange = null)
                     Text(stringResource(R.string.widget_show_summary))
                 }
                 Text(stringResource(R.string.widget_privacy_notice), style = MaterialTheme.typography.bodyMedium)
+                if (state.version != null && !state.canAuthenticate) {
+                    Text(stringResource(R.string.widget_lock_required))
+                    TextButton(onClick = onSecuritySettings) { Text(stringResource(R.string.widget_security_settings)) }
+                }
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Button(onClick = { onSave(showSummary) }, modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.widget_save))

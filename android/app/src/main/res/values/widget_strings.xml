@@ -23,7 +23,7 @@
     <string name="widget_configure_title">设置桌面小组件</string>
     <string name="widget_configure_description">把常用操作放在桌面，随手记下每一笔。</string>
     <string name="widget_show_summary">在桌面显示此账本的摘要</string>
-    <string name="widget_privacy_notice">开启后，账本名称、金额和笔数可直接在桌面查看，无需解锁小票夹。关闭后只保留快捷入口。切换账本或重新绑定后，需要重新开启。</string>
+    <string name="widget_privacy_notice">开启后，账本名称、金额和队列数量可直接在桌面查看。点眼睛按钮即可隐藏，重新显示需要指纹或设备密码验证。切换账本或重新绑定后需要重新开启。</string>
     <string name="widget_save">保存小组件</string>
     <string name="widget_open_app">打开小票夹</string>
     <string name="widget_cancel">取消</string>

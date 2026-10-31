@@ -19,12 +19,29 @@ class MainQuickActionsTest {
     fun writerSeesExistingLauncherActionsInsideTheApp() {
         assertEquals(
             listOf(
+                ShortcutTarget.CaptureReceipt,
                 ShortcutTarget.UploadReceipt,
                 ShortcutTarget.ManualEntry,
+                ShortcutTarget.EntryTemplates,
                 ShortcutTarget.ReviewPending,
             ),
             quickActionTargets(canModify = true),
         )
+    }
+
+    @Test fun widgetCameraTemplatesAndSyncFiltersSurviveTheGateHandoff() {
+        val targets = mapOf(
+            ShortcutTarget.CaptureReceipt to LaunchAction.OpenCamera,
+            ShortcutTarget.EntryTemplates to LaunchAction.OpenTemplates,
+            ShortcutTarget.PendingUploads to LaunchAction.OpenSyncStatus(com.ticketbox.domain.model.SyncQueueFilter.Uploads),
+            ShortcutTarget.PendingRecords to LaunchAction.OpenSyncStatus(com.ticketbox.domain.model.SyncQueueFilter.Records),
+            ShortcutTarget.FailedOperations to LaunchAction.OpenSyncStatus(com.ticketbox.domain.model.SyncQueueFilter.Failed),
+        )
+        targets.forEach { (target, expected) ->
+            val state = MainShellState()
+            dispatchShortcutNavigation(target, state)
+            assertEquals(expected, LaunchActionState.restore(state.launchAction.snapshot()).consume())
+        }
     }
 
     @Test

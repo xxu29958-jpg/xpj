@@ -30,7 +30,7 @@ class WidgetWorkerJourneyTest {
     private var widgetId = 0
 
     @Test fun workerPublishesAndRecoversOfflineThenClearsThePreviousLedger() = runBlocking {
-        val original = app.container.sessionStore.currentSession()
+        val original = widgetOriginalSession(app)
         val server = WidgetJourneyServer()
         try {
             val session = workerSession(server.url)
@@ -137,7 +137,7 @@ class WidgetWorkerJourneyTest {
     }
 }
 
-private fun workerSession(url: String) = LocalSessionRecord(
+internal fun workerSession(url: String) = LocalSessionRecord(
     sessionGeneration = UUID.randomUUID().toString(), bindingRevision = UUID.randomUUID().toString(),
     serverId = UUID.randomUUID().toString(), dataGeneration = UUID.randomUUID().toString(),
     serverUrl = url, credential = StoredSessionToken("synthetic-widget-journey"),
@@ -145,3 +145,10 @@ private fun workerSession(url: String) = LocalSessionRecord(
         accountName = "测试成员", ledgerId = "widget-worker-ledger", ledgerName = "组件测试账本", deviceName = "模拟器",
         role = "member", boundAt = "2026-11-01T00:00:00Z"),
 )
+
+/** Recover only this fixture's synthetic session after an interrupted instrumentation process. */
+internal fun widgetOriginalSession(app: TicketboxApplication): LocalSessionRecord? =
+    app.container.sessionStore.currentSession()?.takeUnless {
+        it.credential == StoredSessionToken("synthetic-widget-journey") &&
+            it.identity.ledgerId == "widget-worker-ledger" && it.serverUrl.startsWith("http://127.0.0.1:")
+    }

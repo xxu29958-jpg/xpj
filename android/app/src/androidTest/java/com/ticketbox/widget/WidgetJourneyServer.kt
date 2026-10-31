@@ -17,6 +17,8 @@ internal class WidgetJourneyServer : AutoCloseable {
     private val server = ServerSocket(0)
     val url = "http://127.0.0.1:${server.localPort}"
     val monthlyReads = AtomicInteger()
+    val trendReads = AtomicInteger()
+    @Volatile var trendDelayMillis: Long = 0
     private val runtime = runBlocking {
         val dto = CorrectionConnectedNetwork().service.runtimeCompatibility().let {
             it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = 1))
@@ -37,8 +39,9 @@ internal class WidgetJourneyServer : AutoCloseable {
                         flush()
                     }
                 }
-            } catch (error: SocketException) {
-                if (!server.isClosed) throw error
+            } catch (_: SocketException) {
+                // Hiding a widget deliberately cancels its in-flight HTTP read.
+                if (server.isClosed) break
             }
         }
     }
@@ -51,7 +54,22 @@ internal class WidgetJourneyServer : AutoCloseable {
             monthlyReads.incrementAndGet()
             """{"home_currency_code":"JPY","month":"${YearMonth.now(ZoneOffset.UTC)}","total_amount_cents":7000,"count":2,"by_category":[]}"""
         }
+        path.startsWith("/api/insights/data-quality") ->
+            """{"pending_total":6,"missing_amount":1,"missing_merchant":0,"missing_category":0,"suspected_duplicates":0,"confirmed_without_image":0,"ready_to_confirm":5,"oldest_pending_age_days":2,"generated_at":"${java.time.Instant.now()}"}"""
+        path.startsWith("/api/reports/overview") -> {
+            trendReads.incrementAndGet()
+            Thread.sleep(trendDelayMillis)
+            trendResponse(requireNotNull(android.net.Uri.parse(path).getQueryParameter("month")))
+        }
         else -> error("Unexpected widget request: ${path.substringBefore('?')}")
+    }
+
+    private fun trendResponse(value: String): String {
+        val month = YearMonth.parse(value)
+        val points = (1..month.lengthOfMonth()).joinToString(",") { day ->
+            """{"bucket":"${month.atDay(day)}","label":"$day","amount_cents":100,"count":1}"""
+        }
+        return """{"month":"$month","timezone":"UTC","granularity":"day","total_amount_cents":3100,"count":31,"previous_month":"${month.minusMonths(1)}","previous_total_amount_cents":0,"previous_count":0,"year_over_year_month":"${month.minusYears(1)}","year_over_year_total_amount_cents":0,"year_over_year_count":0,"year_over_year_delta_amount_cents":3100,"year_over_year_delta_count":31,"merchant_category":null,"ranking_metric":"count","trend":[$points],"merchant_ranking":[],"category_comparison":[],"home_currency_code":"JPY","missing_rates":[],"undated_expense_count":0}"""
     }
 
     override fun close() {
