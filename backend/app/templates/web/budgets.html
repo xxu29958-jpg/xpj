@@ -98,7 +98,7 @@
     <span class="product-entry-icon budget-editor-enter" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#sliders-horizontal"/></svg></span>
     <span class="product-entry-copy budget-editor-enter"><strong>调整本月预算</strong><span>总额、分类额度、结转与排除范围</span></span>
     <svg class="budget-editor-enter" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
-    <span class="budget-editor-back"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 预算 · 返回查看</span>
+    <span class="budget-editor-back"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#arrow-left"/></svg> 返回预算概况</span>
   </summary>
   <div class="budget-editor-content">
   <header class="product-page-header">
@@ -129,7 +129,7 @@
 
     <div class="product-surface product-surface--plain budget-total-field">
       <label class="product-amount-label" for="budget-total-amount-yuan">总预算 · <span data-plan-currency>{{ currency_input.currency_code }}</span></label>
-      <input id="budget-total-amount-yuan" class="product-amount" aria-describedby="budget-total-amount-hint" type="number" name="total_amount_yuan" value="{{ budget.form_total_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" required>
+      <input id="budget-total-amount-yuan" class="product-amount" aria-describedby="budget-total-amount-hint" type="number" name="total_amount_yuan" value="{{ budget.form_total_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" required>
       <span class="product-amount-meta" id="budget-total-amount-hint" data-plan-amount-hint>{{ currency_input.currency_symbol }} · {{ currency_input.amount_input_hint }}</span>
     </div>
 
@@ -142,7 +142,7 @@
           <div class="budget-row" data-saved-category="{{ row.saved_category }}">
             <div class="product-field">
               <label for="budget-category-amount-{{ row.index }}">{{ row.saved_category }}</label>
-              <input id="budget-category-amount-{{ row.index }}" class="product-input" type="number" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" aria-label="分类预算金额">
+              <input id="budget-category-amount-{{ row.index }}" class="product-input" type="number" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" aria-label="分类预算金额">
             </div>
             <details class="product-disclosure" data-budget-options open data-start-expanded="{{ 'true' if row.category != row.saved_category or row.remove_requested else 'false' }}">
               <summary hidden>改名、移除与执行情况</summary>
@@ -161,7 +161,7 @@
               {% for row in add_rows %}
               <div class="budget-add-row" data-budget-add-row>
                 <input class="product-input" type="text" name="category_budget_category" value="{{ row.category }}" placeholder="分类，如：餐饮" aria-label="分类预算分类">
-                <input class="product-input" type="number" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_example }}" aria-label="分类预算金额">
+                <input class="product-input" type="number" name="category_budget_amount_yuan" value="{{ row.amount_yuan }}" min="0" step="{{ currency_input.amount_step }}" inputmode="{{ currency_input.inputmode }}" placeholder="{{ currency_input.amount_placeholder }}" aria-label="分类预算金额">
               </div>
               {% endfor %}
             </div>
