@@ -40,6 +40,7 @@ DisableProgramGroupPage=yes
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile={#TicketboxRepositorySource}\backend\packaging\ticketbox.ico
 OutputBaseFilename=Ticketbox-Setup-{#AppVersion}
 SetupLogging=yes
 CloseApplications=no

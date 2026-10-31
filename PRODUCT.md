@@ -16,7 +16,7 @@ Make family financial records understandable and dependable, from incoming evide
 
 ## Brand Personality
 
-Clear, warm, composed. A receipt and its coral side clip are a useful recognizable object, not a reason to put a character on every screen. The interface should feel like a well-kept personal tool, not an operator dashboard or a marketing website.
+Clear, warm, composed. The 票根 pair (a paper stub whose coral tail is the part you keep) is the recognizable mark, not a reason to put a character on every screen. See `docs/design_reference/brand-icon/`. The interface should feel like a well-kept personal tool, not an operator dashboard or a marketing website.
 
 ## Anti-references
 
