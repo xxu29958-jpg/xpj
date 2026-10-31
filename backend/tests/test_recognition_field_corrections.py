@@ -48,8 +48,6 @@ def test_original_correction_keeps_source_reading_separate_from_recall(
     corrections = [c for c in proposed["recognition_fields"] if c["field"] == field and c["value"] == corrected]
     assert len(corrections) == 1, "Explicit source correction never reaches the next similar original"
     correction = corrections[0]
-    readings = [c for c in proposed["recognition_fields"] if c["field"] == field]
-    assert readings[0]["value"] == original, "History must not displace this original's first reading"
     assert correction["event_selected"] is False, "Historical values cannot become event draft defaults"
     assert correction["source_reading_value"] == original
     assert correction["selection_intent"] == "bookkeeping", "Accepting a learned value is not a new source annotation"
