@@ -5,19 +5,22 @@ import android.content.Context
 import com.ticketbox.AppContainer
 import com.ticketbox.TicketboxApplication
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 internal fun observeWidgetSession(context: Context, container: AppContainer, scope: CoroutineScope) {
-    scope.launch {
+    // Serialize privacy resets with Worker publication on the main thread, so an
+    // older update cannot race past a completed account/ledger reset.
+    scope.launch(Dispatchers.Main.immediate) {
         container.sessionStore.observeSession().map { it?.version to it?.identity }.distinctUntilChanged().drop(1).collect {
             renderWidgetPlaceholders(context)
             WidgetUpdateWorker.enqueue(context)
         }
     }
-    scope.launch {
+    scope.launch(Dispatchers.Main.immediate) {
         container.expenseRepository.readAccessDenials.collect {
             WidgetUpdateWorker.cancel(context)
             renderWidgetPlaceholders(context, loading = false)
