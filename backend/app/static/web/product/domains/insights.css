@@ -16,9 +16,7 @@
 .insight-hero .insight-module-foot { order: 3; flex-basis: 100%; }
 .insight-module-icon { display: grid; place-items: center; width: var(--space-9); height: var(--space-9); border-radius: var(--radius-lg); background: var(--brand-primary-bg); }
 .insight-module-icon svg { width: var(--space-7); height: var(--space-7); }
-[data-overview-card="recurring"] .insight-module-icon { background: var(--surface-apricot); }
-[data-overview-card="recent_uploads"] .insight-module-icon { background: var(--surface-lilac); }
-[data-overview-card="backup_status"] .insight-module-icon { background: var(--surface-sand); }
+/* 模块图标底只标识入口，统一鼠尾草；备份等状态由卡内 product-status 表达，与列表图标同一规则。 */
 /* 窄屏: 模块不是卡片, 只靠留白分组; 宽屏才各自成卡 (见下方媒体查询)。 */
 .insight-grid > .product-panel { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 0; }
 .insight-grid > .insight-hero { padding: var(--space-6); border-radius: var(--radius-xl); background: var(--brand-primary-bg); }
