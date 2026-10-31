@@ -407,7 +407,7 @@ def test_future_mobility_payment_keeps_merchant_and_amount_evidence_without_fill
     assert parsed.amount_cents is None
     assert any(item.field == "amount_cents" and item.value == 1173 for item in parsed.candidates)
     assert next(item for item in parsed.decisions if item.field == "amount_cents").reason == "transaction_not_completed"
-    assert parsed.merchant == "高德"
+    assert parsed.merchant == "鲸志出行"  # The ride header names the actual service provider.
     assert parsed.category == "交通"
 
 

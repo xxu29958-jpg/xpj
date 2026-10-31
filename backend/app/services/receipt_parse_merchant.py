@@ -202,6 +202,7 @@ def _store_context_candidates(text: str, lines: list[str], blocks: Sequence[dict
     candidates = []
     boundary = promotion_start(text)
     lines = text[:boundary].splitlines() if boundary is not None else lines
+    blocks = blocks[:len(lines)] if blocks is not None else None
     for index, line in enumerate(lines):
         value_index = None
         explicit_value = None

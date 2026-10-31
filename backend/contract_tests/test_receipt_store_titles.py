@@ -39,3 +39,11 @@ def test_list_cap_does_not_turn_hidden_conflict_into_a_default():
     assert next(item for item in parsed.decisions if item.field == "merchant").status == "ambiguous"
     assert len([item for item in parsed.candidates if item.field == "merchant"]) == 8
     assert {item.value for item in parsed.candidates if item.field == "merchant"} == {"甲方商店", "乙方商店"}
+
+
+def test_promotion_boundary_excludes_corresponding_geometry():
+    raw = "商品说明\n猜你喜欢\n青禾咖啡（城西店）\n预计20:12送达"
+    blocks = [{"text": line, "box": [[0, i * 20], [400, i * 20], [400, i * 20 + 18], [0, i * 20 + 18]]}
+              for i, line in enumerate(raw.splitlines())]
+    parsed = parse_receipt_text(raw, currency_code="CNY", minor_unit_exponent=2, evidence_blocks=blocks)
+    assert not any(item.source == "store_context" for item in parsed.candidates)
