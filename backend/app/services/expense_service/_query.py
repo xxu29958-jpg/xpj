@@ -71,13 +71,18 @@ def ledger_records_other_currency(db: Session, tenant_id: str, currency_code: st
     Web summaries name their currency code only when it tells the reader something:
     the ledger records more than one currency (expenses or their refunds), or the
     page totals are shown in a currency the records were not kept in. Amounts and
-    their sources are untouched. ``LIMIT 1`` keeps each check an existence probe.
+    their sources are untouched. One ``EXISTS`` statement covers both tables.
     """
-    for model in (Expense, ExpenseOffsetFact):
-        differs = or_(model.original_currency_code != currency_code, model.home_currency_code != currency_code)
-        if db.scalar(ledger_scoped_select(model, tenant_id).with_only_columns(model.id).where(differs).limit(1)) is not None:
-            return True
-    return False
+
+    def recorded_in_other_currency(model):
+        return (
+            ledger_scoped_select(model, tenant_id)
+            .with_only_columns(model.id)
+            .where(or_(model.original_currency_code != currency_code, model.home_currency_code != currency_code))
+            .exists()
+        )
+
+    return bool(db.scalar(select(or_(recorded_in_other_currency(Expense), recorded_in_other_currency(ExpenseOffsetFact)))))
 
 
 def fetch_expense_row_version_in_status(
