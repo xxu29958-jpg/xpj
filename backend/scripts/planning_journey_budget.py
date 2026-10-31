@@ -98,6 +98,7 @@ class BudgetJourney:
 
     def open_native(self, kind):
         self.native.plan_home()
+        self.native.reveal_any(CARDS[kind], toward_start=kind == "budget", exact=True)
         self.native.click(CARDS[kind], stable=True)
         if kind == "arrangement":
             wait_for(lambda: self.native.has("给本月做个安排"), "The actual monthly arrangement page did not open")

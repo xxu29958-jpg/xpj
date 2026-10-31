@@ -100,6 +100,7 @@ def native_upload_and_ocr(j):
     assert original["original_sha256"] == digest, "The actual share did not preserve its synthetic original"
     assert original_task["expense_id"] == original["id"] and original_task["result"]["outcome"] == "no_result"
     open_latest_source(j)
+    j.native.reveal_any("金额", exact=True)
     j.native.fill("27.00", label="金额")
     j.native.reveal_any("标签与备注")
     j.native.click("标签与备注")
