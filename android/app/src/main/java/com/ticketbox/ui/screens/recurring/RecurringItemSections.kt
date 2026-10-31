@@ -275,7 +275,7 @@ private fun RecurringItemMetaColumn(item: RecurringItem, meta: RecurringItemMeta
 }
 
 @Composable
-private fun recurringNextDateText(meta: RecurringItemMeta): String =
+internal fun recurringNextDateText(meta: RecurringItemMeta): String =
     meta.nextExpectedDate?.let {
         stringResource(
             when (recurringDueIsPast(it, meta.ledgerToday)) {

@@ -25,6 +25,7 @@ import com.ticketbox.ui.design.LocalAppAdaptiveLayoutPolicy
 import com.ticketbox.viewmodel.BudgetUiState
 import com.ticketbox.viewmodel.IncomePlanUiState
 import com.ticketbox.viewmodel.RecurringUiState
+import com.ticketbox.viewmodel.SpendingGoalsUiState
 
 internal object PlanDestinationTestTags {
     const val Budget = "plan_destination_budget"
@@ -39,9 +40,10 @@ internal data class PlanScreenData(
     val budget: BudgetUiState,
     val recurring: RecurringUiState,
     val income: IncomePlanUiState,
+    val goals: SpendingGoalsUiState,
 ) {
     val refreshing: Boolean
-        get() = budget.loading || recurring.loading || income.isLoading
+        get() = budget.loading || recurring.loading || income.isLoading || goals.isLoading
 }
 
 internal data class PlanBudgetNavigationActions(
@@ -87,7 +89,7 @@ internal fun PlanScreen(
                     onOpenRecurring = actions.onOpenRecurring,
                     onOpenIncomePlans = actions.onOpenIncomePlans,
                 )
-                PlanMonthlyArrangement(onOpenAdvice = actions.budgetNavigation.onOpenAdvice, titled = true)
+                PlanMonthlyArrangement(onOpenAdvice = actions.budgetNavigation.onOpenAdvice)
             }
         },
     )
@@ -117,16 +119,26 @@ private fun PlanPrimaryPane(
                 month = data.budget.month,
             )
         }
+        // 先给状态（预算读数、下一笔固定支出、本月消费目标），再列各入口分组。
         item {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.cardGap),
+            ) {
                 PlanBudgetSection(
                     state = data.budget,
                     actions = actions.budgetNavigation,
                 )
-                if (!showSupportingPane) {
-                    PlanMonthlyArrangement(onOpenAdvice = actions.budgetNavigation.onOpenAdvice, titled = false)
-                }
+                PlanStatusCard(
+                    recurring = data.recurring,
+                    goals = data.goals,
+                    onOpenRecurring = actions.onOpenRecurring,
+                    onOpenSpendingGoal = actions.onOpenSpendingGoal,
+                )
             }
+        }
+        if (!showSupportingPane) {
+            item { PlanMonthlyArrangement(onOpenAdvice = actions.budgetNavigation.onOpenAdvice) }
         }
         item {
             PlanGoalsSection(
@@ -147,14 +159,13 @@ private fun PlanPrimaryPane(
     }
 }
 
-/** 窄窗紧随预算；宽窗与固定安排同在辅助区，作为「月度安排」分组。 */
+/** 窄窗在状态之后作为第一个入口分组；宽窗与固定安排同在辅助区。 */
 @Composable
 private fun PlanMonthlyArrangement(
     onOpenAdvice: () -> Unit,
-    titled: Boolean,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        if (titled) PlanSectionTitle(stringResource(R.string.plan_section_monthly_arrangement))
+        PlanSectionTitle(stringResource(R.string.plan_section_monthly_arrangement))
         PlanDestinationRow(
             model = PlanRowModel(
                 title = stringResource(R.string.plan_budget_advice_title),

@@ -39,6 +39,7 @@ import com.ticketbox.ui.screens.plan.PlanDestinationTestTags
 import com.ticketbox.ui.screens.plan.PlanScreen
 import com.ticketbox.ui.screens.plan.PlanScreenActions
 import com.ticketbox.ui.screens.plan.PlanScreenData
+import com.ticketbox.ui.screens.plan.PlanStatusTestTags
 import com.ticketbox.ui.theme.TicketboxTheme
 import com.ticketbox.viewmodel.BudgetUiState
 import com.ticketbox.viewmodel.IncomePlanLoadState
@@ -46,6 +47,7 @@ import com.ticketbox.viewmodel.IncomePlanMonthSummary
 import com.ticketbox.viewmodel.IncomePlanUiState
 import com.ticketbox.viewmodel.RecurringListLoadState
 import com.ticketbox.viewmodel.RecurringUiState
+import com.ticketbox.viewmodel.SpendingGoalsUiState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -91,6 +93,7 @@ class PlanningDestinationsNavigationTest {
                         budget = BudgetUiState(),
                         recurring = RecurringUiState(),
                         income = IncomePlanUiState(),
+                        goals = SpendingGoalsUiState(canModify = true, month = "2026-10", isLoading = false),
                     ),
                     actions = PlanScreenActions(
                         budgetNavigation = PlanBudgetNavigationActions(
@@ -139,7 +142,7 @@ class PlanningDestinationsNavigationTest {
         )
     }
 
-    /** DW1：真实窗口策略判定 supporting pane 时，预算与目标留主栏，固定安排与月度安排进辅助区，各只出现一次。 */
+    /** DW1：真实窗口策略判定 supporting pane 时，预算、状态卡与目标留主栏，固定安排与月度安排进辅助区，各只出现一次。 */
     @Test
     fun expandedWindowKeepsBudgetAndGoalsPrimaryAndArrangementsSupporting() {
         composeRule.setContent {
@@ -162,7 +165,8 @@ class PlanningDestinationsNavigationTest {
             val bounds = composeRule.onNodeWithTag(tag).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
             assertTrue("$tag must sit in the $name pane: $bounds vs $pane", bounds.left >= pane.left && bounds.right <= pane.right)
         }
-        listOf(PlanDestinationTestTags.Budget, PlanDestinationTestTags.SpendingGoal, PlanDestinationTestTags.DebtGoal)
+        listOf(PlanDestinationTestTags.Budget, PlanStatusTestTags.NextPayment, PlanStatusTestTags.Goals,
+            PlanDestinationTestTags.SpendingGoal, PlanDestinationTestTags.DebtGoal)
             .forEach { assertIn(it, primary, "primary") }
         listOf(PlanDestinationTestTags.Recurring, PlanDestinationTestTags.IncomePlans, PlanDestinationTestTags.BudgetAdvice)
             .forEach { assertIn(it, supporting, "supporting") }
@@ -263,6 +267,7 @@ class PlanningDestinationsNavigationTest {
             currentMonthSummary = IncomePlanMonthSummary(1, 7000_00),
             fetchedAt = "2026-10-03T04:00:00Z",
         ),
+        goals = SpendingGoalsUiState(canModify = true, month = "2026-10", isLoading = false, fetchedAt = "2026-10-03T04:00:00Z"),
     )
 
     private fun recurring(id: String, merchant: String, cents: Long) = RecurringItem(

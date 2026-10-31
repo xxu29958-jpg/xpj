@@ -199,21 +199,24 @@ def hero_view(items, *, currency_code: str, total_cents: int | None, due_dates: 
     active = [item for item in items if item.status == "active"]
     if not active:
         return None
-    dated = [item for item in active if due_dates[item.id] is not None]
-    next_item = min(dated, key=lambda item: (due_dates[item.id], item.merchant_name)) if dated else None
     return {
         "active_count": len(active),
         "monthly_total_yuan": _amount_yuan(total_cents, currency_code) if total_cents is not None else "待补充汇率或币种",
-        "next_due": (
-            {
-                "merchant": next_item.merchant_name,
-                "date": due_dates[next_item.id].isoformat(),
-                "home_currency_code": next_item.home_currency_code,
-                "amount_yuan": _amount_yuan(next_item.baseline_amount_cents, next_item.home_currency_code) if next_item.home_currency_code else "币种待确认",
-            }
-            if next_item is not None
-            else None
-        ),
+        "next_due": next_due_view(active, due_dates=due_dates),
+    }
+
+
+def next_due_view(active, *, due_dates: dict[int, date | None]) -> dict | None:
+    """active 中预计日最早的一笔 (同日按商户名); 已有对应付款的期次已由 due_dates 跳过。"""
+    dated = [item for item in active if due_dates[item.id] is not None]
+    if not dated:
+        return None
+    next_item = min(dated, key=lambda item: (due_dates[item.id], item.merchant_name))
+    return {
+        "merchant": next_item.merchant_name,
+        "date": due_dates[next_item.id].isoformat(),
+        "home_currency_code": next_item.home_currency_code,
+        "amount_yuan": _amount_yuan(next_item.baseline_amount_cents, next_item.home_currency_code) if next_item.home_currency_code else "币种待确认",
     }
 
 

@@ -269,7 +269,7 @@ internal fun PlanDestinationRow(
 
 /** W2-C：入口行 trailing 统一为 chevron（旧 设置/调整/查看/管理/打开 动词族退役）。 */
 @Composable
-private fun PlanRowChevron(
+internal fun PlanRowChevron(
     modifier: Modifier = Modifier,
 ) {
     Icon(
@@ -288,7 +288,7 @@ private fun planBudgetFallbackSummary(state: BudgetUiState): String = when {
 }
 
 @Composable
-private fun planRecurringSummary(state: RecurringUiState): String {
+internal fun planRecurringSummary(state: RecurringUiState): String {
     val active = state.items.filter { it.status.equals("active", ignoreCase = true) }
     val amounts = com.ticketbox.ui.screens.recurring.recurringTotalLines(
         com.ticketbox.ui.screens.recurring.recurringHeroModel(state.items, state.itemsLoadState),

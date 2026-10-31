@@ -61,6 +61,9 @@
   {% endif %}
   <span class="product-amount-meta">已用 {{ budget.spent_yuan|money(budget_currency_symbol) }} · 可用 {{ budget.available_yuan|money(budget_currency_symbol) }}</span>
 </section>
+{% endif %}
+{% include '_plan_status.html' %}
+{% if budget.configured %}
 
 <section class="product-flow budget-execution budget-reading" aria-label="本月预算执行">
   <div class="product-meter">
