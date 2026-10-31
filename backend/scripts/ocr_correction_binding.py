@@ -28,6 +28,10 @@ def frozen_context(field_parse: dict) -> dict | None:
                    "timezone_name": next(iter(zones), None), "reference_time": field_parse.get("reference_time")}
     if not context["timezone_name"]:
         context["timezone_name"] = next(iter(zones), None) if len(zones) == 1 else None
+    return _validated_context(context)
+
+
+def _validated_context(context: dict) -> dict | None:
     if not isinstance(context["timezone_name"], str) or not context["timezone_name"].strip():
         return None
     code, exponent = context["currency_code"], context["minor_unit_exponent"]
@@ -108,6 +112,10 @@ def replay_label(fact, label, parser) -> dict:
     parsed = parser(fact.raw_text or "", evidence_blocks=evidence.get("blocks"), **context)
     baseline = _bindings(fact, old.get("candidates", []), label, location)
     current = _bindings(fact, [asdict(item) for item in parsed.candidates], label, location)
+    return _binding_comparison(baseline, current, old, parsed)
+
+
+def _binding_comparison(baseline: list, current: list, old: dict, parsed) -> dict:
     outcome = "same" if bool(baseline) == bool(current) else "fixed" if current else "broken"
     old_selected = {item.get("selected_id") for item in old.get("decisions", []) if item.get("status") == "selected"}
     new_selected = {item.selected_id for item in parsed.decisions if item.status == "selected"}
