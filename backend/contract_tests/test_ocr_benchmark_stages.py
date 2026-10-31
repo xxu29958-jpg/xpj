@@ -140,6 +140,14 @@ def test_twelve_hour_clocks_require_the_matching_period(printed, present):
     assert text_present("time", truth, printed, "Asia/Shanghai") is present
 
 
+@pytest.mark.parametrize("printed", ["4 MAY 2026 16:23", "04-May-2026 TIME: 04:23 PM",
+    "2026-05-0416:23", "2026-05-04 时间：16:23", "4 MAY, 2026 08:23Z"])
+def test_supported_full_date_representations_are_not_text_losses(printed):
+    truth = Label("present", {"value": "2026-05-04T08:23:00+00:00", "precision": "instant"})
+    assert text_present("time", truth, printed, "Asia/Shanghai")
+    assert not text_present("time", truth, printed.upper().replace("MAY", "APR").replace("-05-", "-06-"), "Asia/Shanghai")
+
+
 def test_development_selection_never_reads_holdout_labels_or_images(tmp_path):
     source = Path(__file__).resolve().parents[1] / "tests/_infra/ocr_fixtures/_synthetic_bank_alert"
     for split in ("development", "holdout"):

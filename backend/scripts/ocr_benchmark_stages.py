@@ -76,14 +76,23 @@ def _clock_patterns(local):
         yield chinese + r"\s*" + clock(hour) + r"(?!\s*[AP]M\b)"
 
 
-def _time_patterns(local, instant):
+def _date_patterns(local):
     orders = [(local.year, local.month, local.day), (local.day, local.month, local.year),
               (local.month, local.day, local.year)]
     for parts in orders:
-        pattern = r"(?<!\d)" + r"\D+".join(f"0*{part}" for part in parts)
+        yield r"(?<!\d)" + r"\D+".join(f"0*{part}" for part in parts)
+    names = ("JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST",
+             "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER")
+    name = names[local.month - 1]
+    word = name[:3] + (f"(?:{name[3:]})?" if name[3:] else "")
+    yield rf"(?<!\d)0*{local.day}[\s/-]+{word},?[\s/-]+{local.year}"
+
+
+def _time_patterns(local, instant):
+    for pattern in _date_patterns(local):
         if instant:
             for clock in _clock_patterns(local):
-                yield pattern + r"[日T\s,，]+" + clock
+                yield pattern + r"[日T\s,，]*(?:(?:时间|TIME)\s*[:：]?\s*)?" + clock
         else:
             yield pattern + r"(?!\d)"
 
