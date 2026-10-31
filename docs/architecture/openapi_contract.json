@@ -26742,6 +26742,17 @@
             "title": "Parser Version",
             "type": "string"
           },
+          "presentation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presentation"
+          },
           "role": {
             "title": "Role",
             "type": "string"
@@ -26855,6 +26866,18 @@
             "minLength": 1,
             "title": "Parser Version",
             "type": "string"
+          },
+          "presentation": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presentation"
           },
           "source": {
             "default": "image",
@@ -27123,6 +27146,17 @@
             "title": "Precision",
             "type": "string"
           },
+          "presentation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presentation"
+          },
           "requires_year": {
             "default": false,
             "title": "Requires Year",
@@ -27219,6 +27253,18 @@
             "minLength": 1,
             "title": "Parser Version",
             "type": "string"
+          },
+          "presentation": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presentation"
           },
           "source": {
             "enum": [
