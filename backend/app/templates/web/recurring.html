@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% import '_planning_drafts.html' as drafts %}
-{# 列表金额与上方合计同一写法: 账本本币用符号; 按其它币种付款的计划写出币种代码。 #}
-{% macro plan_amount(code, amount) %}{% if code and code == home_currency_code %}{{ amount|money(home_currency_symbol) }}{% else %}{% if code %}{{ code }} {% endif %}{{ amount|grouped }}{% endif %}{% endmacro %}
+{% from '_plan_amount.html' import plan_amount with context %}
 {% block page_scripts %}{{ drafts.scripts(asset_version) }}
 <script defer src="/static/web/occurrence-entry.js?v={{ asset_version }}"></script>{% endblock %}
 {% set history_month = navigation_month|default(request.query_params.get('month', '')) %}

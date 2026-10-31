@@ -2,13 +2,14 @@
    只列固定支出页、目标页同一服务给出的事实; 每格整格进入对应页面。
    上下文: plan_status (web_budgets._plan_status), month。 #}
 {% from '_month_label.html' import month_label %}
+{% from '_plan_amount.html' import plan_amount with context %}
 {% set status = plan_status %}
 <section class="plan-status budget-reading" aria-label="本月计划状态">
   <a class="plan-status-item" href="{{ status.recurring_href }}">
     <span class="product-amount-label">下一笔固定支出</span>
     {% if status.next_due %}
     {% set due = status.next_due %}
-    <span class="product-entry-heading"><strong>{{ due.merchant }}</strong><span class="product-entry-amount">{{ due.home_currency_code or '' }} {{ due.amount_yuan|grouped }}</span></span>
+    <span class="product-entry-heading"><strong>{{ due.merchant }}</strong><span class="product-entry-amount">{{ plan_amount(due.home_currency_code, due.amount_yuan) }}</span></span>
     <span class="hint">{% if due.date < status.today %}预计 {{ due.date }} 已过，本期还没有对应付款{% else %}下次预计 {{ due.date }}{% endif %}</span>
     {% elif status.recurring_active_count %}
     <strong>{{ status.recurring_active_count }} 项生效</strong>

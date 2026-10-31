@@ -243,7 +243,7 @@ def test_web_budgets_leads_with_next_fixed_payment_and_goal_progress(web_client:
     status = re.search(r'<section class="plan-status[^"]*" aria-label="本月计划状态">(.*?)</section>', page.text, re.S)
     assert status is not None
     text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", status.group(1)))
-    assert "下一笔固定支出 房租 CNY 100.00 预计 2026-01-05 已过，本期还没有对应付款" in text
+    assert "下一笔固定支出 房租 ¥100.00 预计 2026-01-05 已过，本期还没有对应付款" in text
     assert "2026年5月消费目标 原消费目标 已用 75%" in text
     assert re.search(r'<progress[^>]+value="75" max="100" aria-label="原消费目标额度已用 75%"', status.group(1))
     assert 'href="/web/recurring?ledger_id=owner"' in status.group(1)
