@@ -84,6 +84,30 @@ def test_bootstrap_samples_groups_with_all_their_images_together():
     assert all(bounds == [.2, .2] for bounds in report["group_bootstrap_95"].values())
 
 
+@pytest.mark.parametrize("printed", ["2026-05-04 16:23", "2026年5月4日 16:23:00", "2026年5月4日 16时23分00秒"])
+def test_minute_resolution_is_text_present(printed):
+    truth = Label("present", {"value": "2026-05-04T08:23:00+00:00", "precision": "instant"})
+    assert text_present("time", truth, printed, "Asia/Shanghai")
+    assert not text_present("time", truth, "2026-05-04 16:23:30", "Asia/Shanghai")
+
+
+@pytest.mark.parametrize("value", ["16:23", "--05-04T16:23", "2026-05-04T16:23"])
+def test_incomplete_time_is_preserved_without_aborting_evaluation(value):
+    truth = labels()
+    truth["time"] = Label("present", {"value": "2026-05-04T08:23:00+00:00", "precision": "instant"})
+    item = {"id": "time", "field": "expense_time", "value": value, "precision": "minute", "review_reason": "reference_time_missing"}
+    result = analyze_fields("2026-05-04 16:23", {"candidates": [item]}, {}, truth, timezone_name="Asia/Shanghai")
+    assert result["time"]["stage"] == "no_candidate"
+    assert result["time"]["candidates"][0]["value"] == value
+
+
+def test_provider_false_fill_is_silent_error_without_parser_selection():
+    truth = labels()
+    truth["merchant"] = Label("absent")
+    result = analyze_fields("18.51", {}, {"merchant": "Imaginary shop"}, truth, timezone_name="UTC")
+    assert result["merchant"]["silent_error"] is True
+
+
 def test_development_selection_never_reads_holdout_labels_or_images(tmp_path):
     source = Path(__file__).resolve().parents[1] / "tests/_infra/ocr_fixtures/_synthetic_bank_alert"
     for split in ("development", "holdout"):

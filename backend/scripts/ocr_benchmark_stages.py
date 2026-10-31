@@ -44,9 +44,15 @@ def text_present(field: str, label: Label, raw_text: str, timezone_name: str) ->
         local = local.astimezone(ZoneInfo(timezone_name))
     orders = [(local.year, local.month, local.day), (local.day, local.month, local.year),
               (local.month, local.day, local.year)]
-    suffix = (local.hour, local.minute, local.second) if value["precision"] == "instant" else ()
+    suffix = (local.hour, local.minute) if value["precision"] == "instant" else ()
     for parts in orders:
-        pattern = r"(?<!\d)" + r"\D+".join(f"0*{part}" for part in parts + suffix) + r"(?!\d)"
+        pattern = r"(?<!\d)" + r"\D+".join(f"0*{part}" for part in parts + suffix)
+        if suffix:
+            seconds = rf"[:：分]0*{local.second}"
+            pattern += f"(?:{seconds})?" if local.second == 0 else seconds
+            pattern += r"(?![\d:：])"
+        else:
+            pattern += r"(?!\d)"
         if re.search(pattern, unicodedata.normalize("NFKC", raw_text)):
             return True
     return False
@@ -57,9 +63,18 @@ def candidate_value(field: str, candidate: dict) -> object:
     if field == "amount":
         return {"minor": value, "currency": candidate.get("currency_code")}
     if field == "time":
+        try:
+            instant = datetime.fromisoformat(str(candidate.get("local_value") or value))
+        except ValueError:
+            return None  # Incomplete date/time is useful evidence, not an instant.
         if candidate.get("precision") == "date_only":
-            return {"value": str(candidate.get("local_value") or value)[:10], "precision": "date_only",
+            return {"value": instant.date().isoformat(), "precision": "date_only",
                     "timezone": candidate.get("timezone_name")}
+        try:
+            if datetime.fromisoformat(str(value)).tzinfo is None:
+                return None
+        except ValueError:
+            return None
         return {"value": value, "precision": "instant"}
     return value
 
@@ -77,7 +92,7 @@ def analyze_fields(raw_text: str, field_parse: dict, prediction: dict, labels: d
         selected = decision["status"] == "selected"
         analysis = {"label_state": label.state, "candidates": candidates, "decision": decision,
                     "stage": None, "text_present": None, "correct_candidate_ranks": [],
-                    "silent_error": selected and correct is False, "extraction_failed": failed,
+                    "silent_error": prediction.get(field) is not None and correct is False, "extraction_failed": failed,
                     "source_region": label.source_region}
         if label.state == "present":
             ranks = [item["rank"] for item in candidates
