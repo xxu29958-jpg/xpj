@@ -28,7 +28,7 @@ from app.services.receipt_parse_rules import (
     is_primary_amount_line,
     iter_labeled_merchant_matches,
 )
-from app.services.receipt_parse_structure import related_value_index
+from app.services.receipt_parse_structure import promotion_start, related_value_index
 
 
 def _merchant_candidates(text: str, blocks: Sequence[dict] | None = None) -> list[_MerchantCandidate]:
@@ -190,17 +190,32 @@ def _labeled_merchant_candidates(text: str, lines: list[str], blocks: Sequence[d
     return candidates
 
 
+def _inline_store_value(line: str, nearby_lines: list[str]) -> str | None:
+    if line.startswith("闪购") and any(anchor in nearby
+            for nearby in nearby_lines for anchor in ("配送", "送达", "准时达")):
+        return re.sub(r"^闪购", "", line).strip(" >〉")
+    ride = re.fullmatch(r"(.+?)[\-－—](?:经济型|舒适型|豪华型)[|｜].*师傅.*", line)
+    return ride[1].strip() if ride else None
+
+
 def _store_context_candidates(text: str, lines: list[str], blocks: Sequence[dict] | None) -> list[_MerchantCandidate]:
     candidates = []
+    boundary = promotion_start(text)
+    if boundary is not None:
+        lines = text[:boundary].splitlines()
+        blocks = blocks[:len(lines)] if blocks is not None else None
     for index, line in enumerate(lines):
         value_index = None
-        if line.strip(" >〉") == "进店" and index:
+        explicit_value = None
+        if line.strip(" >〉") in {"进店", "进商家粉丝群"} and index:
             value_index = index - 1
         elif line == "商品说明":
             value_index = related_value_index(lines, blocks, index)
+        elif (explicit_value := _inline_store_value(line, lines[max(0, index - 2):index + 3])) is not None:
+            value_index = index
         if value_index is None:
             continue
-        value = re.sub(r"^(?:自营|闪购)", "", lines[value_index]).strip(" >〉")
+        value = explicit_value or re.sub(r"^(?:自营|闪购)", "", lines[value_index]).strip(" >〉")
         if line == "商品说明":
             store = re.fullmatch(r"(.+[（(][^()（）]+店[）)])(?:外卖)?(?:订单)?", value)
             if not store:

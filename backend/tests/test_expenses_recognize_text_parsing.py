@@ -236,5 +236,5 @@ def test_recognize_text_ignores_status_bar_numbers_and_destination_text(
     # The page explicitly says the debit is scheduled and still asks for payment.
     assert payload["amount_cents"] is None
     assert payload["recognition_notes"]
-    assert payload["merchant"] == "高德"
+    assert payload["merchant"] == "鲸志出行"  # Printed ride provider, rather than the platform keyword.
     assert payload["category"] == "交通"

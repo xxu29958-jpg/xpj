@@ -25,7 +25,7 @@ from app.services.receipt_parse_rules import (
     iter_labeled_merchant_matches,
 )
 
-FIELD_PARSE_VERSION = "receipt-fields-v8"
+FIELD_PARSE_VERSION = "receipt-fields-v9"
 
 
 @dataclass(frozen=True)
