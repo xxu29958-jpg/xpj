@@ -1,14 +1,15 @@
-{# 外观控件 (W1 Warm Ledger): 单一「外观」popover 聚合 主题/质感/强调色/背景四条
+{# 外观控件 (W1 Warm Ledger): 单一「外观」披露聚合 主题/质感/强调色/背景四条
    本地偏好轴。<details> 原生可开合, 无 JS 也可用; 写入者是 theme.js (前三轴) 与
    desktop/background.js (背景轴), 值域见 tokens.css 外观轴段; 背景轴的存储/渲染
    owner 是 appearance-bootstrap.js 的 TicketboxBackground (单一 IDB record)。
-   两个真实 consumer: base.html topbar (带 id, 桌面/宽屏入口) 与
-   _ledger_switcher.html「我」popover (≤40rem, _appearance_nested=true)。
-   theme.js 以 [data-appearance-popover] 多实例绑定, aria-pressed 跨实例同步。
-   上下文: _appearance_nested (可选, nested 实例去掉 id 与绝对定位)。 #}
-<details class="appearance{% if _appearance_nested %} appearance--nested{% endif %}"{% if not _appearance_nested %} id="appearance"{% endif %}{% if _appearance_nested %} open{% endif %}>
-  <summary class="chrome-trigger appearance-trigger" data-appearance-trigger>外观</summary>
-  <div class="chrome-popover appearance-popover"{% if not _appearance_nested %} id="appearance-popover"{% endif %} data-appearance-popover>
+   唯一 consumer: _ledger_switcher.html 账户面板。外观是本机个人偏好, 不占顶栏
+   全局动作位; 面板内收起为一行, 展开后就地铺开。 #}
+<details class="appearance" id="appearance">
+  <summary class="row appearance-trigger" data-appearance-trigger>
+    <span class="meta"><span class="name">外观</span><span class="sub">主题、质感、强调色与背景</span></span>
+    <svg class="appearance-chevron" width="18" height="18" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-down"/></svg>
+  </summary>
+  <div class="appearance-popover" id="appearance-popover" data-appearance-popover>
     <div class="appearance-group" role="group" aria-label="主题">
       <span class="appearance-label">主题</span>
       <div class="appearance-options">

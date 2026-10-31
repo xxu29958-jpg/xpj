@@ -222,10 +222,11 @@ class BackstageJourney:
         for theme in ("paper", "midnight"):
             self.page.set_viewport_size({"width": 1280, "height": 960})
             self.goto("/web/pending")
+            self.page.locator("#ledger-switcher > summary").click()
             self.page.locator("#appearance > summary").click()
             self.page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
             self.page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)
-            self.page.locator("#appearance > summary").click()
+            self.page.locator("#ledger-switcher > summary").click()
             for width in (1280, 390):
                 self.page.set_viewport_size({"width": width, "height": 960})
                 self.goto("/web/pending")
@@ -244,10 +245,11 @@ class BackstageJourney:
         for theme in ("paper", "midnight"):
             self.page.set_viewport_size({"width": 1280, "height": 960})
             self.goto("/web/pending")
+            self.page.locator("#ledger-switcher > summary").click()
             self.page.locator("#appearance > summary").click()
             self.page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
             self.page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)
-            self.page.locator("#appearance > summary").click()
+            self.page.locator("#ledger-switcher > summary").click()
             for width in (1280, 390):
                 self.page.set_viewport_size({"width": width, "height": 960})
                 self.goto("/web/pending")

@@ -406,3 +406,30 @@ def test_overview_skips_recurring_candidate_scan_when_card_hidden(
     resp = web_client.get("/web/overview?ledger_id=owner")
     assert resp.status_code == 200
     assert calls == []
+
+
+def test_month_summaries_name_currency_only_when_it_tells_the_reader_something(
+    web_client: TestClient, *, identity
+) -> None:
+    """P8: 单币种账本的「本月净支出」不挂币种代码; 账本出现另一币种的记录, 或按
+    记录之外的币种显示合计时才写明。只改展示, 金额与来源不动。"""
+    _seed_confirmed_expense(web_client, identity=identity, amount_cents=8800, merchant="单币种", category="餐饮")
+    pages = ("/web/overview?ledger_id=owner", "/web/confirmed?ledger_id=owner")
+    for path in pages:
+        body = web_client.get(path).text
+        assert "本月净支出" in body and "本月净支出 · CNY" not in body, path
+        assert "<small>¥</small>88<small>.00</small>" in body or "¥</span><span>88.00" in body, path
+
+    shown_in_usd = web_client.get("/web/overview?ledger_id=owner&home_currency_code=USD").text
+    assert "本月净支出 · USD" in shown_in_usd
+
+    with SessionLocal() as db:
+        timestamp = now_utc()
+        db.add(Expense(
+            tenant_id="owner", status="pending", amount_cents=None, home_currency_code="CNY",
+            original_currency_code="JPY", original_amount_minor=1200, merchant="すき家", category="餐饮",
+            created_at=timestamp, updated_at=timestamp,
+        ))
+        db.commit()
+    for path in pages:
+        assert "本月净支出 · CNY" in web_client.get(path).text, path

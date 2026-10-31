@@ -107,8 +107,9 @@
   }
 
   app.initThemeControl = function initThemeControl() {
-    // W1: 外观控件可多实例 (topbar 一枚, ≤40rem「我」popover 内一枚) —
-    // 每个实例独立绑定, aria-pressed 由 syncPressed 跨文档同步。
+    // 外观控件收在「我」账户面板内 (_appearance_control.html); 按
+    // [data-appearance-popover] 绑定, aria-pressed 由 syncPressed 跨文档同步。
+    // 点外部 / Esc 关闭由账户面板 (ledger-switcher.js) 承担, 这里不另绑。
     const roots = document.querySelectorAll("[data-appearance-popover]");
     // bootstrap 未加载 (静态资产失败) 时外观层整体不可用, 诚实静默退出。
     if (!roots.length || !prefs) return;
@@ -122,14 +123,6 @@
       bindAxis(root, "data-theme-mode", app.applyThemeMode);
       bindAxis(root, "data-texture-mode", app.applyTextureMode);
       bindAxis(root, "data-accent-mode", app.applyAccentMode);
-
-      // popover 行为：点外部 / Esc 关闭（<details> 原生开合之外的便利层,
-      // 共享 helper 在 core.js）。nested 实例 (≤40rem「我」popover 内静态铺开)
-      // 不绑关闭——它不是浮层。
-      const host = root.closest(".appearance");
-      if (host && !host.classList.contains("appearance--nested")) {
-        app.bindDisclosureDismiss(host, "[data-appearance-trigger]");
-      }
     });
     syncAppearanceControl();
 

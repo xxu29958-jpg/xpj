@@ -2,6 +2,8 @@
 {% from '_month_label.html' import month_label %}
 {% from 'partials/category_icon.html' import category_icon %}
 {% block title %}总览 · 洞察 · 小票夹{% endblock %}
+{# 本页自带唯一「记一笔」(有流水时在页头, 空账本在开始引导); 宽屏顶栏「+」让位。 #}
+{% set page_owns_create = can_write and request.state.web_session_auth %}
 
 {# 查询金额与模块顺序由 _dashboard_data_payload 提供；视图不再二次分组重排。
    分类图仅在对应模块可见且具有可绘制的数据时加载。 #}
@@ -29,7 +31,7 @@
     </p>
   </div>
   <div class="product-page-actions insight-page-actions">
-    {% if can_write and request.state.web_session_auth %}<a class="product-button product-button--primary" href="/web/expenses/new?ledger_id={{ selected_ledger_id|urlencode }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>记一笔</a>{% endif %}
+    {% if page_owns_create and has_any_expense %}<a class="product-button product-button--primary" href="/web/expenses/new?ledger_id={{ selected_ledger_id|urlencode }}"><svg width="20" height="20" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg>记一笔</a>{% endif %}
     <a class="product-button product-button--quiet" href="/web/reports?{{ money_task|urlencode }}">分析</a>
   </div>
 </header>
@@ -79,7 +81,7 @@
            data-overview-card="monthly_spend">
     <div class="product-panel-header">
       <div>
-        <h2 class="product-panel-subtitle">本月净支出 · {{ home_currency_code }}</h2>
+        <h2 class="product-panel-subtitle">本月净支出{% if show_home_currency_code %} · {{ home_currency_code }}{% endif %}</h2>
       </div>
       <a class="product-panel-subtitle"
          href="/web/confirmed?{{ money_task|urlencode }}">查看流水</a>

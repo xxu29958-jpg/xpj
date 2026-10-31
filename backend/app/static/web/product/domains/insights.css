@@ -212,8 +212,12 @@
     font-variant-numeric: tabular-nums;
 }
 
-@media (min-width: 64rem) {
+/* 与壳的窄屏断点 (max-width: 64rem) 严格互补: 窄屏记一笔在顶栏「+」, 宽屏在页头。 */
+@media not all and (max-width: 64rem) {
     .insight-page-actions { display: flex; }
+}
+
+@media (min-width: 64rem) {
     /* 模块顺序由用户决定: 用可换行的一行行排布, 每行都铺满, 不留空格子。 */
     .insight-grid { display: flex; flex-wrap: wrap; }
     .insight-grid > * { flex: 1 1 16rem; min-width: 0; }

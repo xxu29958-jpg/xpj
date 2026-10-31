@@ -25,7 +25,7 @@ from app.routes.web_common import (
 from app.schemas import DashboardCardsUpdateRequest, DashboardCardUpdateRequest
 from app.services.currency_common import normalize_currency_code
 from app.services.dashboard_service import list_dashboard_cards, update_dashboard_cards
-from app.services.expense_service import ledger_has_any_expense
+from app.services.expense_service import ledger_has_any_expense, ledger_records_other_currency
 
 router = APIRouter(prefix="/web", tags=["web"])
 
@@ -92,6 +92,7 @@ def web_overview(
     ctx["cards"] = cards
     ctx["category_share"] = category_share
     ctx["has_any_expense"] = ledger_has_any_expense(db, selected_id)
+    ctx["show_home_currency_code"] = ledger_records_other_currency(db, selected_id, cards["home_currency_code"])
     ctx["overview_cards"] = visible_cards
     ctx.update(projected_money_context(cards["home_currency_code"]), **_overview_amount_views(cards))
     ctx.update(missing_rates=cards["missing_rates"], flash_message=msg or "",
