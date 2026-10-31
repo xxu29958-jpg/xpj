@@ -48,9 +48,9 @@ def text_present(field: str, label: Label, raw_text: str, timezone_name: str) ->
     for parts in orders:
         pattern = r"(?<!\d)" + r"\D+".join(f"0*{part}" for part in parts + suffix)
         if suffix:
-            seconds = rf"[:：分]0*{local.second}"
+            seconds = rf"\s*[:：分]\s*0*{local.second}"
             pattern += f"(?:{seconds})?" if local.second == 0 else seconds
-            pattern += r"(?![\d:：])"
+            pattern += r"(?!\d|\s*[:：]|\s*分\s*\d)"
         else:
             pattern += r"(?!\d)"
         if re.search(pattern, unicodedata.normalize("NFKC", raw_text)):

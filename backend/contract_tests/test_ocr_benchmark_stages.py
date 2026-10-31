@@ -89,6 +89,10 @@ def test_minute_resolution_is_text_present(printed):
     truth = Label("present", {"value": "2026-05-04T08:23:00+00:00", "precision": "instant"})
     assert text_present("time", truth, printed, "Asia/Shanghai")
     assert not text_present("time", truth, "2026-05-04 16:23:30", "Asia/Shanghai")
+    assert not text_present("time", truth, "2026年5月4日 16时23分30秒", "Asia/Shanghai")
+    assert not text_present("time", truth, "2026年5月4日 16时23 分 30秒", "Asia/Shanghai")
+    assert not text_present("time", truth, "2026-05-04 16:23 : 30", "Asia/Shanghai")
+    assert text_present("time", truth, "2026年5月4日 16时23分", "Asia/Shanghai")
 
 
 @pytest.mark.parametrize("value", ["16:23", "--05-04T16:23", "2026-05-04T16:23"])
