@@ -53,7 +53,8 @@ internal fun WidgetConfigurationScreen(
                 verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 Text(stringResource(R.string.widget_configure_title), style = MaterialTheme.typography.headlineMedium)
                 Text(stringResource(R.string.widget_configure_description))
-                Text(state.ledgerName ?: stringResource(R.string.widget_bind_first), style = MaterialTheme.typography.titleMedium)
+                Text(state.ledgerName ?: stringResource(if (state.version == null) R.string.widget_bind_first else R.string.widget_bound_private),
+                    style = MaterialTheme.typography.titleMedium)
                 Row(modifier = Modifier.fillMaxWidth().toggleable(value = showSummary, enabled = state.version != null,
                     role = Role.Checkbox, onValueChange = { showSummary = it }), verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = showSummary, enabled = state.version != null, onCheckedChange = null)

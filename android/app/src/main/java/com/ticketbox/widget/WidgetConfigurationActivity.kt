@@ -42,7 +42,7 @@ class WidgetConfigurationActivity : FragmentActivity() {
         val session = container.sessionStore.currentSession().takeIf { it.isBusinessReady() }
         state.value = WidgetConfigurationState(
             version = session?.version,
-            ledgerName = session?.identity?.ledgerName,
+            ledgerName = session?.identity?.ledgerName.takeIf { WidgetPreferences(this).allowsSummary(widgetId, session?.version) },
             showSummary = WidgetPreferences(this).allowsSummary(widgetId, session?.version),
         )
     }

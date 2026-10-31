@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
+import android.content.Intent
 import android.os.SystemClock
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
@@ -35,6 +36,7 @@ class WidgetWorkerJourneyTest {
             app.container.sessionStore.establishSession(session)
             bindHost()
             awaitText(R.id.widget_amount, app.getString(R.string.widget_amount_hidden))
+            assertPrivateConfiguration()
             WidgetPreferences(app).save(widgetId, session.version)
             WidgetUpdateWorker.enqueue(app)
             awaitText(R.id.widget_amount, "¥7,000")
@@ -71,6 +73,23 @@ class WidgetWorkerJourneyTest {
             view = host.createView(app, widgetId, manager.getAppWidgetInfo(widgetId))
             host.startListening()
             renderWidgetPlaceholders(app)
+        }
+    }
+
+    private fun assertPrivateConfiguration() {
+        val activity = instrumentation.startActivitySync(Intent(app, WidgetConfigurationActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId))
+        try {
+            val deadline = SystemClock.elapsedRealtime() + 5_000
+            var root = instrumentation.uiAutomation.rootInActiveWindow
+            while (SystemClock.elapsedRealtime() < deadline && root?.findAccessibilityNodeInfosByText("已连接账本").isNullOrEmpty()) {
+                SystemClock.sleep(50)
+                root = instrumentation.uiAutomation.rootInActiveWindow
+            }
+            assertFalse(root?.findAccessibilityNodeInfosByText("已连接账本").isNullOrEmpty())
+            assertTrue(requireNotNull(root).findAccessibilityNodeInfosByText("组件测试账本").isEmpty())
+        } finally {
+            instrumentation.runOnMainSync { activity.finish() }
         }
     }
 
