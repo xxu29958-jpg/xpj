@@ -69,6 +69,11 @@ def _validate_label(name: str, data: dict) -> Label:
         _validate_time(value)
     elif not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name}: present requires nonempty text")
+    region, source_text = _source_annotation(name, data)
+    return Label(state, value, region, source_text)
+
+
+def _source_annotation(name: str, data: dict) -> tuple[tuple | None, str | None]:
     region = data.get("source_region")
     if region is not None:
         if (not isinstance(region, list) or len(region) != 4
@@ -79,7 +84,7 @@ def _validate_label(name: str, data: dict) -> Label:
     source_text = data.get("source_text")
     if source_text is not None and (not isinstance(source_text, str) or not source_text.strip()):
         raise ValueError(f"{name}: source_text must be nonempty text")
-    return Label(state, value, region, source_text)
+    return region, source_text
 
 
 def _validate_time(value: object) -> None:
@@ -145,7 +150,7 @@ def _read_fixture(entry: Path) -> Fixture:
                    data["authorization"], inputs, labels, identity, app_tag)
 
 
-def discover_fixtures(directory: Path, *, split: str | None = None) -> list[Fixture]:
+def _selected_inputs(directory: Path, split: str | None) -> list[Path]:
     if not directory.is_dir():
         raise ValueError("fixture directory does not exist")
     entries = [entry for entry in sorted(directory.iterdir())
@@ -161,7 +166,11 @@ def discover_fixtures(directory: Path, *, split: str | None = None) -> list[Fixt
         digest = data.get("image_sha256")
         if digest and declared_images.setdefault(digest, data["group_id"]) != data["group_id"]:
             raise ValueError("identical images cannot be declared independent event groups")
-    fixtures = [_read_fixture(entry) for entry, data in metadata if split is None or data["split"] == split]
+    return [entry for entry, data in metadata if split is None or data["split"] == split]
+
+
+def discover_fixtures(directory: Path, *, split: str | None = None) -> list[Fixture]:
+    fixtures = [_read_fixture(entry) for entry in _selected_inputs(directory, split)]
     if not fixtures:
         raise ValueError("no fixtures evaluated")
     names: set[str] = set()
