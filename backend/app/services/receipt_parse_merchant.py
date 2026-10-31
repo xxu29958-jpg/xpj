@@ -201,8 +201,9 @@ def _inline_store_value(line: str, nearby_lines: list[str]) -> str | None:
 def _store_context_candidates(text: str, lines: list[str], blocks: Sequence[dict] | None) -> list[_MerchantCandidate]:
     candidates = []
     boundary = promotion_start(text)
-    lines = text[:boundary].splitlines() if boundary is not None else lines
-    blocks = blocks[:len(lines)] if blocks is not None else None
+    if boundary is not None:
+        lines = text[:boundary].splitlines()
+        blocks = blocks[:len(lines)] if blocks is not None else None
     for index, line in enumerate(lines):
         value_index = None
         explicit_value = None
