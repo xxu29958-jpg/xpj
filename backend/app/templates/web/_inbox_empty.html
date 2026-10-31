@@ -1,7 +1,7 @@
+{% import 'partials/brand_art.html' as brand_art %}
 <div class="product-state inbox-empty">
   <div class="product-state-figure" aria-hidden="true">
-    <img src="/static/web/product/art/receipt-clip.png" alt=""
-         width="1280" height="1280" decoding="async">
+    {{ brand_art.stub_box() }}
   </div>
   <div class="inbox-empty-content">
     <h1 class="product-state-title">{{ '小票都收拾好了' if inbox_has_history else '还没有待处理的小票' }}</h1>

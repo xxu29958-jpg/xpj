@@ -55,10 +55,27 @@ render as grey specks.
 
 minSdk is 28, so the legacy `mipmap-*dpi` PNGs were never loaded and are removed.
 
+## Illustrations
+
+`render_art.py` draws two scenes from the same stub geometry and replaces the
+clay-rendered `receipt_clip` / `receipt_tray` art (the green top clip and gold
+coin that PRODUCT.md rejects):
+
+- **pair**: the mark without its plate, for capture and connect moments
+  (inbox capture, file pickers, Web login, Android bind).
+- **box (票盒)**: stubs filed upright with the newest pulled up to show its
+  tear and coral tail, for genuine empty states and "take your records".
+
+Web uses inline SVG from `templates/web/partials/brand_art.html`, coloured by
+the `--art-*` tokens, so paper and midnight follow with no image request.
+Android uses one generated vector per skin through `BrandArt`. Both stay
+decorative: hidden from assistive technology, and never carrying state.
+
 ## Regenerate
 
 ```bash
 python docs/design_reference/brand-icon/render_icons.py --chromium "$CHROME"
+python docs/design_reference/brand-icon/render_art.py
 ```
 
 Needs Pillow and Playwright, the same toolchain as the Web journey tests. The

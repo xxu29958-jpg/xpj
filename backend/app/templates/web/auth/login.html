@@ -1,10 +1,11 @@
 {% extends "auth/base.html" %}
+{% import 'partials/brand_art.html' as brand_art %}
 {% block form_open %}<form id="pairing-form" method="post" action="/web/auth/login" autocomplete="off">{% endblock %}
 {% block scripts %}<script defer src="/static/web/auth-pairing.js?v={{ asset_version }}"></script>{% endblock %}
 {% block introduction %}
 <section class="auth-welcome" aria-label="连接这台设备">
   <div><h2 class="product-panel-title">把账本带到这台设备</h2><p>使用账本拥有者提供的连接信息。</p></div>
-  <img src="/static/web/product/art/receipt-clip.png" width="1280" height="1280" alt="">
+  {{ brand_art.stub_pair() }}
 </section>
 {% endblock %}
 {% block heading %}连接已有身份{% endblock %}

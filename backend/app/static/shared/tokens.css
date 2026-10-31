@@ -56,6 +56,16 @@
     /* 票夹 coral — 品牌右侧夹的专用色: 只做票据「夹」形 / 当期聚焦标记,
        不承载状态语义 (状态留在 state/goal 族), 镜像 Android ThemeVisuals.clipCoral */
     --brand-clip: #c2492f;
+    /* 票根 art (templates/web/partials/brand_art.html) — mirrored by render_art.py's
+       PALETTE for the Android vectors. Decorative only; never carries state. */
+    --art-paper: #fbf6ea;
+    --art-edge: #ded4bf;
+    --art-leaf: #2b6e5c;
+    --art-sage: #a9c9bc;
+    --art-coral: #e0583b;
+    --art-tray: #dce7e0;
+    --art-lip: #c4d6cc;
+    --art-shadow: rgba(13, 61, 56, 0.10);
 
     /* State */
     --state-success-bg: #e7efdd; --state-success-fg: #236a57; --state-success-border: #c8dbb4;
@@ -187,6 +197,14 @@
     --brand-focus-ring: rgba(112, 191, 165, 0.55);
     /* 票夹 coral 夜间版 — 同一右侧夹; 比 danger-fg #e0836f 更红更饱和, 不承载状态语义 */
     --brand-clip: #ee6a4d;
+    --art-paper: #efe8d8;
+    --art-edge: #efe8d8;
+    --art-leaf: #3f8c75;
+    --art-sage: #5e8576;
+    --art-coral: #ee6a4d;
+    --art-tray: #25302b;
+    --art-lip: #2f3c36;
+    --art-shadow: rgba(0, 0, 0, 0.35);
 
     /* State */
     --state-success-bg: rgba(168, 184, 138, 0.14); --state-success-fg: #77c3a9; --state-success-border: rgba(168, 184, 138, 0.30);
