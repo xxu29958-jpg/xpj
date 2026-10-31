@@ -18,8 +18,12 @@ def source_learning_window_predicate():
     return _json_payload(LedgerLearningEvent.after_payload)["_learning_target"].astext.is_distinct_from("candidate_miss")
 
 
-def _source_choice_decision(db, expense, actor, entry, choice, *, match_candidate=True):
+def _source_choice_decision(db, expense, actor, entry, choice):
     """A remembered suggestion is not an independent source annotation, even on an old client."""
+    return _source_exposure_decision(db, expense, actor, entry, choice, match_candidate=True)
+
+
+def _source_exposure_decision(db, expense, actor, entry, choice, *, match_candidate=False):
     payload = _json_payload(AlgorithmDecision.output_payload)
     return db.scalar(select(AlgorithmDecision).where(AlgorithmDecision.tenant_id == expense.tenant_id,
         AlgorithmDecision.subject_kind == "expense", AlgorithmDecision.subject_id == expense.id,
@@ -33,7 +37,7 @@ def _source_choice_decision(db, expense, actor, entry, choice, *, match_candidat
 
 def bind_source_choice(db, expense, actor, entry, choice, payload):
     decision = _source_choice_decision(db, expense, actor, entry, choice)
-    exposure = decision or _source_choice_decision(db, expense, actor, entry, choice, match_candidate=False)
+    exposure = decision or _source_exposure_decision(db, expense, actor, entry, choice)
     payload["_history_exposed"] = exposure is not None
     if decision is not None and payload["intent"] == "candidate":
         payload.update(intent="bookkeeping", _learning_qualified=False, _adopted_suggestion_public_id=decision.public_id)
