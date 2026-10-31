@@ -91,6 +91,7 @@
     saveChoices(form, [...choices(form).filter(item => item.field !== candidate.field), {
       field: candidate.field, candidate_id: candidate.id, evidence_public_id: candidate.evidence_public_id,
       parser_version: candidate.parser_version, source: candidate.source,
+      ...(candidate.presentation ? {presentation: candidate.presentation} : {}),
       intent: button.dataset.eventDraftApply ? "bookkeeping" : correction ? "original_correction" : (candidate.selection_intent || "candidate"),
     }]);
     status.textContent = correction

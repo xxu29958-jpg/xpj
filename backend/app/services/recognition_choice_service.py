@@ -16,6 +16,7 @@ from app.services.learning_service._source_eligibility import _event_payload
 from app.services.notification_time_memory import notification_time_choice_context, notification_time_sources
 from app.services.notification_time_service import notification_time
 from app.services.recognition_decision_service import bind_source_choice
+from app.services.recognition_presentation import verified_presentation
 from app.services.recognition_time_service import recognition_time
 
 
@@ -95,6 +96,7 @@ def record_time_choice(db: Session, *, expense: Expense, choice: RecognitionTime
             payload["_candidate_miss"] = miss
     elif choice.source == "notification" and capture is not None:
         payload.update(notification_time_choice_context(capture, choice.candidate_id))
+    payload["presentation"] = verified_presentation(choice, [candidate])
     decision_id = bind_source_choice(db, expense, actor_account_id, RECOGNITION_TIME_CHOICE, choice, payload)
     event = record_event(db, EventDraft(tenant_id=expense.tenant_id, subject_kind="expense", subject_id=expense.id,
         decision_id=decision_id,
@@ -110,6 +112,6 @@ def _choice_components_payload(expense: Expense, choice: RecognitionTimeChoice, 
     changed = [key for key in selected if selected[key] != final.get(key)]
     intent = choice.intent if choice.intent != "candidate" or not changed else "bookkeeping"
     return {**choice.model_dump(), "intent": intent, "field": "expense_time",
-        "selected": candidate.model_dump(), "final_components": final, "modified_components": changed,
+        "selected": candidate.model_dump(exclude={"presentation"}), "final_components": final, "modified_components": changed,
         "_algorithm_version": RECOGNITION_TIME_CHOICE.current_version, "_action_outcome": "committed",
         "_learning_qualified": intent == "candidate" and bool(selected) and candidate.can_apply and not changed}

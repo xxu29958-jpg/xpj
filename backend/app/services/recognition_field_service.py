@@ -13,6 +13,7 @@ from app.services.recognition_amount_case import amount_case_contexts
 from app.services.recognition_decision_service import bind_source_choice
 from app.services.recognition_memory_service import time_candidate_key
 from app.services.recognition_miss_service import miss_metadata
+from app.services.recognition_presentation import source_order, verified_presentation
 from app.services.recognition_source_service import candidate_source_location
 from app.services.recognition_time_service import _AMOUNT_ROLES, _event_prefixes
 
@@ -49,7 +50,7 @@ def review_fields(fact, candidates) -> list[RecognitionFieldCandidate]:
             kept.append(item)
         elif item.event_selected and not kept[index].event_selected:
             kept[index] = kept[index].model_copy(update={"event_selected": True})
-    return kept
+    return source_order(fact, kept)
 
 
 def _same_reading(item, other, spans, raw_text):
@@ -128,7 +129,7 @@ def _record_field_choice(db, expense, choice, candidate, fact, actor) -> None:
     final = field_value(expense, choice.field, candidate.currency_code)
     raw_candidate = next(item for item in json.loads(fact.evidence_json)["field_parse"]["candidates"] if item["id"] == candidate.id)
     payload = {**choice.model_dump(), **_field_learning(choice, candidate, final),
-        "selected": candidate.model_dump(exclude={"source_reading_value"}), "final_value": final,
+        "selected": candidate.model_dump(exclude={"source_reading_value", "presentation"}), "final_value": final,
         "_algorithm_version": RECOGNITION_FIELD_CHOICE.current_version, "_action_outcome": "committed",
         "_case_key": field_case_key(fact), "_candidate_key": time_candidate_key(fact.raw_text, raw_candidate),
         "_amount_context": amount_case_contexts(fact).get(candidate.id) if choice.field == "amount_cents" else None,
@@ -140,6 +141,7 @@ def _record_field_choice(db, expense, choice, candidate, fact, actor) -> None:
     miss = miss_metadata(fact, choice.field, reading, payload["intent"])
     if miss is not None:
         payload["_candidate_miss"] = miss
+    payload["presentation"] = verified_presentation(choice, source_order(fact, recognition_fields(fact)))
     decision_id = bind_source_choice(db, expense, actor, RECOGNITION_FIELD_CHOICE, choice, payload)
     event = record_event(db, EventDraft(tenant_id=expense.tenant_id, subject_kind="expense", subject_id=expense.id,
         decision_id=decision_id,

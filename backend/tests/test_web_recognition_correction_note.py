@@ -56,3 +56,31 @@ def test_browser_note_compares_the_source_reading_not_the_recalled_value(
     assert sorted((item["field"], item["intent"], item["_learning_qualified"]) for item in events) == [
         ("amount_cents", "original_correction", True), ("merchant", "original_correction", True)]
     assert {item["selected"]["value"] for item in events} == {1800, "海棠咖吽"}, "The note must point at the source reading"
+    assert all(item["presentation"] and item["_history_exposed"] for item in events), [
+        (item["field"], item["presentation"], item["_history_exposed"]) for item in events]
+
+
+def test_browser_abstained_source_order_is_saved_with_the_deliberate_choice(
+        review_browser, confirmation_store, monkeypatch, tmp_path):
+    client, _ = review_browser
+    with confirmation_store() as db:
+        actor = confirmation_actor(db)
+    target = _seed(raw_override="实付25.00元\n实付18.00元\n商户：海棠咖啡")
+    monkeypatch.setattr(web_expense_edit, "resolve_web_actor", lambda *args: (actor.account_id, actor.device_id))
+    client.app.state.expense_review_probe = "source-order-probe.js"
+
+    @client.app.get("/source-order-probe.js")
+    def source_probe():
+        return FileResponse(Path(__file__).parent / "fixtures/recognition_source_order_probe.js", media_type="text/javascript")
+
+    result = _run_review_page(client, tmp_path, f"/web/expenses/{target}/edit?ledger_id=owner&return_to=pending")
+    assert not result.get("error") and result["completed"], result
+    with confirmation_store() as db:
+        row = db.get(Expense, target)
+        event = db.scalar(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == target,
+            LedgerLearningEvent.signal_type == "recognition_field_choice"))
+        payload = json.loads(event.after_payload)
+    assert row.amount_cents == 2500
+    assert payload["presentation"] == "source-order-v1:text"
+    assert payload["candidate_id"] == result["chosen"]["candidate_id"]
+    assert payload["_history_exposed"] is False and payload["_learning_qualified"] is True
