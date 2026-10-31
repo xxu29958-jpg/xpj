@@ -268,8 +268,11 @@
          data-shell-shortcut="search" aria-keyshortcuts="/" title="搜索（/）">
         <span>搜索</span><kbd class="topbar-shortcut-hint" aria-hidden="true">/</kbd>
       </a>
+      {# 宽屏时页面自带「记一笔」(page_owns_create, 由该页按自身渲染条件声明),
+         顶栏「+」不再并排出现 (shell.css); 窄屏页头主按钮让位, 「+」仍是记账
+         入口。菜单始终留在 DOM, N/U 快捷键照常可用。 #}
       {% if can_write %}
-      <details class="topbar-create">
+      <details class="topbar-create{% if page_owns_create|default(false) %} topbar-create--narrow-only{% endif %}">
         <summary aria-label="新增记录"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#plus"/></svg></summary>
         <div class="topbar-create-menu">
           <a href="/web/pending{{ q }}#capture" data-shell-shortcut="capture" aria-keyshortcuts="U">拍照或选小票</a>
@@ -278,12 +281,7 @@
         </div>
       </details>
       {% endif %}
-      {# 外观入口 (冻结片合同): 单一「外观」popover 聚合 主题/质感/强调色
-         三条本地偏好轴。<details> 原生可开合, 无 JS 也可用; 三轴语义与
-         写入者见 theme.js 与 tokens.css 外观轴段。不渲染用户素材入口。
-         W1: 控件抽成 _appearance_control.html — topbar 与「我」popover
-         (≤40rem) 两个真实 consumer 共用, theme.js 多实例绑定。 #}
-      {% include "_appearance_control.html" %}
+      {# 外观是本机个人偏好, 收在账户面板 (_ledger_switcher.html), 不占顶栏全局位。 #}
       {% if account_without_ledger|default(false) %}
       <a class="topbar-action" href="{{ '/' if request.state.web_session_platform == 'desktop' else '/web/auth/ledgers' }}">选择账本</a>
       {% else %}

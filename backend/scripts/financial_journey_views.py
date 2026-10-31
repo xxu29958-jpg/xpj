@@ -89,11 +89,12 @@ def appearances(j):
     for theme in ("paper", "midnight"):
         page.set_viewport_size({"width": 1280, "height": 960})
         j.goto("/web/confirmed")
+        page.locator("#ledger-switcher > summary").click()
         page.locator("#appearance > summary").click()
         page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
         wait_for(lambda theme=theme: page.locator("html").get_attribute("data-theme") == theme,
             "The actual financial page did not apply its selected theme")
-        page.locator("#appearance > summary").click()
+        page.locator("#ledger-switcher > summary").click()
         for width in (1280, 390):
             page.set_viewport_size({"width": width, "height": 960})
             for suffix in ("edit", "correct"):

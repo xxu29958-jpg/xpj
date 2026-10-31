@@ -75,6 +75,7 @@ def test_undated_task_ignores_stale_month_and_retains_filter_when_paging(monkeyp
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("cross-period task has no default month")))
     monkeypatch.setattr(web_app, "_sidebar_counts", lambda *args: (0, 0))
     monkeypatch.setattr(web_app, "list_ledger_category_options", lambda *args, **kwargs: [])
+    monkeypatch.setattr(web_app, "ledger_records_other_currency", lambda *args: True)
     monkeypatch.setattr(web_common, "require_runtime_home_currency_code", lambda *args: "CNY")
     monkeypatch.setattr(web_common, "current_calendar",
         lambda *args, **kwargs: SimpleNamespace(timezone_name="Asia/Shanghai"))

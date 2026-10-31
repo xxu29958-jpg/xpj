@@ -199,10 +199,11 @@ class BudgetJourney:
         for theme in ("paper", "midnight"):
             page.set_viewport_size({"width": 1280, "height": 960})
             self.goto(PAGES["budget"])
+            page.locator("#ledger-switcher > summary").click()
             page.locator("#appearance > summary").click()
             page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
             page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)
-            page.locator("#appearance > summary").click()
+            page.locator("#ledger-switcher > summary").click()
             for width in (1280, 390):
                 page.set_viewport_size({"width": width, "height": 960})
                 for kind, path in PAGES.items():

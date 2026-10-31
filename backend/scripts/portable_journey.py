@@ -113,10 +113,11 @@ class PortableJourney:
             self.page.set_viewport_size({"width": 1280, "height": 960})
             # The focused import task has no global appearance controls.
             self.page.goto(self.public_url + f"/web/confirmed?ledger_id={LEDGER}")
+            self.page.locator("#ledger-switcher > summary").click()
             self.page.locator("#appearance > summary").click()
             self.page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
             self.page.wait_for_function("theme => document.documentElement.dataset.theme === theme", arg=theme)
-            self.page.locator("#appearance > summary").click()
+            self.page.locator("#ledger-switcher > summary").click()
             for width in (1280, 390):
                 self.page.set_viewport_size({"width": width, "height": 960})
                 self.page.goto(self.public_url + "/web/exports")

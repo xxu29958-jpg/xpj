@@ -28,9 +28,11 @@ class AppearanceJourney:
         self.page, self.native, self.evidence = page, native, evidence
 
     def menu(self):
-        root = self.page.locator("#ledger-switcher" if self.page.viewport_size["width"] < 768 else "#appearance")
-        if root.get_attribute("open") is None:
-            root.locator(":scope > summary").click()
+        # 外观收在账户面板里: 先开账户面板, 再展开其中的外观行。
+        for selector in ("#ledger-switcher", "#appearance"):
+            root = self.page.locator(selector)
+            if root.get_attribute("open") is None:
+                root.locator(":scope > summary").click()
         return root
 
     def import_image(self, path):

@@ -117,7 +117,7 @@ def test_actual_confirmed_template_distinguishes_unknown_calendar_and_page_sum()
         can_write=False, expenses=[entry], page_day_totals={"2026-08-05": None},
         by_day=[{"date": "2026-08-05", "amount_cents": None, "count": 1}], calendar_max=None,
         source_breakdown=[], total_pages=1, page=1, confirmed_edit_query="ledger_id=family", pager_query="",
-        flash_message="", flash_type="", missing_rates=[],
+        flash_message="", flash_type="", missing_rates=[], show_home_currency_code=True,
         money_task={"ledger_id": "family", "month": "2026-08", "home_currency_code": "JPY", "return_to": "confirmed"},
         **projected_money_context("JPY"))
     assert 'title="2026-08-05 · 账务信息待补齐"' in html

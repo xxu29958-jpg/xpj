@@ -158,11 +158,12 @@ class InsightsJourney:
             "cards => cards.map(card => card.dataset.overviewCard)") == default_order
         for theme in ("paper", "midnight"):
             page.set_viewport_size({"width": 1280, "height": 800})
+            page.locator("#ledger-switcher > summary").click()
             page.locator("#appearance > summary").click()
             page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
             wait_for(lambda theme=theme: page.locator("html").get_attribute("data-theme") == theme,
                 "The overview did not apply the selected appearance")
-            page.locator("#appearance > summary").click()
+            page.locator("#ledger-switcher > summary").click()
             for width in (1280, 360):
                 page.set_viewport_size({"width": width, "height": 800})
                 page.evaluate("document.fonts.ready")
@@ -213,11 +214,12 @@ class InsightsJourney:
                 if not page.locator(f"#{section}").evaluate("element => element.open"):
                     page.locator(f"#{section} > summary").click()
             page.set_viewport_size({"width": 1440, "height": 960})
+            page.locator("#ledger-switcher > summary").click()
             page.locator("#appearance > summary").click()
             page.locator(f'#appearance [data-theme-mode="{theme}"]').click()
             wait_for(lambda theme=theme: page.locator("html").get_attribute("data-theme") == theme,
                 "The actual report did not apply its selected appearance")
-            page.locator("#appearance > summary").click()
+            page.locator("#ledger-switcher > summary").click()
             for width in (1440, 768, 360):
                 page.set_viewport_size({"width": width, "height": 960})
                 self.capture(f"report-{theme}-{width}")
