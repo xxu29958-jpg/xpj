@@ -13,6 +13,11 @@ def _json_payload(column):
     return cast(case((func.pg_input_is_valid(column, "jsonb"), column), else_="{}"), JSONB)
 
 
+def source_learning_window_predicate():
+    """Diagnostics remain auditable without occupying the bounded learning window."""
+    return _json_payload(LedgerLearningEvent.after_payload)["_learning_target"].astext.is_distinct_from("candidate_miss")
+
+
 def _source_choice_decision(db, expense, actor, entry, choice):
     """A remembered suggestion is not an independent source annotation, even on an old client."""
     payload = _json_payload(AlgorithmDecision.output_payload)

@@ -20,6 +20,45 @@ def _events(db, expense_id):
         LedgerLearningEvent.signal_type.in_(("recognition_field_choice", "recognition_time_choice"))).all()
 
 
+@pytest.mark.parametrize("field", ["merchant", "expense_time"])
+def test_diagnostics_do_not_evict_learning_but_same_source_edits_still_supersede(client, identity, field):
+    from app.services.learning_service import EventDraft, record_event
+    from app.services.recognition_field_memory import load_field_memory
+    from app.services.recognition_memory_service import load_time_memory
+    from tests.test_recognition_choice import _choose, _image
+    from tests.test_recognition_field_corrections import _save
+
+    if field == "merchant":
+        source = _seed()
+        headers = negotiated_headers(client, identity.app_headers)
+        reading = next(item for item in client.get(f"/api/expenses/{source}", headers=headers).json()["recognition_fields"]
+            if item["field"] == field)
+        _save(client, headers, source, reading, "新名称", "original_correction")
+        loader = load_field_memory
+    else:
+        source = _image(identity)
+        assert _choose(client, identity, source)[0].status_code == 200
+        loader = load_time_memory
+    noise = _seed(merchant="其他来源")
+    with SessionLocal() as db:
+        original = _events(db, source)[0]
+        actor = seeded_owner_account_id()
+
+        def diagnostic(subject):
+            record_event(db, EventDraft(tenant_id="owner", subject_kind="expense", subject_id=subject,
+                actor_account_id=actor, event_type="edit", signal_type=original.signal_type,
+                signal_marker={"field": field, "evidence_public_id": json.loads(original.after_payload)["evidence_public_id"]},
+                after_payload={"field": field, "_learning_target": "candidate_miss", "_learning_qualified": False}))
+
+        for _ in range(200):
+            diagnostic(noise)
+        memory = loader(db, tenant_id="owner", actor_account_id=actor, expense_ids=[noise])
+        assert original.id in {row.id for row in memory.cases}
+        diagnostic(source)
+        after = loader(db, tenant_id="owner", actor_account_id=actor, expense_ids=[noise])
+        assert original.id not in {row.id for row in after.cases}
+
+
 @pytest.mark.parametrize("field,changes", [
     ("merchant", {"merchant": "新名称"}),
     ("amount_cents", {"original_currency_code": "CNY", "original_amount_minor": 1857}),
