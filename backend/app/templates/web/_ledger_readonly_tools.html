@@ -12,21 +12,31 @@
     {% include '_month_picker.html' %}
   </details>
   {% endif %}
+  {# 分类与标签只在这里设一次; 关键词归下方搜索框。两个表单互相带上对方的条件, 换筛选不丢关键词。 #}
   <details class="ledger-read-filters">
-    <summary class="filter-tab">筛选</summary>
+    <summary class="filter-tab{% if category or tag %} is-active{% endif %}">筛选{% if category %} · {{ category }}{% endif %}{% if tag %} · {{ tag }}{% endif %}</summary>
     <div class="ledger-read-filter-body">
       <form method="get" action="/web/confirmed">
         <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
         <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">
         {% if filter %}<input type="hidden" name="filter" value="{{ filter }}">{% endif %}
+        {% if query_text %}<input type="hidden" name="q" value="{{ query_text }}">{% endif %}
+        {% for key, value in (date_review_origin|default({})).items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
         {% if filter not in ['missing_category', 'missing_accounting_date'] %}
         <label>月份<input class="input" type="month" name="month" value="{{ month }}" required></label>
         {% endif %}
-        <label>标签<input class="input" type="text" name="tag" value="{{ tag }}" placeholder="不限标签"></label>
+        <label>分类<input class="input" name="category" value="{{ category|default('') }}" maxlength="64" placeholder="全部分类" list="confirmed-categories"></label>
+        <datalist id="confirmed-categories">{% for item in category_options %}<option value="{{ item }}">{% endfor %}</datalist>
+        <label>标签<input class="input" type="text" name="tag" value="{{ tag }}" maxlength="64" placeholder="不限标签"></label>
         <button class="product-button product-button--primary" type="submit">查看流水</button>
       </form>
       <nav aria-label="流水浏览工具">
         <a href="/web/saved-views?ledger_id={{ selected_ledger_id|urlencode }}">保存的视图</a>
+        {% if can_write %}
+        {% if save_view_error %}<p class="product-feedback" role="status">{{ save_view_error }}</p>{% else %}
+        <a data-save-view href="/web/saved-views?{{ {'ledger_id':selected_ledger_id, 'create':'true', 'month_mode':('current' if filter else 'fixed'), 'month':month, 'filter':filter, 'tag_public_id':save_view_tag_public_id, 'home_currency_code':home_currency_code, 'query_text':query_text, 'category':category}|urlencode }}">保存当前视图</a>
+        {% endif %}
+        {% endif %}
         <a href="/web/library?ledger_id={{ selected_ledger_id|urlencode }}">资料库</a>
         <a href="/web/import?ledger_id={{ selected_ledger_id|urlencode }}">{% if can_write %}导入与导出{% else %}导出账本{% endif %}</a>
       </nav>
