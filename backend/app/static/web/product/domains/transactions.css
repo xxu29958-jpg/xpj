@@ -416,13 +416,8 @@
 
 /* 导入导出：一个文件入口、一个筛选出口，避免功能卡片化堆叠。 */
 
-.import-upload-form {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: end;
-}
-
-.import-file-field {
-    min-width: 0;
+.import-export-note + .product-form {
+    margin-block-start: var(--space-5);
 }
 
 .import-schema {

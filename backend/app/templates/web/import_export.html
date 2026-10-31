@@ -90,13 +90,13 @@
 <section aria-label="导入 CSV">
   <p class="import-export-note">这里接收消费账单及小票夹导出的退款事件。收入、转账、还款和账户余额请在<a href="/web/funds{{ q }}">资金账户</a>核对记录；含这些信息的文件会保留错误行，不会当成消费入账。</p>
     {% if can_write %}
-    <form method="post" action="/web/import/preview" enctype="multipart/form-data" class="product-form-grid import-upload-form">
+    <form method="post" action="/web/import/preview" enctype="multipart/form-data" class="product-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}">
-      <div class="product-field import-file-field">
-        <label for="import-csv-file">选择 CSV 文件</label>
-        <input type="file" id="import-csv-file" name="csv_file" accept=".csv,text/csv" required>
-      </div>
+      <label class="file-picker" for="import-csv-file">
+        <strong>选择 CSV 文件</strong>
+        <input class="file-picker-input" type="file" id="import-csv-file" name="csv_file" accept=".csv,text/csv" required>
+      </label>
       <button type="submit" class="product-button product-button--primary">上传并预览</button>
     </form>
     <details class="import-schema">
