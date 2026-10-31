@@ -77,8 +77,9 @@ def _corrected_field(matches, chosen: RecognitionFieldCandidate) -> RecognitionF
         return None
     value = json.loads(values.pop())
     display = minor_amount_label(value, chosen.currency_code) if chosen.field == "amount_cents" else value
-    return chosen.model_copy(update={"value": value, "selection_intent": "bookkeeping",
-        "explanation": f"你曾对照同类原件纠正为 {display}。请核对本张原件；原识别文字仍保留。"})
+    return chosen.model_copy(update={"value": value, "selection_intent": "bookkeeping", "event_selected": False,
+        "label": f"曾读错 · {display}",
+        "explanation": f"你曾对照同类原件纠正为 {display}。这只是历史纠错备选，请先核对本张原件。"})
 
 
 def _visible_field(db, *, expense, actor, fact, field_name, slot, chosen, matches, memory):
@@ -150,5 +151,11 @@ def _recall_source(db, expense, actor, fact, candidates, memory, source):
                 "selection_intent": "bookkeeping"})
         if _visible_field(db, expense=expense, actor=actor,
                 fact=fact, field_name=field_name, slot=slot, chosen=chosen, matches=field_matches, memory=memory):
-            result = [chosen] + [item for item in result if item.id != chosen.id]
+            if chosen.value != chosen.source_reading_value:
+                # History can offer an alternative, never replace the original
+                # reading or become a default in the multi-event draft consumer.
+                position = next(i for i, item in enumerate(result) if item.field == field_name)
+                result.insert(position + 1, chosen)
+            else:
+                result = [chosen] + [item for item in result if item.id != chosen.id]
     return review_fields(fact, result)
