@@ -108,7 +108,7 @@ def test_suggests_majority_category_for_merchant(legacy_confirmation: bool, *, i
         assert result.category == "餐饮"
         assert result.sample_size == 4
         assert result.score == 0.75
-        assert result.algorithm_version == "category-history-v3"
+        assert result.algorithm_version == "category-history-v4"
 
 
 def test_no_suggestion_when_under_sample_threshold(*, identity) -> None:

@@ -9,6 +9,23 @@ from app.services.category_service import list_ledger_category_options
 from app.services.duplicate_evidence import _identifiers
 from app.services.learning_service._category_context import category_context_key, category_contexts
 from app.services.learning_service._source_eligibility import _event_payload, eligible_feedback
+from app.services.merchant_alias_service import canonical_merchant_for, enabled_merchant_alias_map
+from app.services.merchant_service import normalize_merchant
+
+
+def category_merchant_filter(db, *, tenant_id: str, merchant: str):
+    """Use the same explicit aliases as rules, including their normalization."""
+    aliases = enabled_merchant_alias_map(db, tenant_id=tenant_id)
+    canonical = normalize_merchant(canonical_merchant_for(merchant, alias_map=aliases))
+    if canonical not in {normalize_merchant(value) for value in aliases.values()}:
+        return func.lower(func.trim(Expense.merchant)) == merchant
+    # Resolve actual stored names, rather than approximating Python casefold,
+    # whitespace and notification-suffix normalization with SQL lower().
+    names = db.scalars(select(Expense.merchant).where(
+        Expense.tenant_id == tenant_id, Expense.merchant.is_not(None)).distinct())
+    matching = [name for name in names
+        if normalize_merchant(canonical_merchant_for(name, alias_map=aliases)) == canonical]
+    return Expense.merchant.in_(matching)
 
 
 def _event_groups(examples, facts) -> list:
@@ -55,7 +72,7 @@ def _personal_example_matches(event, expense, *, expense_id, observed_at, catego
         and (target_key is None or category_context_key(contexts[expense.id]) == target_key))
 
 
-def personal_category_counts(db, *, tenant_id: str, merchant: str, actor_account_id: int,
+def personal_category_counts(db, *, tenant_id: str, merchant_filter, actor_account_id: int,
         expense_id: int | None, cutoff, current_date, observed_at) -> list[tuple[str, int]]:
     from app.services.learning_service import read_ocr_facts
 
@@ -65,7 +82,7 @@ def personal_category_counts(db, *, tenant_id: str, merchant: str, actor_account
             LedgerLearningEvent.actor_account_id == actor_account_id,
             LedgerLearningEvent.signal_type == "category_suggestion", LedgerLearningEvent.subject_kind == "expense",
             LedgerLearningEvent.created_at <= observed_at, Expense.accounting_date >= cutoff,
-            Expense.accounting_date <= current_date, func.lower(func.trim(Expense.merchant)) == merchant)
+            Expense.accounting_date <= current_date, merchant_filter)
         .order_by(LedgerLearningEvent.id.desc()).limit(200)).all()
     target = db.scalar(select(Expense).where(Expense.tenant_id == tenant_id, Expense.id == expense_id))
     sources = {expense.id: expense for _, expense in rows}
