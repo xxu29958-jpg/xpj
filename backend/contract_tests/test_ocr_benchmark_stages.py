@@ -112,6 +112,23 @@ def test_provider_false_fill_is_silent_error_without_parser_selection():
     assert result["merchant"]["silent_error"] is True
 
 
+@pytest.mark.parametrize("printed,present", [
+    ("2026-05-04 08:23:00Z", True), ("2026-05-04T16:23+08:00", True),
+    ("2026-05-04 13:53 UTC+05:30", True), ("2026-05-04 16:23:00 Z", False),
+    ("2026-05-04 16:23:00 UTC+09:00", False), ("2026-05-04 16:23:30 +08:00", False),
+])
+def test_explicit_printed_offset_overrides_fixture_zone(printed, present):
+    truth = Label("present", {"value": "2026-05-04T08:23:00+00:00", "precision": "instant"})
+    assert text_present("time", truth, printed, "Asia/Shanghai") is present
+
+
+def test_annotated_numeric_literal_does_not_match_a_larger_number():
+    truth = Label("present", {"minor": 1851, "currency": "CNY"}, source_text="18.51")
+    assert not text_present("amount", truth, "实付 118.51", "UTC")
+    assert not text_present("amount", truth, "实付 18.5101", "UTC")
+    assert text_present("amount", truth, "实付 ￥18.51元", "UTC")
+
+
 def test_development_selection_never_reads_holdout_labels_or_images(tmp_path):
     source = Path(__file__).resolve().parents[1] / "tests/_infra/ocr_fixtures/_synthetic_bank_alert"
     for split in ("development", "holdout"):

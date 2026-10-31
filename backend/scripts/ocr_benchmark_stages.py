@@ -11,7 +11,7 @@ import random
 import re
 import unicodedata
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -29,7 +29,10 @@ def _text(value: str) -> str:
 
 def text_present(field: str, label: Label, raw_text: str, timezone_name: str) -> bool:
     if label.source_text is not None:
-        return _text(label.source_text) in _text(raw_text)
+        literal = _text(label.source_text)
+        prefix = r"(?<![\d.,])" if field in {"amount", "time"} and literal[0].isdecimal() else ""
+        suffix = r"(?![\d.,])" if field in {"amount", "time"} and literal[-1].isdecimal() else ""
+        return bool(re.search(prefix + re.escape(literal) + suffix, _text(raw_text)))
     if field == "merchant":
         return _text(str(label.value)) in _text(raw_text)
     if field == "amount":
@@ -38,13 +41,30 @@ def text_present(field: str, label: Label, raw_text: str, timezone_name: str) ->
         normalized = unicodedata.normalize("NFKC", raw_text)
         tokens = re.findall(r"(?<![\d.])[+-]?\d+(?:,\d{3})*(?:\.\d+)?(?![\d.])", normalized)
         return any(abs(Decimal(token.replace(",", ""))) == expected for token in tokens)
-    value = label.value
-    local = datetime.fromisoformat(value["value"].replace("Z", "+00:00"))
-    if value["precision"] == "instant":
-        local = local.astimezone(ZoneInfo(timezone_name))
+    return _time_text_present(label.value, raw_text, timezone_name)
+
+
+def _printed_offsets(raw_text: str):
+    for match in re.finditer(r"Z|(?:UTC|GMT)?(?P<sign>[+-])(?P<hour>\d{1,2})(?::?(?P<minute>\d{2}))?(?![\d:])",
+                            raw_text, re.I):
+        if match[0].upper() == "Z":
+            yield match[0], UTC
+            continue
+        minutes = int(match["minute"] or 0)
+        if minutes >= 60:
+            continue
+        delta = timedelta(hours=int(match["hour"]), minutes=minutes)
+        try:
+            zone = timezone(delta if match["sign"] == "+" else -delta)
+        except ValueError:
+            continue
+        yield match[0], zone
+
+
+def _time_patterns(local, instant):
     orders = [(local.year, local.month, local.day), (local.day, local.month, local.year),
               (local.month, local.day, local.year)]
-    suffix = (local.hour, local.minute) if value["precision"] == "instant" else ()
+    suffix = (local.hour, local.minute) if instant else ()
     for parts in orders:
         pattern = r"(?<!\d)" + r"\D+".join(f"0*{part}" for part in parts + suffix)
         if suffix:
@@ -53,7 +73,23 @@ def text_present(field: str, label: Label, raw_text: str, timezone_name: str) ->
             pattern += r"(?!\d|\s*[:：]|\s*分\s*\d)"
         else:
             pattern += r"(?!\d)"
-        if re.search(pattern, unicodedata.normalize("NFKC", raw_text)):
+        yield pattern
+
+
+def _time_text_present(value: dict, raw_text: str, timezone_name: str) -> bool:
+    raw_text = unicodedata.normalize("NFKC", raw_text)
+    local = datetime.fromisoformat(value["value"].replace("Z", "+00:00"))
+    instant = value["precision"] == "instant"
+    if instant:
+        for printed, zone in _printed_offsets(raw_text):
+            for pattern in _time_patterns(local.astimezone(zone), True):
+                if re.search(pattern + r"(?:秒|分)?\s*" + re.escape(printed) + r"(?![\d:])", raw_text, re.I):
+                    return True
+        local = local.astimezone(ZoneInfo(timezone_name))
+    for pattern in _time_patterns(local, instant):
+        if instant:
+            pattern += r"(?!(?:秒|分)?\s*(?:Z|(?:UTC|GMT)?[+-]\d))"
+        if re.search(pattern, raw_text, re.I):
             return True
     return False
 
