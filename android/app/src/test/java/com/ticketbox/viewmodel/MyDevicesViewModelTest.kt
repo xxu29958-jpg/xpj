@@ -105,6 +105,31 @@ class MyDevicesViewModelTest {
     }
 
     @Test
+    fun refreshListsThisDeviceFirstAndStoppedRecordsLast() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val api = StubApi().apply {
+                devicesResult = MyDeviceListResponseDto(
+                    listOf(
+                        deviceDto("old", "旧手机", revokedAt = "2026-06-10T00:00:00Z"),
+                        deviceDto("pc", "书房电脑"),
+                        deviceDto("me", "本机", isCurrent = true),
+                        deviceDto("tab", "平板"),
+                    ),
+                )
+            }
+            val vm = harness(api)
+
+            vm.refresh(ledger)
+            val state = vm.uiState.first { it.devices.isNotEmpty() }
+
+            assertEquals(listOf("me", "pc", "tab", "old"), state.devices.map { it.publicId })
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun initialRefreshFailureShowsDangerLoadMessage() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
