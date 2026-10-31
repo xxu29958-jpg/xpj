@@ -29,6 +29,7 @@ from app.services.receipt_parse_category import (
 from app.services.receipt_parse_common import (
     ParsedReceipt,
     ParsedReceiptItem,
+    ReceiptFieldCandidate,
     ReceiptFieldDecision,
     _AmountCandidate,
     _build_receipt_context,
@@ -492,6 +493,18 @@ def _parse_single_receipt(
         items=items,
         # Resolve conflicts over all evidence before capping the review list.
         # Each separately parsed transaction keeps its own merchant alternatives.
-        candidates=amounts + merchants[:8] + times + categories,
+        candidates=amounts + _merchant_review_choices(merchants) + times + categories,
         decisions=(amount_decision, merchant_decision, time_decision, category_decision),
     )
+
+
+def _merchant_review_choices(candidates: tuple[ReceiptFieldCandidate, ...]) -> tuple[ReceiptFieldCandidate, ...]:
+    """Keep distinct alternatives before repeated evidence consumes the cap."""
+    first: dict[str | int, ReceiptFieldCandidate] = {}
+    repeated = []
+    for item in candidates:
+        if item.value in first:
+            repeated.append(item)
+        else:
+            first[item.value] = item
+    return tuple([*first.values(), *repeated][:8])

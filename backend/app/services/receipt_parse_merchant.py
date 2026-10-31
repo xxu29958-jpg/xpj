@@ -28,7 +28,7 @@ from app.services.receipt_parse_rules import (
     is_primary_amount_line,
     iter_labeled_merchant_matches,
 )
-from app.services.receipt_parse_structure import related_value_index
+from app.services.receipt_parse_structure import promotion_start, related_value_index
 
 
 def _merchant_candidates(text: str, blocks: Sequence[dict] | None = None) -> list[_MerchantCandidate]:
@@ -190,8 +190,18 @@ def _labeled_merchant_candidates(text: str, lines: list[str], blocks: Sequence[d
     return candidates
 
 
+def _inline_store_value(line: str, nearby_lines: list[str]) -> str | None:
+    if line.startswith("闪购") and any(anchor in nearby
+            for nearby in nearby_lines for anchor in ("配送", "送达", "准时达")):
+        return re.sub(r"^闪购", "", line).strip(" >〉")
+    ride = re.fullmatch(r"(.+?)[\-－—](?:经济型|舒适型|豪华型)[|｜].*师傅.*", line)
+    return ride[1].strip() if ride else None
+
+
 def _store_context_candidates(text: str, lines: list[str], blocks: Sequence[dict] | None) -> list[_MerchantCandidate]:
     candidates = []
+    boundary = promotion_start(text)
+    lines = text[:boundary].splitlines() if boundary is not None else lines
     for index, line in enumerate(lines):
         value_index = None
         explicit_value = None
@@ -199,11 +209,8 @@ def _store_context_candidates(text: str, lines: list[str], blocks: Sequence[dict
             value_index = index - 1
         elif line == "商品说明":
             value_index = related_value_index(lines, blocks, index)
-        elif line.startswith("闪购") and any(anchor in nearby
-                for nearby in lines[max(0, index - 2):index + 3] for anchor in ("配送", "送达", "准时达")):
+        elif (explicit_value := _inline_store_value(line, lines[max(0, index - 2):index + 3])) is not None:
             value_index = index
-        elif (ride := re.fullmatch(r"(.+?)[\-－—](?:经济型|舒适型|豪华型)[|｜].*师傅.*", line)):
-            value_index, explicit_value = index, ride[1].strip()
         if value_index is None:
             continue
         value = explicit_value or re.sub(r"^(?:自营|闪购)", "", lines[value_index]).strip(" >〉")

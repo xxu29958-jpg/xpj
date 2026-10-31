@@ -24,6 +24,7 @@ def test_store_title_value_and_original_boxes_survive(raw, expected):
     "支付成功\n商户：本次便利店\n支付奖励\n闪购领红包\n次日送达",
     "商户：本次便利店\n闪购优惠\n实付20.00元",
     "商户：本次便利店\n评论里说江南出行-经济型很舒服\n实付20.00元",
+    "收款方：本次便利店\n实付20.00元\n猜你喜欢\n闪购青禾咖啡（城西店）\n预计20:12送达",
 ])
 def test_advertising_or_unanchored_rides_do_not_create_store_titles(raw):
     parsed = parse_receipt_text(raw, currency_code="CNY", minor_unit_exponent=2)
@@ -37,3 +38,4 @@ def test_list_cap_does_not_turn_hidden_conflict_into_a_default():
     assert parsed.merchant is None
     assert next(item for item in parsed.decisions if item.field == "merchant").status == "ambiguous"
     assert len([item for item in parsed.candidates if item.field == "merchant"]) == 8
+    assert {item.value for item in parsed.candidates if item.field == "merchant"} == {"甲方商店", "乙方商店"}
