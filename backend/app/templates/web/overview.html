@@ -107,7 +107,7 @@
   {% elif item.key == 'pending' %}
   <article class="product-panel product-panel--padded insight-brief"
            data-overview-card="pending">
-    <span class="product-entry-icon product-entry-icon--apricot insight-pending-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#inbox"/></svg></span>
+    <span class="product-entry-icon insight-pending-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#inbox"/></svg></span>
     <div class="insight-pending-copy">
       <div class="insight-brief-title"><h2 class="product-panel-title">{{ cards.pending_count }} 张小票待整理</h2></div>
       <div class="product-panel-subtitle">{{ '当前账本全部日期，核对后计入流水' if cards.pending_count else '没有待整理的记录' }}</div>

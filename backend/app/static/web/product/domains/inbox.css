@@ -761,8 +761,6 @@ body[data-page="expense-detail"][data-domain="inbox"] .receipt-preview { positio
     text-align: center;
     overflow-wrap: anywhere;
 }
-.uncategorized-choice:has(.product-entry-icon--apricot) { background: var(--surface-apricot); }
-.uncategorized-choice:has(.product-entry-icon--lilac) { background: var(--surface-lilac); }
 .uncategorized-choice:has(input:checked) { border-color: var(--brand-primary); }
 .uncategorized-choice:has(input:focus-visible) { outline: 2px solid var(--brand-primary); outline-offset: 3px; }
 .uncategorized-choice input { position: absolute; width: 1px; height: 1px; opacity: 0; }

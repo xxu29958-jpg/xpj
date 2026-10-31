@@ -76,7 +76,6 @@
     action.className = "product-status product-status--" + state.tone;
     row.querySelector("[data-original-row-time]").textContent = health.checked_at ?
       "检查于 " + new Date(health.checked_at).toLocaleString("zh-CN", {hour12: false}) : "本次未能检查，可打开账单重试";
-    row.querySelector(".product-entry-icon").classList.toggle("product-entry-icon--apricot", state.priority < 3);
   }
   const scan = document.querySelector("[data-original-scan]");
   let inspected = false;

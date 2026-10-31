@@ -15,11 +15,11 @@
     <span class="product-entry-copy"><strong>目标账本</strong><span>{{ preview.ledger_name }}</span></span>
   </div>
   <div class="product-entry product-entry--static">
-    <span class="product-entry-icon product-entry-icon--peach" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#users"/></svg></span>
     <span class="product-entry-copy"><strong>你将获得</strong><span>你的权限：{{ permission_label }}。</span></span>
   </div>
   <div class="product-entry product-entry--static">
-    <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
     <span class="product-entry-copy"><strong>使用身份</strong><span>{{ '你将以当前身份加入' if current_account_name else '使用下面的称呼建立身份' }}</span>{% if current_account_name %}<strong>{{ current_account_name }}</strong>{% endif %}</span>
   </div>
 </div>

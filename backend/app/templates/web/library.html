@@ -19,13 +19,13 @@
 <section aria-labelledby="library-reference-title">
   <h2 class="product-panel-title" id="library-reference-title">交易资料</h2>
   <div class="product-entry-list">
-    {% for path, icon, tone, title, description in [
-      ('categories', 'shapes', 'apricot', '分类', library_counts.custom_categories ~ ' 个自定义分类 · 使用与引用'),
-      ('merchants', 'store', '', '商家', library_counts.merchants ~ ' 个商家 · ' ~ library_counts.merchant_aliases ~ ' 个别名'),
-      ('tags', 'tag', 'lilac', '标签', library_counts.tags ~ ' 个标签 · 按习惯归类')
+    {% for path, icon, title, description in [
+      ('categories', 'shapes', '分类', library_counts.custom_categories ~ ' 个自定义分类 · 使用与引用'),
+      ('merchants', 'store', '商家', library_counts.merchants ~ ' 个商家 · ' ~ library_counts.merchant_aliases ~ ' 个别名'),
+      ('tags', 'tag', '标签', library_counts.tags ~ ' 个标签 · 按习惯归类')
     ] %}
     <a class="product-entry" href="/web/{{ path }}{{ q }}">
-      <span class="product-entry-icon{% if tone %} product-entry-icon--{{ tone }}{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ icon }}"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#{{ icon }}"/></svg></span>
       <span class="product-entry-copy"><strong>{{ title }}</strong><span>{{ description }}</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </a>
@@ -41,7 +41,7 @@
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </a>
     <a class="product-entry" href="/web/recycle-bin{{ q }}">
-      <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#trash-2"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#trash-2"/></svg></span>
       <span class="product-entry-copy"><strong>回收站</strong><span>{{ library_counts.recycle_total }} 项可恢复{% if library_counts.recycle_short_window %} · {{ library_counts.recycle_short_window }} 项限期保留{% endif %}</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </a>

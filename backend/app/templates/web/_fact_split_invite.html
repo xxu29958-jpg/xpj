@@ -46,7 +46,7 @@
   <ul class="product-entry-list" aria-label="已发出的拆账邀请">
     {% for row in split_invite.sent_rows %}
     <li class="product-entry product-entry--static product-entry--actions">
-      <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
       <div class="product-entry-copy">
         <div class="product-entry-heading"><strong>{{ row.receiver_display_name or '—' }}</strong><strong class="product-entry-amount">{{ row.amount_label }}</strong></div>
         {% from '_history_time.html' import saved_time %}

@@ -84,11 +84,6 @@ private fun PendingOverviewLine(
         SettingsEntryIcon(
             icon = ImageVector.vectorResource(metric.primaryRemediation.iconRes),
             modifier = Modifier.padding(end = AppSpacing.contentGap).align(Alignment.CenterVertically),
-            background = when (metric.primaryRemediation) {
-                DataQualityRemediation.InboxMissingFx -> visuals.surfaceApricot
-                DataQualityRemediation.TransactionsConfirmedWithoutImage -> visuals.surfaceLilac
-                else -> visuals.brandPrimaryBg
-            },
         )
         Column(
             modifier = Modifier.weight(1f),

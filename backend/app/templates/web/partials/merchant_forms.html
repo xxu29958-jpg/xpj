@@ -33,7 +33,7 @@ data-merchant-create="{{ kind }}"{% if merchant_draft_scope %} data-{{ kind }}cr
 {% macro alias_list(items) %}
 <section class="product-entry-list" aria-label="商家别名">
 {% for item in items %}<div data-alias-key="{{ item.public_id }}">
-<div class="product-entry product-entry--static"><span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="product-entry-copy"><strong>{{ item.alias }}</strong><span>{{ item.canonical_merchant }} · {{ '启用' if item.enabled else '停用' }}</span></span></div>
+<div class="product-entry product-entry--static"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#tag"/></svg></span><span class="product-entry-copy"><strong>{{ item.alias }}</strong><span>{{ item.canonical_merchant }} · {{ '启用' if item.enabled else '停用' }}</span></span></div>
 {% if can_write %}<div class="pill-row">
 <form method="post" action="/web/merchants/aliases/{{ item.public_id }}/toggle">{{ scope(item.row_version) }}<button type="submit" class="product-button product-button--quiet">{{ '停用' if item.enabled else '启用' }}</button></form>
 <form method="post" action="/web/merchants/aliases/{{ item.public_id }}/delete" data-confirm="删除商家别名「{{ item.alias }}」？">{{ scope(item.row_version) }}<button type="submit" class="product-button product-button--danger">删除</button></form>

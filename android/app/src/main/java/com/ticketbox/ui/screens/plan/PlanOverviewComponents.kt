@@ -241,11 +241,6 @@ internal fun PlanDestinationRow(
     ) {
         SettingsEntryIcon(
             icon = ImageVector.vectorResource(model.icon),
-            background = when (model.icon) {
-                R.drawable.ic_lucide_sliders_horizontal, R.drawable.ic_lucide_chart_no_axes_combined -> LocalThemeVisuals.current.surfaceLilac
-                R.drawable.ic_lucide_target -> LocalThemeVisuals.current.surfaceApricot
-                else -> LocalThemeVisuals.current.brandPrimaryBg
-            },
         )
         Spacer(modifier = Modifier.width(AppSpacing.compactGap))
         Column(

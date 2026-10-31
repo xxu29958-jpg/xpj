@@ -2,7 +2,7 @@
 
 {% macro entry(view, selected_ledger_id) %}
 <a class="product-entry" href="{% if view.repair_reason %}/web/saved-views?ledger_id={{ selected_ledger_id|urlencode }}&amp;edit={{ view.public_id|urlencode }}{% else %}/web/saved-views/{{ view.public_id }}/open?ledger_id={{ selected_ledger_id|urlencode }}{% endif %}">
-  <span class="product-entry-icon{% if view.repair_reason %} product-entry-icon--apricot{% endif %}" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#bookmark"/></svg></span>
+  <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#bookmark"/></svg></span>
   <span class="product-entry-copy"><strong>{{ view.name }}</strong><span>{{ conditions(view) }}</span>{% if view.repair_reason %}<span class="field-error">原标签待修复 · 请明确选择替代条件</span>{% endif %}</span>
   <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
 </a>

@@ -64,7 +64,7 @@
   {% for r in pending %}
   <a class="product-entry" href="/web/repayment-drafts/{{ r.public_id }}?ledger_id={{ selected_ledger_id|urlencode }}"
      aria-label="{{ '核对并处理' if can_write else '查看原采集' }}：{{ r.source_label }}，{{ r.currency_code }} {{ r.amount_label }}">
-    <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#smartphone"/></svg></span>
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#smartphone"/></svg></span>
     <span class="product-entry-copy">
       <span class="product-entry-heading"><strong>{{ r.merchant or r.source_label }}</strong><strong class="product-entry-amount">{{ r.amount_label }}</strong></span>
       <span>{{ r.source_label }} · 采集于 {{ r.captured_label }} · {{ r.currency_code }}</span>

@@ -75,7 +75,7 @@
   </a>
   {% if can_associate %}
   <a class="product-entry" href="{{ occurrence_href }}&amp;command=clear">
-    <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#link"/></svg></span>
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#link"/></svg></span>
     <span class="product-entry-copy"><strong>解除本期付款关联</strong><span>解除只改变固定支出的关联，原付款账单不会撤销。</span></span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </a>
@@ -160,7 +160,7 @@
   {% endif %}
   <details aria-label="本期首次关联所据定义">
     <summary class="product-entry">
-      <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#file-text"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#file-text"/></svg></span>
       <span class="product-entry-copy"><strong>本期首次关联所据定义</strong><span>首次记录本期付款关联时所据的计划</span></span>
       <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
     </summary>
@@ -177,7 +177,7 @@
     {% endif %}
   </details>
   <a class="product-entry" aria-label="修改记录" href="/web/recurring/{{ item.public_id }}/history?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ occurrence.period|urlencode }}&amp;return_occurrence=true&amp;payment_month={{ payment_month|urlencode }}&amp;q={{ query|urlencode }}&amp;payment_id={{ focused_payment.id if focused_payment else '' }}">
-    <span class="product-entry-icon product-entry-icon--apricot" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span>
+    <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#history"/></svg></span>
     <span class="product-entry-copy"><strong>修改记录</strong><span>查看这项固定支出之前的安排</span></span>
     <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
   </a>

@@ -283,11 +283,7 @@ private fun RecycleBinItemContent(item: RecycleBinItem) {
             "tag_mutation" -> R.drawable.ic_lucide_tag
             "category_rule" -> R.drawable.ic_lucide_wand_sparkles
             else -> R.drawable.ic_lucide_calendar_check
-        }), background = when (item.kind) {
-            "goal", "category_preference" -> visuals.surfaceApricot
-            "tag_mutation" -> visuals.surfaceLilac
-            else -> MaterialTheme.colorScheme.primaryContainer
-        })
+        }))
         Spacer(Modifier.width(AppSpacing.compactGap))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
             Text(item.title, style = MaterialTheme.typography.titleMedium,

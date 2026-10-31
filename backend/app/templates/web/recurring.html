@@ -358,7 +358,7 @@
   <ul class="product-entry-list">
     {% for candidate in candidates %}
     <li class="product-entry product-entry--static product-entry--actions">
-      <span class="product-entry-icon product-entry-icon--lilac" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#sparkles"/></svg></span>
+      <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#sparkles"/></svg></span>
       <div class="product-entry-copy">
         <div class="product-entry-heading"><strong>{{ candidate.merchant }}</strong><strong class="product-entry-amount">{{ candidate.home_currency_code }} {{ candidate.amount_yuan|grouped }}/月</strong></div>
         <span>观察金额 · 已观察 {{ candidate.occurrence_count }} 次{% if candidate.last_seen_date %} · 最近 {{ candidate.last_seen_date }}{% endif %}</span>

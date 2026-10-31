@@ -134,8 +134,7 @@ private fun FundsArchivedAccounts(archived: List<FinancialAccount>, open: (Strin
 private fun FundsEnvelopeEntry(onClick: () -> Unit) {
     Column(Modifier.padding(top = AppSpacing.sectionGap)) {
         FundsIconRow(FundsRowModel(R.drawable.ic_lucide_layers, stringResource(R.string.envelopes_title),
-            stringResource(R.string.funds_envelopes_entry_body), amount = null), onClick = onClick,
-            iconBackground = LocalThemeVisuals.current.surfaceLilac)
+            stringResource(R.string.funds_envelopes_entry_body), amount = null), onClick = onClick)
     }
 }
 

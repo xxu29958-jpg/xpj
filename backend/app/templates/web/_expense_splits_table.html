@@ -16,7 +16,7 @@
     {% endif %}
     <details class="review-edit-field expense-line" data-review-line{% if not can_write and not (split.member_id or split.amount_yuan or split_errors) %} hidden{% endif %}{% if split_errors or loop.index0 == _tail.last_data + 1 %} open{% endif %}>
       <summary class="product-entry">
-        <span class="product-entry-icon product-entry-icon--lilac"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
+        <span class="product-entry-icon"><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#user-round"/></svg></span>
         <span class="product-entry-copy"><span class="product-entry-heading"><strong data-review-value="split_member_id" data-empty="新增家庭份额">{{ split.account_name or ('原成员' if split.member_id else '新增家庭份额') }}</strong><span class="product-entry-amount">{{ currency_input.currency_symbol }}<span data-review-value="split_amount_yuan" data-empty="—">{{ split.amount_yuan or '—' }}</span></span></span><span>{{ '已停用，原记录保留' if split.disabled else '家庭分摊记录' }}</span></span>
         <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
       </summary>
