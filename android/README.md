@@ -190,6 +190,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_release_apk.ps
 
 长按桌面空白处，在“小组件”中选择“小票夹”：
 
+下列格数为建议尺寸，实际占用会由桌面网格和最小尺寸共同决定。
+
 - **快捷记账**：4×1，提供记账、相册、待办、拍票和模板，支持横向调整。
 - **本月账单**：4×2，提供当前账本本月净支出、笔数、读取时间和快捷入口。
 - **小票待办**：4×2，显示服务端待确认数量、本机待上传数量和同步失败数量，点击进入相应列表。
@@ -211,6 +213,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_release_apk.ps
 可手动刷新；开启数据展示后由一个 WorkManager 定时任务
 每 30 分钟请求更新，打开 App 后返回桌面也会触发刷新，实际后台时机由 Android 调度。
 没有小组件获准显示数据时不安排后台读取。数据组件支持横向、纵向调整，字体较大时可增加高度。
+
+`WidgetCameraNativeJourneyTest` 和 `WidgetPrivacyNativeJourneyTest` 由隔离设备的外部操作脚本单独运行，默认 Connected 套件排除这两项交互测试。相机用例需操作系统相机的取消、快门和完成；隐私用例需临时设备锁、当前测试用户的 widget-bind 授权，并操作真实凭据提示。取消验证后回到桌面再返回配置页，随后完成第二次验证；测试结束须还原测试设备设置。
 
 ## 安全规则
 

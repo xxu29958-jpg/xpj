@@ -19,8 +19,12 @@ val ticketboxSourceFingerprint = MessageDigest.getInstance("SHA-256").run {
     }
     digest().joinToString("") { "%02x".format(it) }
 }
-// Invoked explicitly by the isolated PG/Web/native journey, not the Connected suite.
-val ticketboxCloudJourneyFixture = "com.ticketbox.ui.navigation.NotificationJourneyRuntimeTest"
+// These journeys require an external fixture or native UI driver; invoke them explicitly.
+val ticketboxExplicitJourneyFixtures = listOf(
+    "com.ticketbox.ui.navigation.NotificationJourneyRuntimeTest",
+    "com.ticketbox.ui.navigation.WidgetCameraNativeJourneyTest",
+    "com.ticketbox.widget.WidgetPrivacyNativeJourneyTest",
+).joinToString(",")
 val ticketboxJavaLanguageVersion =
     rootProject.file(".java-version").readText().trim().toIntOrNull()
         ?: error("android/.java-version must contain one Java major version.")
@@ -174,7 +178,7 @@ android {
         versionCode = ticketboxVersionCode
         versionName = ticketboxVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        testInstrumentationRunnerArguments["notClass"] = ticketboxCloudJourneyFixture
+        testInstrumentationRunnerArguments["notClass"] = ticketboxExplicitJourneyFixtures
 
         resValue("string", "app_version_name", ticketboxVersionName)
         resValue("integer", "app_version_code", ticketboxVersionCode.toString())
@@ -834,7 +838,7 @@ fun captureTicketboxConnectedDiscovery(
         "true",
         "-e",
         "notClass",
-        ticketboxCloudJourneyFixture,
+        ticketboxExplicitJourneyFixtures,
         "com.ticketbox.test/androidx.test.runner.AndroidJUnitRunner",
     )
     val exitCode = try {
