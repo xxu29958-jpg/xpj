@@ -101,6 +101,8 @@ def test_overview_empty_ledger_shows_onboarding(web_client: TestClient) -> None:
     assert 'href="/web/import?ledger_id=owner"' in body
     # 零数据模块也给出口径说明而非空白。
     assert "尚未设置额度" in body
+    assert "定一个本月总额后" in body
+    assert 'class="product-button" href="/web/budgets?ledger_id=owner&amp;month=' in body
     assert "还没有分类结构" in body
 
 
