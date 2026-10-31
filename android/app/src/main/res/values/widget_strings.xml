@@ -2,7 +2,7 @@
 <resources>
     <string name="widget_brand">小票夹</string>
     <string name="widget_quick_name">快捷记账</string>
-    <string name="widget_quick_description">从桌面记一笔、上传小票或查看待确认账单。</string>
+    <string name="widget_quick_description">从桌面记账、拍票、上传、使用模板或查看待办。</string>
     <string name="widget_overview_name">本月账单</string>
     <string name="widget_overview_description">本月支出摘要与快捷记账；金额默认隐藏。</string>
     <string name="widget_month_total">%1$s 净支出 · %2$s</string>
@@ -19,7 +19,7 @@
     <string name="widget_cached_at">离线快照 · %1$s</string>
     <string name="widget_configure_hint">显示内容可在设置中调整</string>
     <string name="widget_configure">设置小组件</string>
-    <string name="widget_refresh">刷新本月账单</string>
+    <string name="widget_refresh">刷新小组件</string>
     <string name="widget_configure_title">设置桌面小组件</string>
     <string name="widget_configure_description">把常用操作放在桌面，随手记下每一笔。</string>
     <string name="widget_show_summary">在桌面显示此账本的摘要</string>
