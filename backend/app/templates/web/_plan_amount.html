@@ -1,0 +1,3 @@
+{# 固定支出金额与页面合计同一写法: 账本本币用符号; 按其它币种付款的计划写出币种代码; 币种未记录时只显示数字。
+   需以 `with context` 导入 (读取 home_currency_code / home_currency_symbol)。 #}
+{% macro plan_amount(code, amount) %}{% if code and code == home_currency_code %}{{ amount|money(home_currency_symbol) }}{% else %}{% if code %}{{ code }} {% endif %}{{ amount|grouped }}{% endif %}{% endmacro %}

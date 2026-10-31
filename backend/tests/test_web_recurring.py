@@ -240,6 +240,23 @@ def test_web_recurring_hero_sums_active_items_only_and_ignores_filter(
         assert "2026-09-01" not in hero
 
 
+def test_web_recurring_list_names_currency_only_for_other_currency_plans(
+    web_client: TestClient,
+) -> None:
+    """列表金额与合计同一写法: 账本本币用符号, 外币计划保留币种代码。"""
+    assert create_via_web(web_client, merchant="房租", amount="6000").status_code == 303
+    usd = web_client.post("/web/recurring/create", data={
+        "home_currency_code": "USD", "ledger_id": "owner", "merchant": "云盘订阅",
+        "baseline_amount_yuan": "12", "next_expected_date": "2026-09-08", "idempotency_key": str(uuid4()),
+    }, follow_redirects=False)
+    assert usd.status_code == 303, usd.text
+
+    page = web_client.get("/web/recurring?ledger_id=owner")
+    amounts = re.findall(r'<strong class="product-entry-amount">([^<]+)</strong>', page.text)
+    assert sorted(amounts) == ["USD 12.00/月", "¥6,000.00/月"]
+    assert "CNY 6,000.00" not in page.text
+
+
 def test_web_recurring_candidate_review_form_shows_server_provenance(
     web_client: TestClient,
 ) -> None:
