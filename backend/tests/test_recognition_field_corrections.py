@@ -48,6 +48,9 @@ def test_original_correction_keeps_source_reading_separate_from_recall(
     corrections = [c for c in proposed["recognition_fields"] if c["field"] == field and c["value"] == corrected]
     assert len(corrections) == 1, "Explicit source correction never reaches the next similar original"
     correction = corrections[0]
+    readings = [c for c in proposed["recognition_fields"] if c["field"] == field]
+    assert readings[0]["value"] == original, "History must not displace this original's first reading"
+    assert correction["event_selected"] is False, "Historical values cannot become event draft defaults"
     assert correction["source_reading_value"] == original
     assert correction["selection_intent"] == "bookkeeping", "Accepting a learned value is not a new source annotation"
     assert "纠正" in correction["explanation"] and correction["original_text"] == chosen["original_text"]
@@ -77,3 +80,25 @@ def test_original_correction_keeps_source_reading_separate_from_recall(
     after = client.get(f"/api/expenses/{fresh}", headers=headers).json()
     assert not any(c["field"] == field and c["value"] == corrected for c in after["recognition_fields"])
     assert after["amount_cents"] == 1800 and after["merchant"] == "海棠咖吽"
+
+
+def test_same_literal_on_next_receipt_keeps_1851_before_historical_1857(client, identity):
+    headers = negotiated_headers(client, identity.app_headers)
+    source = _seed(paid=1851)
+    before = client.get(f"/api/expenses/{source}", headers=headers).json()
+    reading = next(c for c in before["recognition_fields"] if c["field"] == "amount_cents" and c["value"] == 1851)
+    _save(client, headers, source, reading, 1857, "original_correction")
+    target = _seed(paid=1851)
+    first = client.get(f"/api/expenses/{target}", headers=headers).json()
+    amounts = [c for c in first["recognition_fields"] if c["field"] == "amount_cents"]
+    assert [c["value"] for c in amounts[:2]] == [1851, 1857]
+    assert amounts[1]["selection_intent"] == "bookkeeping" and not amounts[1]["event_selected"]
+    assert first["original_amount_minor"] == 1851
+    with SessionLocal() as db:
+        origin = db.query(LedgerLearningEvent).filter_by(subject_id=source, signal_type="recognition_field_choice").one()
+        withdraw_feedback(db, tenant_id="owner", public_id=origin.public_id)
+        db.commit()
+    after = client.get(f"/api/expenses/{target}", headers=headers).json()
+    assert not any(c["field"] == "amount_cents" and c["value"] == 1857 for c in after["recognition_fields"])
+    assert after["row_version"] == first["row_version"]
+    assert after["original_amount_minor"] == first["original_amount_minor"] == 1851
