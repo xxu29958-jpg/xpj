@@ -39,10 +39,7 @@ def _replay(db, *, tenant_id, actor_account_id, parser):
         if payload.get("source", "image") != "image" or fact is None:
             result = {"outcome": "unbindable", "reason": "no_image_fact"}
         else:
-            try:
-                result = replay_label(fact, payload, parser)
-            except (ValueError, TypeError, KeyError, IndexError):
-                result = {"outcome": "unbindable", "reason": "invalid_label_or_evidence"}
+            result = replay_label(fact, payload, parser)
         rows.append({**row, **result})
     counts = Counter(row["outcome"] for row in rows)
     return {"schema": "ocr-correction-replay/v1", "parser_version": FIELD_PARSE_VERSION,

@@ -74,6 +74,7 @@ def test_missing_context_and_location_are_not_filled_from_current_settings():
     assert frozen_context({"candidates": []}) is None
     parsed = json.loads(fact.evidence_json)["field_parse"]
     expected = parsed.pop("input_context")
+    expected.pop("timezone_basis")
     assert frozen_context(parsed) == expected
     assert frozen_context({"input_context": {"currency_code": "JPY", "minor_unit_exponent": 2}}) is None
     assert frozen_context({"input_context": {"currency_code": "CNY", "minor_unit_exponent": 2, "timezone_name": None}}) is None
@@ -92,10 +93,31 @@ def test_default_timezone_is_frozen_before_settings_change(monkeypatch):
     snapshot = ocr_fact_snapshot(OcrResult(fact.raw_text, .9, evidence=json.loads(fact.evidence_json)),
         expense=Expense(original_currency_code="CNY", home_currency_code="CNY"))
     assert snapshot.evidence["field_parse"]["input_context"]["timezone_name"] == "Asia/Shanghai"
+    assert snapshot.evidence["field_parse"]["input_context"]["timezone_basis"] == "configured_timezone"
+    assert {item["timezone_basis"] for item in snapshot.evidence["field_parse"]["candidates"]
+        if item["field"] == "expense_time"} == {"configured_timezone"}
     fact.evidence_json = json.dumps(snapshot.evidence)
     label = _label(fact, "expense_time")
     settings.ocr_default_timezone = "UTC"
     assert replay_label(fact, label, parse_receipt_text)["candidate_matches"] >= 1
+
+
+@pytest.mark.parametrize("error", [ValueError, TypeError, KeyError, IndexError])
+def test_candidate_parser_crashes_are_failed_evaluations(error):
+    fact = source_fact()
+    def crashed(*_args, **_kwargs):
+        raise error("candidate parser failed")
+    with pytest.raises(error):
+        replay_label(fact, _label(fact), crashed)
+
+
+def test_malformed_historical_region_is_unbindable_without_running_parser():
+    fact = source_fact()
+    label = _label(fact)
+    label["selected"]["source_location"]["width"] = "invalid"
+    def unexpected(*_args, **_kwargs):
+        pytest.fail("Invalid historical evidence reached the candidate parser")
+    assert replay_label(fact, label, unexpected)["reason"] == "invalid_label_or_evidence"
 
 
 def _seed_choice(*, with_location=True, field="amount_cents"):

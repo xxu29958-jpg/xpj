@@ -448,7 +448,7 @@ def ocr_fact_snapshot(
     overwrite a user-edited draft value.
     """
 
-    timezone_name = (timezone_name or "").strip() or get_settings().ocr_default_timezone
+    effective_timezone = (timezone_name or "").strip() or get_settings().ocr_default_timezone
     parsed, merged, materialization_context = _parse_and_merge_for_expense(
         expense,
         result,
@@ -477,7 +477,8 @@ def ocr_fact_snapshot(
             "reference_time": None,
             "input_context": {"currency_code": source_money[0] if source_money else None,
                 "minor_unit_exponent": source_money[1] if source_money else None,
-                "timezone_name": timezone_name, "reference_time": None},
+                "timezone_name": effective_timezone, "reference_time": None,
+                "timezone_basis": "source_timezone" if (timezone_name or "").strip() else "configured_timezone"},
             "candidates": [asdict(item) for item in parsed.candidates],
             "decisions": [asdict(item) for item in parsed.decisions],
             "events": list(parsed.events),

@@ -94,23 +94,38 @@ def _bindings(fact, candidates, label, location):
     return matches
 
 
-def replay_label(fact, label, parser) -> dict:
+class UnbindableEvidenceError(ValueError):
+    """The historical observation cannot supply the replay's required inputs."""
+
+
+def _historical_bindings(fact, label):
     from app.schemas._recognition_source import RecognitionSourceLocation
 
     evidence = json.loads(fact.evidence_json or "{}")
     old = evidence.get("field_parse", {})
     context = frozen_context(old)
     if context is None:
-        return {"outcome": "unbindable", "reason": "missing_frozen_context"}
+        raise UnbindableEvidenceError("missing_frozen_context")
     selected = label.get("selected") or {}
     location_data = selected.get("source_location")
     if not location_data:
-        return {"outcome": "unbindable", "reason": "missing_label_location"}
+        raise UnbindableEvidenceError("missing_label_location")
     location = RecognitionSourceLocation.model_validate(location_data)
     if location.image_sha256 != evidence.get("input_sha256"):
-        return {"outcome": "unbindable", "reason": "source_identity_mismatch"}
-    parsed = parser(fact.raw_text or "", evidence_blocks=evidence.get("blocks"), **context)
+        raise UnbindableEvidenceError("source_identity_mismatch")
     baseline = _bindings(fact, old.get("candidates", []), label, location)
+    return context, evidence, old, location, baseline
+
+
+def replay_label(fact, label, parser) -> dict:
+    try:
+        context, evidence, old, location, baseline = _historical_bindings(fact, label)
+    except UnbindableEvidenceError as exc:
+        return {"outcome": "unbindable", "reason": str(exc)}
+    except (ValueError, TypeError, KeyError, IndexError):
+        return {"outcome": "unbindable", "reason": "invalid_label_or_evidence"}
+    # Candidate-parser failures are failed evaluations, never bad historical labels.
+    parsed = parser(fact.raw_text or "", evidence_blocks=evidence.get("blocks"), **context)
     current = _bindings(fact, [asdict(item) for item in parsed.candidates], label, location)
     return _binding_comparison(baseline, current, old, parsed)
 
