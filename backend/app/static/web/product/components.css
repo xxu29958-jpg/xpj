@@ -837,8 +837,8 @@ textarea:focus {
 /* file-picker primitive: 原生 file input 常显是唯一 owner — 选中文件名由
    浏览器原生呈现 (无 JS / JS 失败都诚实, 键盘/读屏/no-JS 语义天然正确),
    ::file-selector-button 承担 tonal 按钮外观, 绝不自动提交。
-   consumer: 收件上传。specificity 借 body.product-shell 盖过通用
-   input:not(...) 规则, 不动 legacy import 页, 不用 !important。 */
+   consumers: 收件上传、原件补回、建债原账单、手动记账原件、CSV 导入。specificity 借
+   body.product-shell 盖过通用 input:not(...) 规则, 不用 !important。 */
 .file-picker {
     display: grid;
     gap: var(--space-2);
