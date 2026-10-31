@@ -56,6 +56,9 @@ import com.ticketbox.ui.design.AppRadius
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTypography
 import com.ticketbox.ui.design.LocalThemeVisuals
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private object LedgerItemLayout {
@@ -87,7 +90,22 @@ internal data class LedgerExpenseItemState(
     // Server-owned net-state of this bill's lineage (chip copy key); Confirmed
     // renders no chip. Presentation only — never feeds sums.
     val lineageStatus: ExpenseLineageStatus = ExpenseLineageStatus.Confirmed,
+    // The day group's server stream date: the header already names that day.
+    val groupDay: String? = null,
 )
+
+/** Inside a day group the header names the day: keep the clock, spell out a date only when it differs. */
+@Composable
+private fun ledgerRowClockText(state: LedgerExpenseItemState): String {
+    val local = com.ticketbox.ui.components.expenseKnownInstant(state.expense)
+        ?.let { value -> runCatching { Instant.parse(value) }.recoverCatching { OffsetDateTime.parse(value).toInstant() }.getOrNull() }
+        ?.atZone(ZoneId.systemDefault())
+    return if (local != null && local.toLocalDate().toString() == state.groupDay) {
+        LedgerItemLayout.RowTimeFormatter.format(local)
+    } else {
+        com.ticketbox.ui.components.expenseClockLabel(state.expense).asString()
+    }
+}
 
 internal data class LedgerExpenseItemActions(
     val onOpen: () -> Unit,
@@ -108,9 +126,14 @@ internal data class LedgerExpenseItemActions(
  */
 @Composable
 internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? = null) {
-    val metaText = state.previewText
-        ?.let { stringResource(R.string.ledger_day_count_with_preview, state.itemCount, it) }
-        ?: stringResource(R.string.ledger_day_count, state.itemCount)
+    // Expanded days show their rows right below; the count only stands in for rows that are folded away.
+    val metaText = if (state.expanded) {
+        null
+    } else {
+        state.previewText
+            ?.let { stringResource(R.string.ledger_day_count_with_preview, state.itemCount, it) }
+            ?: stringResource(R.string.ledger_day_count, state.itemCount)
+    }
     Column(modifier = Modifier.fillMaxWidth()) {
         // 票带穿孔:日期组之间的虚线撕裂口(首组即票头金额区与明细联的撕口);
         // 声明式 dash,行间仍是发丝实线,只有组间穿孔。
@@ -166,7 +189,7 @@ internal fun LedgerDayHeader(state: LedgerDayHeaderUi, onToggle: (() -> Unit)? =
 @Composable
 private fun LedgerDayHeaderCopy(
     state: LedgerDayHeaderUi,
-    metaText: String,
+    metaText: String?,
     modifier: Modifier,
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
@@ -177,7 +200,7 @@ private fun LedgerDayHeaderCopy(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(
+        if (metaText != null) Text(
             text = metaText,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
@@ -282,7 +305,7 @@ internal fun LedgerExpenseCard(
                             LedgerLineageChip(status = state.lineageStatus)
                         }
                         Text(
-                            text = com.ticketbox.ui.components.expenseClockLabel(expense).asString(),
+                            text = ledgerRowClockText(state),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 1,
@@ -339,7 +362,7 @@ internal fun LedgerExpenseListRow(
 ) {
     val expense = state.expense
     val rowMetrics = AppDensity.rowMetrics(AppListDensity.Compact)
-    val timeText = com.ticketbox.ui.components.expenseClockLabel(expense).asString()
+    val timeText = ledgerRowClockText(state)
     val metaText = stringResource(R.string.ledger_item_meta, timeText, expense.category)
     Column(
         modifier = Modifier
@@ -452,7 +475,7 @@ internal fun LedgerExpenseTableRow(
                             LedgerLineageChip(status = state.lineageStatus)
                         }
                         Text(
-                            text = com.ticketbox.ui.components.expenseClockLabel(expense).asString(),
+                            text = ledgerRowClockText(state),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelSmall,
                             maxLines = 1,

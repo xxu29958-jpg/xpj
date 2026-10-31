@@ -89,7 +89,7 @@ internal fun PendingTop(
             Text(
                 modifier = Modifier.weight(1f),
                 text = when {
-                    pendingCount > 0 -> stringResource(R.string.pending_top_subtitle_count, pendingCount)
+                    pendingCount > 0 -> stringResource(R.string.pending_top_subtitle_queue)
                     state.readOnly -> stringResource(R.string.pending_top_subtitle_empty_readonly)
                     else -> stringResource(R.string.pending_top_subtitle_empty)
                 },
