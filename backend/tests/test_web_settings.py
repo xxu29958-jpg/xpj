@@ -67,6 +67,23 @@ def test_each_role_can_find_settings_and_rename_its_own_device(browser, role):
     assert "书房浏览器" in web.get(response.headers["location"]).text
 
 
+def test_device_list_leads_with_this_device_and_ends_with_stopped_records(browser):
+    web, token = browser
+    account_id, _, current_public_id = _session_device(token)
+    with SessionLocal() as db:
+        stopped = Device(account_id=account_id, device_name="旧手机", platform="android", revoked_at=now_utc())
+        host = Device(account_id=account_id, device_name="书房电脑", platform="windows")
+        db.add_all([stopped, host])
+        db.commit()
+        stopped_id, host_id = stopped.public_id, host.public_id
+    page = web.get("/web/settings")
+    assert page.status_code == 200, page.text
+    order = re.findall(r'data-device-id="([^"]+)"', page.text)
+    assert order[0] == current_public_id and order[-1] == stopped_id
+    assert order.index(host_id) < order.index(stopped_id)
+    assert "Windows 电脑 · 已连接" in page.text and ">windows " not in page.text
+
+
 def test_unconfirmed_or_current_device_revoke_has_no_effect(browser):
     web, token = browser
     _, device_id, public_id = _session_device(token)

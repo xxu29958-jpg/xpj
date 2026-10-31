@@ -25,7 +25,7 @@ from app.version import BACKEND_VERSION, STATIC_ASSET_VERSION
 router = APIRouter(prefix="/web/settings", tags=["web-app"])
 _MESSAGES = {"renamed": "设备名称已保存。", "revoked": "设备已停用，原登录和上传链接已失效。",
              "deleted": "已移除停用的设备记录，账本中的记录仍然保留。", "account-renamed": "账号名称已保存。"}
-_PLATFORMS = {"web": "浏览器", "android": "Android", "iphone": "iPhone", "desktop": "桌面管理器"}
+_PLATFORMS = {"web": "浏览器", "android": "Android", "iphone": "iPhone", "desktop": "桌面管理器", "windows": "Windows 电脑"}
 
 
 @dataclass(frozen=True)
@@ -67,7 +67,9 @@ def _render_settings(request: Request, db: Session, *, error: str = "", status_c
     principal = _principal(request)
     profile = account_profile_service.read_profile(db, principal)
     principal = replace(principal, account_name=profile.display_name)
-    devices = owner_device_service.list_my_devices(db, principal)
+    # 展示顺序: 正在用的这台在前, 其次仍连接的设备, 已停用的记录最后; 同组内保持连接先后。
+    devices = sorted(owner_device_service.list_my_devices(db, principal),
+                     key=lambda item: (not item.is_current, bool(item.summary.revoked_at)))
     current_platform = next((item.summary.platform for item in devices if item.is_current), "")
     ctx = _settings_context(request, db, principal)
     ctx.update(principal=principal, devices=devices, current_platform=current_platform, platforms=_PLATFORMS,
