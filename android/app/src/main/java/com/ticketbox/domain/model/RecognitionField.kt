@@ -11,6 +11,7 @@ data class RecognitionFieldChoice(
     @param:Json(name = "parser_version") val parserVersion: String,
     val source: String = "image",
     val intent: String = "candidate",
+    val presentation: String? = null,
 )
 
 @JsonClass(generateAdapter = true)
@@ -35,6 +36,7 @@ data class RecognitionFieldCandidate(
     @param:Json(name = "source_location") val sourceLocation: RecognitionSourceLocation? = null,
     // The parser's reading before personal recall replaced `value`; null when the server did not send it.
     @param:Json(name = "source_reading_value") val sourceReadingValue: String? = null,
+    val presentation: String? = null,
 ) {
-    fun choice() = RecognitionFieldChoice(field, id, evidencePublicId, parserVersion, source, selectionIntent)
+    fun choice() = RecognitionFieldChoice(field, id, evidencePublicId, parserVersion, source, selectionIntent, presentation)
 }

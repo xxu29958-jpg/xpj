@@ -10,6 +10,7 @@ data class RecognitionTimeChoice(
     @param:Json(name = "parser_version") val parserVersion: String,
     val source: String,
     val intent: String = "candidate",
+    val presentation: String? = null,
 )
 
 /** Read-only source evidence. Only a deliberate choice changes the existing edit draft. */
@@ -42,4 +43,5 @@ data class RecognitionTimeCandidate(
     @param:Json(name = "event_id") val eventId: String? = null,
     @param:Json(name = "event_selected") val eventSelected: Boolean = false,
     @param:Json(name = "source_location") val sourceLocation: RecognitionSourceLocation? = null,
+    val presentation: String? = null,
 )

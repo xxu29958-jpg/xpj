@@ -30,6 +30,7 @@ from app.services.original_text_feedback_service import record_original_text_fee
 from app.services.pending_suggestion_service import record_category_choice
 from app.services.recognition_choice_service import record_time_choice
 from app.services.recognition_field_service import record_field_choices
+from app.services.recognition_miss_service import record_unmatched_saves, saved_readings
 from app.services.resource_audit import record_resource_action
 from app.services.soft_delete_policy import SOFT_DELETE_RETENTION
 from app.services.tag_service import sync_expense_tags
@@ -116,6 +117,7 @@ def update_expense(
     amount_before = expense.amount_cents
     original_before = funding_money_identity(expense)
     category_before, merchant_before = expense.category, expense.merchant
+    readings_before = saved_readings(expense)
 
     apply_expense_fields_to_claimed_row(
         db,
@@ -130,8 +132,10 @@ def update_expense(
     if payload.category is not None:
         record_category_choice(db, expense=expense, previous_category=category_before, previous_merchant=merchant_before,
             actor_account_id=actor_account_id, choice=payload.category_choice, decision_public_id=payload.category_decision_public_id)
-    record_time_choice(db, expense=expense, choice=payload.recognition_time_choice, actor_account_id=actor_account_id)
-    record_field_choices(db, expense=expense, choices=payload.recognition_field_choices, actor_account_id=actor_account_id)
+    time_recorded = record_time_choice(db, expense=expense, choice=payload.recognition_time_choice, actor_account_id=actor_account_id)
+    fields_recorded = record_field_choices(db, expense=expense, choices=payload.recognition_field_choices, actor_account_id=actor_account_id)
+    record_unmatched_saves(db, expense=expense, before=readings_before, actor_account_id=actor_account_id,
+        recorded_fields=fields_recorded | ({"expense_time"} if time_recorded else set()))
     record_original_text_feedback(db, expense=expense, annotations=payload.original_text_feedback, actor_account_id=actor_account_id)
 
     if commit:

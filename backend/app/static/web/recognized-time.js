@@ -69,6 +69,7 @@ function recordSourceChoice(form, candidate, eventDraft) {
     }
     input.value = JSON.stringify({evidence_public_id: candidate.evidence_public_id,
       candidate_id: candidate.id, parser_version: candidate.parser_version, source: candidate.source,
+      ...(candidate.presentation ? {presentation: candidate.presentation} : {}),
       intent: eventDraft ? "bookkeeping" : candidate.requires_year ? "original_correction" : "candidate"});
     input.dispatchEvent(new Event("input", {bubbles: true}));
   }

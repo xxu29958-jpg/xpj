@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -32,6 +33,8 @@ class BenchmarkInput:
 class Label:
     state: str
     value: object = None
+    source_region: tuple[float, float, float, float] | None = None
+    source_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,7 @@ class Fixture:
     inputs: BenchmarkInput
     labels: dict[str, Label]
     identity: dict[str, object]
+    app_tag: str = "unknown"
 
 
 def _validate_label(name: str, data: dict) -> Label:
@@ -65,7 +69,22 @@ def _validate_label(name: str, data: dict) -> Label:
         _validate_time(value)
     elif not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name}: present requires nonempty text")
-    return Label(state, value)
+    region, source_text = _source_annotation(name, data)
+    return Label(state, value, region, source_text)
+
+
+def _source_annotation(name: str, data: dict) -> tuple[tuple | None, str | None]:
+    region = data.get("source_region")
+    if region is not None:
+        if (not isinstance(region, list) or len(region) != 4
+                or any(type(v) not in (int, float) or not math.isfinite(v) for v in region)
+                or not (0 <= region[0] < region[2] and 0 <= region[1] < region[3])):
+            raise ValueError(f"{name}: source_region requires pixel [left, top, right, bottom]")
+        region = tuple(region)
+    source_text = data.get("source_text")
+    if source_text is not None and (not isinstance(source_text, str) or not source_text.strip()):
+        raise ValueError(f"{name}: source_text must be nonempty text")
+    return region, source_text
 
 
 def _validate_time(value: object) -> None:
@@ -118,6 +137,9 @@ def _read_fixture(entry: Path) -> Fixture:
     if data.get("split") not in {"diagnostic", "development", "holdout"}:
         raise ValueError(f"{entry.name}: invalid split")
     inputs = _read_input(entry, data)
+    app_tag = data.get("app_tag", "unknown")
+    if not isinstance(app_tag, str) or not app_tag.strip():
+        raise ValueError(f"{entry.name}: app_tag must be nonempty text")
     labels = {name: _validate_label(name, truth["fields"].get(name, {"state": "unlabeled"}))
               for name in FIELDS}
     identity = {name: data[name] for name in ("sample_id", "group_id", "source_kind", "split", "authorization")}
@@ -125,14 +147,30 @@ def _read_fixture(entry: Path) -> Fixture:
                     image_sha256=inputs.image_sha256,
                     annotator=truth["annotator"], annotation_version=truth["annotation_version"])
     return Fixture(data["sample_id"], data["group_id"], data["source_kind"], data["split"],
-                   data["authorization"], inputs, labels, identity)
+                   data["authorization"], inputs, labels, identity, app_tag)
 
 
-def discover_fixtures(directory: Path) -> list[Fixture]:
+def _selected_inputs(directory: Path, split: str | None) -> list[Path]:
     if not directory.is_dir():
         raise ValueError("fixture directory does not exist")
-    fixtures = [_read_fixture(entry) for entry in sorted(directory.iterdir())
-                if entry.is_dir() and (entry / "ground_truth.json").is_file()]
+    entries = [entry for entry in sorted(directory.iterdir())
+               if entry.is_dir() and (entry / "ground_truth.json").is_file()]
+    # Inspect input metadata only before selecting a partition. In particular,
+    # development evaluation never opens or hashes a holdout annotation/image.
+    metadata = [(entry, json.loads((entry / "input.json").read_text(encoding="utf-8"))) for entry in entries]
+    declared_groups: dict[str, str] = {}
+    declared_images: dict[str, str] = {}
+    for _entry, data in metadata:
+        if declared_groups.setdefault(data["group_id"], data["split"]) != data["split"]:
+            raise ValueError(f"event group crosses splits: {data['group_id']}")
+        digest = data.get("image_sha256")
+        if digest and declared_images.setdefault(digest, data["group_id"]) != data["group_id"]:
+            raise ValueError("identical images cannot be declared independent event groups")
+    return [entry for entry, data in metadata if split is None or data["split"] == split]
+
+
+def discover_fixtures(directory: Path, *, split: str | None = None) -> list[Fixture]:
+    fixtures = [_read_fixture(entry) for entry in _selected_inputs(directory, split)]
     if not fixtures:
         raise ValueError("no fixtures evaluated")
     names: set[str] = set()

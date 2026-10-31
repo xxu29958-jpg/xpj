@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from app.models import LedgerLearningEvent
 from app.schemas._recognition_fields import RecognitionFieldCandidate
+from app.services import recognition_presentation as presentation
 from app.services.learning_service import EventDraft, read_ocr_facts, record_event
 from app.services.learning_service._algorithm_registry import RECOGNITION_FIELD_CHOICE
 from app.services.learning_service._source_eligibility import _event_payload
@@ -12,6 +13,7 @@ from app.services.notification_field_service import field_case_key, notification
 from app.services.recognition_amount_case import amount_case_contexts
 from app.services.recognition_decision_service import bind_source_choice
 from app.services.recognition_memory_service import time_candidate_key
+from app.services.recognition_miss_service import miss_metadata
 from app.services.recognition_source_service import candidate_source_location
 from app.services.recognition_time_service import _AMOUNT_ROLES, _event_prefixes
 
@@ -48,7 +50,7 @@ def review_fields(fact, candidates) -> list[RecognitionFieldCandidate]:
             kept.append(item)
         elif item.event_selected and not kept[index].event_selected:
             kept[index] = kept[index].model_copy(update={"event_selected": True})
-    return kept
+    return presentation.source_order(fact, kept)
 
 
 def _same_reading(item, other, spans, raw_text):
@@ -100,8 +102,9 @@ def _field_learning(choice, candidate, final):
 
 
 def record_field_choices(db, *, expense, choices, actor_account_id):
+    recorded = set()
     if not choices or actor_account_id is None:
-        return
+        return recorded
     fact = read_ocr_facts(db, tenant_id=expense.tenant_id, expenses=[expense]).get(expense.id)
     notification = notification_field_sources(db, tenant_id=expense.tenant_id,
         actor_account_id=actor_account_id, expense_ids=[expense.id]).get(expense.id)
@@ -113,6 +116,8 @@ def record_field_choices(db, *, expense, choices, actor_account_id):
             and item.parser_version == choice.parser_version and item.source == choice.source), None)
         if candidate is not None:
             _record_field_choice(db, expense, choice, candidate, origin, actor_account_id)
+            recorded.add(choice.field)
+    return recorded
 
 
 def _record_field_choice(db, expense, choice, candidate, fact, actor) -> None:
@@ -124,13 +129,19 @@ def _record_field_choice(db, expense, choice, candidate, fact, actor) -> None:
     final = field_value(expense, choice.field, candidate.currency_code)
     raw_candidate = next(item for item in json.loads(fact.evidence_json)["field_parse"]["candidates"] if item["id"] == candidate.id)
     payload = {**choice.model_dump(), **_field_learning(choice, candidate, final),
-        "selected": candidate.model_dump(exclude={"source_reading_value"}), "final_value": final,
+        "selected": candidate.model_dump(exclude={"source_reading_value", "presentation"}), "final_value": final,
+        "presentation": presentation.verified_presentation(choice, presentation.source_order(fact, recognition_fields(fact))),
         "_algorithm_version": RECOGNITION_FIELD_CHOICE.current_version, "_action_outcome": "committed",
         "_case_key": field_case_key(fact), "_candidate_key": time_candidate_key(fact.raw_text, raw_candidate),
         "_amount_context": amount_case_contexts(fact).get(candidate.id) if choice.field == "amount_cents" else None,
         "_capture_context": getattr(fact, "capture_context", None),
         "_feedback_revision": int(_event_payload(prior).get("_feedback_revision", 1)) + 1 if prior else 1,
         "_supersedes_event_public_id": prior.public_id if prior else None}
+    reading = ({"value": final, "currency_code": candidate.currency_code,
+                "minor_unit_exponent": candidate.minor_unit_exponent} if choice.field == "amount_cents" else final)
+    miss = miss_metadata(fact, choice.field, reading, payload["intent"])
+    if miss is not None:
+        payload["_candidate_miss"] = miss
     decision_id = bind_source_choice(db, expense, actor, RECOGNITION_FIELD_CHOICE, choice, payload)
     event = record_event(db, EventDraft(tenant_id=expense.tenant_id, subject_kind="expense", subject_id=expense.id,
         decision_id=decision_id,

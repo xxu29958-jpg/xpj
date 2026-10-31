@@ -71,8 +71,8 @@ def test_choice_survives_replay_and_reorders_a_new_case_then_withdraws(client, i
         db.commit()
         cleanup_expired_learning_tables(db, tenant_id="owner")
     later = client.get(f"/api/expenses/{second}", headers=identity.app_headers).json()
-    assert later["recognition_time"]["candidates"][0]["role"] == "consumption"
-    assert "明确选择" in later["recognition_time"]["candidates"][0]["explanation"]
+    assert later["recognition_time"]["candidates"][0]["role"] == "payment"
+    assert "明确选择" in later["recognition_time"]["candidates"][-1]["explanation"]
     for field in ("expense_time", "accounting_time", "amount_cents", "original_amount_minor", "status", "row_version"):
         assert later[field] == original[field]
     with SessionLocal() as db:
@@ -96,9 +96,9 @@ def test_accepting_a_remembered_time_does_not_survive_withdrawal_as_a_new_label(
     first, second = create(18, "a"), create(19, "b")
     assert _choose(client, identity, first)[0].status_code == 200
     proposed = client.get(f"/api/expenses/{second}", headers=identity.app_headers).json()
-    assert "你曾" in proposed["recognition_time"]["candidates"][0]["explanation"]
+    remembered_index = next(i for i, item in enumerate(proposed["recognition_time"]["candidates"]) if "你曾" in item["explanation"])
     # Older clients send ordinary candidate intent even when adopting memory.
-    response, *_ = _choose(client, identity, second, index=0)
+    response, *_ = _choose(client, identity, second, index=remembered_index)
     assert response.status_code == 200 and response.json()["expense_time"] is not None
     with SessionLocal() as db:
         original = db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == first,
@@ -172,7 +172,7 @@ def test_replaced_source_fact_stops_contributing_even_with_same_image(client, id
     first, second = _image(identity), _image(identity, day=19, family="b")
     assert _choose(client, identity, first)[0].status_code == 200
     url = f"/api/expenses/{second}"
-    assert "明确选择" in client.get(url, headers=identity.app_headers).json()["recognition_time"]["candidates"][0]["explanation"]
+    assert "明确选择" in client.get(url, headers=identity.app_headers).json()["recognition_time"]["candidates"][-1]["explanation"]
     with SessionLocal() as db:
         resolve_write_capability(db)
         source = db.get(Expense, first)
@@ -210,7 +210,7 @@ def test_changed_printed_offset_invalidates_the_original_time_choice(client, ide
     second = _image(identity, day=19, family="b", printed_offset="+08:00")
     response, url, _, body, _ = _choose(client, identity, first)
     assert response.status_code == 200, response.json()
-    assert "明确选择" in client.get(f"/api/expenses/{second}", headers=identity.app_headers).json()["recognition_time"]["candidates"][0]["explanation"]
+    assert "明确选择" in client.get(f"/api/expenses/{second}", headers=identity.app_headers).json()["recognition_time"]["candidates"][-1]["explanation"]
     body.pop("recognition_time_choice")
     body["expected_row_version"] = response.json()["row_version"]
     body["time_input"]["source_utc_offset_seconds"] = 32400
@@ -245,7 +245,8 @@ def test_pending_list_reads_time_cases_once_and_refreshes_after_withdrawal(clien
     assert response.status_code == 200, response.text
     rows = {row["id"]: row for row in response.json() if row["id"] in targets}
     assert len(rows) == 12
-    assert all(row["recognition_time"]["candidates"][0]["role"] == "consumption" for row in rows.values())
+    assert all(row["recognition_time"]["candidates"][0]["role"] == "payment" for row in rows.values())
+    assert all("明确选择" in row["recognition_time"]["candidates"][-1]["explanation"] for row in rows.values())
     assert all(row["amount_cents"] == 2500 and row["status"] == "pending" for row in rows.values())
     assert len(reads) == 1, f"One pending refresh scanned the actor's time cases {len(reads)} times"
     with SessionLocal() as db:

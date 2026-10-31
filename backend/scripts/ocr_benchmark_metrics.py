@@ -58,6 +58,8 @@ class ScoreRow:
     scores: dict[str, bool | None]
     labels: dict[str, str]
     error: str | None = None
+    app_tag: str = "unknown"
+    field_analysis: dict = field(default_factory=dict)
 
 
 def _percentile(values: list[float], percentile: float) -> float | None:
@@ -89,6 +91,19 @@ def summarize(rows: list[ScoreRow]) -> dict:
             "fields": {name: _field_counts(rows, name) for name in FIELDS}}
 
 
+def _stage_report_sections(rows: list[ScoreRow]) -> dict:
+    from scripts.ocr_benchmark_stages import stage_summary
+
+    providers = sorted({row.provider for row in rows})
+    grouped = {provider: [row for row in rows if row.provider == provider] for provider in providers}
+    tags = sorted({row.app_tag for row in rows})
+    return {
+        "stage_analysis": {provider: stage_summary(group) for provider, group in grouped.items()},
+        "app_stage_analysis": {f"{provider}/{tag}": stage_summary([row for row in group if row.app_tag == tag])
+                               for provider, group in grouped.items() for tag in tags},
+    }
+
+
 @dataclass
 class BenchmarkReport:
     manifest: list[dict]
@@ -103,13 +118,14 @@ class BenchmarkReport:
         summaries = {provider: summarize([row for row in self.rows if row.provider == provider]) for provider in providers}
         slices = {}
         for provider in providers:
-            for dimension in ("source_kind", "split"):
+            for dimension in ("source_kind", "split", "app_tag"):
                 values = {getattr(row, dimension) for row in self.rows if row.provider == provider}
                 for value in sorted(values):
                     slices[f"{provider}/{dimension}/{value}"] = summarize([
                         row for row in self.rows if row.provider == provider and getattr(row, dimension) == value])
         return {"schema_version": 2, "evaluation_completed": not self.failed, "product_qualified": False,
                 "manifest": self.manifest, "providers": summaries, "slices": slices,
+                **_stage_report_sections(self.rows),
                 "rows": [asdict(row) for row in self.rows]}
 
     def to_markdown(self) -> str:

@@ -24,6 +24,7 @@ class RecognitionTimeCandidate(BaseModel):
     event_id: str | None = None
     event_selected: bool = False
     source_location: RecognitionSourceLocation | None = None
+    presentation: str | None = None
 
 
 class RecognitionTimeResponse(BaseModel):

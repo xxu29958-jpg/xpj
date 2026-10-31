@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, LedgerLearningEvent
@@ -21,7 +21,12 @@ from app.services.learning_service._algorithm_registry import (
     CATEGORY_SUGGESTION,
     canonical_marker_hash,
 )
-from app.services.learning_service._category_memory import independent_category_rejects, personal_category_counts
+from app.services.learning_service._category_memory import (
+    CategoryMerchantScope,
+    category_merchant_filter,
+    independent_category_rejects,
+    personal_category_counts,
+)
 from app.services.learning_service._policy import policy_enabled
 from app.services.learning_service._source_eligibility import eligible_feedback
 from app.services.ledger_calendar_service import current_calendar
@@ -61,7 +66,7 @@ def _count_recent_rejects(
     db: Session,
     *,
     tenant_id: str,
-    merchant: str,
+    merchant_filter,
     category: str,
     horizon_days: int, actor_account_id: int | None = None,
     expense_id: int | None = None,
@@ -94,7 +99,7 @@ def _count_recent_rejects(
             == CATEGORY_SUGGESTION.decision_type
         )
         .where(LedgerLearningEvent.signal_hash == indexed_hash)
-        .where(func.lower(func.trim(Expense.merchant)) == merchant)
+        .where(merchant_filter)
         .order_by(LedgerLearningEvent.id.desc()).limit(200)
     ))
     valid = eligible_feedback(db, tenant_id=tenant_id, events=events, actor_account_id=actor_account_id)
@@ -112,6 +117,7 @@ def compute_category_suggestion(
     reject_threshold: int = DEFAULT_REJECT_THRESHOLD,
     feedback_horizon_days: int = DEFAULT_FEEDBACK_HORIZON_DAYS,
     actor_account_id: int | None = None,
+    merchant_scope: CategoryMerchantScope | None = None,
 ) -> CategorySuggestion | None:
     """Return the historically-most-frequent category for ``merchant``.
 
@@ -128,7 +134,9 @@ def compute_category_suggestion(
     observed_at = now_utc()
     current_date = observed_at.astimezone(zone).date()
     cutoff = current_date - timedelta(days=max(look_back_days, 0))
-    rows = personal_category_counts(db, tenant_id=tenant_id, merchant=normalised,
+    merchant_filter = category_merchant_filter(db, tenant_id=tenant_id, merchant=merchant,
+        legacy_key=normalised, scope=merchant_scope)
+    rows = personal_category_counts(db, tenant_id=tenant_id, merchant_filter=merchant_filter,
         actor_account_id=actor_account_id, expense_id=expense_id, cutoff=cutoff,
         current_date=current_date, observed_at=observed_at)
     if not rows:
@@ -143,7 +151,7 @@ def compute_category_suggestion(
     rejects = _count_recent_rejects(
         db,
         tenant_id=tenant_id,
-        merchant=normalised,
+        merchant_filter=merchant_filter,
         category=top_category,
         horizon_days=feedback_horizon_days, actor_account_id=actor_account_id,
         expense_id=expense_id,
