@@ -13,7 +13,7 @@ from app.services.learning_service._policy import policy_enabled
 from app.services.learning_service._source_eligibility import _event_payload, eligible_feedback
 from app.services.notification_field_service import field_case_key, notification_field_sources
 from app.services.recognition_amount_case import amount_case_contexts
-from app.services.recognition_decision_service import reconcile_image_decision
+from app.services.recognition_decision_service import reconcile_image_decision, source_learning_window_predicate
 from app.services.recognition_field_service import recognition_fields, review_fields
 from app.services.recognition_memory_service import time_candidate_key
 from app.services.time_service import now_utc
@@ -33,7 +33,8 @@ def load_field_memory(db, *, tenant_id, actor_account_id, expense_ids):
     entry = RECOGNITION_FIELD_CHOICE
     events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == tenant_id,
         LedgerLearningEvent.actor_account_id == actor_account_id, LedgerLearningEvent.signal_type == entry.decision_type,
-        LedgerLearningEvent.created_at <= now_utc()).order_by(LedgerLearningEvent.id.desc()).limit(200)))
+        LedgerLearningEvent.created_at <= now_utc(), source_learning_window_predicate())
+        .order_by(LedgerLearningEvent.id.desc()).limit(200)))
     memory = FieldMemory(cases=eligible_feedback(db, tenant_id=tenant_id, events=events, actor_account_id=actor_account_id),
         notification_sources=notification_field_sources(db, tenant_id=tenant_id,
             actor_account_id=actor_account_id, expense_ids=expense_ids),
