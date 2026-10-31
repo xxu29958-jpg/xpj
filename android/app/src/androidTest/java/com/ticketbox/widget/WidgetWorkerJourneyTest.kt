@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Intent
 import android.os.SystemClock
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
@@ -81,17 +82,21 @@ class WidgetWorkerJourneyTest {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId))
         try {
             val deadline = SystemClock.elapsedRealtime() + 5_000
-            var root = instrumentation.uiAutomation.rootInActiveWindow
-            while (SystemClock.elapsedRealtime() < deadline && root?.findAccessibilityNodeInfosByText("已连接账本").isNullOrEmpty()) {
+            var labels = configurationLabels(instrumentation.uiAutomation.rootInActiveWindow)
+            while (SystemClock.elapsedRealtime() < deadline && "已连接账本" !in labels) {
                 SystemClock.sleep(50)
-                root = instrumentation.uiAutomation.rootInActiveWindow
+                labels = configurationLabels(instrumentation.uiAutomation.rootInActiveWindow)
             }
-            assertFalse(root?.findAccessibilityNodeInfosByText("已连接账本").isNullOrEmpty())
-            assertTrue(requireNotNull(root).findAccessibilityNodeInfosByText("组件测试账本").isEmpty())
+            assertTrue("Configuration labels: $labels", "已连接账本" in labels)
+            assertFalse("组件测试账本" in labels)
         } finally {
             instrumentation.runOnMainSync { activity.finish() }
         }
     }
+
+    private fun configurationLabels(node: AccessibilityNodeInfo?): List<String> = if (node == null) emptyList() else
+        listOfNotNull(node.text?.toString(), node.contentDescription?.toString()) +
+            (0 until node.childCount).flatMap { configurationLabels(node.getChild(it)) }
 
     private fun text(id: Int): String {
         var result = ""
