@@ -17,6 +17,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -134,7 +135,7 @@ class _ProductHandler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self) -> None:
-        server: _ProductBackend = self.server  # type: ignore[assignment]
+        server = cast(_ProductBackend, self.server)
         server.seen.append(self.path)
         path = urllib.parse.urlsplit(self.path).path
         if path == "/web":

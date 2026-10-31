@@ -38,7 +38,7 @@ from contextlib import suppress
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from backend_manager.app_controller import ManagerShuttingDownError
 from backend_manager.product_data import ProductDataError
@@ -890,9 +890,9 @@ class _Handler(BaseHTTPRequestHandler):
     def _serve_unrouted(self, parsed_path: urllib.parse.SplitResult) -> None:
         # Edge app windows take their window and taskbar icon from /favicon.ico;
         # without it Windows shows Edge's generic globe for the Manager.
-        srv: ControlServer = self.server  # type: ignore[assignment]
-        if parsed_path.path == "/favicon.ico" and not parsed_path.query and srv.window_icon is not None:
-            self._send(200, srv.window_icon, "image/x-icon")
+        window_icon = cast(ControlServer, self.server).window_icon
+        if parsed_path.path == "/favicon.ico" and not parsed_path.query and window_icon is not None:
+            self._send(200, window_icon, "image/x-icon")
         else:
             self._send(404, b"not found", "text/plain; charset=utf-8")
 
