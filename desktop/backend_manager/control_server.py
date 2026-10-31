@@ -843,13 +843,6 @@ class _Handler(BaseHTTPRequestHandler):
             self._serve_web_bridge()
         elif parsed_path.path == "/owner" or parsed_path.path.startswith("/owner/"):
             self._serve_owner_shortcut(parsed_path.path)
-        elif parsed_path.path == "/favicon.ico" and not parsed_path.query:
-            # Edge app windows take their window and taskbar icon from the page favicon;
-            # without one Windows shows Edge's generic globe for the Manager.
-            if srv.window_icon is None:
-                self._send(404, b"not found", "text/plain; charset=utf-8")
-            else:
-                self._send(200, srv.window_icon, "image/x-icon")
         elif parsed_path.path in ("/", "/index.html") and not parsed_path.query:
             if not srv.browser_session_valid(
                 self.headers.get("Cookie"),
@@ -891,6 +884,15 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(403, b"forbidden", "text/plain; charset=utf-8")
                 return
             self._send_json(srv.controller.status())
+        else:
+            self._serve_unrouted(parsed_path)
+
+    def _serve_unrouted(self, parsed_path: urllib.parse.SplitResult) -> None:
+        # Edge app windows take their window and taskbar icon from /favicon.ico;
+        # without it Windows shows Edge's generic globe for the Manager.
+        srv: ControlServer = self.server  # type: ignore[assignment]
+        if parsed_path.path == "/favicon.ico" and not parsed_path.query and srv.window_icon is not None:
+            self._send(200, srv.window_icon, "image/x-icon")
         else:
             self._send(404, b"not found", "text/plain; charset=utf-8")
 
