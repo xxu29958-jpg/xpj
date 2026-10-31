@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.work.WorkManager
 import com.ticketbox.R
 import com.ticketbox.TicketboxApplication
 import com.ticketbox.security.LocalSessionIdentity
@@ -38,6 +39,7 @@ class WidgetWorkerJourneyTest {
             WidgetUpdateWorker.enqueue(app)
             awaitText(R.id.widget_amount, "¥7,000")
             assertTrue(text(R.id.widget_title).contains("JPY"))
+            assertSettledRefresh(server)
             val readTime = text(R.id.widget_updated).substringAfter("更新于 ")
             server.close()
             WidgetUpdateWorker.enqueue(app)
@@ -49,6 +51,7 @@ class WidgetWorkerJourneyTest {
             assertEquals(app.getString(R.string.widget_brand), text(R.id.widget_ledger))
             app.container.sessionStore.clearSession()
             awaitText(R.id.widget_amount, app.getString(R.string.widget_bind_first))
+            awaitNoPeriodicRefresh()
         } finally {
             server.close()
             WidgetPreferences(app).remove(intArrayOf(widgetId))
@@ -81,6 +84,32 @@ class WidgetWorkerJourneyTest {
         val deadline = SystemClock.elapsedRealtime() + 20_000
         while (SystemClock.elapsedRealtime() < deadline && text(id) != expected) SystemClock.sleep(50)
         assertEquals(expected, text(id))
+    }
+
+    private fun assertSettledRefresh(server: WidgetJourneyServer) {
+        val work = WorkManager.getInstance(app)
+        // Let the initial receiver enablement's single PACKAGE_CHANGED broadcast settle.
+        SystemClock.sleep(1_500)
+        val deadline = SystemClock.elapsedRealtime() + 10_000
+        while (SystemClock.elapsedRealtime() < deadline &&
+            work.getWorkInfosForUniqueWork(WidgetUpdateWorker.WORK_NAME).get().any { !it.state.isFinished }) {
+            SystemClock.sleep(50)
+        }
+        assertEquals(1, work.getWorkInfosForUniqueWork(WidgetUpdateWorker.PERIODIC_WORK_NAME).get().count { !it.state.isFinished })
+        // Observe beyond PACKAGE_CHANGED's one-second delivery window: no self-triggered refresh loop.
+        val reads = server.monthlyReads.get()
+        SystemClock.sleep(3_000)
+        assertEquals(reads, server.monthlyReads.get())
+    }
+
+    private fun awaitNoPeriodicRefresh() {
+        val work = WorkManager.getInstance(app)
+        val deadline = SystemClock.elapsedRealtime() + 5_000
+        while (SystemClock.elapsedRealtime() < deadline &&
+            work.getWorkInfosForUniqueWork(WidgetUpdateWorker.PERIODIC_WORK_NAME).get().any { !it.state.isFinished }) {
+            SystemClock.sleep(50)
+        }
+        assertTrue(work.getWorkInfosForUniqueWork(WidgetUpdateWorker.PERIODIC_WORK_NAME).get().all { it.state.isFinished })
     }
 }
 

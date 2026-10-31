@@ -8,6 +8,7 @@ import java.net.ServerSocket
 import java.net.SocketException
 import java.time.YearMonth
 import java.time.ZoneOffset
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlinx.coroutines.runBlocking
 
@@ -15,6 +16,7 @@ import kotlinx.coroutines.runBlocking
 internal class WidgetJourneyServer : AutoCloseable {
     private val server = ServerSocket(0)
     val url = "http://127.0.0.1:${server.localPort}"
+    val monthlyReads = AtomicInteger()
     private val runtime = runBlocking {
         val dto = CorrectionConnectedNetwork().service.runtimeCompatibility().let {
             it.copy(capabilities = it.capabilities.copy(accountingTimeInputVersion = 1))
@@ -45,8 +47,10 @@ internal class WidgetJourneyServer : AutoCloseable {
         path.startsWith("/api/system/runtime-compatibility") -> runtime
         path.startsWith("/api/ledgers/widget-worker-ledger/calendar") ->
             """{"ledger_id":"widget-worker-ledger","revision":1,"timezone_name":"UTC","basis":"explicit","adopted_at":"2026-01-01T00:00:00Z"}"""
-        path.startsWith("/api/stats/monthly") ->
+        path.startsWith("/api/stats/monthly") -> {
+            monthlyReads.incrementAndGet()
             """{"home_currency_code":"JPY","month":"${YearMonth.now(ZoneOffset.UTC)}","total_amount_cents":7000,"count":2,"by_category":[]}"""
+        }
         else -> error("Unexpected widget request: ${path.substringBefore('?')}")
     }
 

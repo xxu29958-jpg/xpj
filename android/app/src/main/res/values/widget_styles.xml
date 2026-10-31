@@ -10,7 +10,7 @@
         <item name="android:textColor">@color/widget_text</item>
         <item name="android:drawableTint">@color/widget_text</item>
         <item name="android:background">@drawable/widget_action_background</item>
-        <item name="android:padding">6dp</item>
+        <item name="android:padding">4dp</item>
         <item name="android:drawablePadding">2dp</item>
         <item name="android:maxLines">1</item>
         <item name="android:ellipsize">end</item>

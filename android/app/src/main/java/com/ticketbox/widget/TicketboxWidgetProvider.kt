@@ -29,10 +29,11 @@ class MonthlyOverviewWidgetProvider : AppWidgetProvider() {
 
     override fun onDeleted(context: Context, ids: IntArray) {
         WidgetPreferences(context).remove(ids)
+        WidgetUpdateWorker.enqueue(context)
     }
 
     override fun onDisabled(context: Context) {
-        WidgetUpdateWorker.cancel(context)
+        WidgetUpdateWorker.cancel(context, removePeriodic = true)
     }
 
     override fun onRestored(context: Context, oldIds: IntArray, newIds: IntArray) {
