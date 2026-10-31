@@ -843,6 +843,13 @@ class _Handler(BaseHTTPRequestHandler):
             self._serve_web_bridge()
         elif parsed_path.path == "/owner" or parsed_path.path.startswith("/owner/"):
             self._serve_owner_shortcut(parsed_path.path)
+        elif parsed_path.path == "/favicon.ico" and not parsed_path.query:
+            # Edge app windows take their window and taskbar icon from the page favicon;
+            # without one Windows shows Edge's generic globe for the Manager.
+            if srv.window_icon is None:
+                self._send(404, b"not found", "text/plain; charset=utf-8")
+            else:
+                self._send(200, srv.window_icon, "image/x-icon")
         elif parsed_path.path in ("/", "/index.html") and not parsed_path.query:
             if not srv.browser_session_valid(
                 self.headers.get("Cookie"),
@@ -996,6 +1003,7 @@ class ControlServer(ThreadingHTTPServer):
         token: str,
         instance_secret: str,
         ui_html: Path,
+        window_icon: Path | None = None,
         request_window: Callable[[], bool] | None = None,
     ) -> None:
         super().__init__((host, port), _Handler)
@@ -1003,6 +1011,7 @@ class ControlServer(ThreadingHTTPServer):
         self.token = token
         self.instance_secret = instance_secret
         self.ui_html = ui_html
+        self.window_icon = window_icon.read_bytes() if window_icon is not None else None
         self.request_window = request_window or (lambda: False)
         self.action_lock = threading.Lock()
         self._web_session_lock = threading.Lock()
