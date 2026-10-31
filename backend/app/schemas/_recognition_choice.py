@@ -13,3 +13,4 @@ class RecognitionTimeChoice(BaseModel):
     parser_version: str = Field(min_length=1, max_length=64)
     source: Literal["image", "notification"]
     intent: Literal["candidate", "original_correction", "bookkeeping"] = "candidate"
+    presentation: str | None = Field(default=None, max_length=64)

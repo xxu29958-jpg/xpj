@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.models import OcrFact
 from app.schemas._recognition_time import RecognitionTimeCandidate, RecognitionTimeResponse
 from app.services.currency_common import minor_amount_value
+from app.services.recognition_presentation import source_order
 from app.services.recognition_source_service import candidate_source_location
 
 _ROLES = {
@@ -86,6 +87,7 @@ def recognition_time(fact: OcrFact | None, *,
                 originals = {item["id"]: item for item in evidence["candidates"]}
                 image = image.model_copy(update={"candidates": [item.model_copy(update={
                     "source_location": candidate_source_location(fact, originals[item.id])}) for item in image.candidates]})
+                image = image.model_copy(update={"candidates": source_order(fact, image.candidates, field="expense_time")})
     if image is not None and notification is not None:
         return _combined_time(image, notification)
     return notification or image

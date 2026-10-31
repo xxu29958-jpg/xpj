@@ -15,6 +15,7 @@ from app.services.learning_service._source_eligibility import _event_payload, el
 from app.services.notification_time_memory import notification_time_sources, recall_notification_time
 from app.services.recognition_decision_service import reconcile_image_decision
 from app.services.recognition_evidence_context import time_candidate_key, time_case_key
+from app.services.recognition_presentation import source_order
 from app.services.recognition_time_service import rank_time_origin
 from app.services.time_service import now_utc
 
@@ -99,4 +100,5 @@ def recall_time_choice(db: Session, *, expense: Expense, actor_account_id: int |
     if _visible_memory(db, expense=expense, actor=actor_account_id, fact=fact, candidate=chosen, events=matches, memory=memory):
         chosen = chosen.model_copy(update={"explanation": chosen.explanation + " 你曾在同类原件中明确选择这一处时间。"})
         response = rank_time_origin(response, chosen)
-    return recall_notification_time(db, expense=expense, actor=actor_account_id, response=response, memory=memory)
+    response = recall_notification_time(db, expense=expense, actor=actor_account_id, response=response, memory=memory)
+    return response.model_copy(update={"candidates": source_order(fact, response.candidates, field="expense_time")}) if response else None

@@ -42,6 +42,8 @@
       field(input).value = recalled; button.click();
       assert(choices().some(item => item.field === name && item.intent === "original_correction"),
         `Confirming the recalled ${name} against the original was refused`);
+      assert(choices().find(item => item.field === name).presentation === candidate.presentation,
+        `The displayed ${name} order was not echoed with the choice`);
     }
     state.notes = choices(); state.stage = "saved"; save();
     form.requestSubmit([...form.querySelectorAll("button")].find(button => button.textContent === "保存草稿"));
