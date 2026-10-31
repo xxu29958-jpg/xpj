@@ -970,7 +970,17 @@ jobs:
         run: .\.ci-venv\Scripts\ruff.exe check backend_manager tests
 
       - name: Test
+        env:
+          TICKETBOX_WINDOW_ICON_EVIDENCE: ${{ runner.temp }}\manager-window-icon
         run: .\.ci-venv\Scripts\python.exe -m pytest -q
+
+      - name: Upload Manager window icon evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: manager-window-icon
+          path: ${{ runner.temp }}/manager-window-icon
+          if-no-files-found: ignore
 
       - name: Real Web runtime consumers
         working-directory: backend
