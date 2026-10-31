@@ -1,7 +1,8 @@
-"""Read what Windows shows for a real top-level window: its taskbar icon and the screen.
+"""Read what Windows shows for a real top-level window: its taskbar icon, popups and the screen.
 
 Test-only and dependency-free (ctypes + zlib), so the Windows Edge gate can compare the
-Manager window's actual icon with the packaged ICO and keep PNG evidence.
+Manager window's actual icon with the packaged ICO, see prompts Edge raises over it, and
+keep PNG evidence.
 """
 
 from __future__ import annotations
@@ -70,6 +71,9 @@ def _api():
     user32.IsWindowVisible.argtypes = (wintypes.HWND,)
     user32.GetWindow.argtypes = (wintypes.HWND, wintypes.UINT)
     user32.GetWindow.restype = wintypes.HWND
+    user32.GetWindowTextW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+    user32.GetClassNameW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+    user32.GetWindowRect.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.RECT))
     user32.SendMessageTimeoutW.argtypes = (
         wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM,
         wintypes.UINT, wintypes.UINT, ctypes.POINTER(ctypes.c_size_t),
@@ -114,6 +118,44 @@ def top_level_windows(process_id: int) -> list[int]:
         user32.GetWindowThreadProcessId(handle, ctypes.byref(owner))
         if owner.value == process_id and user32.IsWindowVisible(handle) and not user32.GetWindow(handle, _GW_OWNER):
             found.append(handle)
+        return True
+
+    user32.EnumWindows(callback(observe), 0)
+    return found
+
+
+def window_title(window: int) -> str:
+    user32, _gdi32, _callback = _api()
+    title = ctypes.create_unicode_buffer(512)
+    user32.GetWindowTextW(window, title, len(title))
+    return title.value
+
+
+def owned_popups(process_id: int) -> list[tuple[str, str, tuple[int, int, int, int]]]:
+    """Visible windows of one process that another of its windows owns: Edge's prompts and bubbles.
+
+    Each is (class name, title, screen rectangle).
+    """
+    user32, _gdi32, callback = _api()
+    found: list[tuple[str, str, tuple[int, int, int, int]]] = []
+
+    def observe(handle: int, _param: int) -> bool:
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(handle, ctypes.byref(owner))
+        rect = wintypes.RECT()
+        if (
+            owner.value == process_id
+            and user32.IsWindowVisible(handle)
+            and user32.GetWindow(handle, _GW_OWNER)
+            and user32.GetWindowRect(handle, ctypes.byref(rect))
+            and rect.right > rect.left
+            and rect.bottom > rect.top
+        ):
+            name = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(handle, name, len(name))
+            title = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(handle, title, len(title))
+            found.append((name.value, title.value, (rect.left, rect.top, rect.right, rect.bottom)))
         return True
 
     user32.EnumWindows(callback(observe), 0)
