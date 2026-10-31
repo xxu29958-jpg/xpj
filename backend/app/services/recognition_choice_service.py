@@ -67,12 +67,12 @@ def _candidate_components(candidate) -> dict:
 
 
 def record_time_choice(db: Session, *, expense: Expense, choice: RecognitionTimeChoice | None,
-        actor_account_id: int | None) -> None:
+        actor_account_id: int | None) -> bool:
     if choice is None or actor_account_id is None:
-        return
+        return False
     fact, candidate, capture = _chosen_source(db, expense, choice, actor_account_id)
     if candidate is None:
-        return  # Saving valid accounting intent must not manufacture a stale/foreign label.
+        return False  # Saving valid accounting intent must not manufacture a stale/foreign label.
     previous = db.scalar(select(LedgerLearningEvent).where(LedgerLearningEvent.tenant_id == expense.tenant_id,
         LedgerLearningEvent.subject_kind == "expense", LedgerLearningEvent.subject_id == expense.id,
         LedgerLearningEvent.actor_account_id == actor_account_id,
@@ -88,6 +88,11 @@ def record_time_choice(db: Session, *, expense: Expense, choice: RecognitionTime
         field_parse = json.loads(fact.evidence_json)["field_parse"]
         payload["_candidate_key"] = next(time_candidate_key(fact.raw_text, item) for item in field_parse["candidates"]
             if item["id"] == choice.candidate_id)
+        from app.services.recognition_miss_service import miss_metadata
+
+        miss = miss_metadata(fact, "expense_time", payload["final_components"], payload["intent"])
+        if miss is not None:
+            payload["_candidate_miss"] = miss
     elif choice.source == "notification" and capture is not None:
         payload.update(notification_time_choice_context(capture, choice.candidate_id))
     decision_id = bind_source_choice(db, expense, actor_account_id, RECOGNITION_TIME_CHOICE, choice, payload)
@@ -97,6 +102,7 @@ def record_time_choice(db: Session, *, expense: Expense, choice: RecognitionTime
         after_payload=payload, signal_type=RECOGNITION_TIME_CHOICE.decision_type,
         signal_marker={"field": "expense_time", "evidence_public_id": choice.evidence_public_id}))
     event.retention_days = 0  # Explicit cases live until withdrawn/invalidated, independently of short diagnostic logs.
+    return True
 
 
 def _choice_components_payload(expense: Expense, choice: RecognitionTimeChoice, candidate) -> dict:

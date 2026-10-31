@@ -334,7 +334,11 @@ def test_unmatched_source_or_user_bookkeeping_never_becomes_original_field_train
     with SessionLocal() as db:
         events = list(db.scalars(select(LedgerLearningEvent).where(LedgerLearningEvent.subject_id == expense_id,
             LedgerLearningEvent.signal_type == "recognition_field_choice")))
-        assert len(events) == (1 if problem == "edited_value" else 0)
+        assert len(events) == 1
+        diagnostic = json.loads(events[0].after_payload)
+        assert diagnostic["_candidate_miss"]["kind"] == "diagnostic"
+        assert diagnostic["evidence_public_id"] == candidate["evidence_public_id"]
+        assert diagnostic["parser_version"] == candidate["parser_version"]
         assert eligible_feedback(db, tenant_id="owner", events=events, actor_account_id=seeded_owner_account_id()) == []
         if events:
             payload = json.loads(events[0].after_payload)

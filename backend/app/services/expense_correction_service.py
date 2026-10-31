@@ -39,6 +39,7 @@ from app.services.original_text_feedback_service import record_original_text_fee
 from app.services.pending_suggestion_service import record_category_choice
 from app.services.receipt_item_service import apply_expense_items_to_claimed_row
 from app.services.recognition_field_service import record_field_choices
+from app.services.recognition_miss_service import record_unmatched_saves, saved_readings
 from app.services.tag_service import normalize_tags, sync_expense_tags
 from app.services.time_service import now_utc
 
@@ -389,6 +390,7 @@ def _apply_correction_sections(
     amount_before = expense.amount_cents
     before_money = funding_money_identity(expense)
     category_before, merchant_before = expense.category, expense.merchant
+    readings_before = saved_readings(expense)
     scalar_payload = _scalar_payload(payload)
     if scalar_payload is not None:
         apply_expense_fields_to_claimed_row(
@@ -421,7 +423,9 @@ def _apply_correction_sections(
     if expense.amount_cents != amount_before or payload.splits is not None:
         validate_current_expense_split_allocation(db, expense=expense)
     apply_funding_correction(db, expense=expense, before_money=before_money, payload=payload, actor_account_id=actor_account_id)
-    record_field_choices(db, expense=expense, choices=payload.recognition_field_choices, actor_account_id=actor_account_id)
+    fields_recorded = record_field_choices(db, expense=expense, choices=payload.recognition_field_choices, actor_account_id=actor_account_id)
+    record_unmatched_saves(db, expense=expense, before=readings_before, actor_account_id=actor_account_id,
+        recorded_fields=fields_recorded)
     record_original_text_feedback(db, expense=expense, annotations=payload.original_text_feedback, actor_account_id=actor_account_id)
     if payload.category is not None:
         record_category_choice(db, expense=expense, previous_category=category_before,
