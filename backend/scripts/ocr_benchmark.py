@@ -26,6 +26,7 @@ from app.services.ocr_service._providers import LocalLlmOcrProvider, RapidOcrPro
 from app.services.original_read_service import OriginalSnapshot, _copy_original  # noqa: E402
 from scripts.ocr_benchmark_data import FIELDS, BenchmarkInput, discover_fixtures  # noqa: E402
 from scripts.ocr_benchmark_metrics import BenchmarkReport, ScoreRow, score  # noqa: E402
+from scripts.ocr_benchmark_stages import analyze_fields  # noqa: E402
 
 DEFAULT_FIXTURE_DIR = _BACKEND_ROOT / "tests" / "_infra" / "ocr_fixtures"
 
@@ -67,7 +68,7 @@ _PROVIDER_RUNNERS = {"empty": _run_empty, "mock": _run_mock,
                      "rapidocr": _run_rapidocr, "local_llm": _run_local_llm}
 
 
-def _prediction(result: OcrResult, inputs: BenchmarkInput) -> dict:
+def _prediction(result: OcrResult, inputs: BenchmarkInput) -> tuple[dict, dict]:
     # Same frozen currency context and parser as append-only OcrFact. No GT fields.
     expense = Expense(status="pending", original_currency_code=inputs.currency_code,
                       home_currency_code=inputs.currency_code)
@@ -78,24 +79,26 @@ def _prediction(result: OcrResult, inputs: BenchmarkInput) -> dict:
             "merchant": fact.parsed_merchant, "category": fact.parsed_category,
             # Current provider contract emits instants only; date-only GT cannot
             # be awarded a match by truncating that instant to a calendar date.
-            "time": {"value": instant.isoformat(), "precision": "instant"} if instant else None}
+            "time": {"value": instant.isoformat(), "precision": "instant"} if instant else None}, fact.evidence["field_parse"]
 
 
-def benchmark(fixture_dir: Path, providers: list[str]) -> BenchmarkReport:
+def benchmark(fixture_dir: Path, providers: list[str], *, split: str | None = None) -> BenchmarkReport:
     if not providers or len(providers) != len(set(providers)):
         raise ValueError("specify at least one provider, without duplicates")
     unknown = set(providers).difference(_PROVIDER_RUNNERS)
     if unknown:
         raise ValueError(f"unknown providers: {', '.join(sorted(unknown))}")
-    fixtures = discover_fixtures(fixture_dir)
+    fixtures = discover_fixtures(fixture_dir, split=split)
     report = BenchmarkReport(manifest=[fixture.identity for fixture in fixtures])
     for fixture in fixtures:
         for provider in providers:
             start = time.monotonic()
             prediction, error, outcome = {}, None, "success"
+            raw_text, field_parse = "", {}
             try:
                 result = _PROVIDER_RUNNERS[provider](fixture.inputs)
-                prediction = _prediction(result, fixture.inputs)
+                raw_text = result.raw_text or ""
+                prediction, field_parse = _prediction(result, fixture.inputs)
             except Exception as exc:  # noqa: BLE001 — record every failure and continue the finite sample list
                 outcome, error = "error", f"{type(exc).__name__}: {exc}"
             elapsed_ms = (time.monotonic() - start) * 1000
@@ -104,6 +107,9 @@ def benchmark(fixture_dir: Path, providers: list[str]) -> BenchmarkReport:
                 split=fixture.split, provider=provider, outcome=outcome, elapsed_ms=elapsed_ms,
                 prediction=prediction, scores=score(prediction, fixture.labels, failed=outcome != "success"),
                 labels={name: fixture.labels[name].state for name in FIELDS}, error=error,
+                app_tag=fixture.app_tag,
+                field_analysis=analyze_fields(raw_text, field_parse, prediction, fixture.labels,
+                                             timezone_name=fixture.inputs.timezone_name, failed=outcome != "success"),
             ))
     return report
 
@@ -115,10 +121,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture-dir", type=Path, default=DEFAULT_FIXTURE_DIR)
     parser.add_argument("--providers", default="rapidocr", help="Explicit comma-separated providers; all are required.")
+    parser.add_argument("--split", choices=("development", "holdout", "diagnostic"),
+                        help="Select by input metadata before opening annotations; W0 uses development only.")
     parser.add_argument("--json-output", type=Path, help="Save frozen identities, outcomes, timings and denominators.")
     args = parser.parse_args(argv)
     try:
-        report = benchmark(args.fixture_dir, [value.strip() for value in args.providers.split(",") if value.strip()])
+        report = benchmark(args.fixture_dir, [value.strip() for value in args.providers.split(",") if value.strip()],
+                           split=args.split)
     except (ValueError, OSError, KeyError, TypeError) as exc:
         print(f"Invalid benchmark input: {exc}", file=sys.stderr)
         return 2

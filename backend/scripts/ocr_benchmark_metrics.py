@@ -58,6 +58,8 @@ class ScoreRow:
     scores: dict[str, bool | None]
     labels: dict[str, str]
     error: str | None = None
+    app_tag: str = "unknown"
+    field_analysis: dict = field(default_factory=dict)
 
 
 def _percentile(values: list[float], percentile: float) -> float | None:
@@ -99,17 +101,24 @@ class BenchmarkReport:
         return not self.rows or any(row.outcome != "success" for row in self.rows)
 
     def to_dict(self) -> dict:
+        from scripts.ocr_benchmark_stages import stage_summary
+
         providers = sorted({row.provider for row in self.rows})
         summaries = {provider: summarize([row for row in self.rows if row.provider == provider]) for provider in providers}
         slices = {}
         for provider in providers:
-            for dimension in ("source_kind", "split"):
+            for dimension in ("source_kind", "split", "app_tag"):
                 values = {getattr(row, dimension) for row in self.rows if row.provider == provider}
                 for value in sorted(values):
                     slices[f"{provider}/{dimension}/{value}"] = summarize([
                         row for row in self.rows if row.provider == provider and getattr(row, dimension) == value])
         return {"schema_version": 2, "evaluation_completed": not self.failed, "product_qualified": False,
                 "manifest": self.manifest, "providers": summaries, "slices": slices,
+                "stage_analysis": {provider: stage_summary([row for row in self.rows if row.provider == provider])
+                                   for provider in providers},
+                "app_stage_analysis": {f"{provider}/{tag}": stage_summary([
+                    row for row in self.rows if row.provider == provider and row.app_tag == tag])
+                    for provider in providers for tag in sorted({row.app_tag for row in self.rows})},
                 "rows": [asdict(row) for row in self.rows]}
 
     def to_markdown(self) -> str:
