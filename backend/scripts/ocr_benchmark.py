@@ -26,7 +26,6 @@ from app.services.ocr_service._providers import LocalLlmOcrProvider, RapidOcrPro
 from app.services.original_read_service import OriginalSnapshot, _copy_original  # noqa: E402
 from scripts.ocr_benchmark_data import FIELDS, BenchmarkInput, discover_fixtures  # noqa: E402
 from scripts.ocr_benchmark_metrics import BenchmarkReport, ScoreRow, score  # noqa: E402
-from scripts.ocr_benchmark_stages import analyze_fields  # noqa: E402
 
 DEFAULT_FIXTURE_DIR = _BACKEND_ROOT / "tests" / "_infra" / "ocr_fixtures"
 
@@ -83,6 +82,8 @@ def _prediction(result: OcrResult, inputs: BenchmarkInput) -> tuple[dict, dict]:
 
 
 def benchmark(fixture_dir: Path, providers: list[str], *, split: str | None = None) -> BenchmarkReport:
+    from scripts.ocr_benchmark_stages import analyze_fields
+
     if not providers or len(providers) != len(set(providers)):
         raise ValueError("specify at least one provider, without duplicates")
     unknown = set(providers).difference(_PROVIDER_RUNNERS)
