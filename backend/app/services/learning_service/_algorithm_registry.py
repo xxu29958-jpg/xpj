@@ -132,9 +132,9 @@ class AlgorithmType:
 
 CATEGORY_SUGGESTION = AlgorithmType(
     decision_type="category_suggestion",
-    current_version="category-history-v3",
+    current_version="category-history-v4",
     display_label="分类建议",
-    description="参考本人近 180 天相同商家和用途的明确分类；默认值、建议采纳和单笔用途不增加独立支持。同一交易只计一次，最高分类至少 3 笔且没有平票；改判、撤回和隔离会更新资格。",
+    description="按本账本启用的商户别名归并，参考本人近 180 天相同商家和用途的明确分类；默认值、建议采纳和单笔用途不增加独立支持。同一交易只计一次，最高分类至少 3 笔且没有平票；改判、撤回和隔离会更新资格。",
     subject_kinds=("expense",),
     default_retention_days=180,
     marker_keys=("category",),

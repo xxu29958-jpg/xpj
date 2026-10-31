@@ -66,12 +66,14 @@ class PendingSuggestions:
 
 
 def suggestions_for_pending_expense(
-    db: Session, *, tenant_id: str, expense: Expense, actor_account_id: int | None = None
+    db: Session, *, tenant_id: str, expense: Expense, actor_account_id: int | None = None,
+    merchant_scope=None,
 ) -> PendingSuggestions:
     if expense.status != "pending":
         return PendingSuggestions()
     return PendingSuggestions(
-        category_suggestion=_category_suggestion(db, tenant_id=tenant_id, expense=expense, actor_account_id=actor_account_id),
+        category_suggestion=_category_suggestion(db, tenant_id=tenant_id, expense=expense,
+            actor_account_id=actor_account_id, merchant_scope=merchant_scope),
         duplicate_candidates=duplicate_candidates_for_pending_expense(db, tenant_id=tenant_id, expense=expense, actor_account_id=actor_account_id),
     )
 
@@ -282,7 +284,8 @@ def _feedback_replayed(events: list[LedgerLearningEvent], *, operation_key: str 
 
 
 def _category_suggestion(
-    db: Session, *, tenant_id: str, expense: Expense, actor_account_id: int | None = None
+    db: Session, *, tenant_id: str, expense: Expense, actor_account_id: int | None = None,
+    merchant_scope=None,
 ) -> PendingCategorySuggestion | None:
     if not policy_enabled(db, tenant_id=tenant_id, decision_type=CATEGORY_SUGGESTION.decision_type,
             version=CATEGORY_SUGGESTION.current_version, axis="new_suggestions"):
@@ -296,7 +299,7 @@ def _category_suggestion(
         db,
         tenant_id=tenant_id,
         merchant=expense.merchant,
-        expense_id=expense.id, actor_account_id=actor_account_id,
+        expense_id=expense.id, actor_account_id=actor_account_id, merchant_scope=merchant_scope,
     )
     if suggestion is None:
         return None
