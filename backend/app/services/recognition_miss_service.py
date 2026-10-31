@@ -8,11 +8,10 @@ from decimal import Decimal
 from app.fx_constants import CURRENCY_MINOR_UNIT_DIGITS
 from app.services.learning_service import EventDraft, read_ocr_facts, record_event
 from app.services.learning_service._algorithm_registry import RECOGNITION_FIELD_CHOICE, RECOGNITION_TIME_CHOICE
+from app.services.recognition_time_values import candidate_components, time_components
 
 
 def saved_readings(expense) -> dict:
-    from app.services.recognition_choice_service import time_components
-
     code = expense.original_currency_code or expense.home_currency_code
     minor = expense.original_amount_minor if expense.original_currency_code else expense.amount_cents
     return {"merchant": expense.merchant, "expense_time": time_components(expense),
@@ -24,11 +23,10 @@ def _reading(fact, item):
     if item["field"] == "amount_cents":
         return {key: item.get(key) for key in ("value", "currency_code", "minor_unit_exponent")}
     if item["field"] == "expense_time":
-        from app.services.recognition_choice_service import _candidate_components
         from app.services.recognition_time_service import _candidate
 
         candidate = _candidate(item, fact.raw_text or "", public_id=fact.public_id, source="image", version="miss")
-        return _candidate_components(candidate)
+        return candidate_components(candidate)
     return item["value"]
 
 
