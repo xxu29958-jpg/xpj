@@ -448,6 +448,7 @@ def ocr_fact_snapshot(
     overwrite a user-edited draft value.
     """
 
+    effective_timezone = (timezone_name or "").strip() or get_settings().ocr_default_timezone
     parsed, merged, materialization_context = _parse_and_merge_for_expense(
         expense,
         result,
@@ -461,6 +462,7 @@ def ocr_fact_snapshot(
         if materialization_context is not None
         else None
     )
+    source_money = _expense_ocr_source_money_context(expense)
     return OcrFactSnapshot(
         raw_text=merged.raw_text,
         parsed_amount_cents=parsed_amount,
@@ -473,6 +475,10 @@ def ocr_fact_snapshot(
         evidence={**(result.evidence or {}), "image_source": expense.image_evidence, "field_parse": {
             "version": FIELD_PARSE_VERSION,
             "reference_time": None,
+            "input_context": {"currency_code": source_money[0] if source_money else None,
+                "minor_unit_exponent": source_money[1] if source_money else None,
+                "timezone_name": effective_timezone, "reference_time": None,
+                "timezone_basis": "source_timezone" if (timezone_name or "").strip() else "configured_timezone"},
             "candidates": [asdict(item) for item in parsed.candidates],
             "decisions": [asdict(item) for item in parsed.decisions],
             "events": list(parsed.events),
