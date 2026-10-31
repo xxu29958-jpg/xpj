@@ -22,6 +22,7 @@ from app.services.learning_service._algorithm_registry import (
     canonical_marker_hash,
 )
 from app.services.learning_service._category_memory import (
+    CategoryMerchantScope,
     category_merchant_filter,
     independent_category_rejects,
     personal_category_counts,
@@ -116,6 +117,7 @@ def compute_category_suggestion(
     reject_threshold: int = DEFAULT_REJECT_THRESHOLD,
     feedback_horizon_days: int = DEFAULT_FEEDBACK_HORIZON_DAYS,
     actor_account_id: int | None = None,
+    merchant_scope: CategoryMerchantScope | None = None,
 ) -> CategorySuggestion | None:
     """Return the historically-most-frequent category for ``merchant``.
 
@@ -132,7 +134,8 @@ def compute_category_suggestion(
     observed_at = now_utc()
     current_date = observed_at.astimezone(zone).date()
     cutoff = current_date - timedelta(days=max(look_back_days, 0))
-    merchant_filter = category_merchant_filter(db, tenant_id=tenant_id, merchant=normalised)
+    merchant_filter = category_merchant_filter(db, tenant_id=tenant_id, merchant=merchant,
+        legacy_key=normalised, scope=merchant_scope)
     rows = personal_category_counts(db, tenant_id=tenant_id, merchant_filter=merchant_filter,
         actor_account_id=actor_account_id, expense_id=expense_id, cutoff=cutoff,
         current_date=current_date, observed_at=observed_at)

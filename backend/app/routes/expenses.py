@@ -79,6 +79,7 @@ from app.services.expense_service import (
 )
 from app.services.expense_split_service import list_expense_splits
 from app.services.expense_subtask_command_service import submit_expense_subtask
+from app.services.learning_service._category_memory import load_category_merchant_scope
 from app.services.ledger_calendar_commands import read_ledger_calendar
 from app.services.notification_time_service import notification_times_for_expenses
 from app.services.pending_fx_task_service import (
@@ -112,6 +113,8 @@ def get_pending_expenses(
     db: Session = Depends(get_db),
 ) -> list[ExpenseResponse]:
     expenses = list_pending(db, auth.tenant_id)
+    merchant_scope = load_category_merchant_scope(db, tenant_id=auth.tenant_id,
+        merchants=[expense.merchant for expense in expenses])
     notification_times = notification_times_for_expenses(db, tenant_id=auth.tenant_id,
         actor_account_id=auth.account_id, expense_public_ids=[item.public_id for item in expenses])
     ocr_facts_by_id = expense_ocr_facts_by_id(db, tenant_id=auth.tenant_id, expenses=expenses)
@@ -132,6 +135,7 @@ def get_pending_expenses(
                 fx_tasks_by_id=fx_tasks_by_id,
                 time_memory=time_memory,
                 field_memory=field_memory,
+                merchant_scope=merchant_scope,
             )
         )
     db.commit()
@@ -769,11 +773,13 @@ def _expense_response_with_suggestions(
     time_memory: TimeMemory | None = None,
     field_memory: FieldMemory | None = None,
     include_text_lines: bool = False,
+    merchant_scope=None,
 ) -> ExpenseResponse:
     if notification_times_by_id is None:
         notification_times_by_id = notification_times_for_expenses(db, tenant_id=tenant_id,
             actor_account_id=actor_account_id, expense_public_ids=[expense.public_id])
-    suggestions = suggestions_for_pending_expense(db, tenant_id=tenant_id, expense=expense, actor_account_id=actor_account_id)
+    suggestions = suggestions_for_pending_expense(db, tenant_id=tenant_id, expense=expense,
+        actor_account_id=actor_account_id, merchant_scope=merchant_scope)
     if ocr_facts_by_id is None:
         ocr_facts_by_id = expense_ocr_facts_by_id(db, tenant_id=tenant_id, expenses=[expense])
     dto = expense_to_response(

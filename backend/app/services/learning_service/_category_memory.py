@@ -1,6 +1,7 @@
 """Independent personal category examples; accepted/default values never vote."""
 
-from collections import Counter
+from collections import Counter, defaultdict
+from dataclasses import dataclass
 
 from sqlalchemy import func, select
 
@@ -13,19 +14,42 @@ from app.services.merchant_alias_service import canonical_merchant_for, enabled_
 from app.services.merchant_service import normalize_merchant
 
 
-def category_merchant_filter(db, *, tenant_id: str, merchant: str):
-    """Use the same explicit aliases as rules, including their normalization."""
+@dataclass
+class CategoryMerchantScope:
+    tenant_id: str
+    aliases: dict[str, str]
+    canonical_keys: set[str]
+    names: dict[str, list[str]]
+
+
+def load_category_merchant_scope(db, *, tenant_id: str, merchants: list[str | None]) -> CategoryMerchantScope:
+    """Resolve stored names once for one response; never retain this across requests."""
     aliases = enabled_merchant_alias_map(db, tenant_id=tenant_id)
-    canonical = normalize_merchant(canonical_merchant_for(merchant, alias_map=aliases))
-    if canonical not in {normalize_merchant(value) for value in aliases.values()}:
-        return func.lower(func.trim(Expense.merchant)) == merchant
+    canonical_keys = {normalize_merchant(value) for value in aliases.values()}
+    groups = defaultdict(list)
+    needed = {normalize_merchant(canonical_merchant_for(value, alias_map=aliases)) for value in merchants}
+    if needed & canonical_keys:
+        names = db.scalars(select(Expense.merchant).where(
+            Expense.tenant_id == tenant_id, Expense.merchant.is_not(None)).distinct())
+        for name in names:
+            canonical = normalize_merchant(canonical_merchant_for(name, alias_map=aliases))
+            if canonical in needed:
+                groups[canonical].append(name)
+    return CategoryMerchantScope(tenant_id, aliases, canonical_keys, dict(groups))
+
+
+def category_merchant_filter(db, *, tenant_id: str, merchant: str, legacy_key: str,
+        scope: CategoryMerchantScope | None = None):
+    """Use the same explicit aliases as rules, including their normalization."""
+    scope = scope or load_category_merchant_scope(db, tenant_id=tenant_id, merchants=[merchant])
+    if scope.tenant_id != tenant_id:
+        raise ValueError("Category merchant scope belongs to another ledger")
+    canonical = normalize_merchant(canonical_merchant_for(merchant, alias_map=scope.aliases))
+    if canonical not in scope.canonical_keys:
+        return func.lower(func.trim(Expense.merchant)) == legacy_key
     # Resolve actual stored names, rather than approximating Python casefold,
     # whitespace and notification-suffix normalization with SQL lower().
-    names = db.scalars(select(Expense.merchant).where(
-        Expense.tenant_id == tenant_id, Expense.merchant.is_not(None)).distinct())
-    matching = [name for name in names
-        if normalize_merchant(canonical_merchant_for(name, alias_map=aliases)) == canonical]
-    return Expense.merchant.in_(matching)
+    return Expense.merchant.in_(scope.names.get(canonical, []))
 
 
 def _event_groups(examples, facts) -> list:

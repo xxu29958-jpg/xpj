@@ -73,3 +73,35 @@ def test_rejects_under_an_alias_suppress_the_same_canonical_merchant(client, ide
             headers=identity.app_headers)
         assert response.status_code == 200, response.text
     assert _next(client, identity)["category_suggestion"] is None
+
+
+@pytest.mark.parametrize("suffix", ["(Auto)", "（Auto）"])
+def test_notification_suffix_preserves_alias_resolution_for_the_target(client, identity, suffix):
+    _history(client, identity)
+    _alias()
+    assert _next(client, identity, "CHAIN CAFE" + suffix)["category_suggestion"]["sample_size"] == 3
+
+
+def test_pending_batch_resolves_historical_names_only_once(client, identity):
+    from sqlalchemy import event
+
+    from app.database import engine
+
+    _history(client, identity)
+    _alias()
+    for _ in range(4):
+        _next(client, identity, "chain cafe")
+    scans = []
+
+    def observe(_conn, _cursor, statement, _parameters, _context, _many):
+        if "SELECT DISTINCT expenses.merchant" in statement:
+            scans.append(statement)
+
+    event.listen(engine, "before_cursor_execute", observe)
+    try:
+        response = client.get("/api/expenses/pending", headers=identity.app_headers)
+    finally:
+        event.remove(engine, "before_cursor_execute", observe)
+    assert response.status_code == 200, response.text
+    assert len(scans) == 1
+    assert len(response.json()) >= 4
