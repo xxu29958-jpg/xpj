@@ -71,11 +71,29 @@ the `--art-*` tokens, so paper and midnight follow with no image request.
 Android uses one generated vector per skin through `BrandArt`. Both stay
 decorative: hidden from assistive technology, and never carrying state.
 
+## 夹夹 (mascot)
+
+`render_mascot.py` draws 夹夹, a little crab. A crab's claws 夹 (hold) things, so
+the mascot is literally the 小票夹: it keeps a 票根 in its claw (the same `Stub`,
+with a leaf tail because the claw is coral). 蟹蟹 also reads as 谢谢, which suits
+the moment a debt is settled. The mark stays the stub pair; the crab is a
+character, not a second logo.
+
+- **dozing**: hugs its 票根 like a pillow, eyes closed, blowing bubbles.
+- **celebrating**: holds the 票根 up, curved eyes, open smile, confetti.
+
+The crab appears only where `MascotArt` already runs: the Android debt-settle
+and plan-goal celebrations. Per PRODUCT.md, it is not a reason to put a
+character on every screen. Android loads one generated vector per state and
+skin (`mascot_{dozing,celebrating}_{paper,midnight}.xml`). The images stay
+decorative, and the overlays own the announcement.
+
 ## Regenerate
 
 ```bash
 python docs/design_reference/brand-icon/render_icons.py --chromium "$CHROME"
 python docs/design_reference/brand-icon/render_art.py
+python docs/design_reference/brand-icon/render_mascot.py   # --preview board.png to look at it
 ```
 
 Needs Pillow and Playwright, the same toolchain as the Web journey tests. The
