@@ -129,6 +129,17 @@ def test_annotated_numeric_literal_does_not_match_a_larger_number():
     assert text_present("amount", truth, "实付 ￥18.51元", "UTC")
 
 
+@pytest.mark.parametrize("printed,present", [
+    ("2026-05-04 04:23 PM", True), ("2026年5月4日 下午4时23分", True),
+    ("2026年5月4日 晚上4时23分", True), ("2026-05-04 04:23 AM", False),
+    ("2026年5月4日 上午4时23分", False), ("2026年5月4日 下午4时23分30秒", False),
+    ("2026-05-04 04:23 PM+08:00", True), ("2026-05-04 04:23 PM+09:00", False),
+])
+def test_twelve_hour_clocks_require_the_matching_period(printed, present):
+    truth = Label("present", {"value": "2026-05-04T08:23:00+00:00", "precision": "instant"})
+    assert text_present("time", truth, printed, "Asia/Shanghai") is present
+
+
 def test_development_selection_never_reads_holdout_labels_or_images(tmp_path):
     source = Path(__file__).resolve().parents[1] / "tests/_infra/ocr_fixtures/_synthetic_bank_alert"
     for split in ("development", "holdout"):

@@ -61,19 +61,31 @@ def _printed_offsets(raw_text: str):
         yield match[0], zone
 
 
+def _clock_patterns(local):
+    def clock(hour):
+        core = rf"0*{hour}\s*[时:]\s*0*{local.minute}"
+        seconds = rf"\s*[:分]\s*0*{local.second}"
+        core += f"(?:{seconds})?" if local.second == 0 else seconds
+        return core + r"(?!\d|\s*:|\s*分\s*\d)(?:分|秒)?"
+
+    yield clock(local.hour) + r"(?!\s*[AP]M\b)"
+    period = "AM" if local.hour < 12 else "PM"
+    chinese = "上午" if local.hour < 12 else "(?:下午|晚上)"
+    for hour in sorted({local.hour, local.hour % 12 or 12}):
+        yield clock(hour) + rf"\s*{period}\b"
+        yield chinese + r"\s*" + clock(hour) + r"(?!\s*[AP]M\b)"
+
+
 def _time_patterns(local, instant):
     orders = [(local.year, local.month, local.day), (local.day, local.month, local.year),
               (local.month, local.day, local.year)]
-    suffix = (local.hour, local.minute) if instant else ()
     for parts in orders:
-        pattern = r"(?<!\d)" + r"\D+".join(f"0*{part}" for part in parts + suffix)
-        if suffix:
-            seconds = rf"\s*[:：分]\s*0*{local.second}"
-            pattern += f"(?:{seconds})?" if local.second == 0 else seconds
-            pattern += r"(?!\d|\s*[:：]|\s*分\s*\d)"
+        pattern = r"(?<!\d)" + r"\D+".join(f"0*{part}" for part in parts)
+        if instant:
+            for clock in _clock_patterns(local):
+                yield pattern + r"[日T\s,，]+" + clock
         else:
-            pattern += r"(?!\d)"
-        yield pattern
+            yield pattern + r"(?!\d)"
 
 
 def _time_text_present(value: dict, raw_text: str, timezone_name: str) -> bool:
