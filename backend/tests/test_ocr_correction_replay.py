@@ -76,6 +76,26 @@ def test_missing_context_and_location_are_not_filled_from_current_settings():
     expected = parsed.pop("input_context")
     assert frozen_context(parsed) == expected
     assert frozen_context({"input_context": {"currency_code": "JPY", "minor_unit_exponent": 2}}) is None
+    assert frozen_context({"input_context": {"currency_code": "CNY", "minor_unit_exponent": 2, "timezone_name": None}}) is None
+
+
+def test_default_timezone_is_frozen_before_settings_change(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.services import receipt_parse_time
+    from app.services.ocr_service import OcrResult, _apply, ocr_fact_snapshot
+
+    settings = SimpleNamespace(ocr_default_timezone="Asia/Shanghai")
+    monkeypatch.setattr(_apply, "get_settings", lambda: settings)
+    monkeypatch.setattr(receipt_parse_time, "get_settings", lambda: settings)
+    fact = source_fact()
+    snapshot = ocr_fact_snapshot(OcrResult(fact.raw_text, .9, evidence=json.loads(fact.evidence_json)),
+        expense=Expense(original_currency_code="CNY", home_currency_code="CNY"))
+    assert snapshot.evidence["field_parse"]["input_context"]["timezone_name"] == "Asia/Shanghai"
+    fact.evidence_json = json.dumps(snapshot.evidence)
+    label = _label(fact, "expense_time")
+    settings.ocr_default_timezone = "UTC"
+    assert replay_label(fact, label, parse_receipt_text)["candidate_matches"] >= 1
 
 
 def _seed_choice(*, with_location=True, field="amount_cents"):

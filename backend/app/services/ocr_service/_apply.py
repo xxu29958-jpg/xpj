@@ -448,6 +448,7 @@ def ocr_fact_snapshot(
     overwrite a user-edited draft value.
     """
 
+    timezone_name = (timezone_name or "").strip() or get_settings().ocr_default_timezone
     parsed, merged, materialization_context = _parse_and_merge_for_expense(
         expense,
         result,

@@ -9,6 +9,9 @@ from app.services.recognition_source_service import candidate_source_location
 
 
 def frozen_context(field_parse: dict) -> dict | None:
+    candidates = field_parse.get("candidates", [])
+    zones = {item.get("timezone_name") for item in candidates
+             if item.get("timezone_basis") in {"configured_timezone", "source_timezone"}}
     explicit = field_parse.get("input_context")
     if isinstance(explicit, dict):
         context = {key: explicit.get(key) for key in (
@@ -16,16 +19,17 @@ def frozen_context(field_parse: dict) -> dict | None:
     else:
         # Older facts froze these inputs on their candidates. Never borrow the
         # current Expense's money, current settings, or the current wall clock.
-        candidates = field_parse.get("candidates", [])
         money = {(item.get("currency_code"), item.get("minor_unit_exponent")) for item in candidates
                  if item.get("field") == "amount_cents" and item.get("currency_code") is not None}
-        zones = {item.get("timezone_name") for item in candidates
-                 if item.get("timezone_basis") in {"configured_timezone", "source_timezone"}}
         if len(money) != 1 or len(zones) > 1:
             return None
         code, exponent = money.pop()
         context = {"currency_code": code, "minor_unit_exponent": exponent,
                    "timezone_name": next(iter(zones), None), "reference_time": field_parse.get("reference_time")}
+    if not context["timezone_name"]:
+        context["timezone_name"] = next(iter(zones), None) if len(zones) == 1 else None
+    if not isinstance(context["timezone_name"], str) or not context["timezone_name"].strip():
+        return None
     code, exponent = context["currency_code"], context["minor_unit_exponent"]
     if code is None:
         if exponent is not None:
