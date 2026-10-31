@@ -86,6 +86,8 @@
     --radius-pill: 999px;
     --shadow-card: 0 1px 3px rgba(26, 32, 28, .05), 0 6px 18px rgba(26, 32, 28, .03);
     --shadow-raised: 0 2px 6px rgba(26, 32, 28, .06), 0 16px 40px rgba(26, 32, 28, .10);
+    /* --shadow-card for notched (masked) shapes: a filter follows the silhouette. */
+    --stub-shadow: drop-shadow(0 1px 2px rgba(26, 32, 28, .07)) drop-shadow(0 6px 12px rgba(26, 32, 28, .04));
 
     /* Chart — 8 色调色板 */
     --chart-series-1: #487d5b;
@@ -224,6 +226,7 @@
     --radius-pill: 999px;
     --shadow-card: 0 1px 3px rgba(0,0,0,.40);
     --shadow-raised: 0 6px 24px rgba(0,0,0,.45);
+    --stub-shadow: drop-shadow(0 1px 3px rgba(0, 0, 0, .40));
 
     --chart-series-1: #70bfa5;
     --chart-series-2: #bb9878;
