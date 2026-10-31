@@ -367,7 +367,7 @@ def _recovery_page(message: str, *, portable_available: bool = False) -> bytes:
     portable_link = ('<p><a href="/web/exports">下载有权访问的账本数据</a></p>'
                      '<p><a href="/web/settings">设置与设备</a></p>') if portable_available else ""
     return (
-        "<!doctype html><meta charset=utf-8>"
+        '<!doctype html><meta charset=utf-8><meta name="google" content="notranslate">'
         "<title>小票夹需要恢复</title><h1>暂时无法打开账本</h1>"
         f"<p>{html.escape(message)}</p>"
         f"{portable_link}"
@@ -443,7 +443,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         session_ids = srv.issue_web_session()
         body = (
-            b"<!doctype html><meta charset=utf-8>"
+            b'<!doctype html><meta charset=utf-8><meta name="google" content="notranslate">'
             b"<title>Opening Ticketbox</title>"
             b"<script>location.replace('/web')</script>"
         )
@@ -716,7 +716,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(
             200,
             (
-                "<!doctype html><meta charset=utf-8><title>已打开系统管理</title>"
+                '<!doctype html><meta charset=utf-8><meta name="google" content="notranslate"><title>已打开系统管理</title>'
                 "<h1>已在本机默认浏览器打开系统管理页面</h1>"
                 '<p><a href="/web">返回日常账务</a> · <a href="/">返回管理器</a></p>'
             ).encode(),
@@ -1084,7 +1084,8 @@ class ControlServer(ThreadingHTTPServer):
         token = secrets.token_urlsafe(32)
         action = f"{self.expected_origin}/api/bootstrap"
         document = (
-            '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+            '<!doctype html><html lang="zh-CN" translate="no"><head><meta charset="utf-8">'
+            '<meta name="google" content="notranslate">'
             "<title>正在打开小票夹</title></head><body>"
             f'<form method="post" action="{html.escape(action)}">'
             f'<input type="hidden" name="bootstrap_token" value="{html.escape(token)}">'

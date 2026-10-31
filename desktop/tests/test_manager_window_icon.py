@@ -7,13 +7,14 @@ for the real Edge window and compares it with that file.
 
 On a Windows UI in another language Edge pops "Translate page from Chinese
 (Simplified)?" over every Chinese page. Each document the window shows stays
-lang="zh-CN" and is marked translate="no"; the Windows gate watches the real window
+lang="zh-CN" and carries Chromium's notranslate meta tag; the Windows gate watches the real window
 for the prompt, with an unmarked Manager page as the control that must raise it.
 """
 
 from __future__ import annotations
 
 import http.client
+import json
 import os
 import re
 import struct
@@ -25,6 +26,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from jinja2 import Template
 
 from backend_manager import desktop_shell, manager_startup
 from backend_manager.control_server import ControlServer
@@ -48,6 +50,9 @@ class _Controller:
 
     def is_manager_shutting_down(self) -> bool:
         return False
+
+    def product_principal(self) -> dict:
+        return {"configured": False}
 
 
 def _serve(window_icon: Path | None) -> tuple[ControlServer, threading.Thread]:
@@ -261,6 +266,7 @@ _WINDOW_DOCUMENTS = (
     _WEB_TEMPLATES / "inbox_read_error.html",
 )
 _NO_TRANSLATE = ' translate="no"'
+_NO_TRANSLATE_META = '<meta name="google" content="notranslate">'
 # Seconds to keep watching once the page is up; the control's prompt comes well inside it.
 _SETTLE = 8.0
 
@@ -271,19 +277,30 @@ def _html_root(document: Path) -> str:
     return match.group(0)
 
 
+def _window_markup(document: Path, platform: str) -> str:
+    source = document.read_text(encoding="utf-8")
+    head = source.split("<head>", 1)[1].split('<meta name="viewport"', 1)[0]
+    return Template(_html_root(document) + "<head>" + head).render(
+        request={"state": {"web_session_platform": platform}}, ui_theme="paper",
+    )
+
+
 @pytest.mark.parametrize("document", _WINDOW_DOCUMENTS, ids=lambda path: path.name)
-def test_manager_window_documents_stay_chinese_and_are_not_for_translation(document: Path) -> None:
-    root = _html_root(document)
-    assert 'lang="zh-CN"' in root
-    assert _NO_TRANSLATE in root
+def test_manager_suppresses_translation_without_disabling_the_ordinary_web(document: Path) -> None:
+    manager = _window_markup(document, "desktop")
+    assert 'lang="zh-CN"' in manager
+    assert _NO_TRANSLATE_META in manager
+    if document != _UI_HTML:
+        web = _window_markup(document, "web")
+        assert 'lang="zh-CN"' in web
+        assert _NO_TRANSLATE not in web
+        assert _NO_TRANSLATE_META not in web
 
 
 # A bridged product page: base.html's own root element (template values left empty)
 # around enough Chinese for Edge to recognise the language.
-_PRODUCT_PAGE = (
-    "<!doctype html>"
-    + re.sub(r"\{\{.*?\}\}", "", _html_root(_WEB_TEMPLATES / "base.html"))
-    + '<head><meta charset="utf-8"><title>收件箱</title></head><body><main><h1>收件箱</h1>'
+_PRODUCT_CONTENT = (
+    '<title>收件箱</title></head><body><main><h1>收件箱</h1>'
     "<p>拍下的小票先放在这里。核对金额、商家和日期以后，账单进入流水，原图随账单一起保留，随时可以对照。</p>"
     "<p>还有三张小票等待核对，最早的一张来自上周六的超市。</p></main></body></html>"
 )
@@ -293,17 +310,12 @@ _TO_MANAGER_PAGE = '<!doctype html><html><head><meta http-equiv="refresh" conten
 def _translate_scenario(scenario: str, tmp_path: Path) -> tuple[Path, str, str]:
     """(Manager page, bridged /web page, title of the page under watch)."""
     if scenario == "product":
-        return _UI_HTML, _PRODUCT_PAGE, "收件箱"
-    # DIAGNOSTIC: which markup Edge honours; removed once Windows evidence is in.
+        return _UI_HTML, _window_markup(_WEB_TEMPLATES / "base.html", "desktop") + _PRODUCT_CONTENT, "收件箱"
     if scenario == "product-unmarked":
-        return _UI_HTML, _PRODUCT_PAGE.replace(_NO_TRANSLATE, "", 1), "收件箱"
+        return _UI_HTML, _window_markup(_WEB_TEMPLATES / "base.html", "web") + _PRODUCT_CONTENT, "收件箱"
     if scenario == "manager":
         return _UI_HTML, _TO_MANAGER_PAGE, "小票夹管理器"
-    unmarked = _UI_HTML.read_text(encoding="utf-8").replace(_NO_TRANSLATE, "", 1)
-    if scenario == "meta":
-        unmarked = unmarked.replace(
-            '<meta charset="utf-8">', '<meta charset="utf-8">\n  <meta name="google" content="notranslate">', 1
-        )
+    unmarked = _UI_HTML.read_text(encoding="utf-8").replace(_NO_TRANSLATE, "", 1).replace(_NO_TRANSLATE_META, "", 1)
     manager_page = tmp_path / "ui.html"
     manager_page.write_text(unmarked, encoding="utf-8")
     return manager_page, _TO_MANAGER_PAGE, "小票夹管理器"
@@ -315,19 +327,24 @@ def _watch_for_prompt(process_id: int, title: str) -> dict[str, object]:
 
     titles: list[str] = []
     shown_at: float | None = None
+    prompt_at: float | None = None
+    observed_popups: list = []
     started = time.monotonic()
     while (now := round(time.monotonic() - started, 2)) < 45:
         for handle in _window_icon.top_level_windows(process_id):
             name = _window_icon.window_title(handle)
             titles += [] if name in titles else [name]
             shown_at = now if shown_at is None and name.startswith(title) else shown_at
-        popups = _window_icon.owned_popups(process_id)
-        if popups:
-            return {"titles": titles, "shown_at": shown_at, "prompt_at": now, "popups": popups}
+        popups = [popup for popup in _window_icon.owned_popups(process_id)
+                  if "translate" in popup[1].casefold() or "翻译" in popup[1]]
+        if popups and prompt_at is None:
+            prompt_at, observed_popups = now, popups
+        if shown_at is not None and prompt_at is not None:
+            break
         if shown_at is not None and now - shown_at >= _SETTLE:
             break
         time.sleep(0.25)
-    return {"titles": titles, "shown_at": shown_at, "prompt_at": None, "popups": []}
+    return {"titles": titles, "shown_at": shown_at, "prompt_at": prompt_at, "popups": observed_popups}
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge app-window gate")
@@ -338,8 +355,7 @@ def _watch_for_prompt(process_id: int, title: str) -> dict[str, object]:
         ("unmarked", True),
         ("manager", False),
         ("product", False),
-        ("meta", None),
-        ("product-unmarked", None),
+        ("product-unmarked", True),
     ],
 )
 def test_real_manager_window_offers_no_translation(tmp_path: Path, scenario: str, prompted: bool | None) -> None:
@@ -367,7 +383,13 @@ def test_real_manager_window_offers_no_translation(tmp_path: Path, scenario: str
     watched: dict[str, object] = {}
     try:
         bootstrap = server.prepare_web_bootstrap(tmp_path / "launch" / "bootstrap.html")
-        window = desktop_shell.open_app_window(bootstrap, profile=tmp_path / "edge-profile")
+        profile = tmp_path / "edge-profile"
+        (profile / "Default").mkdir(parents=True)
+        (profile / "Default" / "Preferences").write_text(json.dumps({
+            "intl": {"accept_languages": "en-US,en", "selected_languages": "en-US,en"},
+            "translate": {"enabled": True},
+        }), encoding="utf-8")
+        window = desktop_shell.open_app_window(bootstrap, profile=profile)
         assert window is not None
         watched = _watch_for_prompt(window.process.pid, title)
         (evidence / f"translate-{scenario}-screen.png").write_bytes(_window_icon.png(*_window_icon.screen_rgba()))

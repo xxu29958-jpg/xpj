@@ -74,15 +74,15 @@ def ledger_records_other_currency(db: Session, tenant_id: str, currency_code: st
     their sources are untouched. One ``EXISTS`` statement covers both tables.
     """
 
-    def recorded_in_other_currency(model):
-        return (
-            ledger_scoped_select(model, tenant_id)
-            .with_only_columns(model.id)
-            .where(or_(model.original_currency_code != currency_code, model.home_currency_code != currency_code))
-            .exists()
-        )
-
-    return bool(db.scalar(select(or_(recorded_in_other_currency(Expense), recorded_in_other_currency(ExpenseOffsetFact)))))
+    return bool(db.scalar(select(or_(
+        ledger_scoped_select(Expense, tenant_id).with_only_columns(Expense.id).where(or_(
+            Expense.original_currency_code != currency_code, Expense.home_currency_code != currency_code,
+        )).exists(),
+        ledger_scoped_select(ExpenseOffsetFact, tenant_id).with_only_columns(ExpenseOffsetFact.id).where(or_(
+            ExpenseOffsetFact.original_currency_code != currency_code,
+            ExpenseOffsetFact.home_currency_code != currency_code,
+        )).exists(),
+    ))))
 
 
 def fetch_expense_row_version_in_status(

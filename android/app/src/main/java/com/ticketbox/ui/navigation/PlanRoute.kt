@@ -27,7 +27,8 @@ internal fun PlanRoute(
         factory = budgetViewModelFactory(screenFactory.budgetRepository, calendars = screenFactory.repositories.ledgerCalendarRepository),
     )
     val recurringViewModel: RecurringViewModel = viewModel(
-        factory = recurringViewModelFactory(screenFactory.recurringRepository),
+        factory = recurringViewModelFactory(screenFactory.recurringRepository,
+            calendars = screenFactory.repositories.ledgerCalendarRepository),
     )
     val incomePlanViewModel: IncomePlanViewModel = viewModel(
         factory = incomePlanViewModelFactory(screenFactory.incomePlanRepository),
@@ -39,6 +40,7 @@ internal fun PlanRoute(
     )
     val budgetState by budgetViewModel.uiState.collectAsStateWithLifecycle()
     val recurringState by recurringViewModel.uiState.collectAsStateWithLifecycle()
+    ObserveRecurringCalendar(recurringViewModel)
     val incomeState by incomePlanViewModel.state.collectAsStateWithLifecycle()
     val goalsState by goalsViewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(shellState.financialDataRevision) {

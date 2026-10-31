@@ -120,7 +120,8 @@ jobs:
     name: Actual Web and Android consumers / ${{ matrix.group }}
     needs: [selection, postgres_policy, app]
     if: ${{ needs.selection.outputs.consumers == 'true' }}
-    runs-on: ubuntu-latest
+    # Playwright 1.58's browser/dependency bundle supports this fixed runner image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false

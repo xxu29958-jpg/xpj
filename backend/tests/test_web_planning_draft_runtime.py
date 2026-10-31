@@ -167,6 +167,9 @@ def render(kind, values=None, native_result=""):
                 "idempotency_key": key, "draft_scope": json.dumps(scope)}, draft_result="", error="",
             return_href="/web/library?ledger_id=owner")
     if kind == "budget":
+        common["plan_status"] = {"next_due": None, "recurring_active_count": 0, "goals": [],
+            "more_goal_count": 0, "recurring_href": "/web/recurring?ledger_id=owner",
+            "goals_href": "/web/goals?ledger_id=owner&month=2026-09"}
         common.update(budget={"configured": True, "home_currency_code": "JPY", "form_total_yuan": "1200",
                       "form_rollover_yuan": "0", "form_non_monthly_yuan": "0", "spent_yuan": "100", "remaining_yuan": "1100",
                       "category_rows": [{"is_configured": True, "index": 0, "category": "餐饮", "saved_category": "餐饮",

@@ -17,7 +17,6 @@ import argparse
 import base64
 import io
 import math
-import re
 import struct
 from pathlib import Path
 
@@ -298,16 +297,6 @@ def main() -> None:
     }
     for name, text in docs.items():
         (masters / name).write_text(text + "\n", encoding="utf-8")
-
-    # Desktop Manager runs in an Edge --app window: its favicon is the window and taskbar icon.
-    # The control server serves no static files, so the icon travels inline (CSP allows data: images).
-    ui = ROOT / "desktop/backend_manager/ui.html"
-    favicon = base64.b64encode(plated(holes=False).encode()).decode()
-    text, count = re.subn(r'<link rel="icon" type="image/svg\+xml" href="data:image/svg\+xml;base64,[^"]*">',
-                          f'<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,{favicon}">',
-                          ui.read_text(encoding="utf-8"))
-    assert count == 1, "ui.html must carry exactly one inline icon link"
-    ui.write_text(text, encoding="utf-8")
 
     chrome = Chromium(args.chromium)
     try:

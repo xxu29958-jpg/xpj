@@ -151,6 +151,10 @@ private fun PlanGoalsContent(state: SpendingGoalsUiState) {
     val goals = planGoalHighlights(state.goals)
     when {
         goals.isNotEmpty() -> {
+            if (state.loadError != null) {
+                Text(text = state.loadError.asString(), color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall)
+            }
             goals.take(PLAN_STATUS_GOAL_LIMIT).forEach { PlanGoalMeter(it) }
             if (goals.size > PLAN_STATUS_GOAL_LIMIT) {
                 Text(
