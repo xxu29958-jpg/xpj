@@ -490,6 +490,8 @@ def _parse_single_receipt(
         category=category,
         confidence=confidence,
         items=items,
-        candidates=amounts + merchants + times + categories,
+        # Resolve conflicts over all evidence before capping the review list.
+        # Each separately parsed transaction keeps its own merchant alternatives.
+        candidates=amounts + merchants[:8] + times + categories,
         decisions=(amount_decision, merchant_decision, time_decision, category_decision),
     )

@@ -194,13 +194,19 @@ def _store_context_candidates(text: str, lines: list[str], blocks: Sequence[dict
     candidates = []
     for index, line in enumerate(lines):
         value_index = None
-        if line.strip(" >〉") == "进店" and index:
+        explicit_value = None
+        if line.strip(" >〉") in {"进店", "进商家粉丝群"} and index:
             value_index = index - 1
         elif line == "商品说明":
             value_index = related_value_index(lines, blocks, index)
+        elif line.startswith("闪购") and any(anchor in nearby
+                for nearby in lines[max(0, index - 2):index + 3] for anchor in ("配送", "送达", "准时达")):
+            value_index = index
+        elif (ride := re.fullmatch(r"(.+?)[\-－—](?:经济型|舒适型|豪华型)[|｜].*师傅.*", line)):
+            value_index, explicit_value = index, ride[1].strip()
         if value_index is None:
             continue
-        value = re.sub(r"^(?:自营|闪购)", "", lines[value_index]).strip(" >〉")
+        value = explicit_value or re.sub(r"^(?:自营|闪购)", "", lines[value_index]).strip(" >〉")
         if line == "商品说明":
             store = re.fullmatch(r"(.+[（(][^()（）]+店[）)])(?:外卖)?(?:订单)?", value)
             if not store:
