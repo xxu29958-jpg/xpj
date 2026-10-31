@@ -158,17 +158,19 @@
 
 :root[data-theme="midnight"] {
     color-scheme: dark;
-    /* After-hours use: quiet graphite, with distinct solid reading surfaces. */
-    --surface-app: #16201c;
-    --surface-card: #1b1f1c;
-    --surface-raised: #252b26;
-    --surface-nav: #161917;
-    --surface-sunken: #212623;
+    /* After-hours use: quiet graphite, with distinct solid reading surfaces.
+       Cards sit a clear step above the page (L* ≈ 7 → 13) so grouped panels keep
+       their edges without borders; nav sits between the two. */
+    --surface-app: #101614;
+    --surface-card: #1c2420;
+    --surface-raised: #252e29;
+    --surface-nav: #141a17;
+    --surface-sunken: #222a26;
     --surface-apricot: #45372b;
     --surface-lilac: #383247;
     --surface-sand: #3c3b2c;
     /* 自定义背景遮罩：同 paper 的阅读下限，使用深色基调。 */
-    --surface-user-veil: linear-gradient(rgba(22, 32, 28, 0.94), rgba(22, 32, 28, 0.94));
+    --surface-user-veil: linear-gradient(rgba(16, 22, 20, 0.94), rgba(16, 22, 20, 0.94));
 
     /* Text */
     --text-default: #eff4ed;
@@ -239,14 +241,14 @@
     --goal-exceeded-bg:    rgba(217, 119, 87, 0.14);  --goal-exceeded-fg:    #e0836f; --goal-exceeded-border:    rgba(217, 119, 87, 0.30);
     --goal-expired-bg:     #1d2025;                   --goal-expired-fg:     #77837d; --goal-expired-border:     #2c2f37;
 
-    --card-pending-accent:       #70bfa5; --card-pending-icon:       #b4e2d2; --card-pending-surface:       #171c19;
-    --card-month-spend-accent:   #b7c4bd; --card-month-spend-icon:   #e8eeea; --card-month-spend-surface:   #171c19;
-    --card-recent-upload-accent: #8db8c0; --card-recent-upload-icon: #c8e2e7; --card-recent-upload-surface: #171c19;
-    --card-recurring-accent:     #e0836f; --card-recurring-icon:     #f2b5a7; --card-recurring-surface:     #171c19;
-    --card-goals-accent:         #a7b98c; --card-goals-icon:         #d5e0c5; --card-goals-surface:         #171c19;
-    --card-budget-accent:        #e3b36c; --card-budget-icon:        #f1d39e; --card-budget-surface:        #171c19;
-    --card-backup-accent:        #7f9188; --card-backup-icon:        #b8c5bf; --card-backup-surface:        #171c19;
-    --card-device-accent:        #b19db8; --card-device-icon:        #dccfe0; --card-device-surface:        #171c19;
+    --card-pending-accent:       #70bfa5; --card-pending-icon:       #b4e2d2; --card-pending-surface:       #1c2420;
+    --card-month-spend-accent:   #b7c4bd; --card-month-spend-icon:   #e8eeea; --card-month-spend-surface:   #1c2420;
+    --card-recent-upload-accent: #8db8c0; --card-recent-upload-icon: #c8e2e7; --card-recent-upload-surface: #1c2420;
+    --card-recurring-accent:     #e0836f; --card-recurring-icon:     #f2b5a7; --card-recurring-surface:     #1c2420;
+    --card-goals-accent:         #a7b98c; --card-goals-icon:         #d5e0c5; --card-goals-surface:         #1c2420;
+    --card-budget-accent:        #e3b36c; --card-budget-icon:        #f1d39e; --card-budget-surface:        #1c2420;
+    --card-backup-accent:        #7f9188; --card-backup-icon:        #b8c5bf; --card-backup-surface:        #1c2420;
+    --card-device-accent:        #b19db8; --card-device-icon:        #dccfe0; --card-device-surface:        #1c2420;
 
     /* v0.10 Midnight theme-specific elevation / skeleton / swipe / drawer overlay
      * 深色主题的 skeleton 使用常青高亮 alpha，确保 shimmer 在工作区可见。 */
