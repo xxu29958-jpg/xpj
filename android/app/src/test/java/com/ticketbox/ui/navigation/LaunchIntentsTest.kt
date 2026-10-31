@@ -129,7 +129,8 @@ class LaunchIntentsTest {
         assertEquals("upload_receipt", ShortcutTarget.UploadReceipt.id)
         assertEquals("manual_entry", ShortcutTarget.ManualEntry.id)
         assertEquals("review_pending", ShortcutTarget.ReviewPending.id)
-        assertTrue(ShortcutTarget.entries.size == 3)
+        assertEquals("monthly_overview", ShortcutTarget.MonthlyOverview.id)
+        assertTrue(ShortcutTarget.entries.size == 4)
     }
 
     @Test

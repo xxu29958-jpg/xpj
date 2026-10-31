@@ -41,6 +41,23 @@ private fun statsTest(block: suspend TestScope.() -> Unit) = runTest {
 @OptIn(ExperimentalCoroutinesApi::class)
 class MonthlyStatsViewModelTest {
     @Test
+    fun widgetEntryClearsHistoricalMonthAndTagUsingLedgerCalendar() = statsTest {
+        val stats = FakeStatsActions()
+        val binding = requireNotNull(stats.statsBinding())
+        val calendars = com.ticketbox.data.repository.MonthCalendarFixture(binding,
+            com.ticketbox.domain.model.LedgerCalendar(binding.ledgerId, 1, "Pacific/Kiritimati", "explicit", "2026-01-01T00:00:00Z"))
+        val vm = MonthlyStatsViewModel(stats, initialMonth = "2024-02", calendars = calendars)
+        advanceUntilIdle()
+        vm.setTag("旧筛选")
+        advanceUntilIdle()
+        vm.openCurrentMonth()
+        advanceUntilIdle()
+        assertEquals(java.time.YearMonth.now(java.time.ZoneId.of("Pacific/Kiritimati")).toString(), vm.uiState.value.month)
+        assertEquals("", vm.uiState.value.selectedTag)
+        assertEquals("", stats.queries.last().tag)
+    }
+
+    @Test
     fun newTaskWaitsForCalendarAndLateRulePreservesExplicitMonth() = statsTest {
         val stats = FakeStatsActions()
         val binding = requireNotNull(stats.bindingFlow.value)

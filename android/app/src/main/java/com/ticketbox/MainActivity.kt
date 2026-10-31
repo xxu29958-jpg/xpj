@@ -73,6 +73,11 @@ class MainActivity : FragmentActivity() {
         parseLaunchIntent(intent)?.let { launchRequests.value = mergeLaunchRequest(launchRequests.value, it) }
     }
 
+    override fun onStop() {
+        super.onStop()
+        com.ticketbox.widget.WidgetUpdateWorker.enqueue(this)
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         val requests = launchRequests.value.filterNot { it is LaunchIntentRequest.JoinInvitation }
         outState.putInt(SAVED_REQUEST_COUNT, requests.size)

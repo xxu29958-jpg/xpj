@@ -78,13 +78,15 @@ internal fun MainQuickActionsButton(
 }
 
 internal fun quickActionTargets(canModify: Boolean): List<ShortcutTarget> =
-    if (canModify) ShortcutTarget.entries else listOf(ShortcutTarget.ReviewPending)
+    if (canModify) listOf(ShortcutTarget.UploadReceipt, ShortcutTarget.ManualEntry, ShortcutTarget.ReviewPending)
+    else listOf(ShortcutTarget.ReviewPending)
 
 private val ShortcutTarget.labelRes: Int
     @StringRes get() = when (this) {
         ShortcutTarget.UploadReceipt -> R.string.shortcut_upload_short_label
         ShortcutTarget.ManualEntry -> R.string.shortcut_manual_short_label
         ShortcutTarget.ReviewPending -> R.string.shortcut_review_short_label
+        ShortcutTarget.MonthlyOverview -> R.string.widget_overview_name
     }
 
 private val ShortcutTarget.iconRes: Int
@@ -92,4 +94,5 @@ private val ShortcutTarget.iconRes: Int
         ShortcutTarget.UploadReceipt -> R.drawable.ic_lucide_images
         ShortcutTarget.ManualEntry -> R.drawable.ic_lucide_receipt_text
         ShortcutTarget.ReviewPending -> R.drawable.ic_lucide_inbox
+        ShortcutTarget.MonthlyOverview -> R.drawable.ic_lucide_chart_no_axes_combined
     }

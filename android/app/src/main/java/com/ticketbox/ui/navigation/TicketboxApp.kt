@@ -504,6 +504,10 @@ private fun dispatchLaunchRequest(request: LaunchIntentRequest, shellState: Main
 
 internal fun dispatchShortcutNavigation(target: ShortcutTarget, shellState: MainShellState) {
     when (target) {
+        ShortcutTarget.MonthlyOverview -> {
+            shellState.launchAction.post(LaunchAction.OpenCurrentMonthStats)
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Insights)
+        }
         ShortcutTarget.UploadReceipt -> {
             shellState.launchAction.post(LaunchAction.OpenImagePicker)
             shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox)

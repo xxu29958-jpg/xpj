@@ -25,6 +25,7 @@ class TicketboxApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        com.ticketbox.widget.observeWidgetSession(this, container, startupScope)
     }
 
     fun scheduleStartupWorkersAfterLaunchSettles() {

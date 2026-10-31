@@ -5,6 +5,17 @@ import org.junit.Test
 
 class MainQuickActionsTest {
     @Test
+    fun widgetSummaryOpensCurrentMonthAndSurvivesRestoration() {
+        val state = MainShellState()
+        dispatchShortcutNavigation(ShortcutTarget.MonthlyOverview, state)
+        assertEquals(PrimaryDomain.Insights, state.selectedDomain)
+        assertEquals(LaunchAction.OpenCurrentMonthStats, state.launchAction.pending)
+        val restored = LaunchActionState.restore(state.launchAction.snapshot())
+        assertEquals(LaunchAction.OpenCurrentMonthStats, restored.consume())
+        assertEquals(null, restored.pending)
+    }
+
+    @Test
     fun writerSeesExistingLauncherActionsInsideTheApp() {
         assertEquals(
             listOf(

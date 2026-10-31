@@ -103,6 +103,15 @@ class MonthlyStatsViewModel(
 
     fun reloadTags() = loadTags()
 
+    fun openCurrentMonth() {
+        val binding = _uiState.value.binding ?: return
+        refreshGeneration += 1
+        inFlightRefresh = null
+        monthSelected = false
+        _uiState.update { MonthlyStatsUiState(binding = binding) }
+        resolveMonth(binding)
+    }
+
     fun setMonth(value: String) {
         if (runCatching { YearMonth.parse(value) }.isFailure) return
         monthSelected = true

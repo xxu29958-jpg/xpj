@@ -23,6 +23,8 @@ internal sealed interface LaunchAction {
 
     /** 「记一笔」shortcut：打开手动记账表单。 */
     object OpenManualEntry : LaunchAction
+
+    object OpenCurrentMonthStats : LaunchAction
 }
 
 /**
@@ -126,6 +128,7 @@ internal class LaunchActionState {
             is LaunchAction.UploadSharedImages -> it.selection.savedFields()
             LaunchAction.OpenImagePicker -> arrayListOf("picker")
             LaunchAction.OpenManualEntry -> arrayListOf("manual")
+            LaunchAction.OpenCurrentMonthStats -> arrayListOf("monthly_stats")
         }
     }
 
@@ -137,6 +140,7 @@ internal class LaunchActionState {
             actions = snapshot.drop(1).map { fields -> when (fields.first()) {
                 "picker" -> LaunchAction.OpenImagePicker
                 "manual" -> LaunchAction.OpenManualEntry
+                "monthly_stats" -> LaunchAction.OpenCurrentMonthStats
                 else -> LaunchAction.UploadSharedImages(restoreLaunchRequest(fields) as LaunchIntentRequest.ShareImages)
             } }
         }
