@@ -1,15 +1,12 @@
 """Attribute a deliberate source choice only after its ordinary save succeeds."""
 
 import json
-from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, LedgerLearningEvent
 from app.schemas._recognition_choice import RecognitionTimeChoice
-from app.services.accounting_time_service import accounting_time_snapshot
 from app.services.learning_service import EventDraft, read_ocr_facts, record_event
 from app.services.learning_service._algorithm_registry import RECOGNITION_TIME_CHOICE
 from app.services.learning_service._source_eligibility import _event_payload
@@ -17,25 +14,8 @@ from app.services.notification_time_memory import notification_time_choice_conte
 from app.services.notification_time_service import notification_time
 from app.services.recognition_decision_service import bind_source_choice
 from app.services.recognition_time_service import recognition_time
-
-
-def time_components(expense: Expense) -> dict:
-    snapshot = accounting_time_snapshot(expense)
-    if snapshot is None:
-        return {}
-    value = expense.user_local_date
-    if expense.time_precision == "instant" and expense.expense_time is not None:
-        zone = (timezone(timedelta(seconds=expense.source_utc_offset_seconds))
-            if expense.source_utc_offset_seconds is not None else ZoneInfo(expense.source_timezone)
-            if expense.source_timezone else None)
-        if zone is not None:
-            value = expense.expense_time.astimezone(zone)
-    if value is None:
-        return {}
-    return {"year": value.year, "month": value.month, "day": value.day,
-        **({"hour": value.hour, "minute": value.minute, "second": value.second} if isinstance(value, datetime) else {}),
-        "timezone": expense.source_timezone, "offset_seconds": expense.source_utc_offset_seconds,
-        "precision": expense.time_precision}
+from app.services.recognition_time_values import candidate_components as _candidate_components
+from app.services.recognition_time_values import time_components
 
 
 def _chosen_source(db: Session, expense: Expense, choice: RecognitionTimeChoice, actor_account_id: int):
@@ -48,22 +28,6 @@ def _chosen_source(db: Session, expense: Expense, choice: RecognitionTimeChoice,
         and item.evidence_public_id == choice.evidence_public_id and item.parser_version == choice.parser_version
         and item.source == choice.source), None) if evidence else None
     return fact, candidate, capture
-
-
-def _candidate_components(candidate) -> dict:
-    if candidate.requires_year:
-        return {"year": None, **candidate.components, "timezone": candidate.source_timezone,
-            **({"offset_seconds": candidate.source_utc_offset_seconds} if candidate.source_utc_offset_seconds is not None else {}),
-            "precision": "date_only" if candidate.precision == "date_only" else "instant"}
-    try:
-        value = datetime.fromisoformat(candidate.local_value)
-    except ValueError:
-        return {}
-    return {"year": value.year, "month": value.month, "day": value.day,
-        **({"hour": value.hour, "minute": value.minute, "second": value.second}
-           if candidate.precision != "date_only" else {}),
-        "timezone": candidate.source_timezone, "offset_seconds": candidate.source_utc_offset_seconds,
-        "precision": "date_only" if candidate.precision == "date_only" else "instant"}
 
 
 def record_time_choice(db: Session, *, expense: Expense, choice: RecognitionTimeChoice | None,
