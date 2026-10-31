@@ -407,7 +407,7 @@
       const seen = [];
       const active = document.querySelector(".filter-tab.is-active .count");
       const total = document.querySelector(".filter-tab .count"); // 全部 is first
-      [active, total, ...document.querySelectorAll('[data-pending-count], [data-filtered-count], a[href^="/web/pending"] > .nav-badge')].forEach(function (node) {
+      [active, total, ...document.querySelectorAll('[data-filtered-count], a[href^="/web/pending"] > .nav-badge')].forEach(function (node) {
         if (!node || seen.indexOf(node) !== -1) return;
         seen.push(node);
         const n = parseInt(node.textContent, 10);

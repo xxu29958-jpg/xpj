@@ -12,9 +12,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import com.ticketbox.R
 import com.ticketbox.ui.components.AppPaperCard
+import com.ticketbox.ui.components.DataAuthorityTone
 import com.ticketbox.ui.design.AppAmountRole
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.tabularNum
+import com.ticketbox.ui.screens.ledgerAuthorityTone
 import com.ticketbox.viewmodel.LedgerUiState
 
 /** The visible stream owns the totals; unresolved dates stay next to those totals. */
@@ -23,7 +25,7 @@ internal fun LedgerHeader(
     state: LedgerUiState,
 ) {
     val summary = state.summary
-    val statusText = ledgerHeaderStatusText(state, ledgerSyncEvidence(state))
+    val statusText = ledgerHeaderStatusText(state)
     AppPaperCard {
         Column(
             modifier = Modifier.fillMaxWidth().padding(AppSpacing.cardPaddingSmall),
@@ -42,7 +44,8 @@ internal fun LedgerHeader(
             )
             if (state.undatedExpenseCount > 0) com.ticketbox.ui.components.AccountingDateNotice(state.undatedExpenseCount)
             Text(
-                text = stringResource(R.string.ledger_header_count_value, summary.itemCount) + " · " + statusText,
+                text = listOfNotNull(stringResource(R.string.ledger_header_count_value, summary.itemCount), statusText)
+                    .joinToString(" · "),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall.tabularNum(),
                 maxLines = 2,
@@ -52,14 +55,18 @@ internal fun LedgerHeader(
     }
 }
 
+/**
+ * Stale or refreshing data is announced once, by the authority strip above the list; the card
+ * only adds the sync time while that strip is absent.
+ */
 @Composable
-private fun ledgerHeaderStatusText(
-    state: LedgerUiState,
-    evidence: LedgerSyncEvidence,
-): String = when (evidence) {
-    LedgerSyncEvidence.Refreshing -> stringResource(R.string.ledger_header_status_syncing)
-    LedgerSyncEvidence.BackendSynced -> state.lastSyncAt?.let {
-        stringResource(R.string.ledger_header_status_synced, ledgerSyncClock(it))
-    } ?: stringResource(R.string.components_data_authority_backend_title)
-    LedgerSyncEvidence.LocalCache -> stringResource(R.string.ledger_header_status_offline)
+private fun ledgerHeaderStatusText(state: LedgerUiState): String? {
+    if (ledgerAuthorityTone(state) != DataAuthorityTone.Backend) return null
+    return when (ledgerSyncEvidence(state)) {
+        LedgerSyncEvidence.Refreshing -> stringResource(R.string.ledger_header_status_syncing)
+        LedgerSyncEvidence.BackendSynced -> state.lastSyncAt?.let {
+            stringResource(R.string.ledger_header_status_synced, ledgerSyncClock(it))
+        } ?: stringResource(R.string.components_data_authority_backend_title)
+        LedgerSyncEvidence.LocalCache -> null
+    }
 }

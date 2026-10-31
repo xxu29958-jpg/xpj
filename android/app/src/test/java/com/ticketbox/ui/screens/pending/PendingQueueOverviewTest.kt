@@ -63,7 +63,7 @@ class PendingQueueOverviewTest {
     }
 
     @Test
-    fun duplicatePriorityWinsOverOtherReviewSignals() {
+    fun duplicateRiskIsTheOnlyNoticeAmongReviewSignals() {
         val model = pendingQueueOverviewModel(
             PendingQueueCounts(
                 all = 8,
@@ -74,44 +74,25 @@ class PendingQueueOverviewTest {
             ),
         )
 
-        assertEquals(PendingQueuePriority.Duplicate, model.priority)
-        assertEquals(5, model.reviewCount)
+        assertEquals(PendingQueueNotice.Duplicate, model.notice)
+        assertEquals(3, model.readyCount)
     }
 
     @Test
-    fun amountPriorityWinsBeforeMerchantAndReady() {
-        val model = pendingQueueOverviewModel(
-            PendingQueueCounts(
-                all = 5,
-                needsAmount = 1,
-                needsMerchant = 2,
-                duplicate = 0,
-                readyToConfirm = 2,
-            ),
-        )
-
-        assertEquals(PendingQueuePriority.Amount, model.priority)
-        assertEquals(3, model.reviewCount)
+    fun missingFieldsAndReadyRowsAddNoNoticeBecauseTheChipsCarryThem() {
+        listOf(
+            PendingQueueCounts(all = 5, needsAmount = 1, needsMerchant = 2, duplicate = 0, readyToConfirm = 2),
+            PendingQueueCounts(all = 4, needsAmount = 0, needsMerchant = 2, duplicate = 0, readyToConfirm = 1),
+            PendingQueueCounts(all = 2, needsAmount = 0, needsMerchant = 0, duplicate = 0, readyToConfirm = 0),
+        ).forEach { counts ->
+            val model = pendingQueueOverviewModel(counts)
+            assertEquals(true, model.visible)
+            assertEquals(null, model.notice)
+        }
     }
 
     @Test
-    fun merchantPriorityShowsWhenMerchantIsTheFirstBlockingSignal() {
-        val model = pendingQueueOverviewModel(
-            PendingQueueCounts(
-                all = 4,
-                needsAmount = 0,
-                needsMerchant = 2,
-                duplicate = 0,
-                readyToConfirm = 1,
-            ),
-        )
-
-        assertEquals(PendingQueuePriority.Merchant, model.priority)
-        assertEquals(3, model.reviewCount)
-    }
-
-    @Test
-    fun readyPriorityShowsBatchableWork() {
+    fun readyRowsOfferBulkConfirm() {
         val model = pendingQueueOverviewModel(
             PendingQueueCounts(
                 all = 3,
@@ -122,32 +103,32 @@ class PendingQueueOverviewTest {
             ),
         )
 
-        assertEquals(PendingQueuePriority.Ready, model.priority)
-        assertEquals(0, model.reviewCount)
+        assertEquals(null, model.notice)
+        assertEquals(3, model.readyCount)
         assertEquals(true, model.canBulkConfirm)
     }
 
     @Test
-    fun localCacheEvidenceSuppressesBulkConfirmButKeepsCounts() {
+    fun localCacheEvidenceExplainsWhyBulkConfirmIsUnavailable() {
         val model = pendingQueueOverviewModel(
             counts = PendingQueueCounts(
                 all = 4,
                 needsAmount = 1,
                 needsMerchant = 0,
-                duplicate = 0,
+                duplicate = 1,
                 readyToConfirm = 3,
             ),
             evidence = PendingQueueEvidence.LocalCache,
         )
 
         assertEquals(PendingQueueEvidence.LocalCache, model.evidence)
+        assertEquals(PendingQueueNotice.LocalCache, model.notice)
         assertEquals(3, model.readyCount)
-        assertEquals(1, model.reviewCount)
         assertEquals(false, model.canBulkConfirm)
     }
 
     @Test
-    fun emptyPriorityClampsInvalidCounts() {
+    fun emptyQueueClampsInvalidCountsAndHidesTheOverview() {
         val model = pendingQueueOverviewModel(
             PendingQueueCounts(
                 all = -1,
@@ -158,8 +139,34 @@ class PendingQueueOverviewTest {
             ),
         )
 
-        assertEquals(PendingQueuePriority.Empty, model.priority)
-        assertEquals(0, model.reviewCount)
+        assertEquals(false, model.visible)
+        assertEquals(null, model.notice)
         assertEquals(0, model.readyCount)
+        assertEquals(false, model.canBulkConfirm)
+    }
+
+    @Test
+    fun readyFilterFollowsDuplicateSoItStaysOnScreen() {
+        val filters = visibleNeedsReviewFilters(
+            PendingQueueCounts(
+                all = 6,
+                needsAmount = 1,
+                needsMerchant = 1,
+                duplicate = 0,
+                readyToConfirm = 2,
+                needsCategory = 1,
+                needsFx = 1,
+            ),
+            selected = NeedsReviewFilter.All,
+        )
+
+        assertEquals(
+            listOf(
+                NeedsReviewFilter.All, NeedsReviewFilter.Duplicate, NeedsReviewFilter.ReadyToConfirm,
+                NeedsReviewFilter.NeedsAmount, NeedsReviewFilter.NeedsFx, NeedsReviewFilter.NeedsMerchant,
+                NeedsReviewFilter.NeedsCategory,
+            ),
+            filters,
+        )
     }
 }

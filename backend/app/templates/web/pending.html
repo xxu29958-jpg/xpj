@@ -29,7 +29,8 @@
       {% if bulk_versions %}
       {{ bulk_versions|length }} 张待继续，已完成的不会重复处理
       {% elif pending_count %}
-      <span data-pending-count>{{ pending_count }}</span> 张待整理，确认后计入流水
+      {# 张数在下方「全部」筛选上 (drawer.js 就地递减)，这里只说清规则。 #}
+      确认后才计入流水
       {% else %}
       当前账本没有待处理记录。
       {% endif %}

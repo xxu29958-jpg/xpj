@@ -2,9 +2,6 @@ package com.ticketbox.ui.screens.pending
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,13 +16,13 @@ import com.ticketbox.R
 import com.ticketbox.ui.design.AppSpacing
 import com.ticketbox.ui.design.AppTextHierarchy
 
-internal enum class PendingQueuePriority {
+/**
+ * Counts live on the filter chips below. The overview only adds what no chip can say: the
+ * duplicate-entry risk, why a local snapshot cannot be bulk-confirmed, and the bulk action.
+ */
+internal enum class PendingQueueNotice {
     Duplicate,
-    Amount,
-    Merchant,
-    Ready,
-    Review,
-    Empty,
+    LocalCache,
 }
 
 internal enum class PendingQueueEvidence {
@@ -34,13 +31,11 @@ internal enum class PendingQueueEvidence {
 }
 
 internal data class PendingQueueOverviewModel(
-    val reviewCount: Int,
+    val visible: Boolean,
     val readyCount: Int,
-    val needsAmount: Int,
-    val needsMerchant: Int,
     val needsInformation: Int,
     val duplicate: Int,
-    val priority: PendingQueuePriority,
+    val notice: PendingQueueNotice?,
     val evidence: PendingQueueEvidence,
     val canBulkConfirm: Boolean,
 )
@@ -51,38 +46,23 @@ internal fun pendingQueueOverviewModel(
 ): PendingQueueOverviewModel {
     val all = counts.all.coerceAtLeast(0)
     val ready = counts.readyToConfirm.coerceIn(0, all)
-    val needsAmount = counts.needsAmount.coerceAtLeast(0)
-    val needsMerchant = counts.needsMerchant.coerceAtLeast(0)
     val duplicate = counts.duplicate.coerceAtLeast(0)
     return PendingQueueOverviewModel(
-        reviewCount = all - ready,
+        visible = all > 0,
         readyCount = ready,
-        needsAmount = needsAmount,
-        needsMerchant = needsMerchant,
         needsInformation = counts.needsInformation.coerceAtLeast(0),
         duplicate = duplicate,
-        priority = pendingQueuePriority(all, ready, needsAmount, needsMerchant, duplicate),
+        notice = when {
+            all <= 0 -> null
+            evidence == PendingQueueEvidence.LocalCache -> PendingQueueNotice.LocalCache
+            duplicate > 0 -> PendingQueueNotice.Duplicate
+            else -> null
+        },
         evidence = evidence,
         canBulkConfirm = evidence == PendingQueueEvidence.Backend && ready > 1,
     )
 }
 
-private fun pendingQueuePriority(
-    all: Int,
-    ready: Int,
-    needsAmount: Int,
-    needsMerchant: Int,
-    duplicate: Int,
-): PendingQueuePriority = when {
-    all <= 0 -> PendingQueuePriority.Empty
-    duplicate > 0 -> PendingQueuePriority.Duplicate
-    needsAmount > 0 -> PendingQueuePriority.Amount
-    needsMerchant > 0 -> PendingQueuePriority.Merchant
-    ready > 0 -> PendingQueuePriority.Ready
-    else -> PendingQueuePriority.Review
-}
-
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PendingQueueOverview(
     counts: PendingQueueCounts,
@@ -92,67 +72,22 @@ internal fun PendingQueueOverview(
     onOpenBulkConfirm: () -> Unit,
 ) {
     val model = pendingQueueOverviewModel(counts, evidence)
-    if (model.priority == PendingQueuePriority.Empty) return
-    Column(
+    val showBulk = !readOnly && model.canBulkConfirm
+    if (!model.visible || (model.notice == null && !showBulk)) return
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = AppSpacing.tinyGap),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.smallGap),
-    ) {
-        PendingQueueOverviewHeader(
-            model = model,
-            readOnly = readOnly,
-            bulkRunning = bulkRunning,
-            onOpenBulkConfirm = onOpenBulkConfirm,
-        )
-        // Issue counts live on the filter chips below; the overview only adds ready/review totals.
-        if (model.shouldShowMetrics) FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.miniGap),
-        ) {
-            PendingQueueMetric(
-                label = stringResource(
-                    if (model.evidence == PendingQueueEvidence.LocalCache) {
-                        R.string.pending_queue_overview_ready_cache_label
-                    } else {
-                        R.string.pending_queue_overview_ready_label
-                    },
-                ),
-                value = model.readyCount,
-            )
-            PendingQueueMetric(
-                label = stringResource(
-                    if (model.evidence == PendingQueueEvidence.LocalCache) {
-                        R.string.pending_queue_overview_review_cache_label
-                    } else {
-                        R.string.pending_queue_overview_review_label
-                    },
-                ),
-                value = model.reviewCount,
-            )
-        }
-    }
-}
-
-@Composable
-private fun PendingQueueOverviewHeader(
-    model: PendingQueueOverviewModel,
-    readOnly: Boolean,
-    bulkRunning: Boolean,
-    onOpenBulkConfirm: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.contentGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = pendingQueuePriorityText(model),
+            text = model.notice?.let { pendingQueueNoticeText(it) }.orEmpty(),
             modifier = Modifier.weight(1f),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
-        if (!readOnly && model.canBulkConfirm) {
+        if (showBulk) {
             TextButton(
                 enabled = !bulkRunning,
                 onClick = onOpenBulkConfirm,
@@ -172,40 +107,8 @@ private fun PendingQueueOverviewHeader(
     }
 }
 
-private val PendingQueueOverviewModel.shouldShowMetrics: Boolean
-    get() = readyCount > 0 && reviewCount > 0
-
 @Composable
-private fun pendingQueuePriorityText(model: PendingQueueOverviewModel): String = when {
-    model.evidence == PendingQueueEvidence.LocalCache -> {
-        stringResource(R.string.pending_queue_overview_priority_cache)
-    }
-
-    else -> when (model.priority) {
-        PendingQueuePriority.Duplicate -> stringResource(R.string.pending_queue_overview_priority_duplicate)
-        PendingQueuePriority.Amount -> stringResource(R.string.pending_queue_overview_priority_amount)
-        PendingQueuePriority.Merchant -> stringResource(R.string.pending_queue_overview_priority_merchant)
-        PendingQueuePriority.Ready -> stringResource(R.string.pending_queue_overview_priority_ready, model.readyCount)
-        PendingQueuePriority.Review -> stringResource(R.string.pending_queue_overview_priority_review)
-        PendingQueuePriority.Empty -> stringResource(R.string.pending_queue_overview_priority_empty)
-    }
+private fun pendingQueueNoticeText(notice: PendingQueueNotice): String = when (notice) {
+    PendingQueueNotice.Duplicate -> stringResource(R.string.pending_queue_overview_priority_duplicate)
+    PendingQueueNotice.LocalCache -> stringResource(R.string.pending_queue_overview_priority_cache)
 }
-
-@Composable
-private fun PendingQueueMetric(label: String, value: Int) {
-    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.miniGap)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = AppTextHierarchy.caption.weight,
-        )
-        Text(
-            text = stringResource(R.string.pending_queue_overview_metric_count, value),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = AppTextHierarchy.heading.weight,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
-

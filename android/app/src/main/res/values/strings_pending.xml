@@ -52,7 +52,7 @@
 
     <!-- 页头 PendingTop -->
     <string name="pending_top_subtitle_has_items">逐条核对后入账</string>
-    <string name="pending_top_subtitle_count">%1$d 张待整理 · 确认后才计入流水</string>
+    <string name="pending_top_subtitle_queue">确认后才计入流水</string>
     <string name="pending_capture_hero_title">收好生活里的小票</string>
     <string name="pending_capture_hero_body">拍下来，慢慢整理。</string>
     <string name="pending_start_review">开始核对</string>
@@ -66,17 +66,7 @@
 
     <!-- 待确认队列概览 -->
     <string name="pending_queue_overview_priority_duplicate">优先处理疑似重复，避免重复入账。</string>
-    <string name="pending_queue_overview_priority_amount">补全金额后再确认入账。</string>
-    <string name="pending_queue_overview_priority_merchant">补全商家后，筛选与统计更准确。</string>
-    <string name="pending_queue_overview_priority_ready">%1$d 条可直接确认入账。</string>
-    <string name="pending_queue_overview_priority_review">当前队列需要逐条核对。</string>
     <string name="pending_queue_overview_priority_cache">当前是本机缓存，数量只作线索；刷新成功后再批量确认。</string>
-    <string name="pending_queue_overview_priority_empty">当前没有待处理记录。</string>
-    <string name="pending_queue_overview_ready_label">可确认</string>
-    <string name="pending_queue_overview_ready_cache_label">本机可确认</string>
-    <string name="pending_queue_overview_review_label">需核对</string>
-    <string name="pending_queue_overview_review_cache_label">本机需核对</string>
-    <string name="pending_queue_overview_metric_count">%1$d 条</string>
     <string name="pending_queue_overview_amount_issue">缺金额 %1$d</string>
     <string name="pending_queue_overview_merchant_issue">缺商家 %1$d</string>
     <string name="pending_queue_overview_bulk_confirm">确认 %1$d 条</string>
