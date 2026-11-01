@@ -144,6 +144,12 @@ REVIEWED_BOUNDARIES = {
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NotificationCaptureRepositoryTest.kt",
         "reason": "Cancellation propagates. One batch response must contain every independent identity before the original command is acknowledged. Transport and binding changes retain the entire original batch; unexpected response or publication errors report through logNetworkWarning before retaining a failed original. NotificationCaptureRepositoryTest covers batch reply loss/replay; NetworkErrorReportingTest verifies the shared sanitized sink. No raw notification or exception message is emitted.",
     },
+    (ANDROID + "data/repository/NotificationCaptureRepository.kt", "acceptIntent"): {
+        "sha256": "19f9d8641b4e6e1d65e082b9fa726550dbd5b18369c596d4526a06d8a0b09f01",
+        "owner": "listener admission failure reporting and durable local reminder",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/NotificationCaptureRepositoryTest.kt::acceptanceFailureDoesNotScheduleOrSend",
+        "reason": "The existing bound local-admission catch moved into the shared single/batch helper. Its typed failure returns to acceptNotificationBatch or acceptNotificationCapture, which use logNetworkWarning and recordNotificationCaptureFailure; no network work is scheduled. Cancellation propagates and the retained original is unchanged. NotificationAdmissionFailureTest covers the persistent reminder and sanitized sink.",
+    },
     (ANDROID + "data/repository/PaymentCaptureResolution.kt", "dispatch"): {
         "sha256": "7a278106a9dbe5f4eb03a90deceaf0eb7dd1acd006d555b6e5f5eca799552709",
         "owner": "existing HTTP mapping, retained Outbox command and sanitized TicketboxNetwork output",
