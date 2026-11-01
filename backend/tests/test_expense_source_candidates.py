@@ -1,6 +1,7 @@
 """Sanitized regressions for independent notifications, retries and financial effects.
 
-The reported shade contains 10.00 and 12.90; 29.33 was a separate capture.
+The reported shade includes 10.00 and 12.90 expenses plus transit and clipped
+payment evidence; 29.33 was a separate capture.
 No private original or notification body is included in this fixture.
 """
 
@@ -159,3 +160,27 @@ def test_human_amount_is_preserved_without_suppressing_first_new_candidate(clien
         db.commit()
         assert db.get(Expense, root["id"]).amount_cents == 2933
         assert [db.get(Expense, row.expense_id).amount_cents for row in _rows(db, root["id"])] == [1000, 1290]
+
+
+def test_shade_preserves_non_expense_and_clipped_cards_without_advertisement_bleed(client, identity):
+    text = ("城市公交卡 刷卡完成，交易金额：0.00元\n城市公交卡 充值金额：10.00元 卡内余…\n"
+        "支付宝(2)\n交易提醒\n17:49\n你有一笔10.00元的支出。\n"
+        "交易提醒\n17:30\n你有一笔12.90元的支出。\n"
+        "购物优惠自动识别\n17:35\n广告商家优惠\n"
+        "订单支付成功\n17:31\n美团\n您的订单内容被截断")
+    root_id = upload_png(client, identity=identity)
+    with SessionLocal() as db:
+        _apply(db, root_id, text)
+        db.commit()
+        rows = _rows(db, root_id)
+        assert len(rows) == 5
+        expenses = [db.get(Expense, row.expense_id) for row in rows]
+        assert [expense.amount_cents for expense in expenses] == [None, None, 1000, 1290, None]
+        assert all(expense.status == "pending" for expense in expenses)
+        assert all(expense.merchant != "广告商家优惠" for expense in expenses)
+        assert any(candidate["value"] == 1000 and candidate["role"] == "topup"
+            for candidate in rows[1].evidence["candidates"] if candidate["field"] == "amount_cents")
+        assert rows[4].evidence["source_app"] == "meituan"
+        assert [fragment["literal"] for fragment in rows[3].evidence["time_fragments"]] == ["17:30"]
+        assert all(row.evidence["source_text"] == text for row in rows)
+        assert db.scalar(select(func.count()).select_from(AccountMovement)) == 0

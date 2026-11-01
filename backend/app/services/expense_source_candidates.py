@@ -77,7 +77,8 @@ def _event_result(result, event, source, provider_name, ocr_model):
         "source_text": result.raw_text, "event_key": event["id"], "raw_spans": event["raw_spans"],
         "block_indices": event["block_indices"], "provider": provider_name, "model": ocr_model,
         "parser_version": FIELD_PARSE_VERSION,
-        "source_app": _source_app(result.raw_text[:start] + result.raw_text[start:end].splitlines()[0]),
+        "source_app": _source_app(result.raw_text[:start], result.raw_text[start:end]),
+        "source_heading": result.raw_text[start:end].splitlines()[0],
         "time_fragments": [{"literal": match.group(), "raw_span": [start + match.start(), start + match.end()],
             "precision": "time_only", "role": "notification_display", "date": None}
             for match in re.finditer(r"(?<![\d:])(?:[01]?\d|2[0-3]):[0-5]\d(?![:\d])", result.raw_text[start:end])]}
@@ -87,9 +88,10 @@ def _event_result(result, event, source, provider_name, ocr_model):
     return OcrResult(raw_text=result.raw_text[start:end], confidence=result.confidence, evidence=scoped), evidence
 
 
-def _source_app(text: str) -> str | None:
-    for line in reversed(text.splitlines()):
-        for app, label in (("alipay", "支付宝"), ("wechat", "微信")):
+def _source_app(prefix: str, card: str) -> str | None:
+    # The current card's app takes priority over an earlier notification group.
+    for line in [*card.splitlines()[:4], *reversed(prefix.splitlines())]:
+        for app, label in (("alipay", "支付宝"), ("wechat", "微信"), ("meituan", "美团")):
             if re.match(rf"^{label}(?:支付)?(?:[·•\s(（]|$)", line.strip()):
                 return app
     return None
