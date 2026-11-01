@@ -58,13 +58,17 @@ def test_cleanup_commit_failure_preserves_files_without_durable_delete_authority
 
     db.commit.side_effect = commit
     db.rollback.side_effect = rollback
-    with pytest.raises(SQLAlchemyError, match="cleanup commit rejected"):
-        if entry == "after_confirm":
-            _commit_confirmation_and_cleanup(db, expense)
-        elif entry == "confirmed_retention":
-            cleanup_service.cleanup_confirmed_images(db, "owner")
-        else:
-            cleanup_service.cleanup_rejected_images(db, "owner")
+    if entry == "after_confirm":
+        # The money and receipt already committed. Deferred cleanup must preserve
+        # that success while rolling back its own failed deletion authority.
+        _commit_confirmation_and_cleanup(db, expense)
+        db.rollback.assert_called_once()
+    else:
+        with pytest.raises(SQLAlchemyError, match="cleanup commit rejected"):
+            if entry == "confirmed_retention":
+                cleanup_service.cleanup_confirmed_images(db, "owner")
+            else:
+                cleanup_service.cleanup_rejected_images(db, "owner")
     db.rollback()
 
     assert commits == (2 if entry == "after_confirm" else 1)
