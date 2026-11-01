@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 横屏时桌面格子矮, 「本月账单」沿用横排版; 竖屏按小组件高度在 monthlyOverviewViews 里选。 -->
+    <item name="widget_monthly_overview" type="layout">@layout/widget_monthly_overview_short</item>
+</resources>
