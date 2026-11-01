@@ -334,7 +334,7 @@
   }
 
   form.addEventListener("input", function (event) {
-    if (event.isTrusted && phase === "editing" && categoryIntent &&
+    if ((event.isTrusted || event.ticketboxUserPick) && phase === "editing" && categoryIntent &&
         (event.target.name === "category" || event.target === categoryOneOff)) {
       categoryIntent.value = categoryOneOff?.checked ? "one_off" : "manual";
       categoryIntent.disabled = false;

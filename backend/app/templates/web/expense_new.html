@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from '_category_choices.html' import category_choices %}
 {% set page_title = '手动记一笔' %}
 {% set product_body_domain = 'transactions' %}
 {% set page_surface = 'tertiary' %}
@@ -67,6 +68,7 @@
         <datalist id="manual-expense-categories">
           {% for category in category_options %}<option value="{{ category }}">{% endfor %}
         </datalist>
+        {{ category_choices('manual-expense-category', category_options, values.category or '其他') }}
         <input type="hidden" name="category_choice" value="{{ values.category_choice or '' }}">
         <label><input type="checkbox" data-category-one-off {% if values.category_choice == 'one_off' %}checked{% endif %}> 此分类只用于这笔</label>
       </div>

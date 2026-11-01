@@ -120,6 +120,40 @@
     }
     input.value = value;
   };
+  // 分类可见选项 (_category_choices.html): 浏览器 datalist 只列出与已填内容匹配的项, 预填分类时等于没有选项。
+  // 点选与键入同一路径: 写入输入框并派发带 ticketboxUserPick 的 input/change, 各录入脚本把它当作用户编辑
+  // (分类来源记为手动、清掉已采纳的建议); 草稿也照常捕获。
+  function syncCategoryChoices() {
+    document.querySelectorAll("[data-category-choices]").forEach(function (group) {
+      const input = document.getElementById(group.dataset.categoryChoices);
+      if (!input) return;
+      group.hidden = false;
+      group.querySelectorAll("[data-category-pick]").forEach(function (button) {
+        button.setAttribute("aria-pressed", String(button.dataset.categoryPick === input.value));
+        button.disabled = input.disabled || input.readOnly;
+      });
+    });
+  }
+  document.addEventListener("click", function (event) {
+    const button = event.target.closest("[data-category-pick]");
+    const group = button && button.closest("[data-category-choices]");
+    const input = group && document.getElementById(group.dataset.categoryChoices);
+    if (!input || input.disabled || input.readOnly) return;
+    input.value = button.dataset.categoryPick;
+    ["input", "change"].forEach(function (type) {
+      input.dispatchEvent(Object.assign(new Event(type, {bubbles: true}), {ticketboxUserPick: true}));
+    });
+  });
+  ["input", "change", "toggle"].forEach(function (type) { document.addEventListener(type, syncCategoryChoices, true); });
+  window.addEventListener("load", syncCategoryChoices);
+  // 草稿脚本启动时会先锁住输入框、取得原稿后再放开, 不派发事件; 跟随输入框自身的可编辑状态。
+  const categoryLockObserver = new MutationObserver(syncCategoryChoices);
+  document.querySelectorAll("[data-category-choices]").forEach(function (group) {
+    const input = document.getElementById(group.dataset.categoryChoices);
+    if (input) categoryLockObserver.observe(input, {attributes: true, attributeFilter: ["readonly", "disabled"]});
+  });
+  syncCategoryChoices();
+
   app.restoreReviewRows = function restoreReviewRows(form, columns, encoded) {
     const original = form.querySelector('[name="' + columns[0] + '"]');
     const prototype = original.closest("[data-review-line]").cloneNode(true);

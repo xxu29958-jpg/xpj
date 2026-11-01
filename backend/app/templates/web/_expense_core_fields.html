@@ -1,3 +1,4 @@
+{% from '_category_choices.html' import category_choices %}
 {# 编辑 core-fields 共享 presentation partial（收件域收口片冻结）。
    真实 consumer: _edit_drawer.html (抽屉快速核对) 与 edit.html (完整整理页)。
    本 partial 只做展示: 冲突横幅 + 金额/商家/时间/分类/标签/备注字段排版与
@@ -202,6 +203,7 @@
   <datalist id="{{ _p }}-category-options">
     {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
   </datalist>
+  {% if can_write %}{{ category_choices(_p ~ '-category', category_options, e.category_input) }}{% endif %}
   <label class="product-field">
     <span><input type="checkbox" data-category-one-off {% if form_values and form_values.get('category_choice') == 'one_off' %}checked{% endif %} {% if not can_write %}disabled{% endif %}> 此分类只用于这笔</span>
   </label>
