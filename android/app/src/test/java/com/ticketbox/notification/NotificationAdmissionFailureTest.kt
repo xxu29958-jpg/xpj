@@ -64,7 +64,8 @@ class NotificationAdmissionFailureTest {
         val vm = SettingsViewModel(f.actions, store)
         runCurrent()
         f.dao.beforeInsert = { error("private notification merchant 26.80") }
-        acceptNotificationCapture(f.repository, store, f.capture, f.binding, "private-delivery")
+        acceptNotificationBatch(f.repository, store, listOf(ParsedNotificationCard(f.capture, "card-digest")), f.binding,
+            com.ticketbox.data.repository.NotificationSnapshotDelivery("slot-digest", "private-delivery", 1))
         runCurrent()
         val failed = assertNotNull(vm.uiState.value.notificationCaptureFailure)
         assertFalse(failed.persistenceFailed)
@@ -228,7 +229,8 @@ private class AdmissionFixture {
     val dao = FakePendingMutationDao()
     var scheduled = 0
     val repository = NotificationCaptureRepository(provider, OutboxRepository(dao, onRowsDeleted = {},
-        bindingProvider = { provider.currentSession().toOutboxBinding() }, onEnqueued = { scheduled++ }))
+        bindingProvider = { provider.currentSession().toOutboxBinding() }, onEnqueued = { scheduled++ }),
+        com.ticketbox.data.repository.FakeNotificationSnapshotDao(dao))
     val capture = PaymentNotificationResult.Expense(NotificationDraft(NotificationDraftSource.WeChat,
         2680, "private notification merchant", "餐饮", "2026-10-27T08:00:00Z"))
     val access = MutableStateFlow<LedgerAccessContext?>(LedgerAccessContext(binding, true))

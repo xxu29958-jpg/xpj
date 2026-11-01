@@ -133,7 +133,8 @@ class AppContainer(context: Context) {
         apiServiceProvider, database.debtBillInputDao(), outboxRepository, uploadFiles,
     )
 
-    internal val notificationCaptureRepository = com.ticketbox.data.repository.NotificationCaptureRepository(apiServiceProvider, outboxRepository)
+    internal val notificationCaptureRepository = com.ticketbox.data.repository.NotificationCaptureRepository(
+        apiServiceProvider, outboxRepository, database.notificationSnapshotDao())
 
     /**
      * Registered dispatchers. PR-2g.2 wired the first dispatcher

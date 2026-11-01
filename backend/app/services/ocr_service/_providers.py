@@ -111,7 +111,11 @@ def _local_llm_prompt_text() -> str:
         "use null when unknown, never 0), merchant(string|null), "
         "expense_time(string|null, ISO 8601; assume Beijing time if the image has "
         f"no timezone), category(string|null, one of: {categories}), "
-        "raw_text(string), confidence(number 0-1). Do not return source; the "
+        "raw_text(string), confidence(number 0-1). Transcribe every visible transaction card in raw_text, "
+        "including each app/title, amount and time, in source order with separate lines. Never omit "
+        "other payments after finding one. If multiple independent transactions are visible, set "
+        "the summary amount_cents, merchant, expense_time and category to null; raw_text must retain all cards. "
+        "Do not return source; the "
         "server owns the source field."
     )
 

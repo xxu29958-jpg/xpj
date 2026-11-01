@@ -139,10 +139,22 @@ REVIEWED_BOUNDARIES = {
         "reason": "HTTP failures use NetworkErrorHandler. Unknown response failures report through logNetworkWarning and block the unchanged original command for review, without retrying or claiming acceptance. Cancellation propagates; transport interruption retains the existing retry owner. The existing failure-to-retry test verifies compact receipts and preserves the original payload/key across an unverified response. No financial inputs or raw exception messages are emitted.",
     },
     (ANDROID + "data/repository/NotificationCaptureDispatcher.kt", "dispatch"): {
-        "sha256": "b1787d5f05ade2c64cc1ab2db812cd0162bf53ce148a24c28fcdb4dbbae8c099",
+        "sha256": "4e6fcdea9f8566676fec16850ee10ea2c161fa20f4978ca3e7d5d27aea0014c0",
         "owner": "existing HTTP mapping, Outbox result and sanitized TicketboxNetwork output",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NotificationCaptureRepositoryTest.kt",
-        "reason": "Cancellation propagates. Transport and binding changes retain the original; unexpected response or publication errors report through logNetworkWarning before retaining a failed original. NetworkErrorReportingTest verifies the shared sanitized sink. No raw notification or exception message is emitted.",
+        "reason": "Cancellation propagates. One batch response must contain every independent identity before the original command is acknowledged. Transport and binding changes retain the entire original batch; unexpected response or publication errors report through logNetworkWarning before retaining a failed original. NotificationCaptureRepositoryTest covers batch reply loss/replay; NetworkErrorReportingTest verifies the shared sanitized sink. No raw notification or exception message is emitted.",
+    },
+    (ANDROID + "data/repository/NotificationCaptureRepository.kt", "acceptIntent"): {
+        "sha256": "19f9d8641b4e6e1d65e082b9fa726550dbd5b18369c596d4526a06d8a0b09f01",
+        "owner": "listener admission failure reporting and durable local reminder",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/NotificationCaptureRepositoryTest.kt::acceptanceFailureDoesNotScheduleOrSend",
+        "reason": "The existing bound local-admission catch moved into the shared single/batch helper. Its typed failure returns to acceptNotificationBatch or acceptNotificationCapture, which use logNetworkWarning and recordNotificationCaptureFailure; no network work is scheduled. Cancellation propagates and the retained original is unchanged. NotificationAdmissionFailureTest covers the persistent reminder and sanitized sink.",
+    },
+    (ANDROID + "data/repository/NotificationCaptureRepository.kt", "captureLocally"): {
+        "sha256": "cf54cdb66bac662b74177182cd86f3b56f18b43f8900bfc73d7d4e6cad93168c",
+        "owner": "listener admission failure reporting and durable local reminder",
+        "test": "android/app/src/test/java/com/ticketbox/notification/NotificationAdmissionFailureTest.kt::listenerAdmissionFailureReachesLiveSettingsAndDiskReadUntilExplicitAcknowledgement",
+        "reason": "Snapshot publication returns a typed local failure to the existing listener reporter and durable reminder. Room rolls back source identity with the Outbox insertion; no failed acceptance schedules a send or advances the source journal. Source-close failures also use the sanitized listener logger. Cancellation propagates, original financial bindings remain immutable, and exception or notification bodies never enter the diagnostic.",
     },
     (ANDROID + "data/repository/PaymentCaptureResolution.kt", "dispatch"): {
         "sha256": "7a278106a9dbe5f4eb03a90deceaf0eb7dd1acd006d555b6e5f5eca799552709",

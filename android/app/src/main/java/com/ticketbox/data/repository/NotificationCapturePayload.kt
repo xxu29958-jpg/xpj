@@ -29,6 +29,7 @@ data class NotificationCapturePayload(
     val candidates: List<com.ticketbox.domain.model.PaymentCandidate> = emptyList(),
     val timeEvidence: NotificationTimeEvidenceDto? = null,
     val fieldEvidence: NotificationFieldEvidenceDto? = null,
+    val captures: List<NotificationCapturePayload> = emptyList(),
 ) {
     internal fun expenseRequest() = NotificationDraft(NotificationDraftSource.entries.single { it.apiValue == source },
         requireNotNull(originalAmountMinor), merchant, category, capturedAt).toRequest(notificationKey)
@@ -42,7 +43,7 @@ data class NotificationCapturePayload(
 
 @JsonClass(generateAdapter = true)
 data class NotificationCaptureReceipt(val expenseId: Long? = null, val repaymentPublicId: String? = null,
-    val capturePublicId: String? = null)
+    val capturePublicId: String? = null, val capturePublicIds: List<String> = emptyList())
 
 /** A shared codec for the persisted command, its dispatcher and the existing recovery screen. */
 internal object NotificationCaptureWire {
@@ -75,8 +76,21 @@ internal fun PaymentNotificationResult.captureIntent(key: String): PendingMutati
 internal fun OutboxRow.notificationCapture(): NotificationCapturePayload? = runCatching {
     require(type == PendingMutationType.CapturePaymentNotification && expectedRowVersion == 0L)
     val capture = requireNotNull(NotificationCaptureWire.payload.fromJson(payloadJson))
-    require(capture.revision in 1..4 && capture.notificationKey.isNotBlank() && capture.notificationKey == idempotencyKey &&
+    require(capture.revision in 1..5 && capture.notificationKey.isNotBlank() && capture.notificationKey == idempotencyKey &&
         targetId == "notification:${capture.notificationKey}")
+    if (capture.kind == "batch") {
+        require(capture.revision == 5 && capture.captures.size > 1)
+        require(capture.captures.map { it.notificationKey }.distinct().size == capture.captures.size)
+        capture.captures.forEach { it.validateSingleCapture() }
+    } else {
+        capture.validateSingleCapture()
+    }
+    capture
+}.getOrNull()
+
+private fun NotificationCapturePayload.validateSingleCapture() {
+    val capture = this
+    require(captures.isEmpty() && revision in 1..4 && notificationKey.isNotBlank())
     require(capture.originalCurrencyCode == "CNY" && (capture.kind == "review" || (capture.originalAmountMinor ?: 0) > 0))
     Instant.parse(capture.capturedAt)
     when (capture.kind) {
@@ -85,5 +99,17 @@ internal fun OutboxRow.notificationCapture(): NotificationCapturePayload? = runC
         "review" -> require(capture.revision >= 2)
         else -> error("Unknown capture kind")
     }
-    capture
-}.getOrNull()
+}
+
+internal fun List<PaymentNotificationResult>.captureBatchIntent(key: String): PendingMutationIntent {
+    require(size > 1)
+    val originals = mapIndexed { index, result ->
+        val eventKey = com.ticketbox.notification.notificationIdentityKey("event:$key:$index", 0)
+        requireNotNull(NotificationCaptureWire.payload.fromJson(result.captureIntent(eventKey).payloadJson))
+    }
+    val payload = originals.first().copy(revision = 5, kind = "batch", notificationKey = key,
+        originalAmountMinor = null, merchant = null, candidates = emptyList(), timeEvidence = null,
+        fieldEvidence = null, captures = originals)
+    return PendingMutationIntent(PendingMutationType.CapturePaymentNotification, "notification:$key",
+        NotificationCaptureWire.payload.toJson(payload), 0, key)
+}

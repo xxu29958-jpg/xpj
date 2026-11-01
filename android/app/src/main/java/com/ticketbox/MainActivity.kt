@@ -43,6 +43,9 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val container = (application as TicketboxApplication).container
+        if (container.settingsStore.notificationPreferences().autoCaptureEnabled) {
+            com.ticketbox.notification.NotificationListenerStatus.reconnectIfEnabled(this)
+        }
         val biometricAuthManager = BiometricAuthManager(this)
         bindFromDebugIntentIfPresent(container)
         val appDependencies = container.ticketboxAppDependencies(biometricAuthManager)

@@ -103,6 +103,25 @@ def stage_capture_target(db, capture, *, auth, kind, currency, amount, merchant,
 
 
 def capture_notification(db: Session, *, auth: AuthContext, payload: PaymentCaptureCreate) -> PaymentCaptureResponse:
+    return capture_notifications(db, auth=auth, payloads=[payload])[0]
+
+
+def capture_notifications(db: Session, *, auth: AuthContext, payloads: list[PaymentCaptureCreate]) -> list[PaymentCaptureResponse]:
+    # Stable lock order permits overlapping retries. Every reservation and pending
+    # target commits together; existing captures always retain their first evidence.
+    staged = {item.notification_key: _stage_notification(db, auth=auth, payload=item)
+        for item in sorted(payloads, key=lambda item: item.notification_key)}
+    responses = [capture_response(db, staged[item.notification_key][0]) for item in payloads]
+    db.commit()
+    from app.services.pending_fx_task_service import submit_pending_expense_fx
+
+    for _, fx_task in staged.values():
+        if fx_task is not None:
+            submit_pending_expense_fx(db, fx_task)
+    return responses
+
+
+def _stage_notification(db: Session, *, auth: AuthContext, payload: PaymentCaptureCreate):
     from app.services.expense_service._helpers import _clean_notification_source
 
     source = _clean_notification_source(payload.source)
@@ -119,9 +138,4 @@ def capture_notification(db: Session, *, auth: AuthContext, payload: PaymentCapt
         capture, fx_task = stage_capture_target(db, capture, auth=auth, kind=capture.kind,
             currency=currency, amount=payload.original_amount_minor, merchant=payload.merchant,
             notification_key=payload.notification_key)
-    db.commit()
-    if fx_task is not None:
-        from app.services.pending_fx_task_service import submit_pending_expense_fx
-
-        submit_pending_expense_fx(db, fx_task)
-    return capture_response(db, capture)
+    return capture, fx_task

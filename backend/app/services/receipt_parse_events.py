@@ -1,4 +1,4 @@
-"""Bounded transaction-card interpretations using the same field vocabulary."""
+"""Independent transaction-card interpretations using the same field vocabulary."""
 
 import re
 
@@ -39,7 +39,11 @@ def _merchant_prefix_start(lines: list[tuple[int, int, str]], index: int, lower:
 
 
 def _card_start(lines: list[tuple[int, int, str]], index: int, lower: int, message_list: bool) -> int:
-
+    # Notification shades put the app and clock before each transaction title.
+    apps = [position for position in range(max(lower, index - 3), index)
+        if re.match(r"^(?:支付宝|微信支付|微信)(?:[·•\s(（]|$)", lines[position][2])]
+    if apps:
+        return lines[apps[-1]][0]
     start = index
     amount_start = _amount_prefix_start(lines, index, lower)
     if amount_start is not None:
@@ -62,43 +66,61 @@ def _card_has_amount(card: str) -> bool:
         offset += len(line) + 1
     # Share the field parser's semantic roles, not just its monetary vocabulary.
     return any(_role(text, start, end) in {"unknown", "payment", "expense", "total", "order",
-        "repayment", "refund", "income"} for start, end in spans)
+        "repayment", "refund", "income", "topup"} for start, end in spans)
 
 
 def _card_anchors(lines: list[tuple[int, int, str]]) -> list[int]:
-    headings = {*TRANSACTION_SUCCESS_KEYWORDS, "交易提醒"}
+    headings = {*TRANSACTION_SUCCESS_KEYWORDS, "交易提醒", "订单支付成功"}
     # A labelled status value describes the enclosing payment, not another card.
     status_labels = {"交易状态", "支付状态", "付款状态", "订单状态"}
-    return [index for index, (_, _, text) in enumerate(lines) if text in headings
+    return [index for index, (_, _, text) in enumerate(lines) if (text in headings
+        or re.match(r"^交易提醒(?:[\s:：]|你有一笔)", text)
+        or re.search(r"卡\s*(?:充值金额|刷卡完成)[：:，,\s]", text))
         and (not index or lines[index - 1][2].rstrip(":： ") not in status_labels)]
+
+
+def _notification_end(raw_text: str, start: int, end: int) -> int:
+    """A second display clock belongs to the next notification, even when it is an ad."""
+    lines = list(re.finditer(r"[^\r\n]+", raw_text[start:end]))
+    clocks = [index for index, line in enumerate(lines)
+        if re.fullmatch(r"(?:[01]?\d|2[0-3]):[0-5]\d", line.group().strip())]
+    if len(clocks) > 1 and clocks[1] > 0:
+        return start + lines[clocks[1] - 1].start()
+    return end
+
+
+def _card_starts(raw_text: str, lines: list[tuple[int, int, str]], anchors: list[int], message_list: bool) -> list[int]:
+    """Bind app/merchant prefixes without taking the preceding card's amount."""
+    first_start = _card_start(lines, anchors[0], 0, message_list)
+    prefix_layout = first_start < lines[anchors[0]][0]
+    starts = [first_start]
+    for number, index in enumerate(anchors[1:], start=1):
+        start = lines[index][0]
+        prefix = _card_start(lines, index, anchors[number - 1] + 1, message_list)
+        app_prefix = re.match(r"^(?:支付宝|微信支付|微信)(?:[·•\s(（]|$)", raw_text[prefix:])
+        # Prefix ownership cannot remove the preceding card's only amount.
+        if (prefix_layout or app_prefix) and _card_has_amount(raw_text[starts[-1]:prefix]):
+            start = prefix
+        starts.append(start)
+    return starts
 
 
 def transaction_event_spans(raw_text: str) -> tuple[tuple[int, int], ...]:
     """Separate repeated cards, retaining the merchant/amount prefix of a success status."""
-
     lines = [(match.start(), match.end(), match.group().strip())
              for match in re.finditer(r"[^\r\n]+", raw_text) if match.group().strip()]
     anchors = _card_anchors(lines)
     if len(anchors) < 2:
         return ()
-    # Separate success toasts alone are not sufficient: each card needs money.
+    # Display clocks distinguish a notification shade from repeated receipt status labels.
+    notification_shade = "交易提醒" in raw_text and len(re.findall(r"(?m)^\s*\d{1,2}:\d{2}\s*$", raw_text)) > 1
+    starts = _card_starts(raw_text, lines, anchors, "服务消息" in raw_text or "支付消息" in raw_text)
     spans = []
-    message_list = "服务消息" in raw_text or "支付消息" in raw_text
-    first_start = _card_start(lines, anchors[0], 0, message_list)
-    prefix_layout = first_start < lines[anchors[0]][0]
-    starts = [first_start]
-    # One look-ahead boundary prevents the twentieth card from absorbing an unparsed tail.
-    for number, index in enumerate(anchors[1:21], start=1):
-        start = lines[index][0]
-        if prefix_layout:
-            prefix = _card_start(lines, index, anchors[number - 1] + 1, message_list)
-            # Prefix ownership cannot remove the preceding card's only amount.
-            if _card_has_amount(raw_text[starts[-1]:prefix]):
-                start = prefix
-        starts.append(start)
-    for number, start in enumerate(starts[:20]):
+    for number, start in enumerate(starts):
         end = starts[number + 1] if number + 1 < len(starts) else len(raw_text)
+        if notification_shade:
+            end = _notification_end(raw_text, start, end)
         card = raw_text[start:end]
-        if _card_has_amount(card):
+        if _card_has_amount(card) or (notification_shade and "订单支付成功" in card):
             spans.append((start, end))
     return tuple(spans) if len(spans) > 1 else ()

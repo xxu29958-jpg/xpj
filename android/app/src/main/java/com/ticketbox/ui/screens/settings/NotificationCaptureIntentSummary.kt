@@ -14,9 +14,11 @@ import com.ticketbox.presentation.formatDisplayAmount
 @Composable
 internal fun NotificationCaptureIntentSummary(row: OutboxRow) {
     val original = remember(row.payloadJson) { row.notificationCapture() } ?: return
-    Text(stringResource(when (original.kind) { "expense" -> R.string.notification_capture_expense; "repayment" -> R.string.notification_capture_repayment; else -> R.string.payment_capture_review_title }))
-    Text(stringResource(R.string.notification_capture_original,
-        original.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.notification_draft_created_merchant_missing),
-        original.originalAmountMinor?.let { formatDisplayAmount(it, CurrencyDisplay.forRecord(original.originalCurrencyCode)) } ?: stringResource(R.string.payment_capture_amount), original.capturedAt))
+    for (capture in original.captures.ifEmpty { listOf(original) }) {
+        Text(stringResource(when (capture.kind) { "expense" -> R.string.notification_capture_expense; "repayment" -> R.string.notification_capture_repayment; else -> R.string.payment_capture_review_title }))
+        Text(stringResource(R.string.notification_capture_original,
+            capture.merchant?.takeIf { it.isNotBlank() } ?: stringResource(R.string.notification_draft_created_merchant_missing),
+            capture.originalAmountMinor?.let { formatDisplayAmount(it, CurrencyDisplay.forRecord(capture.originalCurrencyCode)) } ?: stringResource(R.string.payment_capture_amount), capture.capturedAt))
+    }
     Text(stringResource(R.string.notification_capture_pending_explanation))
 }

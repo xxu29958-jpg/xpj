@@ -91,6 +91,7 @@ internal class ExpenseCorrectionConnectedFixture(
     val expenseDao get() = requireNotNull(database).expenseDao()
     val debtBillInputDao get() = requireNotNull(database).debtBillInputDao()
     val pendingDao get() = requireNotNull(database).pendingMutationDao()
+    val notificationSnapshots get() = requireNotNull(database).notificationSnapshotDao()
     var failCachePublication = false
     var originalStorageAvailable = true
     var confirmedCallbacks = 0

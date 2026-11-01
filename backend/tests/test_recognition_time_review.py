@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 
 from app.database import SessionLocal
-from app.models import Expense, OcrFact
+from app.models import Expense, ExpenseSourceCandidate, OcrFact
 from app.schemas import ExpenseResponse
 from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
 from app.services.learning_service import OcrFactDraft, record_ocr_fact
@@ -80,11 +80,30 @@ def test_multi_transaction_image_keeps_event_identity_in_actual_review(client, w
         expense_id, version = expense.id, expense.row_version
         fact = db.query(OcrFact).filter_by(expense_id=expense_id).one()
         frozen_evidence = fact.evidence_json
-        assert expense.amount_cents == manual_amount and expense.merchant is None
-        assert expense.expense_time is None and expense.category == "其他"
-        events = json.loads(frozen_evidence)["field_parse"]["events"]
-        assert len(events) == 2 and not set(events[0]["candidate_ids"]).intersection(events[1]["candidate_ids"])
+        source_rows = db.query(ExpenseSourceCandidate).filter_by(source_expense_id=expense_id).order_by(
+            ExpenseSourceCandidate.event_index).all()
+        assert len(source_rows) == 2 and len({row.event_key for row in source_rows}) == 2
+        independent = {row.expense_id: row.event_key for row in source_rows}
+        if manual_amount is not None:
+            assert expense.amount_cents == manual_amount and expense.merchant is None
+            assert expense.expense_time is None and expense.category == "其他"
+            assert expense_id not in independent
+            events = json.loads(frozen_evidence)["field_parse"]["events"]
+            assert len(events) == 2 and not set(events[0]["candidate_ids"]).intersection(events[1]["candidate_ids"])
+        else:
+            assert expense_id in independent and expense.amount_cents == 1260
 
+    _assert_independent_card_review(client, web_client, identity, independent)
+    if manual_amount is None:
+        with SessionLocal() as db:
+            assert db.get(Expense, expense_id).row_version == version
+            assert db.query(OcrFact).filter_by(expense_id=expense_id).one().evidence_json == frozen_evidence
+        return
+
+    _assert_manual_source_review(client, web_client, identity, expense_id, manual_amount, version, frozen_evidence)
+
+
+def _assert_manual_source_review(client, web_client, identity, expense_id, manual_amount, version, frozen_evidence):
     response = client.get("/api/expenses/pending", headers=negotiated_headers(client, identity.app_headers))
     assert response.status_code == 200, response.text
     item = next(row for row in response.json() if row["id"] == expense_id)
@@ -103,6 +122,27 @@ def test_multi_transaction_image_keeps_event_identity_in_actual_review(client, w
         expense = db.get(Expense, expense_id)
         assert expense.amount_cents == manual_amount and expense.row_version == version
         assert db.query(OcrFact).filter_by(expense_id=expense_id).one().evidence_json == frozen_evidence
+
+
+def _assert_independent_card_review(client, web_client, identity, independent):
+    response = client.get("/api/expenses/pending", headers=negotiated_headers(client, identity.app_headers))
+    assert response.status_code == 200, response.text
+    items = {row["id"]: row for row in response.json()}
+    for (expense_id, event_key), merchant, day in zip(independent.items(), ("蓝湾餐厅", "青松商店"),
+            ("2025-12-20", "2025-12-21"), strict=True):
+        item = items[expense_id]
+        assert item["amount_cents"] == 1260 and item["merchant"] == merchant
+        assert item["status"] == "pending" and item["duplicate_status"] == "none"
+        candidates = item["recognition_time"]["candidates"]
+        assert len(candidates) == 1 and day in candidates[0]["original_text"]
+        page = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner")
+        assert page.status_code == 200 and merchant in page.text
+        assert candidates[0]["label"] in page.text
+        with SessionLocal() as db:
+            fact = db.query(OcrFact).filter_by(expense_id=expense_id).one()
+            source = json.loads(fact.evidence_json)["source_event"]
+            assert source["event_key"] == event_key and day in fact.raw_text
+            assert db.get(Expense, expense_id).row_version == item["row_version"]
 
 
 def test_api_date_only_choice_is_explicit_replayable_and_keeps_source_fact(client, identity):

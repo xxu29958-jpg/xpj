@@ -35,7 +35,7 @@ class NotificationCaptureRoomTest {
         fixture.reopen()
         var provider = fixture.notificationDependencies.apiServiceProvider
         val origin = requireNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
-        val repository = NotificationCaptureRepository(provider, fixture.outbox)
+        val repository = NotificationCaptureRepository(provider, fixture.outbox, fixture.notificationSnapshots)
         assertTrue(expense is PaymentNotificationResult.Expense)
         assertEquals(3790L, (expense as PaymentNotificationResult.Expense).draft.amountCents)
         val id = repository.accept(expense, origin, "expense-post").getOrThrow()
@@ -47,7 +47,7 @@ class NotificationCaptureRoomTest {
         assertEquals(expense.fieldEvidence?.fragments?.map { it.literal }, frozen.fieldEvidence?.fragments?.map { it.literal })
         fixture.reopen()
         provider = fixture.notificationDependencies.apiServiceProvider
-        val reopened = NotificationCaptureRepository(provider, fixture.outbox)
+        val reopened = NotificationCaptureRepository(provider, fixture.outbox, fixture.notificationSnapshots)
         assertEquals(originals, fixture.pendingDao.allRows().associate { it.id to it.payload })
         assertEquals(id, reopened.accept(expense, origin, "expense-post").getOrThrow())
         fixture.outbox.markDone(id, receiptJson = NotificationCaptureWire.receipt.toJson(NotificationCaptureReceipt(expenseId = 12)))
@@ -66,8 +66,8 @@ class NotificationCaptureRoomTest {
         try {
             val otherQueue = OutboxRepository(second.pendingMutationDao(), fixture.clock,
                 bindingProvider = { provider.currentSession().toOutboxBinding() }, onRowsDeleted = {})
-            val ids = listOf(fixture.outbox, otherQueue).map { queue -> async(Dispatchers.IO) {
-                NotificationCaptureRepository(provider, queue).accept(expense, origin, "same-post").getOrThrow()
+            val ids = listOf(fixture.outbox to fixture.notificationSnapshots, otherQueue to second.notificationSnapshotDao()).map { (queue, snapshots) -> async(Dispatchers.IO) {
+                NotificationCaptureRepository(provider, queue, snapshots).accept(expense, origin, "same-post").getOrThrow()
             } }.awaitAll()
             assertEquals(1, ids.distinct().size)
             assertEquals(1, fixture.pendingDao.allRows().size)

@@ -110,6 +110,7 @@ def test_runtime_snapshot_is_authenticated_private_and_product_facing(
             "debt_activity_read_version": 1,
             "debt_bill_source_version": 1,
             "expense_confirmation_version": 2,
+            "notification_batch_version": 1,
             "currency": {
                 "home_currency_code": None,
                 "minor_unit_exponent": None,

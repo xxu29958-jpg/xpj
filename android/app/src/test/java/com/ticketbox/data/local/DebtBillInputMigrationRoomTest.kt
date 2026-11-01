@@ -45,7 +45,8 @@ class DebtBillInputMigrationRoomTest {
                 arrayOf(original.absolutePath))
         }
         helper.close()
-        val db = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(AppDatabase.Migration31To32).build()
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(AppDatabase.Migration31To32, AppDatabase.Migration32To33).build()
         try {
                 db.openHelper.readableDatabase.query("SELECT payload,idempotencyKey,receiptJson,expectedRowVersion FROM pending_mutations").use {
                     assertTrue(it.moveToFirst()); assertEquals(raw, it.getString(0)); assertEquals("old-key", it.getString(1))
@@ -58,7 +59,7 @@ class DebtBillInputMigrationRoomTest {
                 db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM debt_bill_inputs").use {
                     assertTrue(it.moveToFirst()); assertEquals(0, it.getInt(0))
                 }
-                assertEquals(32, db.openHelper.readableDatabase.version)
+                assertEquals(33, db.openHelper.readableDatabase.version)
                 assertContentEquals(byteArrayOf(4, 5, 6), original.readBytes())
         } finally { db.close(); context.deleteDatabase(name); original.delete() }
     }

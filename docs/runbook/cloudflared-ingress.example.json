@@ -107,7 +107,7 @@
     },
     {
       "hostname": "ticketbox.example.com",
-      "path": "^(/api/payment\\-captures|/api/payment\\-captures/[^/]+|/api/payment\\-captures/[^/]+/decision)$",
+      "path": "^(/api/payment\\-captures|/api/payment\\-captures/[^/]+|/api/payment\\-captures/[^/]+/decision|/api/payment\\-captures/batch)$",
       "service": "http://127.0.0.1:8000"
     },
     {

@@ -218,6 +218,7 @@ Cloudflare ingress 只匹配 hostname/path；方法、鉴权、角色、账本�
 | POST | `/api/merchants/catalog/{source_public_id}/merge` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
 | GET | `/api/payment-captures` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
 | POST | `/api/payment-captures` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
+| POST | `/api/payment-captures/batch` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
 | GET | `/api/payment-captures/{public_id}` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
 | POST | `/api/payment-captures/{public_id}/decision` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |
 | POST | `/api/recurring/from-candidate` | 允许 | App Bearer；Backend 继续执行角色、账本和设备隔离 |

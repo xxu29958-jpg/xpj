@@ -24,19 +24,14 @@ internal class NotificationCaptureDispatcher(
         return try {
             val bound = guard.bind(expectedLedgerId = row.ledgerId)
             val api = bound.serviceFor(requireNotNull(row.bindingOrNull()))
-            val result = api.capturePayment(payload.request())
+            val results = if (payload.kind == "batch") {
+                api.capturePayments(com.ticketbox.data.remote.dto.PaymentCaptureBatchCreateDto(payload.captures.map { it.request() }))
+            } else listOf(api.capturePayment(payload.request()))
             bound.requireStillActive()
-            require(result.publicId.isNotBlank())
-            val receipt = when (result.kind) {
-                "expense" -> expense(api, bound, requireNotNull(result.expenseId))
-                "repayment" -> repayment(api, bound, requireNotNull(result.repaymentPublicId))
-                "review" -> {
-                    onReview(bound.logicalBinding, result.publicId)
-                    NotificationCaptureReceipt(capturePublicId = result.publicId)
-                }
-                "dismissed" -> NotificationCaptureReceipt(capturePublicId = result.publicId)
-                else -> error("Unknown capture result")
-            }
+            require(results.size == (payload.captures.size.takeIf { payload.kind == "batch" } ?: 1))
+            require(results.all { it.publicId.isNotBlank() } && results.map { it.publicId }.distinct().size == results.size)
+            val receipts = results.map { result -> publishCapture(api, bound, result) }
+            val receipt = if (payload.kind == "batch") NotificationCaptureReceipt(capturePublicIds = results.map { it.publicId }) else receipts.single()
             DispatchResult.Success(receiptJson = NotificationCaptureWire.receipt.toJson(receipt))
         } catch (error: CancellationException) {
             throw error
@@ -52,6 +47,18 @@ internal class NotificationCaptureDispatcher(
             DispatchResult.Failure("notification_capture_response_unverified")
         }
     }
+
+    private suspend fun publishCapture(api: ApiService, bound: BoundLedgerRequest, result: com.ticketbox.domain.model.PaymentCapture): NotificationCaptureReceipt =
+        when (result.kind) {
+                "expense" -> expense(api, bound, requireNotNull(result.expenseId))
+                "repayment" -> repayment(api, bound, requireNotNull(result.repaymentPublicId))
+                "review" -> {
+                    onReview(bound.logicalBinding, result.publicId)
+                    NotificationCaptureReceipt(capturePublicId = result.publicId)
+                }
+                "dismissed" -> NotificationCaptureReceipt(capturePublicId = result.publicId)
+                else -> error("Unknown capture result")
+        }
 
     private suspend fun expense(api: ApiService, bound: BoundLedgerRequest, id: Long): NotificationCaptureReceipt {
         val created = api.expense(id)

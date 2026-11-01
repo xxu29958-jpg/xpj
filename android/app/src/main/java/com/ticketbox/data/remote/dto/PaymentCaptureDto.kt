@@ -5,6 +5,9 @@ import com.squareup.moshi.JsonClass
 import com.ticketbox.domain.model.PaymentCandidate
 
 @JsonClass(generateAdapter = true)
+data class PaymentCaptureBatchCreateDto(val captures: List<PaymentCaptureCreateDto>)
+
+@JsonClass(generateAdapter = true)
 data class PaymentCaptureCreateDto(
     @Json(name = "notification_key") val notificationKey: String, val source: String,
     @Json(name = "captured_at") val capturedAt: String,

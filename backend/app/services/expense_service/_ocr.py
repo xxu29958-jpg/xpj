@@ -95,7 +95,7 @@ def retry_expense_ocr(
     )
     # Keep legacy OCR draft-field detection anchored to the pre-claim snapshot.
     expense.updated_at = anchor_updated_at
-    apply_ocr_result_and_append_fact(
+    applied = apply_ocr_result_and_append_fact(
         db,
         expense=expense,
         result=result,
@@ -107,11 +107,8 @@ def retry_expense_ocr(
     # ``expense.raw_text`` column. ``append_ocr_fact`` above already
     # wrote the latest fact, so this is a single fact lookup against
     # the row we just inserted (no N+1, no stale-read risk).
-    _replace_ocr_draft_items_from_text(
-        db,
-        expense,
-        read_ocr_text(db, tenant_id=expense.tenant_id, expense=expense) or "",
-    )
+    if applied is not None:
+        _replace_ocr_draft_items_from_text(db, expense, read_ocr_text(db, tenant_id=expense.tenant_id, expense=expense) or "")
     if expense.category == "其他":
         classify_expense(db, expense)
     if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
@@ -162,13 +159,14 @@ def recognize_expense_text(
     # to decide which draft fields it owns and is allowed to overwrite.
     expense.updated_at = anchor_updated_at
     result = OcrResult(raw_text=raw_text, confidence=None)
-    apply_ocr_result_and_append_fact(
+    applied = apply_ocr_result_and_append_fact(
         db,
         expense=expense,
         result=result,
         provider_name="manual_text",
     )
-    _replace_ocr_draft_items_from_text(db, expense, raw_text)
+    if applied is not None:
+        _replace_ocr_draft_items_from_text(db, expense, applied.raw_text)
     if expense.category == "其他":
         classify_expense(db, expense)
     if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:

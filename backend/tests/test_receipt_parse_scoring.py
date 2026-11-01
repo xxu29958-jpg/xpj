@@ -108,13 +108,13 @@ def test_material_ui_prefix_is_not_a_merchant_label_but_delimited_store_still_is
     assert _parse_cny("支付成功\n商家：罗森便利店\n支付金额17.89").merchant == "罗森便利店"
 
 
-def test_material_card_limit_leaves_the_unparsed_tail_outside_the_last_event():
+def test_material_cards_keep_every_event_including_the_tail_after_twenty():
     cards = [f"门店{index}号\n-17.89\n交易成功\n查看详情" for index in range(21)]
     text = "\n".join(cards)
     parsed = _parse_cny(text)
-    assert len(parsed.events) == 20
-    assert parsed.events[-1]["raw_spans"][-1][1] <= text.index(cards[-1])
-    assert not any(candidate.field == "merchant" and candidate.value == "门店20号" for candidate in parsed.candidates)
+    assert len(parsed.events) == 21
+    assert parsed.events[-1]["raw_spans"][-1][1] == len(text)
+    assert any(candidate.field == "merchant" and candidate.value == "门店20号" for candidate in parsed.candidates)
 
 
 @pytest.mark.parametrize("merchant_label", ["商家：", "商家名称\n"])
