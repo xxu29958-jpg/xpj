@@ -616,6 +616,11 @@ interface PendingMutationDao {
         inFlightStatus: String,
     ): Flow<Int>
 
+    /** One Room snapshot supplies the total and its upload/record breakdown. */
+    @Query("SELECT * FROM pending_mutations WHERE ownerKey = :ownerKey AND ledgerId = :ledgerId " +
+        "AND status IN (:pendingStatus, :inFlightStatus) ORDER BY createdAt ASC, id ASC")
+    fun observeQueuedRows(ownerKey: String, ledgerId: String, pendingStatus: String, inFlightStatus: String): Flow<List<PendingMutationEntity>>
+
     /**
      * Live stream of rows the user needs to resolve. Drives the
      * conflict-banner UI in PR-2g.

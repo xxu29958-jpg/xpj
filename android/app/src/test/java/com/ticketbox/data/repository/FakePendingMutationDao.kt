@@ -370,6 +370,11 @@ class FakePendingMutationDao : PendingMutationDao {
         }
     }
 
+    override fun observeQueuedRows(ownerKey: String, ledgerId: String, pendingStatus: String, inFlightStatus: String): Flow<List<PendingMutationEntity>> =
+        observeRows().map { snapshot -> snapshot.filter {
+            it.ownerKey == ownerKey && it.ledgerId == ledgerId && it.status in listOf(pendingStatus, inFlightStatus)
+        }.sortedWith(compareBy({ it.createdAt }, { it.id })) }
+
     override fun observeConflictRows(
         ownerKey: String,
         ledgerId: String,

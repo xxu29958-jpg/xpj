@@ -44,6 +44,13 @@ internal fun StatsRoute(shellState: MainShellState, screenFactory: MainScreenFac
     val layoutState by layout.uiState.collectAsStateWithLifecycle()
     val recurringState by recurring.uiState.collectAsStateWithLifecycle()
 
+    LaunchedEffect(shellState.launchAction.pending, monthlyState.binding) {
+        if (shellState.launchAction.pending == LaunchAction.OpenCurrentMonthStats && monthlyState.binding != null) {
+            monthly.openCurrentMonth()
+            shellState.launchAction.consume(LaunchAction.OpenCurrentMonthStats)
+        }
+    }
+
     LaunchedEffect(shellState.financialDataRevision, monthlyState.ledgerReady) {
         if (shellState.financialDataRevision > 0 && monthlyState.ledgerReady) {
             reloadAllStats(monthly, reports)

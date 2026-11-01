@@ -258,6 +258,10 @@ private fun NavGraphBuilder.addObligationSyncRoute(dependencies: MainProductRout
                 ),
             )
             SyncStatusScreen(viewModel = vm, onBack = onBack,
+                filterRequest = com.ticketbox.ui.screens.settings.SyncStatusFilterRequest(
+                    (shellState.launchAction.pending as? LaunchAction.OpenSyncStatus)?.filter) {
+                    (shellState.launchAction.pending as? LaunchAction.OpenSyncStatus)?.let(shellState.launchAction::consume)
+                },
                 navigation = com.ticketbox.ui.screens.settings.SyncStatusNavigation(
                     onOpenFunds = { shellState.openSecondaryPage(ProductSecondaryPage.Funds) },
                     onOpenExpense = runtime.navController::openExpense,

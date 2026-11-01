@@ -78,13 +78,22 @@ internal fun MainQuickActionsButton(
 }
 
 internal fun quickActionTargets(canModify: Boolean): List<ShortcutTarget> =
-    if (canModify) ShortcutTarget.entries else listOf(ShortcutTarget.ReviewPending)
+    if (canModify) listOf(ShortcutTarget.CaptureReceipt, ShortcutTarget.UploadReceipt, ShortcutTarget.ManualEntry,
+        ShortcutTarget.EntryTemplates, ShortcutTarget.ReviewPending)
+    else listOf(ShortcutTarget.ReviewPending)
 
 private val ShortcutTarget.labelRes: Int
     @StringRes get() = when (this) {
         ShortcutTarget.UploadReceipt -> R.string.shortcut_upload_short_label
         ShortcutTarget.ManualEntry -> R.string.shortcut_manual_short_label
         ShortcutTarget.ReviewPending -> R.string.shortcut_review_short_label
+        ShortcutTarget.MonthlyOverview -> R.string.widget_overview_name
+        ShortcutTarget.CaptureReceipt -> R.string.widget_camera
+        ShortcutTarget.EntryTemplates -> R.string.widget_templates
+        ShortcutTarget.SyncStatus -> R.string.widget_sync_name
+        ShortcutTarget.PendingUploads -> R.string.widget_pending_upload
+        ShortcutTarget.PendingRecords -> R.string.widget_pending_record
+        ShortcutTarget.FailedOperations -> R.string.widget_failed
     }
 
 private val ShortcutTarget.iconRes: Int
@@ -92,4 +101,9 @@ private val ShortcutTarget.iconRes: Int
         ShortcutTarget.UploadReceipt -> R.drawable.ic_lucide_images
         ShortcutTarget.ManualEntry -> R.drawable.ic_lucide_receipt_text
         ShortcutTarget.ReviewPending -> R.drawable.ic_lucide_inbox
+        ShortcutTarget.MonthlyOverview -> R.drawable.ic_lucide_chart_no_axes_combined
+        ShortcutTarget.CaptureReceipt -> R.drawable.ic_lucide_camera
+        ShortcutTarget.EntryTemplates -> R.drawable.ic_lucide_receipt_text
+        ShortcutTarget.SyncStatus, ShortcutTarget.PendingUploads, ShortcutTarget.PendingRecords,
+        ShortcutTarget.FailedOperations -> R.drawable.ic_lucide_refresh_cw
     }

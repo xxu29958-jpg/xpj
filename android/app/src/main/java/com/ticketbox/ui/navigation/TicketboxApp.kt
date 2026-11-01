@@ -504,6 +504,28 @@ private fun dispatchLaunchRequest(request: LaunchIntentRequest, shellState: Main
 
 internal fun dispatchShortcutNavigation(target: ShortcutTarget, shellState: MainShellState) {
     when (target) {
+        ShortcutTarget.CaptureReceipt -> {
+            shellState.launchAction.post(LaunchAction.OpenCamera)
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox)
+        }
+        ShortcutTarget.EntryTemplates -> {
+            shellState.launchAction.post(LaunchAction.OpenTemplates)
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Transactions)
+        }
+        ShortcutTarget.SyncStatus, ShortcutTarget.PendingUploads, ShortcutTarget.PendingRecords, ShortcutTarget.FailedOperations -> {
+            val filter = when (target) {
+                ShortcutTarget.PendingUploads -> com.ticketbox.domain.model.SyncQueueFilter.Uploads
+                ShortcutTarget.PendingRecords -> com.ticketbox.domain.model.SyncQueueFilter.Records
+                ShortcutTarget.FailedOperations -> com.ticketbox.domain.model.SyncQueueFilter.Failed
+                else -> com.ticketbox.domain.model.SyncQueueFilter.All
+            }
+            shellState.launchAction.post(LaunchAction.OpenSyncStatus(filter))
+            shellState.openSecondaryPage(ProductSecondaryPage.ObligationSync)
+        }
+        ShortcutTarget.MonthlyOverview -> {
+            shellState.launchAction.post(LaunchAction.OpenCurrentMonthStats)
+            shellState.openPrimaryDomainRoot(PrimaryDomain.Insights)
+        }
         ShortcutTarget.UploadReceipt -> {
             shellState.launchAction.post(LaunchAction.OpenImagePicker)
             shellState.openPrimaryDomainRoot(PrimaryDomain.Inbox)

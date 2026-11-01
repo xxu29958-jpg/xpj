@@ -23,6 +23,11 @@ internal sealed interface LaunchAction {
 
     /** 「记一笔」shortcut：打开手动记账表单。 */
     object OpenManualEntry : LaunchAction
+
+    object OpenCurrentMonthStats : LaunchAction
+    object OpenCamera : LaunchAction
+    object OpenTemplates : LaunchAction
+    data class OpenSyncStatus(val filter: com.ticketbox.domain.model.SyncQueueFilter) : LaunchAction
 }
 
 /**
@@ -126,6 +131,10 @@ internal class LaunchActionState {
             is LaunchAction.UploadSharedImages -> it.selection.savedFields()
             LaunchAction.OpenImagePicker -> arrayListOf("picker")
             LaunchAction.OpenManualEntry -> arrayListOf("manual")
+            LaunchAction.OpenCurrentMonthStats -> arrayListOf("monthly_stats")
+            LaunchAction.OpenCamera -> arrayListOf("camera")
+            LaunchAction.OpenTemplates -> arrayListOf("templates")
+            is LaunchAction.OpenSyncStatus -> arrayListOf("sync_status", it.filter.name)
         }
     }
 
@@ -137,6 +146,10 @@ internal class LaunchActionState {
             actions = snapshot.drop(1).map { fields -> when (fields.first()) {
                 "picker" -> LaunchAction.OpenImagePicker
                 "manual" -> LaunchAction.OpenManualEntry
+                "monthly_stats" -> LaunchAction.OpenCurrentMonthStats
+                "camera" -> LaunchAction.OpenCamera
+                "templates" -> LaunchAction.OpenTemplates
+                "sync_status" -> LaunchAction.OpenSyncStatus(com.ticketbox.domain.model.SyncQueueFilter.valueOf(fields[1]))
                 else -> LaunchAction.UploadSharedImages(restoreLaunchRequest(fields) as LaunchIntentRequest.ShareImages)
             } }
         }

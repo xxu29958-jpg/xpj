@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_brand">小票夹</string>
+    <string name="widget_quick_name">快捷记账</string>
+    <string name="widget_quick_description">从桌面记账、拍票、上传、使用模板或查看待办。</string>
+    <string name="widget_overview_name">本月账单</string>
+    <string name="widget_overview_description">本月支出摘要与快捷记账；金额默认隐藏。</string>
+    <string name="widget_month_total">%1$s 净支出 · %2$s</string>
+    <string name="widget_bill_count">%1$d 笔已入账</string>
+    <string name="widget_undated_count"> · 另有 %1$d 笔未定日期</string>
+    <string name="widget_amount_hidden">金额已隐藏</string>
+    <string name="widget_bind_first">先连接账本</string>
+    <string name="widget_bound_private">已连接账本</string>
+    <string name="widget_loading">正在读取…</string>
+    <string name="widget_unavailable">暂时无法读取</string>
+    <string name="widget_missing_rates">待补汇率</string>
+    <string name="widget_open_details">点按查看本月统计</string>
+    <string name="widget_updated_at">更新于 %1$s</string>
+    <string name="widget_cached_at">离线快照 · %1$s</string>
+    <string name="widget_configure_hint">显示内容可在设置中调整</string>
+    <string name="widget_configure">设置小组件</string>
+    <string name="widget_refresh">刷新小组件</string>
+    <string name="widget_configure_title">设置桌面小组件</string>
+    <string name="widget_configure_description">把常用操作放在桌面，随手记下每一笔。</string>
+    <string name="widget_show_summary">在桌面显示此账本的摘要</string>
+    <string name="widget_privacy_notice">开启后，账本名称、金额和队列数量可直接在桌面查看。点眼睛按钮即可隐藏，重新显示需要指纹或设备密码验证。切换账本或重新绑定后需要重新开启。</string>
+    <string name="widget_save">保存小组件</string>
+    <string name="widget_open_app">打开小票夹</string>
+    <string name="widget_cancel">取消</string>
+    <string name="widget_session_changed">账本已切换，请重新打开小组件设置。</string>
+</resources>

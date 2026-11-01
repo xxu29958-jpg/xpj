@@ -53,8 +53,18 @@ fun SyncStatusScreen(
     onBack: () -> Unit,
     navigation: SyncStatusNavigation,
     manualClientRef: String? = null,
+    filterRequest: SyncStatusFilterRequest = SyncStatusFilterRequest(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var filter by androidx.compose.runtime.saveable.rememberSaveable(state.binding) {
+        mutableStateOf(com.ticketbox.domain.model.SyncQueueFilter.All)
+    }
+    androidx.compose.runtime.LaunchedEffect(filterRequest.filter, state.binding) {
+        if (filterRequest.filter != null && state.binding != null) {
+            filter = filterRequest.filter
+            filterRequest.onConsumed()
+        }
+    }
     val actions = remember(viewModel, navigation) {
         SyncStatusActions(
             onOpenExpense = navigation.onOpenExpense,
@@ -77,8 +87,18 @@ fun SyncStatusScreen(
         )
     }
     SyncStatusScreenContent(state = state, actions = actions, onBack = onBack, onOpenInbox = navigation.onOpenInbox,
-        manualClientRef = manualClientRef)
+        options = SyncStatusScreenOptions(manualClientRef, filter) { filter = it })
 }
+
+data class SyncStatusFilterRequest(
+    val filter: com.ticketbox.domain.model.SyncQueueFilter? = null, val onConsumed: () -> Unit = {},
+)
+
+internal data class SyncStatusScreenOptions(
+    val manualClientRef: String? = null,
+    val queueFilter: com.ticketbox.domain.model.SyncQueueFilter = com.ticketbox.domain.model.SyncQueueFilter.All,
+    val onQueueFilterChange: (com.ticketbox.domain.model.SyncQueueFilter) -> Unit = {},
+)
 
 data class SyncStatusNavigation(
     val onOpenExpense: (Long) -> Unit,
@@ -130,8 +150,9 @@ internal fun SyncStatusScreenContent(
     actions: SyncStatusActions,
     onBack: () -> Unit,
     onOpenInbox: () -> Unit,
-    manualClientRef: String? = null,
+    options: SyncStatusScreenOptions = SyncStatusScreenOptions(),
 ) {
+    val (manualClientRef, queueFilter, onQueueFilterChange) = options
     // Dropping an offline edit is irreversible, so both paths require confirmation.
     var confirmingDrop by remember(state.binding) { mutableStateOf<SyncStatusDropSelection?>(null) }
     var confirmingClearQuarantined by remember(state.binding) { mutableStateOf(false) }
@@ -169,6 +190,12 @@ internal fun SyncStatusScreenContent(
         ) },
         status = { AppStatusBanner(message = state.message, tone = state.messageTone) },
     ) {
+        if (manualClientRef == null) SyncQueueFilters(queueFilter, onQueueFilterChange)
+        if (manualClientRef == null && queueFilter != com.ticketbox.domain.model.SyncQueueFilter.All) {
+            SyncQueueList(state, queueFilter, onProcess = { onQueueFilterChange(com.ticketbox.domain.model.SyncQueueFilter.All) },
+                onOpenInbox = onOpenInbox)
+            return@SettingsPageFrame
+        }
         SyncStatusPageBody(
             state = state,
             manualClientRef = manualClientRef,

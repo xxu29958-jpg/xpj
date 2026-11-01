@@ -96,7 +96,7 @@ internal data class LaunchSharedContent(
     val batchId: String = UUID.randomUUID().toString(),
 )
 
-/** 启动器静态 shortcut 的三个目标（与 `res/xml/shortcuts.xml` 一一对应）。
+/** 启动器快捷方式与桌面小组件的目标。
  *  public 同 [LaunchIntentRequest]：经 Navigate 间接出现在公开 composable 签名里。 */
 enum class ShortcutTarget(val id: String) {
     /** 传小票：切到待确认 tab 并立即拉起系统图片选择，复用上传链。 */
@@ -107,6 +107,15 @@ enum class ShortcutTarget(val id: String) {
 
     /** 去确认：切到待确认 tab。 */
     ReviewPending("review_pending"),
+
+    /** 桌面摘要：打开当前账本本月、无标签筛选的统计。 */
+    MonthlyOverview("monthly_overview"),
+    CaptureReceipt("capture_receipt"),
+    EntryTemplates("entry_templates"),
+    SyncStatus("sync_status"),
+    PendingUploads("pending_uploads"),
+    PendingRecords("pending_records"),
+    FailedOperations("failed_operations"),
 }
 
 /**

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="276dp" android:minHeight="110dp"
+    android:minResizeWidth="250dp" android:targetCellWidth="4" android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical" android:updatePeriodMillis="0"
+    android:initialLayout="@layout/widget_monthly_overview" android:previewLayout="@layout/widget_monthly_overview"
+    android:description="@string/widget_overview_description" android:widgetCategory="home_screen"
+    android:configure="com.ticketbox.widget.WidgetConfigurationActivity"
+    android:widgetFeatures="reconfigurable" />

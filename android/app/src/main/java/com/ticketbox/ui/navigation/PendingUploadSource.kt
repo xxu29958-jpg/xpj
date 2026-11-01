@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import com.ticketbox.data.repository.logNetworkWarning
 import com.ticketbox.upload.PreparedUploadImage
 import com.ticketbox.upload.prepareScreenshotUpload
 import com.ticketbox.ui.screens.pending.PendingUploadSelectionUiState
@@ -63,11 +64,12 @@ internal fun releaseUploadSourceGrants(context: Context, state: LaunchActionStat
     val held = resolver.persistedUriPermissions.filter { it.isReadPermission }.map { it.uri }.toSet()
     for (source in selection.uris.distinct().filterNot(state::referencesUploadSource)) {
         val uri = Uri.parse(source)
+        com.ticketbox.upload.ReceiptCaptureStore(context.applicationContext).release(uri)
         if (uri !in held) continue
         try {
             resolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         } catch (_: SecurityException) {
-            Log.w("UploadSource", "A completed selection's read grant could not be released")
+            logNetworkWarning("A completed selection's read grant could not be released")
         }
     }
 }

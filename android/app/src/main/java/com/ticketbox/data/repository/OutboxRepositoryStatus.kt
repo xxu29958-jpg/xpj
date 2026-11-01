@@ -40,7 +40,7 @@ internal fun observeBoundOutboxStatus(
     writeBlock: Flow<OutboxWriteBlock?>,
 ): Flow<OutboxStatus> = bindings.flatMapLatest { binding ->
     combine(
-        dao.observeQueueDepth(
+        dao.observeQueuedRows(
             ownerKey = binding.ownerStorageKey,
             ledgerId = binding.ledgerId,
             pendingStatus = PendingMutationStatus.Pending.wireValue,
@@ -60,10 +60,11 @@ internal fun observeBoundOutboxStatus(
         dao.observeActiveByTypes(binding.ownerStorageKey, binding.ledgerId,
             (EXPENSE_REFRESH_TYPES + setOf(PendingMutationType.SaveMonthlyBudget, PendingMutationType.ApplyConfirmedRules)).map { it.wireValue },
             listOf(PendingMutationStatus.Done.wireValue)),
-    ) { queueDepth, conflicts, failed, quarantinedCount, completed ->
+    ) { queued, conflicts, failed, quarantinedCount, completed ->
         OutboxStatus(
             binding = binding,
-            queueDepth = queueDepth,
+            queueDepth = queued.size,
+            queuedRows = queued.map { it.toDomain() },
             conflicts = conflicts.map { it.toDomain() },
             failed = failed.map { it.toDomain() },
             quarantinedCount = quarantinedCount,

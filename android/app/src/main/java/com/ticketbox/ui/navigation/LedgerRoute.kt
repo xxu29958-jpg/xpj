@@ -78,7 +78,10 @@ internal fun LedgerRoute(
         }
     }
 
-    key(binding) { LedgerScreen(
+    key(binding) {
+    binding?.let { ManualTemplateHost(it, screenFactory.repository::captureDeferredLedgerBinding,
+        shellState.launchAction, state, ledgerScreenActions(ledgerViewModel, navController, shellState, onBack)) }
+    LedgerScreen(
         state = state,
         launchRequest = LedgerLaunchRequest(
             openManualEntryRequested = shellState.launchAction.pending is LaunchAction.OpenManualEntry,
@@ -119,6 +122,7 @@ private fun ledgerScreenActions(
     },
     onManualCreate = ledgerViewModel::createManualExpense,
     onPrepareManualCreate = ledgerViewModel::prepareManualEntry,
+    onResolveLedgerCurrency = ledgerViewModel::resolveLedgerCurrency,
     onViewModeChange = ledgerViewModel::setViewMode,
     onEdit = { navController.openExpense(it.id) },
     onOpenManualSubmission = { navController.navigate(manualExpenseSubmissionRoute(it)) },

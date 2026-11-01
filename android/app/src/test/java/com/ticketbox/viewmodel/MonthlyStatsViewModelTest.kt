@@ -41,6 +41,35 @@ private fun statsTest(block: suspend TestScope.() -> Unit) = runTest {
 @OptIn(ExperimentalCoroutinesApi::class)
 class MonthlyStatsViewModelTest {
     @Test
+    fun widgetEntryClearsHistoricalMonthAndTagUsingLedgerCalendar() = statsTest {
+        val stats = FakeStatsActions().apply {
+            monthList = listOf("2024-02", "2023-12")
+            tagList = listOf("旧筛选", "仅历史月份")
+        }
+        val binding = requireNotNull(stats.statsBinding())
+        val calendars = com.ticketbox.data.repository.MonthCalendarFixture(binding,
+            com.ticketbox.domain.model.LedgerCalendar(binding.ledgerId, 1, "Pacific/Kiritimati", "explicit", "2026-01-01T00:00:00Z"))
+        val vm = MonthlyStatsViewModel(stats, initialMonth = "2024-02", calendars = calendars)
+        advanceUntilIdle()
+        vm.setTag("旧筛选")
+        advanceUntilIdle()
+        vm.openCurrentMonth()
+        advanceUntilIdle()
+        assertEquals(java.time.YearMonth.now(java.time.ZoneId.of("Pacific/Kiritimati")).toString(), vm.uiState.value.month)
+        assertEquals("", vm.uiState.value.selectedTag)
+        assertEquals("", stats.queries.last().tag)
+        assertTrue(vm.uiState.value.months.containsAll(stats.monthList))
+        assertEquals(StatsFilterOptionsLoadState.Loaded, vm.uiState.value.monthsLoadState)
+        assertEquals(stats.tagList, vm.uiState.value.tags)
+        assertEquals(StatsFilterOptionsLoadState.Loaded, vm.uiState.value.tagsLoadState)
+        vm.setMonth("2023-12")
+        vm.setTag("仅历史月份")
+        advanceUntilIdle()
+        assertEquals("2023-12", stats.queries.last().month)
+        assertEquals("仅历史月份", stats.queries.last().tag)
+    }
+
+    @Test
     fun newTaskWaitsForCalendarAndLateRulePreservesExplicitMonth() = statsTest {
         val stats = FakeStatsActions()
         val binding = requireNotNull(stats.bindingFlow.value)

@@ -78,6 +78,12 @@ internal fun PendingRoute(
     PendingReturnRefresh(pendingViewModel, shellState)
 
     val imagePickerLauncher = rememberImageUploadLauncher(shellState)
+    val launchCamera = rememberReceiptCamera(shellState, pendingViewModel.currentUploadBinding(), state.canStartUpload)
+    LaunchedEffect(shellState.launchAction.pending is LaunchAction.OpenCamera, state.canStartUpload) {
+        if (shellState.launchAction.pending is LaunchAction.OpenCamera && state.canStartUpload && launchCamera()) {
+            shellState.launchAction.consume(LaunchAction.OpenCamera)
+        }
+    }
     val launchImagePicker: () -> Boolean = {
         if (state.canStartUpload)
             imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
