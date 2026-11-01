@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from '_month_label.html' import month_label %}
 {% from "_income_source_types.html" import source_type_labels %}
+{% from '_plan_amount.html' import plan_amount with context %}
 {% set page_title = '添加收入计划' if income_creating else '收入计划' %}
 {% set product_body_domain = 'plans' %}
 {% set list_href = '/web/income-plans?ledger_id=' ~ (selected_ledger_id|urlencode) %}
@@ -32,7 +33,7 @@
   <article id="income-{{ plan.public_id }}" class="product-entry product-entry--static product-entry--actions{% if action == 'restore' %} is-receded{% endif %}">
     <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#calendar-plus"/></svg></span>
     <div class="product-entry-copy">
-      <div class="product-entry-heading"><strong>{{ plan.label }}</strong><strong class="product-entry-amount">{{ plan.home_currency_code or '' }} {{ minor_label(plan)|grouped }}</strong></div>
+      <div class="product-entry-heading"><strong>{{ plan.label }}</strong><strong class="product-entry-amount">{{ plan_amount(plan.home_currency_code, minor_label(plan)) }}</strong></div>
       <span>{{ source_type_labels.get(plan.source_type, plan.source_type) }} ·
         {% if action == 'archive' %}
           {% if plan.frequency == 'one_time' %}单次预计 · {{ income_month_label(plan.income_month) }} · {{ plan.pay_day }} 号{% else %}每月预计 · {{ plan.pay_day }} 号{% endif %}

@@ -120,6 +120,38 @@
     }
     input.value = value;
   };
+  // 分类可见选项 (_category_choices.html): 浏览器 datalist 只列出与已填内容匹配的项, 预填分类时等于没有选项。
+  // 点选与键入同一路径: 写入输入框并派发带 ticketboxUserPick 的 input/change, 各录入脚本把它当作用户编辑
+  // (分类来源记为手动、清掉已采纳的建议); 草稿也照常捕获。
+  app.initCategoryChoices = function initCategoryChoices(root = document) {
+    root.querySelectorAll("[data-category-choices]").forEach(function (group) {
+      if (group.dataset.bound) return;
+      const input = document.getElementById(group.dataset.categoryChoices);
+      if (!input) return;
+      group.dataset.bound = "true";
+      const buttons = group.querySelectorAll("[data-category-pick]");
+      function sync() {
+        group.hidden = false;
+        buttons.forEach(function (button) {
+          button.setAttribute("aria-pressed", String(button.dataset.categoryPick === input.value));
+          button.disabled = input.disabled || input.readOnly;
+        });
+      }
+      group.addEventListener("click", function (event) {
+        const button = event.target.closest("[data-category-pick]");
+        if (!button || input.disabled || input.readOnly) return;
+        input.value = button.dataset.categoryPick;
+        ["input", "change"].forEach(function (type) {
+          input.dispatchEvent(Object.assign(new Event(type, {bubbles: true}), {ticketboxUserPick: true}));
+        });
+      });
+      ["input", "change"].forEach(type => input.addEventListener(type, sync));
+      // 初始页面与异步载入的抽屉都跟随草稿锁定、恢复和解锁。
+      new MutationObserver(sync).observe(input, {attributes: true, attributeFilter: ["readonly", "disabled"]});
+      sync();
+    });
+  };
+
   app.restoreReviewRows = function restoreReviewRows(form, columns, encoded) {
     const original = form.querySelector('[name="' + columns[0] + '"]');
     const prototype = original.closest("[data-review-line]").cloneNode(true);

@@ -1,5 +1,6 @@
 """Income creation, reporting and native editing retain each amount's denomination."""
 
+import re
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -53,6 +54,9 @@ def test_mixed_income_has_no_false_total_and_manual_fx_does_not_rewrite_history(
     page = client.get("/web/income-plans?ledger_id=owner")
     assert page.status_code == 200
     assert "待补汇率" in page.text and "JPY" in page.text
+    # 列表金额与合计同一写法: 账本本币用符号, 外币计划保留币种代码。
+    amounts = re.findall(r'<strong class="product-entry-amount">([^<]+)</strong>', page.text)
+    assert sorted(amounts) == ["JPY 1,200", "¥1.00"]
     with SessionLocal() as db:
         inputs = read_budget_inputs(db, tenant_id="owner", month="2026-09")
         assert inputs.breakdown.monthly_income_cents is None

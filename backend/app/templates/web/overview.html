@@ -125,15 +125,23 @@
   </article>
 
   {% elif item.key == 'budget' %}
-  <article class="product-panel product-panel--padded insight-module"
+  {% set budget_href = '/web/budgets?ledger_id=' ~ selected_ledger_id|urlencode ~ '&month=' ~ cards.month|urlencode %}
+  <article class="product-panel product-panel--padded insight-module{% if not cards.budget_configured %} insight-budget-unset{% endif %}"
            data-overview-card="budget">
     <div class="product-panel-header">
       <div>
-        <h2 class="product-panel-title">{{ '预算已超出' if cards.budget_is_over else '预算还剩' }}</h2>
+        <h2 class="product-panel-title">{{ ('预算已超出' if cards.budget_is_over else '预算还剩') if cards.budget_configured else '本月预算' }}</h2>
         <div class="product-panel-subtitle">{{ month_label(cards.month) }}{% if not cards.budget_configured %} · 尚未设置额度{% endif %}</div>
       </div>
-      <a class="product-panel-subtitle" href="/web/budgets?ledger_id={{ selected_ledger_id|urlencode }}&amp;month={{ cards.month|urlencode }}">{{ '管理' if cards.budget_configured else ('设置预算' if can_write else '查看预算') }}</a>
+      {% if cards.budget_configured or not can_write %}<a class="product-panel-subtitle" href="{{ budget_href }}">{{ '管理' if cards.budget_configured else '查看预算' }}</a>{% endif %}
     </div>
+    {% if not cards.budget_configured %}
+    {# 未设额度时不留一张空卡: 说明设了之后这里显示什么, 并给出唯一入口。 #}
+    <div class="insight-budget-prompt">
+      <p class="text-muted">{{ '定一个本月总额后，这里会显示还剩多少，以及哪些分类快用完。' if can_write else '账本拥有者或成员设置额度后，这里会显示还剩多少。' }}</p>
+      {% if can_write %}<a class="product-button" href="{{ budget_href }}">设置预算</a>{% endif %}
+    </div>
+    {% endif %}
     {% if cards.budget_configured %}
     <div class="insight-stat-value num{% if cards.budget_is_over %} text-danger{% endif %}">
       {{ budget_remaining_label }}
@@ -217,7 +225,7 @@
     <div class="product-panel-header">
       <div>
         <h2 class="product-panel-title">目标</h2>
-        <div class="product-panel-subtitle">{% if cards.goals_count %}{{ cards.goals_count }} 条生效中{% else %}还没有设置分类目标{% endif %}</div>
+        <div class="product-panel-subtitle">{% if cards.goals_count %}{{ cards.goals_count }} 条生效中{% else %}还没有分类目标{% endif %}</div>
       </div>
       <a class="product-panel-subtitle" href="/web/goals?ledger_id={{ selected_ledger_id }}">{{ '管理' if cards.goals_count else ('设置目标' if can_write else '查看目标') }}</a>
     </div>

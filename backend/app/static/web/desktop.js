@@ -21,6 +21,7 @@
     }
 
     call("initFormDisclosures");
+    call("initCategoryChoices");
     call("initTaskActionsInset");
     call("initThemeControl");
     call("initBackgroundControl");

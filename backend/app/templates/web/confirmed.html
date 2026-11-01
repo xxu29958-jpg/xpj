@@ -62,19 +62,12 @@
   <input type="hidden" name="filter" value="{{ filter }}">
   <input type="hidden" name="home_currency_code" value="{{ home_currency_code }}">
   {% for key, value in (date_review_origin|default({})).items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+  <input type="hidden" name="category" value="{{ category|default('') }}">
+  <input type="hidden" name="tag" value="{{ tag }}">
   <div class="ledger-search-form">
     <div class="product-field"><label class="sr-only" for="confirmed-query">流水关键词</label><input id="confirmed-query" class="product-input" type="search" name="q" maxlength="80" value="{{ query_text|default('') }}" placeholder="商家、备注或原件文字"></div>
     <button class="product-button" type="submit" aria-label="查找流水"><svg width="22" height="22" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#search"/></svg></button>
   </div>
-  <details class="saved-view-actions">
-    <summary class="product-button product-button--quiet">分类与标签{% if category %} · {{ category }}{% endif %}{% if tag %} · {{ tag }}{% endif %}</summary>
-    <div class="product-form-grid">
-      <label class="product-field"><span>分类</span><input class="input" name="category" value="{{ category|default('') }}" maxlength="64" placeholder="全部分类" list="confirmed-categories"></label>
-      <datalist id="confirmed-categories">{% for item in category_options %}<option value="{{ item }}">{% endfor %}</datalist>
-      <label class="product-field"><span>标签</span><input class="input" name="tag" value="{{ tag }}" maxlength="64" placeholder="不限标签"></label>
-    </div>
-    <button class="product-button product-button--quiet" type="submit">应用筛选</button>
-  </details>
 </form>
 {% if _has_search %}
 <div class="ledger-active-filter" role="status"><span>找到 {{ total }} 条流水{% if query_text %} · {{ query_text }}{% endif %}{% if category %} · {{ category }}{% endif %}</span><a href="/web/confirmed?{{ {'ledger_id':selected_ledger_id, 'month':month, 'filter':filter, 'tag':tag, 'home_currency_code':home_currency_code}|urlencode }}{{ _date_review_query }}">清除关键词与分类</a></div>
@@ -83,18 +76,8 @@
 <section class="product-surface product-surface--plain ledger-summary" aria-label="本月净支出">
   <p class="product-amount-label">本月净支出{% if show_home_currency_code %} · {{ home_currency_code }}{% endif %}</p>
   <p class="product-amount"><span class="sr-only">{{ month }} 合计 </span>{% if month_total_amount_yuan is not none %}<span>{{ home_currency_symbol }}</span><span>{{ month_total_amount_yuan|grouped }}</span>{% elif ledger_undated_expense_count|default(0) %}待核对账务日期{% else %}待补齐换算信息{% endif %}</p>
+</section>
 {% endif %}
-{% if can_write %}
-<div class="ledger-view-actions">
-  <a class="product-button product-button--quiet" href="/web/saved-views?ledger_id={{ selected_ledger_id }}">保存的视图</a>
-  {% if can_write %}
-  {% if save_view_error %}<p class="product-feedback" role="status">{{ save_view_error }}</p>{% else %}
-  <a class="product-button product-button--quiet" data-save-view href="/web/saved-views?{{ {'ledger_id':selected_ledger_id, 'create':'true', 'month_mode':('current' if filter else 'fixed'), 'month':month, 'filter':filter, 'tag_public_id':save_view_tag_public_id, 'home_currency_code':home_currency_code, 'query_text':query_text, 'category':category}|urlencode }}">保存当前视图</a>
-  {% endif %}
-  {% endif %}
-</div>
-{% endif %}
-{% if filter not in ['missing_category', 'missing_accounting_date'] and not _has_search %}</section>{% endif %}
 {% if missing_rates or (money_incomplete is defined and money_incomplete) %}
 {% include 'partials/budget_fx_gaps.html' %}
 {% endif %}

@@ -53,6 +53,25 @@ first_original_web = original_tests.first_original_web
 
 
 @pytest.mark.real_db
+@pytest.mark.parametrize("entry", ["full", "drawer"])
+def test_category_choices_follow_draft_locks_and_save_recovered_manual_intent(
+        review_browser, confirmation_store, monkeypatch, tmp_path, entry):
+    client, _ = review_browser
+    monkeypatch.setattr(_web_expense_helpers, "list_ledger_category_options", lambda *args, **kwargs: ["购物", "交通"])
+    client.app.state.expense_review_probe = "category-choices-probe.js"
+
+    @client.app.get("/category-choices-probe.js")
+    def probe():
+        return FileResponse(Path(__file__).parent / "fixtures/category_choices_probe.js", media_type="text/javascript")
+
+    path = "/web/pending?ledger_id=owner" if entry == "drawer" else "/web/expenses/42/edit?ledger_id=owner&return_to=pending"
+    result = _run_review_page(client, tmp_path, path, width=1440 if entry == "drawer" else 393)
+    assert result == {"saved": True}, result
+    with confirmation_store() as db:
+        assert db.get(Expense, 42).category == "交通"
+
+
+@pytest.mark.real_db
 @pytest.mark.parametrize("entry,location,action", [("full", "unlocated", "save"), ("full", "coarse_point", "save"),
     ("drawer", "verified_region", "save"), ("full", "unlocated", "confirm"),
     ("full", "suggested_region", "save"), ("drawer", "suggested_region", "save")])

@@ -491,6 +491,15 @@ button.recognition-candidate:hover { background: var(--brand-primary-bg); }
     color: var(--state-info-fg);
 }
 
+/* 草稿空闲说明 (还没有要提交或核实的内容) 是一行安静提示; 需要处理的草稿状态仍用反馈条。 */
+.product-feedback[data-draft-idle] {
+    padding: 0;
+    background: transparent;
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+}
+
 .dt-alert.success,
 .product-feedback--success {
     background: var(--state-success-bg);
@@ -837,8 +846,8 @@ textarea:focus {
 /* file-picker primitive: 原生 file input 常显是唯一 owner — 选中文件名由
    浏览器原生呈现 (无 JS / JS 失败都诚实, 键盘/读屏/no-JS 语义天然正确),
    ::file-selector-button 承担 tonal 按钮外观, 绝不自动提交。
-   consumer: 收件上传。specificity 借 body.product-shell 盖过通用
-   input:not(...) 规则, 不动 legacy import 页, 不用 !important。 */
+   consumers: 收件上传、原件补回、建债原账单、手动记账原件、CSV 导入。specificity 借
+   body.product-shell 盖过通用 input:not(...) 规则, 不用 !important。 */
 .file-picker {
     display: grid;
     gap: var(--space-2);
@@ -886,6 +895,23 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     outline: var(--space-1) solid var(--brand-focus-ring);
     outline-offset: var(--space-1);
 }
+
+/* 分类可见选项 (_category_choices.html): 可换行的小胶囊; 当前分类用选中色, 与 product-button--selected 同色。 */
+.category-choices { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-block-start: var(--space-3); }
+.category-choice {
+    min-height: var(--target-min);
+    padding: var(--space-1) var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-pill);
+    background: var(--surface-card);
+    color: var(--text-default);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--type-body-size);
+}
+.category-choice:hover { background: var(--surface-sunken); }
+.category-choice[aria-pressed="true"] { border-color: transparent; background: var(--brand-primary-bg); color: var(--brand-primary-strong); font-weight: var(--type-subtitle-weight); }
+.category-choice:disabled { cursor: not-allowed; opacity: .48; }
 
 /* 两个列表共用选择条；原生 details 展开编辑，选择与提交仍归原表单。 */
 .bulk-bar {
@@ -1414,6 +1440,8 @@ details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); 
 .fact-reconcile { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); margin-block: var(--space-4); padding-block: var(--space-3); border-bottom: 1px solid var(--border-card); color: var(--text-meta); font-size: var(--type-body-size); overflow-wrap: anywhere; }
 .fact-reconcile strong { min-width: 0; max-width: 100%; color: var(--text-default); font-family: var(--font-numeric); font-size: var(--type-subtitle-size); }
 .product-entry-copy > span { color: var(--text-meta); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+/* 说明行先在「·」与空格处换行, 不把「需修正 1」拆成「需修/正 1」; 单段放不下时仍按字断开 (overflow-wrap 继承自上层)。 */
+.product-entry-copy > span { word-break: keep-all; }
 .product-entry-copy > .product-status { justify-self: start; }
 :is(ul, ol).product-entry-list { margin: 0; padding: 0; list-style: none; }
 .product-entry-list > :not(:last-child) { border-block-end: 1px solid var(--border-card); }
@@ -1446,6 +1474,8 @@ details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); 
 .review-note-fields,
 .review-subtask { min-width: 0; border-bottom: 1px solid var(--border-card); }
 .review-edit-field > .product-field { margin: 0 0 var(--space-5) calc(var(--space-9) + var(--space-4)); }
+/* 分类选项与输入框同一缩进, 紧跟在输入框下面。 */
+.review-edit-field > .category-choices { margin: calc(var(--space-3) - var(--space-5)) 0 var(--space-5) calc(var(--space-9) + var(--space-4)); }
 .review-date-fields fieldset { border: 0; padding: var(--space-4) 0; min-width: 0; }
 .review-note-fields > .product-field { margin-block: var(--space-4); }
 .review-subtask-link { border-bottom: 1px solid var(--border-card); }

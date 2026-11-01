@@ -78,12 +78,22 @@
 
 .insight-grid a.product-panel-subtitle {
     display: inline-flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: flex-start;
     min-height: var(--target-min);
     min-width: var(--target-min);
     padding-inline: var(--space-2);
+    white-space: nowrap;
 }
+
+/* 说明行只在「·」两侧换行, 不把「已入账」拆成「已入/账」; 单段过长时仍可断开。 */
+.insight-grid .product-panel-subtitle { word-break: keep-all; overflow-wrap: anywhere; }
+
+/* 未设额度: 标题在上, 说明与入口沉到底部, 与并排的本月支出对齐。 */
+.insight-module.insight-budget-unset { align-content: space-between; }
+.insight-budget-prompt { display: grid; justify-items: start; gap: var(--space-4); }
+.insight-budget-prompt p { margin: 0; }
 
 .insight-stat-value {
     color: var(--text-default);
@@ -219,12 +229,11 @@
     .insight-grid { display: flex; flex-wrap: wrap; }
     .insight-grid > * { flex: 1 1 16rem; min-width: 0; }
     .insight-grid > .product-panel { padding: var(--space-6); border-radius: var(--radius-xl); background: var(--surface-card); }
-    .insight-grid > .insight-brief:not([data-overview-card="pending"]),
-    .insight-grid > [data-overview-card="goals"] { align-self: flex-start; }
     .insight-grid > [data-overview-card="monthly_spend"],
     .insight-grid > [data-overview-card="pending"],
-    .insight-grid > [data-overview-card="budget"],
-    .insight-grid > [data-overview-card="reports"] { flex: 2 1 26rem; }
+    .insight-grid > [data-overview-card="budget"] { flex: 2 1 26rem; }
+    /* 分类占比独占一行: 环图与清单并排, 卡片不会被挤成一长条, 同行小模块也不再悬在空白上方。 */
+    .insight-grid > [data-overview-card="reports"] { flex: 1 1 100%; }
     .insight-grid > .insight-hero { min-height: calc(var(--space-12) * 4); background: var(--brand-primary-bg); }
     .insight-grid > [data-overview-card="pending"] { flex-direction: column; align-items: stretch; gap: var(--space-5); }
     .insight-pending-copy { flex: 1; min-width: 0; }

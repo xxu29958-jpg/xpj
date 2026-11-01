@@ -114,7 +114,7 @@ class MyDevicesViewModel(
     private suspend fun loadDevices(activeLedgerId: String?): UiText? {
         var error: UiText? = null
         repository.refreshDevices(activeLedgerId)
-            .onSuccess { fetched -> _uiState.update { it.copy(devices = fetched) } }
+            .onSuccess { fetched -> _uiState.update { it.copy(devices = fetched.sortedWith(DEVICE_DISPLAY_ORDER)) } }
             .onFailure { err ->
                 val fallback = if (_uiState.value.devices.isEmpty()) {
                     R.string.my_devices_message_load_failed
@@ -194,3 +194,6 @@ class MyDevicesViewModel(
         }
     }
 }
+
+/** 展示顺序与 Web 设置页一致: 正在用的这台在前, 其次仍连接的设备, 已停用的记录最后; 同组内保持服务器给出的连接先后。 */
+private val DEVICE_DISPLAY_ORDER = compareBy<AccountDevice>({ !it.isCurrent }, { it.isRevoked })
