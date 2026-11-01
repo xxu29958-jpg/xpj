@@ -43,8 +43,7 @@ class ExpenseConfirmationRouteTest {
         val network = harness.fixture.network
         network.current = network.current.copy(status = "pending", confirmedAt = null,
             merchant = "首次便利店", amountCents = 12860, originalAmountMinor = 12860, category = "购物")
-        network.patchReply = network.current.copy(rowVersion = 8)
-        val accepted = network.current.copy(status = "confirmed", rowVersion = 9,
+        val accepted = network.current.copy(status = "confirmed", rowVersion = 8,
             confirmedAt = "2026-09-07T00:00:00Z").withConfirmationReceipt()
         network.confirmReply = accepted.copy(merchant = "后来更正的商家", amountCents = 9900L,
             originalAmountMinor = 9900L, rowVersion = 10, factRevision = 4)
@@ -64,12 +63,11 @@ class ExpenseConfirmationRouteTest {
         runBlocking { harness.fixture.drainExpenseLifecycle(maxAttempts = 4) }
         network.current = requireNotNull(network.confirmReply).copy(confirmationReceipt = null)
         val commands = harness.fixture.stored()
-        assertEquals("42", network.patchCalls.single().first)
-        assertEquals(7L, network.patchCalls.single().second.expectedRowVersion)
-        assertEquals(commands.single { it["type"] == PendingMutationType.PatchExpense.wireValue }["idempotencyKey"],
-            network.patchCalls.single().third)
+        assertEquals(listOf(PendingMutationType.ConfirmExpense.wireValue), commands.map { it["type"] })
+        assertTrue(network.patchCalls.isEmpty())
         assertEquals("42", network.confirmCalls.single().first)
-        assertEquals(8L, network.confirmCalls.single().second.expectedRowVersion)
+        assertEquals(7L, network.confirmCalls.single().second.expectedRowVersion)
+        assertEquals("首次便利店", network.confirmCalls.single().second.changes?.merchant)
         assertEquals(commands.single { it["type"] == PendingMutationType.ConfirmExpense.wireValue }["idempotencyKey"],
             network.confirmCalls.single().third)
         compose.waitUntil(10_000) { exits > 0 || compose.onAllNodes(hasText("这张，记好了")).fetchSemanticsNodes().isNotEmpty() }

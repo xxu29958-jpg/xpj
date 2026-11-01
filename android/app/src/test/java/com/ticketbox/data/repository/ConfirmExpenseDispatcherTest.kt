@@ -201,4 +201,17 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         assertEquals("original-key", stub.lastConfirmIdempotencyKey)
         assertTrue(published.isEmpty())
     }
+
+    @Test
+    fun `rejected atomic edits without funding remain explicitly recoverable`() = runTest {
+        val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Throw(httpException(422,
+            """{"error":"category_required","message":"请选择分类。"}""")))
+        val changes = draft.toRequest(baselineExpense()).copy(expectedRowVersion = null, merchant = "Retained edit")
+        val row = confirmRow("unfunded-original").copy(payloadJson = moshi().adapter(ExpenseStateTokenRequest::class.java)
+            .toJson(ExpenseStateTokenRequest(0, changes = changes)))
+        assertEquals(DispatchResult.Conflict("请选择分类。"), dispatcherFor(stub).dispatch(row))
+        assertTrue(row.copy(status = PendingMutationStatus.Conflict).canReviewFunding())
+        assertEquals(changes, row.confirmationChanges())
+        assertTrue(published.isEmpty())
+    }
 }

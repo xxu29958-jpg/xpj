@@ -48,7 +48,8 @@ internal fun OutboxRow.confirmationFunding() = if (type == com.ticketbox.data.lo
     confirmationAdapter.fromJson(payloadJson)?.funding.orEmpty() else emptyList()
 
 internal fun OutboxRow.canReviewFunding(): Boolean = runCatching {
-    confirmationFunding().isNotEmpty() && status == com.ticketbox.data.local.PendingMutationStatus.Conflict
+    (confirmationChanges() != null || confirmationFunding().isNotEmpty()) &&
+        status == com.ticketbox.data.local.PendingMutationStatus.Conflict
 }.getOrDefault(false)
 
 /** Currency travels with the original minor units; recovery must never reinterpret them in today's currency. */

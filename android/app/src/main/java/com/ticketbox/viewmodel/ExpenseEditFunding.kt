@@ -9,6 +9,7 @@ import com.ticketbox.data.repository.FundsRepository
 import com.ticketbox.data.repository.canReviewFunding
 import com.ticketbox.data.repository.confirmationChanges
 import com.ticketbox.data.repository.reviewedFundingInputs
+import com.ticketbox.data.repository.toRequest
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -109,6 +110,19 @@ private suspend fun ExpenseEditViewModel.readCurrentFunding(funds: FundsReposito
     val accounts = funds.reads.accounts(binding).getOrThrow()
     if (accounts.fromCache) throw CorrectionValidationError(R.string.funds_network_required)
     return expense to accounts.value
+}
+
+/** Write the user's newer edits before admitting Save, so a crash cannot restore the rejected older form. */
+internal suspend fun ExpenseEditViewModel.retainPendingConfirmationEdits(expense: Expense, draft: ExpenseDraft): Result<Unit> = runCatching {
+    if (expense.id < 0) return@runCatching
+    val session = fundingInputSession ?: throw CorrectionValidationError(R.string.funds_funding_not_ready)
+    session.flush().getOrThrow()
+    val retained = session.draft("pending_funding") ?: return@runCatching
+    if (retained.confirmationChanges == null) return@runCatching
+    val changes = draft.toRequest(baseline = expense).copy(expectedRowVersion = null)
+    session.keep("pending_funding", retained.copy(confirmationChanges = changes))
+    session.flush().getOrThrow()
+    _uiState.update { it.copy(confirmationChanges = changes) }
 }
 
 internal suspend fun ExpenseEditViewModel.readyPendingFunding(draft: ExpenseDraft): Result<ExpenseFactOriginalInput?> {

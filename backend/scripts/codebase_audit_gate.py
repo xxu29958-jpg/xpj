@@ -186,6 +186,7 @@ _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
     # replay and complete rollback. Existing confirmation/OCC carriers remain.
     ("477ecb6c5cc449a68376a7a5fb1316a1d1e0ade5", 158, 159),
     ("ef78dae833e107d2e584f0729aead87673af411c", 158, 159),  # Same admission atop the confirmation dependency.
+    ("e16b8ebfb484bc50b62ea9809819f94f83608891", 158, 159),  # Same create-row admission after #772 reached main.
     # ADR-0038 create_row / WEB_DEBT_BILL_CAPTURE.md: POST /web/debt-bills
     # is the Web adapter to the existing private capture/key/receipt owner.
     # No predecessor row exists; parse/discard add two source OCC carriers.
