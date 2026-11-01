@@ -228,6 +228,8 @@
     <string name="my_devices_platform_android">安卓</string>
     <string name="my_devices_platform_web">网页</string>
     <string name="my_devices_platform_iphone">iPhone</string>
+    <string name="my_devices_platform_windows">Windows 电脑</string>
+    <string name="my_devices_platform_desktop">桌面管理器</string>
     <string name="my_devices_action_rename">重命名</string>
     <string name="my_devices_action_recover">恢复这台设备</string>
     <string name="my_devices_action_revoke">停用</string>
