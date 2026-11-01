@@ -248,6 +248,7 @@
 
     function bindFragment() {
       app.bindReviewFields(drawer);
+      app.initCategoryChoices(drawer);
       app.initRecognizedEvents(drawer);
       drawer.querySelectorAll("[data-review-position]").forEach(function (position) {
         const index = batchIds.indexOf(activeExpenseId);
