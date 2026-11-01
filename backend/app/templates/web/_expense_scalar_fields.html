@@ -1,3 +1,4 @@
+{% from '_category_choices.html' import category_choices %}
 {# 更正标量字段行：confirmed 更正（_correction_scalars.html）专属实现 ——
    字段名/解析（_web_expense_edit_command）与服务端合同一致。
    契约（由调用方上下文提供）：form_prefix, expense, field_errors, category_options,
@@ -34,6 +35,7 @@
   <datalist id="category-options">
     {% for option in category_options %}<option value="{{ option }}"></option>{% endfor %}
   </datalist>
+  {% if can_write %}{{ category_choices(form_prefix ~ '-category', category_options, expense.category_input) }}{% endif %}
   <input type="hidden" name="category_choice" value="{{ category_choice or '' }}">
   <label><input type="checkbox" data-category-one-off {% if category_choice == 'one_off' %}checked{% endif %} {% if not can_write %}disabled{% endif %}> 此分类只用于这笔</label>
 </div>

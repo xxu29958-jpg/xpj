@@ -887,6 +887,23 @@ body.product-shell .file-picker > input.file-picker-input:focus-visible {
     outline-offset: var(--space-1);
 }
 
+/* 分类可见选项 (_category_choices.html): 可换行的小胶囊; 当前分类用选中色, 与 product-button--selected 同色。 */
+.category-choices { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-block-start: var(--space-3); }
+.category-choice {
+    min-height: var(--target-min);
+    padding: var(--space-1) var(--space-4);
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-pill);
+    background: var(--surface-card);
+    color: var(--text-default);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--type-body-size);
+}
+.category-choice:hover { background: var(--surface-sunken); }
+.category-choice[aria-pressed="true"] { border-color: transparent; background: var(--brand-primary-bg); color: var(--brand-primary-strong); font-weight: var(--type-subtitle-weight); }
+.category-choice:disabled { cursor: not-allowed; opacity: .48; }
+
 /* 两个列表共用选择条；原生 details 展开编辑，选择与提交仍归原表单。 */
 .bulk-bar {
     position: sticky;
@@ -1446,6 +1463,8 @@ details[open]:has(> summary.product-entry) { padding-block-end: var(--space-5); 
 .review-note-fields,
 .review-subtask { min-width: 0; border-bottom: 1px solid var(--border-card); }
 .review-edit-field > .product-field { margin: 0 0 var(--space-5) calc(var(--space-9) + var(--space-4)); }
+/* 分类选项与输入框同一缩进, 紧跟在输入框下面。 */
+.review-edit-field > .category-choices { margin: calc(var(--space-3) - var(--space-5)) 0 var(--space-5) calc(var(--space-9) + var(--space-4)); }
 .review-date-fields fieldset { border: 0; padding: var(--space-4) 0; min-width: 0; }
 .review-note-fields > .product-field { margin-block: var(--space-4); }
 .review-subtask-link { border-bottom: 1px solid var(--border-card); }

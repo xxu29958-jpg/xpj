@@ -234,6 +234,10 @@ def test_web_edit_renders_category_datalist_with_used_category(web_client: TestC
     assert f'<datalist id="expense-{expense_id}-category-options">' in detail.text
     assert '<option value="测试专属分类">' in detail.text  # the ledger's own
     assert '<option value="餐饮">' in detail.text  # a default
+    # datalist 只列出与已填内容匹配的项, 全部分类也作为可见选项渲染, 当前分类标为已选。
+    assert f'data-category-choices="expense-{expense_id}-category"' in detail.text
+    assert 'data-category-pick="测试专属分类" aria-pressed="true"' in detail.text
+    assert 'data-category-pick="餐饮" aria-pressed="false"' in detail.text
 
     drawer = web_client.get(f"/web/expenses/{expense_id}/edit?ledger_id=owner&fragment=1")
     assert drawer.status_code == 200
@@ -241,6 +245,7 @@ def test_web_edit_renders_category_datalist_with_used_category(web_client: TestC
     assert f'id="drawer-expense-{expense_id}-amount-yuan"' in drawer.text
     assert f'list="drawer-expense-{expense_id}-category-options"' in drawer.text
     assert f'<datalist id="drawer-expense-{expense_id}-category-options">' in drawer.text
+    assert f'data-category-choices="drawer-expense-{expense_id}-category"' in drawer.text
     assert 'name="expense_time"' in drawer.text
     assert 'name="tags"' in drawer.text
 
