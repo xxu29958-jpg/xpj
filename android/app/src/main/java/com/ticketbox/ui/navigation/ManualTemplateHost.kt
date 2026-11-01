@@ -56,7 +56,7 @@ private fun ManualTemplatePanel(
     val draftState = rememberSaveableStateHolder()
     LaunchedEffect(controller) { controller.reload() }
     LaunchedEffect(selected, editing) {
-        if (selected != null || editing != null) homeCurrency = actions.onPrepareManualCreate()
+        if (selected != null || editing != null) homeCurrency = actions.onResolveLedgerCurrency()
     }
     LaunchedEffect(state.manualCreateResult) {
         if (selected != null && state.manualCreateResult != null) {
@@ -72,7 +72,7 @@ private fun ManualTemplatePanel(
         delete = { id -> controller.change({ store.remove(id) }) { editing = null } },
         dismiss = dismiss,
         reload = { scope.launch { controller.reload() } },
-        prepareCurrency = { scope.launch { homeCurrency = actions.onPrepareManualCreate() } },
+        prepareCurrency = { scope.launch { homeCurrency = actions.onResolveLedgerCurrency() } },
     )
     val entryActions = actions.copy(onManualCreate = { if (currentBinding() == binding) actions.onManualCreate(it) })
     ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {

@@ -108,7 +108,10 @@ class MonthlyStatsViewModel(
         refreshGeneration += 1
         inFlightRefresh = null
         monthSelected = false
-        _uiState.update { MonthlyStatsUiState(binding = binding) }
+        _uiState.update {
+            MonthlyStatsUiState(binding = binding, months = it.months, monthsLoadState = it.monthsLoadState,
+                tags = it.tags, tagsLoadState = it.tagsLoadState)
+        }
         resolveMonth(binding)
     }
 

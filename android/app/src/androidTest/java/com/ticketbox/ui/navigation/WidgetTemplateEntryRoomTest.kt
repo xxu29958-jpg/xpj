@@ -3,6 +3,7 @@ package com.ticketbox.ui.navigation
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -57,20 +58,7 @@ class WidgetTemplateEntryRoomTest {
 
     @Test fun createEditAndUseTemplateRequireAnExplicitBillConfirmation() {
         val originalIds = store.read().map { it.id }.toSet()
-        compose.setContent {
-            CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
-                TicketboxTheme(skin = AppSkin.Default) {
-                    if (mounted.value) {
-                        val nav = rememberNavController()
-                        NavHost(nav, startDestination = "template-ledger") {
-                            composable("template-ledger") { LedgerRoute(nav, harness.shell, harness.screenFactory) }
-                        }
-                    }
-                }
-            }
-        }
-        compose.runOnIdle { dispatchShortcutNavigation(ShortcutTarget.EntryTemplates, harness.shell) }
-        awaitText(R.string.widget_template_add)
+        openTemplates()
         compose.onNodeWithText(context.getString(R.string.widget_template_add)).performScrollTo().performClick()
         compose.waitUntil(10_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size >= 4 }
         listOf("工作日早餐", "12.50", "餐饮", "豆浆").forEachIndexed { index, value ->
@@ -105,6 +93,55 @@ class WidgetTemplateEntryRoomTest {
         assertEquals("豆浆", request.note)
         assertEquals(1800L, store.read().single { it.id == template.id }.amountMinor)
         assertEquals(0, sends)
+    }
+
+    @Test fun readOnlyLedgerCanAddEditAndDeleteLocalTemplatesWithoutCreatingBills() {
+        harness.fixture.role("viewer")
+        assertFalse(harness.screenFactory.repository.canModifyLedger())
+        val originalIds = store.read().map { it.id }.toSet()
+        openTemplates()
+        awaitText(R.string.widget_template_read_only)
+        compose.onNodeWithText(context.getString(R.string.widget_template_add)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size >= 4 }
+        listOf("只读早餐", "12.50", "餐饮", "本地模板").forEachIndexed { index, value ->
+            compose.onAllNodes(hasSetTextAction())[index].performScrollTo().performTextInput(value)
+        }
+        closeSoftKeyboard()
+        saveTemplate()
+        compose.waitUntil(10_000) { store.read().any { it.id !in originalIds } }
+        val template = store.read().single { it.id !in originalIds }
+        createdId = template.id
+        compose.onNodeWithText(context.getString(R.string.widget_template_use)).assertIsNotEnabled()
+        compose.onNodeWithText(context.getString(R.string.widget_template_edit)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().size >= 4 }
+        compose.onAllNodes(hasSetTextAction())[1].performScrollTo().performTextReplacement("18.00")
+        closeSoftKeyboard()
+        saveTemplate()
+        compose.waitUntil(10_000) { store.read().single { it.id == template.id }.amountMinor == 1800L }
+        compose.onNodeWithText(context.getString(R.string.widget_template_use)).assertIsNotEnabled()
+        compose.onNodeWithText(context.getString(R.string.widget_template_edit)).performScrollTo().performClick()
+        awaitText(R.string.widget_template_delete)
+        compose.onNodeWithText(context.getString(R.string.widget_template_delete)).performScrollTo().performClick()
+        compose.waitUntil(10_000) { store.read().none { it.id == template.id } }
+        assertTrue(harness.fixture.stored().isEmpty())
+        assertEquals(0, sends)
+    }
+
+    private fun openTemplates() {
+        compose.setContent {
+            CompositionLocalProvider(LocalViewModelStoreOwner provides harness.models) {
+                TicketboxTheme(skin = AppSkin.Default) {
+                    if (mounted.value) {
+                        val nav = rememberNavController()
+                        NavHost(nav, startDestination = "template-ledger") {
+                            composable("template-ledger") { LedgerRoute(nav, harness.shell, harness.screenFactory) }
+                        }
+                    }
+                }
+            }
+        }
+        compose.runOnIdle { dispatchShortcutNavigation(ShortcutTarget.EntryTemplates, harness.shell) }
+        awaitText(R.string.widget_template_add)
     }
 
     private fun saveTemplate() = compose.onNodeWithText(context.getString(R.string.widget_template_save)).performScrollTo().performClick()

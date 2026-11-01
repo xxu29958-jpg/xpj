@@ -1193,6 +1193,21 @@ private fun expense(
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class LedgerViewModelCurrencyRelatchTest {
+    @Test
+    fun readOnlyLedgerResolvesTemplateCurrencyButCannotCreateAnExpense() = relatchTest {
+        val fake = FakeLedgerActions(expenses = emptyList(), canModify = false)
+        val debts = RecoverableLedgerDebtActions(online = true)
+        val vm = LedgerViewModel(fake, debts)
+        advanceUntilIdle()
+        debts.currency = "JPY"
+        assertEquals(CurrencyCode.JPY, vm.resolveLedgerCurrency())
+        assertNull(vm.prepareManualEntry())
+        vm.createManualExpense(manualDraft().copy(ledgerHomeCurrency = CurrencyCode.JPY))
+        advanceUntilIdle()
+        assertEquals(0, fake.manualCreateCallCount)
+        assertTrue(vm.uiState.value.readOnly)
+    }
+
     private fun relatchTest(block: suspend TestScope.() -> Unit) = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)

@@ -34,6 +34,7 @@ data class LedgerScreenActions(
     val onOpenLibrary: () -> Unit = {},
     val onManualCreate: (ExpenseDraft) -> Unit = {},
     val onPrepareManualCreate: suspend () -> CurrencyCode? = { null },
+    val onResolveLedgerCurrency: suspend () -> CurrencyCode? = { null },
     val onViewModeChange: (LedgerViewMode) -> Unit = {},
     val onEdit: (Expense) -> Unit = {},
     val onOpenManualSubmission: (String) -> Unit = {},

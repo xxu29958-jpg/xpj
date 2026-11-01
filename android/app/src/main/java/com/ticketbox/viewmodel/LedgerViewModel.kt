@@ -656,6 +656,10 @@ class LedgerViewModel(
 
     suspend fun prepareManualEntry(): CurrencyCode? {
         if (!repository.canModifyLedger()) return null
+        return resolveLedgerCurrency()
+    }
+
+    suspend fun resolveLedgerCurrency(): CurrencyCode? {
         refreshLedgerCurrency()
         return _uiState.value.ledgerCurrency
     }

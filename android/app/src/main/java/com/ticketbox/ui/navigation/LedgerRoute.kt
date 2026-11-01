@@ -122,6 +122,7 @@ private fun ledgerScreenActions(
     },
     onManualCreate = ledgerViewModel::createManualExpense,
     onPrepareManualCreate = ledgerViewModel::prepareManualEntry,
+    onResolveLedgerCurrency = ledgerViewModel::resolveLedgerCurrency,
     onViewModeChange = ledgerViewModel::setViewMode,
     onEdit = { navController.openExpense(it.id) },
     onOpenManualSubmission = { navController.navigate(manualExpenseSubmissionRoute(it)) },
