@@ -142,6 +142,7 @@ internal class FakeReviewActions(
     val enrichmentTasks: FakePendingEnrichmentTaskReader = FakePendingEnrichmentTaskReader(),
 ) : PendingReviewActions {
     private val originalInputStore = FakeExpenseFactActions()
+    var categoriesFailure: Throwable? = null
     var inputWriteFailure: Throwable? = null
     var inputReadFailure: Throwable? = null
     override val originalInputs = object : com.ticketbox.data.repository.ExpenseFactInputActions by originalInputStore {
@@ -337,7 +338,8 @@ internal class FakeReviewActions(
             .onSuccess { originalInput?.let { originalInputStore.discardFactInput(expectedBinding, it).getOrThrow() } }
     }
 
-    override suspend fun categories(): Result<List<String>> = Result.success(categoryOptions)
+    override suspend fun categories(): Result<List<String>> =
+        categoriesFailure?.let { Result.failure(it) } ?: Result.success(categoryOptions)
 
 
 }
