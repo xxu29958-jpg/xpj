@@ -183,7 +183,11 @@ private fun DeviceRow(
             .padding(vertical = AppSpacing.miniGap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SettingsEntryIcon(ImageVector.vectorResource(if (device.platform == "web") R.drawable.ic_lucide_monitor_smartphone else R.drawable.ic_lucide_phone))
+        SettingsEntryIcon(ImageVector.vectorResource(when (device.platform) {
+            "web" -> R.drawable.ic_lucide_monitor_smartphone
+            "windows", "desktop" -> R.drawable.ic_lucide_monitor
+            else -> R.drawable.ic_lucide_phone
+        }))
         Spacer(Modifier.width(AppSpacing.contentGap))
         Column(
             modifier = Modifier.weight(1f),
@@ -228,6 +232,8 @@ internal fun DeviceActivityText(device: AccountDevice) {
         "android" -> stringResource(R.string.my_devices_platform_android)
         "web" -> stringResource(R.string.my_devices_platform_web)
         "iphone" -> stringResource(R.string.my_devices_platform_iphone)
+        "windows" -> stringResource(R.string.my_devices_platform_windows)
+        "desktop" -> stringResource(R.string.my_devices_platform_desktop)
         else -> device.platform
     }
     val lastSeen = if (device.lastSeenAt.isNullOrBlank()) {

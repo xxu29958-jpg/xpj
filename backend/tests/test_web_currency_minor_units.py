@@ -258,7 +258,8 @@ def test_confirmed_search_and_reports_use_zero_fraction_home_amounts(
             "/web/search?ledger_id=owner&q=JPY发布回归"
         )
         assert search.status_code == 200, search.text
-        assert "¥1,234 <small>JPY</small>" in search.text
+        assert '<span class="product-entry-amount">¥1,234</span>' in search.text
+        assert "<small>JPY</small>" not in search.text
         assert "¥12.34" not in search.text
 
         reports = web_client.get(

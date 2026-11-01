@@ -1,0 +1,10 @@
+{# 分类可见选项: 浏览器的 datalist 只列出与已填内容匹配的项, 预填「餐饮」时点开几乎是空的。
+   这里把全部分类摆出来, 点选等同于在输入框里改分类 (core.js 派发带 ticketboxUserPick 的 input 事件)。
+   无脚本时保持 hidden, 仍可用输入框与 datalist。 #}
+{% macro category_choices(input_id, options, current) -%}
+{% if options %}
+<div class="category-choices" data-category-choices="{{ input_id }}" role="group" aria-label="选择分类" hidden>
+  {% for option in options %}<button type="button" class="category-choice" data-category-pick="{{ option }}" aria-pressed="{{ 'true' if option == current else 'false' }}">{{ option }}</button>{% endfor %}
+</div>
+{% endif %}
+{%- endmacro %}

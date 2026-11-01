@@ -15,6 +15,7 @@ import com.ticketbox.data.repository.UploadIntentActions
 import com.ticketbox.data.repository.UploadIntentObservation
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
@@ -80,7 +81,8 @@ data class PendingUiState(
     val enrichment: PendingEnrichmentUiState = PendingEnrichmentUiState(),
     val message: UiText? = null,
     val activeSheet: PendingSheet = PendingSheet.None,
-    val categoryOptions: List<String> = emptyList(),
+    /** 与流水、编辑、账单详情同一起点: 先给默认分类, 读到账本分类后替换; 读取失败也不会让快速分类没有可选项。 */
+    val categoryOptions: List<String> = DEFAULT_EXPENSE_CATEGORIES,
     val reviewInputValues: PendingReviewValues = PendingReviewValues(),
     val reviewInputReady: Boolean = true,
     val reviewInputWriting: Boolean = false,
@@ -263,7 +265,7 @@ class PendingViewModel(
                     if (generation != requestGeneration) return@onSuccess
                     _uiState.update { it.copy(categoryOptions = options) }
                 }
-                .onFailure { /* 静默失败：用户仍可手动输入分类 */ }
+                .onFailure { /* 保留默认分类；用户仍可手动输入其它分类 */ }
         }
     }
 

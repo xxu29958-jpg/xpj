@@ -48,7 +48,7 @@
     const field = name => form.elements.namedItem(name);
     const oneOff = form.querySelector("[data-category-one-off]");
     form.addEventListener("input", event => {
-      if (!event.isTrusted || form.dataset.correctionDraftPhase !== "editing" || field("category").readOnly) return;
+      if (!(event.isTrusted || event.ticketboxUserPick) || form.dataset.correctionDraftPhase !== "editing" || field("category").readOnly) return;
       if (event.target.name !== "category" && event.target !== oneOff) return;
       field("category_choice").value = oneOff?.checked ? "one_off" : "manual";
       if (!present.includes("category_choice")) present.push("category_choice");

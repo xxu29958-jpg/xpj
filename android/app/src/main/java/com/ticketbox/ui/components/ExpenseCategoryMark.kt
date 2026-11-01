@@ -49,37 +49,43 @@ private val expenseCategoryIcons: Map<String, Int> = mapOf(
 internal fun ExpenseCategoryMark(category: String, density: AppListDensity) {
     val visuals = LocalThemeVisuals.current
     val rowMetrics = AppDensity.rowMetrics(density)
-    val background = visuals.brandPrimaryBg
     Box(
         modifier = Modifier
             .size(rowMetrics.markSize)
             .clip(RoundedCornerShape(AppRadius.small))
-            .background(background),
+            .background(visuals.brandPrimaryBg),
         contentAlignment = Alignment.Center,
     ) {
-        val icon = expenseCategoryIcons[category]
-        if (icon != null) {
-            Icon(
-                imageVector = ImageVector.vectorResource(icon),
-                contentDescription = null,
-                tint = visuals.primary,
-                modifier = Modifier.size(
-                    if (density == AppListDensity.Compact) 18.dp else 20.dp,
-                ),
-            )
-        } else {
-            val markFallback = stringResource(R.string.ledger_item_category_mark_fallback)
-            Text(
-                text = category.take(1).ifBlank { markFallback },
-                color = visuals.primary,
-                style = if (density == AppListDensity.Compact) {
-                    MaterialTheme.typography.labelLarge
-                } else {
-                    MaterialTheme.typography.titleMedium
-                },
-                fontWeight = AppTypography.cardTitle.weight,
-                textAlign = TextAlign.Center,
-            )
-        }
+        ExpenseCategoryGlyph(category, density)
+    }
+}
+
+/** 分类标记的内容: 已知分类画图标, 自定义分类取首字, 空分类用「账」。流水与收件共用, 各自决定外框。 */
+@Composable
+internal fun ExpenseCategoryGlyph(category: String, density: AppListDensity) {
+    val visuals = LocalThemeVisuals.current
+    val icon = expenseCategoryIcons[category]
+    if (icon != null) {
+        Icon(
+            imageVector = ImageVector.vectorResource(icon),
+            contentDescription = null,
+            tint = visuals.primary,
+            modifier = Modifier.size(
+                if (density == AppListDensity.Compact) 18.dp else 20.dp,
+            ),
+        )
+    } else {
+        val markFallback = stringResource(R.string.ledger_item_category_mark_fallback)
+        Text(
+            text = category.take(1).ifBlank { markFallback },
+            color = visuals.primary,
+            style = if (density == AppListDensity.Compact) {
+                MaterialTheme.typography.labelLarge
+            } else {
+                MaterialTheme.typography.titleMedium
+            },
+            fontWeight = AppTypography.cardTitle.weight,
+            textAlign = TextAlign.Center,
+        )
     }
 }

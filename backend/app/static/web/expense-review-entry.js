@@ -18,7 +18,7 @@
     input.focus();
   });
   document.addEventListener("input", event => {
-    if (event.target.name === "category" && event.isTrusted) {
+    if (event.target.name === "category" && (event.isTrusted || event.ticketboxUserPick)) {
       put(event.target.form, "category_choice", event.target.form?.querySelector("[data-category-one-off]")?.checked ? "one_off" : "manual");
       put(event.target.form, "category_decision_public_id", "");
     }

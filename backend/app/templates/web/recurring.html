@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import '_planning_drafts.html' as drafts %}
+{% from '_plan_amount.html' import plan_amount with context %}
 {% block page_scripts %}{{ drafts.scripts(asset_version) }}
 <script defer src="/static/web/occurrence-entry.js?v={{ asset_version }}"></script>{% endblock %}
 {% set history_month = navigation_month|default(request.query_params.get('month', '')) %}
@@ -60,7 +61,7 @@
   <span class="product-amount-meta">{{ hero.active_count }} 项活跃固定支出合计</span>
   <dl class="product-surface-rows">
     {% if hero.next_due %}
-    <div><dt>{{ '已过预计日' if recurring_today and hero.next_due.date < recurring_today else '下一笔到期' }} · {{ hero.next_due.merchant }} · {{ hero.next_due.home_currency_code or '' }} {{ hero.next_due.amount_yuan|grouped }}</dt><dd>{{ hero.next_due.date }}</dd></div>
+    <div><dt>{{ '已过预计日' if recurring_today and hero.next_due.date < recurring_today else '下一笔到期' }} · {{ hero.next_due.merchant }} · {{ plan_amount(hero.next_due.home_currency_code, hero.next_due.amount_yuan) }}</dt><dd>{{ hero.next_due.date }}</dd></div>
     {% else %}
     <div><dt>下一笔到期 · 留下下次预计日期才会提醒</dt><dd>未设置日期</dd></div>
     {% endif %}
@@ -84,17 +85,17 @@
       <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#calendar-clock"/></svg></span>
       <div class="product-entry-copy">
         {% if item.public_id == result_item %}{{ result_feedback() }}{% endif %}
-        <div class="product-entry-heading"><strong>{{ item.merchant }}</strong><strong class="product-entry-amount">{{ item.home_currency_code or '' }} {{ item.baseline_amount_yuan|grouped }}/月</strong></div>
+        <div class="product-entry-heading"><strong>{{ item.merchant }}</strong><strong class="product-entry-amount">{{ plan_amount(item.home_currency_code, item.baseline_amount_yuan) }}/月</strong></div>
         <span>{% if item.next_due_date and recurring_today and item.next_due_date < recurring_today %}预计 {{ item.next_due_date }} 已过，本期还没有对应付款{% elif item.next_due_date %}下次预计 {{ item.next_due_date }}{% else %}未留日期，不提醒{% endif %} · {% if item.observed %}每月基准{% else %}每月预计{% endif %}</span>
         <span>
           {% if item.observed %}
-          已观察 {{ item.occurrence_count }} 次{% if item.last_seen_date %} · 最近 {{ item.last_seen_date }}{% endif %} · 上次 {{ item.home_currency_code or '' }} {{ item.last_amount_yuan|grouped }}
+          已观察 {{ item.occurrence_count }} 次{% if item.last_seen_date %} · 最近 {{ item.last_seen_date }}{% endif %} · 上次 {{ plan_amount(item.home_currency_code, item.last_amount_yuan) }}
           {% else %}
           手动记录 · 还没有观察到账单
           {% endif %}
         </span>
         {% if item.anomaly_status == 'higher_than_average' %}
-        <span>本月 {{ item.home_currency_code or '' }} {{ item.current_month_amount_yuan|grouped }} · 月均 {{ item.home_currency_code or '' }} {{ item.historical_average_amount_yuan|grouped }}</span>
+        <span>本月 {{ plan_amount(item.home_currency_code, item.current_month_amount_yuan) }} · 月均 {{ plan_amount(item.home_currency_code, item.historical_average_amount_yuan) }}</span>
         {% endif %}
         <span class="pill-row">
           {% if item.status == 'active' %}<span class="product-status product-status--success">{{ item.status_label }}</span>
@@ -360,7 +361,7 @@
     <li class="product-entry product-entry--static product-entry--actions">
       <span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#sparkles"/></svg></span>
       <div class="product-entry-copy">
-        <div class="product-entry-heading"><strong>{{ candidate.merchant }}</strong><strong class="product-entry-amount">{{ candidate.home_currency_code }} {{ candidate.amount_yuan|grouped }}/月</strong></div>
+        <div class="product-entry-heading"><strong>{{ candidate.merchant }}</strong><strong class="product-entry-amount">{{ plan_amount(candidate.home_currency_code, candidate.amount_yuan) }}/月</strong></div>
         <span>观察金额 · 已观察 {{ candidate.occurrence_count }} 次{% if candidate.last_seen_date %} · 最近 {{ candidate.last_seen_date }}{% endif %}</span>
         {% if candidate.reason %}<span>{{ candidate.reason }}</span>{% endif %}
         <span class="product-status">{{ '规律较稳定' if candidate.confidence == 'high' else '仍需核对' }}</span>

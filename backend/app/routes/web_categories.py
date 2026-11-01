@@ -51,7 +51,7 @@ from app.services.category_service import (
     list_ledger_category_options,
     list_uncategorized_pending,
 )
-from app.services.expense_service import list_expenses_by_ids
+from app.services.expense_service import ledger_records_other_currency, list_expenses_by_ids
 from app.services.ledger_calendar_service import current_ledger_month
 from app.services.pending_category_command_service import read_pending_category_receipt, submit_pending_category_batch
 from app.services.pending_review_bulk_service import BulkResult
@@ -128,6 +128,8 @@ def _render_categories(
             for summary in dashboard.summaries
         ],
         target_month=target_month,
+        # 与总览、流水同一规则: 账本只记一种币种时金额只写符号。
+        show_home_currency_code=ledger_records_other_currency(db, selected_id, home),
         rule_count=dashboard.rule_count,
         uncategorized_pending=dashboard.uncategorized_pending,
         other_pending=sum(row.pending_count for row in dashboard.summaries if row.category == "其他"),

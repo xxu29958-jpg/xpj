@@ -77,6 +77,9 @@ def test_web_search_finds_current_ledger_entities(web_client: TestClient, *, ide
     assert f"/web/expenses/{confirmed_id}/edit?ledger_id=owner" in page.text
     assert "/web/rules?ledger_id=owner" in page.text
     assert "2026-05-04 20:00" in page.text
+    # 账本本币只写符号; 币种代码只在结果与账本币种不同时出现。
+    assert '<span class="product-entry-amount">¥9.00</span>' in page.text
+    assert "<small>CNY</small>" not in page.text
 
     goals = web_client.get("/web/search?ledger_id=owner&q=SearchGoal")
     assert goals.status_code == 200
