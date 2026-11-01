@@ -179,6 +179,13 @@ BASELINE_RATCHET_DOWN: frozenset[str] = frozenset(
     }
 )
 _MUTATE_TOKEN_EXEMPTION_ADMISSIONS = (
+    # ADR-0038 create_row: POST /api/payment-captures/batch has no prior row.
+    # Each independent notification identity is reserved under the existing
+    # source lock/unique constraint and every target commits in one transaction.
+    # test_notification_capture_batch covers authentication, ledger isolation,
+    # replay and complete rollback. Existing confirmation/OCC carriers remain.
+    ("477ecb6c5cc449a68376a7a5fb1316a1d1e0ade5", 158, 159),
+    ("ef78dae833e107d2e584f0729aead87673af411c", 158, 159),  # Same admission atop the confirmation dependency.
     # ADR-0038 create_row / WEB_DEBT_BILL_CAPTURE.md: POST /web/debt-bills
     # is the Web adapter to the existing private capture/key/receipt owner.
     # No predecessor row exists; parse/discard add two source OCC carriers.

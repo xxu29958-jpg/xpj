@@ -33,12 +33,7 @@ def stage_source_event_drafts(db: Session, *, expense: Expense, result: OcrResul
     unreferenced copies to the existing orphan-upload owner, never dangling DB
     references or partially published candidates.
     """
-    assigned = db.scalar(select(ExpenseSourceCandidate).where(
-        ExpenseSourceCandidate.tenant_id == expense.tenant_id, ExpenseSourceCandidate.expense_id == expense.id))
-    source_id = assigned.source_expense_id if assigned else expense.id
-    source = db.scalar(select(Expense).where(Expense.id == source_id, Expense.tenant_id == expense.tenant_id).with_for_update())
-    previous = list(db.scalars(select(ExpenseSourceCandidate).where(
-        ExpenseSourceCandidate.tenant_id == expense.tenant_id, ExpenseSourceCandidate.source_expense_id == source_id)))
+    source, previous = _lock_source_candidates(db, expense)
     by_key = {row.event_key: row for row in previous}
     extraction_hash = hashlib.sha256(result.raw_text.encode()).hexdigest()
     staged = []
@@ -62,6 +57,16 @@ def stage_source_event_drafts(db: Session, *, expense: Expense, result: OcrResul
             db.flush()
         staged.append(SourceEventDraft(target, event_result, fresh))
     return staged
+
+
+def _lock_source_candidates(db: Session, expense: Expense) -> tuple[Expense, list[ExpenseSourceCandidate]]:
+    assigned = db.scalar(select(ExpenseSourceCandidate).where(
+        ExpenseSourceCandidate.tenant_id == expense.tenant_id, ExpenseSourceCandidate.expense_id == expense.id))
+    source_id = assigned.source_expense_id if assigned else expense.id
+    source = db.scalar(select(Expense).where(Expense.id == source_id, Expense.tenant_id == expense.tenant_id).with_for_update())
+    previous = list(db.scalars(select(ExpenseSourceCandidate).where(
+        ExpenseSourceCandidate.tenant_id == expense.tenant_id, ExpenseSourceCandidate.source_expense_id == source_id)))
+    return source, previous
 
 
 def _event_result(result, event, source, provider_name, ocr_model):

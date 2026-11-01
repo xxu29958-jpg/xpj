@@ -13,6 +13,15 @@ def _batch(amounts=(1000, 1290, 2933)):
         for amount in amounts]}
 
 
+def test_batch_requires_auth_before_creating_any_candidate(client):
+    body = _batch()
+    assert client.post("/api/payment-captures/batch", json=body).status_code == 401
+    assert client.post("/api/payment-captures/batch", headers={"Authorization": "Bearer invalid"}, json=body).status_code == 401
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(PaymentCapture)) == 0
+        assert db.scalar(select(func.count()).select_from(Expense)) == 0
+
+
 def test_batch_preserves_three_independent_candidates_and_replays_after_a_lost_response(client, identity):
     body = _batch()
     response = client.post("/api/payment-captures/batch", headers=identity.app_headers, json=body)

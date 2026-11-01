@@ -139,10 +139,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "HTTP failures use NetworkErrorHandler. Unknown response failures report through logNetworkWarning and block the unchanged original command for review, without retrying or claiming acceptance. Cancellation propagates; transport interruption retains the existing retry owner. The existing failure-to-retry test verifies compact receipts and preserves the original payload/key across an unverified response. No financial inputs or raw exception messages are emitted.",
     },
     (ANDROID + "data/repository/NotificationCaptureDispatcher.kt", "dispatch"): {
-        "sha256": "b1787d5f05ade2c64cc1ab2db812cd0162bf53ce148a24c28fcdb4dbbae8c099",
+        "sha256": "4e6fcdea9f8566676fec16850ee10ea2c161fa20f4978ca3e7d5d27aea0014c0",
         "owner": "existing HTTP mapping, Outbox result and sanitized TicketboxNetwork output",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NotificationCaptureRepositoryTest.kt",
-        "reason": "Cancellation propagates. Transport and binding changes retain the original; unexpected response or publication errors report through logNetworkWarning before retaining a failed original. NetworkErrorReportingTest verifies the shared sanitized sink. No raw notification or exception message is emitted.",
+        "reason": "Cancellation propagates. One batch response must contain every independent identity before the original command is acknowledged. Transport and binding changes retain the entire original batch; unexpected response or publication errors report through logNetworkWarning before retaining a failed original. NotificationCaptureRepositoryTest covers batch reply loss/replay; NetworkErrorReportingTest verifies the shared sanitized sink. No raw notification or exception message is emitted.",
     },
     (ANDROID + "data/repository/PaymentCaptureResolution.kt", "dispatch"): {
         "sha256": "7a278106a9dbe5f4eb03a90deceaf0eb7dd1acd006d555b6e5f5eca799552709",
