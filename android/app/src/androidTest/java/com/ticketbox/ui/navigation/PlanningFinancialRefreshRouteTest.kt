@@ -85,9 +85,9 @@ class PlanningFinancialRefreshRouteTest {
         assertTrue("Returning must query the changed financial facts", transport.reads.size > readsBeforeLeaving)
         assertEquals(MainProductDestination.Domain(PrimaryDomain.Plans), harness.shell.activeDestination)
         val completed = completedExpenseCommands()
-        assertEquals(2, completed.size)
+        assertEquals(1, completed.size)
         assertEquals(
-            setOf(PendingMutationType.PatchExpense.wireValue, PendingMutationType.ConfirmExpense.wireValue),
+            setOf(PendingMutationType.ConfirmExpense.wireValue),
             completed.map { it.type }.toSet(),
         )
         completed.forEach { row ->
@@ -234,20 +234,19 @@ class PlanningFinancialRefreshRouteTest {
         transport.reply = transport.reply.copy(spentAmountCents = 400, remainingAmountCents = remaining)
         runBlocking { harness.fixture.drainExpenseLifecycle() }
         val commands = completedExpenseCommands()
-        val patch = commands.single { it.type == PendingMutationType.PatchExpense.wireValue }
-        val confirmCommand = commands.single { it.type == PendingMutationType.ConfirmExpense.wireValue }
-        assertEquals("42", network.patchCalls.single().first)
-        assertEquals(7L, network.patchCalls.single().second.expectedRowVersion)
-        assertEquals(patch.idempotencyKey, network.patchCalls.single().third)
+        val confirmCommand = commands.single()
+        assertEquals(PendingMutationType.ConfirmExpense.wireValue, confirmCommand.type)
+        assertTrue(network.patchCalls.isEmpty())
         assertEquals("42", network.confirmCalls.single().first)
-        assertEquals(8L, network.confirmCalls.single().second.expectedRowVersion)
+        assertEquals(7L, network.confirmCalls.single().second.expectedRowVersion)
+        assertEquals(network.current.merchant, network.confirmCalls.single().second.changes?.merchant)
         assertEquals(confirmCommand.idempotencyKey, network.confirmCalls.single().third)
         waitForText(context.getString(R.string.expense_confirmation_title))
         compose.onNodeWithText(context.getString(R.string.expense_confirmation_return)).performClick()
         compose.waitUntil(5_000) { harness.fixture.network.current.status == "confirmed" &&
             outer.currentBackStackEntry?.destination?.route == MAIN_ROUTE }
         compose.waitForIdle()
-        assertEquals(listOf("save", "confirm"), harness.fixture.network.editCalls)
+        assertEquals(listOf("confirm"), harness.fixture.network.editCalls)
     }
 
     private fun waitForText(text: String) {

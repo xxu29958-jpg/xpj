@@ -186,7 +186,7 @@ class PendingExpenseAdmissionRoomTest {
     }
 
     @Test
-    fun saveAndConfirmKeepBothOriginalCommandsWhenTheEditorStopsBeforeTheFirstResponse() = runBlocking {
+    fun saveAndConfirmKeepsOneAtomicOriginalWhenTheEditorStopsBeforeTheFirstResponse() = runBlocking {
         fixture.network.current = fixture.network.current.copy(status = "pending", confirmedAt = null)
         current = fixture.network.current
         val repository = fixture.reopen().expenseRepository
@@ -198,15 +198,15 @@ class PendingExpenseAdmissionRoomTest {
         compose.waitUntil(10_000) { requests.isNotEmpty() || !vm.uiState.value.saving }
 
         val originals = fixture.stored()
-        assertEquals("Both user commands must survive loss of the editor", listOf(
-            PendingMutationType.PatchExpense.wireValue, PendingMutationType.ConfirmExpense.wireValue), originals.map { it["type"] })
-        assertPatch(originals.first())
-        assertEquals(originals.first()["ownerKey"], originals.last()["ownerKey"])
-        assertEquals(originals.first()["ledgerId"], originals.last()["ledgerId"])
-        assertEquals(originals.first()["serverUrl"], originals.last()["serverUrl"])
-        assertEquals(listOf("expense:42", "expense:42"), originals.map { it["targetId"] })
-        assertEquals(listOf("7", "7"), originals.map { it["expectedRowVersion"] })
-        assertEquals(2, originals.map { it["idempotencyKey"] }.filterNotNull().filter { it.isNotBlank() }.distinct().size)
+        assertEquals("Changes and confirmation must survive as one original command", listOf(
+            PendingMutationType.ConfirmExpense.wireValue), originals.map { it["type"] })
+        val command = originals.single()
+        assertEquals(PendingMutationStatus.Pending.wireValue, command["status"])
+        assertEquals("expense:42", command["targetId"])
+        assertEquals("7", command["expectedRowVersion"])
+        assertTrue(!command["idempotencyKey"].isNullOrBlank())
+        val confirmation = requireNotNull(OutboxAdapterGraph().expenseStateTokenAdapter.fromJson(requireNotNull(command["payload"])))
+        assertDraftChanges(requireNotNull(confirmation.changes))
         assertTrue("Worker transport follows durable admission", requests.isEmpty())
         assertEquals("pending", vm.uiState.value.expense?.status)
         assertNotNull(vm.uiState.value.message)
@@ -271,6 +271,10 @@ class PendingExpenseAdmissionRoomTest {
         assertEquals("7", row["expectedRowVersion"])
         assertTrue(!row["idempotencyKey"].isNullOrBlank())
         val patch = requireNotNull(OutboxAdapterGraph().patchExpenseAdapter.fromJson(requireNotNull(row["payload"])))
+        assertDraftChanges(patch)
+    }
+
+    private fun assertDraftChanges(patch: ExpenseUpdateRequest) {
         assertEquals("自己输入的商家", patch.merchant)
         assertEquals("未丢的草稿", patch.note)
         assertEquals("12.34", patch.originalAmount)
@@ -287,7 +291,7 @@ class PendingExpenseAdmissionRoomTest {
         compose.runOnIdle { editor = ExpenseEditViewModel(42, repository, savedState = saved) }
         compose.waitUntil(10_000) { editor?.uiState?.value?.expenseLoading == false }
         compose.runOnIdle { editor!!.confirm(draft()) }
-        compose.waitUntil(10_000) { editor!!.uiState.value.commandRowIds.size == 2 }
+        compose.waitUntil(10_000) { editor!!.uiState.value.commandRowIds.size == 1 }
         val originalIds = editor!!.uiState.value.commandRowIds
         val restored = SavedStateHandle(saved.keys().associateWith { saved.get<Any>(it) })
         compose.runOnIdle { editor!!.viewModelScope.cancel() }
@@ -296,16 +300,15 @@ class PendingExpenseAdmissionRoomTest {
         compose.waitUntil(10_000) { editor?.uiState?.value?.expenseLoading == false }
         assertEquals(originalIds, editor!!.uiState.value.commandRowIds)
         assertEquals(false, editor!!.uiState.value.done)
-        patchResponse = current.copy(merchant = "自己输入的商家", rowVersion = 8)
-        confirmationResponse = patchResponse.copy(status = "confirmed", confirmedAt = "2026-09-06T00:01:00Z", rowVersion = 9)
+        confirmationResponse = current.copy(merchant = "自己输入的商家", status = "confirmed", confirmedAt = "2026-09-06T00:01:00Z", rowVersion = 8)
             .withConfirmationReceipt()
         val originalRows = fixture.stored()
         fixture.drainExpenseLifecycle(api = admissionApi)
         compose.waitUntil(10_000) { editor!!.uiState.value.confirmationReceipt != null }
-        assertEquals(listOf("42", "42"), requests.map { it.first })
-        assertEquals(7L, (requests.first().second as ExpenseUpdateRequest).expectedRowVersion)
-        assertEquals("自己输入的商家", (requests.first().second as ExpenseUpdateRequest).merchant)
-        assertEquals(8L, (requests.last().second as ExpenseStateTokenRequest).expectedRowVersion)
+        assertEquals(listOf("42"), requests.map { it.first })
+        val confirmation = requests.single().second as ExpenseStateTokenRequest
+        assertEquals(7L, confirmation.expectedRowVersion)
+        assertDraftChanges(requireNotNull(confirmation.changes))
         assertEquals(originalRows.map { it["idempotencyKey"] }, requests.map { it.third })
         val firstReceipt = editor!!.uiState.value.confirmationReceipt
         assertEquals("自己输入的商家", firstReceipt?.merchant)

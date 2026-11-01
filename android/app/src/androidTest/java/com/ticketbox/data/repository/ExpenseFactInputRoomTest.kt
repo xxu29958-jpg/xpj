@@ -94,7 +94,7 @@ class ExpenseFactInputRoomTest {
             ExpenseFactInputCodec.encode(ExpenseFactInputDraft(expense, correction = form.originalValues())))
     }
 
-    @Test fun pendingAmountRequiresAdoptionAndCommitsBothCommandsTogetherWithOriginalConsumption() = runBlocking {
+    @Test fun pendingAmountRequiresAdoptionAndCommitsAtomicConfirmationWithOriginalConsumption() = runBlocking {
         fixture.network.current = fixture.network.current.copy(status = "pending", confirmedAt = null)
         val repository = fixture.reopen().expenseRepository
         val expense = fixture.network.current.toDomain()
@@ -115,16 +115,20 @@ class ExpenseFactInputRoomTest {
         val changed = adopted.copy(json = adopted.json + " ")
         repository.saveFactInput(adopted, changed).getOrThrow()
         assertTrue(repository.saveAndConfirmExpense(binding, expense, draft, adopted).isFailure)
-        assertTrue("A stale input must roll back the whole two-command insert", fixture.stored().isEmpty())
+        assertTrue("A stale input must roll back confirmation admission", fixture.stored().isEmpty())
         assertEquals(0, fixture.schedules)
         assertEquals(changed, repository.loadPendingReviewInputs(binding).getOrThrow().single())
         repository.saveAndConfirmExpense(binding, expense, draft, changed).getOrThrow()
         val cold = fixture.reopen().expenseRepository
         val rows = fixture.stored()
-        assertEquals(listOf("patch_expense", "confirm_expense"), rows.map { it["type"] })
-        assertEquals(listOf("7", "7"), rows.map { it["expectedRowVersion"] })
+        assertEquals(listOf("confirm_expense"), rows.map { it["type"] })
+        assertEquals(listOf("7"), rows.map { it["expectedRowVersion"] })
         assertEquals(rows.map { java.util.UUID.nameUUIDFromBytes("${changed.originalKey}:${it["type"]}".toByteArray()).toString() },
             rows.map { it["idempotencyKey"] })
+        val request = requireNotNull(com.ticketbox.OutboxAdapterGraph().expenseStateTokenAdapter
+            .fromJson(requireNotNull(rows.single()["payload"])))
+        assertEquals("43.21", request.changes?.originalAmount)
+        assertEquals(null, request.changes?.expectedRowVersion)
         assertTrue(cold.loadPendingReviewInputs(binding).getOrThrow().isEmpty())
         assertEquals(1, fixture.schedules)
         assertTrue(fixture.network.calls.isEmpty())
@@ -147,13 +151,14 @@ class ExpenseFactInputRoomTest {
             originalAmountMinor = 4321, funding = parts)
         cold.saveAndConfirmExpense(original.binding, expense, draft, original).getOrThrow()
         val rows = fixture.stored()
-        assertEquals(listOf("patch_expense", "confirm_expense"), rows.map { it["type"] })
-        assertFalse(requireNotNull(rows.first()["payload"]).contains("funding"))
+        assertEquals(listOf("confirm_expense"), rows.map { it["type"] })
         val request = com.squareup.moshi.Moshi.Builder().build()
             .adapter(com.ticketbox.data.remote.dto.ExpenseStateTokenRequest::class.java)
             .fromJson(requireNotNull(rows.last()["payload"]))
         assertEquals(12345L, requireNotNull(request?.funding).single().accountAmountMinor)
         assertEquals(3L, request?.funding?.single()?.accountRowVersion)
+        assertEquals("43.21", request?.changes?.originalAmount)
+        assertEquals(null, request?.changes?.expectedRowVersion)
         assertTrue(cold.loadFactInputs(original.binding, expense.id).getOrThrow().isEmpty())
         assertTrue(fixture.network.calls.isEmpty())
 
