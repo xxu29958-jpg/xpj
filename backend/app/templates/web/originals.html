@@ -11,6 +11,7 @@
   <h1 class="page-title" data-original-scan-heading>原件检查</h1>
   <p class="product-page-summary">检查{{ selected_ledger_name }}当前页的 {{ original_rows|length }} 笔记录</p>
 </div></header>
+{# 行内胶囊只承载检查结果 (可查看、补回、核验……); 检查前各行已写「尚未检查原件」, 不再每行重复一个中性「检查」。 #}
 <section class="original-list" aria-label="本页账单原件" data-original-list{% if resume_inspection %} data-original-resume{% endif %}>
 {% for row in original_rows %}
 <a class="product-entry" data-original-row data-expense-id="{{ row.id }}" data-health-href="/web/expenses/{{ row.id }}/original/health?ledger_id={{ selected_ledger_id }}"
@@ -19,7 +20,7 @@
     <svg><use href="/static/shared/vendor/lucide/icons.svg#receipt-text"/></svg>
     {% if row.thumbnail_path and not row.image_deleted_at %}<img src="/web/expenses/{{ row.id }}/thumbnail?ledger_id={{ selected_ledger_id }}" alt="" loading="lazy" decoding="async">{% endif %}
   </span>
-  <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ row.merchant or '未填写商家' }}</strong><span class="product-status" data-original-row-action>检查</span></span>
+  <span class="product-entry-copy"><span class="product-entry-heading"><strong>{{ row.merchant or '未填写商家' }}</strong><span class="product-status" data-original-row-action hidden></span></span>
     <span data-original-row-status>尚未检查原件</span><span class="meta" data-original-row-time></span></span>
   <svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg>
 </a>
