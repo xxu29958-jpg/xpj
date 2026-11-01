@@ -207,18 +207,28 @@ def _apply_extractions(db: Session, expense: Expense, prepared: _PreparedEnrichm
                        timezone_name: str | None) -> bool:
     """Stage draft fields and immutable facts under the caller's apply locks."""
     occ_snapshot = _enrichment_occ_snapshot(expense)
+    alternatives = []
     for extraction in prepared.ocr_run.extractions:
         if not extraction.apply_to_draft:
             append_ocr_fact(db, expense=expense, result=extraction.result,
                 provider_name=extraction.provider_name, ocr_model=extraction.ocr_model, timezone_name=timezone_name)
+            alternatives.append(extraction)
             continue
         if extraction.result.evidence and extraction.result.evidence.get("regional_retry"):
             from app.services.ocr_region_service import region_base
 
             region_base(db, expense, extraction.result.evidence["regional_retry"])
+        applied = apply_ocr_result_and_append_fact(db, expense=expense, result=extraction.result,
+            provider_name=extraction.provider_name, ocr_model=extraction.ocr_model, timezone_name=timezone_name,
+            apply_to_draft=extraction.apply_to_draft)
+        if applied is not None:
+            _replace_ocr_draft_items_from_text(db, expense, applied.raw_text, timezone_name=timezone_name)
+    # Let the selected extraction claim the original draft first. Alternative
+    # providers can add missing cards, but cannot displace the canonical fact.
+    for extraction in alternatives:
         apply_ocr_result_and_append_fact(db, expense=expense, result=extraction.result,
-            provider_name=extraction.provider_name, ocr_model=extraction.ocr_model, timezone_name=timezone_name)
-        _replace_ocr_draft_items_from_text(db, expense, extraction.result.raw_text, timezone_name=timezone_name)
+            provider_name=extraction.provider_name, ocr_model=extraction.ocr_model, timezone_name=timezone_name,
+            apply_to_draft=False, record_source_fact=False)
     if expense.category == "其他":
         classify_expense(db, expense)
     ensure_category_preference_for_name(db, tenant_id=expense.tenant_id, name=expense.category)

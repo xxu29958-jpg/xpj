@@ -26555,6 +26555,24 @@
         "title": "PaymentCandidate",
         "type": "object"
       },
+      "PaymentCaptureBatchCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "captures": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentCaptureCreate"
+            },
+            "minItems": 1,
+            "title": "Captures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "captures"
+        ],
+        "title": "PaymentCaptureBatchCreate",
+        "type": "object"
+      },
       "PaymentCaptureCreate": {
         "additionalProperties": false,
         "properties": {
@@ -26562,7 +26580,6 @@
             "items": {
               "$ref": "#/components/schemas/PaymentCandidate"
             },
-            "maxItems": 24,
             "title": "Candidates",
             "type": "array"
           },
@@ -32133,6 +32150,11 @@
             "title": "Expense Confirmation Version",
             "type": "integer"
           },
+          "notification_batch_version": {
+            "minimum": 1.0,
+            "title": "Notification Batch Version",
+            "type": "integer"
+          },
           "original_attachment_create_version": {
             "minimum": 1.0,
             "title": "Original Attachment Create Version",
@@ -32163,6 +32185,7 @@
           "debt_activity_read_version",
           "debt_bill_source_version",
           "expense_confirmation_version",
+          "notification_batch_version",
           "currency"
         ],
         "title": "RuntimeProductCapabilitiesResponse",
@@ -54204,6 +54227,101 @@
           }
         },
         "summary": "Capture",
+        "tags": [
+          "payment-captures"
+        ]
+      }
+    },
+    "/api/payment-captures/batch": {
+      "post": {
+        "operationId": "capture_batch_api_payment_captures_batch_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Ticketbox-Ledger-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Ticketbox-Ledger-Id"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/TicketboxCurrencyBinding"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentCaptureBatchCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentCaptureResponse"
+                  },
+                  "title": "Response Capture Batch Api Payment Captures Batch Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Structured project error response."
+          }
+        },
+        "summary": "Capture Batch",
         "tags": [
           "payment-captures"
         ]

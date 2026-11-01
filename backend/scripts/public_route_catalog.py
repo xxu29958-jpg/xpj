@@ -216,6 +216,7 @@ POST /api/merchants/aliases/{public_id}/undo
 POST /api/merchants/catalog
 POST /api/merchants/catalog/{source_public_id}/merge
 POST /api/payment-captures
+POST /api/payment-captures/batch
 POST /api/payment-captures/{public_id}/decision
 POST /api/recurring/from-candidate
 POST /api/recurring/items

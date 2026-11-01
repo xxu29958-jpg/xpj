@@ -35,6 +35,9 @@ def rank_duplicate_candidates(db: Session, *, expense: Expense,
     ignored = db.scalars(select(DuplicateIgnore).where(DuplicateIgnore.tenant_id == expense.tenant_id,
         or_(DuplicateIgnore.expense_id == expense.id, DuplicateIgnore.duplicate_of_id == expense.id)))
     excluded.update(row.duplicate_of_id if row.expense_id == expense.id else row.expense_id for row in ignored)
+    from app.services.expense_source_candidates import independent_sibling_ids
+
+    excluded.update(independent_sibling_ids(db, expense, ids))
     if expense.id in excluded:
         return []
     facts = read_ocr_facts(db, tenant_id=expense.tenant_id, expenses=[expense, *rows])

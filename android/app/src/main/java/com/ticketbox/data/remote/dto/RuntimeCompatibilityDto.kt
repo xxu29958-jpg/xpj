@@ -29,6 +29,8 @@ data class RuntimeProductCapabilitiesDto(
     val debtBillSourceVersion: Int? = null,
     @param:Json(name = "expense_confirmation_version")
     val expenseConfirmationVersion: Int? = null,
+    @param:Json(name = "notification_batch_version")
+    val notificationBatchVersion: Int? = null,
 )
 
 data class RuntimeCurrencyCapabilityDto(
@@ -54,6 +56,7 @@ data class RuntimeWriteCompatibility(
     val repaymentTimeInputVersion: Int? = null,
     val debtBillSourceVersion: Int? = null,
     val expenseConfirmationVersion: Int? = null,
+    val notificationBatchVersion: Int? = null,
 ) {
     val supportsOriginalAttachment: Boolean get() = originalAttachmentVersion == 1 && apiVersion == CURRENT_TICKETBOX_API_VERSION
     val supportsAccountingTimeInput: Boolean get() = accountingTimeInputVersion == 1
@@ -86,4 +89,5 @@ fun RuntimeCompatibilityDto.toWriteCompatibility(): RuntimeWriteCompatibility =
         debtActivityReadVersion = capabilities.debtActivityReadVersion,
         debtBillSourceVersion = capabilities.debtBillSourceVersion,
         expenseConfirmationVersion = capabilities.expenseConfirmationVersion,
+        notificationBatchVersion = capabilities.notificationBatchVersion,
     )

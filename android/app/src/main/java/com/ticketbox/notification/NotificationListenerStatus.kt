@@ -4,8 +4,15 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import android.service.notification.NotificationListenerService
 
 object NotificationListenerStatus {
+    fun reconnectIfEnabled(context: Context) {
+        if (isEnabled(context)) {
+            NotificationListenerService.requestRebind(ComponentName(context, TicketboxNotificationListenerService::class.java))
+        }
+    }
+
     fun isEnabled(context: Context): Boolean {
         val enabledListeners = Settings.Secure.getString(
             context.contentResolver,

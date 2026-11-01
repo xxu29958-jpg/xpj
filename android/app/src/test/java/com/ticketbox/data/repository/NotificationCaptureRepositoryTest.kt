@@ -29,6 +29,37 @@ import retrofit2.HttpException
 import retrofit2.Response
 
 class NotificationCaptureRepositoryTest {
+    @Test fun multiPaymentBatchKeepsEveryOriginalAcrossOfflineAdmissionAndLostReply() = runTest {
+        val f = CaptureFixture()
+        val originals = listOf(1000L, 1290L, 2933L, 1000L).map { f.expense.copy(draft = f.expense.draft.copy(amountCents = it)) }
+        f.repository.acceptBatch(originals, f.binding, "shade-batch").getOrThrow()
+        val saved = f.dao.rows.values.single()
+        val payload = requireNotNull(NotificationCaptureWire.payload.fromJson(saved.payload))
+        assertEquals(listOf(1000L, 1290L, 2933L, 1000L), payload.captures.map { it.originalAmountMinor })
+        assertEquals(4, payload.captures.map { it.notificationKey }.distinct().size)
+        f.repository.acceptBatch(originals, f.binding, "shade-batch").getOrThrow()
+        assertEquals(1, f.dao.rows.size)
+        f.dao.runnableBatches += listOf(saved.id)
+        f.engine().drainOnce()
+        assertEquals("pending", f.dao.rows.values.single().status)
+        f.api.offline = false
+        f.api.loseReply = true
+        val later = Clock.offset(f.clock, java.time.Duration.ofHours(1))
+        f.dao.runnableBatches += listOf(saved.id)
+        f.engine(f.newOutbox(later), later).drainOnce()
+        assertEquals(4, f.api.accepted.size)
+        f.api.loseReply = false
+        val afterLoss = Clock.offset(later, java.time.Duration.ofHours(1))
+        f.dao.runnableBatches += listOf(saved.id)
+        f.engine(f.newOutbox(afterLoss), afterLoss).drainOnce()
+        assertEquals("done", f.dao.rows.values.single().status)
+        assertEquals(4, f.api.accepted.size)
+        assertEquals(saved.payload, f.dao.rows.values.single().payload)
+        assertEquals(4, f.published.size)
+        assertEquals(4, requireNotNull(NotificationCaptureWire.receipt.fromJson(
+            requireNotNull(f.dao.rows.values.single().receiptJson))).capturePublicIds.size)
+    }
+
     @Test fun offlineNotificationKeepsItsOriginalCaptureForRecovery() = runTest {
         val f = CaptureFixture()
         val original = f.binding
@@ -197,6 +228,13 @@ private class CaptureResponseProbe : ApiService by FakeApiService(mutableListOf(
     val accepted = linkedSetOf<String>()
     val requests = linkedSetOf<com.ticketbox.data.remote.dto.PaymentCaptureCreateDto>()
     private val expenseApi = FakeApiService(mutableListOf(), 0)
+    override suspend fun capturePayments(request: com.ticketbox.data.remote.dto.PaymentCaptureBatchCreateDto): List<PaymentCapture> {
+        beforeRequest()
+        accepted += request.captures.map { it.notificationKey }
+        requests += request.captures
+        if (loseReply) throw IOException("batch reply lost after commit")
+        return request.captures.map { capturePayment(it) }
+    }
     override suspend fun capturePayment(request: com.ticketbox.data.remote.dto.PaymentCaptureCreateDto): com.ticketbox.domain.model.PaymentCapture {
         beforeRequest()
         accepted += request.notificationKey
@@ -204,12 +242,12 @@ private class CaptureResponseProbe : ApiService by FakeApiService(mutableListOf(
         if (loseReply) throw IOException("reply lost after commit")
         return com.ticketbox.domain.model.PaymentCapture("capture-${request.notificationKey}", 1, request.source,
             request.capturedAt, request.originalCurrency, request.originalAmountMinor, request.merchant, request.suggestedKind,
-            request.parserVersion, request.candidates, 12L.takeIf { request.suggestedKind == "expense" },
+            request.parserVersion, request.candidates, (requests.indexOf(request).toLong() + 12).takeIf { request.suggestedKind == "expense" },
             "8f939f48-e646-4afb-b54f-7bb6b536d9ef".takeIf { request.suggestedKind == "expense" },
             "draft-original".takeIf { request.suggestedKind == "repayment" })
     }
     override suspend fun expense(id: Long): com.ticketbox.data.remote.dto.ExpenseDto {
-        val original = requests.single { it.suggestedKind == "expense" }
+        val original = requests.elementAt((id - 12).toInt())
         return expenseApi.createNotificationDraft(NotificationDraftRequestDto(source = original.source,
             originalCurrency = original.originalCurrency, originalAmount = java.math.BigDecimal.valueOf(requireNotNull(original.originalAmountMinor), 2).toPlainString(),
             merchant = original.merchant, category = null, expenseTime = original.capturedAt, notificationKey = original.notificationKey))

@@ -1,4 +1,4 @@
-"""Bounded transaction-card interpretations using the same field vocabulary."""
+"""Independent transaction-card interpretations using the same field vocabulary."""
 
 import re
 
@@ -39,7 +39,11 @@ def _merchant_prefix_start(lines: list[tuple[int, int, str]], index: int, lower:
 
 
 def _card_start(lines: list[tuple[int, int, str]], index: int, lower: int, message_list: bool) -> int:
-
+    # Notification shades put the app and clock before each transaction title.
+    apps = [position for position in range(max(lower, index - 3), index)
+        if re.match(r"^(?:支付宝|微信支付|微信)(?:[·•\s(（]|$)", lines[position][2])]
+    if apps:
+        return lines[apps[-1]][0]
     start = index
     amount_start = _amount_prefix_start(lines, index, lower)
     if amount_start is not None:
@@ -69,7 +73,7 @@ def _card_anchors(lines: list[tuple[int, int, str]]) -> list[int]:
     headings = {*TRANSACTION_SUCCESS_KEYWORDS, "交易提醒"}
     # A labelled status value describes the enclosing payment, not another card.
     status_labels = {"交易状态", "支付状态", "付款状态", "订单状态"}
-    return [index for index, (_, _, text) in enumerate(lines) if text in headings
+    return [index for index, (_, _, text) in enumerate(lines) if (text in headings or re.match(r"^交易提醒(?:[\s:：]|你有一笔)", text))
         and (not index or lines[index - 1][2].rstrip(":： ") not in status_labels)]
 
 
@@ -87,8 +91,7 @@ def transaction_event_spans(raw_text: str) -> tuple[tuple[int, int], ...]:
     first_start = _card_start(lines, anchors[0], 0, message_list)
     prefix_layout = first_start < lines[anchors[0]][0]
     starts = [first_start]
-    # One look-ahead boundary prevents the twentieth card from absorbing an unparsed tail.
-    for number, index in enumerate(anchors[1:21], start=1):
+    for number, index in enumerate(anchors[1:], start=1):
         start = lines[index][0]
         if prefix_layout:
             prefix = _card_start(lines, index, anchors[number - 1] + 1, message_list)
@@ -96,7 +99,7 @@ def transaction_event_spans(raw_text: str) -> tuple[tuple[int, int], ...]:
             if _card_has_amount(raw_text[starts[-1]:prefix]):
                 start = prefix
         starts.append(start)
-    for number, start in enumerate(starts[:20]):
+    for number, start in enumerate(starts):
         end = starts[number + 1] if number + 1 < len(starts) else len(raw_text)
         card = raw_text[start:end]
         if _card_has_amount(card):

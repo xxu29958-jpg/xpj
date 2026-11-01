@@ -140,11 +140,11 @@ def evaluate_debt(counts: DebtCounts) -> int:
 # counter is and how it's computed.
 STRICT_EQUALITY_BASELINE: DebtCounts = {
     "mutate_token_carriers": 163,  # Web bill parse/discard carry the same source OCC as their native counterparts.
-    "mutate_token_exempted": 158,  # Web capture shares the new-source idempotency claim; no predecessor row exists.
+    "mutate_token_exempted": 159,  # Notification batches reserve each source identity before creating pending targets.
     "mutate_token_reason_admin_single_writer": 17,
     "mutate_token_reason_append_only_fact": 4,
     "mutate_token_reason_batch_db_write": 17,
-    "mutate_token_reason_create_row": 46,  # Includes the Web adapter for new bill capture.
+    "mutate_token_reason_create_row": 47,  # Includes atomic notification-batch capture with no predecessor row.
     "mutate_token_reason_enqueue_task": 2,
     "mutate_token_reason_external_side_effect": 7,  # Owner FX save-and-fetch now also upserts fx_rates.
     "mutate_token_reason_governance_action": 8,

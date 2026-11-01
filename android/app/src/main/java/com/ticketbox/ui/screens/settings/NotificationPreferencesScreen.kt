@@ -114,6 +114,7 @@ private fun rememberNotificationSystemState(): NotificationSystemState {
     }
     fun refreshSystemState() {
         listenerAuthorized = NotificationListenerStatus.isEnabled(context)
+        if (listenerAuthorized) NotificationListenerStatus.reconnectIfEnabled(context)
         systemNotificationsAllowed = NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
     val permissionLauncher = rememberLauncherForActivityResult(

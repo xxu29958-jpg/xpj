@@ -39,15 +39,16 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         val debtActivityRead = request.isDebtActivityRead()
         val debtBillSource = request.requiresDebtBillSource()
         val atomicConfirmation = request.requiresAtomicConfirmation()
+        val notificationBatch = request.url.encodedPath == "/api/payment-captures/batch"
         // An API date, including one already attached to this request, does not prove receipt replay support.
         if (!request.requiresRuntimeNegotiation(
                 incomeForecastRead,
-                keyedUpload || timeInput != null || originalAttachment || debtActivityRead || debtBillSource || atomicConfirmation,
+                keyedUpload || timeInput != null || originalAttachment || debtActivityRead || debtBillSource || atomicConfirmation || notificationBatch,
             )) {
             return chain.proceed(request)
         }
         val compatibility = readCompatibility(chain, request)
-        if (!compatibility.supportsProtocol(debtBillSource, atomicConfirmation)) {
+        if (!compatibility.supportsProtocol(debtBillSource, atomicConfirmation, notificationBatch)) {
             return incompatibleProtocolResponse(request)
         }
         if (!compatibility.supportsRequiredCapabilities(
@@ -111,7 +112,8 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
 
 private enum class RuntimeTimeInput { Expense, Repayment }
 
-private fun RuntimeWriteCompatibility?.supportsProtocol(debtBillSource: Boolean, atomicConfirmation: Boolean): Boolean =
+private fun RuntimeWriteCompatibility?.supportsProtocol(debtBillSource: Boolean, atomicConfirmation: Boolean, notificationBatch: Boolean): Boolean =
+    (!notificationBatch || this?.notificationBatchVersion == 1) &&
     (!atomicConfirmation || this?.expenseConfirmationVersion == 2) &&
         (!debtBillSource || this?.debtBillSourceVersion == 1) &&
         (this == null || apiVersion == CURRENT_TICKETBOX_API_VERSION)

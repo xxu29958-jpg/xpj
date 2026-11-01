@@ -12,9 +12,19 @@ class NotificationCaptureRepository internal constructor(
     private val guard = LedgerRequestGuard(provider)
 
     internal suspend fun accept(result: PaymentNotificationResult, binding: LogicalSessionBinding, key: String): Result<Long> = try {
+        acceptIntent(result.captureIntent(key), binding)
+    } catch (error: IllegalArgumentException) {
+        Result.failure(RepositoryException("未能保存这条采集，请检查原通知。", "notification_capture_invalid"))
+    }
+
+    internal suspend fun acceptBatch(results: List<PaymentNotificationResult>, binding: LogicalSessionBinding, key: String): Result<Long> =
+        if (results.size == 1) accept(results.single(), binding, key)
+        else acceptIntent(results.captureBatchIntent(key), binding)
+
+    private suspend fun acceptIntent(intent: PendingMutationIntent, binding: LogicalSessionBinding): Result<Long> = try {
         val bound = guard.bindExact(binding)
         if (!ledgerRoleCanModify(provider.currentLedgerRole())) throw RepositoryException("当前角色为只读，无法采集账单。")
-        Result.success(outbox.enqueueOriginalCreation(bound, result.captureIntent(key)))
+        Result.success(outbox.enqueueOriginalCreation(bound, intent))
     } catch (error: CancellationException) {
         throw error
     } catch (error: RepositoryException) {

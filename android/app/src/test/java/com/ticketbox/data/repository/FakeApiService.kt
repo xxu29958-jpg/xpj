@@ -146,6 +146,7 @@ internal class FakeApiService(
     override suspend fun payCreditAccount(id: String, body: com.ticketbox.data.remote.dto.CreditPaymentDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto = error("Funds response not configured")
     override suspend fun postFundsActivity(id: String, body: com.ticketbox.data.remote.dto.AccountPostingDto, key: String): com.ticketbox.data.remote.dto.FinancialAccountReceiptDto = error("Funds response not configured")
     override suspend fun capturePayment(request: com.ticketbox.data.remote.dto.PaymentCaptureCreateDto): com.ticketbox.domain.model.PaymentCapture = error("Capture response not configured")
+    override suspend fun capturePayments(request: com.ticketbox.data.remote.dto.PaymentCaptureBatchCreateDto): List<com.ticketbox.domain.model.PaymentCapture> = error("Capture batch response not configured")
     override suspend fun paymentCaptures(): List<com.ticketbox.domain.model.PaymentCapture> = error("Capture read not configured")
     override suspend fun decidePaymentCapture(publicId: String, request: com.ticketbox.domain.model.PaymentCaptureDecision, key: String): com.ticketbox.domain.model.PaymentCapture = error("Capture decision not configured")
     override suspend fun repaymentAsExpense(publicId: String, request: com.ticketbox.data.remote.dto.RepaymentAsExpenseDto, key: String): com.ticketbox.domain.model.PaymentCapture = error("Capture correction not configured")

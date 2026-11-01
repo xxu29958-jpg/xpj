@@ -13,6 +13,7 @@ data class PaymentNotificationSnapshot(
     val bigText: String?,
     val subText: String?,
     val postTimeMillis: Long,
+    val textLines: List<String> = emptyList(),
 )
 
 /** Parsed evidence only. Raw notification bodies and the system key stay on the device. */
@@ -38,7 +39,7 @@ sealed interface PaymentNotificationResult {
 }
 
 object PaymentNotificationParser {
-    const val VERSION = "transaction-evidence-v4"
+    const val VERSION = "transaction-evidence-v5"
     private val bankContext = Regex("""(银行|信用卡|储蓄账户|尾号|动账|交易|支出人民币|消费人民币)""")
     private val sources = mapOf("com.tencent.mm" to "wechat", "com.eg.android.alipaygphone" to "alipay",
         "com.jingdong.app.mall" to "jd", "com.jd.jrapp" to "jd", "com.sankuai.meituan" to "meituan")
@@ -46,6 +47,15 @@ object PaymentNotificationParser {
         val pkg = packageName.lowercase()
         // Keep SMS-family admission shared by the listener and parser; bank/transaction evidence is checked below.
         return pkg in sources || pkg.contains(".sms") || pkg.contains(".mms") || pkg.contains("messaging")
+    }
+
+    /** InboxStyle lines and repeated card headings identify events, not alternative amounts. */
+    fun parseAll(snapshot: PaymentNotificationSnapshot): List<PaymentNotificationResult> {
+        if (!isCandidatePackage(snapshot.packageName)) return emptyList()
+        val cards = NotificationTransactionCards.read(snapshot)
+        if (cards.isEmpty()) return listOfNotNull(parse(snapshot))
+        return cards.mapNotNull { card -> parse(snapshot.copy(title = null, text = card,
+            bigText = null, subText = null, textLines = emptyList())) }
     }
 
     fun parse(snapshot: PaymentNotificationSnapshot): PaymentNotificationResult? {
@@ -58,11 +68,11 @@ object PaymentNotificationParser {
         val source = sources[snapshot.packageName.lowercase()]
             ?: if (bankContext.containsMatchIn(joined)) "bank_sms" else return null
         val evidence = fields.flatMap { (field, value) -> NotificationTransactionEvidence.read(field, value) }.distinct()
-        val candidates = evidence.take(24)
+        val candidates = evidence
         val financial = evidence.filter { it.kind in setOf("expense", "repayment") }
         if (financial.isEmpty()) return null // pure reminder, marketing, income or refund
         val amounts = financial.filter { it.amountMinor != null }.distinctBy { it.kind to it.amountMinor }
-        val conflict = evidence.size > 24 || evidence.any { it.kind == "refund" } || amounts.size != 1 ||
+        val conflict = evidence.any { it.kind == "refund" } || amounts.size != 1 ||
             financial.any { it.kind != amounts.singleOrNull()?.kind }
         val time = Instant.ofEpochMilli(snapshot.postTimeMillis).toString()
         val timeEvidence = NotificationTimeExtractor.read(fields)

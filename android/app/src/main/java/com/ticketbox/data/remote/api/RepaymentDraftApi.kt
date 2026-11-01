@@ -9,6 +9,8 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface RepaymentDraftApi {
+    @POST("api/payment-captures/batch")
+    suspend fun capturePayments(@Body request: com.ticketbox.data.remote.dto.PaymentCaptureBatchCreateDto): List<com.ticketbox.domain.model.PaymentCapture>
     @POST("api/payment-captures")
     suspend fun capturePayment(@Body request: com.ticketbox.data.remote.dto.PaymentCaptureCreateDto): com.ticketbox.domain.model.PaymentCapture
 

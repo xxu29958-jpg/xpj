@@ -32,6 +32,7 @@ from app.tenants import AuthContext
 # inactive states are intentionally unrestricted. Runtime CSV claims are omitted;
 # source cells, errors, captured interpretation and accepted mappings are retained.
 _LEDGER_RECORDS = (
+    (m.ExpenseSourceCandidate, "id tenant_id source_expense_id expense_id event_key extraction_hash event_index evidence created_at"),
     (m.Expense, "id tenant_id public_id amount_cents home_currency_code original_currency_code "
         "original_amount_minor exchange_rate_to_cny exchange_rate_date exchange_rate_source fx_status "
         "merchant category note source image_path thumbnail_path image_hash image_perceptual_hash image_evidence raw_text "

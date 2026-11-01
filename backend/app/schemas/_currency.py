@@ -42,6 +42,7 @@ class RuntimeProductCapabilitiesResponse(BaseModel):
     debt_activity_read_version: int = Field(ge=1)
     debt_bill_source_version: int = Field(ge=1)
     expense_confirmation_version: int = Field(ge=1)
+    notification_batch_version: int = Field(ge=1)
     currency: RuntimeCurrencyCapabilityResponse
 
 

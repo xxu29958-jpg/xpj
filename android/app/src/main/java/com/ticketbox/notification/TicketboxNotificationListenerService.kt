@@ -1,6 +1,7 @@
 package com.ticketbox.notification
 
 import android.app.Notification
+import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import com.ticketbox.TicketboxApplication
@@ -20,6 +21,17 @@ import kotlinx.coroutines.withContext
 class TicketboxNotificationListenerService : NotificationListenerService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        // Reuse the original delivery identity; reconnecting is not a new payment.
+        activeNotifications?.forEach(::onNotificationPosted)
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        requestRebind(ComponentName(this, TicketboxNotificationListenerService::class.java))
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val container = (application as? TicketboxApplication)?.container ?: return
         val preferences = container.settingsStore.notificationPreferences()
@@ -34,14 +46,15 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
         if (!PaymentNotificationParser.isCandidatePackage(sbn.packageName)) return
 
         // 统一分类器：一条通知分类成消费 / 还款 / 忽略（§杠杆③ 修双计——含「还款」措辞不再落支出）。
-        val result = PaymentNotificationParser.parse(sbn.toSnapshot()) ?: return
+        val results = PaymentNotificationParser.parseAll(sbn.toSnapshot())
+        if (results.isEmpty()) return
         // The same delivery has one durable original. Reusing an OS slot with a new postTime is a new payment.
         val notificationKey = notificationIdentityKey(sbn.key, sbn.postTime)
         serviceScope.launch(start = CoroutineStart.UNDISPATCHED) {
             // A service disconnect cannot cancel a started local acceptance. No network IO is in this block.
             withContext(NonCancellable + Dispatchers.IO) {
-                acceptNotificationCapture(container.notificationCaptureRepository, container.settingsStore,
-                    result, bindingAtPost, notificationKey)
+                acceptNotificationBatch(container.notificationCaptureRepository, container.settingsStore,
+                    results, bindingAtPost, notificationKey)
             }
         }
     }
@@ -60,7 +73,17 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
             bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
             subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString(),
             postTimeMillis = postTime,
+            textLines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.map { it.toString() }.orEmpty(),
         )
+    }
+}
+
+internal suspend fun acceptNotificationBatch(repository: NotificationCaptureRepository, settingsStore: TicketboxSettingsStore,
+    results: List<PaymentNotificationResult>, binding: LogicalSessionBinding, notificationKey: String) {
+    repository.acceptBatch(results, binding, notificationKey).onFailure { error ->
+        val scope = notificationCaptureFailureScope(binding)
+        logNetworkWarning("notification_capture_admission_failed scope=$scope", error)
+        settingsStore.recordNotificationCaptureFailure(scope)
     }
 }
 

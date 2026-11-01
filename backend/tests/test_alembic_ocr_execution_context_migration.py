@@ -36,8 +36,8 @@ def test_shipped_execution_context_preserves_receipts_and_refuses_identity_erasu
             assert tuple(db.execute(text("SELECT execution_context_json, recovery_history_json "
                 "FROM background_tasks")).one()) == (None, '[{"error_code":"orphaned_after_restart"}]')
         program = compile_program(Path(__file__).resolve().parents[1])
-        step = program["revisions"][-1]
-        assert program["target_revision"] == _HEAD and step["postcondition"] == "assert_postcondition"
+        step = next(item for item in program["revisions"] if item["revision"] == _HEAD)
+        assert step["postcondition"] == "assert_postcondition"
         module = Path(__file__).resolve().parents[1] / step["module_path"]
         assert hashlib.sha256(module.read_bytes()).hexdigest() == step["module_sha256"]
         run_alembic(command.downgrade, _PARENT)

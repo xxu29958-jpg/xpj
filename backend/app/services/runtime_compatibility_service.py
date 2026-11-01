@@ -71,6 +71,7 @@ class RuntimeCompatibilitySnapshot:
     debt_activity_read_version: int
     debt_bill_source_version: int
     expense_confirmation_version: int
+    notification_batch_version: int
     currency: RuntimeCurrencyCapability
 
 
@@ -117,6 +118,7 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
         debt_activity_read_version=DEBT_ACTIVITY_READ_VERSION,
         debt_bill_source_version=DEBT_BILL_SOURCE_VERSION,
         expense_confirmation_version=EXPENSE_CONFIRMATION_VERSION,
+        notification_batch_version=1,
         currency=RuntimeCurrencyCapability(
             home_currency_code=product_home_currency,
             minor_unit_exponent=capability.minor_unit_exponent,

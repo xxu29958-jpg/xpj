@@ -5,10 +5,15 @@ from sqlalchemy.orm import Session
 
 from app.auth import get_current_app_context, get_current_writer_context
 from app.database import get_db
-from app.schemas.payment_capture import PaymentCaptureCreate, PaymentCaptureDecision, PaymentCaptureResponse
+from app.schemas.payment_capture import (
+    PaymentCaptureBatchCreate,
+    PaymentCaptureCreate,
+    PaymentCaptureDecision,
+    PaymentCaptureResponse,
+)
 from app.services.payment_capture_commands import decide_capture
 from app.services.payment_capture_identity import capture_response, list_review_captures, require_capture
-from app.services.payment_capture_service import capture_notification
+from app.services.payment_capture_service import capture_notification, capture_notifications
 from app.tenants import AuthContext
 
 router = APIRouter(prefix="/api/payment-captures", tags=["payment-captures"])
@@ -22,6 +27,11 @@ def list_captures(auth: AuthContext = Depends(get_current_app_context), db: Sess
 @router.post("", response_model=PaymentCaptureResponse, status_code=201)
 def capture(payload: PaymentCaptureCreate, auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
     return capture_notification(db, auth=auth, payload=payload)
+
+
+@router.post("/batch", response_model=list[PaymentCaptureResponse], status_code=201)
+def capture_batch(payload: PaymentCaptureBatchCreate, auth: AuthContext = Depends(get_current_writer_context), db: Session = Depends(get_db)):
+    return capture_notifications(db, auth=auth, payloads=payload.captures)
 
 
 @router.get("/{public_id}", response_model=PaymentCaptureResponse)

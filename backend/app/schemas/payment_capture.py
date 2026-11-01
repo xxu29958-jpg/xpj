@@ -29,7 +29,7 @@ class PaymentCaptureCreate(BaseModel):
     merchant: str | None = Field(default=None, max_length=255)
     suggested_kind: Literal["expense", "repayment", "review"]
     parser_version: str = Field(min_length=1, max_length=64)
-    candidates: list[PaymentCandidate] = Field(default_factory=list, max_length=24)
+    candidates: list[PaymentCandidate] = Field(default_factory=list)
     time_evidence: NotificationTimeEvidence | None = None
     field_evidence: NotificationFieldEvidence | None = None
 
@@ -37,6 +37,17 @@ class PaymentCaptureCreate(BaseModel):
     def aware_capture_time(self):
         if self.captured_at.utcoffset() is None:
             raise ValueError("Notification delivery time must include its UTC offset")
+        return self
+
+
+class PaymentCaptureBatchCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    captures: list[PaymentCaptureCreate] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def independent_identities(self):
+        if len({item.notification_key for item in self.captures}) != len(self.captures):
+            raise ValueError("Each transaction candidate must have its own notification_key")
         return self
 
 

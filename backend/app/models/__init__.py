@@ -77,6 +77,7 @@ from app.models.exchange import ExchangeRate, FxRate
 from app.models.expense import Expense, ExpenseItem, ExpenseSplit
 from app.models.expense_offset import ExpenseOffsetFact, ExpenseOffsetRevision
 from app.models.expense_revision import ExpenseRevision
+from app.models.expense_source_candidate import ExpenseSourceCandidate
 from app.models.financial_planning import MonthlyIncomePlan
 from app.models.funds import (
     AccountBalanceObservation,
@@ -159,6 +160,7 @@ __all__ = [
     "ExpenseOffsetRevision",
     "ExpenseSplit",
     "ExpenseRevision",
+    "ExpenseSourceCandidate",
     "ExpenseTag",
     "ExchangeRate",
     "FxRate",
