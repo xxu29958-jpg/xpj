@@ -67,7 +67,8 @@ def _apply_source_events(db, *, expense, result, parsed, provider_name, ocr_mode
     return current
 
 
-def _apply_one_result(db, *, expense, result, provider_name, ocr_model, timezone_name):
+def _apply_one_result(db: Session, *, expense: Expense, result: OcrResult,
+        provider_name: str, ocr_model: str | None, timezone_name: str | None) -> None:
     # Runtime import keeps the persistent bridge connected to the current split
     # owner without making the pure OCR module depend on SQLAlchemy services.
     from app.services.expense_split_service import current_expense_split_total_amount

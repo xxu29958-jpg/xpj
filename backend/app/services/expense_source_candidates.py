@@ -82,7 +82,7 @@ def _event_result(result, event, source, provider_name, ocr_model):
     return OcrResult(raw_text=result.raw_text[start:end], confidence=result.confidence, evidence=scoped), evidence
 
 
-def _source_app(text):
+def _source_app(text: str) -> str | None:
     for line in reversed(text.splitlines()):
         for app, label in (("alipay", "支付宝"), ("wechat", "微信")):
             if re.match(rf"^{label}(?:支付)?(?:[·•\s(（]|$)", line.strip()):
