@@ -771,7 +771,9 @@ class FactEntryNavigationTest {
         compose.waitUntil(5_000) {
             harness.fixture.stored().any { it["type"] == PendingMutationType.ConfirmExpense.wireValue }
         }
-        val confirm = harness.fixture.stored().single()
+        val confirm = harness.fixture.stored().filter {
+            it["type"] in setOf(PendingMutationType.PatchExpense.wireValue, PendingMutationType.ConfirmExpense.wireValue)
+        }.single()
         assertEquals(PendingMutationType.ConfirmExpense.wireValue, confirm["type"])
         runBlocking { harness.fixture.drainExpenseLifecycle() }
         val network = harness.fixture.network

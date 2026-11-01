@@ -125,7 +125,7 @@ class PlanningFinancialRefreshRouteTest {
         compose.onNodeWithTag("budget_edit_open").performClick()
         field.performScrollTo().assertTextEquals("3000.00")
         val completedBeforeBudget = completedExpenseCommands()
-        assertEquals(2, completedBeforeBudget.size)
+        assertEquals(listOf(PendingMutationType.ConfirmExpense.wireValue), completedBeforeBudget.map { it.type })
         compose.onNodeWithText(context.getString(R.string.budget_editor_save)).assertIsDisplayed().performClick()
         compose.waitUntil(5_000) {
             runBlocking {
