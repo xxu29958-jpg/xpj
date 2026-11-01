@@ -137,6 +137,8 @@ def test_web_categories_counts_pending_uncategorized(web_client: TestClient, *, 
     resp = web_client.get("/web/categories?ledger_id=owner")
     assert resp.status_code == 200
     assert "1 条待确认还未分类" in resp.text
+    # 单币种账本: 分类行金额只写符号, 不再「CNY ¥0.00」。
+    assert '本月 <span class="num">¥0.00</span>' in resp.text and "CNY ¥" not in resp.text
     # A direct entry to the cleanup workflow is rendered.
     assert "/web/categories/uncategorized?ledger_id=owner" in resp.text
 
