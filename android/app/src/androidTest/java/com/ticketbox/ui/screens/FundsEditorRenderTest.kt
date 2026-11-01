@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performTextReplacement
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.domain.model.AppSkin
+import com.ticketbox.ui.RealKeyboard
 import com.ticketbox.viewmodel.openEnvelopes
 import com.ticketbox.viewmodel.start
 import com.ticketbox.viewmodel.voidActivity
@@ -180,6 +181,7 @@ class FundsEditorRenderTest {
         compose.runOnIdle { vm.start("installments") }
         awaitEditor("installments")
         field(text(R.string.funds_agreement_name)).performTextReplacement("超市 3 期")
+        RealKeyboard().dismissAndWait(compose)
         compose.onNodeWithText(text(R.string.funds_add_period)).performScrollTo().performClick()
         field(text(R.string.funds_period_due, 1)).performScrollTo().performTextInput("2026-11-09")
         field(text(R.string.funds_period_principal)).performScrollTo().performTextInput("12.63")
