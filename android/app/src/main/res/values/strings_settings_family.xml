@@ -24,7 +24,7 @@
     <string name="family_members_audit_actor_unknown">系统</string>
     <string name="family_members_audit_target">目标：%1$s</string>
     <string name="family_members_audit_target_unknown">未记录</string>
-    <string name="family_members_row_self_badge">我</string>
+    <string name="family_members_row_self_badge">本人</string>
     <string name="family_members_row_joined_unknown">加入时间：未记录</string>
     <string name="family_members_row_joined">%1$s 加入</string>
     <string name="family_members_row_disabled_at">已停用：%1$s</string>
