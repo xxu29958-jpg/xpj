@@ -88,13 +88,14 @@ class AccountEdit(BaseModel):
     visibility: Literal["private", "ledger"] | None = None
 
 
-class FundingPart(BaseModel):
+class FundingSelection(BaseModel):
+    """A payer selected for confirmation; a single allocation may use the bill's money."""
     model_config = ConfigDict(extra="forbid")
     component_id: str = Field(min_length=1, max_length=36)
     account_public_id: str
     account_row_version: int = Field(ge=1)
-    expense_amount_minor: PositiveMoneyMinor
-    account_amount_minor: PositiveMoneyMinor
+    expense_amount_minor: PositiveMoneyMinor | None = None
+    account_amount_minor: PositiveMoneyMinor | None = None
     included_in_opening: bool = False
     expense_currency_code: str | None = None
     account_currency_code: str | None = None
@@ -103,6 +104,13 @@ class FundingPart(BaseModel):
     @classmethod
     def currency(cls, value):
         return normalize_currency_code(value) if value is not None else None
+
+
+class FundingPart(FundingSelection):
+    """Resolved financial amounts, required by all posting and correction commands."""
+
+    expense_amount_minor: PositiveMoneyMinor
+    account_amount_minor: PositiveMoneyMinor
 
 
 class ExpenseFundingCommand(BaseModel):

@@ -7,6 +7,7 @@ cannot invent different save/confirm or duplicate-resolution ordering.
 
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from pydantic import ValidationError
@@ -17,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.errors import AppError
 from app.models import ApiIdempotencyKey, Expense
 from app.schemas import ExpenseResponse, ExpenseUpdateRequest
-from app.schemas.funds import FundingPart
+from app.schemas.funds import FundingPart, FundingSelection
 from app.services.cleanup_service import cleanup_after_confirm
 from app.services.expense_duplicate_feedback_service import prepare_duplicate_feedback, record_duplicate_resolution
 from app.services.expense_response_service import expense_to_response
@@ -39,6 +40,7 @@ from app.services.idempotency import (
 )
 
 _CONFIRM_OPERATION = "confirm_expense"
+logger = logging.getLogger(__name__)
 
 
 def submit_expense_duplicate_decision(
@@ -164,8 +166,14 @@ def _commit_confirmation_and_cleanup(db: Session, expense: Expense) -> None:
     from app.services.goal_debt_repayment_achievement import stage_debt_goal_achievements
     stage_debt_goal_achievements(db, account_ids=expense_funding_account_ids(db, expense.id))
     db.commit()
-    db.refresh(expense)
-    cleanup_after_confirm(db, expense)
+    # The financial receipt is already durable. GC owns a separate transaction;
+    # its failure must not turn an accepted confirmation into an apparent refusal.
+    try:
+        db.refresh(expense)
+        cleanup_after_confirm(db, expense)
+    except (AppError, SQLAlchemyError, OSError):
+        db.rollback()
+        logger.warning("event=expense_confirmation_cleanup_deferred")
 
 
 def _save_then_confirm(
@@ -247,7 +255,7 @@ def confirm_expense_submission(
             if replayed is not None:
                 return replayed
 
-        reviewed_funding = funding if funding is not None else [FundingPart.model_validate(part) for part in intent_body.get("funding") or []]
+        reviewed_funding = funding if funding is not None else [FundingSelection.model_validate(part) for part in intent_body.get("funding") or []]
         if update_payload is not None:
             confirmed = _save_then_confirm(
                 db,

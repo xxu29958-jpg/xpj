@@ -87,6 +87,7 @@ data class ExpenseEditUiState(
     val preservedFormTimestamp: String? = null,
     val originalBaselineRequired: Boolean = false,
     val fundingJson: String = "[]",
+    val confirmationChanges: com.ticketbox.data.remote.dto.ExpenseUpdateRequest? = null,
     val fundingReady: Boolean = false,
     val fundingWriting: Boolean = false,
     val fundingMessage: UiText? = null,

@@ -211,7 +211,10 @@ def _publish_confirmation(
         subject_kind="expense",
         subject_id=expense.id,
     )
+    from app.services.expense_confirmation_funding import resolve_confirmation_funding
     from app.services.expense_funding_service import publish_expense_funding
+
+    funding = resolve_confirmation_funding(db, expense=expense, selections=funding, actor_account_id=actor_account_id)
     publish_expense_funding(db, expense=expense, parts=funding, actor_account_id=actor_account_id)
     record_confirmation_revision(
         db,

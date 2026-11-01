@@ -35,7 +35,8 @@ def validate_funding_currency(part, account, currency):
     if part.expense_currency_code not in (None, currency) or part.account_currency_code not in (None, account.currency_code):
         raise AppError("state_conflict", "原付款币种已变化，请保留金额并重新核对，不能直接重试。", status_code=409)
     if account.currency_code == currency and part.expense_amount_minor != part.account_amount_minor:
-        raise AppError("funding_amount_mismatch", "同币种付款金额应与消费组成一致。", status_code=422)
+        raise AppError("funding_amount_mismatch", "同币种账户付款金额必须等于该项消费原币金额。", status_code=422,
+            details={"field": "funding.account_amount_minor", "expected_amount_minor": part.expense_amount_minor})
 
 
 def publish_expense_funding(db: Session, *, expense: Expense, parts: list[FundingPart], actor_account_id: int | None) -> None:
@@ -87,8 +88,12 @@ def _review_unfunded_expense(db: Session, expense: Expense, parts: list[FundingP
             ExpenseFunding.expense_id == expense.id, ExpenseFunding.voided_at.is_(None)).limit(1)) is not None:
         raise AppError("funding_already_recorded", "这笔消费已有付款组成，请从来源记录更正，不能再次扣款。", status_code=409)
     total = expense.original_amount_minor or expense.amount_cents
-    if sum(part.expense_amount_minor for part in parts) != total or len({part.component_id for part in parts}) != len(parts):
-        raise AppError("funding_amount_mismatch", "各项付款合计必须等于这笔消费的原币金额。", status_code=422)
+    if len({part.component_id for part in parts}) != len(parts):
+        raise AppError("funding_amount_mismatch", "付款分配标识重复，请核对各项付款。", status_code=422,
+            details={"field": "funding.component_id"})
+    if sum(part.expense_amount_minor for part in parts) != total:
+        raise AppError("funding_amount_mismatch", "各项付款合计必须等于这笔消费的原币金额。", status_code=422,
+            details={"field": "funding.expense_amount_minor", "expected_total_minor": total})
     return total
 
 

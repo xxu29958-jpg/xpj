@@ -15,15 +15,20 @@ data class ExpenseFundingInput(val componentId: String, val accountId: String, v
 internal val fundingInputAdapter = Moshi.Builder().build().adapter<List<ExpenseFundingInput>>(
     Types.newParameterizedType(List::class.java, ExpenseFundingInput::class.java))
 
-internal fun readExpenseFunding(json: String, currency: CurrencyCode): List<ExpenseFunding> =
-    requireNotNull(fundingInputAdapter.fromJson(json)).map { row ->
+internal fun readExpenseFunding(json: String, currency: CurrencyCode, singleExpenseAmount: Long? = null): List<ExpenseFunding> {
+    val rows = requireNotNull(fundingInputAdapter.fromJson(json))
+    return rows.map { row ->
         require(row.expenseCurrency == currency.storageKey) { "原币种已改变，请重新核对资金组成。" }
         val native = requireNotNull(CurrencyCode.fromStorageKeyOrNull(row.accountCurrency)) { "原账户币种无法确认。" }
-        ExpenseFunding(row.componentId, row.accountId, row.accountVersion,
-            requireNotNull(parseExactMoneyMinor(row.expenseAmount, currency)) { "请填写每项原币金额。" },
-            requireNotNull(parseExactMoneyMinor(row.accountAmount, native)) { "请填写每项账户实际金额。" }, row.includedInOpening,
+        val original = requireNotNull(if (row.expenseAmount.isBlank() && rows.size == 1) singleExpenseAmount
+            else parseExactMoneyMinor(row.expenseAmount, currency)) { "请填写每项原币金额。" }
+        val paid = requireNotNull(if (row.accountAmount.isBlank() && native == currency) original
+            else parseExactMoneyMinor(row.accountAmount, native)) { "请填写每项账户实际金额。" }
+        require(original > 0 && paid > 0) { "付款金额须大于零。" }
+        ExpenseFunding(row.componentId, row.accountId, row.accountVersion, original, paid, row.includedInOpening,
             row.expenseCurrency, row.accountCurrency)
     }
+}
 
 internal fun fundingInputs(view: com.ticketbox.domain.model.ExpenseFundingView): String =
     fundingInputAdapter.toJson(view.parts.filter { it.accountPublicId != null }.map { row ->
@@ -35,6 +40,9 @@ internal fun fundingInputs(view: com.ticketbox.domain.model.ExpenseFundingView):
     })
 
 private val confirmationAdapter = Moshi.Builder().build().adapter(com.ticketbox.data.remote.dto.ExpenseStateTokenRequest::class.java)
+
+internal fun OutboxRow.confirmationChanges() = if (type == com.ticketbox.data.local.PendingMutationType.ConfirmExpense)
+    confirmationAdapter.fromJson(payloadJson)?.changes else null
 
 internal fun OutboxRow.confirmationFunding() = if (type == com.ticketbox.data.local.PendingMutationType.ConfirmExpense)
     confirmationAdapter.fromJson(payloadJson)?.funding.orEmpty() else emptyList()

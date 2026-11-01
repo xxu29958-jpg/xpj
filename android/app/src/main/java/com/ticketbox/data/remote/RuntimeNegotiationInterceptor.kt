@@ -38,15 +38,16 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
         val originalAttachment = Regex("/api/expenses/[^/]+/original(?:/.*)?$").containsMatchIn(request.url.encodedPath)
         val debtActivityRead = request.isDebtActivityRead()
         val debtBillSource = request.requiresDebtBillSource()
+        val atomicConfirmation = request.requiresAtomicConfirmation()
         // An API date, including one already attached to this request, does not prove receipt replay support.
         if (!request.requiresRuntimeNegotiation(
                 incomeForecastRead,
-                keyedUpload || timeInput != null || originalAttachment || debtActivityRead || debtBillSource,
+                keyedUpload || timeInput != null || originalAttachment || debtActivityRead || debtBillSource || atomicConfirmation,
             )) {
             return chain.proceed(request)
         }
         val compatibility = readCompatibility(chain, request)
-        if (!compatibility.supportsProtocol(debtBillSource)) {
+        if (!compatibility.supportsProtocol(debtBillSource, atomicConfirmation)) {
             return incompatibleProtocolResponse(request)
         }
         if (!compatibility.supportsRequiredCapabilities(
@@ -59,16 +60,21 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
             return incompatibleProtocolResponse(request)
         }
         // A readable forecast does not require writer permission or an activated currency binding.
-        if (incomeForecastRead || compatibility == null) return chain.proceed(request)
+        if (incomeForecastRead) return chain.proceed(request)
+        return chain.proceed(request.withRuntime(compatibility))
+    }
+
+    private fun Request.withRuntime(compatibility: RuntimeWriteCompatibility?): Request {
+        if (compatibility == null) return this
         // Negotiated evidence identifies this request; the backend still authorizes the write.
         // An unchosen installation has no binding; the server returns the Owner action.
-        val negotiatedRequest = request.newBuilder()
+        val negotiatedRequest = newBuilder()
             .header(TICKETBOX_API_VERSION_HEADER, checkNotNull(compatibility.apiVersion))
             .removeHeader(TICKETBOX_CURRENCY_BINDING_HEADER)
         compatibility.requestBinding?.let { negotiatedRequest.header(TICKETBOX_CURRENCY_BINDING_HEADER, it) }
         // Preserve semantic refusals for the existing command recovery owner.
         // Renegotiating on an IO retry cannot establish the old amount's currency.
-        return chain.proceed(negotiatedRequest.build())
+        return negotiatedRequest.build()
     }
 
     /** The same runtime query supplies evidence for ordinary writes, income reads and keyed uploads. */
@@ -105,9 +111,14 @@ internal class RuntimeNegotiationInterceptor : Interceptor {
 
 private enum class RuntimeTimeInput { Expense, Repayment }
 
-private fun RuntimeWriteCompatibility?.supportsProtocol(debtBillSource: Boolean): Boolean =
-    (!debtBillSource || this?.debtBillSourceVersion == 1) &&
+private fun RuntimeWriteCompatibility?.supportsProtocol(debtBillSource: Boolean, atomicConfirmation: Boolean): Boolean =
+    (!atomicConfirmation || this?.expenseConfirmationVersion == 2) &&
+        (!debtBillSource || this?.debtBillSourceVersion == 1) &&
         (this == null || apiVersion == CURRENT_TICKETBOX_API_VERSION)
+
+private fun Request.requiresAtomicConfirmation(): Boolean = tag(Invocation::class.java)?.arguments()?.any {
+    it is com.ticketbox.data.remote.dto.ExpenseStateTokenRequest && it.changes != null
+} == true
 
 private fun Request.requiresDebtBillSource(): Boolean =
     url.encodedPath == "/api/debt-bills" || url.encodedPath.startsWith("/api/debt-bills/") ||
@@ -132,6 +143,7 @@ private fun Request.requiredTimeInput(): RuntimeTimeInput? = tag(Invocation::cla
     when (argument) {
         is ExpenseManualCreateRequestDto -> RuntimeTimeInput.Expense.takeIf { argument.timeInput != null }
         is ExpenseUpdateRequest -> RuntimeTimeInput.Expense.takeIf { argument.timeInput != null }
+        is com.ticketbox.data.remote.dto.ExpenseStateTokenRequest -> RuntimeTimeInput.Expense.takeIf { argument.changes?.timeInput != null }
         is ExpenseCorrectionRequestDto -> RuntimeTimeInput.Expense.takeIf { argument.timeInput.changed }
         is MemberRepaymentProposalCreateRequestDto -> RuntimeTimeInput.Repayment.takeIf { argument.timeInput != null }
         else -> null

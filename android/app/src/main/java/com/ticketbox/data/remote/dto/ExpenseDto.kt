@@ -242,6 +242,7 @@ data class ExpenseStateTokenRequest(
     @param:Json(name = "duplicate_decision_public_id")
     val duplicateDecisionPublicId: String? = null,
     val region: OcrRegionRequestDto? = null,
+    val changes: ExpenseUpdateRequest? = null,
 )
 
 @JsonClass(generateAdapter = true)

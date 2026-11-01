@@ -248,7 +248,7 @@ fun ExpenseEditScreen(
     }
     val formIdentity = ExpenseEditFormValues.identity(currentExpense, state.formRevision, state.preservedFormTimestamp)
     val initialFormValues = remember(formIdentity) {
-        ExpenseEditFormValues.fromExpense(currentExpense)
+        ExpenseEditFormValues.fromConfirmation(currentExpense, state.confirmationChanges)
     }
     // rememberSaveable (not remember): without Manifest configChanges, a
     // rotation / dark-mode switch / process death recreates the activity and a
@@ -279,15 +279,16 @@ fun ExpenseEditScreen(
     var category by rememberSaveable(formIdentity) {
         mutableStateOf(initialFormValues.category)
     }
-    var categoryChoice by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
-    var fieldChoicesJson by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
-    var originalFeedbackJson by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
+    var categoryChoice by rememberSaveable(formIdentity) { mutableStateOf(initialFormValues.categoryChoice) }
+    var fieldChoicesJson by rememberSaveable(formIdentity) { mutableStateOf(initialFormValues.recognitionFieldChoicesJson) }
+    var originalFeedbackJson by rememberSaveable(formIdentity) { mutableStateOf(initialFormValues.originalTextFeedbackJson) }
     var fieldChoiceStatus by remember(formIdentity) { mutableStateOf(emptyMap<String, FieldChoiceStatus>()) }
-    var categoryDecisionPublicId by rememberSaveable(formIdentity) { mutableStateOf<String?>(null) }
+    var categoryDecisionPublicId by rememberSaveable(formIdentity) { mutableStateOf(initialFormValues.categoryDecisionPublicId) }
     var note by rememberSaveable(formIdentity) { mutableStateOf(initialFormValues.note) }
     val (timeForm, setTimeForm) = com.ticketbox.ui.screens.expense.rememberExpenseTimeForm(
         formIdentity,
         currentExpense.expenseTime, currentExpense.accountingTime,
+        saved = com.ticketbox.viewmodel.confirmationTimeForm(currentExpense, state.confirmationChanges),
     )
     val baselineTimeFormJson = rememberSaveable(formIdentity) {
         com.ticketbox.viewmodel.ExpenseTimeForm.initial(
@@ -395,6 +396,7 @@ fun ExpenseEditScreen(
     }
 
     fun draftOrMessage(confirming: Boolean = false): ExpenseDraft? {
+        message = null
         // R13-4：original 原码未知且金额被改动过（未改=元数据/原值回写，放行）→ 禁写+明示。
         if (originalUnsupported && currency == currentExpense.originalCurrencyCode && amountText != initialAmountText) {
             message = currencyUnsupportedMessage
@@ -421,7 +423,7 @@ fun ExpenseEditScreen(
             message = originalFeedbackIncomplete
             return null
         }
-        val funding = if (confirming) runCatching { com.ticketbox.data.repository.readExpenseFunding(state.fundingJson, currency) }
+        val funding = if (confirming) runCatching { com.ticketbox.data.repository.readExpenseFunding(state.fundingJson, currency, originalMinor) }
             .getOrElse { message = it.message; return null } else emptyList()
         return ExpenseDraft(
             amountCents = null,
@@ -674,7 +676,8 @@ fun ExpenseEditScreen(
                 onEditSplits = if (allowsFactMutation(state.readOnly, commandOpen)) splitEditingActions.onEditSplits else null,
             ),
         )
-        if (isPendingExpense) ExpenseFundingReview(state, currency, canMutateFact, commandOpen, relatedActions)
+        if (isPendingExpense) ExpenseFundingReview(state, ExpenseFundingAmount(currency, parseMinorAmount(amountText, currency)),
+            canMutateFact, commandOpen, relatedActions)
         ExpenseEditMoreSection(
             state = ExpenseEditMoreSectionState(
                 tags = tags,

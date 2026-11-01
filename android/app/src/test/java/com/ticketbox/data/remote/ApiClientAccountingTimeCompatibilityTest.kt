@@ -20,7 +20,7 @@ import kotlin.test.assertTrue
 
 class ApiClientAccountingTimeCompatibilityTest {
     @Test fun onlyCommandsWithNewTimeMeaningRequireTheDeclaredCapability() = runBlocking {
-        for (version in listOf(null, 1, 2)) for (kind in listOf("create", "patch", "correction", "repayment-proposal")) {
+        for (version in listOf(null, 1, 2)) for (kind in listOf("create", "patch", "confirm", "correction", "repayment-proposal")) {
             for (withTime in listOf(false, true)) for (preVersioned in listOf(false, true)) {
                 verifyCommand(version, kind, withTime, preVersioned)
             }
@@ -58,6 +58,9 @@ class ApiClientAccountingTimeCompatibilityTest {
     private suspend fun send(api: ApiService, kind: String, withTime: Boolean) {
         val time = if (withTime) ExpenseTimeInputDto("date_only", 3, "2026-05-01") else null
         when (kind) {
+            "confirm" -> api.confirmExpense("9", com.ticketbox.data.remote.dto.ExpenseStateTokenRequest(7,
+                changes = ExpenseUpdateRequest(merchant = null, category = null, note = "Original", expenseTime = null,
+                    tags = null, valueScore = null, regretScore = null, timeInput = time)), "original-key")
             "create" -> api.createManualExpense(ExpenseManualCreateRequestDto(
                 merchant = "Original", category = "其他", note = null, expenseTime = null, tags = null,
                 valueScore = null, regretScore = null, clientRef = "original-ref", timeInput = time))
@@ -74,6 +77,6 @@ class ApiClientAccountingTimeCompatibilityTest {
     private fun runtimeJson(version: Int?): String {
         val capability = version?.let { "\"accounting_time_input_version\":$it,\"repayment_time_input_version\":$it," }.orEmpty()
         return """{"api_version":"$CURRENT_TICKETBOX_API_VERSION","write_compatibility":"compatible",
-            "capabilities":{$capability"currency":{"request_binding":"1:1:CNY"}}}"""
+            "capabilities":{$capability"expense_confirmation_version":2,"currency":{"request_binding":"1:1:CNY"}}}"""
     }
 }

@@ -30,7 +30,7 @@ from app.schemas._recognition_choice import RecognitionTimeChoice
 from app.schemas._recognition_fields import RecognitionFieldCandidate, RecognitionFieldChoice
 from app.schemas._recognition_source import RecognitionTextLines
 from app.schemas._recognition_time import RecognitionTimeResponse
-from app.schemas.funds import FundingPart
+from app.schemas.funds import FundingPart, FundingSelection
 from app.services.time_service import to_iso
 from app.tag_text import validate_tags_fit_storage
 
@@ -206,6 +206,13 @@ class ExpenseUpdateRequest(ExpenseFieldChanges):
     )
 
 
+class ExpenseConfirmationChanges(ExpenseUpdateRequest):
+    """Pending edits committed together with confirmation, using its one OCC basis."""
+
+    expected_row_version: int | None = None
+    funding: None = None
+
+
 class ExpenseConfirmRequest(BaseModel):
     """ADR-0038 PR-2b: ``POST /api/expenses/{id}/confirm`` body.
 
@@ -216,7 +223,8 @@ class ExpenseConfirmRequest(BaseModel):
     idempotent (200) regardless of the token — confirmed is terminal.
     """
 
-    funding: list[FundingPart] | None = Field(default=None, min_length=1, max_length=8)
+    funding: list[FundingSelection] | None = Field(default=None, min_length=1, max_length=8)
+    changes: ExpenseConfirmationChanges | None = None
     model_config = ConfigDict(extra="forbid")
 
     expected_row_version: int

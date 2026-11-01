@@ -45,6 +45,7 @@ def get_runtime_compatibility(
             original_attachment_create_version=snapshot.original_attachment_create_version,
             debt_activity_read_version=snapshot.debt_activity_read_version,
             debt_bill_source_version=snapshot.debt_bill_source_version,
+            expense_confirmation_version=snapshot.expense_confirmation_version,
             currency=RuntimeCurrencyCapabilityResponse(**snapshot.currency.__dict__),
         ),
     )

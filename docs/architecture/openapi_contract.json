@@ -16957,6 +16957,16 @@
         "additionalProperties": false,
         "description": "ADR-0038 PR-2b: ``POST /api/expenses/{id}/confirm`` body.\n\n``expected_row_version`` is the optimistic-concurrency token client\nlast saw on the expense; service-layer ``confirm_expense`` atomic\n``UPDATE WHERE row_version = expected`` rejects stale\nwrites with 409. Confirming an already-confirmed row remains\nidempotent (200) regardless of the token — confirmed is terminal.",
         "properties": {
+          "changes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpenseConfirmationChanges"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "expected_row_version": {
             "title": "Expected Row Version",
             "type": "integer"
@@ -16965,7 +16975,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/FundingPart"
+                  "$ref": "#/components/schemas/FundingSelection"
                 },
                 "maxItems": 8,
                 "minItems": 1,
@@ -16982,6 +16992,286 @@
           "expected_row_version"
         ],
         "title": "ExpenseConfirmRequest",
+        "type": "object"
+      },
+      "ExpenseConfirmationChanges": {
+        "additionalProperties": false,
+        "description": "Pending edits committed together with confirmation, using its one OCC basis.",
+        "properties": {
+          "amount_cents": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Cents"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "category_choice": {
+            "anyOf": [
+              {
+                "enum": [
+                  "manual",
+                  "suggestion",
+                  "one_off"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Choice"
+          },
+          "category_decision_public_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Decision Public Id"
+          },
+          "expected_row_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Row Version"
+          },
+          "expense_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Time"
+          },
+          "funding": {
+            "title": "Funding",
+            "type": "null"
+          },
+          "manual_exchange_rate": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pending bill only: one original-currency major unit in home-currency major units. Applies only to this bill.",
+            "title": "Manual Exchange Rate"
+          },
+          "merchant": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "original_amount": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount"
+          },
+          "original_amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Amount Minor"
+          },
+          "original_currency": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Currency"
+          },
+          "original_currency_code": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "minLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Currency Code"
+          },
+          "original_text_feedback": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OriginalTextFeedback"
+                },
+                "maxItems": 5,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Text Feedback"
+          },
+          "recognition_field_choices": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RecognitionFieldChoice"
+                },
+                "maxItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognition Field Choices"
+          },
+          "recognition_time_choice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecognitionTimeChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regret_score": {
+            "anyOf": [
+              {
+                "maximum": 5.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regret Score"
+          },
+          "spent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spent At"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "time_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountingTimeInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value_score": {
+            "anyOf": [
+              {
+                "maximum": 5.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Score"
+          }
+        },
+        "title": "ExpenseConfirmationChanges",
         "type": "object"
       },
       "ExpenseConfirmationReceipt": {
@@ -20392,6 +20682,7 @@
       },
       "FundingPart": {
         "additionalProperties": false,
+        "description": "Resolved financial amounts, required by all posting and correction commands.",
         "properties": {
           "account_amount_minor": {
             "format": "int64",
@@ -20458,6 +20749,89 @@
           "account_amount_minor"
         ],
         "title": "FundingPart",
+        "type": "object"
+      },
+      "FundingSelection": {
+        "additionalProperties": false,
+        "description": "A payer selected for confirmation; a single allocation may use the bill's money.",
+        "properties": {
+          "account_amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Amount Minor"
+          },
+          "account_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Currency Code"
+          },
+          "account_public_id": {
+            "title": "Account Public Id",
+            "type": "string"
+          },
+          "account_row_version": {
+            "minimum": 1.0,
+            "title": "Account Row Version",
+            "type": "integer"
+          },
+          "component_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Component Id",
+            "type": "string"
+          },
+          "expense_amount_minor": {
+            "anyOf": [
+              {
+                "format": "int64",
+                "maximum": 9000000000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Amount Minor"
+          },
+          "expense_currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Currency Code"
+          },
+          "included_in_opening": {
+            "default": false,
+            "title": "Included In Opening",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "component_id",
+          "account_public_id",
+          "account_row_version"
+        ],
+        "title": "FundingSelection",
         "type": "object"
       },
       "FundingViewPart": {
@@ -31754,6 +32128,11 @@
             "title": "Debt Bill Source Version",
             "type": "integer"
           },
+          "expense_confirmation_version": {
+            "minimum": 1.0,
+            "title": "Expense Confirmation Version",
+            "type": "integer"
+          },
           "original_attachment_create_version": {
             "minimum": 1.0,
             "title": "Original Attachment Create Version",
@@ -31783,6 +32162,7 @@
           "original_attachment_create_version",
           "debt_activity_read_version",
           "debt_bill_source_version",
+          "expense_confirmation_version",
           "currency"
         ],
         "title": "RuntimeProductCapabilitiesResponse",

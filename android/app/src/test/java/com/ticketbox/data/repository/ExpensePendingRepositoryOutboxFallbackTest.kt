@@ -201,7 +201,7 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
     }
 
     @Test
-    fun `save and confirm publishes one batch with both original commands`() = runTest {
+    fun `save and confirm preserves edits inside one original confirmation`() = runTest {
         val baseline = baselineExpense()
         val dao = FakePendingMutationDao()
         val outbox = testOutboxRepository(dao)
@@ -209,10 +209,13 @@ internal class ExpensePendingRepositoryOutboxFallbackTest : ExpensePendingReposi
         val repo = buildRepository(api, outbox)
         val accepted = repo.saveAndConfirmExpense(requireNotNull(repo.captureDeferredLedgerBinding()), baseline, draft).getOrThrow()
         val rows = dao.rows.values.toList()
-        assertEquals(listOf(PendingMutationType.PatchExpense.wireValue, PendingMutationType.ConfirmExpense.wireValue), rows.map { it.type })
+        assertEquals(listOf(PendingMutationType.ConfirmExpense.wireValue), rows.map { it.type })
         assertEquals(rows.map { it.id }, accepted.rowIds)
-        assertEquals(listOf(baseline.rowVersion, baseline.rowVersion), rows.map { it.expectedRowVersion })
-        assertEquals(2, rows.mapNotNull { it.idempotencyKey }.distinct().size)
+        assertEquals(listOf(baseline.rowVersion), rows.map { it.expectedRowVersion })
+        assertEquals(1, rows.mapNotNull { it.idempotencyKey }.distinct().size)
+        val submitted = moshi().adapter(com.ticketbox.data.remote.dto.ExpenseStateTokenRequest::class.java).fromJson(rows.single().payload)
+        assertEquals("新商家", submitted?.changes?.merchant)
+        assertNull(submitted?.changes?.expectedRowVersion)
         assertEquals(1, rows.map { Triple(it.ownerKey, it.ledgerId, it.targetId) }.distinct().size)
         assertEquals("pending", accepted.expense.status)
         assertEquals(baseline.rowVersion, accepted.expense.rowVersion)

@@ -21,6 +21,7 @@ ACCOUNTING_TIME_INPUT_VERSION = 1
 REPAYMENT_TIME_INPUT_VERSION = 1
 DEBT_ACTIVITY_READ_VERSION = 1
 DEBT_BILL_SOURCE_VERSION = 1
+EXPENSE_CONFIRMATION_VERSION = 2
 
 # RFC 6648 discourages new ``X-`` names.  The application prefix keeps these
 # limited-use fields unambiguous, as recommended for new HTTP fields by RFC

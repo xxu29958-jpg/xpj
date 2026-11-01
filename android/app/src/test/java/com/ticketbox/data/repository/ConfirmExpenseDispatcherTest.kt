@@ -185,4 +185,20 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
 
         assertTrue(result is DispatchResult.Conflict, "state_conflict must stay Conflict: $result")
     }
+
+    @Test
+    fun `rejected funding retains the precise backend validation message and original changes`() = runTest {
+        val message = "第 2 项付款缺少消费原币金额。"
+        val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Throw(httpException(422,
+            """{"error":"funding_amount_required","message":"$message","field":"funding.1.expense_amount_minor"}""")))
+        val changes = draft.toRequest(baselineExpense()).copy(expectedRowVersion = null)
+        val payload = ExpenseStateTokenRequest(0, changes = changes, funding = listOf(
+            com.ticketbox.data.remote.dto.ExpenseFundingPartDto("part", "account", 1, 2933, 2933, false, "CNY", "CNY")))
+        val row = confirmRow("original-key").copy(payloadJson = moshi().adapter(ExpenseStateTokenRequest::class.java).toJson(payload))
+        val result = dispatcherFor(stub).dispatch(row)
+        assertEquals(DispatchResult.Conflict(message), result)
+        assertEquals(changes, row.confirmationChanges())
+        assertEquals("original-key", stub.lastConfirmIdempotencyKey)
+        assertTrue(published.isEmpty())
+    }
 }
