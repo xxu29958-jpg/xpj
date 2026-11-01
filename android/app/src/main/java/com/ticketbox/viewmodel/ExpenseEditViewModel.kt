@@ -408,7 +408,10 @@ class ExpenseEditViewModel(
     }
 
     fun save(draft: ExpenseDraft) = submitExpenseCommand(R.string.expense_edit_save_failed) { binding, expense ->
-        repository.saveExpenseAllowingOffline(binding, expense.id, draft, expense)
+        retainPendingConfirmationEdits(expense, draft).fold(
+            onSuccess = { repository.saveExpenseAllowingOffline(binding, expense.id, draft, expense) },
+            onFailure = { Result.failure(it) },
+        )
     }
 
     fun confirm(draft: ExpenseDraft) {

@@ -134,6 +134,34 @@ class ExpenseFactInputRoomTest {
         assertTrue(fixture.network.calls.isEmpty())
     }
 
+    @Test fun unfundedRejectedConfirmationRestoresAtomicEditsAfterRoomReopen() = runBlocking {
+        fixture.network.current = fixture.network.current.copy(status = "pending", confirmedAt = null)
+        val repository = fixture.reopen().expenseRepository
+        val expense = fixture.network.current.toDomain()
+        val binding = requireNotNull(repository.captureDeferredLedgerBinding())
+        val draft = ExpenseDraft(amountCents = 4321, merchant = "Retained merchant", category = "", note = "Retained note",
+            expenseTime = null, tags = null, valueScore = null, regretScore = null)
+        val accepted = repository.saveAndConfirmExpense(binding, expense, draft).getOrThrow()
+        val before = fixture.stored().single()
+        fixture.outbox.markConflict(accepted.rowIds.single(), "请选择分类。")
+        val refused = fixture.outbox.observeOriginalCommand(com.ticketbox.data.local.PendingMutationType.ConfirmExpense,
+            originalId = accepted.rowIds.single()).first().single()
+        assertTrue(refused.canReviewFunding())
+        assertTrue(refused.confirmationFunding().isEmpty())
+        val cold = fixture.reopen().expenseRepository
+        val recovered = ExpenseFactOriginalInput(binding, expense.id, "pending_funding", "reviewed-unfunded",
+            ExpenseFactInputCodec.encode(ExpenseFactInputDraft(expense, fundingJson = "[]",
+                confirmationChanges = refused.confirmationChanges())))
+        fixture.graph.fundsRepository.reopenExpenseConfirmation(binding, refused, recovered, cold).getOrThrow()
+        val restored = fixture.reopen().expenseRepository.loadFactInputs(binding, expense.id).getOrThrow().single()
+        val changes = ExpenseFactInputCodec.decode(restored.json, expense.id).confirmationChanges
+        assertEquals("Retained merchant", changes?.merchant)
+        assertEquals("Retained note", changes?.note)
+        assertEquals("abandoned", fixture.stored().single()["status"])
+        assertEquals(before["payload"], fixture.stored().single()["payload"])
+        assertEquals(before["idempotencyKey"], fixture.stored().single()["idempotencyKey"])
+    }
+
     @Test fun pendingFundingSurvivesReopenAndOnlyConfirmationCarriesItsActualMoney() = runBlocking {
         fixture.network.current = fixture.network.current.copy(status = "pending", confirmedAt = null)
         val repository = fixture.reopen().expenseRepository
