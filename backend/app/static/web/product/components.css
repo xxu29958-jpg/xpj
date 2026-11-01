@@ -491,6 +491,15 @@ button.recognition-candidate:hover { background: var(--brand-primary-bg); }
     color: var(--state-info-fg);
 }
 
+/* 草稿空闲说明 (还没有要提交或核实的内容) 是一行安静提示; 需要处理的草稿状态仍用反馈条。 */
+.product-feedback[data-draft-idle] {
+    padding: 0;
+    background: transparent;
+    color: var(--text-meta);
+    font-size: var(--type-caption-size);
+    line-height: var(--type-caption-line);
+}
+
 .dt-alert.success,
 .product-feedback--success {
     background: var(--state-success-bg);
