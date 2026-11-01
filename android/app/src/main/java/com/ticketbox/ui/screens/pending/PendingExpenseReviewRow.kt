@@ -50,6 +50,7 @@ import com.ticketbox.ui.components.AppAsyncImageLayout
 import com.ticketbox.ui.components.AppAsyncImagePresentation
 import com.ticketbox.ui.components.AppEndAlignedAmountText
 import com.ticketbox.ui.components.AppEndAlignedAmountStatusText
+import com.ticketbox.ui.components.ExpenseCategoryGlyph
 import com.ticketbox.ui.components.appTapWithoutDrag
 import com.ticketbox.presentation.formatExpenseExchangeMeta
 import com.ticketbox.presentation.formatExpensePrimaryAmount
@@ -393,21 +394,18 @@ private fun PendingExpenseInlineActionButtons(
     }
 }
 
+/** 没有原图时占住缩略图的位置; 内容与流水的分类标记同一套图标与底色。 */
 @Composable
 private fun PendingCategoryMark(category: String, size: DpSize) {
-    val text = category.take(1).ifBlank { stringResource(R.string.pending_row_category_fallback) }
-    Text(
-        text = text,
+    Box(
         modifier = Modifier
             .size(size)
             .clip(RoundedCornerShape(AppRadius.small))
-            .background(MaterialTheme.colorScheme.primaryContainer)
-            .padding(top = AppSpacing.contentGap),
-        color = MaterialTheme.colorScheme.primary,
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = AppTextHierarchy.heading.weight,
-        textAlign = TextAlign.Center,
-    )
+            .background(LocalThemeVisuals.current.brandPrimaryBg),
+        contentAlignment = Alignment.Center,
+    ) {
+        ExpenseCategoryGlyph(category, AppListDensity.Standard)
+    }
 }
 
 @Composable
