@@ -1,6 +1,9 @@
 /* Actual full-page and dynamically mounted drawer choices retain their manual intent. */
 (async function () {
   "use strict";
+  if (document.readyState === "loading") {
+    await new Promise(resolve => document.addEventListener("DOMContentLoaded", resolve, {once: true}));
+  }
   const key = "category-choices-probe";
   const stage = sessionStorage.getItem(key);
   const assert = (ok, message) => { if (!ok) throw Error(message); };
@@ -13,7 +16,13 @@
   };
   const drawer = location.pathname === "/web/pending";
   const form = () => document.querySelector(drawer ? "#drawer [data-drawer-form]" : "[data-review-form]");
-  const ready = () => form()?.dataset.expensereviewDraftPhase === "editing";
+  // Editing is also the initial phase while the browser is still acquiring its draft lease.
+  // Never unlock a field for the lock probe until the real editor grants input authority.
+  const ready = () => {
+    const current = form(), input = current?.elements.category;
+    return current?.dataset.expensereviewDraftPhase === "editing" && input &&
+      !input.readOnly && !input.disabled && !current.querySelector("[data-expensereview-submit]")?.disabled;
+  };
   try {
     if (drawer) {
       await wait(() => window.TicketboxWeb?.drawerApi);
@@ -45,6 +54,8 @@
       assert(input.value === "交通" && button.getAttribute("aria-pressed") === "true", "pick did not update category");
       assert(current.elements.category_choice.value === "manual", "pick retained suggestion provenance");
       assert(!current.elements.category_decision_public_id.value, "pick retained the old suggestion identifier");
+      const retained = JSON.parse(localStorage.getItem("ticketbox:expensereview-edit-draft:v1:" + current.elements.draft_ref.value) || "null");
+      assert(retained?.values.category === "交通" && retained.values.category_choice === "manual", "pick was not retained before reload");
       sessionStorage.setItem(key, "reload"); location.reload(); return;
     }
     assert(input.value === "交通" && current.elements.category_choice.value === "manual", "reload lost original manual choice");
