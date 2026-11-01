@@ -89,18 +89,8 @@ def _notification_end(raw_text: str, start: int, end: int) -> int:
     return end
 
 
-def transaction_event_spans(raw_text: str) -> tuple[tuple[int, int], ...]:
-    """Separate repeated cards, retaining the merchant/amount prefix of a success status."""
-
-    lines = [(match.start(), match.end(), match.group().strip())
-             for match in re.finditer(r"[^\r\n]+", raw_text) if match.group().strip()]
-    anchors = _card_anchors(lines)
-    if len(anchors) < 2:
-        return ()
-    # Display clocks distinguish a notification shade from repeated receipt status labels.
-    spans = []
-    notification_shade = "交易提醒" in raw_text and len(re.findall(r"(?m)^\s*\d{1,2}:\d{2}\s*$", raw_text)) > 1
-    message_list = "服务消息" in raw_text or "支付消息" in raw_text
+def _card_starts(raw_text: str, lines: list[tuple[int, int, str]], anchors: list[int], message_list: bool) -> list[int]:
+    """Bind app/merchant prefixes without taking the preceding card's amount."""
     first_start = _card_start(lines, anchors[0], 0, message_list)
     prefix_layout = first_start < lines[anchors[0]][0]
     starts = [first_start]
@@ -112,6 +102,20 @@ def transaction_event_spans(raw_text: str) -> tuple[tuple[int, int], ...]:
         if (prefix_layout or app_prefix) and _card_has_amount(raw_text[starts[-1]:prefix]):
             start = prefix
         starts.append(start)
+    return starts
+
+
+def transaction_event_spans(raw_text: str) -> tuple[tuple[int, int], ...]:
+    """Separate repeated cards, retaining the merchant/amount prefix of a success status."""
+    lines = [(match.start(), match.end(), match.group().strip())
+             for match in re.finditer(r"[^\r\n]+", raw_text) if match.group().strip()]
+    anchors = _card_anchors(lines)
+    if len(anchors) < 2:
+        return ()
+    # Display clocks distinguish a notification shade from repeated receipt status labels.
+    notification_shade = "交易提醒" in raw_text and len(re.findall(r"(?m)^\s*\d{1,2}:\d{2}\s*$", raw_text)) > 1
+    starts = _card_starts(raw_text, lines, anchors, "服务消息" in raw_text or "支付消息" in raw_text)
+    spans = []
     for number, start in enumerate(starts):
         end = starts[number + 1] if number + 1 < len(starts) else len(raw_text)
         if notification_shade:
