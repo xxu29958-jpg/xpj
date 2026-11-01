@@ -93,7 +93,7 @@
       </div>
       <div class="product-field">
         <label for="goal-create-amount" data-goal-amount-label>目标金额（{{ form_currency.currency_code or '币种待确认' }}，{{ form_currency.amount_input_hint }}）</label>
-        <input id="goal-create-amount" class="product-input" type="text" name="target_amount_yuan" value="{{ values.target_amount_yuan }}" inputmode="{{ form_currency.inputmode or 'text' }}" placeholder="{{ form_currency.amount_example }}" required>
+        <input id="goal-create-amount" class="product-input" type="text" name="target_amount_yuan" value="{{ values.target_amount_yuan }}" inputmode="{{ form_currency.inputmode or 'text' }}" placeholder="{{ form_currency.amount_placeholder }}" required>
       </div>
       <div class="product-field">
         <label for="goal-create-category">分类（留空为总支出）</label>
