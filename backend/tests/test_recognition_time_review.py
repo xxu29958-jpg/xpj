@@ -100,6 +100,10 @@ def test_multi_transaction_image_keeps_event_identity_in_actual_review(client, w
             assert db.query(OcrFact).filter_by(expense_id=expense_id).one().evidence_json == frozen_evidence
         return
 
+    _assert_manual_source_review(client, web_client, identity, expense_id, manual_amount, version, frozen_evidence)
+
+
+def _assert_manual_source_review(client, web_client, identity, expense_id, manual_amount, version, frozen_evidence):
     response = client.get("/api/expenses/pending", headers=negotiated_headers(client, identity.app_headers))
     assert response.status_code == 200, response.text
     item = next(row for row in response.json() if row["id"] == expense_id)
