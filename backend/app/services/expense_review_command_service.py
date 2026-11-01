@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.error_reporting import report_error
 from app.errors import AppError
 from app.models import ApiIdempotencyKey, Expense
 from app.schemas import ExpenseResponse, ExpenseUpdateRequest
@@ -171,9 +172,9 @@ def _commit_confirmation_and_cleanup(db: Session, expense: Expense) -> None:
     try:
         db.refresh(expense)
         cleanup_after_confirm(db, expense)
-    except (AppError, SQLAlchemyError, OSError):
+    except (AppError, SQLAlchemyError, OSError) as error:
         db.rollback()
-        logger.warning("event=expense_confirmation_cleanup_deferred")
+        report_error(logger, "event=expense_confirmation_cleanup_deferred", error=error)
 
 
 def _save_then_confirm(
