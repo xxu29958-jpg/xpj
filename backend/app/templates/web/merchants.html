@@ -33,9 +33,13 @@
 {% if can_write or merchant_draft_scope %}<section class="stack"><h2 class="product-section-title">添加别名</h2>{{ forms.alias_create() }}</section>{% endif %}
 <a class="product-entry" href="/web/rules{{ q }}"><span class="product-entry-icon" aria-hidden="true"><svg><use href="/static/shared/vendor/lucide/icons.svg#list-filter"/></svg></span><span class="product-entry-copy"><strong>分类规则</strong><span>使用启用的别名帮助匹配</span></span><svg aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#chevron-right"/></svg></a>
 {% else %}
-<form method="get" action="/web/merchants" class="product-form-grid">
+<form method="get" action="/web/merchants" aria-label="搜索商家">
 <input type="hidden" name="ledger_id" value="{{ selected_ledger_id }}"><input type="hidden" name="status" value="{{ merchant_status }}">
-<label class="product-field"><span>搜索商家或别名</span><input type="search" name="search" value="{{ merchant_search }}" placeholder="搜索商家或别名"></label><button type="submit" class="product-button">搜索</button>
+{# 与流水搜索同一排布: 输入框占满一行, 右侧是图标按钮。 #}
+<div class="ledger-search-form">
+<div class="product-field"><label class="sr-only" for="merchant-search">搜索商家或别名</label><input id="merchant-search" class="product-input" type="search" name="search" value="{{ merchant_search }}" placeholder="搜索商家或别名"></div>
+<button class="product-button" type="submit" aria-label="搜索商家"><svg width="22" height="22" aria-hidden="true"><use href="/static/shared/vendor/lucide/icons.svg#search"/></svg></button>
+</div>
 </form>
 <nav class="pill-row" aria-label="商家筛选">{% for value, label in [('all', '全部'), ('active', '显示中'), ('hidden', '隐藏'), ('merged', '已合并')] %}
 <a class="product-button {{ 'product-button--selected' if merchant_status == value else 'product-button--quiet' }}" href="/web/merchants{{ q }}&amp;status={{ value }}&amp;search={{ merchant_search|urlencode }}"{% if merchant_status == value %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
