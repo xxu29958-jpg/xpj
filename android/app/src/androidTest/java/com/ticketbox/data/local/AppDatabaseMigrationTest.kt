@@ -20,6 +20,23 @@ import org.junit.Test
  * suite (which never opens Room) cannot.
  */
 class AppDatabaseMigrationTest {
+    @Test fun migrate32To33RetainsNotificationOriginalsWithoutInventingTheirSourceJournal() {
+        val name = "migration-32-33-notification.db"
+        val raw = "{\"revision\":4,\"notificationKey\":\"retained-key\"}"
+        helper.createDatabase(name, 32).use { db ->
+            db.execSQL("""INSERT INTO pending_mutations (serverUrl,ledgerId,ownerKey,type,targetId,payload,expectedRowVersion,
+                status,retryCount,createdAt,idempotencyKey,receiptJson) VALUES ('https://old.invalid','owner','actor','capture_payment_notification',
+                'notification:retained-key',?,0,'done',2,'2026-10-01T00:00:00Z','retained-key','{"accepted":true}')""", arrayOf(raw))
+        }
+        helper.runMigrationsAndValidate(name, 33, true, AppDatabase.Migration32To33).use { db ->
+            db.query("SELECT payload,idempotencyKey,receiptJson FROM pending_mutations").use {
+                assertTrue(it.moveToFirst()); assertEquals(raw, it.getString(0)); assertEquals("retained-key", it.getString(1))
+                assertEquals("{\"accepted\":true}", it.getString(2))
+            }
+            db.query("SELECT COUNT(*) FROM notification_snapshots").use { assertTrue(it.moveToFirst()); assertEquals(0, it.getInt(0)) }
+        }
+    }
+
     @Test fun migrate31To32PreservesAcceptedCommandsWithoutInventingDebtBillSources() {
         val name = "migration-31-32-debt-bill.db"
         val raw = "{\"revision\":1,\"original\":\" frozen body \"}"
@@ -151,7 +168,7 @@ class AppDatabaseMigrationTest {
         val originals = setOf(input, rename, otherRename, merge)
         var room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
             .addMigrations(AppDatabase.Migration25To26, AppDatabase.Migration26To27, AppDatabase.Migration27To28,
-                AppDatabase.Migration28To29, AppDatabase.Migration29To30, AppDatabase.Migration30To31, AppDatabase.Migration31To32).build()
+                AppDatabase.Migration28To29, AppDatabase.Migration29To30, AppDatabase.Migration30To31, AppDatabase.Migration31To32, AppDatabase.Migration32To33).build()
         try {
             kotlinx.coroutines.runBlocking {
                 room.merchantCreationInputDao().put(MerchantCreationInputEntity(binding.serverUrl, binding.ownerKey, binding.ledgerId,
@@ -236,7 +253,7 @@ class AppDatabaseMigrationTest {
         val room = androidx.room.Room.databaseBuilder(context, AppDatabase::class.java, name)
             .addMigrations(AppDatabase.Migration21To22, AppDatabase.Migration22To23, AppDatabase.Migration23To24, AppDatabase.Migration24To25,
                 AppDatabase.Migration25To26, AppDatabase.Migration26To27, AppDatabase.Migration27To28,
-                AppDatabase.Migration28To29, AppDatabase.Migration29To30, AppDatabase.Migration30To31, AppDatabase.Migration31To32).build()
+                AppDatabase.Migration28To29, AppDatabase.Migration29To30, AppDatabase.Migration30To31, AppDatabase.Migration31To32, AppDatabase.Migration32To33).build()
         try {
                 room.openHelper.readableDatabase.query("SELECT amountCents, homeCurrencyCode, rowVersion FROM expenses WHERE id = 1").use {
                     assertTrue(it.moveToFirst()); assertEquals(100, it.getInt(0)); assertEquals("JPY", it.getString(1)); assertEquals(7, it.getInt(2))

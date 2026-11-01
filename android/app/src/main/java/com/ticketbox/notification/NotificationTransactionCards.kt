@@ -6,7 +6,7 @@ internal object NotificationTransactionCards {
     private val spend = Regex("""你有一笔[^\n。；;]*?(?:元|￥|¥)[^\n。；;]*?(?:支出|消费)""")
 
     fun read(snapshot: PaymentNotificationSnapshot): List<String> {
-        if (snapshot.textLines.size > 1) return snapshot.textLines // Equal amounts/identical lines may be different events.
+        if (snapshot.textLines.isNotEmpty()) return snapshot.textLines // Keep identity through single-to-InboxStyle transitions.
         for (text in listOfNotNull(snapshot.bigText, snapshot.text)) {
             val starts = heading.findAll(text).map { it.range.first }.toList()
             if (starts.size > 1) return starts.mapIndexed { index, start ->

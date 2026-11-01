@@ -150,6 +150,12 @@ REVIEWED_BOUNDARIES = {
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NotificationCaptureRepositoryTest.kt::acceptanceFailureDoesNotScheduleOrSend",
         "reason": "The existing bound local-admission catch moved into the shared single/batch helper. Its typed failure returns to acceptNotificationBatch or acceptNotificationCapture, which use logNetworkWarning and recordNotificationCaptureFailure; no network work is scheduled. Cancellation propagates and the retained original is unchanged. NotificationAdmissionFailureTest covers the persistent reminder and sanitized sink.",
     },
+    (ANDROID + "data/repository/NotificationCaptureRepository.kt", "captureLocally"): {
+        "sha256": "cf54cdb66bac662b74177182cd86f3b56f18b43f8900bfc73d7d4e6cad93168c",
+        "owner": "listener admission failure reporting and durable local reminder",
+        "test": "android/app/src/test/java/com/ticketbox/notification/NotificationAdmissionFailureTest.kt::listenerAdmissionFailureReachesLiveSettingsAndDiskReadUntilExplicitAcknowledgement",
+        "reason": "Snapshot publication returns a typed local failure to the existing listener reporter and durable reminder. Room rolls back source identity with the Outbox insertion; no failed acceptance schedules a send or advances the source journal. Source-close failures also use the sanitized listener logger. Cancellation propagates, original financial bindings remain immutable, and exception or notification bodies never enter the diagnostic.",
+    },
     (ANDROID + "data/repository/PaymentCaptureResolution.kt", "dispatch"): {
         "sha256": "7a278106a9dbe5f4eb03a90deceaf0eb7dd1acd006d555b6e5f5eca799552709",
         "owner": "existing HTTP mapping, retained Outbox command and sanitized TicketboxNetwork output",

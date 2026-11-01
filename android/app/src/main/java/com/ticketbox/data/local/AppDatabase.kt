@@ -9,11 +9,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ticketbox.domain.model.FxContract
 
 @Database(
-    entities = [DebtBillInputEntity::class, FundsInputEntity::class, SavedQueryInputEntity::class, RuleDefinitionInputEntity::class, MerchantCreationInputEntity::class, ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class, RepaymentReviewInputEntity::class, ExpenseFactQueryCacheEntity::class, ExpenseFactInputEntity::class],
-    version = 32,
+    entities = [NotificationSnapshotEntity::class, DebtBillInputEntity::class, FundsInputEntity::class, SavedQueryInputEntity::class, RuleDefinitionInputEntity::class, MerchantCreationInputEntity::class, ExpenseEntity::class, PendingMutationEntity::class, ExpenseOffsetStreamEntity::class, StatsProjectionCacheEntity::class, GoalQueryCacheEntity::class, MonthlyArrangementCacheEntity::class, RepaymentReviewInputEntity::class, ExpenseFactQueryCacheEntity::class, ExpenseFactInputEntity::class],
+    version = 33,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
+    abstract fun notificationSnapshotDao(): NotificationSnapshotDao
     abstract fun debtBillInputDao(): DebtBillInputDao
     abstract fun fundsInputDao(): FundsInputDao
     abstract fun savedQueryInputDao(): SavedQueryInputDao
@@ -26,6 +27,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun repaymentReviewInputDao(): RepaymentReviewInputDao
 
     companion object {
+        internal val Migration32To33 = object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS notification_snapshots (slotKey TEXT NOT NULL, deliveryKey TEXT NOT NULL, postTimeMillis INTEGER NOT NULL, cardsJson TEXT NOT NULL, originalId INTEGER NOT NULL, closed INTEGER NOT NULL, PRIMARY KEY(slotKey))")
+            }
+        }
         internal val Migration31To32 = object : Migration(31, 32) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS debt_bill_inputs (captureKey TEXT NOT NULL, ownerKey TEXT NOT NULL, ledgerId TEXT NOT NULL, creationKey TEXT NOT NULL, payloadJson TEXT NOT NULL, draftJson TEXT NOT NULL, sourceJson TEXT, parseAttemptKey TEXT, parseExpectedRowVersion INTEGER, closed INTEGER NOT NULL, PRIMARY KEY(captureKey))")
@@ -679,6 +685,7 @@ abstract class AppDatabase : RoomDatabase() {
                         Migration29To30,
                         Migration30To31,
                         Migration31To32,
+                        Migration32To33,
                     )
                     .build()
                     .also { instance = it }

@@ -8,6 +8,7 @@ import com.ticketbox.TicketboxApplication
 import com.ticketbox.data.local.TicketboxSettingsStore
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.data.repository.NotificationCaptureRepository
+import com.ticketbox.data.repository.NotificationSnapshotDelivery
 import com.ticketbox.data.repository.logNetworkWarning
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -20,6 +21,7 @@ import kotlinx.coroutines.withContext
 
 class TicketboxNotificationListenerService : NotificationListenerService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var captureTail: kotlinx.coroutines.Job? = null
 
     override fun onListenerConnected() {
         super.onListenerConnected()
@@ -46,15 +48,32 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
         if (!PaymentNotificationParser.isCandidatePackage(sbn.packageName)) return
 
         // 统一分类器：一条通知分类成消费 / 还款 / 忽略（§杠杆③ 修双计——含「还款」措辞不再落支出）。
-        val results = PaymentNotificationParser.parseAll(sbn.toSnapshot())
-        if (results.isEmpty()) return
-        // The same delivery has one durable original. Reusing an OS slot with a new postTime is a new payment.
+        val cards = PaymentNotificationParser.parseCards(sbn.toSnapshot())
+        if (cards.isEmpty()) return
         val notificationKey = notificationIdentityKey(sbn.key, sbn.postTime)
-        serviceScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        val delivery = NotificationSnapshotDelivery(notificationIdentityKey(sbn.key, 0), notificationKey, sbn.postTime)
+        enqueueSourceChange {
+            acceptNotificationBatch(container.notificationCaptureRepository, container.settingsStore,
+                cards, bindingAtPost, delivery)
+        }
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        if (!PaymentNotificationParser.isCandidatePackage(sbn.packageName)) return
+        val repository = (application as? TicketboxApplication)?.container?.notificationCaptureRepository ?: return
+        enqueueSourceChange {
+            repository.closeSnapshot(notificationIdentityKey(sbn.key, 0), notificationIdentityKey(sbn.key, sbn.postTime))
+                .onFailure { logNetworkWarning("notification_snapshot_close_failed", it) }
+        }
+    }
+
+    private fun enqueueSourceChange(action: suspend () -> Unit) {
+        val previous = captureTail
+        captureTail = serviceScope.launch(start = CoroutineStart.UNDISPATCHED) {
             // A service disconnect cannot cancel a started local acceptance. No network IO is in this block.
             withContext(NonCancellable + Dispatchers.IO) {
-                acceptNotificationBatch(container.notificationCaptureRepository, container.settingsStore,
-                    results, bindingAtPost, notificationKey)
+                previous?.join()
+                action()
             }
         }
     }
@@ -79,8 +98,8 @@ class TicketboxNotificationListenerService : NotificationListenerService() {
 }
 
 internal suspend fun acceptNotificationBatch(repository: NotificationCaptureRepository, settingsStore: TicketboxSettingsStore,
-    results: List<PaymentNotificationResult>, binding: LogicalSessionBinding, notificationKey: String) {
-    repository.acceptBatch(results, binding, notificationKey).onFailure { error ->
+    cards: List<ParsedNotificationCard>, binding: LogicalSessionBinding, delivery: NotificationSnapshotDelivery) {
+    repository.acceptSnapshot(cards, binding, delivery).onFailure { error ->
         val scope = notificationCaptureFailureScope(binding)
         logNetworkWarning("notification_capture_admission_failed scope=$scope", error)
         settingsStore.recordNotificationCaptureFailure(scope)

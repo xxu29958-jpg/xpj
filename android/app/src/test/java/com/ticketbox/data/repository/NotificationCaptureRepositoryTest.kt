@@ -86,7 +86,7 @@ class NotificationCaptureRepositoryTest {
         val f = CaptureFixture()
         val ids = (1..8).map { async { f.accept().getOrThrow() } }.awaitAll()
         assertEquals(1, ids.distinct().size)
-        val reopened = NotificationCaptureRepository(f.provider, f.newOutbox())
+        val reopened = NotificationCaptureRepository(f.provider, f.newOutbox(), f.snapshots)
         assertEquals(ids.first(), reopened.accept(f.expense, f.binding, "same-delivery").getOrThrow())
         reopened.accept(f.expense, f.binding, "new-post-time").getOrThrow()
         assertEquals(2, f.dao.rows.size)
@@ -186,7 +186,7 @@ class NotificationCaptureRepositoryTest {
     }
 }
 
-private class CaptureFixture {
+internal class CaptureFixture {
     val session = TestSessionFixture().apply { saveToken("synthetic-session") }
     val api = CaptureResponseProbe()
     val provider = testApiServiceProvider(object : ApiServiceFactory {
@@ -194,12 +194,13 @@ private class CaptureFixture {
     }, session)
     val binding get() = assertNotNull(LedgerRequestGuard(provider).captureLogicalBinding())
     val dao = FakePendingMutationDao()
+    val snapshots = FakeNotificationSnapshotDao(dao)
     val clock: Clock = Clock.fixed(Instant.parse("2026-09-30T08:00:00Z"), ZoneOffset.UTC)
     val scheduledDepths = mutableListOf<Int>()
     val published = mutableListOf<String>()
     val expenseSnapshots = mutableListOf<Long>()
     val outbox = newOutbox()
-    val repository = NotificationCaptureRepository(provider, outbox)
+    val repository = NotificationCaptureRepository(provider, outbox, snapshots)
     val expense = PaymentNotificationResult.Expense(NotificationDraft(NotificationDraftSource.WeChat, 2680, "星巴克", "餐饮", "2026-09-30T08:00:00Z"),
         timeEvidence = com.ticketbox.notification.NotificationTimeEvidence("Asia/Shanghai", listOf(
             com.ticketbox.notification.NotificationTimeFragment("text", "2026-09-29 23:59", "支付时间")), false),
@@ -220,7 +221,7 @@ private class CaptureFixture {
             onReview = { _, _ -> published += "review" })), now = at::millis)
 }
 
-private class CaptureResponseProbe : ApiService by FakeApiService(mutableListOf(), 0) {
+internal class CaptureResponseProbe : ApiService by FakeApiService(mutableListOf(), 0) {
     var calls = 0
     var offline = true
     var loseReply = false

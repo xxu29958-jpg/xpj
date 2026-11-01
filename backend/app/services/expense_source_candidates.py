@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Expense, ExpenseSourceCandidate
+from app.services.attachment_publication_lock import retain_publication
+from app.services.expense_source_identity import match_source_events
 from app.services.file_service import save_original_replenishment_bytes
 from app.services.ocr_service import OcrResult
 from app.services.ocr_service._draft_fields import ocr_draft_fields
@@ -34,12 +36,12 @@ def stage_source_event_drafts(db: Session, *, expense: Expense, result: OcrResul
     references or partially published candidates.
     """
     source, previous = _lock_source_candidates(db, expense)
-    by_key = {row.event_key: row for row in previous}
+    matched = match_source_events(result.raw_text, parsed.events, previous)
     extraction_hash = hashlib.sha256(result.raw_text.encode()).hexdigest()
     staged = []
     reuse_source = use_source_draft and (expense.amount_cents is None or "amount_cents" in ocr_draft_fields(expense))
     for index, event in enumerate(parsed.events):
-        row = by_key.get(event["id"])
+        row = matched.get(event["id"])
         fresh = row is None
         target = expense if reuse_source and not previous and index == 0 else None
         if row is not None:
@@ -49,6 +51,9 @@ def stage_source_event_drafts(db: Session, *, expense: Expense, result: OcrResul
         if target is None:
             target = _stage_child(db, source, evidence_owner=expense)
         event_result, evidence = _event_result(result, event, source, provider_name, ocr_model)
+        if row is not None:
+            evidence["extraction_event_key"] = event["id"]
+            evidence["event_key"] = row.event_key
         evidence["candidates"] = [asdict(item) for item in parsed.candidates if item.event_id == event["id"]]
         if fresh:
             db.add(ExpenseSourceCandidate(tenant_id=source.tenant_id, source_expense_id=source.id,
@@ -103,7 +108,8 @@ def _stage_child(db, source, *, evidence_owner):
         with read_original_snapshot(relative_path=evidence_owner.image_path, tenant_id=source.tenant_id,
                 expected_sha256=evidence_owner.image_hash) as original:
             saved = save_original_replenishment_bytes(original.path.read_bytes(), tenant_id=source.tenant_id,
-                expected_sha256=original.sha256, filename=original.path.name, content_type=original.media_type)
+                expected_sha256=original.sha256, filename=original.path.name, content_type=original.media_type,
+                before_publish=lambda reference: retain_publication(db, reference))
             saved = replace(saved, image_evidence=evidence_owner.image_evidence)
     now = now_utc()
     child = Expense(tenant_id=source.tenant_id, home_currency_code=evidence_owner.home_currency_code,
@@ -118,12 +124,11 @@ def _stage_child(db, source, *, evidence_owner):
 
 
 def independent_sibling_ids(db, expense, candidate_ids) -> set[int]:
-    """Distinct cards in the same extraction are not duplicates, even at the same price."""
+    """Distinct reconciled cards in one source are not duplicates, even across OCR attempts."""
     rows = list(db.scalars(select(ExpenseSourceCandidate).where(
         ExpenseSourceCandidate.tenant_id == expense.tenant_id,
         ExpenseSourceCandidate.expense_id.in_({expense.id, *candidate_ids}))))
     own = next((row for row in rows if row.expense_id == expense.id), None)
     if own is None:
         return set()
-    return {row.expense_id for row in rows if row.source_expense_id == own.source_expense_id
-        and row.extraction_hash == own.extraction_hash and row.event_key != own.event_key}
+    return {row.expense_id for row in rows if row.source_expense_id == own.source_expense_id and row.event_key != own.event_key}

@@ -403,6 +403,22 @@ class OutboxRepository private constructor(
             row?.toDomain()
         }
 
+    internal suspend fun enqueueNotificationSnapshot(boundRequest: BoundLedgerRequest,
+        snapshots: com.ticketbox.data.local.NotificationSnapshotDao, delivery: NotificationSnapshotDelivery,
+        plan: (com.ticketbox.data.local.NotificationSnapshotEntity?, OutboxRow?) -> NotificationSnapshotAdmission): Long {
+        val id = withActiveBinding(boundRequest) { binding ->
+            binding.requireReadyForEnqueue()
+            snapshots.acceptNotificationSnapshot(delivery.slotKey, delivery.key) { previous, original ->
+                val admission = plan(previous, original?.toDomain())
+                val savedId = admission.intent?.let { dao.insert(it.toEntity(binding, nowIso())) } ?: admission.snapshot.originalId
+                require(savedId > 0)
+                admission.snapshot.copy(originalId = savedId)
+            }
+        }
+        schedulePending()
+        return id
+    }
+
     /** Save+confirm and ready-bulk preserve every original before any worker may send. */
     internal suspend fun enqueueExpenseBatch(
         boundRequest: BoundLedgerRequest,

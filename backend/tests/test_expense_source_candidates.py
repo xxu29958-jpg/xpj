@@ -184,3 +184,53 @@ def test_shade_preserves_non_expense_and_clipped_cards_without_advertisement_ble
         assert [fragment["literal"] for fragment in rows[3].evidence["time_fragments"]] == ["17:30"]
         assert all(row.evidence["source_text"] == text for row in rows)
         assert db.scalar(select(func.count()).select_from(AccountMovement)) == 0
+
+
+@pytest.mark.parametrize("amounts", [("10.00", "12.90"), ("10.00", "10.00")])
+def test_retry_transcription_punctuation_and_offset_changes_do_not_publish_new_transactions(client, identity, amounts):
+    root_id = upload_png(client, identity=identity)
+    text = _cards(amounts)
+    changed = "通知中心\n" + text.replace("。", "！").replace("商家：", "商家: ").replace("你有", "你 有")
+    with SessionLocal() as db:
+        _apply(db, root_id, text)
+        db.commit()
+        original = [(row.event_key, row.expense_id) for row in _rows(db, root_id)]
+        _apply(db, root_id, changed)
+        db.commit()
+        assert [(row.event_key, row.expense_id) for row in _rows(db, root_id)] == original
+        assert db.scalar(select(func.count()).select_from(Expense)) == len(amounts)
+
+
+def test_later_extraction_keeps_a_new_equal_price_card_without_marking_it_as_its_sibling(client, identity):
+    root_id = upload_png(client, identity=identity)
+    with SessionLocal() as db:
+        _apply(db, root_id, _cards(("10.00", "10.00")))
+        db.commit()
+        _apply(db, root_id, _cards(("10.00", "10.00", "10.00")).replace("。", "！"))
+        db.commit()
+        rows = _rows(db, root_id)
+        assert len(rows) == 3
+        assert all(db.get(Expense, row.expense_id).duplicate_status == "none" for row in rows)
+
+
+@pytest.mark.real_db
+def test_copied_original_is_protected_from_orphan_disposal_until_publication_commits(client, identity, monkeypatch):
+    import app.services.expense_source_candidates as owner
+    from app.services.attachment_publication_lock import try_claim_orphan
+
+    root_id = upload_png(client, identity=identity)
+    save = owner.save_original_replenishment_bytes
+    copied = []
+    def inspect_uncommitted(*args, **kwargs):
+        saved = save(*args, **kwargs)
+        with SessionLocal() as maintenance:
+            assert not try_claim_orphan(maintenance, saved.relative_path)
+        copied.append(saved.relative_path)
+        return saved
+    monkeypatch.setattr(owner, "save_original_replenishment_bytes", inspect_uncommitted)
+    response = recognize_text_api(client, root_id, headers=identity.app_headers, raw_text=_cards())
+    assert response.status_code == 200, response.text
+    assert len(copied) == 1
+    with SessionLocal() as maintenance:
+        assert try_claim_orphan(maintenance, copied[0])
+        assert maintenance.scalar(select(Expense).where(Expense.image_path == copied[0])) is not None

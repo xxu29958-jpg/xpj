@@ -30,4 +30,11 @@ class NotificationTransactionCardsTest {
         assertEquals(30, PaymentNotificationParser.parseAll(snapshot).size)
         assertTrue(PaymentNotificationParser.parseAll(snapshot.copy(packageName = "private.notes")).isEmpty())
     }
+
+    @Test fun splitSmsKeepsBankAdmissionFromTheTitle() {
+        val result = PaymentNotificationParser.parseAll(snapshot(text =
+            "支付成功\n支付金额10.00元\n支付成功\n支付金额12.90元").copy(packageName = "com.android.mms", title = "中国银行"))
+        assertEquals(listOf(1000L, 1290L), result.map { (it as PaymentNotificationResult.Expense).draft.amountCents })
+        assertTrue(result.all { (it as PaymentNotificationResult.Expense).draft.source.apiValue == "bank_sms" })
+    }
 }

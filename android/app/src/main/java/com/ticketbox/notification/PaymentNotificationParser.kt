@@ -50,15 +50,24 @@ object PaymentNotificationParser {
     }
 
     /** InboxStyle lines and repeated card headings identify events, not alternative amounts. */
-    fun parseAll(snapshot: PaymentNotificationSnapshot): List<PaymentNotificationResult> {
+    fun parseAll(snapshot: PaymentNotificationSnapshot): List<PaymentNotificationResult> = parseCards(snapshot).map { it.result }
+
+    internal fun parseCards(snapshot: PaymentNotificationSnapshot): List<ParsedNotificationCard> {
         if (!isCandidatePackage(snapshot.packageName)) return emptyList()
         val cards = NotificationTransactionCards.read(snapshot)
-        if (cards.isEmpty()) return listOfNotNull(parse(snapshot))
+        val context = listOfNotNull(snapshot.title, snapshot.text, snapshot.bigText, snapshot.subText).joinToString("\n")
+        val sourceContext = if (bankContext.containsMatchIn(context)) "bank_sms" else null
+        if (cards.isEmpty()) return listOfNotNull(parse(snapshot)?.let { ParsedNotificationCard(it,
+            notificationCardFingerprint(snapshot.packageName, snapshot.bigText ?: snapshot.text ?: snapshot.title.orEmpty())) })
         return cards.mapNotNull { card -> parse(snapshot.copy(title = null, text = card,
-            bigText = null, subText = null, textLines = emptyList())) }
+            bigText = null, subText = null, textLines = emptyList()), sourceContext)?.let {
+                ParsedNotificationCard(it, notificationCardFingerprint(snapshot.packageName, card))
+            } }
     }
 
-    fun parse(snapshot: PaymentNotificationSnapshot): PaymentNotificationResult? {
+    fun parse(snapshot: PaymentNotificationSnapshot): PaymentNotificationResult? = parse(snapshot, null)
+
+    private fun parse(snapshot: PaymentNotificationSnapshot, sourceContext: String?): PaymentNotificationResult? {
         if (!isCandidatePackage(snapshot.packageName)) return null
         val fields = listOf("title" to snapshot.title, "text" to snapshot.text,
             "bigText" to snapshot.bigText, "subText" to snapshot.subText)
@@ -66,7 +75,7 @@ object PaymentNotificationParser {
             .distinctBy { it.second }
         val joined = fields.joinToString("\n") { it.second }
         val source = sources[snapshot.packageName.lowercase()]
-            ?: if (bankContext.containsMatchIn(joined)) "bank_sms" else return null
+            ?: sourceContext ?: if (bankContext.containsMatchIn(joined)) "bank_sms" else return null
         val evidence = fields.flatMap { (field, value) -> NotificationTransactionEvidence.read(field, value) }.distinct()
         val candidates = evidence
         val financial = evidence.filter { it.kind in setOf("expense", "repayment") }
