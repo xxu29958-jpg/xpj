@@ -135,7 +135,7 @@ fun ManualExpenseSheet(
             return null
         }
         if (timeErrorMessage != null) { message = timeErrorMessage; return null }
-        val funding = try { readExpenseFunding(fundingJson, currency) } catch (error: IllegalArgumentException) {
+        val funding = try { readExpenseFunding(fundingJson, currency, originalMinor) } catch (error: IllegalArgumentException) {
             message = error.message; return null
         }
         return ExpenseDraft(
@@ -215,7 +215,7 @@ fun ManualExpenseSheet(
                     categoryChoice = categoryChoice.takeIf { it == "one_off" }
                 },
             )
-            ExpenseFundingFields(fundingJson, currency, fieldsEnabled) { fundingJson = it }
+            ExpenseFundingFields(fundingJson, ExpenseFundingAmount(currency, parseMinorAmount(amountText, currency)), fieldsEnabled) { fundingJson = it }
             ExpenseEditTextField(
                 state = ExpenseEditTextFieldState(
                     label = stringResource(R.string.ledger_manual_category_label),

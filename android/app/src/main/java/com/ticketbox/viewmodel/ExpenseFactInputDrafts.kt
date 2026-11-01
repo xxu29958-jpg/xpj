@@ -50,6 +50,7 @@ internal data class ExpenseFactInputDraft(
     val version: Int = 1,
     val destinationsJson: String = "[]",
     val fundingJson: String = "[]",
+    val confirmationChanges: com.ticketbox.data.remote.dto.ExpenseUpdateRequest? = null,
 ) {
     fun offsetForm() = OffsetFormState(sourceExpense = baseline, kind = requireNotNull(offsetKind),
         amountText = amountText, accountingDate = accountingDate, reason = reason, destinationsJson = destinationsJson)

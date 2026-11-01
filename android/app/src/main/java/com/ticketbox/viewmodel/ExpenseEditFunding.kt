@@ -7,7 +7,9 @@ import com.ticketbox.data.repository.readExpenseFunding
 import com.ticketbox.data.repository.fundingInputAdapter
 import com.ticketbox.data.repository.FundsRepository
 import com.ticketbox.data.repository.canReviewFunding
+import com.ticketbox.data.repository.confirmationChanges
 import com.ticketbox.data.repository.reviewedFundingInputs
+import com.ticketbox.data.repository.toRequest
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -23,7 +25,8 @@ internal fun ExpenseEditViewModel.loadPendingFunding(expense: Expense) {
             if (binding != repository.captureDeferredLedgerBinding()) return@onSuccess
             runCatching {
                 val originals = inputs.filter { it.formKey == "pending_funding" }
-                val json = originals.singleOrNull()?.let { ExpenseFactInputCodec.decode(it.json, expense.id).fundingJson } ?: "[]"
+                val restored = originals.singleOrNull()?.let { ExpenseFactInputCodec.decode(it.json, expense.id) }
+                val json = restored?.fundingJson ?: "[]"
                 fundingInputAdapter.fromJson(json) ?: throw CorrectionValidationError(R.string.funds_funding_input_unreadable)
                 lateinit var session: ExpenseFactInputSession
                 session = ExpenseFactInputSession(binding, expense.id, repository.originalInputs, viewModelScope, originals) {
@@ -31,7 +34,9 @@ internal fun ExpenseEditViewModel.loadPendingFunding(expense: Expense) {
                         fundingMessage = session.error?.toUiText(R.string.expense_fact_input_save_failed)) }
                 }
                 fundingInputSession = session
-                _uiState.update { it.copy(fundingJson = json, fundingReady = true, fundingMessage = null) }
+                _uiState.update { it.copy(fundingJson = json, fundingReady = true, fundingMessage = null,
+                    confirmationChanges = restored?.confirmationChanges,
+                    formRevision = it.formRevision + if (restored?.confirmationChanges != null) 1 else 0) }
             }.onFailure { error ->
                 _uiState.update { it.copy(fundingMessage = error.toUiText(R.string.expense_fact_input_load_failed)) }
             }
@@ -46,7 +51,8 @@ fun ExpenseEditViewModel.editFunding(json: String) {
     val expense = state.expense ?: return
     if (!state.fundingReady || state.readOnly || state.saving || state.commandRowIds.isNotEmpty()) return
     _uiState.update { it.copy(fundingJson = json) }
-    fundingInputSession?.keep("pending_funding", ExpenseFactInputDraft(expense, fundingJson = json))
+    fundingInputSession?.keep("pending_funding", ExpenseFactInputDraft(expense, fundingJson = json,
+        confirmationChanges = state.confirmationChanges))
 }
 
 fun ExpenseEditViewModel.reviewPendingFunding(funds: FundsRepository) {
@@ -65,18 +71,11 @@ fun ExpenseEditViewModel.reviewPendingFunding(funds: FundsRepository) {
             val json = if (rejected != null) reviewedFundingInputs(rejected, accounts)
                 else refreshedPendingFunding(state.fundingJson, accounts)
             if (binding != repository.captureDeferredLedgerBinding()) throw CorrectionValidationError(R.string.funds_original_binding_note)
-            val draft = ExpenseFactInputDraft(fresh, fundingJson = json)
-            if (rejected != null) {
-                val input = ExpenseFactOriginalInput(binding, expense.id, "pending_funding",
-                    java.util.UUID.randomUUID().toString(), ExpenseFactInputCodec.encode(draft))
-                funds.reopenExpenseConfirmation(binding, rejected, input, repository.originalInputs).getOrThrow()
-                fundingInputSession = null
-                savedState.remove<LongArray>("expense_command_ids")
-            } else {
-                requireNotNull(fundingInputSession).keep("pending_funding", draft, review = true)
-                requireNotNull(fundingInputSession).flush().getOrThrow()
-            }
+            val changes = if (rejected != null) rejected.confirmationChanges() else state.confirmationChanges
+            val draft = ExpenseFactInputDraft(fresh, fundingJson = json, confirmationChanges = changes)
+            persistReviewedFunding(funds, binding, rejected, draft)
             _uiState.update { it.copy(expense = fresh, saving = false, fundingJson = json,
+                confirmationChanges = changes,
                 fundingReviewAvailable = false, commandRowIds = emptyList(), commandsCompleted = false,
                 done = false, confirmationReceipt = null, originalBaselineRequired = false, formRevision = it.formRevision + 1,
                 message = null, fundingMessage = UiText.res(R.string.funds_funding_refreshed)) }
@@ -89,6 +88,21 @@ fun ExpenseEditViewModel.reviewPendingFunding(funds: FundsRepository) {
     }
 }
 
+private suspend fun ExpenseEditViewModel.persistReviewedFunding(funds: FundsRepository,
+    binding: com.ticketbox.data.repository.LogicalSessionBinding, rejected: com.ticketbox.data.repository.OutboxRow?,
+    draft: ExpenseFactInputDraft) {
+    if (rejected == null) {
+        requireNotNull(fundingInputSession).keep("pending_funding", draft, review = true)
+        requireNotNull(fundingInputSession).flush().getOrThrow()
+        return
+    }
+    val input = ExpenseFactOriginalInput(binding, draft.baseline.id, "pending_funding",
+        java.util.UUID.randomUUID().toString(), ExpenseFactInputCodec.encode(draft))
+    funds.reopenExpenseConfirmation(binding, rejected, input, repository.originalInputs).getOrThrow()
+    fundingInputSession = null
+    savedState.remove<LongArray>("expense_command_ids")
+}
+
 private suspend fun ExpenseEditViewModel.readCurrentFunding(funds: FundsRepository,
     binding: com.ticketbox.data.repository.LogicalSessionBinding, expenseId: Long): Pair<Expense, List<com.ticketbox.domain.model.FinancialAccount>> {
     val expense = repository.fetchExpenseForFxReview(binding, expenseId).getOrThrow()
@@ -96,6 +110,19 @@ private suspend fun ExpenseEditViewModel.readCurrentFunding(funds: FundsReposito
     val accounts = funds.reads.accounts(binding).getOrThrow()
     if (accounts.fromCache) throw CorrectionValidationError(R.string.funds_network_required)
     return expense to accounts.value
+}
+
+/** Write the user's newer edits before admitting Save, so a crash cannot restore the rejected older form. */
+internal suspend fun ExpenseEditViewModel.retainPendingConfirmationEdits(expense: Expense, draft: ExpenseDraft): Result<Unit> = runCatching {
+    if (expense.id < 0) return@runCatching
+    val session = fundingInputSession ?: throw CorrectionValidationError(R.string.funds_funding_not_ready)
+    session.flush().getOrThrow()
+    val retained = session.draft("pending_funding") ?: return@runCatching
+    if (retained.confirmationChanges == null) return@runCatching
+    val changes = draft.toRequest(baseline = expense).copy(expectedRowVersion = null)
+    session.keep("pending_funding", retained.copy(confirmationChanges = changes))
+    session.flush().getOrThrow()
+    _uiState.update { it.copy(confirmationChanges = changes) }
 }
 
 internal suspend fun ExpenseEditViewModel.readyPendingFunding(draft: ExpenseDraft): Result<ExpenseFactOriginalInput?> {
@@ -108,7 +135,7 @@ internal suspend fun ExpenseEditViewModel.readyPendingFunding(draft: ExpenseDraf
     if (ready.isFailure) return Result.failure(requireNotNull(ready.exceptionOrNull()))
     val values = session.draft("pending_funding") ?: return Result.failure(CorrectionValidationError(R.string.funds_funding_input_unreadable))
     return runCatching {
-        if (readExpenseFunding(values.fundingJson, requireNotNull(draft.originalCurrencyCode)) != draft.funding)
+        if (readExpenseFunding(values.fundingJson, requireNotNull(draft.originalCurrencyCode), draft.originalAmountMinor) != draft.funding)
             throw CorrectionValidationError(R.string.expense_fact_input_review_required)
         original
     }

@@ -278,7 +278,7 @@ class FactEntryNavigationTest {
             assertEquals(MAIN_ROUTE, outer.currentBackStackEntry?.destination?.route)
             assertEquals(1, harness.shell.expenseEditCompletionRevision)
             assertEquals("confirmed", harness.fixture.network.current.status)
-            assertEquals(listOf("save", "confirm"), harness.fixture.network.editCalls)
+            assertEquals(listOf("confirm"), harness.fixture.network.editCalls)
         }
     }
 
@@ -487,17 +487,17 @@ class FactEntryNavigationTest {
         compose.onAllNodesWithText(failure).assertCountEquals(0)
         compose.onNodeWithTag(TAG_TAGS_FIELD).performScrollTo().assertTextContains(tags)
         compose.onNodeWithText(confirm).assertIsEnabled().performClick()
-        compose.waitUntil(5_000) { harness.fixture.stored().any { it["type"] == PendingMutationType.PatchExpense.wireValue } }
-        val patchRow = harness.fixture.stored().single { it["type"] == PendingMutationType.PatchExpense.wireValue }
-        val patch = org.json.JSONObject(requireNotNull(patchRow["payload"]))
+        compose.waitUntil(5_000) { harness.fixture.stored().any { it["type"] == PendingMutationType.ConfirmExpense.wireValue } }
+        val confirmationRow = harness.fixture.stored().single { it["type"] == PendingMutationType.ConfirmExpense.wireValue }
+        val patch = org.json.JSONObject(requireNotNull(confirmationRow["payload"])).getJSONObject("changes")
         assertEquals(tags, patch.getString("tags"))
-        assertEquals((before.rowVersion + 1).toString(), patchRow["expectedRowVersion"])
+        assertEquals((before.rowVersion + 1).toString(), confirmationRow["expectedRowVersion"])
         network.patchReply = network.current.copy(rowVersion = 9, tags = tags)
         network.confirmReply = network.current.copy(status = "confirmed", rowVersion = 10, tags = tags,
             confirmedAt = "2026-09-20T02:00:00Z").withConfirmationReceipt()
         drainAdmittedConfirm()
         waitForText(context.getString(R.string.expense_confirmation_title))
-        assertEquals(listOf("save", "confirm"), network.editCalls)
+        assertEquals(listOf("confirm"), network.editCalls)
         assertEquals("confirmed", network.current.status)
         assertEquals(before.amountCents, network.current.amountCents)
         saveConsumerArtPreview("pending-original-confirmed", requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()))
@@ -771,16 +771,16 @@ class FactEntryNavigationTest {
         compose.waitUntil(5_000) {
             harness.fixture.stored().any { it["type"] == PendingMutationType.ConfirmExpense.wireValue }
         }
-        val patch = harness.fixture.stored().single { it["type"] == PendingMutationType.PatchExpense.wireValue }
-        val confirm = harness.fixture.stored().single { it["type"] == PendingMutationType.ConfirmExpense.wireValue }
+        val confirm = harness.fixture.stored().filter {
+            it["type"] in setOf(PendingMutationType.PatchExpense.wireValue, PendingMutationType.ConfirmExpense.wireValue)
+        }.single()
+        assertEquals(PendingMutationType.ConfirmExpense.wireValue, confirm["type"])
         runBlocking { harness.fixture.drainExpenseLifecycle() }
         val network = harness.fixture.network
-        val patchRequest = requireNotNull(OutboxAdapterGraph().patchExpenseAdapter.fromJson(requireNotNull(patch["payload"])))
-            .copy(expectedRowVersion = requireNotNull(patch["expectedRowVersion"]).toLong())
-        assertEquals(Triple("42", patchRequest, patch["idempotencyKey"]), network.patchCalls.single())
-        assertEquals("42", network.confirmCalls.single().first)
-        assertEquals(requireNotNull(network.patchReply).rowVersion, network.confirmCalls.single().second.expectedRowVersion)
-        assertEquals(confirm["idempotencyKey"], network.confirmCalls.single().third)
+        val request = requireNotNull(OutboxAdapterGraph().expenseStateTokenAdapter.fromJson(requireNotNull(confirm["payload"])))
+            .copy(expectedRowVersion = requireNotNull(confirm["expectedRowVersion"]).toLong())
+        assertTrue(network.patchCalls.isEmpty())
+        assertEquals(Triple("42", request, confirm["idempotencyKey"]), network.confirmCalls.single())
         assertTrue(!network.confirmCalls.single().third.isNullOrBlank())
     }
 

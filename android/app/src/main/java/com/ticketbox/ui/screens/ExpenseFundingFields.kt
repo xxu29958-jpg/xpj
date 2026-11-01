@@ -36,8 +36,19 @@ internal val LocalFundsRepository = compositionLocalOf<FundsRepository?> { null 
 
 private val fundingAdapter = fundingInputAdapter
 
+internal data class ExpenseFundingAmount(val currency: CurrencyCode, val totalMinor: Long? = null) {
+    fun simpleAmount(row: ExpenseFundingInput, count: Int, refund: Boolean): String? {
+        val total = totalMinor?.takeIf { it > 0 } ?: return null
+        if (count != 1 || refund || row.accountCurrency != currency.storageKey || row.expenseCurrency != currency.storageKey) return null
+        fun matches(raw: String) = raw.isBlank() || com.ticketbox.presentation.parseMinorAmount(raw, currency) == total
+        return if (matches(row.expenseAmount) && matches(row.accountAmount)) com.ticketbox.presentation.formatMinorAmountInput(total, currency) else null
+    }
+}
+
+private data class FundingPartValues(val row: ExpenseFundingInput, val simpleAmount: String?)
+
 @Composable
-internal fun ExpenseFundingFields(json: String, currency: CurrencyCode, enabled: Boolean, refund: Boolean = false, change: (String) -> Unit) {
+internal fun ExpenseFundingFields(json: String, amount: ExpenseFundingAmount, enabled: Boolean, refund: Boolean = false, change: (String) -> Unit) {
     val repository = LocalFundsRepository.current ?: return
     var choose by rememberSaveable { mutableStateOf(false) }
     var attempt by remember { mutableStateOf(0) }
@@ -51,7 +62,7 @@ internal fun ExpenseFundingFields(json: String, currency: CurrencyCode, enabled:
         options.message?.let { Text(it) }
         if (parsed.isFailure) Text(stringResource(R.string.funds_funding_input_unreadable))
         parts.forEachIndexed { index, row ->
-            FundingPartFields(row, editable, refund, put = { next ->
+            FundingPartFields(FundingPartValues(row, amount.simpleAmount(row, parts.size, refund)), editable, refund, put = { next ->
                 change(fundingAdapter.toJson(parts.toMutableList().also { it[index] = next }))
             }, remove = { change(fundingAdapter.toJson(parts.filterIndexed { n, _ -> n != index })) })
         }
@@ -62,7 +73,7 @@ internal fun ExpenseFundingFields(json: String, currency: CurrencyCode, enabled:
         LazyColumn {
             items(accounts, key = { it.publicId }) { row -> TextButton(onClick = {
                 change(fundingAdapter.toJson(parts + ExpenseFundingInput(java.util.UUID.randomUUID().toString(), row.publicId,
-                    row.rowVersion, row.name, row.currencyCode, currency.storageKey))); choose = false
+                    row.rowVersion, row.name, row.currencyCode, amount.currency.storageKey))); choose = false
             }) { Text("${row.name} · ${row.currencyCode}") } }
             if (accounts.isEmpty()) item { Text(stringResource(R.string.funds_no_accounts)) }
         }
@@ -71,11 +82,13 @@ internal fun ExpenseFundingFields(json: String, currency: CurrencyCode, enabled:
 }
 
 @Composable
-private fun FundingPartFields(row: ExpenseFundingInput, editable: Boolean, refund: Boolean,
+private fun FundingPartFields(values: FundingPartValues, editable: Boolean, refund: Boolean,
     put: (ExpenseFundingInput) -> Unit, remove: () -> Unit) {
 
+            val row = values.row
             Text("${row.accountName} · ${row.accountCurrency}")
-            OutlinedTextField(row.expenseAmount, { value -> put(row.copy(expenseAmount = value,
+            if (values.simpleAmount != null) Text("${stringResource(R.string.funds_actual_debit)}：${values.simpleAmount} ${row.accountCurrency}")
+            else OutlinedTextField(row.expenseAmount, { value -> put(row.copy(expenseAmount = value,
                 accountAmount = if (row.accountCurrency == row.expenseCurrency) value else row.accountAmount)) },
                 label = { Text("${if (refund) stringResource(R.string.funds_refund_part) else stringResource(R.string.funds_expense_part)}（${row.expenseCurrency}）") }, enabled = editable, modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
@@ -107,9 +120,9 @@ private fun rememberFundingAccounts(repository: FundsRepository, refund: Boolean
 }
 
 @Composable
-internal fun ExpenseFundingReview(state: com.ticketbox.viewmodel.ExpenseEditUiState, currency: CurrencyCode,
+internal fun ExpenseFundingReview(state: com.ticketbox.viewmodel.ExpenseEditUiState, amount: ExpenseFundingAmount,
     canMutateFact: Boolean, commandOpen: Boolean, actions: ExpenseEditRelatedActions) {
-    ExpenseFundingFields(state.fundingJson, currency, canMutateFact && state.fundingReady && !state.saving,
+    ExpenseFundingFields(state.fundingJson, amount, canMutateFact && state.fundingReady && !state.saving,
         change = actions.onFundingChange)
     state.fundingMessage?.let { Text(it.asString()) }
     if (state.fundingWriting) Text(stringResource(R.string.funds_funding_saving))

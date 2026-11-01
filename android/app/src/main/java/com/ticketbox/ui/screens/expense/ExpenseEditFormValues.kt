@@ -47,5 +47,28 @@ internal data class ExpenseEditFormValues(
             valueScoreText = expense.valueScore?.toString().orEmpty(),
             regretScoreText = expense.regretScore?.toString().orEmpty(),
         )
+
+        fun fromConfirmation(expense: Expense, changes: com.ticketbox.data.remote.dto.ExpenseUpdateRequest?): ExpenseEditFormValues {
+            val baseline = fromExpense(expense)
+            if (changes == null) return baseline
+            return baseline.copy(
+                currency = changes.originalCurrency?.let { requireNotNull(CurrencyCode.fromStorageKeyOrNull(it)) } ?: baseline.currency,
+                amountText = changes.originalAmount ?: baseline.amountText,
+                manualExchangeRateText = changes.manualExchangeRate ?: baseline.manualExchangeRateText,
+                merchant = changes.merchant ?: baseline.merchant, category = changes.category ?: baseline.category,
+                note = changes.note ?: baseline.note, tags = changes.tags ?: baseline.tags,
+                expenseTime = confirmationInstant(changes) ?: baseline.expenseTime,
+                valueScoreText = changes.valueScore?.toString() ?: baseline.valueScoreText,
+                regretScoreText = changes.regretScore?.toString() ?: baseline.regretScoreText,
+                categoryChoice = changes.categoryChoice, categoryDecisionPublicId = changes.categoryDecisionPublicId,
+                recognitionFieldChoicesJson = changes.recognitionFieldChoices.orEmpty().fold(null as String?) { raw, choice ->
+                    updateFieldChoice(raw, choice.field, choice) },
+                originalTextFeedbackJson = changes.originalTextFeedback.orEmpty().fold(null as String?) { raw, feedback ->
+                    updateOriginalFeedback(raw, feedback.field, feedback) },
+            )
+        }
     }
 }
+
+private fun confirmationInstant(changes: com.ticketbox.data.remote.dto.ExpenseUpdateRequest): String? =
+    changes.timeInput?.instantUtc ?: changes.expenseTime ?: changes.spentAt

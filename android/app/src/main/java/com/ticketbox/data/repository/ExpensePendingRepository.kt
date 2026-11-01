@@ -47,9 +47,13 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
             }.distinctUntilChanged()
         }.distinctUntilChanged()
 
-    private fun hasOriginalTextFeedback(row: OutboxRow): Boolean = row.type == PendingMutationType.PatchExpense &&
-        runCatching { !core.offlineMutations.patchExpenseAdapter.fromJson(row.payloadJson)?.originalTextFeedback.isNullOrEmpty() }
-            .getOrDefault(false)
+    private fun hasOriginalTextFeedback(row: OutboxRow): Boolean = runCatching {
+        when (row.type) {
+            PendingMutationType.PatchExpense -> !core.offlineMutations.patchExpenseAdapter.fromJson(row.payloadJson)?.originalTextFeedback.isNullOrEmpty()
+            PendingMutationType.ConfirmExpense -> !core.offlineMutations.expenseStateTokenAdapter.fromJson(row.payloadJson)?.changes?.originalTextFeedback.isNullOrEmpty()
+            else -> false
+        }
+    }.getOrDefault(false)
 
     override suspend fun saveExpenseAllowingOffline(
         expectedBinding: LogicalSessionBinding, id: Long, draft: ExpenseDraft, baseline: Expense,
@@ -64,8 +68,9 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
         expectedBinding: LogicalSessionBinding, expense: Expense, draft: ExpenseDraft,
         originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
-        ExpenseCommandAcceptance(projectOptimisticExpense(expense, draft), admit(expectedBinding,
-            listOf(patchIntent(expense, draft), stateIntent(PendingMutationType.ConfirmExpense, expense, draft.funding)), originalInput))
+        val intent = stateIntent(PendingMutationType.ConfirmExpense, expense, draft.funding,
+            changes = draft.toRequest(baseline = expense).copy(expectedRowVersion = null))
+        ExpenseCommandAcceptance(projectOptimisticExpense(expense, draft), admit(expectedBinding, listOf(intent), originalInput))
     }
 
     override suspend fun confirmExpenses(
@@ -166,13 +171,14 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
 
     private fun stateIntent(type: PendingMutationType, expense: Expense,
         funding: List<com.ticketbox.domain.model.ExpenseFunding> = emptyList(),
-        duplicateDecisionPublicId: String? = null): PendingMutationIntent {
+        duplicateDecisionPublicId: String? = null,
+        changes: com.ticketbox.data.remote.dto.ExpenseUpdateRequest? = null): PendingMutationIntent {
         requireBaseline(expense)
         return PendingMutationIntent(type, expenseOutboxTargetId(expense),
             core.offlineMutations.expenseStateTokenAdapter.toJson(ExpenseStateTokenRequest(0L,
                 funding.takeIf { it.isNotEmpty() }?.map { com.ticketbox.data.remote.dto.ExpenseFundingPartDto(
                     it.componentId, it.accountPublicId, it.accountRowVersion, it.expenseAmountMinor, it.accountAmountMinor,
-                    it.includedInOpening, it.expenseCurrencyCode, it.accountCurrencyCode) }, duplicateDecisionPublicId)),
+                    it.includedInOpening, it.expenseCurrencyCode, it.accountCurrencyCode) }, duplicateDecisionPublicId, changes = changes)),
             expense.rowVersion, UUID.randomUUID().toString())
     }
 

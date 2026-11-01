@@ -86,10 +86,15 @@ class ConfirmExpenseDispatcher(
 
     private fun confirmationFailure(e: HttpException, request: ExpenseStateTokenRequest): DispatchResult {
             val result = mapOutboxHttpException(e)
-            return if (!request.funding.isNullOrEmpty() && (result is DispatchResult.Discarded ||
+            return if ((request.changes != null || !request.funding.isNullOrEmpty()) && (result is DispatchResult.Discarded ||
                     result is DispatchResult.Failure && result.definitelyRejected)) {
-                // A missing/revoked payer or invalid allocation requires review, never silent consumption of the input.
-                DispatchResult.Conflict("付款来源未被接受，请回到这笔待确认消费，保留原输入核对最新账户。")
+                // A proven refusal returns all atomic edits to review, including an unfunded expense.
+                val message = when (result) {
+                    is DispatchResult.Discarded -> result.reason
+                    is DispatchResult.Failure -> result.message
+                    else -> null
+                }
+                DispatchResult.Conflict(message ?: "确认未被接受，请保留原输入重新核对。")
             } else result
     }
 }

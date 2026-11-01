@@ -165,7 +165,7 @@ private fun OffsetFormContent(
             )
             OffsetAmountField(state = state, viewModel = viewModel)
             form.sourceExpense?.let { expense ->
-                com.ticketbox.ui.screens.ExpenseFundingFields(form.destinationsJson, expense.originalCurrencyCode,
+                com.ticketbox.ui.screens.ExpenseFundingFields(form.destinationsJson, com.ticketbox.ui.screens.ExpenseFundingAmount(expense.originalCurrencyCode),
                     viewModel.canEditFactInput(form.inputKey()), refund = true) {
                     viewModel.updateOffsetFormField(OffsetFormField.Destinations, it)
                 }

@@ -549,6 +549,13 @@ def post_confirm_expense(
         device_id=auth.device_id,
         expected_row_version=payload.expected_row_version,
     )
+    changes = payload.changes
+    if changes is not None and changes.expected_row_version not in (None, payload.expected_row_version):
+        raise AppError("state_conflict", status_code=409)
+    update_payload = ExpenseUpdateRequest.model_validate({
+        **changes.model_dump(exclude_unset=True, exclude={"expected_row_version", "funding"}),
+        "expected_row_version": effective_row_version,
+    }) if changes is not None else None
     receipt = confirm_expense_submission(
         db,
         expense_id=expense_pk,
@@ -557,7 +564,7 @@ def post_confirm_expense(
         expected_row_version=effective_row_version,
         request_expected_row_version=payload.expected_row_version,
         intent_body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
-        update_payload=None,
+        update_payload=update_payload,
         actor_account_id=auth.account_id,
         actor_device_id=auth.device_id,
         require_idempotency=True,
