@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.ticketbox.data.repository.UploadBatchRequest
 
 import com.ticketbox.R
+import com.ticketbox.domain.model.DEFAULT_EXPENSE_CATEGORIES
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ProtectedImage
 import com.ticketbox.domain.model.UiText
@@ -54,6 +55,27 @@ internal class PendingViewModelReviewSheetAndStateTest : PendingViewModelReviewT
         assertEquals(0, fake.rejectCalls)
         assertEquals(0, fake.markNotDuplicateCalls)
         assertTrue(fake.uploadIntents.accepted.isEmpty())
+    }
+
+    @Test
+    fun quickCategoryOffersDefaultCategoriesWhenTheListCannotLoad() = review {
+        val target = expense(id = 51L)
+        val fake = FakeReviewActions(pending = listOf(target)).apply { categoriesFailure = RuntimeException("offline") }
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.openQuickCategory(target)
+        assertEquals(DEFAULT_EXPENSE_CATEGORIES, vm.uiState.value.categoryOptions)
+    }
+
+    @Test
+    fun quickCategoryUsesTheLedgerCategoriesOnceLoaded() = review {
+        val target = expense(id = 52L)
+        val fake = FakeReviewActions(pending = listOf(target), categoryOptions = listOf("餐饮", "宠物"))
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+
+        assertEquals(listOf("餐饮", "宠物"), vm.uiState.value.categoryOptions)
     }
 
     @Test
