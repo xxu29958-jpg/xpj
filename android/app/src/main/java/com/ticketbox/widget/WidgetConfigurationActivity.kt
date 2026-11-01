@@ -87,7 +87,6 @@ class WidgetConfigurationActivity : FragmentActivity() {
             auth.authenticate(onSuccess = { complete(expected) }, onError = ::restoreSummarySelection)
         } else {
             // Device credentials on Android 9/10 use the system confirmation activity.
-            @Suppress("DEPRECATION")
             val confirmation = getSystemService(KeyguardManager::class.java)
                 .createConfirmDeviceCredentialIntent(getString(R.string.widget_reveal), null)
             if (confirmation == null) state.value = state.value.copy(error = getString(R.string.widget_lock_required))
