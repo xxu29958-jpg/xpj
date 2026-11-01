@@ -72,16 +72,7 @@ fun ExpenseEditViewModel.reviewPendingFunding(funds: FundsRepository) {
             if (binding != repository.captureDeferredLedgerBinding()) throw CorrectionValidationError(R.string.funds_original_binding_note)
             val changes = if (rejected != null) rejected.confirmationChanges() else state.confirmationChanges
             val draft = ExpenseFactInputDraft(fresh, fundingJson = json, confirmationChanges = changes)
-            if (rejected != null) {
-                val input = ExpenseFactOriginalInput(binding, expense.id, "pending_funding",
-                    java.util.UUID.randomUUID().toString(), ExpenseFactInputCodec.encode(draft))
-                funds.reopenExpenseConfirmation(binding, rejected, input, repository.originalInputs).getOrThrow()
-                fundingInputSession = null
-                savedState.remove<LongArray>("expense_command_ids")
-            } else {
-                requireNotNull(fundingInputSession).keep("pending_funding", draft, review = true)
-                requireNotNull(fundingInputSession).flush().getOrThrow()
-            }
+            persistReviewedFunding(funds, binding, rejected, draft)
             _uiState.update { it.copy(expense = fresh, saving = false, fundingJson = json,
                 confirmationChanges = changes,
                 fundingReviewAvailable = false, commandRowIds = emptyList(), commandsCompleted = false,
@@ -94,6 +85,21 @@ fun ExpenseEditViewModel.reviewPendingFunding(funds: FundsRepository) {
             }
         }
     }
+}
+
+private suspend fun ExpenseEditViewModel.persistReviewedFunding(funds: FundsRepository,
+    binding: com.ticketbox.data.repository.LogicalSessionBinding, rejected: com.ticketbox.data.repository.OutboxRow?,
+    draft: ExpenseFactInputDraft) {
+    if (rejected == null) {
+        requireNotNull(fundingInputSession).keep("pending_funding", draft, review = true)
+        requireNotNull(fundingInputSession).flush().getOrThrow()
+        return
+    }
+    val input = ExpenseFactOriginalInput(binding, draft.baseline.id, "pending_funding",
+        java.util.UUID.randomUUID().toString(), ExpenseFactInputCodec.encode(draft))
+    funds.reopenExpenseConfirmation(binding, rejected, input, repository.originalInputs).getOrThrow()
+    fundingInputSession = null
+    savedState.remove<LongArray>("expense_command_ids")
 }
 
 private suspend fun ExpenseEditViewModel.readCurrentFunding(funds: FundsRepository,
