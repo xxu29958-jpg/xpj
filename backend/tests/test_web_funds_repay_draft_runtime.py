@@ -37,27 +37,46 @@ window.addEventListener("load", () => {
 });
 </script></body>"""
 
+INSTALLMENT_PROBE = """<script>
+window.addEventListener("load", () => {
+  setTimeout(() => {
+    const source = document.querySelector("[data-installment-draws] input");
+    if (!sessionStorage.getItem("installment-source-clicked")) {
+      source.click();
+      sessionStorage.setItem("installment-source-clicked", "true");
+      location.reload();
+      return;
+    }
+    window.__fundsInstallmentProbe = {
+      checked: source.checked,
+      selected: JSON.parse(document.querySelector('[name="draw_ids_json"]').value),
+      sourceId: source.dataset.drawId,
+    };
+  }, 800);
+});
+</script></body>"""
+
 
 @pytest.fixture()
 def installed_funds_web():
     yield from installed_web_setup()
 
 
-def _repay_page(installed) -> str:
+def _funds_page(installed, *, task="repay", opening="0", probe=PROBE) -> str:
     token = _connect_local_session(installed, next_url="/web/funds")
     cookie = f"{SESSION_COOKIE_NAME}={token}"
     page = installed.browser.get("/web/funds?task=create", headers={"Cookie": cookie})
     headers = {"Cookie": f"{cookie}; {CSRF_COOKIE_NAME}={page.cookies.get(CSRF_COOKIE_NAME)}",
         "Origin": "http://127.0.0.1:8000", "Accept": "application/json"}
     fields = hidden_post_forms(page.text)["/web/funds/save"]
-    fields.update(name="浏览器信用账户", kind="credit", currency_code="CNY", opening_amount="0", visibility="private",
+    fields.update(name="浏览器信用账户", kind="credit", currency_code="CNY", opening_amount=opening, visibility="private",
         opening_source="本人对账", occurred_on="2026-10-18", institution="", tail="")
     created = installed.browser.post("/web/funds/save", data=fields, headers=headers)
     assert created.status_code == 200, created.text
     account = created.json()["receipt"]["public_id"]
-    repay = installed.browser.get(f"/web/funds?task=repay&account_id={account}", headers=headers)
+    repay = installed.browser.get(f"/web/funds?task={task}&account_id={account}", headers=headers)
     assert repay.status_code == 200 and "data-funds-form" in repay.text, repay.text[:500]
-    return repay.text.replace("</body>", PROBE)
+    return repay.text.replace("</body>", probe)
 
 
 def _serve(body: str):
@@ -87,7 +106,7 @@ def _serve(body: str):
 @pytest.mark.currency_binding_unbound
 def test_opening_the_repayment_form_saves_no_draft_until_the_person_types(installed_funds_web, tmp_path: Path) -> None:
     browser = browser_runtime._discover_database_browser()
-    server = _serve(_repay_page(installed_funds_web))
+    server = _serve(_funds_page(installed_funds_web))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -99,3 +118,21 @@ def test_opening_the_repayment_form_saves_no_draft_until_the_person_types(instal
         server.server_close()
         thread.join(timeout=5)
     assert result == {"afterLoad": 0, "afterTyping": 1}
+
+
+@pytest.mark.currency_binding_unbound
+def test_installment_source_selection_survives_draft_capture_and_reload(installed_funds_web, tmp_path: Path) -> None:
+    browser = browser_runtime._discover_database_browser()
+    server = _serve(_funds_page(installed_funds_web, task="installments", opening="100", probe=INSTALLMENT_PROBE))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        result = browser_runtime._edge_cdp().evaluate_page(browser, profile=tmp_path / "funds-installments-browser",
+            prepare_url=lambda _: f"http://127.0.0.1:{server.server_port}/web/funds?task=installments",
+            width=393, height=900, expression="window.__fundsInstallmentProbe || undefined")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+    assert result["checked"] is True
+    assert result["selected"] == [result["sourceId"]]
