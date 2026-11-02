@@ -5,7 +5,7 @@
   const field = name => form.elements.namedItem(name);
   const save = (name, value) => { field(name).value = JSON.stringify(value); field(name).dispatchEvent(new Event("input", {bubbles: true})); };
   const draws = form.querySelector("[data-installment-draws]");
-  if (draws) draws.addEventListener("change", () => save("draw_ids_json", [...draws.querySelectorAll("input:checked")].map(input => input.dataset.drawId)));
+  if (draws) draws.addEventListener("input", () => save("draw_ids_json", [...draws.querySelectorAll("input:checked")].map(input => input.dataset.drawId)));
   const periods = form.querySelector("[data-installment-periods]");
   let previous = null;
   function renderPeriods() {
