@@ -74,6 +74,7 @@
     const action = row.querySelector("[data-original-row-action]");
     action.textContent = state.action;
     action.className = "product-status product-status--" + state.tone;
+    action.hidden = false;
     row.querySelector("[data-original-row-time]").textContent = health.checked_at ?
       "检查于 " + new Date(health.checked_at).toLocaleString("zh-CN", {hour12: false}) : "本次未能检查，可打开账单重试";
   }
