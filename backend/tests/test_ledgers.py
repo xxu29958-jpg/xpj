@@ -386,8 +386,10 @@ def test_owner_ledgers_lists_and_creates(local_client: TestClient) -> None:
     assert 'aria-label="当前账本"' in listing.text
     assert "家庭成员邀请、角色调整和拥有者转让" in listing.text
     assert "拥有者" in listing.text
-    # Each ledger row exposes a "打开账本" link carrying its ledger_id.
-    assert 'href="/web?ledger_id=owner"' in listing.text
+    # Opening a ledger explicitly switches the existing Web session first.
+    assert 'action="/web/auth/ledgers"' in listing.text
+    assert 'name="ledger_id" value="owner"' in listing.text
+    assert 'name="next" value="/web"' in listing.text
     assert "打开账本" in listing.text
     assert 'data-confirm="归档账本' in listing.text
     assert "return confirm(" not in listing.text

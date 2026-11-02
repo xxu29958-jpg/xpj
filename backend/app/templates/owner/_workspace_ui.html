@@ -2,6 +2,15 @@
 <svg class="workspace-icon" width="24" height="24" aria-hidden="true" focusable="false"><use href="/static/shared/vendor/lucide/icons.svg?v={{ asset_version }}#{{ name }}"></use></svg>
 {%- endmacro %}
 
+{% macro web_ledger_entry(ledger_id, destination, label='', css_class='text-link', new_tab=false) -%}
+<form method="post" action="/web/auth/ledgers" class="owner-web-entry"{% if new_tab %} target="_blank" rel="noopener"{% endif %}>
+  {{ csrf_field|safe }}
+  <input type="hidden" name="ledger_id" value="{{ ledger_id }}">
+  <input type="hidden" name="next" value="{{ destination }}">
+  <button type="submit" class="{{ css_class }}">{% if caller is defined %}{{ caller() }}{% else %}{{ label }}{% endif %}</button>
+</form>
+{%- endmacro %}
+
 {% macro task_link(url, title, symbol, description='', tone='green') -%}
 <a class="workspace-task" href="{{ url }}">
   <span class="workspace-task__icon workspace-tone-{{ tone }}">{{ icon(symbol) }}</span>

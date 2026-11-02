@@ -126,7 +126,11 @@ def test_owner_home_keeps_managed_and_primary_ledger_scopes_distinct(local_clien
     assert "主账本" in text
     assert vm.ledger_name in text and "旅行账本" in text
     assert re.search(rf"\b{vm.pending_count}\s+待确认", text)
-    assert f"/web/data-quality?ledger_id={other.ledger_id}" in response.text
+    assert re.search(
+        rf'name="ledger_id" value="{other.ledger_id}">\s*'
+        r'<input type="hidden" name="next" value="/web/data-quality">',
+        response.text,
+    )
     audit_heading = re.search(r"<h2>规则应用审计(.*?)</h2>", response.text, re.DOTALL)
     assert audit_heading is not None
     assert vm.ledger_name in audit_heading.group(1)

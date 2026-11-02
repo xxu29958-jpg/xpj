@@ -372,5 +372,7 @@ def test_owner_console_members_surface_is_retired_to_the_product(
 
     assert ledgers.status_code == 200
     assert "/owner/ledgers/owner/members" not in ledgers.text
-    assert "/web/family?ledger_id=owner" in ledgers.text
+    assert 'action="/web/auth/ledgers"' in ledgers.text
+    assert 'name="ledger_id" value="owner"' in ledgers.text
+    assert 'name="next" value="/web/family"' in ledgers.text
     assert retired.status_code == 404

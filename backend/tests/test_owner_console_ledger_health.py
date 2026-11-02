@@ -130,7 +130,7 @@ def _seed_debt_goal(db, *, tenant_id: str, owner_id: int, link_status: str, name
 def test_owner_index_renders_ledger_health_section(local_client: TestClient) -> None:
     body = local_client.get("/owner").text
     assert "账本健康" in body
-    assert "/web/data-quality?ledger_id=" in body
+    assert 'name="next" value="/web/data-quality"' in body
     # slice-5 columns are always present (even with no debt data).
     assert "外部欠款" in body
     assert "目标复核" in body
@@ -146,8 +146,10 @@ def test_owner_ledger_health_shows_pending_count(local_client: TestClient, *, id
     body = local_client.get("/owner").text
     # The default ledger is "owner"; that row must now show ≥ 1 pending.
     assert "账本健康" in body
-    # Quick links scoped per ledger.
-    assert 'href="/web?ledger_id=owner"' in body
+    # Entry forms switch to the selected ledger without bypassing Web auth.
+    assert 'action="/web/auth/ledgers"' in body
+    assert 'name="ledger_id" value="owner"' in body
+    assert 'name="next" value="/web"' in body
 
 
 def test_owner_ledger_health_no_secret_leak(local_client: TestClient, *, identity) -> None:
@@ -259,7 +261,8 @@ def test_owner_ledger_health_goal_review_warn_badge_links_debt_goals(
         db.commit()
     body = local_client.get("/owner").text
     assert "需复核" in body
-    assert '/web/debt-goals?ledger_id=owner' in body
+    assert 'name="ledger_id" value="owner"' in body
+    assert 'name="next" value="/web/debt-goals"' in body
 
 
 def test_owner_ledger_health_no_warn_badge_when_goals_clean(

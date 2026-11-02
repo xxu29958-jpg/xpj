@@ -1,5 +1,5 @@
 {% extends "_workspace.html" %}
-{% from "_workspace_ui.html" import icon with context %}
+{% from "_workspace_ui.html" import icon, web_ledger_entry with context %}
 {% block title %}账本管理 — 小票夹{% endblock %}
 {% block workspace_title %}账本管理{% endblock %}
 {% block workspace_description %}每本账，保留自己的记录和归属。{% endblock %}
@@ -31,8 +31,8 @@
             <div><dt>绑定设备</dt><dd>{{ row.active_device_count }}</dd></div>
           </dl>
           <div class="workspace-ledger-actions">
-            <a href="/web?ledger_id={{ row.ledger_id }}" class="btn btn-secondary">打开账本 {{ icon('arrow-right') }}</a>
-            <a href="/web/family?ledger_id={{ row.ledger_id }}" class="btn btn-secondary">家庭成员</a>
+            {% call web_ledger_entry(row.ledger_id, '/web', css_class='btn btn-secondary') %}打开账本 {{ icon('arrow-right') }}{% endcall %}
+            {{ web_ledger_entry(row.ledger_id, '/web/family', '家庭成员', 'btn btn-secondary') }}
             {% if row.role == 'owner' %}<a href="/owner/ledgers/{{ row.ledger_id }}/calendar" class="btn btn-secondary">账务日历</a>{% endif %}
           </div>
           {% if row.role == 'owner' %}

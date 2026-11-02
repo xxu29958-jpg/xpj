@@ -7,11 +7,11 @@ from collections.abc import Iterator
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.middleware.csrf import CSRF_COOKIE_NAME
-from app.models import Account, AuthToken, Device
+from app.models import Account, AuthToken, Device, LedgerMember
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from app.services.identity_service import hash_secret, new_session_token
 from app.services.session_lifecycle_service import WEB_SESSION_TTL_SECONDS
@@ -156,3 +156,120 @@ def test_expired_local_session_post_recovers_to_referring_get_page(
     )
     assert cross_origin.status_code == 303
     assert cross_origin.headers["location"] == "/web/auth/local?next=%2Fweb"
+
+
+def _owner_entry_form(
+    installed_web: _InstalledWeb, destination: str, page_path: str = "/owner/ledgers",
+) -> dict[str, str]:
+    page = installed_web.browser.get(page_path)
+    assert page.status_code == 200, page.text
+    forms = re.findall(
+        r'<form method="post" action="/web/auth/ledgers"[^>]*>(.*?)</form>',
+        page.text,
+        re.DOTALL,
+    )
+    for form in forms:
+        fields = dict(re.findall(r'name="([^"]+)" value="([^"]*)"', form))
+        if fields.get("ledger_id") == "owner" and fields.get("next") == destination:
+            assert fields["csrf_token"]
+            return fields
+    pytest.fail(f"Owner ledger entry has no session-switch form for {destination}")
+
+
+def _entry_headers(installed_web: _InstalledWeb, session_token: str) -> dict[str, str]:
+    return {
+        "Cookie": (
+            f"{SESSION_COOKIE_NAME}={session_token}; "
+            f"{CSRF_COOKIE_NAME}={installed_web.browser.cookies.get(CSRF_COOKIE_NAME)}"
+        ),
+        "Origin": "http://127.0.0.1:8000",
+    }
+
+
+@pytest.mark.parametrize(("page_path", "destination"), [
+    ("/owner/ledgers", "/web"),
+    ("/owner/ledgers", "/web/family"),
+    ("/owner", "/web"),
+    ("/owner", "/web/data-quality"),
+    ("/owner/algorithm-versions?ledger_id=owner", "/web/pending"),
+])
+def test_owner_entry_switches_existing_session_without_new_identity(
+    installed_web: _InstalledWeb, page_path: str, destination: str,
+) -> None:
+    session_token = _connect_local_session(installed_web)
+    fields = _owner_entry_form(installed_web, destination, page_path)
+    headers = _entry_headers(installed_web, session_token)
+    with SessionLocal() as db:
+        counts = [db.scalar(select(func.count()).select_from(model))
+                  for model in (Account, Device, AuthToken)]
+        token = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(session_token)))
+        original_device = token.device_id
+        assert token.ledger_id == installed_web.shared_ledger_id
+
+    # Merely changing a URL still cannot change the authenticated ledger.
+    forbidden = installed_web.browser.get("/web?ledger_id=owner", headers=headers)
+    assert forbidden.status_code == 403
+    response = installed_web.browser.post(
+        "/web/auth/ledgers", data=fields, headers=headers, follow_redirects=False,
+    )
+    assert response.status_code == 303, response.text
+    assert response.headers["location"] == destination
+    assert SESSION_COOKIE_NAME not in response.headers.get("set-cookie", "")
+    page = installed_web.browser.get(destination, headers=headers)
+    assert page.status_code == 200, page.text
+    assert installed_web.installation_ledger_name in page.text
+    with SessionLocal() as db:
+        token = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(session_token)))
+        assert (token.account_id, token.device_id, token.ledger_id) == (
+            installed_web.installation_account_id, original_device, "owner",
+        )
+        assert counts == [db.scalar(select(func.count()).select_from(model))
+                          for model in (Account, Device, AuthToken)]
+
+
+@pytest.mark.parametrize("rejection", ["csrf", "membership"])
+def test_owner_entry_rejection_keeps_original_session_binding(
+    installed_web: _InstalledWeb, rejection: str,
+) -> None:
+    session_token = _connect_local_session(installed_web)
+    fields = _owner_entry_form(installed_web, "/web")
+    headers = _entry_headers(installed_web, session_token)
+    if rejection == "csrf":
+        fields.pop("csrf_token")
+    else:
+        with SessionLocal() as db:
+            membership = db.scalar(select(LedgerMember).where(
+                LedgerMember.ledger_id == "owner",
+                LedgerMember.account_id == installed_web.installation_account_id,
+            ))
+            membership.disabled_at = now_utc()
+            db.commit()
+    response = installed_web.browser.post(
+        "/web/auth/ledgers", data=fields, headers=headers, follow_redirects=False,
+    )
+    if rejection == "csrf":
+        assert response.status_code == 403
+    else:
+        assert response.status_code == 303
+        assert "ledger_target_unavailable" in response.headers["location"]
+    with SessionLocal() as db:
+        token = db.scalar(select(AuthToken).where(AuthToken.token_hash == hash_secret(session_token)))
+        assert token.ledger_id == installed_web.shared_ledger_id
+
+
+def test_owner_entry_without_web_session_requires_explicit_identity_confirmation(
+    installed_web: _InstalledWeb,
+) -> None:
+    fields = _owner_entry_form(installed_web, "/web/family")
+    response = installed_web.browser.post(
+        "/web/auth/ledgers", data=fields, headers=_entry_headers(installed_web, ""),
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/web/auth/local?")
+    confirmation = installed_web.browser.get(response.headers["location"])
+    assert confirmation.status_code == 200
+    assert "确认本机身份" in confirmation.text
+    assert 'name="next" value="/web/family"' in confirmation.text
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(Device).where(Device.platform == "web")) == 0

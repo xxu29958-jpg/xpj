@@ -1406,7 +1406,8 @@ def test_owner_dashboard_renders_unconfigured_budget_status(local_client: TestCl
     body = local_client.get("/owner").text
     assert "预算状态" in body
     assert "未配置" in body
-    assert "/web/budgets?ledger_id=owner" in body
+    assert 'name="ledger_id" value="owner"' in body
+    assert 'name="next" value="/web/budgets?month=' in body
 
 
 def test_owner_dashboard_budget_status_uses_primary_visible_ledger(
@@ -1446,7 +1447,8 @@ def test_owner_dashboard_budget_status_uses_primary_visible_ledger(
     assert "¥880.00" in body
     assert "12%" in body
     assert "分类超支" in body
-    assert f"/web/budgets?ledger_id=owner&amp;month={month}" in body
+    assert 'name="ledger_id" value="owner"' in body
+    assert f'name="next" value="/web/budgets?month={month}"' in body
 
 
 def test_owner_dashboard_budget_status_hides_external_ledger_budget(
