@@ -1,6 +1,8 @@
 package com.ticketbox.data.repository
 
 import android.content.Context
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -11,6 +13,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequest
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import java.util.UUID
+import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 
 /**
@@ -23,11 +27,9 @@ import java.util.concurrent.TimeUnit
  *
  *  1. [PERIODIC_WORK_NAME] — the keep-alive heartbeat. Runs every
  *     ~15 minutes (WorkManager's minimum periodic interval, by
- *     contract). [NetworkType.CONNECTED] ensures the OS buffers the
- *     tick across offline stretches: if the device is offline at
- *     the scheduled time, the next tick fires the moment network
- *     returns, which is exactly the "drain on connectivity-up"
- *     contract from ADR-0038.
+ *     contract). A network request buffers ticks while disconnected,
+ *     but does not require public-Internet validation: a local Owner
+ *     backend can be reachable on a network without Internet access.
  *
  *  2. [ONE_TIME_WORK_NAME] — the immediate trigger. Mutation call
  *     sites invoke [enqueueOnce] after persisting an original intent.
@@ -53,7 +55,8 @@ class OutboxScheduler(
      * the interval / constraints changed across an app upgrade.
      */
     fun ensurePeriodic(context: Context) {
-        workManagerProvider(context).enqueueUniquePeriodicWork(
+        val wm = workManagerProvider(context)
+        wm.enqueueUniquePeriodicWork(
             PERIODIC_WORK_NAME,
             // UPDATE means: if a previous schedule exists with the
             // same name but different constraints/interval (app
@@ -62,23 +65,52 @@ class OutboxScheduler(
             ExistingPeriodicWorkPolicy.UPDATE,
             buildPeriodicRequest(),
         )
+        updateLegacyOneTimeConstraints(wm)
     }
 
     /**
      * Fire a one-time drain ASAP. The drain still respects
-     * [NetworkType.CONNECTED] — if the device is offline when this
-     * is called, the worker queues until network returns. Mutation
+     * network availability — if the device is offline when this
+     * is called, the worker queues until a network returns. Mutation
      * call sites call this right after [OutboxRepository.enqueue].
      *
      * [ExistingWorkPolicy.APPEND_OR_REPLACE] preserves a successor even
      * during the final-read/result gap and starts a new chain after cancellation.
      */
     fun enqueueOnce(context: Context) {
-        workManagerProvider(context).enqueueUniqueWork(
+        val wm = workManagerProvider(context)
+        wm.enqueueUniqueWork(
             ONE_TIME_WORK_NAME,
             ExistingWorkPolicy.APPEND_OR_REPLACE,
             buildOneTimeRequest(),
         )
+        updateLegacyOneTimeConstraints(wm)
+    }
+
+    /** An old CONNECTED predecessor otherwise blocks every new immediate trigger after upgrade. */
+    private fun updateLegacyOneTimeConstraints(wm: WorkManager) {
+        val existing = wm.getWorkInfosForUniqueWork(ONE_TIME_WORK_NAME)
+        existing.addListener({
+            try {
+                existing.get().filter {
+                    !it.state.isFinished && it.constraints.requiredNetworkRequest == null &&
+                        it.constraints.requiredNetworkType == NetworkType.CONNECTED
+                }.forEach { info ->
+                    // Keep the UUID, enqueue time and dependencies. updateWork never interrupts
+                    // an active drain; its new constraints take effect on that worker's next run.
+                    val update = wm.updateWork(buildOneTimeRequest(info.id))
+                    update.addListener({
+                        try {
+                            update.get()
+                        } catch (error: Exception) {
+                            logNetworkWarning("Could not update the legacy outbox schedule", error)
+                        }
+                    }, completedFutureExecutor)
+                }
+            } catch (error: Exception) {
+                logNetworkWarning("Could not inspect the legacy outbox schedule", error)
+            }
+        }, completedFutureExecutor)
     }
 
     /**
@@ -92,6 +124,8 @@ class OutboxScheduler(
     }
 
     companion object {
+        // Listeners only read already-completed futures and enqueue WorkManager operations.
+        private val completedFutureExecutor = Executor { it.run() }
         /**
          * Unique work names. Public so a future maintenance command
          * (e.g. ``adb shell cmd jobscheduler``) can address them and so
@@ -114,7 +148,15 @@ class OutboxScheduler(
 
         private fun connectedConstraints(): Constraints =
             Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
+                // minSdk is 28. CONNECTED alone also requires VALIDATED on
+                // supported Android versions and can strand local-backend intents.
+                // Routing, authentication and reachability remain the HTTP client's job.
+                .setRequiredNetworkRequest(
+                    NetworkRequest.Builder()
+                        .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                        .build(),
+                    NetworkType.CONNECTED,
+                )
                 .build()
 
         fun buildPeriodicRequest(): PeriodicWorkRequest =
@@ -131,8 +173,9 @@ class OutboxScheduler(
                 .addTag(TAG_OUTBOX)
                 .build()
 
-        fun buildOneTimeRequest(): OneTimeWorkRequest =
+        fun buildOneTimeRequest(id: UUID = UUID.randomUUID()): OneTimeWorkRequest =
             OneTimeWorkRequestBuilder<OutboxDrainWorker>()
+                .setId(id)
                 .setConstraints(connectedConstraints())
                 .setBackoffCriteria(
                     BackoffPolicy.EXPONENTIAL,

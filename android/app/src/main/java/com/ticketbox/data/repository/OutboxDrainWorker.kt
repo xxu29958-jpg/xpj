@@ -21,8 +21,8 @@ import kotlinx.coroutines.CancellationException
  *   row keeps draining even if the user force-stops the app and
  *   returns later.
  * - Network constraint piggy-back: the periodic schedule attaches
- *   ``NetworkType.CONNECTED``, so the OS implicitly buffers the
- *   tick across offline windows — we don't need a custom
+ *   a network request without public-Internet validation, so the OS buffers
+ *   the tick across disconnected windows — we don't need a custom
  *   connectivity listener for the "drain on connectivity-up"
  *   contract that ADR-0038 calls out.
  * - Backoff is built-in: when [doWork] returns
