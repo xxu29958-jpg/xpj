@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/debt_rows.html" import debt_row, debt_totals_summary %}
+{% from "partials/debt_rows.html" import debt_row, debt_totals_summary with context %}
 {% set page_title = '往来' %}
 {% set product_body_domain = 'obligations' %}
 {# 本页自带更具体的只读说明, 不再叠加外壳的通用只读提示。 #}
