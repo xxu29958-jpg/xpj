@@ -78,6 +78,12 @@ REVIEWED_BOUNDARIES = {
         "test": "android/app/src/test/java/com/ticketbox/data/repository/OutboxDrainWorkerTest.kt",
         "reason": "The runtime compatibility provider moved from AppContainer to OutboxRuntimeCompatibility. Fixed startup/session warnings contain no private inputs; compatibility/drain exceptions now use the existing logNetworkWarning sanitizer instead of handing a raw throwable to Log.w. NetworkErrorReportingTest verifies this shared sink. The referenced worker tests cover failed compatibility, blocked writes, mixed outcomes and cancellation. WorkManager retry classification and original commands are unchanged.",
     },
+    (ANDROID + "data/repository/OutboxScheduler.kt", "updateLegacyOneTimeConstraints"): {
+        "sha256": "15b76c74d0f7a123db27f433642b2268f986d7744bf4073a81aec47a29f38988",
+        "owner": "existing WorkManager schedule and sanitized TicketboxNetwork output; financial originals remain in Outbox",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/OutboxSchedulerContinuationTest.kt::migrationStorageFailuresReportSafelyAndKeepTheOriginalRecoverable",
+        "reason": "Failed inspection and update futures report fixed operation labels through logNetworkWarning, excluding exception messages and private inputs. No financial intent is consumed, acknowledged, replaced or retried by this boundary. Existing schedule IDs and dependencies remain available for a later trigger to update in place. The real WorkManager/Room regression injects both storage-future failures, checks sanitized diagnostics and retained originals, then proves recovery delivers each original once.",
+    },
     (ANDROID + "data/repository/RecordDebtAdjustmentDispatcher.kt", "dispatch"): {
         "sha256": "c8b235102470554b761ab07aa715234b7509dcecea9a453c87997caee67ba71f",
         "owner": "existing typed DispatchResult and durable Outbox failure/receipt owner",

@@ -12,8 +12,10 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.WorkRequest
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
+import androidx.work.impl.WorkManagerImpl
 import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.TestDriver
 import androidx.work.testing.WorkManagerTestInitHelper
@@ -32,18 +34,56 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
+import org.robolectric.annotation.RealObject
 import org.robolectric.annotation.SQLiteMode
+import org.robolectric.shadow.api.Shadow
+import org.robolectric.shadows.ShadowLog
+import org.robolectric.util.ReflectionHelpers.ClassParameter
 
 /** Real WorkManager queue and Room outbox; the factory controls only the final worker-result gap. */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [35])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class OutboxSchedulerContinuationTest {
+    @Test
+    @Config(shadows = [FailingScheduleMigration::class])
+    fun migrationStorageFailuresReportSafelyAndKeepTheOriginalRecoverable() {
+        for (operation in listOf("query", "update")) {
+            SchedulerContinuationFixture().use { fixture ->
+                val legacy = fixture.enqueueLegacyWork()
+                ShadowLog.clear()
+                FailingScheduleMigration.failNext = operation
+                val original = fixture.enqueueOriginal()
+                assertEquals(original, fixture.row())
+                assertEquals(0, fixture.delivered.size)
+                assertEquals(WorkInfo.State.ENQUEUED, fixture.workInfo(legacy).state)
+                val logs = ShadowLog.getLogsForTag("TicketboxNetwork")
+                assertEquals(1, logs.size)
+                assertTrue(logs.single().msg.contains("legacy outbox schedule"))
+                assertTrue(logs.single().msg.contains("IllegalStateException"))
+                assertFalse(logs.single().msg.contains("private-schedule-secret"))
+                assertEquals(null, logs.single().throwable)
+
+                fixture.scheduler.ensurePeriodic(fixture.context)
+                val chain = fixture.workInfos()
+                chain.forEach { assertNotNull(it.constraints.requiredNetworkRequest) }
+                fixture.driver.setAllConstraintsMet(legacy)
+                fixture.releaseFirstWorker()
+                fixture.driver.setAllConstraintsMet(chain.single { it.id != legacy }.id)
+                chain.forEach { assertEquals(WorkInfo.State.SUCCEEDED, fixture.workInfo(it.id).state) }
+                fixture.assertOriginalDelivered(original)
+            }
+        }
+    }
+
     @Test
     fun upgradeUpdatesTheBlockedLegacyChainInPlaceAndDeliversTheOriginalOnce() {
         SchedulerContinuationFixture().use { fixture ->
@@ -130,6 +170,39 @@ class OutboxSchedulerContinuationTest {
             assertEquals(WorkInfo.State.SUCCEEDED, fixture.workInfo(replacement.id).state)
             fixture.assertOriginalDelivered(original)
         }
+    }
+}
+
+/** Inject only the failed storage future; enqueue, dependencies and recovery use real WorkManager. */
+@Implements(WorkManagerImpl::class)
+class FailingScheduleMigration {
+    @RealObject
+    private lateinit var manager: WorkManagerImpl
+
+    @Implementation
+    fun getWorkInfosForUniqueWork(name: String): ListenableFuture<List<WorkInfo>> {
+        if (failNext == "query") return failure()
+        return Shadow.directlyOn(manager, WorkManagerImpl::class.java, "getWorkInfosForUniqueWork",
+            ClassParameter.from(String::class.java, name))
+    }
+
+    @Implementation
+    fun updateWork(request: WorkRequest): ListenableFuture<WorkManager.UpdateResult> {
+        if (failNext == "update") return failure()
+        return Shadow.directlyOn(manager, WorkManagerImpl::class.java, "updateWork",
+            ClassParameter.from(WorkRequest::class.java, request))
+    }
+
+    private fun <T> failure(): ListenableFuture<T> {
+        failNext = null
+        return CallbackToFutureAdapter.getFuture { completion ->
+            completion.setException(IllegalStateException("private-schedule-secret"))
+            "schedule migration storage failure"
+        }
+    }
+
+    companion object {
+        var failNext: String? = null
     }
 }
 
