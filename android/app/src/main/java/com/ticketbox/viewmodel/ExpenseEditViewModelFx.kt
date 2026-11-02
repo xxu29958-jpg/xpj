@@ -2,6 +2,7 @@ package com.ticketbox.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.ticketbox.R
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.BackgroundTask
 import com.ticketbox.domain.model.Expense
@@ -9,6 +10,7 @@ import com.ticketbox.domain.model.MessageTone
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.pendingNeedsFx
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -49,7 +51,16 @@ fun ExpenseEditViewModel.loadFxReview(preserveDraft: Boolean) {
     val started = fxReviewStart(preserveDraft) ?: return
     _uiState.update { it.copy(expenseLoading = true, fx = it.fx.copy(loading = true, message = null)) }
     viewModelScope.launch {
-        repository.fetchExpenseForFxReview(started.first, started.second.id).mapCatching { fresh ->
+        runCatching {
+            // Query Room again: a cached observation can precede admission or an explicit Drop.
+            val originals = repository.observeExpenseCommands().first()
+            if (originals.access?.binding != started.first) throw CorrectionValidationError(R.string.expense_fx_binding_changed)
+            if (originals.commands.any { it.row.targetId == "expense:${started.second.id}" &&
+                    it.row.status != PendingMutationStatus.Done }) {
+                throw CorrectionValidationError(R.string.expense_command_needs_attention)
+            }
+            repository.fetchExpenseForFxReview(started.first, started.second.id).getOrThrow()
+        }.mapCatching { fresh ->
             applyFxReview(started.first, fresh)
         }.onFailure { error ->
             failFxReview(error)
@@ -65,8 +76,8 @@ private fun ExpenseEditViewModel.fxReviewStart(preserveDraft: Boolean): Pair<Log
         return null
     }
     if (fxReviewIsBusy(state)) return null
-    fxReviewRefusal(state, preserveDraft)?.let { refusal ->
-        applyFxReviewRefusal(refusal)
+    if (preserveDraft || state.itemEditorOpen || state.splitEditorOpen) {
+        publishFxReviewMessage(R.string.expense_fx_save_draft_first)
         return null
     }
     return binding to expense
@@ -75,23 +86,6 @@ private fun ExpenseEditViewModel.fxReviewStart(preserveDraft: Boolean): Pair<Log
 private fun fxReviewIsBusy(state: ExpenseEditUiState) =
     state.fx.loading || state.expenseLoading || state.itemsLoading || state.splitsLoading ||
         state.saving || state.itemsSaving || state.splitsSaving
-
-private fun fxReviewRefusal(state: ExpenseEditUiState, preserveDraft: Boolean): FxReviewRefusal? = when {
-    state.commandRowIds.isNotEmpty() && !state.commandsCompleted -> FxReviewRefusal.NeedsAttention
-    preserveDraft || state.itemEditorOpen || state.splitEditorOpen -> FxReviewRefusal.SaveDraftFirst
-    else -> null
-}
-
-private enum class FxReviewRefusal { NeedsAttention, SaveDraftFirst }
-
-private fun ExpenseEditViewModel.applyFxReviewRefusal(refusal: FxReviewRefusal) {
-    when (refusal) {
-        FxReviewRefusal.NeedsAttention ->
-            _uiState.update { it.copy(message = UiText.res(R.string.expense_command_needs_attention)) }
-        FxReviewRefusal.SaveDraftFirst ->
-            publishFxReviewMessage(R.string.expense_fx_save_draft_first)
-    }
-}
 
 private fun ExpenseEditViewModel.publishFxReviewMessage(message: Int) {
     _uiState.update { it.copy(fx = it.fx.copy(message = UiText.res(message))) }
@@ -108,6 +102,7 @@ private fun ExpenseEditViewModel.failFxReview(error: Throwable) {
 
 private suspend fun ExpenseEditViewModel.applyFxReview(binding: LogicalSessionBinding, fresh: Expense) {
     val editing = fresh.status != "confirmed"
+    val detailsLoadState = if (editing) ExpenseDetailDataLoadState.Loaded else ExpenseDetailDataLoadState.Unknown
     val items = if (editing) repository.fetchExpenseItems(fresh.id).getOrThrow() else null
     val splits = if (editing) repository.fetchExpenseSplits(fresh.id).getOrThrow() else null
     val matchingItems = items == null || (items.expenseId == fresh.id && items.parentRowVersion == fresh.rowVersion)
@@ -116,6 +111,10 @@ private suspend fun ExpenseEditViewModel.applyFxReview(binding: LogicalSessionBi
         binding != repository.captureDeferredLedgerBinding() -> UiText.res(R.string.expense_fx_binding_changed)
         !matchingItems || !matchingSplits -> UiText.res(R.string.expense_fx_read_failed)
         else -> null
+    }
+    if (failure == null) {
+        savedState.remove<LongArray>("expense_command_ids")
+        savedState.remove<String>("expense_command_binding")
     }
     _uiState.update {
         if (failure != null) {
@@ -128,11 +127,13 @@ private suspend fun ExpenseEditViewModel.applyFxReview(binding: LogicalSessionBi
                 originalBaselineRequired = false,
                 commandRowIds = emptyList(),
                 commandsCompleted = false,
+                message = null,
+                messageTone = MessageTone.Neutral,
                 expenseLoading = false,
                 expenseItems = items,
                 expenseSplits = splits,
-                itemsLoadState = if (editing) ExpenseDetailDataLoadState.Loaded else ExpenseDetailDataLoadState.Unknown,
-                splitsLoadState = if (editing) ExpenseDetailDataLoadState.Loaded else ExpenseDetailDataLoadState.Unknown,
+                itemsLoadState = detailsLoadState,
+                splitsLoadState = detailsLoadState,
                 itemsMessage = null,
                 splitsMessage = null,
                 itemsMessageTone = MessageTone.Neutral,

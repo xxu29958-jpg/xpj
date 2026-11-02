@@ -221,6 +221,10 @@ internal class ExpenseEditViewModelTest {
         assertEquals(canonical, vm.uiState.value.expense)
         assertEquals(originalFormRevision + 1, vm.uiState.value.formRevision)
         assertTrue(vm.uiState.value.commandRowIds.isEmpty())
+        val restored = ExpenseEditViewModel(7L, fake, savedState = androidx.lifecycle.SavedStateHandle(
+            vm.savedState.keys().associateWith { vm.savedState.get<Any>(it) }))
+        advanceUntilIdle()
+        assertTrue(restored.uiState.value.commandRowIds.isEmpty(), "Reviewed commands must not resurrect on recreation")
         fake.saveOfflineResponder = { _, _, baseline ->
             assertEquals(canonical, baseline)
             Result.success(ExpenseCommandAcceptance(canonical, listOf(12L)))

@@ -57,8 +57,7 @@ def _existing_task(db: Session, claim, *, legacy: bool) -> BackgroundTask | Expe
         raise AppError("task_not_found", status_code=404)
     # Legacy errors were never successful command acknowledgements. A later
     # retry may compute again, but cancellation and an applied receipt are final.
-    if (legacy and task.status == "failed" and task.error_code not in INTERRUPTED_TASK_CODES
-            and task.error_code not in _REGION_REFUSAL_STATUS
+    if (legacy and task.status == "failed" and task.error_code not in (INTERRUPTED_TASK_CODES | _REGION_REFUSAL_STATUS.keys())
             and task.result_summary_json is None and task.cancellation_requested_at is None
             and task.recovery_attempts == 0):
         return None
