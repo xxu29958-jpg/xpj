@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
@@ -75,6 +76,18 @@ def test_explicit_jpy_choice_drives_real_goal_write_despite_cny_environment(
         data={**fields, "home_currency_code": "JPY"}, follow_redirects=False,
     )
     assert chosen.status_code == 303, chosen.text
+    with SessionLocal() as db:
+        ledger_id = db.scalar(select(InstallationOwnerClaim)).ledger_id
+    assert chosen.headers["location"] == f"/web/pending?ledger_id={ledger_id}"
+    assert browser.client.get(chosen.headers["location"], headers=browser.headers).status_code == 200
+    for command_key in (fields["idempotency_key"], str(uuid4())):
+        replayed = browser.client.post(
+            "/web/currency-adoption", headers=browser.headers,
+            data={**fields, "home_currency_code": "JPY", "idempotency_key": command_key},
+            follow_redirects=False,
+        )
+        assert replayed.status_code == 303
+        assert replayed.headers["location"] == chosen.headers["location"]
     snapshot = browser.client.get("/api/system/runtime-compatibility", headers=browser.headers).json()
     assert snapshot["capabilities"]["currency"]["home_currency_code"] == "JPY"
     assert snapshot["write_compatibility"] == "compatible"
@@ -94,6 +107,7 @@ def test_explicit_jpy_choice_drives_real_goal_write_despite_cny_environment(
         assert goal.target_amount_cents == 1000
         assert goal.home_currency_code == "JPY"
         assert db.get(InstallationCurrencyBinding, 1).home_currency_code == "JPY"
+        assert len(db.scalars(select(InstallationCurrencyAuditLog)).all()) == 1
 
 
 def test_installation_owner_desktop_can_complete_currency_adoption(
@@ -140,12 +154,15 @@ def test_installation_owner_desktop_can_complete_currency_adoption(
     )
 
     assert response.status_code == 303, response.text
-    assert response.headers["location"] == "/web/currency-adoption"
+    with SessionLocal() as db:
+        ledger_id = db.scalar(select(InstallationOwnerClaim)).ledger_id
+    assert response.headers["location"] == f"/web/pending?ledger_id={ledger_id}"
     completed = adoption_browser.client.get(
         response.headers["location"],
         headers=adoption_browser.headers,
     )
     assert completed.status_code == 200, completed.text
+    completed = adoption_browser.client.get("/web/currency-adoption", headers=adoption_browser.headers)
     assert "默认币种已设置" in completed.text
     assert 'href="/web/currency-adoption?change=true"' in completed.text
     assert "日元" in completed.text

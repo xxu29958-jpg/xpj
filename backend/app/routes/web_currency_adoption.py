@@ -4,7 +4,7 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Form, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.currency_catalog import CURRENCY_CATALOG
 from app.database import get_db
 from app.errors import AppError
 from app.fx_constants import CURRENCY_SYMBOLS
+from app.routes._web_session_common import _web_redirect
 from app.routes.web_common import LocalOnly, _read_ui_theme, templates
 from app.services.currency_adoption_service import (
     CurrencyAdoptionPreview,
@@ -148,7 +149,7 @@ def currency_adoption_submit(
         )
     except AppError as exc:
         if exc.error == "currency_binding_already_active":
-            return RedirectResponse(url="/web/currency-adoption", status_code=303)
+            return _web_redirect("/web/pending", auth.ledger_id)
         if exc.error not in _RETRYABLE_ERRORS:
             raise
         return _render(
@@ -158,7 +159,7 @@ def currency_adoption_submit(
             error_message=_RETRYABLE_ERRORS[exc.error],
             status_code=409,
         )
-    return RedirectResponse(url="/web/currency-adoption", status_code=303)
+    return _web_redirect("/web/pending", auth.ledger_id)
 
 
 class CurrencyDefaultForm(BaseModel):
