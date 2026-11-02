@@ -46,7 +46,8 @@ def draft_refusal_result(exc: AppError) -> str:
         "refund_destination_required", "funds_date_outside_coverage", "funding_opening_mismatch",
         "installment_source_in_use", "installment_amount_mismatch", "installment_allocation_required",
         "installment_review_required", "funding_opening_review_required", "credit_adoption_unavailable",
-        "credit_adoption_date_conflict", "credit_account_required"} else "blocked"
+        "credit_adoption_date_conflict", "credit_account_required",
+        "credit_observation_date_required", "credit_observation_source_required"} else "blocked"
 
 
 def draft_error_response(request: Request, exc: AppError, *, refusal_result: str | None = None) -> JSONResponse | None:

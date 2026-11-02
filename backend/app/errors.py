@@ -5,6 +5,7 @@ from html import escape as _html_escape
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.error_reporting import report_http_error, retain_handled_error
@@ -27,6 +28,8 @@ ERROR_MESSAGES = {
     "split_change_pending": "已有待处理的新约定，请核对后明确替换或先处理。",
     "split_change_expired": "这份提议已过期，请按当前金额重新核对并发起。",
     "split_amount_invalid": "请填写大于 0 的拆账金额。",
+    "credit_observation_date_required": "已填写额度，请补充额度查询日期。",
+    "credit_observation_source_required": "已填写额度，请补充额度与账单依据。",
     "split_receiver_invalid": "对方现在不能接收拆账邀请。",
     "split_parent_amount_missing": "原账单金额未确定，无法发起拆账。",
     "split_amount_exceeds_parent": "拆账金额不能超过原账单金额。",
@@ -469,10 +472,12 @@ async def app_error_handler(request: Request, exc: AppError) -> Response:
     )
 
 
-def _validation_error_code(exc: RequestValidationError) -> str:
+def _validation_error_code(exc: RequestValidationError | ValidationError) -> str:
     errors = exc.errors()
     if errors and all(error.get("type") == "split_amount_invalid" for error in errors):
         return "split_amount_invalid"
+    if errors and all(error.get("type") in {"credit_observation_date_required", "credit_observation_source_required"} for error in errors):
+        return errors[0]["type"]
     return "invalid_request"
 
 

@@ -52,6 +52,10 @@
     // Credit-only parts follow the chosen type; on an existing account the type is fixed by the page.
     const credit = (field("kind")?.value || form.dataset.fundsAccountKind) === "credit";
     form.querySelectorAll("[data-credit-terms], [data-credit-only]").forEach(part => { part.hidden = !credit; });
+    const observationRequired = credit && (value("credit_limit") !== "" || value("available_credit") !== "");
+    for (const name of ["credit_observed_on", "credit_source"]) {
+      if (field(name)) field(name).required = observationRequired;
+    }
   }
 
   // Optional sections: their summary line shows what is filled in; they start folded unless the
@@ -180,6 +184,7 @@
     if (allocation) allocation.hidden = allocation.dataset.allocationRequired !== "true" && !value("overpayment");
   }
   function describe() {
+    showCreditTerms();
     summarizeOptions();
     mirrorPayerAmount();
     showAllocation();

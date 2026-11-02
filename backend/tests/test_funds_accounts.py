@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.middleware.csrf import CSRF_COOKIE_NAME
-from app.models import AccountMovement, CreditFacility, Debt, Expense, ExpenseFunding, Repayment
+from app.models import AccountMovement, ApiIdempotencyKey, CreditFacility, Debt, Expense, ExpenseFunding, FinancialAccount, Repayment
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._web_native_form_support import hidden_post_forms
@@ -452,6 +452,35 @@ def _create_funds_account(client, identity, name, kind, opening, *, visibility="
     return result.json()
 
 
+@pytest.mark.parametrize(("missing", "error", "message"), [
+    ("observed_on", "credit_observation_date_required", "额度查询日期"),
+    ("source", "credit_observation_source_required", "额度与账单依据"),
+])
+def test_credit_observation_refusal_names_the_field_and_creates_nothing(client, identity, missing, error, message):
+    key = str(uuid4())
+    headers = {**identity.app_headers, "Idempotency-Key": key}
+    terms = {"available_credit_minor": 0, "observed_on": str(date.today()), "source": "平台页面"}
+    body = {"name": "核对额度", "kind": "credit", "currency_code": "CNY", "opening_amount_minor": 0,
+        "opening_date": str(date.today()), "opening_source": "已核对", "credit_terms": terms}
+    saved_value = terms.pop(missing)
+    for _ in range(2):
+        refused = client.post("/api/funds/accounts", headers=headers, json=body)
+        assert refused.status_code == 422 and refused.json()["error"] == error
+        assert message in refused.json()["message"]
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(FinancialAccount)) == 0
+        assert db.scalar(select(func.count()).select_from(AccountMovement)) == 0
+        assert db.scalar(select(func.count()).select_from(ApiIdempotencyKey)
+            .where(ApiIdempotencyKey.idempotency_key == key)) == 0
+    terms[missing] = saved_value
+    saved = client.post("/api/funds/accounts", headers=headers, json=body)
+    assert saved.status_code == 200, saved.text
+    assert client.post("/api/funds/accounts", headers=headers, json=body).json() == saved.json()
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(FinancialAccount)) == 1
+        assert db.scalar(select(func.count()).select_from(AccountMovement)) == 1
+
+
 def test_same_owner_keeps_personal_and_family_funds_in_the_selected_ledger(client, identity):
     personal = _create_funds_account(client, identity, "个人工资卡", "bank", 10000)
     family = _create_funds_account(client, replace(identity, app_token=identity.tenant_app_token),
@@ -713,6 +742,22 @@ def test_native_funds_entry_keeps_private_accounts_and_consumes_actual_funding(i
         "Origin": "http://127.0.0.1:8000", "Accept": "application/json"}
     fields.update(name="浏览器信用账户", kind="credit", currency_code="CNY", opening_amount="0", visibility="private",
         opening_source="本人对账", occurred_on="2026-10-18", institution="", tail="1234")
+    for missing, code, label in (("credit_observed_on", "credit_observation_date_required", "额度查询日期"),
+            ("credit_source", "credit_observation_source_required", "额度与账单依据")):
+        incomplete = {**fields, "credit_limit": "5000", "credit_observed_on": "2026-10-18", "credit_source": "银行页面", missing: ""}
+        refused = installed.browser.post("/web/funds/save", data=incomplete, headers=headers)
+        assert refused.status_code == 422 and refused.json()["draft_result"] == "rejected"
+        assert refused.json()["error"] == code and label in refused.json()["message"]
+        reviewed = installed.browser.post("/web/funds/save", data={**incomplete, "review_latest": "1"}, headers=headers)
+        assert reviewed.status_code == 200 and "原提交未记账" in reviewed.text
+        replacement = hidden_post_forms(reviewed.text)["/web/funds/save"]
+        assert replacement["idempotency_key"] != fields["idempotency_key"]
+        assert 'value="5000"' in reviewed.text
+        with SessionLocal() as db:
+            assert db.scalar(select(func.count()).select_from(FinancialAccount)) == 0
+            assert db.scalar(select(func.count()).select_from(ApiIdempotencyKey)
+                .where(ApiIdempotencyKey.idempotency_key == fields["idempotency_key"])) == 0
+        fields["idempotency_key"] = replacement["idempotency_key"]
     rejected = {**fields, "opening_amount": "金额待核对"}
     refused = installed.browser.post("/web/funds/save", data=rejected, headers=headers)
     assert refused.status_code == 422 and refused.json()["draft_result"] == "rejected"

@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.errors import AppError
+from app.errors import ERROR_MESSAGES, AppError, _validation_error_code
 from app.routes._web_draft_binding import (
     browser_draft_scope,
     draft_ack_response,
@@ -203,7 +203,10 @@ async def web_save_funds(request: Request, expected_row_version: str = Form(""),
     except (AppError, ValidationError, KeyError, ValueError) as exc:
         db.rollback()
         error = exc if isinstance(exc, AppError) else AppError("invalid_request", "请检查账户、金额和日期；原输入已保留。", status_code=422)
-        if values.get("review_latest") and error.error in {"invalid_request", "currency_not_supported", "amount_invalid"}:
+        if isinstance(exc, ValidationError) and (code := _validation_error_code(exc)) != "invalid_request":
+            error = AppError(code, ERROR_MESSAGES[code], status_code=422)
+        if values.get("review_latest") and error.error in {"invalid_request", "currency_not_supported", "amount_invalid",
+                "credit_observation_date_required", "credit_observation_source_required"}:
             # A malformed original body cannot become valid by replaying it. Only
             # release it for editing after proving its key has no server result.
             # Accepted/in-flight keys continue through the original receipt path.
