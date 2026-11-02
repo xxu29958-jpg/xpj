@@ -13,7 +13,16 @@ from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.middleware.csrf import CSRF_COOKIE_NAME
-from app.models import AccountMovement, ApiIdempotencyKey, CreditFacility, Debt, Expense, ExpenseFunding, FinancialAccount, Repayment
+from app.models import (
+    AccountMovement,
+    ApiIdempotencyKey,
+    CreditFacility,
+    Debt,
+    Expense,
+    ExpenseFunding,
+    FinancialAccount,
+    Repayment,
+)
 from app.routes.web_auth import SESSION_COOKIE_NAME
 from tests._local_web_identity_support import _connect_local_session, installed_web_setup
 from tests._web_native_form_support import hidden_post_forms
