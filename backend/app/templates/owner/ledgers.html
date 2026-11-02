@@ -31,8 +31,18 @@
             <div><dt>绑定设备</dt><dd>{{ row.active_device_count }}</dd></div>
           </dl>
           <div class="workspace-ledger-actions">
-            <a href="/web?ledger_id={{ row.ledger_id }}" class="btn btn-secondary">打开账本 {{ icon('arrow-right') }}</a>
-            <a href="/web/family?ledger_id={{ row.ledger_id }}" class="btn btn-secondary">家庭成员</a>
+            <form method="post" action="/web/auth/ledgers">
+              {{ csrf_field|safe }}
+              <input type="hidden" name="ledger_id" value="{{ row.ledger_id }}">
+              <input type="hidden" name="next" value="/web">
+              <button type="submit" class="btn btn-secondary">打开账本 {{ icon('arrow-right') }}</button>
+            </form>
+            <form method="post" action="/web/auth/ledgers">
+              {{ csrf_field|safe }}
+              <input type="hidden" name="ledger_id" value="{{ row.ledger_id }}">
+              <input type="hidden" name="next" value="/web/family">
+              <button type="submit" class="btn btn-secondary">家庭成员</button>
+            </form>
             {% if row.role == 'owner' %}<a href="/owner/ledgers/{{ row.ledger_id }}/calendar" class="btn btn-secondary">账务日历</a>{% endif %}
           </div>
           {% if row.role == 'owner' %}
