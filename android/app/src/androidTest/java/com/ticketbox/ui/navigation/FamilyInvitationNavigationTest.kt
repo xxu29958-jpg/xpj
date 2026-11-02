@@ -151,7 +151,7 @@ class FamilyInvitationNavigationTest {
                 saveConsumerArtPreview("family-revoked-timeout", requireNotNull(automation.takeScreenshot()))
                 Log.e("FamilyRevokeLayout", "fresh=${model.uiState.value.invitationsFresh}; revoked=" +
                     model.uiState.value.invitations.singleOrNull()?.revokedAt)
-                compose.onAllNodes(isRoot(), useUnmergedTree = true).printToLog("FamilyRevokeLayout")
+                compose.onAllNodes(isRoot(), useUnmergedTree = true).printToLog("FamilyRevokeLayout", maxDepth = 30)
             } catch (captureFailure: Exception) {
                 failure.addSuppressed(captureFailure)
             }

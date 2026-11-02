@@ -1,9 +1,12 @@
 package com.ticketbox.widget
 
 import android.app.PendingIntent
+import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.util.SizeF
 import android.widget.RemoteViews
 import com.ticketbox.MainActivity
 import com.ticketbox.R
@@ -54,13 +57,32 @@ private fun RemoteViews.bindQuickActions(context: Context) {
     setOnClickPendingIntent(R.id.widget_review, launchPendingIntent(context, ShortcutTarget.ReviewPending))
 }
 
-internal fun monthlyOverviewViews(context: Context, id: Int, state: WidgetOverviewState): RemoteViews =
-    RemoteViews(context.packageName, R.layout.widget_monthly_overview).apply {
+/** 竖排版自上而下排完标题栏、概况、更新时间和三个操作约需 215dp; 更矮时改用横排版, 金额不被挤掉。 */
+private const val MONTHLY_FULL_MIN_HEIGHT_DP = 216
+
+/** 横排、竖排两版都按最窄可调宽度登记, 只按高度区分。 */
+private const val MONTHLY_MIN_WIDTH_DP = 200f
+
+internal fun monthlyOverviewViews(context: Context, id: Int, state: WidgetOverviewState): RemoteViews {
+    fun views(layout: Int) = RemoteViews(context.packageName, layout).apply {
         bindQuickActions(context)
         setOnClickPendingIntent(R.id.widget_summary, launchPendingIntent(context, ShortcutTarget.MonthlyOverview))
         bindSummary(context, state)
         bindWidgetControls(context, id, WidgetKind.Monthly, state.showSummary)
     }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        // 桌面按当前尺寸挑放得下的最大一版, 调整大小时无需重新渲染。
+        return RemoteViews(mapOf(
+            SizeF(MONTHLY_MIN_WIDTH_DP, 0f) to views(R.layout.widget_monthly_overview_short),
+            SizeF(MONTHLY_MIN_WIDTH_DP, MONTHLY_FULL_MIN_HEIGHT_DP.toFloat()) to views(R.layout.widget_monthly_overview),
+        ))
+    }
+    // Android 12 以前只能读竖屏高度; 横屏由 values-land 的布局别名换成横排版。
+    val portraitHeight = AppWidgetManager.getInstance(context).getAppWidgetOptions(id)
+        .getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
+    val short = portraitHeight in 1 until MONTHLY_FULL_MIN_HEIGHT_DP
+    return views(if (short) R.layout.widget_monthly_overview_short else R.layout.widget_monthly_overview)
+}
 
 private fun RemoteViews.bindSummary(context: Context, state: WidgetOverviewState) {
     val snapshot = state.snapshot.takeIf { state.showSummary && state.session.isBusinessReady() }

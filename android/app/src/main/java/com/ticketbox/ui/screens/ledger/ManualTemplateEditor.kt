@@ -21,6 +21,7 @@ import com.ticketbox.data.repository.ManualEntryTemplate
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.presentation.formatMinorAmountInput
 import com.ticketbox.presentation.parseMinorAmount
+import com.ticketbox.ui.screens.ManualCategoryChoices
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFields
 import com.ticketbox.ui.screens.expense.ExpenseCurrencyFieldOptions
 import java.util.UUID
@@ -29,6 +30,7 @@ import java.util.UUID
 internal fun ManualTemplateEditor(
     original: ManualEntryTemplate?,
     homeCurrency: CurrencyCode,
+    categories: List<String>,
     saving: Boolean,
     actions: ManualTemplateEditorActions,
 ) {
@@ -48,6 +50,8 @@ internal fun ManualTemplateEditor(
             options = ExpenseCurrencyFieldOptions(enabled = !saving, autoFocusAmount = false, showFxHint = false))
         OutlinedTextField(category, { category = it }, Modifier.fillMaxWidth(), enabled = !saving,
             label = { Text(stringResource(R.string.widget_template_category)) }, singleLine = true)
+        ManualCategoryChoices(categories = categories, selectedCategory = category, enabled = !saving,
+            onCategoryChange = { category = it })
         OutlinedTextField(note, { note = it }, Modifier.fillMaxWidth(), enabled = !saving,
             label = { Text(stringResource(R.string.widget_template_note)) })
         if (invalid) Text(stringResource(R.string.widget_template_invalid))

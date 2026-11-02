@@ -11,5 +11,5 @@
     <TextView android:id="@+id/widget_review" style="@style/WidgetAction" android:layout_marginStart="2dp" android:padding="4dp"
         android:text="@string/widget_review_short" android:drawableStart="@drawable/ic_lucide_inbox" />
     <TextView android:id="@+id/widget_camera" style="@style/WidgetAction" android:layout_marginStart="2dp" android:text="@string/widget_camera_short" android:drawableStart="@drawable/ic_lucide_camera" />
-    <TextView android:id="@+id/widget_templates" style="@style/WidgetAction" android:layout_marginStart="2dp" android:text="@string/widget_templates_short" android:drawableStart="@drawable/ic_lucide_receipt_text" />
+    <TextView android:id="@+id/widget_templates" style="@style/WidgetAction" android:layout_marginStart="2dp" android:text="@string/widget_templates_short" android:drawableStart="@drawable/ic_lucide_copy" />
 </LinearLayout>

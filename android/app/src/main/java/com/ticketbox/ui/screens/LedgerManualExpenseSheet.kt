@@ -320,7 +320,7 @@ private fun ManualRecentMerchantsSection(
 }
 
 @Composable
-private fun ManualCategoryChoices(
+internal fun ManualCategoryChoices(
     categories: List<String>,
     selectedCategory: String,
     enabled: Boolean = true,

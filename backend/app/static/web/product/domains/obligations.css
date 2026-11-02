@@ -32,3 +32,6 @@ body[data-domain="obligations"] .content { max-inline-size: var(--layout-page-na
     color: var(--text-meta);
     font-size: var(--type-caption-size);
 }
+
+/* 往来页底部的相关入口 (资金账户), 与上方列表留出分组间距。 */
+.debts-related { margin-block-start: var(--space-8); }

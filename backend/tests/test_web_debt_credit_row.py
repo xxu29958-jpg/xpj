@@ -55,8 +55,10 @@ def test_credit_account_row_names_the_account_and_ordinary_debts_keep_their_prin
     debts = installed.browser.get("/web/debts", headers=headers)
     assert debts.status_code == 200, debts.text[:500]
     credit_label, credit_meta = _row_text(debts.text, "花呗")
-    assert credit_meta.endswith("· CNY · 信用账户") and "本金" not in credit_meta
+    # 本币往来的说明行不再重复币种代码; 完整币种仍在 aria-label 里。
+    assert credit_meta.endswith("我欠花呗 · 信用账户") and "本金" not in credit_meta and "CNY" not in credit_meta
     assert credit_label.endswith("信用账户") and "本金" not in credit_label
     assert "剩余 CNY ¥37.90" in credit_label
     family_label, family_meta = _row_text(debts.text, "家人甲")
-    assert family_meta.endswith("· CNY · 本金 ¥1,200.00") and family_label.endswith("本金 ¥1,200.00")
+    assert family_meta.endswith("我欠家人甲 · 本金 ¥1,200.00") and "CNY" not in family_meta
+    assert family_label.endswith("本金 ¥1,200.00")

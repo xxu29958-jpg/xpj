@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/debt_rows.html" import debt_row, debt_totals_summary %}
+{% from "partials/debt_rows.html" import debt_row, debt_totals_summary with context %}
 {% set page_title = '别人欠我' %}
 {% set product_body_domain = 'obligations' %}
 {% block title %}别人欠我 · 往来 · 小票夹{% endblock %}

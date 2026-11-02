@@ -135,12 +135,13 @@ internal fun SpendingGoalSummaryCard(goal: Goal) {
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap),
                     itemVerticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(stringResource(if (goal.isOverLimit) R.string.spending_goal_over_label else R.string.spending_goal_remaining_label),
+                    Text(spendingGoalCardLabel(stringResource(if (goal.isOverLimit) R.string.spending_goal_over_label
+                        else R.string.spending_goal_remaining_label), goal.homeCurrencyCode),
                         style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     StatusPill(text = goal.statusText(), tone = goal.stateTone())
                 }
                 AppAmountText(
-                    text = spendingGoalAmountText(goal.remainingAmountCents?.let { kotlin.math.abs(it) }, goal.homeCurrencyCode),
+                    text = spendingGoalCardAmountText(goal.remainingAmountCents?.let { kotlin.math.abs(it) }, goal.homeCurrencyCode),
                     role = AppAmountRole.Hero,
                     color = if (goal.isOverLimit) goal.stateTone().fg else MaterialTheme.colorScheme.onSurface,
                 )
@@ -160,11 +161,11 @@ private fun SpendingGoalAmountSummary(goal: Goal) {
     ) {
         SpendingGoalAmountCell(
             label = stringResource(R.string.spending_goal_spent_label),
-            value = spendingGoalAmountText(goal.spentAmountCents, goal.homeCurrencyCode),
+            value = spendingGoalCardAmountText(goal.spentAmountCents, goal.homeCurrencyCode),
         )
         SpendingGoalAmountCell(
             label = stringResource(R.string.spending_goal_limit_label),
-            value = spendingGoalAmountText(goal.targetAmountCents, goal.homeCurrencyCode),
+            value = spendingGoalCardAmountText(goal.targetAmountCents, goal.homeCurrencyCode),
         )
     }
 }

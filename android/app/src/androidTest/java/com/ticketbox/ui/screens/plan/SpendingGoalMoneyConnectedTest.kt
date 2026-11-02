@@ -36,7 +36,10 @@ class SpendingGoalMoneyConnectedTest {
                 }
             }
         }
-        compose.onNodeWithText("JPY ¥1,200").assertExists()
+        // 单个目标卡: 币种写在标题旁, 金额只写符号; 仍按记录时的 JPY, 不随 CNY 显示环境改写。
+        compose.onNodeWithText(context.getString(R.string.spending_goal_amount_label_currency,
+            context.getString(R.string.spending_goal_remaining_label), "JPY")).assertExists()
+        compose.onNodeWithText("¥1,200").assertExists()
         compose.onNodeWithText(context.getString(R.string.spending_goal_progress_unavailable)).assertExists()
         compose.onNodeWithContentDescription(context.getString(R.string.spending_goal_progress_a11y, goal.name, 0))
             .assertDoesNotExist()

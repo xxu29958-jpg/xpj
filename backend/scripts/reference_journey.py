@@ -128,6 +128,7 @@ class ReferenceJourney:
         assert self.tag("Trip")["id"] == prepared["tags"], "First use replaced the prepared tag identity"
         assert next(row["id"] for row in self.facts()["categories"] if row["name"] == "Library") == prepared["categories"]
         self.goto("/web/confirmed?tag=Trip")
+        page.locator(".ledger-read-filters > summary").click()
         page.get_by_text("保存当前视图", exact=True).click()
         form = self.form("/web/saved-views")
         form.locator('[name="name"]').fill("TripView")
