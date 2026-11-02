@@ -5,7 +5,11 @@ import android.content.Context
 import androidx.concurrent.futures.CallbackToFutureAdapter
 import androidx.room.Room
 import androidx.work.Configuration
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ListenableWorker
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerFactory
@@ -27,6 +31,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -39,6 +44,51 @@ import org.robolectric.annotation.SQLiteMode
 @Config(application = Application::class, sdk = [35])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class OutboxSchedulerContinuationTest {
+    @Test
+    fun upgradeUpdatesTheBlockedLegacyChainInPlaceAndDeliversTheOriginalOnce() {
+        SchedulerContinuationFixture().use { fixture ->
+            val first = fixture.enqueueLegacyWork()
+            val second = fixture.enqueueLegacyWork()
+            assertEquals(WorkInfo.State.ENQUEUED, fixture.workInfo(first).state)
+            assertEquals(WorkInfo.State.BLOCKED, fixture.workInfo(second).state)
+
+            fixture.scheduler.ensurePeriodic(fixture.context)
+            val original = fixture.enqueueOriginal()
+            val chain = fixture.workInfos()
+            assertEquals(3, chain.size)
+            assertEquals(WorkInfo.State.ENQUEUED, fixture.workInfo(first).state)
+            assertEquals(WorkInfo.State.BLOCKED, fixture.workInfo(second).state)
+            chain.forEach { assertNotNull(it.constraints.requiredNetworkRequest) }
+            assertEquals(original, fixture.row())
+
+            fixture.driver.setAllConstraintsMet(first)
+            fixture.releaseFirstWorker()
+            fixture.driver.setAllConstraintsMet(second)
+            fixture.driver.setAllConstraintsMet(chain.single { it.id != first && it.id != second }.id)
+            fixture.workInfos().forEach { assertEquals(WorkInfo.State.SUCCEEDED, it.state) }
+            fixture.assertOriginalDelivered(original)
+        }
+    }
+
+    @Test
+    fun upgradingARunningLegacyDrainPreservesItsSuccessorAndDoesNotCancelIt() {
+        SchedulerContinuationFixture().use { fixture ->
+            val running = fixture.startAtFinalEmptyRead(legacy = true)
+            val original = fixture.enqueueOriginal()
+            val successor = fixture.workInfos().single { it.id != running.id }
+            assertEquals(WorkInfo.State.RUNNING, fixture.workInfo(running.id).state)
+            assertFalse(requireNotNull(fixture.firstWorker).isStopped)
+            assertEquals(WorkInfo.State.BLOCKED, successor.state)
+            assertEquals(original, fixture.row())
+
+            fixture.releaseFirstWorker()
+            fixture.driver.setAllConstraintsMet(successor.id)
+            assertEquals(WorkInfo.State.SUCCEEDED, fixture.workInfo(running.id).state)
+            assertEquals(WorkInfo.State.SUCCEEDED, fixture.workInfo(successor.id).state)
+            fixture.assertOriginalDelivered(original)
+        }
+    }
+
     @Test
     fun anEnqueueAfterTheFinalEmptyReadPersistsASuccessorWithoutCancellingTheRunningWorker() {
         SchedulerContinuationFixture().use { fixture ->
@@ -142,8 +192,18 @@ private class SchedulerContinuationFixture : Closeable {
         }
     }
 
-    fun startAtFinalEmptyRead(): WorkInfo {
-        scheduler.enqueueOnce(context)
+    fun enqueueLegacyWork(): UUID {
+        val request = OneTimeWorkRequestBuilder<OutboxDrainWorker>()
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .addTag(OutboxScheduler.TAG_OUTBOX)
+            .build()
+        manager.enqueueUniqueWork(OutboxScheduler.ONE_TIME_WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+            .result.get(10, TimeUnit.SECONDS)
+        return request.id
+    }
+
+    fun startAtFinalEmptyRead(legacy: Boolean = false): WorkInfo {
+        if (legacy) enqueueLegacyWork() else scheduler.enqueueOnce(context)
         val enqueued = workInfos().single()
         assertEquals(WorkInfo.State.ENQUEUED, enqueued.state)
         driver.setAllConstraintsMet(enqueued.id)
