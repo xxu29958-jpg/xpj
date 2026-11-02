@@ -50,6 +50,20 @@ internal class RetryOcrDispatcherTest : ExpensePendingRepositoryOutboxTestBase()
     )
 
     @Test
+    fun `rejected region retains its actionable error and original key`() = runTest {
+        for ((code, status) in listOf("ocr_region_no_text" to 422, "ocr_region_incomplete" to 422,
+            "ocr_region_invalid" to 422, "ocr_region_source_unavailable" to 409)) {
+            val stub = ApiServiceStub(retryOcrResult = ApiResult.Throw(httpException(status,
+                """{"error":"$code","message":"请调整选区。"}""")))
+            val result = dispatcherFor(stub).dispatch(retryOcrRow(idempotencyKey = "original-region-786"))
+            assertTrue(result is DispatchResult.Failure)
+            assertEquals(code, result.message)
+            assertEquals("original-region-786", stub.lastRetryOcrIdempotencyKey)
+            assertTrue(published.isEmpty())
+        }
+    }
+
+    @Test
     fun `accepted OCR retry retains its receipt when cache publication fails`() = runTest {
         val response = successExpenseDto()
         val stub = ApiServiceStub(retryOcrResult = ApiResult.Success(response))

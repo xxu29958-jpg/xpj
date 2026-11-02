@@ -63,6 +63,6 @@ class CorrectExpenseDispatcher(
             return DispatchResult.Failure(parsed.correctionRateFailure())
         }
         val result = mapOutboxHttpError(error.code(), parsed)
-        return if (result is DispatchResult.Discarded) DispatchResult.Failure("correction_target_unavailable", definitelyRejected = true) else result
+        return if (error.code() == 404) DispatchResult.Failure("correction_target_unavailable", definitelyRejected = true) else result
     }
 }

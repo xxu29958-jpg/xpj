@@ -162,15 +162,13 @@ internal class PatchExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBa
     }
 
     @Test
-    fun `404 still discards — the target row is gone`() = runTest {
-        // 404 means the expense was deleted / rejected server-side; the queued
-        // mutation is genuinely moot, so a silent Discard (vs the 422 Failure) is
-        // the correct branch — nothing for the user to keep or redo.
+    fun `404 retains the original edit for review without claiming it was applied`() = runTest {
+        // A missing route or resource does not establish this edit's outcome.
         val body = """{"error":"not_found","message":"账单不存在。"}"""
         val stub = ApiServiceStub(updateExpenseResult = ApiResult.Throw(httpException(404, body)))
 
         val result = dispatcherFor(stub).dispatch(patchRow(idempotencyKey = "key-abc"))
 
-        assertTrue(result is DispatchResult.Discarded, "404 (gone) must Discard: $result")
+        assertTrue(result is DispatchResult.Failure, "404 must retain the original: $result")
     }
 }

@@ -10,6 +10,15 @@ import kotlin.test.assertTrue
 
 class OutboxHttpErrorTest {
     @Test
+    fun missingRoutesAndResourcesDoNotProveTheOriginalWriteSucceeded() {
+        for (body in listOf("""{"detail":"Not Found"}""", """{"error":"expense_not_found"}""")) {
+            val result = mapOutboxHttpException(HttpException(Response.error<Any>(404,
+                body.toResponseBody("application/json".toMediaType()))))
+            assertTrue(result is DispatchResult.Failure, "A refusal is not an acceptance receipt: $result")
+        }
+    }
+
+    @Test
     fun unfulfilledDomainAndUnknownRefusalsRemainVisible() {
         listOf("expense_reversal_required", "items_sum_not_in_mismatch", "future_write_refusal").forEach { code ->
             val result = classify("""{ "error": "$code", "message": "请核对原提交。" }""")

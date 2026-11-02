@@ -105,6 +105,28 @@ def test_legacy_timeout_does_not_acknowledge_queue_or_hold_database(retry_input)
         assert db.scalar(select(func.count()).select_from(OcrFact)) == 0
 
 
+@pytest.mark.parametrize("error_code", ["ocr_region_no_text", "ocr_region_incomplete", "ocr_region_invalid"])
+def test_rejected_region_is_terminal_for_its_original_not_a_transient_retry(retry_input, error_code):
+    """A rejected selection needs new user input, never another identical OCR task."""
+    with SessionLocal() as db:
+        original = submit_expense_ocr_task(db, **retry_input, legacy=True)
+        original_id = original.id
+        original.status, original.error_code = "failed", error_code
+        db.commit()
+    # Read the durable refusal through a fresh session, as a restarted caller would.
+    with SessionLocal() as db:
+        original = db.get(BackgroundTask, original_id)
+        with pytest.raises(AppError) as caught:
+            wait_legacy_ocr_result(db, original)
+        assert (caught.value.error, caught.value.status_code) == (error_code, 422)
+        repeated = submit_expense_ocr_task(db, **retry_input, legacy=True)
+        assert repeated.id == original_id
+        assert db.scalar(select(func.count()).select_from(BackgroundTask)
+            .where(BackgroundTask.task_type == "expense_ocr_retry")) == 1
+        assert db.scalar(select(func.count()).select_from(OcrFact)) == 0
+        assert db.get(Expense, retry_input["expense_id"]).row_version == retry_input["expected_row_version"]
+
+
 def test_legacy_failed_attempt_remains_retryable_without_acknowledging_failure(retry_input, monkeypatch):
     def unavailable(_expense):
         raise AppError("ocr_model_missing", status_code=503)

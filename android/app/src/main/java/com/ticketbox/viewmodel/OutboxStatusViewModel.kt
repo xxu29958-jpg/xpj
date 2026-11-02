@@ -453,6 +453,7 @@ private fun OutboxRow.refusesKeepMine(): Boolean =
         type in setOf(PendingMutationType.CreateBillSplitInvitation, PendingMutationType.AcceptBillSplitInvitation)
 
 private fun OutboxRow.refusesRetry(observation: ExpenseCorrectionObservation): Boolean =
+    (type == PendingMutationType.RetryOcr && lastError in com.ticketbox.data.repository.OCR_REGION_INPUT_REFUSALS) ||
     (type == PendingMutationType.SplitAgreement && lastError in com.ticketbox.data.repository.SPLIT_SHARE_REFUSALS) ||
     lastError == EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW ||
         (type == PendingMutationType.UndoExpense && lastError == "expense_not_found") ||

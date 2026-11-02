@@ -281,7 +281,7 @@ internal val syncStatusExactErrorMessageResources = mapOf(
     "debt_create_response_unverified" to R.string.debt_create_sync_uncertain,
     "debt_create_response_pending" to R.string.debt_create_sync_uncertain,
     "debt_create_connection_interrupted" to R.string.debt_create_sync_uncertain,
-)
+) + com.ticketbox.viewmodel.ocrRegionFailureMessageResources
 
 @Composable
 internal fun SyncStatusBillSplitSection(state: com.ticketbox.viewmodel.OutboxStatusUiState, actions: SyncStatusActions) {

@@ -348,6 +348,10 @@
     <string name="ocr_region_cancel">返回</string>
     <string name="ocr_region_clear">清除选框</string>
     <string name="ocr_region_submit">重读这一行</string>
+    <string name="ocr_region_no_text_recovery">选区未读出文字，原建议已保留。请到“同步与待办”放弃本次重读，再调整选区或手动填写。</string>
+    <string name="ocr_region_incomplete_recovery">选框截断了文字，原建议已保留。请到“同步与待办”放弃本次重读，再框选完整的一行。</string>
+    <string name="ocr_region_invalid_recovery">选区需要包含一行完整文字。请到“同步与待办”放弃本次重读，再调整选区。</string>
+    <string name="ocr_region_source_unavailable_recovery">整张原件尚无可用识别结果。请到“同步与待办”处理本次重读，待原件识别完成后重新框选，也可手动填写。</string>
     <string name="recognition_source_open">看原图这一处</string>
     <string name="recognition_source_help">高亮来自这一候选的识别文字框。可继续浏览原图；返回保留当前填写。</string>
     <string name="recognition_source_unavailable">原图与这次识别来源不一致，暂不显示位置。仍可返回填写。</string>

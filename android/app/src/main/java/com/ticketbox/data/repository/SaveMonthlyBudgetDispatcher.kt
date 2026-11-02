@@ -49,7 +49,7 @@ class SaveMonthlyBudgetDispatcher(
             // A month without a budget returns an unconfigured response, never 404.
             // A missing route or ledger does not prove this original was accepted.
             mapOutboxHttpException(error).let { result ->
-                if (result is DispatchResult.Discarded) DispatchResult.Failure(BUDGET_SAVE_UNVERIFIED) else result
+                if (error.code() == 404) DispatchResult.Failure(BUDGET_SAVE_UNVERIFIED) else result
             }
         } catch (_: IOException) { DispatchResult.RetryableFailure("连接中断，保留原预算提交等待重试。")
         } catch (error: CancellationException) { throw error
