@@ -246,7 +246,7 @@ class SpendingGoalDraftNavigationRoomTest {
         assertEquals(null, detail.state.value.loadError)
         assertEquals(250_000L, detail.state.value.goal?.targetAmountCents)
         assertEquals(240_000L, detail.state.value.pendingEdits.single().confirmed?.targetAmountCents)
-        compose.onNodeWithText("CNY ¥2,500.00").performScrollTo().assertExists()
+        compose.onNodeWithText("¥2,500.00").performScrollTo().assertExists()
         capture("goal-current-with-original-receipt")
         goal = goal.copy(targetAmountCents = 260_000, remainingAmountCents = 200_000, rowVersion = 5)
         scrollToText(context.getString(R.string.spending_goal_detail_back))

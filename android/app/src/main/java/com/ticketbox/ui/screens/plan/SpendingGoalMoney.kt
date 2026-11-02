@@ -27,6 +27,23 @@ internal fun spendingGoalAmountText(amount: Long?, currencyCode: String?): Strin
     }
 }
 
+/** 单个目标卡把币种写在标题旁 (还可用 · CNY), 卡内金额只写符号; 币种未记录或不受支持时仍按原写法。 */
+@Composable
+internal fun spendingGoalCardAmountText(amount: Long?, currencyCode: String?): String {
+    val currency = CurrencyCode.fromStorageKeyOrNull(currencyCode)
+    return if (amount != null && currency != null) {
+        formatDisplayAmount(amount, CurrencyDisplay(currency))
+    } else {
+        spendingGoalAmountText(amount, currencyCode)
+    }
+}
+
+@Composable
+internal fun spendingGoalCardLabel(label: String, currencyCode: String?): String =
+    CurrencyCode.fromStorageKeyOrNull(currencyCode)?.let {
+        stringResource(R.string.spending_goal_amount_label_currency, label, it.storageKey)
+    } ?: label
+
 @Composable
 internal fun SpendingGoalOriginalSummary(name: String?, month: String?, amount: Long?, currencyCode: String?) {
     name?.let { Text(it) }
