@@ -1,5 +1,5 @@
 {% extends "_workspace.html" %}
-{% from "_workspace_ui.html" import icon with context %}
+{% from "_workspace_ui.html" import icon, web_ledger_entry with context %}
 {% from "_learning_ui.html" import ledger_filter, registry %}
 {% block title %}自动建议与学习 — 小票夹{% endblock %}
 {% block back_url %}/owner/settings{% endblock %}
@@ -35,7 +35,7 @@
         {% else %}<p class="workspace-note">这是随账目计算的历史参考，不会根据赞成或反对训练模型。缺少历史、日期或汇率时，洞察会说明原因。需要模型分析时，另用 <a href="/owner/ai-advisor">AI 预算顾问</a>。</p>{% endif %}
         {% if selected_ledger %}
         <p class="workspace-note"><strong>{{ selected_ledger.name }}</strong> · {% if kind == 'budget_suggestion' %}进入洞察时按实际账目计算，不生成待采纳学习记录。{% elif usage %}保留 {{ usage.count }} 条生成记录，最近一次 {{ usage.last_at|owner_datetime }}。记录数不代表准确率。{% else %}尚无生成记录。可到下方入口使用；没有记录不等于功能关闭。{% endif %}</p>
-        <a class="workspace-text-action" href="{{ href }}?ledger_id={{ selected_ledger.ledger_id|urlencode }}">去使用 · {{ location }}</a>
+        {{ web_ledger_entry(selected_ledger.ledger_id, href, '去使用 · ' ~ location, 'workspace-text-action') }}
         {% endif %}
       </div>
     </details>
@@ -61,7 +61,7 @@
           <button type="submit" class="btn btn-secondary">不再参考这次选择</button>
         </form>
         {% endif %}
-        {% if row.repayment %}<a href="/web/repayment-drafts/{{ row.repayment.public_id }}?ledger_id={{ selected_ledger.ledger_id|urlencode }}">查看这次还款</a>{% elif row.expense and row.expense.status in ['pending', 'confirmed'] %}<a href="/web/expenses/{{ row.expense.id }}/edit?ledger_id={{ selected_ledger.ledger_id|urlencode }}">查看这笔账目</a>{% else %}<p class="workspace-note">原记录已移出当前账目，保留这次选择记录。</p>{% endif %}
+        {% if row.repayment %}{{ web_ledger_entry(selected_ledger.ledger_id, '/web/repayment-drafts/' ~ row.repayment.public_id, '查看这次还款') }}{% elif row.expense and row.expense.status in ['pending', 'confirmed'] %}{{ web_ledger_entry(selected_ledger.ledger_id, '/web/expenses/' ~ row.expense.id ~ '/edit', '查看这笔账目') }}{% else %}<p class="workspace-note">原记录已移出当前账目，保留这次选择记录。</p>{% endif %}
       </div>
       {% else %}<p>还没有保存采用或纠正记录。</p><p class="workspace-note">明确选择并保存分类，或核对两笔账单后作出保留决定，会保存反馈。单纯查看、未触碰分类的确认或清理记录不算学习。</p>{% endfor %}
     </div>

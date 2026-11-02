@@ -158,11 +158,13 @@ def test_expired_local_session_post_recovers_to_referring_get_page(
     assert cross_origin.headers["location"] == "/web/auth/local?next=%2Fweb"
 
 
-def _owner_entry_form(installed_web: _InstalledWeb, destination: str) -> dict[str, str]:
-    page = installed_web.browser.get("/owner/ledgers")
+def _owner_entry_form(
+    installed_web: _InstalledWeb, destination: str, page_path: str = "/owner/ledgers",
+) -> dict[str, str]:
+    page = installed_web.browser.get(page_path)
     assert page.status_code == 200, page.text
     forms = re.findall(
-        r'<form method="post" action="/web/auth/ledgers">(.*?)</form>',
+        r'<form method="post" action="/web/auth/ledgers"[^>]*>(.*?)</form>',
         page.text,
         re.DOTALL,
     )
@@ -184,12 +186,18 @@ def _entry_headers(installed_web: _InstalledWeb, session_token: str) -> dict[str
     }
 
 
-@pytest.mark.parametrize("destination", ["/web", "/web/family"])
+@pytest.mark.parametrize(("page_path", "destination"), [
+    ("/owner/ledgers", "/web"),
+    ("/owner/ledgers", "/web/family"),
+    ("/owner", "/web"),
+    ("/owner", "/web/data-quality"),
+    ("/owner/algorithm-versions?ledger_id=owner", "/web/pending"),
+])
 def test_owner_entry_switches_existing_session_without_new_identity(
-    installed_web: _InstalledWeb, destination: str,
+    installed_web: _InstalledWeb, page_path: str, destination: str,
 ) -> None:
     session_token = _connect_local_session(installed_web)
-    fields = _owner_entry_form(installed_web, destination)
+    fields = _owner_entry_form(installed_web, destination, page_path)
     headers = _entry_headers(installed_web, session_token)
     with SessionLocal() as db:
         counts = [db.scalar(select(func.count()).select_from(model))

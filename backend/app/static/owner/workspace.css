@@ -118,6 +118,8 @@
 .workspace-facts dt { color: var(--text-muted); margin-bottom: 3px; }
 .workspace-facts dd { margin: 0; overflow-wrap: anywhere; }
 .workspace-text-action { color: var(--brand-primary); margin-top: 20px; }
+.owner-web-entry { display: contents; }
+:where(.owner-web-entry > button:not(.btn)) { border: 0; padding: 0; background: transparent; font: inherit; text-align: inherit; cursor: pointer; }
 .owner-workspace .alert { overflow-wrap: anywhere; font-size: var(--type-body-size); }
 @media (max-width: 1100px) {
   .owner-workspace .owner-main { padding-left: 28px; padding-right: 28px; }

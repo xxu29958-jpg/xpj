@@ -1,5 +1,5 @@
 {% extends "_workspace.html" %}
-{% from "_workspace_ui.html" import icon, task_link with context %}
+{% from "_workspace_ui.html" import icon, task_link, web_ledger_entry with context %}
 {% block title %}本机管理 — 小票夹{% endblock %}
 {% block back_url %}/web{% endblock %}
 {% block back_label %}网页版账本{% endblock %}
@@ -54,10 +54,10 @@
     </div>
   </div>
   <div class="quick-links mt-4">
-    <a class="owner-action-link" href="/web/pending?ledger_id={{ primary_tenant_id }}" target="_blank">
+    {% call web_ledger_entry(primary_tenant_id, '/web/pending', css_class='owner-action-link', new_tab=true) %}
       <span class="owner-action-icon" aria-hidden="true">{{ icon("monitor") }}</span>
       <span>处理主账本待确认</span>
-    </a>
+    {% endcall %}
   </div>
 </div>
 
@@ -102,13 +102,13 @@
         <td class="text-end">{{ row.open_external_debt_count }}</td>
         <td>
           {% if row.debt_goal_needs_review %}
-          <a href="/web/debt-goals?ledger_id={{ row.ledger_id }}" target="_blank"><span class="badge badge-warn">需复核</span></a>
+          {% call web_ledger_entry(row.ledger_id, '/web/debt-goals', new_tab=true) %}<span class="badge badge-warn">需复核</span>{% endcall %}
           {% else %}—{% endif %}
         </td>
         <td>
-          <a class="text-link" href="/web?ledger_id={{ row.ledger_id }}" target="_blank">/web</a>
+          {{ web_ledger_entry(row.ledger_id, '/web', '/web', new_tab=true) }}
           ·
-          <a class="text-link" href="/web/data-quality?ledger_id={{ row.ledger_id }}" target="_blank">体检</a>
+          {{ web_ledger_entry(row.ledger_id, '/web/data-quality', '体检', new_tab=true) }}
         </td>
       </tr>
       {% endfor %}
@@ -150,26 +150,26 @@
     </div>
   </div>
   <div class="quick-links mt-4">
-    <a class="owner-action-link" href="/web/data-quality?ledger_id={{ primary_tenant_id }}" target="_blank">
+    {% call web_ledger_entry(primary_tenant_id, '/web/data-quality', css_class='owner-action-link', new_tab=true) %}
       <span class="owner-action-icon" aria-hidden="true">{{ icon("stethoscope") }}</span>
       <span>数据体检</span>
-    </a>
-    <a class="owner-action-link" href="/web/duplicates?ledger_id={{ primary_tenant_id }}" target="_blank">
+    {% endcall %}
+    {% call web_ledger_entry(primary_tenant_id, '/web/duplicates', css_class='owner-action-link', new_tab=true) %}
       <span class="owner-action-icon" aria-hidden="true">{{ icon("copy") }}</span>
       <span>重复整理</span>
-    </a>
-    <a class="owner-action-link" href="/web/categories/uncategorized?ledger_id={{ primary_tenant_id }}" target="_blank">
+    {% endcall %}
+    {% call web_ledger_entry(primary_tenant_id, '/web/categories/uncategorized', css_class='owner-action-link', new_tab=true) %}
       <span class="owner-action-icon" aria-hidden="true">{{ icon("tag") }}</span>
       <span>未分类</span>
-    </a>
-    <a class="owner-action-link" href="/web/import?ledger_id={{ primary_tenant_id }}" target="_blank">
+    {% endcall %}
+    {% call web_ledger_entry(primary_tenant_id, '/web/import', css_class='owner-action-link', new_tab=true) %}
       <span class="owner-action-icon" aria-hidden="true">{{ icon("upload") }}</span>
       <span>CSV 导入</span>
-    </a>
-    <a class="owner-action-link" href="/web/export.csv?ledger_id={{ primary_tenant_id }}" target="_blank">
+    {% endcall %}
+    {% call web_ledger_entry(primary_tenant_id, '/web/export.csv', css_class='owner-action-link', new_tab=true) %}
       <span class="owner-action-icon" aria-hidden="true">{{ icon("download") }}</span>
       <span>CSV 导出</span>
-    </a>
+    {% endcall %}
   </div>
 </div>
 {% endif %}
@@ -203,7 +203,7 @@
   </div>
   <div class="quick-links mt-4">
     <span>{{ budget_status.month }}</span>
-    <a href="/web/budgets?ledger_id={{ budget_status.ledger_id }}&amp;month={{ budget_status.month }}" target="_blank">打开预算</a>
+    {{ web_ledger_entry(budget_status.ledger_id, '/web/budgets?month=' ~ budget_status.month, '打开预算', new_tab=true) }}
   </div>
 </div>
 {% endif %}
@@ -241,8 +241,8 @@
   <div class="quick-links mt-4">
     <span>近 24 小时通知草稿：{{ recurring_ops.notification_recent_24h_count }}</span>
     <span>已归档固定支出：{{ recurring_ops.archived_count }}</span>
-    <a href="/web/recurring?ledger_id={{ primary_tenant_id }}" target="_blank">主账本固定支出</a>
-    <a href="/web/pending?ledger_id={{ primary_tenant_id }}" target="_blank">主账本待确认</a>
+    {{ web_ledger_entry(primary_tenant_id, '/web/recurring', '主账本固定支出', new_tab=true) }}
+    {{ web_ledger_entry(primary_tenant_id, '/web/pending', '主账本待确认', new_tab=true) }}
   </div>
 </div>
 {% endif %}

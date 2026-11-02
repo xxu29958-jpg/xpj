@@ -1,5 +1,5 @@
 {% extends "_workspace.html" %}
-{% from "_workspace_ui.html" import icon with context %}
+{% from "_workspace_ui.html" import icon, web_ledger_entry with context %}
 {% from "_learning_ui.html" import ledger_filter, registry %}
 {% block title %}建议记录与清理 — 小票夹{% endblock %}
 {% block back_url %}/owner/settings{% endblock %}
@@ -59,8 +59,8 @@
           <summary><span>{{ entry.display_label if entry else decision.decision_type }}{% if expense %} · {{ expense.merchant or '未填写商户' }}{% endif %}<span>{{ decision_summaries[decision.id] }}</span></span>{{ icon('chevron-right') }}</summary>
           <div class="workspace-disclosure__body">
             {% if expense %}<p class="workspace-note">账目日期：{{ expense.expense_time|owner_datetime }} · {{ {'pending': '待核对', 'confirmed': '已入账', 'rejected': '已拒绝'}.get(expense.status, expense.status) }}</p>{% endif %}
-            {% if expense and expense.status in ('pending', 'confirmed') %}<a class="workspace-text-action" href="/web/expenses/{{ expense.id }}/edit?{{ {'ledger_id': selected_ledger.ledger_id}|urlencode }}">打开这张小票核对</a>{% endif %}
-            {% if decision.decision_type == 'duplicate_candidate' %}<p class="workspace-note">忽略只关闭这条建议，不改变重复判断或小票的重复标记。要确认保留两条，请到<a href="/web/duplicates?{{ {'ledger_id': selected_ledger.ledger_id}|urlencode }}">疑似重复</a>核对处理。</p>{% endif %}
+            {% if expense and expense.status in ('pending', 'confirmed') %}{{ web_ledger_entry(selected_ledger.ledger_id, '/web/expenses/' ~ expense.id ~ '/edit', '打开这张小票核对', 'workspace-text-action') }}{% endif %}
+            {% if decision.decision_type == 'duplicate_candidate' %}<p class="workspace-note">忽略只关闭这条建议，不改变重复判断或小票的重复标记。要确认保留两条，请到疑似重复核对处理。</p>{{ web_ledger_entry(selected_ledger.ledger_id, '/web/duplicates', '疑似重复') }}{% endif %}
             <details class="workspace-disclosure">
               <summary>技术记录与原始内容 {{ icon('chevron-right') }}</summary>
               <div class="workspace-disclosure__body">

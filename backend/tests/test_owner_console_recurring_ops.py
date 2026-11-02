@@ -98,4 +98,5 @@ def test_owner_index_renders_recurring_ops_status(local_client: TestClient, *, i
     assert "草稿缺字段" in body
     assert "近 24 小时通知草稿：2" in body
     assert "已归档固定支出：1" in body
-    assert "/web/recurring?ledger_id=owner" in body
+    assert 'name="ledger_id" value="owner"' in body
+    assert 'name="next" value="/web/recurring"' in body

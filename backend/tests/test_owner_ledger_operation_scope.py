@@ -66,11 +66,15 @@ def test_selected_ledger_records_are_visible_on_all_three_pages(owner, ledgers):
         assert f'value="{target}" selected' in result.text
         assert visible in result.text and absent not in result.text
         if page == "ai-advisor":
-            assert f'href="/web/budget-advise?ledger_id={target}"' in result.text
+            assert 'action="/web/auth/ledgers"' in result.text
+            assert f'name="ledger_id" value="{target}"' in result.text
+            assert 'name="next" value="/web/budget-advise"' in result.text
         if page == "learning-maintenance":
             assert "travel-record" in result.text and "home-record" not in result.text
             assert "建议分类为「餐饮」" in result.text
-            assert f'href="/web/expenses/{target_rows[3]}/edit?ledger_id={target}"' in result.text
+            assert 'action="/web/auth/ledgers"' in result.text
+            assert f'name="ledger_id" value="{target}"' in result.text
+            assert f'name="next" value="/web/expenses/{target_rows[3]}/edit"' in result.text
 
 
 @pytest.mark.parametrize("action", ["withdraw", "dismiss", "cleanup"])

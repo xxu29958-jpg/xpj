@@ -1,5 +1,5 @@
 {% extends "_workspace.html" %}
-{% from "_workspace_ui.html" import icon with context %}
+{% from "_workspace_ui.html" import icon, web_ledger_entry with context %}
 {% block title %}账务日历 — 小票夹{% endblock %}
 {% block back_url %}/owner/ledgers{% endblock %}
 {% block back_label %}账本管理{% endblock %}
@@ -8,7 +8,7 @@
 {% block workspace_body %}
 {% if error %}<div class="alert alert-danger" role="alert">{{ error }} 输入已保留，下方已显示当前规则，请核对后重新保存。</div>{% endif %}
 {% if ledger_undated_expense_count|default(0) %}
-<div class="alert alert-warn" role="status">有 {{ ledger_undated_expense_count }} 笔已确认账单缺少可用的日期依据。<a class="text-link" href="/web/confirmed?ledger_id={{ calendar.ledger_id }}&amp;filter=missing_accounting_date">查看并沿原流水更正日期</a>；更换日历设置不会替这些账单补造日期。</div>
+<div class="alert alert-warn" role="status">有 {{ ledger_undated_expense_count }} 笔已确认账单缺少可用的日期依据。{{ web_ledger_entry(calendar.ledger_id, '/web/confirmed?filter=missing_accounting_date', '查看并沿原流水更正日期') }}；更换日历设置不会替这些账单补造日期。</div>
 {% endif %}
 <div class="workspace-calendar">
   <form method="post" action="/owner/ledgers/{{ calendar.ledger_id }}/calendar" class="workspace-form workspace-calendar-form">
