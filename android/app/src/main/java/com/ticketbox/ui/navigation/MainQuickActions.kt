@@ -103,7 +103,7 @@ private val ShortcutTarget.iconRes: Int
         ShortcutTarget.ReviewPending -> R.drawable.ic_lucide_inbox
         ShortcutTarget.MonthlyOverview -> R.drawable.ic_lucide_chart_no_axes_combined
         ShortcutTarget.CaptureReceipt -> R.drawable.ic_lucide_camera
-        ShortcutTarget.EntryTemplates -> R.drawable.ic_lucide_receipt_text
+        ShortcutTarget.EntryTemplates -> R.drawable.ic_lucide_copy
         ShortcutTarget.SyncStatus, ShortcutTarget.PendingUploads, ShortcutTarget.PendingRecords,
         ShortcutTarget.FailedOperations -> R.drawable.ic_lucide_refresh_cw
     }
