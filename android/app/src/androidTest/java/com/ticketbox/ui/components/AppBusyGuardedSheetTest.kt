@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
@@ -35,22 +36,27 @@ class AppBusyGuardedSheetTest {
     private class Harness {
         var submitting by mutableStateOf(true)
         var dismissed by mutableStateOf(false)
+        var contentHeight by mutableStateOf(SHEET_CONTENT_HEIGHT)
     }
 
-    private fun setSheet(harness: Harness) {
+    private fun setSheet(harness: Harness, skipPartiallyExpanded: Boolean = false) {
         composeRule.setContent {
             TicketboxTheme(skin = AppSkin.Default) {
                 if (!harness.dismissed) {
                     AppBusyGuardedSheet(
                         isSubmitting = harness.submitting,
                         onDismiss = { harness.dismissed = true },
+                        skipPartiallyExpanded = skipPartiallyExpanded,
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(SHEET_CONTENT_HEIGHT)
+                                .height(harness.contentHeight)
                                 .testTag(SHEET_CONTENT_TAG),
-                        )
+                        ) {
+                            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(40.dp)
+                                .testTag(SHEET_RESULT_TAG))
+                        }
                     }
                 }
             }
@@ -89,8 +95,28 @@ class AppBusyGuardedSheetTest {
         assertTrue(harness.dismissed)
     }
 
+    @Test
+    fun quickSubmissionResultDuringOpeningRemainsVisible() {
+        val harness = Harness().apply { submitting = false }
+        composeRule.mainClock.autoAdvance = false
+        setSheet(harness, skipPartiallyExpanded = true)
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.runOnIdle { harness.submitting = true }
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.runOnIdle { harness.submitting = false }
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.runOnIdle { harness.contentHeight = 480.dp }
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.mainClock.autoAdvance = true
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(SHEET_RESULT_TAG).assertIsDisplayed()
+        assertTrue(!harness.dismissed)
+    }
+
     private companion object {
         const val SHEET_CONTENT_TAG = "busy_guarded_sheet_content"
+        const val SHEET_RESULT_TAG = "busy_guarded_sheet_result"
         const val SWIPE_ATTEMPTS = 3
         val SHEET_CONTENT_HEIGHT = 400.dp
     }
