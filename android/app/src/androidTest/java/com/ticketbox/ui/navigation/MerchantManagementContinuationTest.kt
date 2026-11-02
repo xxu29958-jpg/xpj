@@ -13,6 +13,7 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -644,8 +645,14 @@ class MerchantManagementContinuationTest {
         waitForText(R.string.merchant_management_tools_add_catalog)
     }
 
-    private fun clickText(label: Int) = compose.onNodeWithText(context.getString(label))
-        .performScrollTo().assertIsEnabled().performTouchInput { click() }
+    private fun clickText(label: Int) {
+        val text = context.getString(label)
+        // Room draft restoration can still be running after the page text appears.
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasText(text) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(text).performScrollTo().assertIsEnabled().performTouchInput { click() }
+    }
 
     private fun fill(label: Int, value: String, index: Int = 0) {
         // AppTextInput exposes its label as a sibling, not as editable text.
