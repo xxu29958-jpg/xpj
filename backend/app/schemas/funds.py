@@ -3,6 +3,7 @@ from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic_core import PydanticCustomError
 
 from app.schemas._debts import RepaymentFactListResponse
 from app.schemas._money import NonNegativeMoneyMinor, PositiveMoneyMinor, SignedMoneyAggregate, SignedMoneyMinor
@@ -24,8 +25,11 @@ class CreditTerms(BaseModel):
 
     @model_validator(mode="after")
     def require_observation(self):
-        if (self.credit_limit_minor is not None or self.available_credit_minor is not None) and (not self.observed_on or not self.source):
-            raise ValueError("额度请同时填写查询日期与来源")
+        if self.credit_limit_minor is not None or self.available_credit_minor is not None:
+            if not self.observed_on:
+                raise PydanticCustomError("credit_observation_date_required", "credit_terms.observed_on is required when an amount is supplied")
+            if not self.source:
+                raise PydanticCustomError("credit_observation_source_required", "credit_terms.source is required when an amount is supplied")
         return self
 
 
