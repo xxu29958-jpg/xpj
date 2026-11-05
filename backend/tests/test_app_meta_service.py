@@ -48,7 +48,9 @@ def test_version_tuple_compare_zero_nine_lt_one_oh() -> None:
 
 def test_fresh_schema_minimum_is_owned_by_dataset_authority() -> None:
     with SessionLocal() as db:
-        assert app_meta_service.schema_min_compatible(db) == BACKEND_VERSION
+        minimum = app_meta_service.schema_min_compatible(db)
+        assert minimum == db.get(DatasetAuthorityRecord, 1).schema_min_compatible == "1.2.0"
+        assert _version_tuple(minimum) <= _version_tuple(BACKEND_VERSION)
 
 
 def test_legacy_dataset_keys_cannot_be_reintroduced_through_app_meta() -> None:
