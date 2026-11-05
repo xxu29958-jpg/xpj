@@ -28,9 +28,10 @@ class CreateGoalDispatcher(
                 DispatchResult.Success(receiptJson = receiptAdapter.toJson(receipt))
             } else DispatchResult.Failure("返回的目标与原创建不匹配，已保留记录。")
         } catch (error: HttpException) {
-            when (val result = mapOutboxHttpException(error)) {
-                is DispatchResult.Discarded -> DispatchResult.Failure("目标创建未获确认，已保留原提交，请核对。")
-                is DispatchResult.Conflict -> DispatchResult.Failure(result.serverMessage)
+            val result = mapOutboxHttpException(error)
+            when {
+                error.code() == 404 -> DispatchResult.Failure("目标创建未获确认，已保留原提交，请核对。")
+                result is DispatchResult.Conflict -> DispatchResult.Failure(result.serverMessage)
                 else -> result
             }
         } catch (_: IOException) {

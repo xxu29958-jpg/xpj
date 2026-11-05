@@ -48,6 +48,18 @@ REQUIRED_FILES = (*PYTHON_OWNERS, *KOTLIN_OWNERS, "android/app/build.gradle.kts"
 # Exact-symbol evidence, never a module/directory exemption or a handler registry.
 # A changed symbol invalidates this reviewed responsibility and requires a fresh review.
 REVIEWED_BOUNDARIES = {
+    (ANDROID + "data/repository/CreateGoalDispatcher.kt", "dispatch"): {
+        "sha256": "db8cbd6e9fdc8187cf3d510179e87e7ed9a65420e532b2bb5186b51f234272ab",
+        "owner": "NetworkErrorHandler HTTP diagnostic and durable Outbox failure/receipt",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/GoalCreationRepositoryTest.kt::protocolAndMissingRouteRefusalsNeverSettleCreationAsDone",
+        "reason": "The shared mapper no longer discards generic 404 responses, so this existing domain refusal now selects HTTP 404 explicitly. Mapping still reports the sanitized HTTP status/code/request ID first. The creation remains a visible Failed original with unchanged payload and key, no accepted callback or receipt, and explicit local recovery. Other exception branches are unchanged: transport remains retryable, cancellation propagates and an unknown result remains a blocking Failure rather than success.",
+    },
+    (ANDROID + "data/repository/SaveMonthlyArrangementDispatcher.kt", "dispatch"): {
+        "sha256": "07d88ca8db0de13ae645f534251c2fa1ed2bb8bafbd60564bad481a2f533e075",
+        "owner": "NetworkErrorHandler HTTP diagnostic and durable Outbox failure/receipt",
+        "test": "android/app/src/test/java/com/ticketbox/data/repository/MonthlyArrangementDispatcherTest.kt::wrongReceiptOrMissingRouteNeverProvesSaved",
+        "reason": "Only the selector for the existing missing-route refusal changes from Discarded to HTTP 404. The shared mapper still reports the sanitized HTTP failure before the dispatcher returns monthly_arrangement_unverified; Outbox retains the original as Failed and exposes its existing recovery. No receipt is invented, OCC/key is not rewritten, and no new catch or retry is added. Transport, cancellation and other unverified-response branches retain their existing typed outcomes.",
+    },
     ("backend/app/services/background_task_recovery_service.py", "start_ocr_task_recovery"): {
         "sha256": "eaa02c69cf64125e3818900a1ef07e1fab6c530f5bb486f856e4b462d6309293",
         "owner": "the owned recovery loop and existing sanitized backend logger",
@@ -261,10 +273,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "Unexpected replay errors report through logNetworkWarning before a blocking Failure preserves the original key and payload. The user sees no raw exception text; cancellation still propagates and transport retries retain their existing owner.",
     },
     (ANDROID + "data/repository/DebtGoalEditSubmission.kt", "dispatch"): {
-        "sha256": "b54c7bcf93c5cf4da626e40f523ddbd1502e37968f14b28c02c47ef706038244",
+        "sha256": "881c2dbbb126ab728a8079dba761f9bae967dea77c5172172e53ca9ee16fd779",
         "owner": "existing HTTP mapping and sanitized TicketboxNetwork Logcat",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/NetworkErrorReportingTest.kt::debtLinkReplayFailureReportsSafelyAndKeepsItsOriginalCommand",
-        "reason": "Transport and unexpected replay failures report through logNetworkWarning without raw exception text in the UI or Logcat. The existing Outbox retains the original selection or date command, key and OCC; unexpected failures do not acknowledge or retry the command, and cancellation propagates.",
+        "reason": "The existing missing-goal refusal now selects HTTP 404 directly after the shared mapper reports its sanitized diagnostic. It remains definitelyRejected, preserving the existing query withdrawal and explicit review of the Failed original; GoalEditRepositoryTest covers that consumer. Transport and unexpected replay failures still report through logNetworkWarning without raw exception text. Outbox retains the original selection/date command, key and OCC; no unverified acceptance or automatic rewrite is introduced, and cancellation propagates.",
     },
     (ANDROID + "data/repository/ConfirmExpenseDispatcher.kt", "dispatch"): {
         "sha256": "f557594cc93cb70035bf86c417d4487fb734678399d0d2952fe5886d813c1395",
@@ -285,10 +297,10 @@ REVIEWED_BOUNDARIES = {
         "reason": "The immutable application reason is now copied into the original request; it is not logged. A verified first receipt survives a later read failure or cancellation with a retained read-recovery flag. Repository read failures already use NetworkErrorHandler; unexpected callback and replay faults use logNetworkWarning without raw messages, changing keys, retrying or claiming acceptance.",
     },
     (ANDROID + "data/repository/SaveMonthlyBudgetDispatcher.kt", "dispatch"): {
-        "sha256": "456969319e417619bf74dcafe9b254abd21dcf565d2727337e65626568c679bb",
+        "sha256": "01f2f22b539f0cc8faa4501d8f93326226bb45f9780d4ed36041afe92bd5bc05",
         "owner": "existing HTTP mapping and sanitized TicketboxNetwork output for read cleanup/replay faults",
         "test": "android/app/src/test/java/com/ticketbox/data/repository/SaveMonthlyBudgetDispatcherTest.kt",
-        "reason": "Verified budget acceptance remains final when read cleanup fails; unexpected failures report through logNetworkWarning and retain the first receipt or unresolved original as appropriate. Cancellation before acceptance propagates; after acceptance only read repair remains. No raw exception text enters the UI or Logcat.",
+        "reason": "Only the existing missing-route refusal selector changes from Discarded to HTTP 404; NetworkErrorHandler still reports first, and missingRouteDoesNotProveAnUnsentBudgetWasSaved verifies the blocking Failure. The accepted-read catch is unchanged: verified budget acceptance remains final when read cleanup fails, with the first receipt and explicit read-repair state retained. Unexpected failures report through logNetworkWarning; cancellation before acceptance propagates. No raw exception text, invented receipt or new state is introduced.",
     },
     (ANDROID + "viewmodel/OriginalAttachmentViewModel.kt", "loadSelectedImage"): {
         "sha256": "af13ab245557b90c219f3460be1b1b3e04cf8ab8636f179ca4b531fdc9f9e8f4",

@@ -39,8 +39,11 @@ class CreateRecurringItemDispatcher(
 internal fun mapRecurringHttpException(
     error: HttpException,
     stateConflictIsResolvable: Boolean,
-): DispatchResult = when (val result = mapOutboxHttpException(error)) {
-    is DispatchResult.Discarded -> DispatchResult.Failure(RECURRING_RECEIPT_UNVERIFIED, definitelyRejected = true)
-    is DispatchResult.Conflict -> if (stateConflictIsResolvable) result else DispatchResult.Failure(result.serverMessage, definitelyRejected = true)
-    else -> result
+): DispatchResult {
+    val result = mapOutboxHttpException(error)
+    return when {
+        error.code() == 404 -> DispatchResult.Failure(RECURRING_RECEIPT_UNVERIFIED, definitelyRejected = true)
+        result is DispatchResult.Conflict -> if (stateConflictIsResolvable) result else DispatchResult.Failure(result.serverMessage, definitelyRejected = true)
+        else -> result
+    }
 }

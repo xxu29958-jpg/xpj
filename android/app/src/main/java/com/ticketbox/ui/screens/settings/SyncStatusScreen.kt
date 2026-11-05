@@ -392,6 +392,8 @@ internal fun FailedCard(
 ) {
     val expired = isExpiredFailure(row.lastError)
     val reviewMessage = when {
+        row.type == PendingMutationType.RetryOcr && row.lastError in com.ticketbox.data.repository.OCR_REGION_INPUT_REFUSALS ->
+            com.ticketbox.viewmodel.ocrRegionFailureMessageResources[row.lastError]
         row.type == PendingMutationType.UndoExpense && row.lastError == "expense_not_found" ->
             R.string.sync_status_undo_unavailable
         row.type == PendingMutationType.CreateExpenseOffset && onRetry == null ->

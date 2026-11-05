@@ -3,13 +3,14 @@ package com.ticketbox.data.repository
 import retrofit2.HttpException
 
 private val outboxHttpErrors = NetworkErrorHandler(serverUrlProvider = { null }, context = "Outbox")
+internal val OCR_REGION_INPUT_REFUSALS = setOf("ocr_region_no_text", "ocr_region_incomplete", "ocr_region_invalid")
 private val outboxRecoveryErrorCodes = setOf(
     "runtime_version_mismatch", "client_upgrade_required", "rule_category_deleted", DEBT_ADJUSTMENT_NEGATIVE_REMAINING,
     BUDGET_CURRENCY_CONFLICT, DEBT_VOID_ORIGINAL_REQUIRES_REVIEW, DEBT_KIND_ORIGINAL_REQUIRES_REVIEW,
     EXPENSE_REJECTION_ORIGINAL_REQUIRES_REVIEW, EXPENSE_CONFIRMATION_ORIGINAL_REQUIRES_REVIEW,
     EXPENSE_SUBTASK_ORIGINAL_REQUIRES_REVIEW,
-    "split_total_exceeds_parent", "split_amount_exceeds_parent",
-)
+    "split_total_exceeds_parent", "split_amount_exceeds_parent", "ocr_region_source_unavailable",
+) + OCR_REGION_INPUT_REFUSALS
 
 /** Persist known recovery reasons so the sync UI can explain the required next step. */
 internal fun NetworkErrorHandler.ParsedError.outboxFailureMessage(): String =
@@ -24,10 +25,11 @@ internal fun mapOutboxHttpException(error: HttpException): DispatchResult {
 /** A missing Debt withdraws that query, while its original command remains available for review. */
 internal fun mapDebtWriteHttpException(error: HttpException, publicId: String): DispatchResult {
     val parsed = outboxHttpErrors.parseHttpError(error)
-    return when (val result = mapOutboxHttpError(error.code(), parsed)) {
-        is DispatchResult.Discarded -> DispatchResult.Failure(result.reason, definitelyRejected = true,
-            missingDebtPublicId = publicId.takeIf { error.code() == 404 && parsed.errorCode == "debt_not_found" })
-        else -> result
+    val result = mapOutboxHttpError(error.code(), parsed)
+    return if (result is DispatchResult.Failure && error.code() == 404 && parsed.errorCode == "debt_not_found") {
+        result.copy(definitelyRejected = true, missingDebtPublicId = publicId)
+    } else {
+        result
     }
 }
 
@@ -41,7 +43,8 @@ internal fun mapOutboxHttpError(statusCode: Int, parsed: NetworkErrorHandler.Par
             // Unknown and domain refusals do not prove this command was fulfilled.
             else -> DispatchResult.Failure(parsed.outboxFailureMessage())
         }
-        404 -> DispatchResult.Discarded(message)
+        // Neither a missing route nor a missing resource acknowledges this original write.
+        404 -> DispatchResult.Failure(parsed.outboxFailureMessage(), definitelyRejected = true)
         408, 429, in 500..599 -> DispatchResult.RetryableFailure(message)
         else -> DispatchResult.Failure(parsed.outboxFailureMessage(), definitelyRejected = statusCode in setOf(400, 401, 403, 405, 410, 412, 422),
             credentialRejected = statusCode == 401)

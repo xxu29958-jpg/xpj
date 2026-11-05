@@ -163,6 +163,26 @@ internal class ExpenseEditViewModelTest {
     }
 
     @Test
+    fun rejectedRegionShowsItsRecoveryReasonWithoutErasingTheReviewedForm() = edit { fake ->
+        val vm = viewModel(fake)
+        fake.retryOcrResult = Result.success(ExpenseCommandAcceptance(fake.baseExpense, listOf(11L)))
+        vm.retryOcr()
+        advanceUntilIdle()
+        val before = vm.uiState.value
+        val command = observedExpenseCommand(11L, fake.baseExpense, PendingMutationType.RetryOcr,
+            PendingMutationStatus.Failed, fake.binding)
+        fake.commands.value = fake.commands.value.copy(commands = listOf(command.copy(
+            row = command.row.copy(lastError = "ocr_region_no_text"))))
+        advanceUntilIdle()
+        assertEquals(UiText.res(R.string.ocr_region_no_text_recovery), vm.uiState.value.message)
+        assertEquals(before.expense, vm.uiState.value.expense)
+        assertEquals(before.formRevision, vm.uiState.value.formRevision)
+        assertEquals(listOf(11L), vm.uiState.value.commandRowIds)
+        assertFalse(vm.uiState.value.commandsCompleted)
+        assertFalse(vm.consumeDone())
+    }
+
+    @Test
     fun acceptedSaveKeepsReviewedVersionAndStaysOpenUntilExplicitBaselineReview() = edit { fake ->
         val vm = viewModel(fake)
         val accepted = fake.baseExpense.copy(merchant = "新商家", pendingSync = true)
@@ -201,6 +221,10 @@ internal class ExpenseEditViewModelTest {
         assertEquals(canonical, vm.uiState.value.expense)
         assertEquals(originalFormRevision + 1, vm.uiState.value.formRevision)
         assertTrue(vm.uiState.value.commandRowIds.isEmpty())
+        val restored = ExpenseEditViewModel(7L, fake, savedState = androidx.lifecycle.SavedStateHandle(
+            vm.savedState.keys().associateWith { vm.savedState.get<Any>(it) }))
+        advanceUntilIdle()
+        assertTrue(restored.uiState.value.commandRowIds.isEmpty(), "Reviewed commands must not resurrect on recreation")
         fake.saveOfflineResponder = { _, _, baseline ->
             assertEquals(canonical, baseline)
             Result.success(ExpenseCommandAcceptance(canonical, listOf(12L)))
@@ -832,10 +856,11 @@ internal class FakeExpenseEditActions : ExpenseEditActions {
         originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = error("reject not exercised in these tests")
 
+    var retryOcrResult: Result<ExpenseCommandAcceptance>? = null
     override suspend fun retryOcrAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense,
         region: com.ticketbox.domain.model.OcrRegionSelection?,
-    ): Result<ExpenseCommandAcceptance> = error("retryOcr not exercised in these tests")
+    ): Result<ExpenseCommandAcceptance> = requireNotNull(retryOcrResult)
 
     override suspend fun recognizeTextAllowingOffline(
         expectedBinding: LogicalSessionBinding, expense: Expense, rawText: String,

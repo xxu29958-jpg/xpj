@@ -45,8 +45,8 @@ internal fun ExpenseFxStatusCard(
     val actionsEnabled = !busy && !state.loading
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.tinyGap)) {
         if (showFx) ExpenseFxTaskStatus(expense, editState, actionsEnabled, actions)
-        ExpenseReviewAction(actionsEnabled && (editState.commandRowIds.isEmpty() || editState.commandsCompleted),
-            hasDraftChanges) { actions.onLoadFxReview(false) }
+        state.message?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
+        ExpenseReviewAction(actionsEnabled, hasDraftChanges) { actions.onLoadFxReview(false) }
     }
 }
 
@@ -60,7 +60,6 @@ private fun ExpenseFxTaskStatus(
     val state = editState.fx
     Text(stringResource(expenseFxTaskStatusRes(state.task)), style = MaterialTheme.typography.titleSmall)
     Text(stringResource(R.string.expense_fx_manual_recovery), style = MaterialTheme.typography.bodySmall)
-    state.message?.let { Text(it.asString(), color = MaterialTheme.colorScheme.error) }
     TextButton(onClick = actions.onRefreshFx, enabled = actionsEnabled) {
         Text(stringResource(R.string.expense_fx_refresh))
     }

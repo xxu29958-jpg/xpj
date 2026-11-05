@@ -31,6 +31,15 @@ from app.services.idempotency import (
 from app.services.ocr_retry_receipt import OCR_RETRY_TASK_TYPE
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
 
+# These refusals require a different selection or source evidence. Replaying
+# the original must return its durable refusal, not consume another OCR task.
+_REGION_REFUSAL_STATUS = {
+    "ocr_region_no_text": 422,
+    "ocr_region_incomplete": 422,
+    "ocr_region_invalid": 422,
+    "ocr_region_source_unavailable": 409,
+}
+
 
 def _existing_task(db: Session, claim, *, legacy: bool) -> BackgroundTask | Expense | None:
     if claim.kind == IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
@@ -48,7 +57,7 @@ def _existing_task(db: Session, claim, *, legacy: bool) -> BackgroundTask | Expe
         raise AppError("task_not_found", status_code=404)
     # Legacy errors were never successful command acknowledgements. A later
     # retry may compute again, but cancellation and an applied receipt are final.
-    if (legacy and task.status == "failed" and task.error_code not in INTERRUPTED_TASK_CODES
+    if (legacy and task.status == "failed" and task.error_code not in (INTERRUPTED_TASK_CODES | _REGION_REFUSAL_STATUS.keys())
             and task.result_summary_json is None and task.cancellation_requested_at is None
             and task.recovery_attempts == 0):
         return None
@@ -171,7 +180,8 @@ def _require_legacy_completion(task: BackgroundTask) -> None:
         raise AppError("state_conflict", "原识别请求已取消，请核对后重新发起。", status_code=409)
     if task.status == "failed":
         code = task.error_code if task.error_code in ERROR_MESSAGES else "ocr_inference_failed"
-        status = {"permission_denied": 403, "state_conflict": 409, "expense_not_found": 404}.get(code, 503)
+        status = {"permission_denied": 403, "state_conflict": 409, "expense_not_found": 404,
+                  **_REGION_REFUSAL_STATUS}.get(code, 503)
         raise AppError(code, status_code=status)
     outcome = json.loads(task.result_summary_json or "{}").get("outcome")
     if outcome not in {"updated", "no_result"}:

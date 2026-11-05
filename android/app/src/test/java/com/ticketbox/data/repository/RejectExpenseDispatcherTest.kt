@@ -47,6 +47,20 @@ internal class RejectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
     )
 
     @Test
+    fun `missing reject endpoint cannot acknowledge deletion of an existing draft`() = runTest {
+        val stub = ApiServiceStub(rejectExpenseResult = ApiResult.Throw(
+            httpException(404, """{"detail":"Not Found"}"""),
+        ))
+        var publications = 0
+        val result = dispatcherFor(stub) { _, _ -> publications++ }
+            .dispatch(rejectRow(idempotencyKey = "original-ignore-786"))
+
+        assertTrue(result is DispatchResult.Failure, "HTTP refusal is not a deletion receipt: $result")
+        assertEquals(0, publications)
+        assertEquals("original-ignore-786", stub.lastRejectIdempotencyKey)
+    }
+
+    @Test
     fun `accepted reject retains its receipt when cache publication fails`() = runTest {
         val response = successExpenseDto().copy(status = "rejected")
         val stub = ApiServiceStub(rejectExpenseResult = ApiResult.Success(response))

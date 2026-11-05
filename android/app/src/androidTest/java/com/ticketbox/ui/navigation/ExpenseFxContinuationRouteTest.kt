@@ -32,6 +32,7 @@ import com.ticketbox.viewmodel.ExpenseEditViewModel
 import com.ticketbox.viewmodel.expenseEditViewModelFactory
 import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -90,6 +91,47 @@ class ExpenseFxContinuationRouteTest {
         compose.runOnIdle { mounted.value = false; compose.activity.viewModelStore.clear() }
         compose.waitForIdle()
         harness.close()
+    }
+
+    @Test fun droppedOcrOriginalCanBeReviewedInTheRetainedEditorWithoutClaimingSuccess() {
+        converted = true
+        compose.setContent {
+            CompositionLocalProvider(LocalViewModelStoreOwner provides compose.activity) {
+                TicketboxTheme(skin = AppSkin.Default) {
+                    if (mounted.value) ExpenseEditRoute(9, harness.screenFactory, ExpenseEditExitActions({}, {}), ExpenseFactNavigation({}, { _, _ -> }, {}))
+                }
+            }
+        }
+        compose.waitUntil(5_000) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
+        val vm = compose.runOnIdle {
+            ViewModelProvider(compose.activity, expenseEditViewModelFactory(9, harness.screenFactory.repository))
+                .get("expense-edit-9", ExpenseEditViewModel::class.java).also { it.retryOcr() }
+        }
+        compose.waitUntil(5_000) { vm.uiState.value.commandRowIds.isNotEmpty() }
+        val id = vm.uiState.value.commandRowIds.single()
+        runBlocking { harness.fixture.outbox.markFailed(id, "ocr_region_no_text") }
+        compose.waitUntil(5_000) { vm.uiState.value.message == com.ticketbox.domain.model.UiText.res(R.string.ocr_region_no_text_recovery) }
+        val load = context.getString(R.string.expense_fx_load_review)
+        compose.onNodeWithText(load).performScrollTo().assertIsEnabled().performClick()
+        compose.waitUntil(5_000) { vm.uiState.value.fx.message != null && !vm.uiState.value.fx.loading }
+        assertEquals(1, reads)
+        assertEquals(listOf(id), vm.uiState.value.commandRowIds)
+        compose.onNodeWithText(context.getString(R.string.expense_command_needs_attention)).assertExists()
+
+        // Same domain operation as Sync's explicit Drop; Room emits while this route remains alive.
+        runBlocking { assertEquals(true, harness.fixture.outbox.resolveFailed(id, com.ticketbox.data.repository.FailedResolution.Drop)) }
+        failRead = true
+        compose.onNodeWithText(load).performScrollTo().performClick()
+        compose.waitUntil(5_000) { reads == 2 && !vm.uiState.value.fx.loading }
+        assertEquals(listOf(id), vm.uiState.value.commandRowIds)
+        assertEquals(false, vm.uiState.value.commandsCompleted)
+        failRead = false
+        compose.onNodeWithText(load).performScrollTo().performClick()
+        compose.waitUntil(5_000) { reads == 3 && vm.uiState.value.commandRowIds.isEmpty() }
+        compose.onNodeWithText("确认入账").assertIsEnabled()
+        assertEquals(0, confirmed)
+        assertEquals(emptyList<Map<String, String?>>(), harness.fixture.stored())
+        assertEquals(null, vm.savedState.get<LongArray>("expense_command_ids"))
     }
 
     @Test fun retryThenCompletedObservationPreservesDraftUntilExplicitReviewConsent() {

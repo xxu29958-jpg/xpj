@@ -1,5 +1,9 @@
 package com.ticketbox.viewmodel
 
+import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationType
+import com.ticketbox.data.repository.ExpenseCommandAcceptance
+import com.ticketbox.domain.model.ExpenseDraft
 import com.ticketbox.data.remote.dto.BackgroundTaskDto
 import com.ticketbox.data.repository.toDomain
 import com.ticketbox.data.repository.RepositoryException
@@ -174,6 +178,61 @@ class ExpenseFxViewModelTest {
         assertTrue(applyNeedsReviewFilter(listOf(pending), NeedsReviewFilter.NeedsAmount).isEmpty())
         assertTrue(applyNeedsReviewFilter(listOf(pending), NeedsReviewFilter.ReadyToConfirm).isEmpty())
         assertEquals(listOf(pending), applyNeedsReviewFilter(listOf(pending), NeedsReviewFilter.NeedsFx))
+    }
+
+    @Test
+    fun droppedRegionCanBeExplicitlyReviewedThenConfirmedInTheSameEditor() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val fake = FakeExpenseEditActions()
+            val vm = ExpenseEditViewModel(7L, fake)
+            advanceUntilIdle()
+            fake.retryOcrResult = Result.success(ExpenseCommandAcceptance(fake.baseExpense, listOf(11L)))
+            vm.retryOcr()
+            advanceUntilIdle()
+            val failed = observedExpenseCommand(11L, fake.baseExpense, PendingMutationType.RetryOcr,
+                PendingMutationStatus.Failed, fake.binding)
+            fake.commands.value = fake.commands.value.copy(commands = listOf(failed.copy(
+                row = failed.row.copy(lastError = "ocr_region_no_text"))))
+            advanceUntilIdle()
+            vm.loadFxReview(preserveDraft = false)
+            advanceUntilIdle()
+            assertEquals(0, fake.fxReviewCalls, "Review cannot abandon a retained original")
+            assertEquals(listOf(11L), vm.uiState.value.commandRowIds)
+
+            // Sync's explicit Drop removes the original from Room; the editor is still alive.
+            fake.commands.value = fake.commands.value.copy(commands = emptyList())
+            advanceUntilIdle()
+            val beforeReview = vm.uiState.value
+            fake.fetchExpenseResponder = { Result.failure(java.io.IOException("offline")) }
+            vm.loadFxReview(preserveDraft = false)
+            advanceUntilIdle()
+            assertEquals(1, fake.fxReviewCalls, "A dropped original must not permanently block review")
+            assertEquals(beforeReview.expense, vm.uiState.value.expense)
+            assertEquals(beforeReview.formRevision, vm.uiState.value.formRevision)
+            assertEquals(listOf(11L), vm.uiState.value.commandRowIds)
+
+            fake.fetchExpenseResponder = { Result.success(fake.baseExpense) }
+            vm.loadFxReview(preserveDraft = false)
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.commandRowIds.isEmpty())
+            assertNull(vm.savedState.get<LongArray>("expense_command_ids"))
+            assertNull(vm.savedState.get<String>("expense_command_binding"))
+            fake.saveAndConfirmResponder = { _, baseline, _ ->
+                assertEquals(fake.baseExpense, baseline)
+                Result.success(ExpenseCommandAcceptance(baseline, listOf(12L)))
+            }
+            vm.confirm(ExpenseDraft(amountCents = 1000L, merchant = null, category = null,
+                note = null, expenseTime = null, tags = null, valueScore = null, regretScore = null))
+            advanceUntilIdle()
+            assertEquals(1, fake.saveAndConfirmCalls)
+            assertFalse(vm.consumeDone(), "Local submission is not an accounting receipt")
+            fake.commands.value = fake.commands.value.copy(commands = listOf(observedExpenseCommand(
+                12L, fake.baseExpense.copy(status = "confirmed"), PendingMutationType.ConfirmExpense,
+                PendingMutationStatus.Done, fake.binding)))
+            advanceUntilIdle()
+            assertTrue(vm.consumeDone())
+        } finally { Dispatchers.resetMain() }
     }
 
     private fun task(status: String) = BackgroundTaskDto(

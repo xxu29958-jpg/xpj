@@ -86,15 +86,10 @@ class ConfirmExpenseDispatcher(
 
     private fun confirmationFailure(e: HttpException, request: ExpenseStateTokenRequest): DispatchResult {
             val result = mapOutboxHttpException(e)
-            return if ((request.changes != null || !request.funding.isNullOrEmpty()) && (result is DispatchResult.Discarded ||
-                    result is DispatchResult.Failure && result.definitelyRejected)) {
+            return if ((request.changes != null || !request.funding.isNullOrEmpty()) &&
+                    result is DispatchResult.Failure && result.definitelyRejected) {
                 // A proven refusal returns all atomic edits to review, including an unfunded expense.
-                val message = when (result) {
-                    is DispatchResult.Discarded -> result.reason
-                    is DispatchResult.Failure -> result.message
-                    else -> null
-                }
-                DispatchResult.Conflict(message ?: "确认未被接受，请保留原输入重新核对。")
+                DispatchResult.Conflict(result.message)
             } else result
     }
 }

@@ -15,6 +15,14 @@ import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** User-actionable refusals survive the Outbox and a process restart as their error code. */
+internal val ocrRegionFailureMessageResources = mapOf(
+    "ocr_region_no_text" to R.string.ocr_region_no_text_recovery,
+    "ocr_region_incomplete" to R.string.ocr_region_incomplete_recovery,
+    "ocr_region_invalid" to R.string.ocr_region_invalid_recovery,
+    "ocr_region_source_unavailable" to R.string.ocr_region_source_unavailable_recovery,
+)
+
 /** One submission keeps the original rows; completion never replaces a user's current raw form. */
 internal fun ExpenseEditViewModel.submitExpenseCommand(
     @StringRes failureMessage: Int,
@@ -103,13 +111,16 @@ private fun ExpenseEditViewModel.applyExpenseCommandProgress(
 ) {
     val progress = expenseCommandProgress(originals, ids)
     val receipt = originals.singleOrNull { it.row.type == PendingMutationType.ConfirmExpense }?.confirmationReceipt
+    val refusalMessage = originals.firstNotNullOfOrNull { command ->
+        ocrRegionFailureMessageResources[command.row.lastError]
+    }.takeIf { progress.failed }
     _uiState.update {
         it.copy(
             commandsCompleted = progress.complete,
             confirmationReceipt = receipt.takeIf { progress.complete },
             done = it.done || progress.leavesEditor,
             doneAdviceInputsChanged = it.doneAdviceInputsChanged || progress.confirmed,
-            message = UiText.res(progress.message),
+            message = UiText.res(refusalMessage ?: progress.message),
             messageTone = if (progress.failed) MessageTone.Danger else MessageTone.Info,
         )
     }

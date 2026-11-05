@@ -21,6 +21,17 @@ import kotlin.test.assertTrue
  */
 class SyncStatusFailureTest {
 
+    @Test fun `rejected OCR region remains actionable without repeating the same selection`() {
+        for ((code, message) in mapOf("ocr_region_no_text" to R.string.ocr_region_no_text_recovery,
+            "ocr_region_incomplete" to R.string.ocr_region_incomplete_recovery,
+            "ocr_region_invalid" to R.string.ocr_region_invalid_recovery)) {
+            val original = row(id = 786).copy(type = PendingMutationType.RetryOcr,
+                status = PendingMutationStatus.Failed, lastError = code)
+            assertEquals(message, syncStatusExactErrorMessageResources[code])
+            assertFalse(com.ticketbox.viewmodel.OutboxStatusUiState().offersRetry(original))
+        }
+    }
+
     @Test fun `accepted expense without a verifiable receipt is counted for review rather than failed delivery`() {
         for (code in com.ticketbox.data.repository.EXPENSE_ORIGINAL_REVIEW_ERRORS) {
             val original = row(id = 43).copy(type = PendingMutationType.ReplaceItems,
