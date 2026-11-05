@@ -55,6 +55,7 @@ class PendingEnrichmentBandModelTest {
             PendingEnrichmentFeedbackKind.Updated to R.string.pending_enrichment_action_review,
             PendingEnrichmentFeedbackKind.NoResult to R.string.pending_enrichment_action_complete,
             PendingEnrichmentFeedbackKind.EnhancementFailed to R.string.pending_enrichment_action_review,
+            PendingEnrichmentFeedbackKind.AutoOcrDisabled to R.string.pending_enrichment_action_open,
             PendingEnrichmentFeedbackKind.ProviderConflict to R.string.pending_enrichment_action_review,
             PendingEnrichmentFeedbackKind.Conflict to R.string.pending_enrichment_action_view,
             PendingEnrichmentFeedbackKind.Failed to R.string.pending_enrichment_action_open,

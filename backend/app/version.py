@@ -11,7 +11,7 @@ import hashlib
 import os
 from pathlib import Path
 
-BACKEND_VERSION = "1.2.0"
+BACKEND_VERSION = "1.2.1"
 
 _ASSET_VERSION_ENV = "XPJ_STATIC_ASSET_VERSION"
 _ASSET_TREE_DIRS = ("app/static", "app/templates")

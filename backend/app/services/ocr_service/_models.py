@@ -41,7 +41,7 @@ class OcrAttempt:
 class OcrRun:
     extractions: tuple[OcrExtraction, ...] = ()
     attempts: tuple[OcrAttempt, ...] = ()
-    notice: Literal["enhancement_failed", "provider_conflict"] | None = None
+    notice: Literal["auto_ocr_disabled", "enhancement_failed", "provider_conflict"] | None = None
 
 
 @dataclass(frozen=True)

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models import BackgroundTask, Expense
 from app.services._json_types import JsonObject
+from app.services.ocr_execution_context import upload_result_with_notice
 from app.services.orphan_task_results import ORPHAN_TASK_TYPES, public_task_result
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,8 @@ def _to_response_dict(task: BackgroundTask, *, source_expense_id: int | None) ->
         try:
             decoded = json.loads(task.result_summary_json)
             if isinstance(decoded, dict):
+                if task.task_type == "expense_enrichment":
+                    decoded = upload_result_with_notice(decoded, task.execution_context_json)
                 result_summary = cast(JsonObject, public_task_result(task.task_type, decoded))
         except json.JSONDecodeError:
             logger.warning(

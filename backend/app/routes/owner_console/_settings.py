@@ -113,10 +113,10 @@ def _post_recognition_settings(
             form = replace(form, local_llm_model=check.models[0])
             recognition_view = runtime_settings_service.update_recognition_settings(form)
             check = recognition_setup_service.RecognitionCheck(
-                f"图片识别通过，已保存并使用 {form.local_llm_model}。下一张小票开始使用新设置，已有草稿保持原样。")
+                f"图片识别通过，已保存并使用 {form.local_llm_model}。")
         elif recognition_action == "save":
             recognition_view = runtime_settings_service.update_recognition_settings(form)
-            check = recognition_setup_service.RecognitionCheck("识别设置已保存；下一次上传或手动识别即使用新配置，无需重启。")
+            check = recognition_setup_service.RecognitionCheck("识别设置已保存，立即生效。")
         else:
             check = recognition_setup_service.inspect_connection(form, action=recognition_action)
             recognition_view = runtime_settings_service.get_recognition_view(form)

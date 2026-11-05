@@ -15,6 +15,7 @@ data class PendingEnrichmentTask(
 enum class PendingEnrichmentOutcome {
     Updated,
     NoResult,
+    AutoOcrDisabled,
     EnhancementFailed,
     ProviderConflict,
     NotPending,

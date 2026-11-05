@@ -6,14 +6,16 @@
 
 | 维度 | 版本 | 代码位置 |
 |------|------|----------|
-| 后端 `BACKEND_VERSION` | `1.2.0` | [backend/app/version.py](../../backend/app/version.py) |
+| 后端 `BACKEND_VERSION` | `1.2.1` | [backend/app/version.py](../../backend/app/version.py) |
 | 后端 `IDENTITY_SCHEMA_VERSION` | `v0.3` | [backend/app/version.py](../../backend/app/version.py) |
-| Android `versionName` | `1.2.0` | [android/app/build.gradle.kts](../../android/app/build.gradle.kts) |
-| Android `versionCode` | `10200000` | [android/app/build.gradle.kts](../../android/app/build.gradle.kts) |
+| Android `versionName` | `1.2.1` | [android/app/build.gradle.kts](../../android/app/build.gradle.kts) |
+| Android `versionCode` | `10201000` | [android/app/build.gradle.kts](../../android/app/build.gradle.kts) |
 
 > Android internal 构建会自动追加 `-internal` 后缀；正式发布请走 release 配置。
 
 ## 阶段标签
+
+- v1.2.1：新安装默认用本机 RapidOCR 识别小票，重新开启后自动补识别此前跳过的待核对原图。
 
 - v0.9.0a1：Reports / Goals / Dashboard 卡片配置 + Vico 图表 + `/web` ECharts 收口。
 - v1.0.0：商品级小票 line items (ADR-0035) / 家庭拆账邀请 (ADR-0029) / 后台任务执行模型 (ADR-0030) / `/web` 公网 PWA shell (ADR-0028 + Issue #20) / v0.9 → v1.0 cut-over + 30 天 rollback CLI (ADR-0031)。`identity_schema=v0.3` 不变。

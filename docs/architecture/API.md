@@ -1463,7 +1463,7 @@ Idempotency-Key: <uuid-v4>
 `expected_row_version` 是客户端最后一次读取该账单时看到的 `row_version` 整数。如果账单已经被其它端修改，返回 `409 state_conflict`，客户端需要重新读取最新账单后再决定是否重试识别。本路由经 outbox 重放，必须带 `Idempotency-Key`；缺失返回 `422 idempotency_key_required`（详见“请求幂等键”）。
 
 重新运行当前 `OCR_PROVIDER`。OCR 只写入待确认草稿，不会自动入账。
-如果当前为默认 `OCR_PROVIDER=empty`，返回 `503 ocr_not_configured`，不写入 `ocr_facts`，避免用户点“重试识别”后产生空识别记录但界面无变化。
+如果显式关闭了识别引擎（`OCR_PROVIDER=empty`），返回 `503 ocr_not_configured`。首次配置默认使用本机 RapidOCR。
 
 支持的 provider：
 

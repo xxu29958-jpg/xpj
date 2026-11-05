@@ -33,7 +33,7 @@
   picker.required = false;
   task.querySelector("[data-capture-picker-hint]").textContent = "支持一次选择多张小票";
   const items = [];
-  const reviewableStates = ["updated", "no_result", "enhancement_failed", "provider_conflict"];
+  const reviewableStates = ["updated", "no_result", "auto_ocr_disabled", "enhancement_failed", "provider_conflict"];
   let sending = false;
   let stopped = false;
   let attempted = false;
@@ -67,7 +67,7 @@
       const readyToReview = accepted === items.length && items.every(item => reviewableStates.includes(item.recognition));
       task.querySelector("[data-capture-title]").textContent = readyToReview ? "小票已准备好核对" : "小票正在整理";
       task.querySelector("[data-capture-description]").textContent = readyToReview ? "核对金额、商家和日期，确认后计入流水。" : "已收到的图片会继续识别，可以离开后再回来。";
-      task.querySelector("[data-capture-progress] .product-page-summary").textContent = readyToReview ? "上传和识别已完成，账单仍需你确认。" : "上传完成后，识别还会继续。重试沿用原任务。";
+      task.querySelector("[data-capture-progress] .product-page-summary").textContent = readyToReview ? "图片已收到，可打开原单核对或补全。" : "上传完成后可查看每张小票的处理进度。";
     }
   }
   function updateRow(item) {

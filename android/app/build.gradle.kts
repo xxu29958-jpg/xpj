@@ -3,8 +3,8 @@ import java.security.MessageDigest
 import java.util.Properties
 import java.util.concurrent.TimeUnit
 
-val ticketboxVersionCode = 10200000
-val ticketboxVersionName = "1.2.0"
+val ticketboxVersionCode = 10201000
+val ticketboxVersionName = "1.2.1"
 // Source identity only, not a Git SHA or a digest of signed APK bytes. Excludes local secrets.
 val ticketboxSourceFingerprint = MessageDigest.getInstance("SHA-256").run {
     val sourceFiles = fileTree("src/main").files + listOf(

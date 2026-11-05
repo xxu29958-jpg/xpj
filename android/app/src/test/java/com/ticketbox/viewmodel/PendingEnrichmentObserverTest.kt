@@ -114,6 +114,7 @@ internal class PendingEnrichmentObserverTest {
         val cases = listOf(
             PendingEnrichmentTask("completed", PendingEnrichmentOutcome.Updated) to PendingEnrichmentFeedbackKind.Updated,
             PendingEnrichmentTask("completed", PendingEnrichmentOutcome.NoResult) to PendingEnrichmentFeedbackKind.NoResult,
+            PendingEnrichmentTask("completed", PendingEnrichmentOutcome.AutoOcrDisabled) to PendingEnrichmentFeedbackKind.AutoOcrDisabled,
             PendingEnrichmentTask("completed", PendingEnrichmentOutcome.Conflict) to PendingEnrichmentFeedbackKind.Conflict,
             PendingEnrichmentTask("completed", PendingEnrichmentOutcome.NotPending) to PendingEnrichmentFeedbackKind.NotPending,
             PendingEnrichmentTask("completed", null) to PendingEnrichmentFeedbackKind.Failed,
@@ -130,9 +131,10 @@ internal class PendingEnrichmentObserverTest {
                 val receipt = PendingUploadReceipt(1, "original-task")
                 if (restoring) observer.restore(listOf(receipt)) else observer.track(receipt)
                 advanceUntilIdle()
-                val quiet = restoring && kind in setOf(PendingEnrichmentFeedbackKind.Updated, PendingEnrichmentFeedbackKind.NoResult)
+                val quiet = restoring && kind in setOf(PendingEnrichmentFeedbackKind.Updated,
+                    PendingEnrichmentFeedbackKind.NoResult, PendingEnrichmentFeedbackKind.AutoOcrDisabled)
                 assertEquals(if (quiet) null else kind, state.feedback?.kind, "$restoring $task")
-                assertEquals(if (restoring && kind == PendingEnrichmentFeedbackKind.NoResult) 0 else 1, refreshes)
+                assertEquals(if (quiet && kind != PendingEnrichmentFeedbackKind.Updated) 0 else 1, refreshes)
                 assertEquals(0, state.activeCount)
                 observer.restore(listOf(receipt))
                 advanceUntilIdle()

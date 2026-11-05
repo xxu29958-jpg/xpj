@@ -26,6 +26,7 @@ internal fun BackgroundTaskDto.toPendingEnrichmentTask(): PendingEnrichmentTask 
         status = status,
         outcome = if (outcome == PendingEnrichmentOutcome.Updated || outcome == PendingEnrichmentOutcome.NoResult) {
             when (resultSummary?.get("ocr_notice") as? String) {
+                "auto_ocr_disabled" -> PendingEnrichmentOutcome.AutoOcrDisabled
                 "enhancement_failed" -> PendingEnrichmentOutcome.EnhancementFailed
                 "provider_conflict" -> PendingEnrichmentOutcome.ProviderConflict
                 else -> outcome
