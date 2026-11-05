@@ -14,6 +14,29 @@ from app.services.receipt_parse_common import FIELD_PARSE_VERSION
 from app.services.time_service import now_utc
 
 
+def upload_result_with_notice(result: dict, stored_context: str | None) -> dict:
+    """Read pre-notice receipts without altering the original upload result."""
+    if ("ocr_notice" in result or result.get("ocr_attempts")
+            or result.get("outcome") not in ("updated", "no_result")):
+        return result
+    if automatic_ocr_was_disabled(stored_context):
+        return {**result, "ocr_notice": "auto_ocr_disabled"}
+    return result
+
+
+def automatic_ocr_was_disabled(stored_context: str | None) -> bool:
+    if not stored_context:
+        return False
+    try:
+        context = json.loads(stored_context)
+    except ValueError:
+        return False
+    if not isinstance(context, dict) or context.get("mode") != "automatic" or context.get("observed") != []:
+        return False
+    configured = context.get("configured")
+    return isinstance(configured, dict) and (configured.get("auto_run") is False or configured.get("provider") == "empty")
+
+
 def begin_ocr_execution(task_id: int | None, *, mode: str) -> None:
     if task_id is None:
         return

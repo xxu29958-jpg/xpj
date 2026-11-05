@@ -98,7 +98,8 @@ def test_reopened_active_task_link_uses_the_existing_watch_consumer(monkeypatch,
     assert target.path == "/web/pending"
     assert query["watch"] == [task["public_id"]] and query["ledger_id"] == ["owner"]
     assert query["filter"] == ["missing_amount"]
-    row = SimpleNamespace(task_type="expense_enrichment", status=status, result_summary_json=None, source_expense_id=41)
+    row = SimpleNamespace(task_type="expense_enrichment", status=status, result_summary_json=None,
+        execution_context_json=None, source_expense_id=41)
     monkeypatch.setattr(recognition, "resolve_web_actor_account_id", lambda *_: 3)
     monkeypatch.setattr(recognition.background_task_service, "get_task", lambda *_a, **_k: row)
     monkeypatch.setattr(recognition, "pending_enrichment_watch_timeout_ms", lambda: 30000)

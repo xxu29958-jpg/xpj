@@ -103,6 +103,11 @@ private val FEEDBACK_KIND_SPECS: Map<PendingEnrichmentFeedbackKind, PendingEnric
         titleRes = R.string.pending_enrichment_no_result,
         openExpenseLabelRes = R.string.pending_enrichment_action_complete,
     ),
+    PendingEnrichmentFeedbackKind.AutoOcrDisabled to PendingEnrichmentKindSpec(
+        tone = PendingEnrichmentBandTone.Info,
+        titleRes = R.string.pending_enrichment_auto_ocr_disabled,
+        openExpenseLabelRes = R.string.pending_enrichment_action_open,
+    ),
     PendingEnrichmentFeedbackKind.EnhancementFailed to PendingEnrichmentKindSpec(
         tone = PendingEnrichmentBandTone.Warn,
         titleRes = R.string.pending_enrichment_enhancement_failed,
@@ -269,6 +274,7 @@ private fun bandIcon(kind: PendingEnrichmentFeedbackKind?): ImageVector = when (
     PendingEnrichmentFeedbackKind.Conflict,
     PendingEnrichmentFeedbackKind.EnhancementFailed,
     PendingEnrichmentFeedbackKind.ProviderConflict,
+    PendingEnrichmentFeedbackKind.AutoOcrDisabled,
     PendingEnrichmentFeedbackKind.Cancelled,
     PendingEnrichmentFeedbackKind.NotPending,
     PendingEnrichmentFeedbackKind.Unavailable,

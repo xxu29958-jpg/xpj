@@ -52,9 +52,10 @@ def resolve_recognition_config(projection: RecognitionSettingsProjection | None)
     if projection is not None:
         return RecognitionConfig(**asdict(projection))
 
+    provider = os.getenv("OCR_PROVIDER", "rapidocr").strip().lower()
     return RecognitionConfig(
-        ocr_provider=os.getenv("OCR_PROVIDER", "empty").strip().lower(),
-        ocr_auto_run=_bool_env("OCR_AUTO_RUN", False),
+        ocr_provider=provider,
+        ocr_auto_run=_bool_env("OCR_AUTO_RUN", provider == "rapidocr"),
         ocr_fallback_provider=os.getenv("OCR_FALLBACK_PROVIDER", "empty").strip().lower(),
         ocr_min_confidence=float(os.getenv("OCR_MIN_CONFIDENCE", "0.65")),
         ocr_default_timezone=os.getenv("OCR_DEFAULT_TIMEZONE", "Asia/Shanghai").strip() or "Asia/Shanghai",

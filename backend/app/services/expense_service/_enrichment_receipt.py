@@ -22,6 +22,7 @@ PROGRESS_MESSAGES = {
     "conflict": "用户后续修改已保留，识别结果未覆盖账单。",
 }
 OCR_NOTICE_MESSAGES = {
+    "auto_ocr_disabled": "已收到原图。当时自动识别已关闭，开启后会补识别仍待核对的小票。",
     "enhancement_failed": "已有识别结果，补充识别未完成；请核对并补全。",
     "provider_conflict": "两次识别存在不同结果，已保留主结果；请对照原图核对。",
 }

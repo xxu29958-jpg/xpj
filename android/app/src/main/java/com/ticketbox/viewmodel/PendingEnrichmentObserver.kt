@@ -22,6 +22,7 @@ data class PendingEnrichmentFeedback(
 enum class PendingEnrichmentFeedbackKind {
     Updated,
     NoResult,
+    AutoOcrDisabled,
     EnhancementFailed,
     ProviderConflict,
     Conflict,
@@ -120,7 +121,9 @@ internal class PendingEnrichmentObserver(
                 continue
             }
             val kind = task.toPendingEnrichmentFeedbackKind()
-            if (notifyTerminal || kind != PendingEnrichmentFeedbackKind.Updated && kind != PendingEnrichmentFeedbackKind.NoResult) {
+            val quietOnRestore = kind in setOf(PendingEnrichmentFeedbackKind.Updated, PendingEnrichmentFeedbackKind.NoResult,
+                PendingEnrichmentFeedbackKind.AutoOcrDisabled)
+            if (notifyTerminal || !quietOnRestore) {
                 finish(receipt, kind)
             } else {
                 discard(receipt.enrichmentTaskPublicId)
@@ -183,6 +186,7 @@ internal fun PendingEnrichmentTask.toPendingEnrichmentFeedbackKind(): PendingEnr
     "completed" -> when (outcome) {
         PendingEnrichmentOutcome.Updated -> PendingEnrichmentFeedbackKind.Updated
         PendingEnrichmentOutcome.NoResult -> PendingEnrichmentFeedbackKind.NoResult
+        PendingEnrichmentOutcome.AutoOcrDisabled -> PendingEnrichmentFeedbackKind.AutoOcrDisabled
         PendingEnrichmentOutcome.EnhancementFailed -> PendingEnrichmentFeedbackKind.EnhancementFailed
         PendingEnrichmentOutcome.ProviderConflict -> PendingEnrichmentFeedbackKind.ProviderConflict
         PendingEnrichmentOutcome.Conflict -> PendingEnrichmentFeedbackKind.Conflict

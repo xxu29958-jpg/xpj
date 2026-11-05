@@ -22,6 +22,7 @@ from fastapi import Request
 
 from app import errors
 from app.error_reporting import retain_handled_error
+from app.version import BACKEND_VERSION
 
 ROOT = Path(__file__).resolve().parents[1]
 SECRETS = ("synthetic-token-v4", "synthetic-upload-v4", "87654321", "synthetic-password-v4")
@@ -136,7 +137,7 @@ def _assert_request_evidence(result):
     assert result["unhandled"]["body"]["error"] == "server_error"
     assert result["ordinary"]["body"] == {"ok": True}
     for output in (result["file"], result["console"]):
-        assert "source_tree_sha256=" in output and "version=1.2.0" in output
+        assert "source_tree_sha256=" in output and f"version={BACKEND_VERSION}" in output
         assert "RuntimeError" in output and "OSError" in output
         assert "backend/tests/test_error_reporting_runtime.py:" in output
         assert "ordinary message without extra" in output
@@ -183,7 +184,7 @@ def test_rotated_files_keep_build_identity_and_final_sanitization(tmp_path):
     files = _probe(tmp_path, "rotation")
     assert set(files) == {"backend.log", "backend.log.1", "backend.log.2", "backend.log.3"}
     for text in files.values():
-        assert "source_tree_sha256=" in text and "version=1.2.0" in text
+        assert "source_tree_sha256=" in text and f"version={BACKEND_VERSION}" in text
         assert "synthetic-rotation-secret" not in text
         assert "ordinary rotation event=" in text
 

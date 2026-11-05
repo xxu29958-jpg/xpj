@@ -269,6 +269,7 @@
     <string name="pending_enrichment_active_more">还有 %1$d 张正在识别</string>
     <string name="pending_enrichment_updated">识别结果已更新，请核对后确认。</string>
     <string name="pending_enrichment_enhancement_failed">已有识别结果，补充识别未完成；请核对并补全。</string>
+    <string name="pending_enrichment_auto_ocr_disabled">已收到原图。当时自动识别已关闭，开启后会补识别仍待核对的小票。</string>
     <string name="pending_enrichment_provider_conflict">两次识别存在不同结果，已保留主结果；请对照原图核对。</string>
     <string name="pending_enrichment_no_result">识别完成，当前填写没有变化，请继续核对。</string>
     <string name="pending_enrichment_conflict">你后来保存的修改已保留，自动识别没有覆盖这张账单。</string>

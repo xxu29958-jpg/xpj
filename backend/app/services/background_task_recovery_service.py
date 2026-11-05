@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import threading
+import time
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -166,9 +167,16 @@ class OcrTaskRecovery:
 
 
 def _recovery_loop(stop_event: threading.Event) -> None:
+    from app.services.deferred_upload_ocr import queue_skipped_uploads
+
+    after_upload = 0
+    next_upload_scan = 0.0
     while not stop_event.is_set():
         try:
             resume_due_ocr_tasks()
+            if time.monotonic() >= next_upload_scan:
+                after_upload = queue_skipped_uploads(after_upload)
+                next_upload_scan = time.monotonic() + (2 if after_upload else 15)
         except SQLAlchemyError as exc:
             # The owned scanner must survive a transient database refusal.
             report_error(logger, "background OCR recovery scan failed", error=exc)

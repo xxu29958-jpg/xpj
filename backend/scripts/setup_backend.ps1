@@ -92,8 +92,6 @@ function Write-EnvFile {
         "DELETE_IMAGE_AFTER_DAYS=0",
         "DELETE_REJECTED_AFTER_DAYS=0",
         "ORPHAN_UPLOAD_GRACE_HOURS=24",
-        "OCR_PROVIDER=empty",
-        "OCR_AUTO_RUN=false",
         "OCR_FALLBACK_PROVIDER=empty",
         "OCR_MIN_CONFIDENCE=0.65",
         "OCR_DEFAULT_TIMEZONE=Asia/Shanghai",
@@ -128,6 +126,17 @@ else {
 
 Invoke-Checked -FilePath $VenvPython -Arguments @("-m", "pip", "install", "--upgrade", "pip")
 Invoke-Checked -FilePath $VenvPython -Arguments @("-m", "pip", "install", "-r", "requirements.txt")
+if (-not (Test-Path -LiteralPath $EnvPath) -or $ForceEnv) {
+    Invoke-Checked -FilePath $VenvPython -Arguments @("-m", "pip", "install", "-r", "requirements-ocr.txt")
+    $OcrBundle = Join-Path $BackendRoot "build\ocr-runtime"
+    if (-not (Test-Path -LiteralPath $OcrBundle)) {
+        $OcrBuildDir = [IO.Directory]::CreateDirectory((Join-Path $BackendRoot "build")).FullName
+        $StagedBundle = Join-Path $OcrBuildDir ("ocr-setup-" + [Guid]::NewGuid().ToString("N"))
+        Invoke-Checked -FilePath $VenvPython -Arguments @("scripts\prepare_ocr_payload.py", "--recipe", "ocr_runtime\recipe.json", "--output", $StagedBundle)
+        [IO.Directory]::Move($StagedBundle, $OcrBundle)
+    }
+    Invoke-Checked -FilePath $VenvPython -Arguments @("-c", "from app.services.ocr_worker_client import ocr_runtime_available; raise SystemExit(0 if ocr_runtime_available() else 'OCR model bundle failed verification')")
+}
 if ($Dev) {
     Invoke-Checked -FilePath $VenvPython -Arguments @("-m", "pip", "install", "-r", "requirements-dev.txt")
 }

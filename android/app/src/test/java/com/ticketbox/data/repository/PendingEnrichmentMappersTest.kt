@@ -36,6 +36,7 @@ internal class PendingEnrichmentMappersTest {
     fun partialResultAndProviderDisagreementRemainReviewable() {
         for ((notice, expected) in listOf(
             "enhancement_failed" to PendingEnrichmentOutcome.EnhancementFailed,
+            "auto_ocr_disabled" to PendingEnrichmentOutcome.AutoOcrDisabled,
             "provider_conflict" to PendingEnrichmentOutcome.ProviderConflict,
         )) {
             val summary = mapOf("outcome" to "updated", "ocr_notice" to notice)

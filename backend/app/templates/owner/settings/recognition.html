@@ -58,7 +58,7 @@
   </div>
   </section>
   <label class="workspace-switch" for="ocr_auto_run">
-    <span><strong>新小票自动识别</strong><small>开启后上传即可识别；关闭后在收件中手动发起。结果仍需核对。</small></span>
+    <span><strong>小票自动识别</strong><small>开启后识别新上传的小票，也会补识别之前跳过、仍有原图的待核对小票。结果在收件中核对。</small></span>
     <input type="checkbox" role="switch" id="ocr_auto_run" name="ocr_auto_run" {% if recognition_view.form.ocr_auto_run %}checked{% endif %}>
   </label>
   <details class="workspace-disclosure">

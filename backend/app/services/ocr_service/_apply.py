@@ -175,11 +175,9 @@ def collect_auto_ocr_extractions(
 ) -> OcrRun:
     """Run configured OCR providers and return draft results with provenance."""
     settings = get_settings()
-    if not settings.ocr_auto_run:
-        return OcrRun()
     primary_name = _normalise_provider_name(settings.ocr_provider)
-    if primary_name == "empty":
-        return OcrRun()
+    if not settings.ocr_auto_run or primary_name == "empty":
+        return OcrRun(notice="auto_ocr_disabled")
 
     started = time.monotonic()
     try:

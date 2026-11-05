@@ -65,8 +65,8 @@ MAX_UPLOAD_SIZE_MB=10
 DELETE_IMAGE_AFTER_CONFIRM=false
 GENERATE_THUMBNAIL=true
 DELETE_IMAGE_AFTER_DAYS=0
-OCR_PROVIDER=empty
-OCR_AUTO_RUN=false
+OCR_PROVIDER=rapidocr
+OCR_AUTO_RUN=true
 OCR_FALLBACK_PROVIDER=empty
 OCR_MIN_CONFIDENCE=0.65
 OCR_DEFAULT_TIMEZONE=Asia/Shanghai
@@ -358,13 +358,16 @@ rapidocr   本地 RapidOCR，把图片转文字，再用规则提取金额/商�
 local_llm  OpenAI 兼容本地视觉模型服务，例如 http://127.0.0.1:1234/v1
 ```
 
-安装本地 OCR 可选依赖：
+正式安装包自带 RapidOCR，首次配置默认自动识别。开启后，后台也会补识别关闭期间上传、仍有原图且尚未识别的待核对小票。
+
+源码首次运行 `setup.bat` 会准备识别组件。手动搭建源码环境时执行：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-ocr.txt
+.\.venv\Scripts\python.exe scripts\prepare_ocr_payload.py --recipe ocr_runtime\recipe.json --output build\ocr-runtime
 ```
 
-启用本地 OCR：
+需要本机视觉模型参与补充识别时，可以配置：
 
 ```env
 OCR_PROVIDER=rapidocr

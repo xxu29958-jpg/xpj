@@ -69,8 +69,8 @@ def test_web_pending_upload_uses_shared_owner_and_creates_real_pending_expense(
     final_page = web_client.get(response.headers["location"])
     assert final_page.status_code == 200
     assert "data-inbox-enrichment-terminal" in final_page.text
-    assert 'data-enrichment-state="no_result"' in final_page.text
-    assert "当前填写没有变化" in final_page.text
+    assert 'data-enrichment-state="auto_ocr_disabled"' in final_page.text
+    assert "当时自动识别已关闭" in final_page.text
 
 
 @pytest.mark.real_db
@@ -200,7 +200,7 @@ def test_web_pending_upload_keeps_saved_row_visible_when_task_submit_fails(
         assert list(db.scalars(select(Expense.id).where(Expense.source == "网页上传"))) == [expense_id]
     final_page = web_client.get(response.headers["location"])
     assert final_page.status_code == 200
-    assert 'data-enrichment-state="no_result"' in final_page.text
+    assert 'data-enrichment-state="auto_ocr_disabled"' in final_page.text
 
 
 def test_web_pending_upload_rejects_viewer_before_multipart_parse(

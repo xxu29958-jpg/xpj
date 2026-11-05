@@ -3,8 +3,8 @@ import java.security.MessageDigest
 import java.util.Properties
 import java.util.concurrent.TimeUnit
 
-val ticketboxVersionCode = 10200000
-val ticketboxVersionName = "1.2.0"
+val ticketboxVersionCode = 10201000
+val ticketboxVersionName = "1.2.1"
 // Source identity only, not a Git SHA or a digest of signed APK bytes. Excludes local secrets.
 val ticketboxSourceFingerprint = MessageDigest.getInstance("SHA-256").run {
     val sourceFiles = fileTree("src/main").files + listOf(
@@ -75,27 +75,22 @@ data class TicketboxDebugSigning(
     val keyPassword: String,
 )
 
-// Server URL precedence:
-//   1. ENV: TICKETBOX_SERVER_URL
-//   2. local.properties: ticketbox.serverUrl=...
-//   3. fallback: https://api.example.com (debug only; release builds reject this — see hook below)
-val ticketboxServerUrlPlaceholder = "https://api.example.com"
-val ticketboxServerUrl: String =
-    ticketboxEnvOrLocal("TICKETBOX_SERVER_URL", "ticketbox.serverUrl") ?: ticketboxServerUrlPlaceholder
+// A blank default lets pairing and invitation screens ask for the owner's address.
+val ticketboxServerUrl = ticketboxEnvOrLocal("TICKETBOX_SERVER_URL", "ticketbox.serverUrl")
+    ?.trimEnd('/')
+    ?.takeUnless { it.equals("https://api.example.com", ignoreCase = true) }
+    .orEmpty()
 
-// Release builds must point at a real backend. Refuse to assemble/bundle a release APK/AAB while
-// DEFAULT_SERVER_URL still falls back to the api.example.com placeholder — shipping that to gray
-// users is a release blocker (codex P1 #5). Debug builds keep the placeholder for local dev.
+// Release APKs and bundles require a configured address before distribution.
 gradle.taskGraph.whenReady {
     val hasReleasePackagingTask = allTasks.any { task ->
         val n = task.name
         n.contains("Release", ignoreCase = true) && (n.startsWith("assemble") || n.startsWith("bundle"))
     }
-    if (hasReleasePackagingTask && ticketboxServerUrl == ticketboxServerUrlPlaceholder) {
+    if (hasReleasePackagingTask && ticketboxServerUrl.isEmpty()) {
         error(
-            "Refusing to package a release APK/AAB with DEFAULT_SERVER_URL=$ticketboxServerUrlPlaceholder " +
-                "placeholder. Set TICKETBOX_SERVER_URL (env) or local.properties ticketbox.serverUrl=... " +
-                "to your real backend before assembleRelease / bundleRelease. Debug builds are unaffected."
+            "Refusing to package a release APK/AAB without a real server URL. " +
+                "Set TICKETBOX_SERVER_URL or local.properties ticketbox.serverUrl before packaging."
         )
     }
 }

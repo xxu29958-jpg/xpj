@@ -157,8 +157,8 @@ MAX_UPLOAD_SIZE_MB=10
 DELETE_IMAGE_AFTER_CONFIRM=false
 GENERATE_THUMBNAIL=true
 DELETE_IMAGE_AFTER_DAYS=0
-OCR_PROVIDER=empty
-OCR_AUTO_RUN=false
+OCR_PROVIDER=rapidocr
+OCR_AUTO_RUN=true
 OCR_FALLBACK_PROVIDER=empty
 OCR_MIN_CONFIDENCE=0.65
 OCR_DEFAULT_TIMEZONE=Asia/Shanghai
@@ -478,7 +478,7 @@ Content-Type: image/jpeg 或 image/png
 - 生成随机文件名。
 - 计算 `image_hash`。
 - 创建一条 pending expense。
-- 根据配置运行 OCR provider 和规则解析，填充 `amount_cents`、`merchant`、`raw_text`、`confidence`、`expense_time`、`category` 等草稿字段；默认 `OCR_PROVIDER=empty` 且 `OCR_AUTO_RUN=false`。
+- 新安装默认用本机 RapidOCR 识别上传图片，保存的识别配置优先。开启自动识别后，后台会补识别此前跳过、有原图且仍待核对的小票，使用原上传身份和当前草稿版本写入建议。
 - `category` 默认 `其他`。
 - `status = pending`。
 

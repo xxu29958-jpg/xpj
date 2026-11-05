@@ -18,6 +18,7 @@ from app.services import background_task_service
 from app.services.background_task_response import task_response_dicts
 from app.services.expense_service import fetch_expense_row_version_in_status
 from app.services.expense_service._enrichment_receipt import OCR_NOTICE_MESSAGES
+from app.services.ocr_execution_context import upload_result_with_notice
 from app.services.pending_enrichment_task_service import (
     PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
 )
@@ -30,6 +31,7 @@ PendingEnrichmentState = Literal[
     "conflict",
     "failed",
     "cancelled",
+    "auto_ocr_disabled",
     "enhancement_failed",
     "provider_conflict",
 ]
@@ -96,7 +98,7 @@ def pending_enrichment_watch_timeout_ms() -> int:
     return max(30_000, min(total_seconds * 1_000, 600_000))
 
 
-def _completed_state(raw_summary: str | None) -> PendingEnrichmentState:
+def _completed_state(raw_summary: str | None, execution_context: str | None = None) -> PendingEnrichmentState:
     try:
         summary = json.loads(raw_summary or "")
     except (TypeError, ValueError):
@@ -106,7 +108,7 @@ def _completed_state(raw_summary: str | None) -> PendingEnrichmentState:
     outcome = summary.get("outcome")
     if not isinstance(outcome, str) or outcome not in _COMPLETED_OUTCOMES:
         return "failed"
-    notice = summary.get("ocr_notice")
+    notice = upload_result_with_notice(summary, execution_context).get("ocr_notice")
     if outcome in {"updated", "no_result"} and isinstance(notice, str) and notice in OCR_NOTICE_MESSAGES:
         return notice
     return outcome
@@ -139,7 +141,7 @@ def resolve_pending_enrichment_watch(
     if task.status in {"queued", "running"}:
         state: PendingEnrichmentState = "pending"
     elif task.status == "completed":
-        state = _completed_state(task.result_summary_json)
+        state = _completed_state(task.result_summary_json, task.execution_context_json)
     elif task.status == "cancelled":
         state = "cancelled"
     else:
@@ -229,7 +231,7 @@ def web_pending_enrichment_context(
         "enrichment_watch": presentation.active_watch,
         "enrichment_terminal": presentation.terminal,
         "recent_recognition_tasks": [
-            {**view, "recognition_state": _completed_state(row.result_summary_json)
+            {**view, "recognition_state": _completed_state(row.result_summary_json, row.execution_context_json)
                 if row.status == "completed" else row.status,
                 "recognition_error": _RECENT_FAILURE_MESSAGES.get(row.error_code,
                     "当次自动识别失败；请打开原单核对凭证后重试识别或手动补全。")
