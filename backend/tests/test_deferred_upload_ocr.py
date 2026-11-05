@@ -13,6 +13,7 @@ from app.config import reset_settings_cache
 from app.database import SessionLocal
 from app.models import BackgroundTask, Expense, OcrFact
 from app.recognition_config import resolve_recognition_config
+from app.services import background_task_service
 from app.services.background_task_recovery_service import resume_due_ocr_tasks
 from app.services.deferred_upload_ocr import queue_skipped_uploads
 from app.services.ocr_service import OcrResult
@@ -46,7 +47,19 @@ def test_skipped_upload_and_old_receipt_catch_up_once_without_reupload(client, i
 
     keys = [str(uuid4()) for _ in range(4)]
     first, legacy, rejected, confirmed = [upload(key) for key in keys]
-    records = (first, legacy, rejected, confirmed)
+    # The user can edit between the upload commit and the first worker wakeup.
+    with monkeypatch.context() as staged:
+        staged.setattr(background_task_service, "submit_committed", lambda *_: None)
+        raced = upload(str(uuid4()))
+    raced_url = f"/api/expenses/{raced['id']}"
+    r_basis = client.get(raced_url, headers=identity.app_headers).json()["row_version"]
+    r_edit = client.patch(raced_url, headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+                          json={"expected_row_version": r_basis, "merchant": "先保存的商户"})
+    assert r_edit.status_code == 200, r_edit.text
+    resume_due_ocr_tasks()
+    original_task = client.get(f"/api/tasks/{raced['enrichment_task_public_id']}", headers=identity.app_headers).json()
+    assert original_task["result_summary"]["outcome"] == "conflict"
+    records = (first, legacy, rejected, confirmed, raced)
     with SessionLocal.begin() as db:
         original = db.scalar(select(BackgroundTask).where(BackgroundTask.public_id == legacy["enrichment_task_public_id"]))
         old_summary = json.loads(original.result_summary_json)
@@ -69,7 +82,7 @@ def test_skipped_upload_and_old_receipt_catch_up_once_without_reupload(client, i
     assert confirm_expense_api(client, confirmed["id"], headers=identity.app_headers).status_code == 200
     queue_skipped_uploads(0)
     with SessionLocal() as db:
-        assert len(list(db.scalars(select(BackgroundTask).where(BackgroundTask.task_type == "expense_enrichment")))) == 4
+        assert len(list(db.scalars(select(BackgroundTask).where(BackgroundTask.task_type == "expense_enrichment")))) == 5
 
     monkeypatch.delenv("OCR_PROVIDER")
     monkeypatch.delenv("OCR_AUTO_RUN", raising=False)
@@ -95,6 +108,11 @@ def test_skipped_upload_and_old_receipt_catch_up_once_without_reupload(client, i
                 if receipt == legacy:
                     assert tasks[0].result_summary_json == old_receipt
                     assert db.get(Expense, legacy["id"]).amount_cents == 1234
+                if receipt == raced:
+                    assert tasks[0].execution_context_json is None
+                    assert json.loads(tasks[1].input_payload_json)["catch_up_of"] == tasks[0].public_id
+                    assert db.get(Expense, raced["id"]).merchant == "先保存的商户"
+                    assert db.get(Expense, raced["id"]).amount_cents == 1234
             assert db.get(Expense, first["id"]).merchant == "人工核对的商户"
             assert db.get(Expense, confirmed["id"]).amount_cents == 777
         assert upload(keys[1]) == legacy

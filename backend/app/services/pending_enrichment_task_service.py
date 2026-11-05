@@ -42,6 +42,7 @@ def prepare_pending_expense_enrichment(
     expected_row_version: int,
     initiator_account_id: int,
     initiator_device_id: int | None,
+    catch_up_of: str | None = None,
 ) -> background_task_service.PreparedBackgroundTask:
     """Stage the upload's task in the caller-owned expense transaction."""
 
@@ -60,6 +61,8 @@ def prepare_pending_expense_enrichment(
             ),
             progress_total=1,
         )
+        if catch_up_of is not None:
+            prepared.payload["catch_up_of"] = catch_up_of
         prepared.task.input_payload_json = json.dumps(prepared.payload, separators=(",", ":"), sort_keys=True)
         prepared.task.source_expense_id = expense_id
         return prepared

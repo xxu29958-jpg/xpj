@@ -12,7 +12,7 @@ from app.database import SessionLocal
 from app.errors import AppError
 from app.models import BackgroundTask, Expense, OcrFact
 from app.services.background_task_handler_api import OCR_TASK_TYPES
-from app.services.ocr_execution_context import upload_result_with_notice
+from app.services.ocr_execution_context import automatic_ocr_was_disabled, upload_result_with_notice
 from app.services.pending_enrichment_task_service import (
     PENDING_EXPENSE_ENRICHMENT_TASK_TYPE,
     prepare_pending_expense_enrichment,
@@ -40,6 +40,19 @@ def _pending_uploads():
     )
 
 
+def _skipped_upload(task: BackgroundTask, result: dict, original: dict) -> bool:
+    if result.get("ocr_attempts"):
+        return False
+    if result.get("outcome") == "conflict":
+        # An edit can win before the upload worker even begins inference. Try
+        # once against the latest draft. A second racing edit wins permanently.
+        return not original.get("catch_up_of") and (
+            task.execution_context_json is None or automatic_ocr_was_disabled(task.execution_context_json)
+        )
+    return (result.get("outcome") in ("updated", "no_result")
+            and upload_result_with_notice(result, task.execution_context_json).get("ocr_notice") == "auto_ocr_disabled")
+
+
 def _queue_skipped_upload(task_id: int) -> None:
     with SessionLocal.begin() as db:
         # Explicit retries use this same lock. Re-read after acquiring it so
@@ -55,12 +68,7 @@ def _queue_skipped_upload(task_id: int) -> None:
             original = json.loads(task.input_payload_json or "{}")
         except (ValueError, TypeError):
             return
-        if (not isinstance(summary, dict) or summary.get("outcome") not in ("updated", "no_result")
-                or summary.get("ocr_attempts") or not isinstance(original, dict)):
-            return
-        # Current receipts and 1.2.0 execution records can positively identify
-        # a disabled run. Older receipts without either signal are ambiguous.
-        if upload_result_with_notice(summary, task.execution_context_json).get("ocr_notice") != "auto_ocr_disabled":
+        if not isinstance(summary, dict) or not isinstance(original, dict) or not _skipped_upload(task, summary, original):
             return
         if (original.get("expense_id") != task.source_expense_id or original.get("tenant_id") != task.tenant_id
                 or not isinstance(original.get("timezone_name"), (str, type(None)))):
@@ -69,6 +77,7 @@ def _queue_skipped_upload(task_id: int) -> None:
             db, expense_id=task.source_expense_id, tenant_id=task.tenant_id,
             timezone_name=original.get("timezone_name"), expected_row_version=version,
             initiator_account_id=task.initiated_by_account_id, initiator_device_id=task.initiated_by_device_id,
+            catch_up_of=task.public_id,
         )
         # The normal recovery worker dispatches committed queued tasks, also
         # after a restart. The accepted upload and its receipt stay replayable.
