@@ -6,11 +6,9 @@ from datetime import datetime
 from uuid import uuid4
 
 from fastapi import Request
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import ExpenseOffsetFact
 from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
 from app.routes._web_expense_return_context import flow_href
 from app.routes._web_relationship_links import accepted_split_debt_links
@@ -112,20 +110,7 @@ def _remaining_split_capacity(
 
 
 def _expense_has_active_reversal(db: Session, *, ledger_id: str, expense_id: int) -> bool:
-    scalar = getattr(db, "scalar", None)
-    if scalar is None:
-        return False
-    return (
-        scalar(
-            select(ExpenseOffsetFact.id)
-            .where(ExpenseOffsetFact.tenant_id == ledger_id)
-            .where(ExpenseOffsetFact.expense_id == expense_id)
-            .where(ExpenseOffsetFact.kind == "reversal")
-            .where(ExpenseOffsetFact.status == "active")
-            .limit(1)
-        )
-        is not None
-    )
+    return bsplit.expense_has_active_reversal(db, ledger_id=ledger_id, expense_id=expense_id)
 
 
 def build_split_invite_context(

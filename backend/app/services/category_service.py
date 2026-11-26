@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import CategoryPreference, CategoryRule, Expense
@@ -72,35 +72,39 @@ CATEGORY_OPTION_LIMIT = 200
 def resolve_known_category(
     db: Session, *, tenant_id: str, selected: str | None,
 ) -> str | None:
-    selected_name = (selected or "").strip()
+    if not selected or "\x00" in selected:
+        return None
+    selected_name = selected.strip()
     if is_uncategorized_expense_category(selected_name):
         return None
     normalized = normalize_category(selected_name)
     for default_name in DEFAULT_CATEGORIES:
         if default_name.casefold() == normalized.casefold():
             return default_name
-    pref = db.scalar(
-        select(CategoryPreference.name)
-        .where(
-            CategoryPreference.tenant_id == tenant_id,
-            CategoryPreference.deleted_at.is_(None),
-            func.lower(CategoryPreference.name) == normalized.lower(),
+    filter_values = category_filter_values(normalized)
+    pref_pred = or_(*(CategoryPreference.name.icontains(val, autoescape=True) for val in filter_values))
+    prefs = list(
+        db.scalars(
+            select(CategoryPreference.name)
+            .where(CategoryPreference.tenant_id == tenant_id, CategoryPreference.deleted_at.is_(None), pref_pred)
+            .order_by(CategoryPreference.name, CategoryPreference.id)
+            .limit(CATEGORY_OPTION_LIMIT)
         )
-        .limit(1)
     )
-    if pref:
-        return normalize_category(pref)
-    used = db.scalar(
-        select(Expense.category)
-        .where(
-            Expense.tenant_id == tenant_id,
-            Expense.category.is_not(None),
-            func.lower(Expense.category) == normalized.lower(),
+    used_pred = or_(*(Expense.category.icontains(val, autoescape=True) for val in filter_values))
+    used = list(
+        db.scalars(
+            select(Expense.category)
+            .where(Expense.tenant_id == tenant_id, Expense.category.is_not(None), used_pred)
+            .distinct()
+            .order_by(Expense.category)
+            .limit(CATEGORY_OPTION_LIMIT)
         )
-        .limit(1)
     )
-    if used:
-        return normalize_category(used)
+    suppressed = deleted_category_keys(db, tenant_id=tenant_id, names=used)
+    for choice in merge_categories([*used, *prefs], suppressed_keys=suppressed):
+        if choice.casefold() == normalized.casefold():
+            return choice
     return None
 
 

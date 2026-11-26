@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC
 from pathlib import Path
@@ -385,7 +386,10 @@ app.middleware("http")(security_headers)
 
 
 @app.middleware("http")
-async def restore_candidate_admission(request: Request, call_next):
+async def restore_candidate_admission(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
     restore_verify = os.environ.get("TICKETBOX_RESTORE_VERIFY_ONLY") == "1"
     upgrade_verify = os.environ.get("TICKETBOX_UPGRADE_VERIFY_ONLY") == "1"
     if (restore_verify or upgrade_verify) and (

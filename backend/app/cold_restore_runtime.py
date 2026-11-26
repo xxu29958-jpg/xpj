@@ -33,13 +33,47 @@ def _payload(stream) -> dict:
     return payload
 
 
+def _verify_single_original(check) -> int:
+    from app.errors import AppError
+    from app.services.file_service import resolve_upload_path_for_tenant
+    from app.services.original_read_service import read_original_snapshot, recorded_original_digest
+
+    if check.require_digest and recorded_original_digest(check.expected_sha256) is None:
+        raise DatabaseMaintenanceContractError(
+            f"restore retained original ({check.source_kind}) lacks a valid sha256 digest"
+        )
+    needs_snapshot = (
+        check.source_kind in {"expense_image", "debt_bill_capture", "historical_original"}
+        or bool(check.expected_sha256)
+    )
+    if not needs_snapshot:
+        path = resolve_upload_path_for_tenant(check.relative_path, check.tenant_id)
+        if path is None or not path.is_file():
+            raise DatabaseMaintenanceContractError(
+                f"restore is missing a retained original reference ({check.source_kind})"
+            )
+        return 0
+    try:
+        with read_original_snapshot(
+            relative_path=check.relative_path,
+            tenant_id=check.tenant_id,
+            expected_sha256=check.expected_sha256,
+        ) as snapshot:
+            if check.expected_size_bytes is not None and snapshot.size_bytes != check.expected_size_bytes:
+                raise DatabaseMaintenanceContractError(
+                    f"restore retained original ({check.source_kind}) size mismatch"
+                )
+    except AppError as exc:
+        raise DatabaseMaintenanceContractError(
+            f"restore retained original verification failed ({check.source_kind}): {exc.error}"
+        ) from exc
+    return 1
+
+
 def _verify_originals(db) -> int:
     from sqlalchemy import select
 
-    from app.errors import AppError
     from app.models import Ledger
-    from app.services.file_service import resolve_upload_path_for_tenant
-    from app.services.original_read_service import read_original_snapshot, recorded_original_digest
     from app.services.original_reference_queries import iter_retained_original_checks
 
     count = 0
@@ -49,32 +83,7 @@ def _verify_originals(db) -> int:
         except ValueError as exc:
             raise DatabaseMaintenanceContractError(str(exc)) from exc
         for check in checks:
-            if check.require_digest and recorded_original_digest(check.expected_sha256) is None:
-                raise DatabaseMaintenanceContractError(
-                    f"restore retained original ({check.source_kind}) lacks a valid sha256 digest"
-                )
-            if check.source_kind in {"expense_image", "debt_bill_capture", "historical_original"} or check.expected_sha256:
-                try:
-                    with read_original_snapshot(
-                        relative_path=check.relative_path,
-                        tenant_id=check.tenant_id,
-                        expected_sha256=check.expected_sha256,
-                    ) as snapshot:
-                        if check.expected_size_bytes is not None and snapshot.size_bytes != check.expected_size_bytes:
-                            raise DatabaseMaintenanceContractError(
-                                f"restore retained original ({check.source_kind}) size mismatch"
-                            )
-                except AppError as exc:
-                    raise DatabaseMaintenanceContractError(
-                        f"restore retained original verification failed ({check.source_kind}): {exc.error}"
-                    ) from exc
-                count += 1
-            else:
-                path = resolve_upload_path_for_tenant(check.relative_path, check.tenant_id)
-                if path is None or not path.is_file():
-                    raise DatabaseMaintenanceContractError(
-                        f"restore is missing a retained original reference ({check.source_kind})"
-                    )
+            count += _verify_single_original(check)
     return count
 
 

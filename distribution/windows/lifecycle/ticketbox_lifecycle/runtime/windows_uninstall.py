@@ -306,6 +306,33 @@ class WindowsUninstallPlatform:
         return manifest_shas
 
     @staticmethod
+    def _verify_manifest_payload_target(
+        rid: str,
+        target: Path,
+        record_path: object,
+        expected_file_sha: str,
+        *,
+        resuming_cleanup: bool,
+    ) -> None:
+        if not os.path.lexists(target):
+            if not resuming_cleanup:
+                raise LifecycleViolation(
+                    "uninstall_release_file_missing",
+                    f"release {rid} payload file is missing before uninstall: {record_path}",
+                )
+            return
+        if not target.is_file():
+            raise LifecycleViolation(
+                "uninstall_release_file_hash_mismatch",
+                f"release {rid} payload entry is not a regular file: {record_path}",
+            )
+        if _sha256_file(target) != expected_file_sha:
+            raise LifecycleViolation(
+                "uninstall_release_file_hash_mismatch",
+                f"release {rid} payload file digest does not match verified manifest: {record_path}",
+            )
+
+    @staticmethod
     def _verify_expected_release_files(
         rid: str,
         app_dir: Path,
@@ -331,27 +358,20 @@ class WindowsUninstallPlatform:
                     f"release manifest file escapes release directory: {record['path']}",
                 ) from exc
             expected_file_sha = record.get("sha256")
-            if (
-                not isinstance(expected_file_sha, str)
-                or len(expected_file_sha) != 64
-                or not all(ch in "0123456789abcdef" for ch in expected_file_sha)
-            ):
+            if not WindowsUninstallPlatform._is_hex_sha256(expected_file_sha):
                 raise LifecycleViolation(
                     "uninstall_release_file_hash_mismatch",
                     f"release {rid} manifest lacks a valid SHA-256 digest for {record['path']}",
                 )
+            assert isinstance(expected_file_sha, str)
             expected_norm_paths.add(_norm_path(target))
-            if not os.path.lexists(target):
-                if not resuming_cleanup:
-                    raise LifecycleViolation(
-                        "uninstall_release_file_missing",
-                        f"release {rid} payload file is missing before uninstall: {record['path']}",
-                    )
-            elif not target.is_file() or _sha256_file(target) != expected_file_sha:
-                raise LifecycleViolation(
-                    "uninstall_release_file_hash_mismatch",
-                    f"release {rid} payload file digest does not match verified manifest: {record['path']}",
-                )
+            WindowsUninstallPlatform._verify_manifest_payload_target(
+                rid,
+                target,
+                record["path"],
+                expected_file_sha,
+                resuming_cleanup=resuming_cleanup,
+            )
             payload_files.append(target)
         return expected_norm_paths, payload_files
 

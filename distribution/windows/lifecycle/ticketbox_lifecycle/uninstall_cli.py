@@ -191,6 +191,7 @@ def _prepare_from_request(
             "untrusted_setup_request",
             "privileged request does not match the trusted ProgramData root",
         )
+    _write_running_receipt(result_path, operation_id_box[0])
     fs_stores = FilesystemStores.from_request(
         request,
         install_root=expected_app_dir,
@@ -227,6 +228,8 @@ def main(argv: list[str]) -> int:
                 forbidden_roots=forbidden_roots,
             )
             operation_id_box[0] = request.operation_id
+            result_path_safe = True
+            _write_running_receipt(result_path, operation_id_box[0])
         else:
             fs_stores, request = _prepare_from_request(
                 args.request,
@@ -236,8 +239,7 @@ def main(argv: list[str]) -> int:
                 forbidden_roots=forbidden_roots,
                 operation_id_box=operation_id_box,
             )
-        result_path_safe = True
-        _write_running_receipt(result_path, operation_id_box[0])
+            result_path_safe = True
         platform = WindowsUninstallPlatform(SubprocessCommandRunner(), NativeWindowsScmObserver())
         result = uninstall_action.uninstall(fs_stores.as_lifecycle_stores(), request, platform)
     except LifecycleError as exc:

@@ -68,7 +68,6 @@ def _upgrade_topology(
     restore_epoch: int = 0,
 ):
     topology = _new_managed_topology(tmp_path)
-    primary: BaseException | None = None
     try:
         _create_roles_and_database(topology)
         owner_engine = create_engine(topology.owner_url, poolclass=NullPool, future=True)
@@ -108,23 +107,12 @@ def _upgrade_topology(
         )
         monkeypatch.delenv("PGPASSWORD", raising=False)
         yield topology
-    except BaseException as exc:
-        primary = exc
-    cleanup_error: BaseException | None = None
-    try:
+    finally:
         cleanup_postgres_topology(
             admin=topology.admin,
             database=topology.database,
             roles=(topology.runtime_role, topology.migrator, topology.owner),
         )
-    except BaseException as exc:
-        cleanup_error = exc
-    if primary is not None and cleanup_error is not None:
-        raise BaseExceptionGroup("upgrade topology body and cleanup failed", [primary, cleanup_error])
-    if primary is not None:
-        raise primary
-    if cleanup_error is not None:
-        raise cleanup_error
 
 
 def _read_attestation(url) -> dict[str, object] | None:

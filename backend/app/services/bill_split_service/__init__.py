@@ -45,6 +45,7 @@ from app.services.bill_split_service._guards import (
 )
 from app.services.bill_split_service._query import (
     AcceptedSourceRelationship,
+    expense_has_active_reversal,
     get_invitation,
     list_accepted_source_relationships,
     list_inbox,
@@ -80,6 +81,7 @@ __all__ = [
     "backfill_bill_split_debts",
     "cancel_invitation",
     "create_invitation",
+    "expense_has_active_reversal",
     "get_invitation",
     "get_bill_split_agreement",
     "list_accepted_source_relationships",

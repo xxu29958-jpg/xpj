@@ -663,8 +663,15 @@ def test_category_search_normalizes_pinned_choices_and_reports_genuine_misses(we
         assert response.status_code == 200
         return response.json()
 
-    for missing in (None, "   ", "\u0085", " NuLl ", "未分類", "<script>alert(1)</script>"):
+    with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
+        stamp = now_utc()
+        db.add(Expense(tenant_id="owner", category=" 手作 ", status="pending", created_at=stamp, updated_at=stamp))
+        db.commit()
+
+    for missing in (None, "   ", "\u0085", " NuLl ", "未分類", "<script>alert(1)</script>", "bad\x00cat"):
         assert lookup("zzz-nomatch", missing) == []
+    assert lookup("zzz-nomatch", "手作") == ["手作"]
     for selected in (" 餐饮 ", "吃饭"):
         assert lookup("餐", selected) == ["餐饮"]
         assert lookup("zzz-nomatch", selected) == ["餐饮"]

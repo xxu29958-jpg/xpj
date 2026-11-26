@@ -73,6 +73,10 @@ def deleted_category_keys(db: Session, *, tenant_id: str, names: list[str]) -> s
 _PREFERENCE_PAGE_SIZE = 200
 
 
+def _fetch_preference_page(db: Session, page) -> list[CategoryPreference]:
+    return list(db.scalars(page).all())
+
+
 def list_category_preferences(db: Session, *, tenant_id: str) -> list[CategoryPreferenceView]:
     """Management and library consumers need every active preference in display order."""
     usage_counts = _usage_counts_by_category_key(db, tenant_id=tenant_id)
@@ -86,7 +90,7 @@ def list_category_preferences(db: Session, *, tenant_id: str) -> list[CategoryPr
     result = []
     page = ordered
     while True:
-        rows = db.scalars(page).all()
+        rows = _fetch_preference_page(db, page)
         result.extend(_preference_view(item, usage_counts=usage_counts) for item in rows)
         if len(rows) < _PREFERENCE_PAGE_SIZE:
             return result

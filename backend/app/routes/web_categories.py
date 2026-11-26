@@ -261,17 +261,22 @@ def web_category_preference_delete(
     )
 
 
+def _is_positive_json_media_range(item: str) -> bool:
+    media_type, params = parse_options_header(item.strip())
+    if media_type.lower() != b"application/json":
+        return False
+    try:
+        return 0 < float(params.get(b"q", b"1")) <= 1
+    except ValueError:
+        return False
+
+
 def _accepts_category_json(request: Request) -> bool:
-    for header in request.headers.getlist("accept"):
-        for item in parse_http_list(header):
-            media_type, params = parse_options_header(item.strip())
-            if media_type.lower() == b"application/json":
-                try:
-                    if 0 < float(params.get(b"q", b"1")) <= 1:
-                        return True
-                except ValueError:
-                    continue
-    return False
+    return any(
+        _is_positive_json_media_range(item)
+        for header in request.headers.getlist("accept")
+        for item in parse_http_list(header)
+    )
 
 
 @router.get(
