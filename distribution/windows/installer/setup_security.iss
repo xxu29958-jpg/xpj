@@ -458,9 +458,11 @@ begin
   Result := TicketboxVerifyReadOnlyAdminDirectory(Path);
 end;
 
-function TicketboxAceIsAdminWriteOnly(const AceBody: String): Boolean;
+function TicketboxParseAceFields(
+  const AceBody: String;
+  var AceType, Rights, Trustee: String): Boolean;
 var
-  Rest, AceType, Rights, Trustee: String;
+  Rest: String;
   FieldIdx, Sep: Integer;
 begin
   Result := False;
@@ -488,7 +490,24 @@ begin
       Trustee := UpperCase(Rest);
     end;
   end;
-  if (AceType = '') or (Trustee = '') then
+  Result := (AceType <> '') and (Trustee <> '');
+end;
+
+function TicketboxAceRightsAreReadOnly(const Rights: String): Boolean;
+begin
+  Result := (Rights = '0X1200A9') or (Rights = '0X120089') or
+    (Rights = 'GXGR') or (Rights = 'GRGX') or
+    (Rights = 'FRFX') or (Rights = 'FXFR') or
+    (Rights = 'GR') or (Rights = 'FR') or (Rights = 'RC') or
+    (Rights = 'GX') or (Rights = 'FX');
+end;
+
+function TicketboxAceIsAdminWriteOnly(const AceBody: String): Boolean;
+var
+  AceType, Rights, Trustee: String;
+begin
+  Result := False;
+  if not TicketboxParseAceFields(AceBody, AceType, Rights, Trustee) then
     Exit;
   if AceType <> 'A' then
   begin
@@ -501,11 +520,7 @@ begin
     Result := True;
     Exit;
   end;
-  Result := (Rights = '0X1200A9') or (Rights = '0X120089') or
-    (Rights = 'GXGR') or (Rights = 'GRGX') or
-    (Rights = 'FRFX') or (Rights = 'FXFR') or
-    (Rights = 'GR') or (Rights = 'FR') or (Rights = 'RC') or
-    (Rights = 'GX') or (Rights = 'FX');
+  Result := TicketboxAceRightsAreReadOnly(Rights);
 end;
 
 function TicketboxDaclSddlIsAdminWriteOnly(const DaclSddl: String): Boolean;

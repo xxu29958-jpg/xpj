@@ -366,21 +366,7 @@ def _verify_probe_access_restored(
                 )
 
 
-@contextlib.contextmanager
-def temporary_probe_access(pgdata: Path) -> Iterator[None]:
-    """Grant the calling administrator's user SID temporary protected access to sealed pgdata
-    for pg_ctl's restricted postgres.exe process, then unconditionally restore and verify the full tree."""
-    if os.name != "nt":
-        yield
-        return
-    user_sid = native.current_process_user_sid()
-    if (
-        not user_sid
-        or user_sid in {native.SYSTEM_SID, _LOCAL_SERVICE_SID}
-        or native._SID_PATTERN.fullmatch(user_sid) is None
-    ):
-        yield
-        return
+def _inspect_probe_pgdata_security(pgdata: Path, user_sid: str) -> tuple[str, str] | None:
     _reject_tree_reparse(pgdata)
     try:
         original_dacl = native._object_dacl_sddl(pgdata)
@@ -390,11 +376,7 @@ def temporary_probe_access(pgdata: Path) -> Iterator[None]:
             "cannot inspect pgdata DACL before starting read-only probe",
         ) from exc
     if _dacl_grants_inheritable_full_access(original_dacl, user_sid):
-        try:
-            yield
-        finally:
-            _reject_tree_reparse(pgdata)
-        return
+        return None
     if not original_dacl.startswith("D:P"):
         raise LifecycleError(
             "purge_probe_acl_unprotected",
@@ -412,9 +394,66 @@ def temporary_probe_access(pgdata: Path) -> Iterator[None]:
             "purge_probe_owner_untrusted",
             "pgdata root does not have a trusted SYSTEM or Administrators owner; refusing probe",
         )
-    restore_dacl = original_dacl
-    probe_dacl = f"{restore_dacl}(A;OICI;FA;;;{user_sid})"
-    apply_protected_dacl(pgdata, probe_dacl, code="purge_probe_acl_failed")
+    return original_dacl, original_owner
+
+
+def _restore_and_verify_probe_access(
+    pgdata: Path,
+    *,
+    user_sid: str,
+    restore_dacl: str,
+    original_owner: str,
+    body_error: BaseException | None,
+) -> None:
+    try:
+        apply_protected_dacl(pgdata, restore_dacl, code="purge_probe_acl_restore_failed")
+        _restore_probe_created_owners(
+            pgdata,
+            probe_user_sid=user_sid,
+            trusted_owner_sid=original_owner,
+        )
+        _verify_probe_access_restored(
+            pgdata,
+            probe_user_sid=user_sid,
+            expected_root_dacl=restore_dacl,
+            expected_root_owner=original_owner,
+        )
+    except LifecycleError as restore_exc:
+        if body_error is not None:
+            primary_code = (
+                body_error.code if isinstance(body_error, LifecycleError) else type(body_error).__name__
+            )
+            raise LifecycleError(
+                restore_exc.code,
+                f"{restore_exc.message} (after {primary_code})",
+            ) from body_error
+        raise
+
+
+@contextlib.contextmanager
+def temporary_probe_access(pgdata: Path) -> Iterator[None]:
+    """Grant the calling administrator's user SID temporary protected access to sealed pgdata
+    for pg_ctl's restricted postgres.exe process, then unconditionally restore and verify the full tree."""
+    if os.name != "nt":
+        yield
+        return
+    user_sid = native.current_process_user_sid()
+    if (
+        not user_sid
+        or user_sid in {native.SYSTEM_SID, _LOCAL_SERVICE_SID}
+        or native._SID_PATTERN.fullmatch(user_sid) is None
+    ):
+        yield
+        return
+    inspected = _inspect_probe_pgdata_security(pgdata, user_sid)
+    if inspected is None:
+        try:
+            yield
+        finally:
+            _reject_tree_reparse(pgdata)
+        return
+    restore_dacl, original_owner = inspected
+    apply_protected_dacl(pgdata, f"{restore_dacl}(A;OICI;FA;;;{user_sid})", code="purge_probe_acl_failed")
     body_error: BaseException | None = None
     try:
         yield
@@ -422,28 +461,10 @@ def temporary_probe_access(pgdata: Path) -> Iterator[None]:
         body_error = exc
         raise
     finally:
-        try:
-            apply_protected_dacl(pgdata, restore_dacl, code="purge_probe_acl_restore_failed")
-            _restore_probe_created_owners(
-                pgdata,
-                probe_user_sid=user_sid,
-                trusted_owner_sid=original_owner,
-            )
-            _verify_probe_access_restored(
-                pgdata,
-                probe_user_sid=user_sid,
-                expected_root_dacl=restore_dacl,
-                expected_root_owner=original_owner,
-            )
-        except LifecycleError as restore_exc:
-            if body_error is not None:
-                primary_code = (
-                    body_error.code
-                    if isinstance(body_error, LifecycleError)
-                    else type(body_error).__name__
-                )
-                raise LifecycleError(
-                    restore_exc.code,
-                    f"{restore_exc.message} (after {primary_code})",
-                ) from body_error
-            raise
+        _restore_and_verify_probe_access(
+            pgdata,
+            user_sid=user_sid,
+            restore_dacl=restore_dacl,
+            original_owner=original_owner,
+            body_error=body_error,
+        )

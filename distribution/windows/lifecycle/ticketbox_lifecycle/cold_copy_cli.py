@@ -75,26 +75,46 @@ def _read_secret(args: argparse.Namespace, targets: tuple[Path, ...], managed_ro
     return secret
 
 
+def _validate_encrypted_paths(
+    command: str,
+    source: Path,
+    output: Path | None,
+    has_key_file: bool,
+) -> tuple[bool, tuple[Path, ...]]:
+    encrypt = command == "encrypt-cold-copy"
+    archive = source if encrypt else output
+    if archive is not None and archive.suffix.lower() != ".tbxcold":
+        raise LifecycleError("cold_path_invalid", "select a .tbxcold plaintext archive")
+    if encrypt and output is not None and output.suffix.lower() == ".tbxcold":
+        raise LifecycleError("cold_path_invalid", "use a distinct extension for ciphertext")
+    managed_roots: tuple[Path, ...] = ()
+    if output is not None or has_key_file:
+        managed_roots = tuple(
+            root.resolve()
+            for root in (
+                ticketbox_program_data_root(),
+                ticketbox_install_root(),
+                ticketbox_control_root(),
+            )
+        )
+    if output is not None and any(output.is_relative_to(root) for root in managed_roots):
+        raise LifecycleError("cold_output_inside_source", "cold copy destination must be outside the installation")
+    if output is not None and output.exists():
+        raise LifecycleError("cold_output_exists", "select a new file for the result")
+    return encrypt, managed_roots
+
+
 def _encrypted_command(args: argparse.Namespace) -> dict[str, object]:
     from ticketbox_lifecycle.runtime.cold_copy_encryption import encrypt_cold_copy, read_encrypted_cold_copy
 
     source = _local_path(args.source)
     output = _local_path(args.output) if args.command != "verify-encrypted-cold-copy" else None
-    encrypt = args.command == "encrypt-cold-copy"
-    archive = source if encrypt else output
-    if archive is not None and archive.suffix.lower() != ".tbxcold":
-        raise LifecycleError("cold_path_invalid", "select a .tbxcold plaintext archive")
-    if encrypt and output.suffix.lower() == ".tbxcold":
-        raise LifecycleError("cold_path_invalid", "use a distinct extension for ciphertext")
-    managed_roots = ()
-    if output is not None or args.key_file is not None:
-        managed_roots = tuple(root.resolve() for root in (
-            ticketbox_program_data_root(), ticketbox_install_root(), ticketbox_control_root(),
-        ))
-    if output is not None and any(output.is_relative_to(root) for root in managed_roots):
-        raise LifecycleError("cold_output_inside_source", "cold copy destination must be outside the installation")
-    if output is not None and output.exists():
-        raise LifecycleError("cold_output_exists", "select a new file for the result")
+    encrypt, managed_roots = _validate_encrypted_paths(
+        args.command,
+        source,
+        output,
+        args.key_file is not None,
+    )
     targets = (source,) if output is None else (source, output)
     secret = _read_secret(args, targets, managed_roots)
     if encrypt:

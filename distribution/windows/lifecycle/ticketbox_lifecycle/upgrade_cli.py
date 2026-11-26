@@ -6,17 +6,21 @@ import argparse
 import ctypes
 import json
 from pathlib import Path
+from typing import cast
 
 from ticketbox_lifecycle import command_io
 from ticketbox_lifecycle.domain import upgrade as upgrade_action
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime.command import SubprocessCommandRunner
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
+from ticketbox_lifecycle.runtime.windows_dataset import WindowsDatasetAdapter
 from ticketbox_lifecycle.runtime.windows_known_folders import (
     ticketbox_install_root,
     ticketbox_program_data_root,
 )
+from ticketbox_lifecycle.runtime.windows_scm import WindowsScmAdapter
 from ticketbox_lifecycle.runtime.windows_scm_observation import NativeWindowsScmObserver
+from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 from ticketbox_lifecycle.runtime.windows_security_native import require_windows
 from ticketbox_lifecycle.runtime.windows_shipment import _absolute_path_key
 from ticketbox_lifecycle.runtime.windows_upgrade import WindowsUpgradePlatform
@@ -59,6 +63,71 @@ def _read_durable_failure_status(
     return phase, published
 
 
+def _load_upgrade_request_and_stores(
+    request_path: str,
+    command: str,
+    *,
+    expected_app_dir: Path,
+    expected_program_data: Path,
+    forbidden_roots: list[Path],
+    protected_files: list[Path],
+    operation_id_box: list[str],
+) -> tuple[InstallRequest, FilesystemStores]:
+    payload = json.loads(Path(request_path).read_text(encoding="utf-8"))
+    operation_id_box[0] = str(payload.get("operation_id") or "unknown")
+    request = command_io.parse_request(payload, command=command)
+    operation_id_box[0] = request.operation_id
+    forbidden_roots.extend([
+        Path(request.app_dir),
+        Path(request.program_data_root),
+        Path(request.data_root),
+    ])
+    if _absolute_path_key(Path(request.app_dir)) != _absolute_path_key(expected_app_dir):
+        raise LifecycleViolation(
+            "untrusted_install_root",
+            "installed application root must be the exact Ticketbox Program Files directory",
+        )
+    if _absolute_path_key(Path(request.program_data_root)) != _absolute_path_key(expected_program_data):
+        raise LifecycleViolation(
+            "untrusted_setup_request",
+            "privileged request does not match the trusted ProgramData root",
+        )
+    fs_stores = FilesystemStores.from_request(
+        request,
+        install_root=expected_app_dir,
+        program_data_root=expected_program_data,
+    )
+    try:
+        existing_active = fs_stores.read_active()
+    except Exception:
+        existing_active = None
+    if existing_active is not None:
+        backup_path = getattr(existing_active, "backup_path", "")
+        if isinstance(backup_path, str) and backup_path:
+            protected_files.append(Path(backup_path))
+    return request, fs_stores
+
+
+def _build_upgrade_platform(
+    fs_stores: FilesystemStores,
+    *,
+    expected_app_dir: Path,
+    expected_program_data: Path,
+    staged_root: Path | None,
+) -> WindowsUpgradePlatform:
+    return WindowsUpgradePlatform(
+        fs_stores,
+        SubprocessCommandRunner(),
+        cast(WindowsSecurityAdapter, fs_stores._adapters.security),
+        cast(WindowsScmAdapter, fs_stores._adapters.scm),
+        NativeWindowsScmObserver(),
+        cast(WindowsDatasetAdapter, fs_stores._adapters.dataset),
+        expected_app_dir=expected_app_dir,
+        expected_program_data_root=expected_program_data,
+        staged_release_root=staged_root,
+    )
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         prog="TicketboxLifecycle",
@@ -72,7 +141,7 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     result_path = Path(args.result)
     staged_root = Path(args.staged_release_root) if args.staged_release_root else None
-    operation_id = "unknown"
+    operation_id_box = ["unknown"]
     request: InstallRequest | None = None
     fs_stores: FilesystemStores | None = None
     forbidden_roots: list[Path] = []
@@ -92,38 +161,15 @@ def main(argv: list[str]) -> int:
         command_io.require_safe_result_path(result_path, forbidden_roots=forbidden_roots)
         if not ctypes.windll.shell32.IsUserAnAdmin():
             raise LifecycleError("upgrade_admin_required", "managed upgrade requires an administrator")
-        payload = json.loads(Path(args.request).read_text(encoding="utf-8"))
-        operation_id = str(payload.get("operation_id") or "unknown")
-        request = command_io.parse_request(payload, command=args.command)
-        operation_id = request.operation_id
-        forbidden_roots.extend([
-            Path(request.app_dir),
-            Path(request.program_data_root),
-            Path(request.data_root),
-        ])
-        if _absolute_path_key(Path(request.app_dir)) != _absolute_path_key(expected_app_dir):
-            raise LifecycleViolation(
-                "untrusted_install_root",
-                "installed application root must be the exact Ticketbox Program Files directory",
-            )
-        if _absolute_path_key(Path(request.program_data_root)) != _absolute_path_key(expected_program_data):
-            raise LifecycleViolation(
-                "untrusted_setup_request",
-                "privileged request does not match the trusted ProgramData root",
-            )
-        fs_stores = FilesystemStores.from_request(
-            request,
-            install_root=expected_app_dir,
-            program_data_root=expected_program_data,
+        request, fs_stores = _load_upgrade_request_and_stores(
+            args.request,
+            args.command,
+            expected_app_dir=expected_app_dir,
+            expected_program_data=expected_program_data,
+            forbidden_roots=forbidden_roots,
+            protected_files=protected_files,
+            operation_id_box=operation_id_box,
         )
-        try:
-            existing_active = fs_stores.read_active()
-        except Exception:
-            existing_active = None
-        if existing_active is not None:
-            backup_path = getattr(existing_active, "backup_path", "")
-            if isinstance(backup_path, str) and backup_path:
-                protected_files.append(Path(backup_path))
         command_io.require_safe_result_path(
             result_path,
             forbidden_roots=forbidden_roots,
@@ -136,26 +182,20 @@ def main(argv: list[str]) -> int:
                 schema=RESULT_SCHEMA,
                 ok=False,
                 command=args.command,
-                operation_id=operation_id,
+                operation_id=operation_id_box[0],
                 phase="prepared",
                 code="running",
                 message=f"{args.command} started",
                 installation_published=None,
             ),
         )
-        lifecycle_stores = fs_stores.as_lifecycle_stores()
-        runner = SubprocessCommandRunner()
-        platform = WindowsUpgradePlatform(
+        platform = _build_upgrade_platform(
             fs_stores,
-            runner,
-            fs_stores._adapters.security,  # type: ignore[arg-type]
-            fs_stores._adapters.scm,  # type: ignore[arg-type]
-            NativeWindowsScmObserver(),
-            fs_stores._adapters.dataset,  # type: ignore[arg-type]
             expected_app_dir=expected_app_dir,
-            expected_program_data_root=expected_program_data,
-            staged_release_root=staged_root,
+            expected_program_data=expected_program_data,
+            staged_root=staged_root,
         )
+        lifecycle_stores = fs_stores.as_lifecycle_stores()
         if args.command == "rollback-upgrade":
             result = upgrade_action.rollback_upgrade(lifecycle_stores, request, platform)
         else:
@@ -166,24 +206,24 @@ def main(argv: list[str]) -> int:
                 rollback_on_failure=bool(args.rollback_on_failure),
             )
     except LifecycleError as exc:
-        phase, published = _read_durable_failure_status(fs_stores, request, operation_id)
+        phase, published = _read_durable_failure_status(fs_stores, request, operation_id_box[0])
         result = CommandResult(
             schema=RESULT_SCHEMA,
             ok=False,
             command=args.command,
-            operation_id=operation_id,
+            operation_id=operation_id_box[0],
             phase=phase,
             code=exc.code,
             message=exc.message,
             installation_published=published,
         )
     except Exception:
-        phase, published = _read_durable_failure_status(fs_stores, request, operation_id)
+        phase, published = _read_durable_failure_status(fs_stores, request, operation_id_box[0])
         result = CommandResult(
             schema=RESULT_SCHEMA,
             ok=False,
             command=args.command,
-            operation_id=operation_id,
+            operation_id=operation_id_box[0],
             phase=phase,
             code="unhandled",
             message="unexpected managed upgrade failure",

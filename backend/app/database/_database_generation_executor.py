@@ -216,6 +216,28 @@ def _build_attestation(
     }
 
 
+def _is_valid_optional_sha256(value: object) -> bool:
+    return value is None or (isinstance(value, str) and _SHA256_HEX.fullmatch(value) is not None)
+
+
+def _validate_upgrade_attestation_shape(decoded: object) -> dict[str, object]:
+    if not isinstance(decoded, dict) or set(decoded) != _ATTESTATION_KEYS:
+        raise DatabaseGenerationExecutionError("managed upgrade attestation shape is invalid")
+    restore_epoch = decoded.get("restore_epoch")
+    dataset_id = decoded.get("dataset_id")
+    if (
+        decoded.get("schema") != UPGRADE_ATTESTATION_SCHEMA
+        or type(restore_epoch) is not int
+        or restore_epoch < 0
+        or not isinstance(decoded.get("source_revision"), str)
+        or not isinstance(decoded.get("target_revision"), str)
+        or (dataset_id is not None and not isinstance(dataset_id, str))
+        or not _is_valid_optional_sha256(decoded.get("backup_archive_sha256"))
+    ):
+        raise DatabaseGenerationExecutionError("managed upgrade attestation shape is invalid")
+    return decoded
+
+
 def _read_upgrade_attestation(connection: Connection) -> dict[str, object] | None:
     raw = connection.scalar(
         text("SELECT value FROM public.app_meta WHERE key = :key"),
@@ -229,21 +251,9 @@ def _read_upgrade_attestation(connection: Connection) -> dict[str, object] | Non
         decoded = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise DatabaseGenerationExecutionError("managed upgrade attestation is invalid") from exc
-    backup_sha = decoded.get("backup_archive_sha256") if isinstance(decoded, dict) else None
-    if (
-        not isinstance(decoded, dict)
-        or set(decoded) != _ATTESTATION_KEYS
-        or decoded.get("schema") != UPGRADE_ATTESTATION_SCHEMA
-        or type(decoded.get("restore_epoch")) is not int
-        or int(decoded["restore_epoch"]) < 0
-        or not isinstance(decoded.get("source_revision"), str)
-        or not isinstance(decoded.get("target_revision"), str)
-        or (decoded.get("dataset_id") is not None and not isinstance(decoded.get("dataset_id"), str))
-        or (backup_sha is not None and (not isinstance(backup_sha, str) or _SHA256_HEX.fullmatch(backup_sha) is None))
-    ):
-        raise DatabaseGenerationExecutionError("managed upgrade attestation shape is invalid")
-    validate_generation_operation_id(str(decoded.get("operation_id") or ""))
-    return decoded
+    attestation = _validate_upgrade_attestation_shape(decoded)
+    validate_generation_operation_id(str(attestation.get("operation_id") or ""))
+    return attestation
 
 
 def _write_upgrade_attestation(

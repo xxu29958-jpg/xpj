@@ -32,14 +32,31 @@ def _is_hex64(value: object) -> bool:
     return isinstance(value, str) and _HEX64.fullmatch(value) is not None
 
 
+def _is_nonempty_str(value: object) -> bool:
+    return isinstance(value, str) and bool(value)
+
+
+def _is_release_id(value: object) -> bool:
+    return isinstance(value, str) and _RELEASE_ID.fullmatch(value) is not None
+
+
+def _is_valid_port(value: object) -> bool:
+    return type(value) is int and 1 <= value <= 65535
+
+
 def _read_record(path: Path) -> dict | None:
     if not os.path.lexists(path):
         return None
     advapi, kernel = secure_file._windows_apis()
     service_sid = secure_file._current_process_service_sid(advapi, kernel)
-    with secure_file._hold_windows_protected_file(path,
-        owner_sids=frozenset({"S-1-5-18", "S-1-5-32-544"}),
-        access_rules={"S-1-5-18": 0x1F01FF, "S-1-5-32-544": 0x1F01FF, service_sid: 0x120089}) as protected, protected.open("rb") as stream:
+    with (
+        secure_file._hold_windows_protected_file(
+            path,
+            owner_sids=frozenset({"S-1-5-18", "S-1-5-32-544"}),
+            access_rules={"S-1-5-18": 0x1F01FF, "S-1-5-32-544": 0x1F01FF, service_sid: 0x120089},
+        ) as protected,
+        protected.open("rb") as stream,
+    ):
         raw = stream.read(16385)
     if len(raw) > 16384:
         raise ConnectorAuthorityError("connector record exceeds its limit")
@@ -47,6 +64,27 @@ def _read_record(path: Path) -> dict | None:
     if not isinstance(value, dict):
         raise ConnectorAuthorityError("connector record must be an object")
     return value
+
+
+def _matches_committed_identity(
+    record: dict,
+    *,
+    expected_op_id: str,
+    expected_kind: str,
+    expected_manifest: str,
+    binding: dict,
+) -> bool:
+    return (
+        record.get("schema") == "ticketbox-lifecycle-operation-v2"
+        and record.get("kind") == expected_kind
+        and record.get("operation_id") == expected_op_id
+        and record.get("phase") == "committed"
+        and record.get("no_return_point") is True
+        and record.get("completed_step") == "health"
+        and record.get("release_manifest_sha256") == expected_manifest
+        and record.get("install_id") == binding.get("install_id")
+        and record.get("dataset_id") == binding.get("dataset_id")
+    )
 
 
 def _valid_common_committed(
@@ -59,29 +97,28 @@ def _valid_common_committed(
     binding: dict,
 ) -> bool:
     target = record.get("target_release_id")
-    port = record.get("backend_port")
     return (
-        record.get("schema") == "ticketbox-lifecycle-operation-v2"
-        and record.get("kind") == expected_kind
-        and record.get("operation_id") == expected_op_id
-        and record.get("phase") == "committed"
-        and record.get("no_return_point") is True
-        and record.get("completed_step") == "health"
-        and record.get("release_manifest_sha256") == expected_manifest
-        and record.get("install_id") == binding.get("install_id")
-        and record.get("dataset_id") == binding.get("dataset_id")
-        and isinstance(target, str)
-        and _RELEASE_ID.fullmatch(target) is not None
+        _matches_committed_identity(
+            record,
+            expected_op_id=expected_op_id,
+            expected_kind=expected_kind,
+            expected_manifest=expected_manifest,
+            binding=binding,
+        )
+        and _is_release_id(target)
         and (expected_release is None or target == expected_release)
         and _is_hex64(record.get("request_hash"))
         and _is_hex64(record.get("health_attestation_key"))
-        and isinstance(record.get("data_root"), str)
-        and bool(record["data_root"])
-        and isinstance(record.get("schema_revision"), str)
-        and bool(record["schema_revision"])
-        and type(port) is int
-        and 1 <= port <= 65535
+        and _is_nonempty_str(record.get("data_root"))
+        and _is_nonempty_str(record.get("schema_revision"))
+        and _is_valid_port(record.get("backend_port"))
     )
+
+
+def _matches_upgrade_epoch(record: dict, binding: dict) -> bool:
+    binding_epoch = binding.get("expected_restore_epoch")
+    record_epoch = record["expected_restore_epoch"]
+    return type(binding_epoch) is int and type(record_epoch) is int and record_epoch == binding_epoch
 
 
 def _valid_committed_upgrade(
@@ -104,21 +141,14 @@ def _valid_committed_upgrade(
         return False
     prev_release = record["previous_release_id"]
     prev_manifest = record["previous_release_manifest_sha256"]
-    binding_epoch = binding.get("expected_restore_epoch")
-    record_epoch = record["expected_restore_epoch"]
     return (
-        type(binding_epoch) is int
-        and type(record_epoch) is int
-        and record_epoch == binding_epoch
-        and isinstance(prev_release, str)
-        and _RELEASE_ID.fullmatch(prev_release) is not None
+        _matches_upgrade_epoch(record, binding)
+        and _is_release_id(prev_release)
         and prev_release != record["target_release_id"]
         and _is_hex64(prev_manifest)
         and prev_manifest != expected_manifest
-        and isinstance(record["source_schema_revision"], str)
-        and bool(record["source_schema_revision"])
-        and isinstance(record["backup_path"], str)
-        and bool(record["backup_path"])
+        and _is_nonempty_str(record["source_schema_revision"])
+        and _is_nonempty_str(record["backup_path"])
         and _is_hex64(record["backup_sha256"])
         and record["business_writes_opened"] is True
     )

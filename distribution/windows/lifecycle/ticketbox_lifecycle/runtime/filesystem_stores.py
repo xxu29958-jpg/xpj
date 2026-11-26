@@ -41,6 +41,7 @@ from ticketbox_lifecycle.schemas import (
     UPGRADE_SEQUENCE,
     ActiveOperation,
     ApplyStepName,
+    DurablePhase,
     HostObservation,
     InstallationBinding,
     InstallRequest,
@@ -66,41 +67,45 @@ _INSTALLATION_BINDING_FIELDS = frozenset(field.name for field in fields(Installa
 _RELEASE_ID_PATTERN = re.compile(r"[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}\Z")
 
 
+_OPERATION_CLASS_BY_KIND = {
+    "install": ActiveOperation,
+    "restore": RestoreOperation,
+    "upgrade": UpgradeOperation,
+    "reinstall": ReinstallOperation,
+    "uninstall": UninstallOperation,
+}
+
+
+def _expected_operation_fields(kind: str) -> frozenset[str]:
+    if kind in {"restore", "reinstall", "uninstall"}:
+        return _ACTIVE_OPERATION_FIELDS | {"expected_restore_epoch"}
+    if kind == "upgrade":
+        return _ACTIVE_OPERATION_FIELDS | _UPGRADE_EXTRA_FIELDS
+    return _ACTIVE_OPERATION_FIELDS
+
+
 def _operation_type(payload: dict[str, object]):
     kind = payload.get("kind")
-    if kind not in {"install", "restore", "upgrade", "reinstall", "uninstall"}:
+    if not isinstance(kind, str) or kind not in _OPERATION_CLASS_BY_KIND:
         raise LifecycleError("bad_operation_kind", "operation kind is unsupported")
-    expected = _ACTIVE_OPERATION_FIELDS
-    if kind in {"restore", "reinstall", "uninstall"}:
-        expected = expected | {"expected_restore_epoch"}
-    elif kind == "upgrade":
-        expected = expected | _UPGRADE_EXTRA_FIELDS
-    if set(payload) != expected:
+    if set(payload) != _expected_operation_fields(kind):
         raise LifecycleError("bad_operation_fields", "operation fields are not closed")
     if payload.get("schema") != OPERATION_SCHEMA:
         raise LifecycleError("bad_operation_schema", "operation schema is not v2")
-    if kind == "restore" and (type(payload["expected_restore_epoch"]) is not int or payload["expected_restore_epoch"] <= 0):
-        raise LifecycleError("bad_restore_epoch", "restore operation requires a positive target epoch")
-    if kind in {"reinstall", "uninstall"} and (
-        type(payload["expected_restore_epoch"]) is not int or payload["expected_restore_epoch"] < 0
-    ):
-        raise LifecycleError("bad_operation_epoch", f"{kind} operation requires a non-negative restore epoch")
-    if kind == "upgrade":
-        _validate_upgrade_payload(payload)
-        return UpgradeOperation, kind
     if kind == "restore":
-        return RestoreOperation, kind
-    if kind == "reinstall":
-        return ReinstallOperation, kind
-    if kind == "uninstall":
-        return UninstallOperation, kind
-    return ActiveOperation, kind
+        epoch = payload["expected_restore_epoch"]
+        if type(epoch) is not int or epoch <= 0:
+            raise LifecycleError("bad_restore_epoch", "restore operation requires a positive target epoch")
+    elif kind in {"reinstall", "uninstall"}:
+        epoch = payload["expected_restore_epoch"]
+        if type(epoch) is not int or epoch < 0:
+            raise LifecycleError("bad_operation_epoch", f"{kind} operation requires a non-negative restore epoch")
+    elif kind == "upgrade":
+        _validate_upgrade_payload(payload)
+    return _OPERATION_CLASS_BY_KIND[kind], kind
 
 
-def _validate_upgrade_payload(payload: dict[str, object]) -> None:
-    epoch = payload["expected_restore_epoch"]
-    if type(epoch) is not int or epoch < 0:
-        raise LifecycleError("bad_upgrade_epoch", "upgrade operation requires a non-negative restore epoch")
+def _validate_upgrade_previous_lineage(payload: dict[str, object]) -> None:
     previous = payload["previous_release_id"]
     if (
         not isinstance(previous, str)
@@ -118,6 +123,13 @@ def _validate_upgrade_payload(payload: dict[str, object]) -> None:
             "bad_upgrade_previous_manifest",
             "upgrade previous_release_manifest_sha256 is invalid",
         )
+
+
+def _validate_upgrade_payload(payload: dict[str, object]) -> None:
+    epoch = payload["expected_restore_epoch"]
+    if type(epoch) is not int or epoch < 0:
+        raise LifecycleError("bad_upgrade_epoch", "upgrade operation requires a non-negative restore epoch")
+    _validate_upgrade_previous_lineage(payload)
     source_rev = payload["source_schema_revision"]
     if not isinstance(source_rev, str) or not source_rev:
         raise LifecycleError("bad_upgrade_source_revision", "upgrade source_schema_revision is invalid")
@@ -408,7 +420,7 @@ class FilesystemStores:
             data_root=str(payload["data_root"]),
             release_manifest_sha256=str(payload["release_manifest_sha256"]),
             backend_port=int(payload["backend_port"]),
-            phase=payload["phase"],  # type: ignore[arg-type]
+            phase=cast(DurablePhase, payload["phase"]),
             no_return_point=bool(payload["no_return_point"]),
             completed_step=cast(ApplyStepName | UpgradeStepName | UninstallStepName | None, completed_step),
             install_id=str(payload.get("install_id") or ""),
@@ -593,6 +605,40 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, ob
     return result
 
 
+def _connector_state_file_present(
+    state_path: Path,
+    *,
+    binding: InstallationBinding | None,
+    allowed_manifest_shas: frozenset[str],
+    verify_state_file: Callable[[Path], None] | None,
+) -> bool:
+    try:
+        reject_reparse_components(state_path)
+        if not state_path.is_file():
+            return True
+        if verify_state_file is not None:
+            verify_state_file(state_path)
+        raw = state_path.read_bytes()
+        if verify_state_file is not None:
+            verify_state_file(state_path)
+        if len(raw) > 8192:
+            return True
+        state = parse_state(
+            json.loads(raw.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
+        )
+    except (OSError, UnicodeError, ValueError, LifecycleError):
+        return True
+    if state.configured or state.enabled or state.tunnel_id is not None or binding is None:
+        return True
+    expected_shas = allowed_manifest_shas or frozenset({binding.release_manifest_sha256})
+    return (
+        state.install_id != binding.install_id
+        or state.dataset_id != binding.dataset_id
+        or state.expected_restore_epoch != binding.expected_restore_epoch
+        or state.release_manifest_sha256 not in expected_shas
+    )
+
+
 def _managed_connector_present(
     machine_root: Path,
     *,
@@ -619,34 +665,12 @@ def _managed_connector_present(
             return True
     state_path = connector_dir / "state.json"
     if os.path.lexists(state_path):
-        try:
-            reject_reparse_components(state_path)
-            if not state_path.is_file():
-                return True
-            if verify_state_file is not None:
-                verify_state_file(state_path)
-            raw = state_path.read_bytes()
-            if verify_state_file is not None:
-                verify_state_file(state_path)
-            if len(raw) > 8192:
-                return True
-            state = parse_state(
-                json.loads(raw.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys)
-            )
-        except (OSError, UnicodeError, ValueError, LifecycleError):
-            return True
-        if state.configured or state.enabled or state.tunnel_id is not None:
-            return True
-        if binding is None:
-            return True
-        expected_shas = allowed_manifest_shas or frozenset({binding.release_manifest_sha256})
-        if (
-            state.install_id != binding.install_id
-            or state.dataset_id != binding.dataset_id
-            or state.expected_restore_epoch != binding.expected_restore_epoch
-            or state.release_manifest_sha256 not in expected_shas
-        ):
-            return True
+        return _connector_state_file_present(
+            state_path,
+            binding=binding,
+            allowed_manifest_shas=allowed_manifest_shas,
+            verify_state_file=verify_state_file,
+        )
     return False
 
 

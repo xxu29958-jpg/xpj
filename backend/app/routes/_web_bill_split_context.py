@@ -6,9 +6,11 @@ from datetime import datetime
 from uuid import uuid4
 
 from fastapi import Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
+from app.models import ExpenseOffsetFact
 from app.money_contract import projection_sum_to_int, projection_values_sum_to_int
 from app.routes._web_expense_return_context import flow_href
 from app.routes._web_relationship_links import accepted_split_debt_links
@@ -62,7 +64,10 @@ def inbox_rows(db: Session, account_id: int, invitations: list, *, status: str) 
     presented_at = now_utc()
     rows = []
     for inv in invitations:
-        sender_name, sender_context = bsplit.receiver_sender_presentation(inv.sender_display_name, names.get(inv.sender_ledger_id, ""))
+        sender_name, sender_context = bsplit.receiver_sender_presentation(
+            inv.sender_display_name,
+            names.get(inv.sender_ledger_id, ""),
+        )
         received = bsplit.to_received_bill_reference(inv, receiver_account_id=account_id, visible_ledger_names=names)
         rows.append({
             **invitation_facts(inv), "public_id": inv.public_id, "status": inv.status,
@@ -104,6 +109,23 @@ def _remaining_split_capacity(
         label="web_bill_split.remaining",
     )
     return currency_code, max(remaining, 0)
+
+
+def _expense_has_active_reversal(db: Session, *, ledger_id: str, expense_id: int) -> bool:
+    scalar = getattr(db, "scalar", None)
+    if scalar is None:
+        return False
+    return (
+        scalar(
+            select(ExpenseOffsetFact.id)
+            .where(ExpenseOffsetFact.tenant_id == ledger_id)
+            .where(ExpenseOffsetFact.expense_id == expense_id)
+            .where(ExpenseOffsetFact.kind == "reversal")
+            .where(ExpenseOffsetFact.status == "active")
+            .limit(1)
+        )
+        is not None
+    )
 
 
 def build_split_invite_context(
@@ -154,22 +176,17 @@ def build_split_invite_context(
     ]
 
     invitations = bsplit.list_sent_for_expense(db, sender_account_id=sender_account_id, expense_id=expense["id"])
-    debt_links = accepted_split_debt_links(db, invitations, selected_id=selected_ledger_id, account_id=sender_account_id)
+    debt_links = accepted_split_debt_links(
+        db,
+        invitations,
+        selected_id=selected_ledger_id,
+        account_id=sender_account_id,
+    )
     presented_at = now_utc()
-    from sqlalchemy import select
-
-    from app.models import ExpenseOffsetFact
-
-    is_reversed = (
-        db.scalar(
-            select(ExpenseOffsetFact.id)
-            .where(ExpenseOffsetFact.tenant_id == selected_ledger_id)
-            .where(ExpenseOffsetFact.expense_id == expense["id"])
-            .where(ExpenseOffsetFact.kind == "reversal")
-            .where(ExpenseOffsetFact.status == "active")
-            .limit(1)
-        )
-        is not None
+    is_reversed = _expense_has_active_reversal(
+        db,
+        ledger_id=selected_ledger_id,
+        expense_id=expense["id"],
     )
     expense_currency, remaining_cents = _remaining_split_capacity(
         expense,

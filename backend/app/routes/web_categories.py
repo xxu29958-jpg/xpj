@@ -11,7 +11,7 @@ from urllib.request import parse_http_list
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Query, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from python_multipart.multipart import parse_options_header
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -52,6 +52,7 @@ from app.services.category_service import (
     list_category_summary,
     list_ledger_category_options,
     list_uncategorized_pending,
+    resolve_known_category,
 )
 from app.services.expense_service import ledger_records_other_currency, list_expenses_by_ids
 from app.services.ledger_calendar_service import current_ledger_month
@@ -294,8 +295,13 @@ def web_uncategorized(
     if category_query is not None and _accepts_category_json(request):
         if ledger_id != selected_id:
             raise AppError("state_conflict", "当前账本已变更，请重新打开分类任务。", status_code=409)
-        categories = list_ledger_category_options(db, tenant_id=selected_id, query=category_query, selected=selected)
-        return JSONResponse(categories, headers={"Cache-Control": "private, no-store", "Vary": "Accept"})
+        pinned = resolve_known_category(db, tenant_id=selected_id, selected=selected)
+        categories = list_ledger_category_options(db, tenant_id=selected_id, query=category_query, selected=pinned)
+        return Response(
+            content=json.dumps(categories, ensure_ascii=False),
+            media_type="application/json; charset=utf-8",
+            headers={"Cache-Control": "private, no-store", "Vary": "Accept"},
+        )
     accepted = read_pending_category_receipt(db, tenant_id=selected_id, command_key=receipt) if receipt else None
     if receipt and accepted is None:
         raise AppError("not_found", "暂未找到这次分类操作的回执，请从原任务核实。", status_code=404)

@@ -8,6 +8,7 @@ import tempfile
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import cast
 
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.health_attestation import (
@@ -46,14 +47,34 @@ def _run_probe_start(
     timeout_s: int,
     on_timeout: Callable[[], None] | None = None,
 ) -> CompletedCommand:
-    if hasattr(runner, "run_background_starter"):
-        return runner.run_background_starter(
+    starter = getattr(runner, "run_background_starter", None)
+    if callable(starter):
+        return starter(
             argv,
             env=env,
             timeout_s=timeout_s,
             on_timeout=on_timeout,
         )
-    return runner.run(argv, env=env, timeout_s=timeout_s)  # type: ignore[attr-defined]
+    return cast(CommandRunner, runner).run(argv, env=env, timeout_s=timeout_s)
+
+
+def _parse_pgpass_fields(line: str) -> list[str]:
+    fields: list[str] = []
+    buf: list[str] = []
+    escaped = False
+    for ch in line:
+        if escaped:
+            buf.append(ch)
+            escaped = False
+        elif ch == "\\":
+            escaped = True
+        elif ch == ":" and len(fields) < 4:
+            fields.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    fields.append("".join(buf))
+    return fields
 
 
 def _read_runtime_probe_password(runtime_pw_file: Path, pgpass_file: Path) -> str:
@@ -71,21 +92,7 @@ def _read_runtime_probe_password(runtime_pw_file: Path, pgpass_file: Path) -> st
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        fields: list[str] = []
-        buf: list[str] = []
-        escaped = False
-        for ch in line:
-            if escaped:
-                buf.append(ch)
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == ":" and len(fields) < 4:
-                fields.append("".join(buf))
-                buf = []
-            else:
-                buf.append(ch)
-        fields.append("".join(buf))
+        fields = _parse_pgpass_fields(line)
         if (
             len(fields) == 5
             and fields[0] in {"127.0.0.1", "localhost", "*"}
@@ -269,13 +276,13 @@ class WindowsDatasetAdapter:
                 "live dataset_authority does not match expected dataset_id, install_id or restore_epoch",
             )
 
-    def verify_stopped_pgdata_dataset_id(
+    def _prepare_stopped_pgdata_probe(
         self,
         binding: InstallationBinding,
         *,
         app_dir: Path,
         program_data_root: Path,
-    ) -> dict[str, object]:
+    ) -> tuple[Path, Path, Path, str]:
         from ticketbox_lifecycle.runtime.cold_installation import read_stopped_cluster
 
         pgdata = Path(binding.data_root) / "pgdata"
@@ -311,151 +318,143 @@ class WindowsDatasetAdapter:
                 "stopped pgdata PostgreSQL major version disagrees with installation binding",
             )
         read_stopped_cluster(self._runner, pg_bin, pgdata)
+        return pgdata, pg_bin, secrets_dir, runtime_password
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe_sock:
-            probe_sock.bind(("127.0.0.1", 0))
-            ephemeral_port = int(probe_sock.getsockname()[1])
+    def _is_probe_cluster_stopped(self, pg_bin: Path, pgdata: Path) -> bool:
+        from ticketbox_lifecycle.runtime.cold_installation import read_stopped_cluster
 
-        pg_env = sealed_postgres_env()
-        probe_dir = Path(tempfile.mkdtemp(prefix="purge-probe-", dir=str(secrets_dir)))
-        probe_pgpass = probe_dir / "pgpass"
+        if os.path.lexists(pgdata / "postmaster.pid"):
+            return False
         try:
-            escaped_pw = runtime_password.replace("\\", "\\\\").replace(":", "\\:")
-            probe_pgpass.write_text(
-                f"127.0.0.1:{ephemeral_port}:{DATABASE_NAME}:{RUNTIME_ROLE}:{escaped_pw}\n"
-                f"localhost:{ephemeral_port}:{DATABASE_NAME}:{RUNTIME_ROLE}:{escaped_pw}\n",
-                encoding="ascii",
-                newline="\n",
+            read_stopped_cluster(self._runner, pg_bin, pgdata)
+        except (LifecycleError, OSError, ProcessTerminationUnconfirmedError):
+            return False
+        return not os.path.lexists(pgdata / "postmaster.pid")
+
+    def _run_probe_fast_stop(self, pg_ctl: Path, pgdata: Path, pg_env: Mapping[str, str]) -> None:
+        with contextlib.suppress(LifecycleError, OSError, ProcessTerminationUnconfirmedError):
+            self._runner.run(
+                [str(pg_ctl), "-D", str(pgdata), "-m", "fast", "-w", "-t", "60", "stop"],
+                env=pg_env,
+                timeout_s=75,
             )
-            job_ctx = (
-                self._runner.open_managed_job()
-                if hasattr(self._runner, "open_managed_job")
-                else contextlib.nullcontext(self._runner)
+
+    def _finalize_ephemeral_probe_stop(
+        self,
+        pg_bin: Path,
+        pgdata: Path,
+        pg_env: Mapping[str, str],
+        *,
+        starter_exit_confirmed: bool,
+        on_timeout_ran: bool,
+        body_error: BaseException | None,
+    ) -> None:
+        pg_ctl = pg_bin / "pg_ctl.exe"
+        stop_verified = False
+        if not starter_exit_confirmed:
+            self._run_probe_fast_stop(pg_ctl, pgdata, pg_env)
+        elif on_timeout_ran:
+            stop_verified = self._is_probe_cluster_stopped(pg_bin, pgdata)
+            if not stop_verified:
+                self._run_probe_fast_stop(pg_ctl, pgdata, pg_env)
+                stop_verified = self._is_probe_cluster_stopped(pg_bin, pgdata)
+        else:
+            for _ in range(2):
+                self._run_probe_fast_stop(pg_ctl, pgdata, pg_env)
+                if self._is_probe_cluster_stopped(pg_bin, pgdata):
+                    stop_verified = True
+                    break
+        if stop_verified:
+            return
+        if body_error is not None:
+            primary_code = (
+                body_error.code if isinstance(body_error, LifecycleError) else type(body_error).__name__
             )
-            with pgdata_security.temporary_probe_access(pgdata), job_ctx as probe_runner:
-                start_attempted = False
-                on_timeout_ran = False
-                starter_exit_confirmed = True
-                body_error: BaseException | None = None
+            raise LifecycleError(
+                "purge_probe_stop_failed",
+                f"ephemeral read-only PostgreSQL probe could not be cleanly stopped (after {primary_code})",
+            ) from body_error
+        raise LifecycleError(
+            "purge_probe_stop_failed",
+            "ephemeral read-only PostgreSQL probe could not be cleanly stopped",
+        )
 
-                def _is_cluster_cleanly_stopped() -> bool:
-                    if os.path.lexists(pgdata / "postmaster.pid"):
-                        return False
-                    try:
-                        read_stopped_cluster(self._runner, pg_bin, pgdata)
-                    except (LifecycleError, OSError, ProcessTerminationUnconfirmedError):
-                        return False
-                    return not os.path.lexists(pgdata / "postmaster.pid")
+    def _execute_ephemeral_probe_query(
+        self,
+        pg_bin: Path,
+        pgdata: Path,
+        probe_pgpass: Path,
+        ephemeral_port: int,
+        pg_env: Mapping[str, str],
+    ) -> CompletedCommand:
+        pg_ctl = pg_bin / "pg_ctl.exe"
+        psql = pg_bin / "psql.exe"
+        job_ctx = (
+            self._runner.open_managed_job()
+            if hasattr(self._runner, "open_managed_job")
+            else contextlib.nullcontext(self._runner)
+        )
+        with pgdata_security.temporary_probe_access(pgdata), job_ctx as probe_runner:
+            start_attempted = False
+            on_timeout_ran = False
+            starter_exit_confirmed = True
+            body_error: BaseException | None = None
 
-                def _run_fast_stop() -> None:
-                    with contextlib.suppress(LifecycleError, OSError, ProcessTerminationUnconfirmedError):
-                        self._runner.run(
-                            [str(pg_ctl), "-D", str(pgdata), "-m", "fast", "-w", "-t", "60", "stop"],
-                            env=pg_env,
-                            timeout_s=75,
-                        )
+            def _on_timeout_stop() -> None:
+                nonlocal on_timeout_ran
+                on_timeout_ran = True
+                self._run_probe_fast_stop(pg_ctl, pgdata, pg_env)
 
-                def _on_timeout_stop() -> None:
-                    nonlocal on_timeout_ran
-                    on_timeout_ran = True
-                    _run_fast_stop()
-
-                try:
-                    start_attempted = True
-                    started = _run_probe_start(
-                        probe_runner,
-                        [
-                            str(pg_ctl),
-                            "-D",
-                            str(pgdata),
-                            "-w",
-                            "-t",
-                            "30",
-                            "-l",
-                            "NUL",
-                            "-o",
-                            f"-h 127.0.0.1 -p {ephemeral_port} -c listen_addresses=127.0.0.1 -c default_transaction_read_only=on",
-                            "start",
-                        ],
-                        env=pg_env,
-                        timeout_s=45,
-                        on_timeout=_on_timeout_stop,
-                    )
-                    if started.returncode != 0:
-                        raise LifecycleViolation(
-                            "purge_dataset_identity_unverifiable",
-                            "could not start ephemeral read-only PostgreSQL probe to verify stopped pgdata identity",
-                        )
-                    completed = self._runner.run(
-                        [
-                            str(psql),
-                            "-X",
-                            "-v",
-                            "ON_ERROR_STOP=1",
-                            "-At",
-                            "-h",
-                            "127.0.0.1",
-                            "-p",
-                            str(ephemeral_port),
-                            "-U",
-                            RUNTIME_ROLE,
-                            "-d",
-                            DATABASE_NAME,
-                            "-c",
-                            "SELECT dataset_id || '|' || client_generation || '|' || restore_epoch "
-                            "FROM dataset_authority WHERE singleton_id = 1",
-                        ],
-                        env=sealed_pg_env(str(probe_pgpass)),
-                        timeout_s=30,
-                    )
-                except BaseException as exc:
-                    body_error = exc
-                    if isinstance(exc, LifecycleError) and exc.code == "starter_process_not_exited":
-                        starter_exit_confirmed = False
-                    raise
-                finally:
-                    if start_attempted:
-                        stop_verified = False
-                        if not starter_exit_confirmed:
-                            _run_fast_stop()
-                        elif on_timeout_ran:
-                            if _is_cluster_cleanly_stopped():
-                                stop_verified = True
-                            else:
-                                _run_fast_stop()
-                                stop_verified = _is_cluster_cleanly_stopped()
-                        else:
-                            for _ in range(2):
-                                _run_fast_stop()
-                                if _is_cluster_cleanly_stopped():
-                                    stop_verified = True
-                                    break
-                        if not stop_verified:
-                            if body_error is not None:
-                                primary_code = (
-                                    body_error.code
-                                    if isinstance(body_error, LifecycleError)
-                                    else type(body_error).__name__
-                                )
-                                raise LifecycleError(
-                                    "purge_probe_stop_failed",
-                                    f"ephemeral read-only PostgreSQL probe could not be cleanly stopped (after {primary_code})",
-                                ) from body_error
-                            raise LifecycleError(
-                                "purge_probe_stop_failed",
-                                "ephemeral read-only PostgreSQL probe could not be cleanly stopped",
-                            )
-        finally:
             try:
-                if os.path.lexists(probe_pgpass):
-                    probe_pgpass.unlink()
+                start_attempted = True
+                started = _run_probe_start(
+                    probe_runner,
+                    [
+                        str(pg_ctl), "-D", str(pgdata), "-w", "-t", "30", "-l", "NUL", "-o",
+                        f"-h 127.0.0.1 -p {ephemeral_port} -c listen_addresses=127.0.0.1 -c default_transaction_read_only=on",
+                        "start",
+                    ],
+                    env=pg_env,
+                    timeout_s=45,
+                    on_timeout=_on_timeout_stop,
+                )
+                if started.returncode != 0:
+                    raise LifecycleViolation(
+                        "purge_dataset_identity_unverifiable",
+                        "could not start ephemeral read-only PostgreSQL probe to verify stopped pgdata identity",
+                    )
+                return self._runner.run(
+                    [
+                        str(psql), "-X", "-v", "ON_ERROR_STOP=1", "-At",
+                        "-h", "127.0.0.1", "-p", str(ephemeral_port),
+                        "-U", RUNTIME_ROLE, "-d", DATABASE_NAME, "-c",
+                        "SELECT dataset_id || '|' || client_generation || '|' || restore_epoch "
+                        "FROM dataset_authority WHERE singleton_id = 1",
+                    ],
+                    env=sealed_pg_env(str(probe_pgpass)),
+                    timeout_s=30,
+                )
+            except BaseException as exc:
+                body_error = exc
+                if isinstance(exc, LifecycleError) and exc.code == "starter_process_not_exited":
+                    starter_exit_confirmed = False
+                raise
             finally:
-                try:
-                    if probe_dir.is_dir():
-                        probe_dir.rmdir()
-                except OSError:
-                    pass
-        read_stopped_cluster(self._runner, pg_bin, pgdata)
+                if start_attempted:
+                    self._finalize_ephemeral_probe_stop(
+                        pg_bin,
+                        pgdata,
+                        pg_env,
+                        starter_exit_confirmed=starter_exit_confirmed,
+                        on_timeout_ran=on_timeout_ran,
+                        body_error=body_error,
+                    )
+
+    @staticmethod
+    def _parse_stopped_pgdata_identity(
+        completed: CompletedCommand,
+        binding: InstallationBinding,
+    ) -> dict[str, object]:
         if completed.returncode != 0 or not completed.stdout.strip():
             raise LifecycleViolation(
                 "purge_dataset_identity_unverifiable",
@@ -483,6 +482,53 @@ class WindowsDatasetAdapter:
             "client_generation": observed_generation,
             "restore_epoch": int(observed_epoch),
         }
+
+    def verify_stopped_pgdata_dataset_id(
+        self,
+        binding: InstallationBinding,
+        *,
+        app_dir: Path,
+        program_data_root: Path,
+    ) -> dict[str, object]:
+        from ticketbox_lifecycle.runtime.cold_installation import read_stopped_cluster
+
+        pgdata, pg_bin, secrets_dir, runtime_password = self._prepare_stopped_pgdata_probe(
+            binding,
+            app_dir=app_dir,
+            program_data_root=program_data_root,
+        )
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe_sock:
+            probe_sock.bind(("127.0.0.1", 0))
+            ephemeral_port = int(probe_sock.getsockname()[1])
+
+        pg_env = sealed_postgres_env()
+        probe_dir = Path(tempfile.mkdtemp(prefix="purge-probe-", dir=str(secrets_dir)))
+        probe_pgpass = probe_dir / "pgpass"
+        try:
+            escaped_pw = runtime_password.replace("\\", "\\\\").replace(":", "\\:")
+            probe_pgpass.write_text(
+                f"127.0.0.1:{ephemeral_port}:{DATABASE_NAME}:{RUNTIME_ROLE}:{escaped_pw}\n"
+                f"localhost:{ephemeral_port}:{DATABASE_NAME}:{RUNTIME_ROLE}:{escaped_pw}\n",
+                encoding="ascii",
+                newline="\n",
+            )
+            completed = self._execute_ephemeral_probe_query(
+                pg_bin,
+                pgdata,
+                probe_pgpass,
+                ephemeral_port,
+                pg_env,
+            )
+        finally:
+            try:
+                if os.path.lexists(probe_pgpass):
+                    probe_pgpass.unlink()
+            finally:
+                with contextlib.suppress(OSError):
+                    if probe_dir.is_dir():
+                        probe_dir.rmdir()
+        read_stopped_cluster(self._runner, pg_bin, pgdata)
+        return self._parse_stopped_pgdata_identity(completed, binding)
 
     def _wait_for_probe(self, request: InstallRequest, *, expected_mode: str | None) -> str:
         deadline = time.monotonic() + 60

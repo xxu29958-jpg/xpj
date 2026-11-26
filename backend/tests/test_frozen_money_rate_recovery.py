@@ -24,9 +24,10 @@ def _expense():
 
 
 def _offset():
-    return ExpenseOffsetFact(id=1, kind="refund", original_amount_minor=100,
-        amount_cents=700, accounting_date=PUBLISHED, exchange_rate_to_cny=Decimal(7),
-        exchange_rate_date=PUBLISHED, exchange_rate_source="manual")
+    return ExpenseOffsetFact(id=1, kind="refund", original_currency_code="USD",
+        original_amount_minor=100, amount_cents=700, accounting_date=PUBLISHED,
+        exchange_rate_to_cny=Decimal(7), exchange_rate_date=PUBLISHED,
+        exchange_rate_source="manual")
 
 
 def _correction(accounting_date):

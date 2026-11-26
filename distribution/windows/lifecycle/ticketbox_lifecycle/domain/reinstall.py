@@ -55,19 +55,161 @@ def reinstall(
         stores.mutex.release()
 
 
+def _reinstall_binding_matches_request(request: InstallRequest, binding: InstallationBinding) -> bool:
+    core_match = (
+        _norm_path(binding.data_root),
+        binding.pg_service_name,
+        binding.backend_service_name,
+        binding.pg_port,
+        binding.backend_port,
+        binding.postgres_major,
+    ) == (
+        _norm_path(request.data_root),
+        request.pg_service_name,
+        request.backend_service_name,
+        request.pg_port,
+        request.backend_port,
+        request.postgres_major,
+    )
+    if not core_match:
+        return False
+    if request.install_id and request.install_id != binding.install_id:
+        return False
+    return not (request.dataset_id and request.dataset_id != binding.dataset_id)
+
+
+def _require_matching_reinstall_active(
+    request: InstallRequest,
+    binding: InstallationBinding,
+    existing: object,
+) -> ReinstallOperation | None:
+    if existing is None:
+        return None
+    if (
+        not isinstance(existing, ReinstallOperation)
+        or existing.kind != "reinstall"
+        or existing.operation_id != request.operation_id
+        or existing.install_id != binding.install_id
+        or existing.dataset_id != binding.dataset_id
+        or existing.expected_restore_epoch != binding.expected_restore_epoch
+    ):
+        raise LifecycleViolation(
+            "operation_conflict",
+            "another active lifecycle operation owns the machine",
+        )
+    return existing
+
+
+def _validate_reinstall_preconditions(
+    request: InstallRequest,
+    binding: InstallationBinding,
+    existing: object,
+) -> ReinstallOperation | None:
+    if (
+        binding.active_release_id != request.target_release_id
+        or binding.release_manifest_sha256 != request.release_manifest_sha256
+    ):
+        raise LifecycleViolation(
+            "reinstall_version_mismatch",
+            "preserved-data reinstall requires the exact matching installed release and manifest",
+        )
+    if not _reinstall_binding_matches_request(request, binding):
+        raise LifecycleViolation(
+            "reinstall_identity_mismatch",
+            "reinstall request does not match preserved installation binding",
+        )
+    return _require_matching_reinstall_active(request, binding, existing)
+
+
+def _prepare_reinstall_active(
+    stores: LifecycleStores,
+    bound: InstallRequest,
+    binding: InstallationBinding,
+    existing: ReinstallOperation | None,
+    new_health_key: str,
+) -> ReinstallOperation:
+    if existing is not None:
+        active = replace(existing, phase="prepared") if existing.phase == "failed_recoverable" else existing
+        stores.operations_write.prepare(bound)
+        stores.operations_write.publish_active(active)
+        return active
+    request_hash = hash_request_payload(
+        {
+            "kind": "reinstall",
+            "install_id": binding.install_id,
+            "dataset_id": binding.dataset_id,
+            "expected_restore_epoch": binding.expected_restore_epoch,
+            "target_release_id": bound.target_release_id,
+            "release_manifest_sha256": bound.release_manifest_sha256,
+            "data_root": bound.data_root,
+        }
+    )
+    stores.operations_write.prepare(bound)
+    active = ReinstallOperation(
+        schema=OPERATION_SCHEMA,
+        operation_id=bound.operation_id,
+        kind="reinstall",
+        request_hash=request_hash,
+        target_release_id=bound.target_release_id,
+        data_root=bound.data_root,
+        release_manifest_sha256=bound.release_manifest_sha256,
+        backend_port=bound.backend_port,
+        phase="prepared",
+        no_return_point=False,
+        completed_step=None,
+        install_id=bound.install_id,
+        dataset_id=bound.dataset_id,
+        schema_revision=bound.schema_revision,
+        health_attestation_key=new_health_key,
+        expected_restore_epoch=binding.expected_restore_epoch,
+    )
+    stores.operations_write.publish_active(active)
+    return active
+
+
+def _failed_reinstall_result(
+    stores: LifecycleStores,
+    bound: InstallRequest,
+    active: ReinstallOperation,
+    exc: Exception,
+    *,
+    published: bool,
+) -> CommandResult:
+    code = exc.code if isinstance(exc, LifecycleError) else "reinstall_failed"
+    message = exc.message if isinstance(exc, LifecycleError) else "preserved-data reinstall failed"
+    try:
+        stores.adapters.scm.fence_backend(bound)
+    except (LifecycleError, OSError):
+        pass
+    failed = replace(active, phase="failed_recoverable")
+    try:
+        stores.operations_write.publish_active(failed)
+    except (LifecycleError, OSError):
+        pass
+    return CommandResult(
+        schema=RESULT_SCHEMA,
+        ok=False,
+        command="reinstall",
+        operation_id=bound.operation_id,
+        phase="failed_recoverable",
+        code=code,
+        message=message,
+        installation_published=published,
+    )
+
+
 def _reinstall_locked(
     stores: LifecycleStores,
     request: InstallRequest,
     platform: ReinstallPlatform,
 ) -> CommandResult:
     binding = stores.binding_read.read()
-    existing = stores.operations_read.read_active()
+    existing_raw = stores.operations_read.read_active()
     if binding is None:
         raise LifecycleViolation(
             "reinstall_binding_missing",
             "preserved-data reinstall requires an existing verified installation.json; refusing orphan data adoption",
         )
-
     allowed_siblings = _known_siblings(stores, binding, request.target_release_id)
     request = stores.shipment.bind_and_verify(
         request,
@@ -79,42 +221,7 @@ def _reinstall_locked(
             "reinstall_pgdata_missing",
             "preserved-data reinstall requires existing pgdata; refusing to run initdb",
         )
-    if (
-        binding.active_release_id != request.target_release_id
-        or binding.release_manifest_sha256 != request.release_manifest_sha256
-    ):
-        raise LifecycleViolation(
-            "reinstall_version_mismatch",
-            "preserved-data reinstall requires the exact matching installed release and manifest",
-        )
-    if (
-        _norm_path(binding.data_root) != _norm_path(request.data_root)
-        or binding.pg_service_name != request.pg_service_name
-        or binding.backend_service_name != request.backend_service_name
-        or binding.pg_port != request.pg_port
-        or binding.backend_port != request.backend_port
-        or binding.postgres_major != request.postgres_major
-        or (request.install_id and request.install_id != binding.install_id)
-        or (request.dataset_id and request.dataset_id != binding.dataset_id)
-    ):
-        raise LifecycleViolation(
-            "reinstall_identity_mismatch",
-            "reinstall request does not match preserved installation binding",
-        )
-    if existing is not None:
-        if (
-            not isinstance(existing, ReinstallOperation)
-            or existing.kind != "reinstall"
-            or existing.operation_id != request.operation_id
-            or existing.install_id != binding.install_id
-            or existing.dataset_id != binding.dataset_id
-            or existing.expected_restore_epoch != binding.expected_restore_epoch
-        ):
-            raise LifecycleViolation(
-                "operation_conflict",
-                "another active lifecycle operation owns the machine",
-            )
-
+    existing = _validate_reinstall_preconditions(request, binding, existing_raw)
     new_health_key = existing.health_attestation_key if existing is not None else secrets.token_hex(32)
     bound = replace(
         request,
@@ -122,42 +229,7 @@ def _reinstall_locked(
         dataset_id=binding.dataset_id,
         health_attestation_key=new_health_key,
     )
-    if existing is not None:
-        active = replace(existing, phase="prepared") if existing.phase == "failed_recoverable" else existing
-        stores.operations_write.prepare(bound)
-        stores.operations_write.publish_active(active)
-    else:
-        request_hash = hash_request_payload(
-            {
-                "kind": "reinstall",
-                "install_id": binding.install_id,
-                "dataset_id": binding.dataset_id,
-                "expected_restore_epoch": binding.expected_restore_epoch,
-                "target_release_id": bound.target_release_id,
-                "release_manifest_sha256": bound.release_manifest_sha256,
-                "data_root": bound.data_root,
-            }
-        )
-        stores.operations_write.prepare(bound)
-        active = ReinstallOperation(
-            schema=OPERATION_SCHEMA,
-            operation_id=bound.operation_id,
-            kind="reinstall",
-            request_hash=request_hash,
-            target_release_id=bound.target_release_id,
-            data_root=bound.data_root,
-            release_manifest_sha256=bound.release_manifest_sha256,
-            backend_port=bound.backend_port,
-            phase="prepared",
-            no_return_point=False,
-            completed_step=None,
-            install_id=bound.install_id,
-            dataset_id=bound.dataset_id,
-            schema_revision=bound.schema_revision,
-            health_attestation_key=new_health_key,
-            expected_restore_epoch=binding.expected_restore_epoch,
-        )
-        stores.operations_write.publish_active(active)
+    active = _prepare_reinstall_active(stores, bound, binding, existing, new_health_key)
 
     published = False
     try:
@@ -182,8 +254,7 @@ def _reinstall_locked(
 
         active = replace(active, phase="release_activated", completed_step="health", no_return_point=True)
         stores.operations_write.publish_active(active)
-        refreshed = replace(binding, health_attestation_key=new_health_key)
-        stores.binding_write.publish(refreshed)
+        stores.binding_write.publish(replace(binding, health_attestation_key=new_health_key))
         published = True
         platform.update_start_menu_shortcut(bound)
 
@@ -195,27 +266,7 @@ def _reinstall_locked(
         stores.adapters.scm.enable_autostart(bound)
         stores.operations_write.archive_committed(active)
     except Exception as exc:
-        code = exc.code if isinstance(exc, LifecycleError) else "reinstall_failed"
-        message = exc.message if isinstance(exc, LifecycleError) else "preserved-data reinstall failed"
-        try:
-            stores.adapters.scm.fence_backend(bound)
-        except (LifecycleError, OSError):
-            pass
-        failed = replace(active, phase="failed_recoverable")
-        try:
-            stores.operations_write.publish_active(failed)
-        except (LifecycleError, OSError):
-            pass
-        return CommandResult(
-            schema=RESULT_SCHEMA,
-            ok=False,
-            command="reinstall",
-            operation_id=bound.operation_id,
-            phase="failed_recoverable",
-            code=code,
-            message=message,
-            installation_published=published,
-        )
+        return _failed_reinstall_result(stores, bound, active, exc, published=published)
 
     return CommandResult(
         schema=RESULT_SCHEMA,

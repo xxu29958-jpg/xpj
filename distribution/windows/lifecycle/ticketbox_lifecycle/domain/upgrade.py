@@ -6,7 +6,7 @@ import hashlib
 import secrets
 import uuid
 from dataclasses import dataclass, replace
-from typing import Literal
+from typing import Literal, cast
 
 from ticketbox_lifecycle.adapters.ports import PlatformAdapter
 from ticketbox_lifecycle.adapters.upgrade import UpgradePlatform
@@ -219,7 +219,7 @@ def _upgrade_locked(
     stores.operations_write.prepare(bound)
     if state.active.phase == "failed_recoverable":
         resume_phase = _canonical_phase_for_step(state.active.completed_step)
-        state.active = replace(state.active, phase=resume_phase)  # type: ignore[arg-type]
+        state.active = replace(state.active, phase=resume_phase)
         stores.operations_write.publish_active(state.active)
 
     try:
@@ -285,7 +285,7 @@ def _execute_upgrade_steps(
             )
         state.active = replace(
             state.active,
-            phase=_monotonic_phase(state.active.phase, "prepared", _furthest_step(state.active.completed_step, "cold_backup")),  # type: ignore[arg-type]
+            phase=_monotonic_phase(state.active.phase, "prepared", _furthest_step(state.active.completed_step, "cold_backup")),
             completed_step=_furthest_step(state.active.completed_step, "cold_backup"),
             backup_path=backup.path,
             backup_sha256=backup.sha256,
@@ -521,6 +521,58 @@ def _durable_commit_state(
     return published, "not_committed", None
 
 
+def _error_code_and_message(exc: LifecycleError | OSError) -> tuple[str, str]:
+    if isinstance(exc, LifecycleError):
+        return exc.code, exc.message
+    return "operation_io_failed", "lifecycle operation I/O failed"
+
+
+def _append_failure_detail(message: str, label: str, failure: LifecycleError | OSError) -> str:
+    f_code, f_msg = _error_code_and_message(failure)
+    return f"{message}; {label} ({f_code}): {f_msg}"
+
+
+def _resolve_post_commit_failure_result(
+    request: InstallRequest,
+    active: UpgradeOperation,
+    *,
+    code: str,
+    message: str,
+    published: bool | None,
+    commit_state: _CommitState,
+    observed_phase: DurablePhase | None,
+    commit_publish_attempted: bool,
+    rollback_on_failure: bool,
+) -> CommandResult:
+    if commit_state == "committed":
+        phase: DurablePhase = "committed"
+    elif observed_phase is not None:
+        phase = observed_phase
+    else:
+        phase = "committed" if commit_publish_attempted else active.phase
+    if rollback_on_failure:
+        return CommandResult(
+            schema=RESULT_SCHEMA,
+            ok=False,
+            command=request.command,
+            operation_id=request.operation_id,
+            phase=phase,
+            code="upgrade_rollback_refused_writes_may_have_opened",
+            message=f"{message}; rollback refused because normal business writes may have opened",
+            installation_published=published,
+        )
+    return CommandResult(
+        schema=RESULT_SCHEMA,
+        ok=False,
+        command=request.command,
+        operation_id=request.operation_id,
+        phase=phase,
+        code=code,
+        message=message,
+        installation_published=published,
+    )
+
+
 def _failed_upgrade_result(
     stores: LifecycleStores,
     request: InstallRequest,
@@ -535,16 +587,15 @@ def _failed_upgrade_result(
     primary: LifecycleError | OSError,
     rollback_on_failure: bool = False,
 ) -> CommandResult:
-    code = primary.code if isinstance(primary, LifecycleError) else "operation_io_failed"
-    message = primary.message if isinstance(primary, LifecycleError) else "lifecycle operation I/O failed"
-    should_fence = (
-        services_stopped
-        or active.no_return_point
-        or bool(active.backup_path)
-        or target_materialized
-        or new_binding_published
-        or commit_publish_attempted
-    )
+    code, message = _error_code_and_message(primary)
+    should_fence = any((
+        services_stopped,
+        active.no_return_point,
+        bool(active.backup_path),
+        target_materialized,
+        new_binding_published,
+        commit_publish_attempted,
+    ))
     if should_fence:
         try:
             platform.fence_backend_for_upgrade(
@@ -552,9 +603,7 @@ def _failed_upgrade_result(
                 expected_previous_release_id=active.previous_release_id,
             )
         except (LifecycleError, OSError) as failure:
-            f_code = failure.code if isinstance(failure, LifecycleError) else "operation_io_failed"
-            f_msg = failure.message if isinstance(failure, LifecycleError) else "lifecycle operation I/O failed"
-            message = f"{message}; backend fence failed ({f_code}): {f_msg}"
+            message = _append_failure_detail(message, "backend fence failed", failure)
 
     published, commit_state, observed_phase = _durable_commit_state(
         stores,
@@ -564,35 +613,20 @@ def _failed_upgrade_result(
         commit_publish_attempted=commit_publish_attempted,
     )
     if commit_state != "not_committed" or active.business_writes_opened or published is not False:
-        if commit_state == "committed":
-            phase: DurablePhase = "committed"
-        elif observed_phase is not None:
-            phase = observed_phase
-        else:
-            phase = "committed" if commit_publish_attempted else active.phase
-        if rollback_on_failure:
-            return CommandResult(
-                schema=RESULT_SCHEMA,
-                ok=False,
-                command=request.command,
-                operation_id=request.operation_id,
-                phase=phase,
-                code="upgrade_rollback_refused_writes_may_have_opened",
-                message=f"{message}; rollback refused because normal business writes may have opened",
-                installation_published=published,
-            )
-        return CommandResult(
-            schema=RESULT_SCHEMA,
-            ok=False,
-            command=request.command,
-            operation_id=request.operation_id,
-            phase=phase,
+        return _resolve_post_commit_failure_result(
+            request,
+            active,
             code=code,
             message=message,
-            installation_published=published,
+            published=published,
+            commit_state=commit_state,
+            observed_phase=observed_phase,
+            commit_publish_attempted=commit_publish_attempted,
+            rollback_on_failure=rollback_on_failure,
         )
 
-    if rollback_on_failure and bool(active.backup_path and active.backup_sha256):
+    has_backup = bool(active.backup_path and active.backup_sha256)
+    if rollback_on_failure and has_backup:
         return _execute_rollback_to_previous_locked(
             stores,
             request,
@@ -604,21 +638,17 @@ def _failed_upgrade_result(
             commit_publish_attempted=commit_publish_attempted,
         )
 
-    if not active.no_return_point and (target_materialized or bool(active.backup_path and active.backup_sha256)):
+    if not active.no_return_point and (target_materialized or has_backup):
         try:
             platform.cleanup_uncommitted_target_release(bound)
         except (LifecycleError, OSError) as failure:
-            f_code = failure.code if isinstance(failure, LifecycleError) else "operation_io_failed"
-            f_msg = failure.message if isinstance(failure, LifecycleError) else "lifecycle operation I/O failed"
-            message = f"{message}; target cleanup failed ({f_code}): {f_msg}"
+            message = _append_failure_detail(message, "target cleanup failed", failure)
 
     failed = replace(active, phase="failed_recoverable")
     try:
         stores.operations_write.publish_active(failed)
     except (LifecycleError, OSError) as failure:
-        f_code = failure.code if isinstance(failure, LifecycleError) else "operation_io_failed"
-        f_msg = failure.message if isinstance(failure, LifecycleError) else "lifecycle operation I/O failed"
-        message = f"{message}; failed-state publication failed ({f_code}): {f_msg}"
+        message = _append_failure_detail(message, "failed-state publication failed", failure)
     else:
         active = failed
 
@@ -634,52 +664,26 @@ def _failed_upgrade_result(
     )
 
 
-def _require_rollback_eligible(
+def _read_rollback_durable_state(
     stores: LifecycleStores,
-    request: InstallRequest,
-    *,
-    new_binding_published: bool = False,
-    commit_publish_attempted: bool = False,
-) -> tuple[UpgradeOperation, InstallationBinding]:
+    operation_id: str,
+) -> tuple[InstallationBinding | None, object, object]:
     try:
         binding = stores.binding_read.read()
         persisted_active = stores.operations_read.read_active()
-        persisted_history = (
-            stores.operations_read.read_committed(request.operation_id)
-            if request.operation_id
-            else None
-        )
+        persisted_history = stores.operations_read.read_committed(operation_id) if operation_id else None
     except (LifecycleError, OSError, ValueError) as exc:
         raise LifecycleViolation(
             "upgrade_rollback_refused_writes_may_have_opened",
             "cannot prove normal business writes never opened because durable state is unreadable",
         ) from exc
+    return binding, persisted_active, persisted_history
 
-    if persisted_history is not None or new_binding_published or commit_publish_attempted:
-        raise LifecycleViolation(
-            "upgrade_rollback_refused_writes_may_have_opened",
-            "refusing rollback because upgrade commit or normal business writes may have opened",
-        )
-    if persisted_active is None:
-        if binding is not None and binding.previous_release_id is not None:
-            raise LifecycleViolation(
-                "upgrade_rollback_refused_writes_may_have_opened",
-                "installation already reflects a committed release transition; refusing rollback",
-            )
-        raise LifecycleViolation(
-            "upgrade_rollback_no_active_upgrade",
-            "no active pre-write upgrade operation exists to roll back",
-        )
-    if not isinstance(persisted_active, UpgradeOperation) or persisted_active.kind != "upgrade":
-        raise LifecycleViolation(
-            "operation_conflict",
-            "active operation is not a managed upgrade",
-        )
-    if persisted_active.operation_id != request.operation_id:
-        raise LifecycleViolation(
-            "operation_conflict",
-            "rollback request operation_id does not match the active upgrade operation",
-        )
+
+def _validate_rollback_lineage(
+    persisted_active: UpgradeOperation,
+    binding: InstallationBinding | None,
+) -> InstallationBinding:
     if persisted_active.business_writes_opened or persisted_active.phase == "committed":
         raise LifecycleViolation(
             "upgrade_rollback_refused_writes_may_have_opened",
@@ -701,6 +705,14 @@ def _require_rollback_eligible(
             "upgrade_rollback_refused_writes_may_have_opened",
             "installation binding no longer proves pre-write previous-release lineage",
         )
+    return binding
+
+
+def _validate_rollback_request_match(
+    request: InstallRequest,
+    persisted_active: UpgradeOperation,
+    binding: InstallationBinding,
+) -> None:
     if (
         persisted_active.target_release_id != request.target_release_id
         or persisted_active.release_manifest_sha256 != request.release_manifest_sha256
@@ -733,7 +745,41 @@ def _require_rollback_eligible(
             "upgrade_backup_missing",
             "pre-upgrade cold backup evidence is missing; keeping fenced state",
         )
-    return persisted_active, binding
+
+
+def _require_rollback_eligible(
+    stores: LifecycleStores,
+    request: InstallRequest,
+    *,
+    new_binding_published: bool = False,
+    commit_publish_attempted: bool = False,
+) -> tuple[UpgradeOperation, InstallationBinding]:
+    binding, persisted_active, persisted_history = _read_rollback_durable_state(stores, request.operation_id)
+    if persisted_history is not None or new_binding_published or commit_publish_attempted:
+        raise LifecycleViolation(
+            "upgrade_rollback_refused_writes_may_have_opened",
+            "refusing rollback because upgrade commit or normal business writes may have opened",
+        )
+    if persisted_active is None:
+        if binding is not None and binding.previous_release_id is not None:
+            raise LifecycleViolation(
+                "upgrade_rollback_refused_writes_may_have_opened",
+                "installation already reflects a committed release transition; refusing rollback",
+            )
+        raise LifecycleViolation(
+            "upgrade_rollback_no_active_upgrade",
+            "no active pre-write upgrade operation exists to roll back",
+        )
+    if not isinstance(persisted_active, UpgradeOperation) or persisted_active.kind != "upgrade":
+        raise LifecycleViolation("operation_conflict", "active operation is not a managed upgrade")
+    if persisted_active.operation_id != request.operation_id:
+        raise LifecycleViolation(
+            "operation_conflict",
+            "rollback request operation_id does not match the active upgrade operation",
+        )
+    verified_binding = _validate_rollback_lineage(persisted_active, binding)
+    _validate_rollback_request_match(request, persisted_active, verified_binding)
+    return persisted_active, verified_binding
 
 
 def _rollback_upgrade_standalone_locked(
@@ -944,7 +990,7 @@ def _execute_rollback_to_previous_locked(
         )
 
 
-def _canonical_phase_for_step(completed: str | None) -> str:
+def _canonical_phase_for_step(completed: str | None) -> DurablePhase:
     if completed == "health":
         return "release_activated"
     if completed == "scm":
@@ -952,9 +998,9 @@ def _canonical_phase_for_step(completed: str | None) -> str:
     return "prepared"
 
 
-def _monotonic_phase(current: str, requested: str, next_step: UpgradeStepName) -> str:
+def _monotonic_phase(current: DurablePhase, requested: DurablePhase, next_step: UpgradeStepName) -> DurablePhase:
     floor = _canonical_phase_for_step(next_step)
-    candidates = [requested, floor]
+    candidates: list[DurablePhase] = [requested, floor]
     if current in _PHASE_RANK:
         candidates.append(current)
     return max(candidates, key=lambda name: _PHASE_RANK[name])
@@ -992,7 +1038,7 @@ def _advance(
     stores: LifecycleStores,
     active: UpgradeOperation,
     *,
-    phase: str,
+    phase: DurablePhase,
     step: UpgradeStepName,
     no_return_point: bool | None = None,
 ) -> UpgradeOperation:
@@ -1000,7 +1046,7 @@ def _advance(
     next_phase = _monotonic_phase(active.phase, phase, next_step)
     candidate = replace(
         active,
-        phase=next_phase,  # type: ignore[arg-type]
+        phase=next_phase,
         completed_step=next_step,
         no_return_point=active.no_return_point if no_return_point is None else no_return_point,
     )
@@ -1018,7 +1064,7 @@ def _furthest_step(
         return observed
     if UPGRADE_SEQUENCE.index(observed) > UPGRADE_SEQUENCE.index(current):
         return observed
-    return current  # type: ignore[return-value]
+    return cast(UpgradeStepName, current)
 
 
 def _ensure_postcondition(

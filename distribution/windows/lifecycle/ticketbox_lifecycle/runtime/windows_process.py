@@ -211,6 +211,85 @@ class PersistentKillOnCloseJob:
         self.close()
 
 
+def _drain_after_timeout(
+    process: subprocess.Popen[str],
+    *,
+    capture_output: bool,
+    allow_fallback_kill: bool,
+) -> tuple[str, str]:
+    try:
+        if capture_output:
+            return process.communicate(timeout=_TERMINATION_TIMEOUT_S)
+        process.wait(timeout=_TERMINATION_TIMEOUT_S)
+        return "", ""
+    except subprocess.TimeoutExpired:
+        if not (allow_fallback_kill and process.poll() is None):
+            raise
+        with contextlib.suppress(OSError):
+            process.kill()
+        if capture_output:
+            return process.communicate(timeout=_TERMINATION_TIMEOUT_S)
+        process.wait(timeout=_TERMINATION_TIMEOUT_S)
+        return "", ""
+
+
+def _terminate_timed_out_process(
+    process: subprocess.Popen[str],
+    command: list[str],
+    timeout_s: int,
+    timeout: subprocess.TimeoutExpired,
+    *,
+    owns_job: bool,
+    active_job: _KillOnCloseJob,
+    capture_output: bool,
+    on_timeout: Callable[[], None] | None,
+) -> None:
+    try:
+        if owns_job:
+            active_job.terminate()
+        elif on_timeout is not None:
+            with contextlib.suppress(Exception):
+                on_timeout()
+        else:
+            with contextlib.suppress(OSError):
+                process.kill()
+        stdout, stderr = _drain_after_timeout(
+            process,
+            capture_output=capture_output,
+            allow_fallback_kill=not owns_job and on_timeout is not None,
+        )
+    except (OSError, subprocess.TimeoutExpired) as termination_failure:
+        raise subprocess.TimeoutExpired(command, timeout_s) from termination_failure
+    raise subprocess.TimeoutExpired(command, timeout_s, output=stdout, stderr=stderr) from timeout
+
+
+def _finalize_windows_process(
+    process: subprocess.Popen[str] | None,
+    command: list[str],
+    *,
+    owns_job: bool,
+    active_job: _KillOnCloseJob,
+) -> None:
+    if owns_job:
+        active_job.close()
+    if process is None:
+        return
+    if process.poll() is None:
+        with contextlib.suppress(OSError):
+            process.kill()
+        with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+            process.wait(timeout=5)
+    still_alive = process.poll() is None
+    for stream in (process.stdin, process.stdout, process.stderr):
+        if stream is not None:
+            with contextlib.suppress(OSError, ValueError):
+                stream.close()
+    if still_alive:
+        raise ProcessTerminationUnconfirmedError(
+            f"process did not exit after forced termination: {command[0]}"
+        )
+
+
 def run_windows_process(
     argv: Sequence[str],
     *,
@@ -246,61 +325,16 @@ def run_windows_process(
                 process.wait(timeout=timeout_s)
                 stdout, stderr = "", ""
         except subprocess.TimeoutExpired as timeout:
-            try:
-                if owns_job:
-                    active_job.terminate()
-                elif on_timeout is not None:
-                    with contextlib.suppress(Exception):
-                        on_timeout()
-                else:
-                    with contextlib.suppress(OSError):
-                        process.kill()
-                if capture_output:
-                    try:
-                        stdout, stderr = process.communicate(timeout=_TERMINATION_TIMEOUT_S)
-                    except subprocess.TimeoutExpired:
-                        if not owns_job and on_timeout is not None and process.poll() is None:
-                            with contextlib.suppress(OSError):
-                                process.kill()
-                            stdout, stderr = process.communicate(timeout=_TERMINATION_TIMEOUT_S)
-                        else:
-                            raise
-                else:
-                    try:
-                        process.wait(timeout=_TERMINATION_TIMEOUT_S)
-                    except subprocess.TimeoutExpired:
-                        if not owns_job and on_timeout is not None and process.poll() is None:
-                            with contextlib.suppress(OSError):
-                                process.kill()
-                            process.wait(timeout=_TERMINATION_TIMEOUT_S)
-                        else:
-                            raise
-                    stdout, stderr = "", ""
-            except (OSError, subprocess.TimeoutExpired) as termination_failure:
-                raise subprocess.TimeoutExpired(command, timeout_s) from termination_failure
-            raise subprocess.TimeoutExpired(
+            _terminate_timed_out_process(
+                process,
                 command,
                 timeout_s,
-                output=stdout,
-                stderr=stderr,
-            ) from timeout
+                timeout,
+                owns_job=owns_job,
+                active_job=active_job,
+                capture_output=capture_output,
+                on_timeout=on_timeout,
+            )
         return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     finally:
-        if owns_job:
-            active_job.close()
-        still_alive = False
-        if process is not None:
-            if process.poll() is None:
-                with contextlib.suppress(OSError):
-                    process.kill()
-                with contextlib.suppress(OSError, subprocess.TimeoutExpired):
-                    process.wait(timeout=5)
-            still_alive = process.poll() is None
-            for stream in (process.stdin, process.stdout, process.stderr):
-                if stream is not None:
-                    with contextlib.suppress(OSError, ValueError):
-                        stream.close()
-        if still_alive:
-            raise ProcessTerminationUnconfirmedError(
-                f"process did not exit after forced termination: {command[0]}"
-            )
+        _finalize_windows_process(process, command, owns_job=owns_job, active_job=active_job)

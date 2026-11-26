@@ -6,17 +6,20 @@ import argparse
 import ctypes
 import json
 from pathlib import Path
+from typing import cast
 
 from ticketbox_lifecycle import command_io
 from ticketbox_lifecycle.domain import reinstall as reinstall_action
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime.command import SubprocessCommandRunner
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
+from ticketbox_lifecycle.runtime.windows_dataset import WindowsDatasetAdapter
 from ticketbox_lifecycle.runtime.windows_known_folders import (
     ticketbox_install_root,
     ticketbox_program_data_root,
 )
 from ticketbox_lifecycle.runtime.windows_reinstall import WindowsReinstallPlatform
+from ticketbox_lifecycle.runtime.windows_security import WindowsSecurityAdapter
 from ticketbox_lifecycle.runtime.windows_security_native import require_windows
 from ticketbox_lifecycle.runtime.windows_shipment import _absolute_path_key
 from ticketbox_lifecycle.schemas import RESULT_SCHEMA, CommandResult
@@ -88,8 +91,8 @@ def main(argv: list[str]) -> int:
         )
         platform = WindowsReinstallPlatform(
             SubprocessCommandRunner(),
-            fs_stores._adapters.security,  # type: ignore[arg-type]
-            fs_stores._adapters.dataset,  # type: ignore[arg-type]
+            cast(WindowsSecurityAdapter, fs_stores._adapters.security),
+            cast(WindowsDatasetAdapter, fs_stores._adapters.dataset),
         )
         result = reinstall_action.reinstall(fs_stores.as_lifecycle_stores(), request, platform)
     except LifecycleError as exc:

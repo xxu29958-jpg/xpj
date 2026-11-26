@@ -78,7 +78,7 @@ def _run_preflight_check() -> int:
         return 2
 
 
-def main(argv: list[str]) -> int:
+def _parse_uninstall_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="TicketboxLifecycle",
         description="Controlled uninstall of Ticketbox services while preserving database, originals, backups and identity",
@@ -92,14 +92,119 @@ def main(argv: list[str]) -> int:
     if args.check_preflight:
         if args.request is not None or args.result is not None or args.from_installed:
             parser.error("--check-preflight does not accept --request, --result, or --from-installed")
-        return _run_preflight_check()
+        return args
     if args.from_installed:
         if args.request is not None or args.result is None or not args.result:
             parser.error("--from-installed requires --result and does not accept --request")
-    elif args.request is None or not args.request or args.result is None or not args.result:
+        return args
+    if args.request is None or not args.request or args.result is None or not args.result:
         parser.error("--request and --result are required unless --check-preflight or --from-installed is specified")
+    return args
+
+
+def _write_running_receipt(result_path: Path, operation_id: str) -> None:
+    command_io.write_result(
+        result_path,
+        CommandResult(
+            schema=RESULT_SCHEMA,
+            ok=False,
+            command="uninstall",
+            operation_id=operation_id,
+            phase="prepared",
+            code="running",
+            message="controlled uninstall started",
+            installation_published=True,
+        ),
+    )
+
+
+def _prepare_from_installed(
+    *,
+    expected_app_dir: Path,
+    expected_program_data: Path,
+    result_path: Path,
+    forbidden_roots: list[Path],
+) -> tuple[FilesystemStores, InstallRequest]:
+    fs_stores = FilesystemStores.from_installed(
+        install_root=expected_app_dir,
+        program_data_root=expected_program_data,
+    )
+    binding = fs_stores.read()
+    if binding is not None and binding.data_root:
+        forbidden_roots.append(Path(binding.data_root))
+        command_io.require_safe_result_path(result_path, forbidden_roots=forbidden_roots)
+    if binding is None or not uninstall_action._is_sha256_hex(binding.release_manifest_sha256):
+        raise LifecycleViolation(
+            "uninstall_binding_missing",
+            "controlled uninstall requires a verified installation.json; refusing unbound deletion",
+        )
+    manifest_sha = binding.release_manifest_sha256.lower()
+    request = InstallRequest(
+        schema=REQUEST_SCHEMA,
+        command="uninstall",
+        operation_id=f"uninstall-{manifest_sha}",
+        request_hash="pending",
+        target_release_id=binding.active_release_id,
+        app_dir=str(expected_app_dir),
+        data_root=str(expected_program_data / "data"),
+        program_data_root=str(expected_program_data),
+        pg_service_name=windows_shipment.PG_SERVICE_NAME,
+        backend_service_name=windows_shipment.BACKEND_SERVICE_NAME,
+        pg_port=windows_shipment.PG_PORT,
+        backend_port=windows_shipment.BACKEND_PORT,
+        postgres_major=windows_shipment.POSTGRES_MAJOR,
+        release_manifest_sha256=manifest_sha,
+        install_id=binding.install_id,
+        dataset_id=binding.dataset_id,
+    )
+    forbidden_roots.append(Path(request.data_root))
+    command_io.require_safe_result_path(result_path, forbidden_roots=forbidden_roots)
+    return fs_stores, request
+
+
+def _prepare_from_request(
+    request_path: str,
+    *,
+    expected_app_dir: Path,
+    expected_program_data: Path,
+    result_path: Path,
+    forbidden_roots: list[Path],
+    operation_id_box: list[str],
+) -> tuple[FilesystemStores, InstallRequest]:
+    payload = json.loads(Path(request_path).read_text(encoding="utf-8"))
+    operation_id_box[0] = str(payload.get("operation_id") or "unknown")
+    request = command_io.parse_request(payload, command="uninstall")
+    operation_id_box[0] = request.operation_id
+    forbidden_roots.extend([
+        Path(request.app_dir),
+        Path(request.program_data_root),
+        Path(request.data_root),
+    ])
+    command_io.require_safe_result_path(result_path, forbidden_roots=forbidden_roots)
+    if _absolute_path_key(Path(request.app_dir)) != _absolute_path_key(expected_app_dir):
+        raise LifecycleViolation(
+            "untrusted_install_root",
+            "installed application root must be the exact Ticketbox Program Files directory",
+        )
+    if _absolute_path_key(Path(request.program_data_root)) != _absolute_path_key(expected_program_data):
+        raise LifecycleViolation(
+            "untrusted_setup_request",
+            "privileged request does not match the trusted ProgramData root",
+        )
+    fs_stores = FilesystemStores.from_request(
+        request,
+        install_root=expected_app_dir,
+        program_data_root=expected_program_data,
+    )
+    return fs_stores, request
+
+
+def main(argv: list[str]) -> int:
+    args = _parse_uninstall_args(argv)
+    if args.check_preflight:
+        return _run_preflight_check()
     result_path = Path(args.result)
-    operation_id = "unknown"
+    operation_id_box = ["unknown"]
     forbidden_roots: list[Path] = []
     forbidden_roots_ready = False
     result_path_safe = False
@@ -115,95 +220,24 @@ def main(argv: list[str]) -> int:
         if not ctypes.windll.shell32.IsUserAnAdmin():
             raise LifecycleError("uninstall_admin_required", "controlled uninstall requires an administrator")
         if args.from_installed:
-            fs_stores = FilesystemStores.from_installed(
-                install_root=expected_app_dir,
-                program_data_root=expected_program_data,
+            fs_stores, request = _prepare_from_installed(
+                expected_app_dir=expected_app_dir,
+                expected_program_data=expected_program_data,
+                result_path=result_path,
+                forbidden_roots=forbidden_roots,
             )
-            binding = fs_stores.read()
-            if binding is not None and binding.data_root:
-                forbidden_roots.append(Path(binding.data_root))
-                command_io.require_safe_result_path(result_path, forbidden_roots=forbidden_roots)
-            if binding is None or not uninstall_action._is_sha256_hex(binding.release_manifest_sha256):
-                raise LifecycleViolation(
-                    "uninstall_binding_missing",
-                    "controlled uninstall requires a verified installation.json; refusing unbound deletion",
-                )
-            manifest_sha = binding.release_manifest_sha256.lower()
-            operation_id = f"uninstall-{manifest_sha}"
-            request = InstallRequest(
-                schema=REQUEST_SCHEMA,
-                command="uninstall",
-                operation_id=operation_id,
-                request_hash="pending",
-                target_release_id=binding.active_release_id,
-                app_dir=str(expected_app_dir),
-                data_root=str(expected_program_data / "data"),
-                program_data_root=str(expected_program_data),
-                pg_service_name=windows_shipment.PG_SERVICE_NAME,
-                backend_service_name=windows_shipment.BACKEND_SERVICE_NAME,
-                pg_port=windows_shipment.PG_PORT,
-                backend_port=windows_shipment.BACKEND_PORT,
-                postgres_major=windows_shipment.POSTGRES_MAJOR,
-                release_manifest_sha256=manifest_sha,
-                install_id=binding.install_id,
-                dataset_id=binding.dataset_id,
-            )
-            forbidden_roots.append(Path(request.data_root))
-            command_io.require_safe_result_path(result_path, forbidden_roots=forbidden_roots)
-            result_path_safe = True
-            command_io.write_result(
-                result_path,
-                CommandResult(
-                    schema=RESULT_SCHEMA,
-                    ok=False,
-                    command="uninstall",
-                    operation_id=operation_id,
-                    phase="prepared",
-                    code="running",
-                    message="controlled uninstall started",
-                    installation_published=True,
-                ),
-            )
+            operation_id_box[0] = request.operation_id
         else:
-            payload = json.loads(Path(args.request).read_text(encoding="utf-8"))
-            operation_id = str(payload.get("operation_id") or "unknown")
-            request = command_io.parse_request(payload, command="uninstall")
-            operation_id = request.operation_id
-            forbidden_roots.extend([
-                Path(request.app_dir),
-                Path(request.program_data_root),
-                Path(request.data_root),
-            ])
-            command_io.require_safe_result_path(result_path, forbidden_roots=forbidden_roots)
-            result_path_safe = True
-            if _absolute_path_key(Path(request.app_dir)) != _absolute_path_key(expected_app_dir):
-                raise LifecycleViolation(
-                    "untrusted_install_root",
-                    "installed application root must be the exact Ticketbox Program Files directory",
-                )
-            if _absolute_path_key(Path(request.program_data_root)) != _absolute_path_key(expected_program_data):
-                raise LifecycleViolation(
-                    "untrusted_setup_request",
-                    "privileged request does not match the trusted ProgramData root",
-                )
-            command_io.write_result(
-                result_path,
-                CommandResult(
-                    schema=RESULT_SCHEMA,
-                    ok=False,
-                    command="uninstall",
-                    operation_id=operation_id,
-                    phase="prepared",
-                    code="running",
-                    message="controlled uninstall started",
-                    installation_published=True,
-                ),
+            fs_stores, request = _prepare_from_request(
+                args.request,
+                expected_app_dir=expected_app_dir,
+                expected_program_data=expected_program_data,
+                result_path=result_path,
+                forbidden_roots=forbidden_roots,
+                operation_id_box=operation_id_box,
             )
-            fs_stores = FilesystemStores.from_request(
-                request,
-                install_root=expected_app_dir,
-                program_data_root=expected_program_data,
-            )
+        result_path_safe = True
+        _write_running_receipt(result_path, operation_id_box[0])
         platform = WindowsUninstallPlatform(SubprocessCommandRunner(), NativeWindowsScmObserver())
         result = uninstall_action.uninstall(fs_stores.as_lifecycle_stores(), request, platform)
     except LifecycleError as exc:
@@ -211,7 +245,7 @@ def main(argv: list[str]) -> int:
             schema=RESULT_SCHEMA,
             ok=False,
             command="uninstall",
-            operation_id=operation_id,
+            operation_id=operation_id_box[0],
             phase="failed_recoverable",
             code=exc.code,
             message=exc.message,
@@ -222,7 +256,7 @@ def main(argv: list[str]) -> int:
             schema=RESULT_SCHEMA,
             ok=False,
             command="uninstall",
-            operation_id=operation_id,
+            operation_id=operation_id_box[0],
             phase="failed_recoverable",
             code="unhandled",
             message="unexpected controlled uninstall failure",

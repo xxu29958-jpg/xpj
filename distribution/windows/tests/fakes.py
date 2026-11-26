@@ -267,30 +267,44 @@ class MemoryStores:
     def read(self) -> InstallationBinding | None:
         return self._binding
 
+    @staticmethod
+    def _is_same_identity_upgrade(current: InstallationBinding, binding: InstallationBinding) -> bool:
+        return (
+            binding.install_id == current.install_id
+            and binding.dataset_id == current.dataset_id
+            and binding.expected_restore_epoch == current.expected_restore_epoch
+            and binding.previous_release_id == current.active_release_id
+            and binding.active_release_id != current.active_release_id
+        )
+
+    @staticmethod
+    def _is_rollback_restore(current: InstallationBinding, binding: InstallationBinding) -> bool:
+        return (
+            binding.dataset_id == current.dataset_id
+            and binding.install_id != current.install_id
+            and binding.expected_restore_epoch > current.expected_restore_epoch
+        )
+
+    @staticmethod
+    def _is_preserved_reinstall(current: InstallationBinding, binding: InstallationBinding) -> bool:
+        return (
+            binding.install_id == current.install_id
+            and binding.dataset_id == current.dataset_id
+            and binding.expected_restore_epoch == current.expected_restore_epoch
+            and binding.active_release_id == current.active_release_id
+            and binding.release_manifest_sha256 == current.release_manifest_sha256
+        )
+
     def publish(self, binding: InstallationBinding) -> None:
         if binding.schema != INSTALLATION_SCHEMA:
             raise LifecycleViolation("bad_binding_schema", "installation schema")
         if self._binding is not None:
-            same_identity_upgrade = (
-                binding.install_id == self._binding.install_id
-                and binding.dataset_id == self._binding.dataset_id
-                and binding.expected_restore_epoch == self._binding.expected_restore_epoch
-                and binding.previous_release_id == self._binding.active_release_id
-                and binding.active_release_id != self._binding.active_release_id
+            allowed = (
+                self._is_same_identity_upgrade(self._binding, binding)
+                or self._is_rollback_restore(self._binding, binding)
+                or self._is_preserved_reinstall(self._binding, binding)
             )
-            rollback_restore = (
-                binding.dataset_id == self._binding.dataset_id
-                and binding.install_id != self._binding.install_id
-                and binding.expected_restore_epoch > self._binding.expected_restore_epoch
-            )
-            preserved_reinstall = (
-                binding.install_id == self._binding.install_id
-                and binding.dataset_id == self._binding.dataset_id
-                and binding.expected_restore_epoch == self._binding.expected_restore_epoch
-                and binding.active_release_id == self._binding.active_release_id
-                and binding.release_manifest_sha256 == self._binding.release_manifest_sha256
-            )
-            if not (same_identity_upgrade or rollback_restore or preserved_reinstall):
+            if not allowed:
                 raise LifecycleViolation("second_writer", "installation.json publisher must be unique")
         self._binding = binding
         self.binding_publish_count += 1

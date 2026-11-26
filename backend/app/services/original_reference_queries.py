@@ -112,7 +112,29 @@ def _require_normalized_upload_reference(
     return normalized
 
 
-def iter_retained_original_checks(db: Session, tenant_id: str) -> list[RetainedOriginalCheck]:
+def _build_retained_check(
+    *,
+    tenant_id: str,
+    relative_path: str | None,
+    source_kind: str,
+    expected_sha256: str | None = None,
+    expected_size_bytes: int | None = None,
+    require_digest: bool = False,
+) -> RetainedOriginalCheck:
+    normalized = _require_normalized_upload_reference(
+        relative_path, tenant_id, source_kind=source_kind,
+    )
+    return RetainedOriginalCheck(
+        tenant_id=tenant_id,
+        relative_path=normalized,
+        expected_sha256=expected_sha256,
+        expected_size_bytes=expected_size_bytes,
+        require_digest=require_digest,
+        source_kind=source_kind,
+    )
+
+
+def _iter_expense_original_checks(db: Session, tenant_id: str) -> list[RetainedOriginalCheck]:
     checks: list[RetainedOriginalCheck] = []
     expense_rows = db.execute(
         select(
@@ -134,48 +156,36 @@ def iter_retained_original_checks(db: Session, tenant_id: str) -> list[RetainedO
     )
     for image_path, image_hash, thumbnail_path, image_deleted_at, thumbnail_deleted_at, cleanup_request in expense_rows:
         if image_path is not None and image_deleted_at is None:
-            normalized = _require_normalized_upload_reference(
-                image_path, tenant_id, source_kind="expense_image",
-            )
             checks.append(
-                RetainedOriginalCheck(
+                _build_retained_check(
                     tenant_id=tenant_id,
-                    relative_path=normalized,
-                    expected_sha256=image_hash,
-                    expected_size_bytes=None,
-                    require_digest=False,
+                    relative_path=image_path,
                     source_kind="expense_image",
+                    expected_sha256=image_hash,
                 )
             )
         if thumbnail_path is not None and thumbnail_deleted_at is None:
-            normalized = _require_normalized_upload_reference(
-                thumbnail_path, tenant_id, source_kind="expense_thumbnail",
-            )
             checks.append(
-                RetainedOriginalCheck(
+                _build_retained_check(
                     tenant_id=tenant_id,
-                    relative_path=normalized,
-                    expected_sha256=None,
-                    expected_size_bytes=None,
-                    require_digest=False,
+                    relative_path=thumbnail_path,
                     source_kind="expense_thumbnail",
                 )
             )
         for reference in pending_cleanup_references(cleanup_request):
-            normalized = _require_normalized_upload_reference(
-                reference, tenant_id, source_kind="expense_pending_cleanup",
-            )
             checks.append(
-                RetainedOriginalCheck(
+                _build_retained_check(
                     tenant_id=tenant_id,
-                    relative_path=normalized,
-                    expected_sha256=image_hash if reference == image_path else None,
-                    expected_size_bytes=None,
-                    require_digest=False,
+                    relative_path=reference,
                     source_kind="expense_pending_cleanup",
+                    expected_sha256=image_hash if reference == image_path else None,
                 )
             )
+    return checks
 
+
+def _iter_debt_capture_original_checks(db: Session, tenant_id: str) -> list[RetainedOriginalCheck]:
+    checks: list[RetainedOriginalCheck] = []
     capture_rows = db.execute(
         select(
             m.DebtBillCapture.image_path,
@@ -187,70 +197,65 @@ def iter_retained_original_checks(db: Session, tenant_id: str) -> list[RetainedO
     )
     for image_path, image_hash, image_size_bytes, deleted_at, cleanup_request in capture_rows:
         if deleted_at is None:
-            normalized = _require_normalized_upload_reference(
-                image_path, tenant_id, source_kind="debt_bill_capture",
-            )
             checks.append(
-                RetainedOriginalCheck(
+                _build_retained_check(
                     tenant_id=tenant_id,
-                    relative_path=normalized,
+                    relative_path=image_path,
+                    source_kind="debt_bill_capture",
                     expected_sha256=image_hash,
                     expected_size_bytes=image_size_bytes,
                     require_digest=True,
-                    source_kind="debt_bill_capture",
                 )
             )
         for reference in pending_cleanup_references(cleanup_request):
-            normalized = _require_normalized_upload_reference(
-                reference, tenant_id, source_kind="debt_bill_capture_pending_cleanup",
-            )
             matches_primary = reference == image_path
             checks.append(
-                RetainedOriginalCheck(
+                _build_retained_check(
                     tenant_id=tenant_id,
-                    relative_path=normalized,
+                    relative_path=reference,
+                    source_kind="debt_bill_capture_pending_cleanup",
                     expected_sha256=image_hash if matches_primary else None,
                     expected_size_bytes=image_size_bytes if matches_primary else None,
                     require_digest=matches_primary,
-                    source_kind="debt_bill_capture_pending_cleanup",
                 )
             )
+    return checks
 
+
+def _iter_historical_original_checks(db: Session, tenant_id: str) -> list[RetainedOriginalCheck]:
+    checks: list[RetainedOriginalCheck] = []
     history = original_receipt_references_query(select(m.ApiIdempotencyKey), tenant_id=tenant_id)
     for original in db.execute(history).mappings():
         if historical_original_is_cleaned(original):
             continue
         hist_image = original["image_path"]
         if hist_image is not None:
-            normalized = _require_normalized_upload_reference(
-                hist_image, tenant_id, source_kind="historical_original",
-            )
             checks.append(
-                RetainedOriginalCheck(
+                _build_retained_check(
                     tenant_id=tenant_id,
-                    relative_path=normalized,
-                    expected_sha256=original["image_hash"],
-                    expected_size_bytes=None,
-                    require_digest=False,
+                    relative_path=hist_image,
                     source_kind="historical_original",
+                    expected_sha256=original["image_hash"],
                 )
             )
         hist_thumb = original["thumbnail_path"]
         if hist_thumb is not None and original["thumbnail_deleted_at"] is None:
-            normalized = _require_normalized_upload_reference(
-                hist_thumb, tenant_id, source_kind="historical_thumbnail",
-            )
             checks.append(
-                RetainedOriginalCheck(
+                _build_retained_check(
                     tenant_id=tenant_id,
-                    relative_path=normalized,
-                    expected_sha256=None,
-                    expected_size_bytes=None,
-                    require_digest=False,
+                    relative_path=hist_thumb,
                     source_kind="historical_thumbnail",
                 )
             )
     return checks
+
+
+def iter_retained_original_checks(db: Session, tenant_id: str) -> list[RetainedOriginalCheck]:
+    return [
+        *_iter_expense_original_checks(db, tenant_id),
+        *_iter_debt_capture_original_checks(db, tenant_id),
+        *_iter_historical_original_checks(db, tenant_id),
+    ]
 
 
 def referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:

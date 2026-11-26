@@ -9,13 +9,42 @@ from app.schemas import ExpenseFinancialSummary
 from app.services.expense_offset_money import gross_original_minor
 
 
+def _summary_status(
+    *,
+    is_reversed: bool,
+    has_refunds: bool,
+    currency_mismatch: bool,
+    remaining_original: int,
+) -> str:
+    if is_reversed:
+        return "reversed"
+    if not has_refunds:
+        return "confirmed"
+    if currency_mismatch or remaining_original != 0:
+        return "partially_refunded"
+    return "fully_refunded"
+
+
+def _baseline_remaining_home(
+    *,
+    gross_original: int,
+    gross_home: int,
+    remaining_original: int,
+    is_reversed: bool,
+) -> int:
+    if not gross_original or is_reversed:
+        return 0
+    ratio = Decimal(gross_home) * Decimal(remaining_original) / Decimal(gross_original)
+    return int(ratio.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
 def expense_financial_summary(
     expense: Expense,
     offsets: list[ExpenseOffsetFact],
 ) -> ExpenseFinancialSummary:
     gross_original = gross_original_minor(expense)
     gross_home = int(expense.amount_cents or 0)
-    reversal = next((offset for offset in offsets if offset.kind == "reversal"), None)
+    is_reversed = any(offset.kind == "reversal" for offset in offsets)
     refunds = [offset for offset in offsets if offset.kind != "reversal"]
     currency_mismatch = any(
         offset.original_currency_code != expense.original_currency_code for offset in refunds
@@ -23,30 +52,25 @@ def expense_financial_summary(
     refunded_original = (
         0 if currency_mismatch else sum(offset.original_amount_minor for offset in refunds)
     )
-    remaining_original = 0 if currency_mismatch else max(gross_original - refunded_original, 0)
-
-    if reversal is not None:
+    if is_reversed:
         remaining_original = 0
         net_home = 0
-        status = "reversed"
     else:
+        remaining_original = 0 if currency_mismatch else max(gross_original - refunded_original, 0)
         net_home = gross_home - sum(offset.amount_cents for offset in refunds)
-        if not refunds:
-            status = "confirmed"
-        elif currency_mismatch:
-            status = "partially_refunded"
-        elif remaining_original == 0:
-            status = "fully_refunded"
-        else:
-            status = "partially_refunded"
 
-    baseline_remaining_home = 0
-    if gross_original and reversal is None:
-        baseline_remaining_home = int(
-            (Decimal(gross_home) * Decimal(remaining_original) / Decimal(gross_original)).quantize(
-                Decimal("1"), rounding=ROUND_HALF_UP
-            )
-        )
+    status = _summary_status(
+        is_reversed=is_reversed,
+        has_refunds=bool(refunds),
+        currency_mismatch=currency_mismatch,
+        remaining_original=remaining_original,
+    )
+    baseline_remaining_home = _baseline_remaining_home(
+        gross_original=gross_original,
+        gross_home=gross_home,
+        remaining_original=remaining_original,
+        is_reversed=is_reversed,
+    )
     return ExpenseFinancialSummary(
         gross_original_minor=gross_original,
         gross_home_amount_cents=gross_home,

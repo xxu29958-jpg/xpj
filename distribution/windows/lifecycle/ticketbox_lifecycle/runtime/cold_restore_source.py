@@ -147,14 +147,14 @@ class ColdRestoreSource:
         ):
             raise LifecycleError("restore_cluster_unsupported", "restore requires a stopped local cluster without tablespaces")
     @staticmethod
-    def _committed_owner_operation(archive: zipfile.ZipFile, manifest: dict) -> str:
+    def _load_committed_operations(archive: zipfile.ZipFile, manifest: dict) -> list[dict]:
         identity = manifest["identity"]
         history = [
             json.loads(archive.read(name))
             for name in manifest["entries"]
             if name.startswith("machine/operations/history/") and name.endswith(".json")
         ]
-        committed = [
+        return [
             record
             for record in history
             if isinstance(record, dict)
@@ -163,6 +163,11 @@ class ColdRestoreSource:
             and record.get("install_id") == identity["install_id"]
             and record.get("dataset_id") == identity["dataset_id"]
         ]
+
+    @staticmethod
+    def _committed_owner_operation(archive: zipfile.ZipFile, manifest: dict) -> str:
+        identity = manifest["identity"]
+        committed = ColdRestoreSource._load_committed_operations(archive, manifest)
         origins = [record for record in committed if record.get("kind") in {"install", "restore"}]
         if len(origins) != 1 or not isinstance(origins[0].get("operation_id"), str) or not origins[0]["operation_id"]:
             raise LifecycleError(
@@ -265,6 +270,78 @@ class ColdRestoreSource:
         if hashlib.file_digest(self.stream, "sha256").hexdigest() != self.digest:
             raise LifecycleError("restore_source_changed", "source changed during copying; candidate cannot be published")
 
+    @staticmethod
+    def _existing_shared_file_matches(dest: Path, record: dict) -> bool:
+        if not dest.is_file() or dest.stat().st_size != record["size"]:
+            return False
+        with dest.open("rb") as existing_fh:
+            return hashlib.file_digest(existing_fh, "sha256").hexdigest() == record["sha256"]
+
+    @staticmethod
+    def _restore_one_shared_file(
+        archive: zipfile.ZipFile,
+        app_dir: Path,
+        rel: str,
+        record: dict,
+        *,
+        temp_root: Path,
+        publish_acl: Callable[..., None] | None,
+        verify_acl: Callable[..., None] | None,
+    ) -> bool:
+        dest = app_dir / Path(rel)
+        reject_reparse_components(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if ColdRestoreSource._existing_shared_file_matches(dest, record):
+            if publish_acl is not None:
+                publish_acl(dest, is_dir=False)
+            if verify_acl is not None:
+                verify_acl(dest, is_dir=False)
+            return False
+        fd, tmp_name = tempfile.mkstemp(prefix=dest.name, suffix=".tmp", dir=str(temp_root))
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "wb") as out, archive.open("program/" + rel) as inp:
+                shutil.copyfileobj(inp, out, length=1024 * 1024)
+                out.flush()
+                os.fsync(out.fileno())
+            with tmp_path.open("rb") as check_fh:
+                observed_sha = hashlib.file_digest(check_fh, "sha256").hexdigest()
+            if tmp_path.stat().st_size != record["size"] or observed_sha != record["sha256"]:
+                raise LifecycleError(
+                    "rollback_shared_payload_corrupt",
+                    f"restored shared program file checksum mismatch: {rel}",
+                )
+            if publish_acl is not None:
+                publish_acl(tmp_path, is_dir=False)
+            os.replace(tmp_path, dest)
+        except BaseException:
+            if tmp_path.exists():
+                tmp_path.unlink()
+            raise
+        if verify_acl is not None:
+            verify_acl(dest, is_dir=False)
+        return True
+
+    @staticmethod
+    def _prune_extra_lifecycle_files(app_dir: Path, expected_lifecycle: set[str]) -> None:
+        lifecycle_dir = app_dir / "bin" / "lifecycle"
+        if not lifecycle_dir.is_dir():
+            return
+        reject_reparse_components(lifecycle_dir)
+        for root_dir, dirs, files in os.walk(lifecycle_dir, topdown=False, followlinks=False):
+            root_path = Path(root_dir)
+            for filename in files:
+                candidate = root_path / filename
+                rel_lc = candidate.relative_to(lifecycle_dir).as_posix().casefold()
+                if rel_lc not in expected_lifecycle:
+                    reject_reparse_components(candidate)
+                    candidate.unlink()
+            for dirname in dirs:
+                candidate = root_path / dirname
+                reject_reparse_components(candidate)
+                if not any(candidate.iterdir()):
+                    candidate.rmdir()
+
     def restore_shared_program_files(
         self,
         app_dir: Path,
@@ -301,60 +378,17 @@ class ColdRestoreSource:
         self.stream.seek(0)
         with zipfile.ZipFile(self.stream) as archive:
             for rel, record in sorted(shared_entries.items(), key=lambda pair: pair[0].casefold()):
-                dest = app_dir / Path(rel)
-                reject_reparse_components(dest)
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                if dest.is_file() and dest.stat().st_size == record["size"]:
-                    with dest.open("rb") as existing_fh:
-                        existing_sha = hashlib.file_digest(existing_fh, "sha256").hexdigest()
-                    if existing_sha == record["sha256"]:
-                        if publish_acl is not None:
-                            publish_acl(dest, is_dir=False)
-                        if verify_acl is not None:
-                            verify_acl(dest, is_dir=False)
-                        continue
-                fd, tmp_name = tempfile.mkstemp(prefix=dest.name, suffix=".tmp", dir=str(temp_root))
-                tmp_path = Path(tmp_name)
-                try:
-                    with os.fdopen(fd, "wb") as out, archive.open("program/" + rel) as inp:
-                        shutil.copyfileobj(inp, out, length=1024 * 1024)
-                        out.flush()
-                        os.fsync(out.fileno())
-                    with tmp_path.open("rb") as check_fh:
-                        observed_sha = hashlib.file_digest(check_fh, "sha256").hexdigest()
-                    if tmp_path.stat().st_size != record["size"] or observed_sha != record["sha256"]:
-                        raise LifecycleError(
-                            "rollback_shared_payload_corrupt",
-                            f"restored shared program file checksum mismatch: {rel}",
-                        )
-                    if publish_acl is not None:
-                        publish_acl(tmp_path, is_dir=False)
-                    os.replace(tmp_path, dest)
-                except BaseException:
-                    if tmp_path.exists():
-                        tmp_path.unlink()
-                    raise
-                if verify_acl is not None:
-                    verify_acl(dest, is_dir=False)
-                restored.append(rel)
-
-        lifecycle_dir = app_dir / "bin" / "lifecycle"
-        if lifecycle_dir.is_dir():
-            reject_reparse_components(lifecycle_dir)
-            for root_dir, dirs, files in os.walk(lifecycle_dir, topdown=False, followlinks=False):
-                root_path = Path(root_dir)
-                for filename in files:
-                    candidate = root_path / filename
-                    rel_lc = candidate.relative_to(lifecycle_dir).as_posix().casefold()
-                    if rel_lc not in expected_lifecycle:
-                        reject_reparse_components(candidate)
-                        candidate.unlink()
-                for dirname in dirs:
-                    candidate = root_path / dirname
-                    reject_reparse_components(candidate)
-                    if not any(candidate.iterdir()):
-                        candidate.rmdir()
-
+                if self._restore_one_shared_file(
+                    archive,
+                    app_dir,
+                    rel,
+                    record,
+                    temp_root=temp_root,
+                    publish_acl=publish_acl,
+                    verify_acl=verify_acl,
+                ):
+                    restored.append(rel)
+        self._prune_extra_lifecycle_files(app_dir, expected_lifecycle)
         self.stream.seek(0)
         if hashlib.file_digest(self.stream, "sha256").hexdigest() != self.digest:
             raise LifecycleError("restore_source_changed", "cold copy changed during shared payload restore")

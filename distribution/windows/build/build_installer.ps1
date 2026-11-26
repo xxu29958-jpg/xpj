@@ -373,55 +373,66 @@ try {
             "{install,resume,inspect}"
         )
     }
-    $upgradeProbeOutput = @(& $lifecycleExe upgrade --help 2>&1)
-    $upgradeProbeExitCode = $LASTEXITCODE
-    $upgradeProbeText = ($upgradeProbeOutput | ForEach-Object { [string]$_ }) -join "`n"
-    if (
-        $upgradeProbeExitCode -ne 0 -or
-        -not $upgradeProbeText.Contains("usage: TicketboxLifecycle") -or
-        -not $upgradeProbeText.Contains("--request") -or
-        -not $upgradeProbeText.Contains("--result") -or
-        -not $upgradeProbeText.Contains("--staged-release-root") -or
-        -not $upgradeProbeText.Contains("--rollback-on-failure")
-    ) {
-        throw "Frozen TicketboxLifecycle upgrade startup probe failed (exit=$upgradeProbeExitCode)."
-    }
-    $lifecycleToolchain["upgrade_startup_probe"] = [ordered]@{
-        contract = "ticketbox-lifecycle-upgrade-help-v1"
-        argv = @("upgrade", "--help")
-        exit_code = $upgradeProbeExitCode
-        required_markers = @(
+    function Invoke-TicketboxLifecycleStartupProbes {
+        param(
+            [Parameter(Mandatory = $true)][string]$lifecycleExe,
+            [Parameter(Mandatory = $true)][string]$venvPython,
+            [Parameter(Mandatory = $true)][string]$StagedScriptDir,
+            [Parameter(Mandatory = $true)][string]$lifecycleWork,
+            [Parameter(Mandatory = $true)][System.Collections.IDictionary]$lifecycleToolchain
+        )
+        $upgradeMarkers = @(
             "usage: TicketboxLifecycle",
             "--request",
             "--result",
             "--staged-release-root",
             "--rollback-on-failure"
         )
-    }
-    foreach ($probeSpec in @(
-        @{ key = "rollback_upgrade_startup_probe"; argv = @("rollback-upgrade", "--help"); markers = @("usage: TicketboxLifecycle", "--request", "--result") },
-        @{ key = "uninstall_startup_probe"; argv = @("uninstall", "--help"); markers = @("usage: TicketboxLifecycle", "--request", "--result") },
-        @{ key = "reinstall_startup_probe"; argv = @("reinstall", "--help"); markers = @("usage: TicketboxLifecycle", "--request", "--result") },
-        @{ key = "purge_data_startup_probe"; argv = @("purge-data", "--help"); markers = @("usage: TicketboxLifecycle", "--dataset-id", "--confirm-dataset-id", "--external-backups-status", "--confirm-permanent-delete") }
-    )) {
-        $probeOut = @(& $lifecycleExe @($probeSpec.argv) 2>&1)
-        $probeCode = $LASTEXITCODE
-        $probeText = ($probeOut | ForEach-Object { [string]$_ }) -join "`n"
-        $missingMarker = @($probeSpec.markers | Where-Object { -not $probeText.Contains($_) })
-        if ($probeCode -ne 0 -or $missingMarker.Count -gt 0) {
-            throw "Frozen TicketboxLifecycle $($probeSpec.key) failed (exit=$probeCode)."
+        $upgradeProbeOutput = @(& $lifecycleExe upgrade --help 2>&1)
+        $upgradeProbeExitCode = $LASTEXITCODE
+        $upgradeProbeText = ($upgradeProbeOutput | ForEach-Object { [string]$_ }) -join "`n"
+        $missingUpgrade = @($upgradeMarkers | Where-Object { -not $upgradeProbeText.Contains($_) })
+        if ($upgradeProbeExitCode -ne 0 -or $missingUpgrade.Count -gt 0) {
+            throw "Frozen TicketboxLifecycle upgrade startup probe failed (exit=$upgradeProbeExitCode)."
         }
-        $lifecycleToolchain[$probeSpec.key] = [ordered]@{
-            contract = "ticketbox-lifecycle-subcommand-help-v1"
-            argv = $probeSpec.argv
-            exit_code = $probeCode
-            required_markers = $probeSpec.markers
+        $lifecycleToolchain["upgrade_startup_probe"] = [ordered]@{
+            contract = "ticketbox-lifecycle-upgrade-help-v1"
+            argv = @("upgrade", "--help")
+            exit_code = $upgradeProbeExitCode
+            required_markers = $upgradeMarkers
         }
+        foreach ($probeSpec in @(
+            @{ key = "rollback_upgrade_startup_probe"; argv = @("rollback-upgrade", "--help"); markers = @("usage: TicketboxLifecycle", "--request", "--result") },
+            @{ key = "uninstall_startup_probe"; argv = @("uninstall", "--help"); markers = @("usage: TicketboxLifecycle", "--request", "--result") },
+            @{ key = "reinstall_startup_probe"; argv = @("reinstall", "--help"); markers = @("usage: TicketboxLifecycle", "--request", "--result") },
+            @{ key = "purge_data_startup_probe"; argv = @("purge-data", "--help"); markers = @("usage: TicketboxLifecycle", "--dataset-id", "--confirm-dataset-id", "--external-backups-status", "--confirm-permanent-delete") }
+        )) {
+            $probeOut = @(& $lifecycleExe @($probeSpec.argv) 2>&1)
+            $probeCode = $LASTEXITCODE
+            $probeText = ($probeOut | ForEach-Object { [string]$_ }) -join "`n"
+            $missingMarker = @($probeSpec.markers | Where-Object { -not $probeText.Contains($_) })
+            if ($probeCode -ne 0 -or $missingMarker.Count -gt 0) {
+                throw "Frozen TicketboxLifecycle $($probeSpec.key) failed (exit=$probeCode)."
+            }
+            $lifecycleToolchain[$probeSpec.key] = [ordered]@{
+                contract = "ticketbox-lifecycle-subcommand-help-v1"
+                argv = $probeSpec.argv
+                exit_code = $probeCode
+                required_markers = $probeSpec.markers
+            }
+        }
+        $coldCopyProbe = & $venvPython -I -B (Join-Path $StagedScriptDir "probe_encrypted_cold_copy.py") `
+            $lifecycleExe $lifecycleWork
+        if ($LASTEXITCODE -ne 0) { throw "Frozen TicketboxLifecycle C1 round trip failed (exit=$LASTEXITCODE)." }
+        $lifecycleToolchain["encrypted_cold_copy_probe"] = $coldCopyProbe | ConvertFrom-Json
     }
-    $coldCopyProbe = & $venvPython -I -B (Join-Path $StagedScriptDir "probe_encrypted_cold_copy.py") `
-        $lifecycleExe $lifecycleWork
-    if ($LASTEXITCODE -ne 0) { throw "Frozen TicketboxLifecycle C1 round trip failed (exit=$LASTEXITCODE)." }
-    $lifecycleToolchain["encrypted_cold_copy_probe"] = $coldCopyProbe | ConvertFrom-Json
+
+    Invoke-TicketboxLifecycleStartupProbes `
+        -lifecycleExe $lifecycleExe `
+        -venvPython $venvPython `
+        -StagedScriptDir $StagedScriptDir `
+        -lifecycleWork $lifecycleWork `
+        -lifecycleToolchain $lifecycleToolchain
     $BuildInputs["lifecycle"] = $lifecycleToolchain
 }
 finally {

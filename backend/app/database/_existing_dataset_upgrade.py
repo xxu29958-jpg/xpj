@@ -99,31 +99,47 @@ _WINDOWS_RESERVED = re.compile(r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?\
 _WINDOWS_REPARSE_ATTRIBUTE = 0x400
 
 
+def _is_nonempty_str(value: object) -> bool:
+    return isinstance(value, str) and bool(value)
+
+
+def _is_positive_int(value: object) -> bool:
+    return type(value) is int and value > 0
+
+
+def _is_nonnegative_int(value: object) -> bool:
+    return type(value) is int and value >= 0
+
+
+def _is_hex_sha256(value: object) -> bool:
+    return isinstance(value, str) and _SHA256_HEX.fullmatch(value) is not None
+
+
+def _require_valid_matching_installer(installer: object) -> None:
+    if not isinstance(installer, dict) or set(installer) != _MATCHING_INSTALLER_KEYS:
+        raise ExistingDatasetUpgradeError("pre-upgrade backup matching_installer_requirement is invalid")
+    installer_pg = installer["postgres_major"]
+    if (
+        not isinstance(installer["release_id"], str)
+        or not isinstance(installer["release_manifest_sha256"], str)
+        or (installer_pg is not None and not _is_positive_int(installer_pg))
+        or not _is_nonempty_str(installer["verify_command"])
+    ):
+        raise ExistingDatasetUpgradeError("pre-upgrade backup matching_installer_requirement is invalid")
+
+
 def _require_valid_recovery_point(recovery_point: object) -> None:
     if not isinstance(recovery_point, dict) or set(recovery_point) != _RECOVERY_POINT_KEYS:
         raise ExistingDatasetUpgradeError("pre-upgrade backup recovery_point metadata is invalid")
     if (
-        not isinstance(recovery_point["cutoff_utc"], str)
-        or not recovery_point["cutoff_utc"]
-        or not isinstance(recovery_point["api_version"], str)
-        or not recovery_point["api_version"]
+        not _is_nonempty_str(recovery_point["cutoff_utc"])
+        or not _is_nonempty_str(recovery_point["api_version"])
         or not isinstance(recovery_point["semantic_revision"], str)
         or not isinstance(recovery_point["schema_revision"], str)
         or recovery_point["secret_disposition"] != _COLD_COPY_SECRET_DISPOSITION
     ):
         raise ExistingDatasetUpgradeError("pre-upgrade backup recovery_point fields are invalid")
-    installer = recovery_point["matching_installer_requirement"]
-    installer_pg = installer.get("postgres_major") if isinstance(installer, dict) else None
-    if (
-        not isinstance(installer, dict)
-        or set(installer) != _MATCHING_INSTALLER_KEYS
-        or not isinstance(installer["release_id"], str)
-        or not isinstance(installer["release_manifest_sha256"], str)
-        or (installer_pg is not None and (type(installer_pg) is not int or installer_pg <= 0))
-        or not isinstance(installer["verify_command"], str)
-        or not installer["verify_command"]
-    ):
-        raise ExistingDatasetUpgradeError("pre-upgrade backup matching_installer_requirement is invalid")
+    _require_valid_matching_installer(recovery_point["matching_installer_requirement"])
 
 
 def _reject_reparse_path(path: Path) -> None:
@@ -281,28 +297,43 @@ def _is_connector_secret_entry(name: str) -> bool:
     )
 
 
+def _is_safe_member_part(part: str) -> bool:
+    return (
+        part not in {".", ".."}
+        and not part.endswith((" ", "."))
+        and _WINDOWS_RESERVED.fullmatch(part) is None
+    )
+
+
+def _has_safe_member_name(name: str, parts: tuple[str, ...]) -> bool:
+    return (
+        bool(parts)
+        and name == "/".join(parts)
+        and not name.startswith("/")
+        and "\\" not in name
+        and ":" not in name
+        and all(ord(char) >= 32 for char in name)
+    )
+
+
+def _is_safe_archive_entry(entry: zipfile.ZipInfo) -> bool:
+    name = entry.filename.rstrip("/")
+    parts = PurePosixPath(name).parts
+    mode = entry.external_attr >> 16
+    return (
+        _has_safe_member_name(name, parts)
+        and all(_is_safe_member_part(part) for part in parts)
+        and stat.S_IFMT(mode) in {0, stat.S_IFREG, stat.S_IFDIR}
+    )
+
+
 def _require_safe_archive_members(archive: zipfile.ZipFile) -> None:
     seen: set[str] = set()
     infos = archive.infolist()
     for entry in infos:
-        name = entry.filename.rstrip("/")
-        parts = PurePosixPath(name).parts
-        mode = entry.external_attr >> 16
-        if (
-            not parts
-            or name != "/".join(parts)
-            or name.startswith("/")
-            or "\\" in name
-            or ":" in name
-            or any(ord(char) < 32 for char in name)
-            or any(
-                part in {".", ".."} or part.endswith((" ", ".")) or _WINDOWS_RESERVED.fullmatch(part)
-                for part in parts
-            )
-            or stat.S_IFMT(mode) not in {0, stat.S_IFREG, stat.S_IFDIR}
-        ):
+        if not _is_safe_archive_entry(entry):
             raise ExistingDatasetUpgradeError("pre-upgrade backup archive contains an unsafe member path")
-        folded = name.casefold()
+        folded = entry.filename.rstrip("/").casefold()
         if folded in seen:
             raise ExistingDatasetUpgradeError("pre-upgrade backup archive contains an unsafe member alias")
         seen.add(folded)
@@ -436,7 +467,7 @@ class _VerifiedBackupArchive:
         self._verified_members[relative] = (len(payload), actual_sha)
         return payload
 
-    def _validate_restorable_structure(self, manifest: object, names: list[str]) -> None:
+    def _validate_manifest_envelope(self, manifest: object) -> dict[str, object]:
         if (
             not isinstance(manifest, dict)
             or manifest.get("schema") != _COLD_COPY_SCHEMA
@@ -448,8 +479,14 @@ class _VerifiedBackupArchive:
             raise ExistingDatasetUpgradeError("pre-upgrade backup archive is not a valid cold-copy-v2 archive")
         if "recovery_point" in manifest:
             _require_valid_recovery_point(manifest["recovery_point"])
-        entries = manifest["entries"]
-        self._entries = entries
+        return manifest
+
+    @staticmethod
+    def _validate_archive_entry_layout(names: list[str], entries: dict[str, object]) -> None:
+        has_nested_tblspc = any(
+            name.startswith("data/pgdata/pg_tblspc/") and name != "data/pgdata/pg_tblspc/"
+            for name in entries
+        )
         if (
             set(names) != set(entries) | {"COLD_COPY.json"}
             or any(f"{root}/" not in entries for root in _COLD_COPY_COMPONENTS)
@@ -457,11 +494,11 @@ class _VerifiedBackupArchive:
             or any(_is_connector_secret_entry(name) for name in entries)
             or "data/pgdata/postmaster.pid" in entries
             or "machine/operations/active.json" in entries
-            or any(name.startswith("data/pgdata/pg_tblspc/") and name != "data/pgdata/pg_tblspc/" for name in entries)
+            or has_nested_tblspc
         ):
             raise ExistingDatasetUpgradeError("pre-upgrade backup archive is missing required recovery components")
-        self._verify_all_members()
-        identity = manifest["identity"]
+
+    def _validate_archive_identity(self, identity: dict[str, object]) -> tuple[str, str, int]:
         release_id = identity.get("release_id")
         release_manifest_sha = identity.get("release_manifest_sha256")
         pg_major = identity.get("postgres_major")
@@ -472,32 +509,71 @@ class _VerifiedBackupArchive:
             or type(archive_epoch) is not int
             or archive_epoch != self._expected_restore_epoch
             or identity.get("schema_revision") != self._source_revision
-            or not isinstance(release_id, str)
-            or not release_id
-            or not isinstance(release_manifest_sha, str)
-            or _SHA256_HEX.fullmatch(release_manifest_sha) is None
-            or type(pg_major) is not int
-            or pg_major <= 0
+            or not _is_nonempty_str(release_id)
+            or not _is_hex_sha256(release_manifest_sha)
+            or not _is_positive_int(pg_major)
         ):
             raise ExistingDatasetUpgradeError("pre-upgrade backup archive identity does not match target dataset")
+        assert isinstance(release_id, str)
+        assert isinstance(release_manifest_sha, str)
+        assert isinstance(pg_major, int)
+        return release_id, release_manifest_sha, pg_major
+
+    def _validate_installation_binding(
+        self,
+        payload: bytes,
+        *,
+        release_id: str,
+        release_manifest_sha: str,
+    ) -> None:
+        binding = json.loads(payload.decode("utf-8"))
+        if not isinstance(binding, dict):
+            raise ExistingDatasetUpgradeError("pre-upgrade backup installation.json disagrees with identity")
+        binding_epoch = binding.get("expected_restore_epoch")
+        if (
+            binding.get("schema") != "ticketbox-installed-instance-v1"
+            or binding.get("install_id") != self._installation_id
+            or binding.get("dataset_id") != self._dataset_id
+            or type(binding_epoch) is not int
+            or binding_epoch != self._expected_restore_epoch
+            or binding.get("active_release_id") != release_id
+            or binding.get("release_manifest_sha256") != release_manifest_sha
+        ):
+            raise ExistingDatasetUpgradeError("pre-upgrade backup installation.json disagrees with identity")
+
+    def _validate_required_files(
+        self,
+        *,
+        pg_major: int,
+        release_id: str,
+        release_manifest_sha: str,
+    ) -> None:
         for required in sorted(_COLD_COPY_REQUIRED_FILES):
             payload = self._read_verified_member_bytes(required)
             if required == "data/pgdata/PG_VERSION" and payload.decode("ascii").strip() != str(pg_major):
                 raise ExistingDatasetUpgradeError("pre-upgrade backup PG_VERSION disagrees with archive identity")
             if required == "machine/installation.json":
-                binding = json.loads(payload.decode("utf-8"))
-                binding_epoch = binding.get("expected_restore_epoch") if isinstance(binding, dict) else None
-                if (
-                    not isinstance(binding, dict)
-                    or binding.get("schema") != "ticketbox-installed-instance-v1"
-                    or binding.get("install_id") != self._installation_id
-                    or binding.get("dataset_id") != self._dataset_id
-                    or type(binding_epoch) is not int
-                    or binding_epoch != self._expected_restore_epoch
-                    or binding.get("active_release_id") != release_id
-                    or binding.get("release_manifest_sha256") != release_manifest_sha
-                ):
-                    raise ExistingDatasetUpgradeError("pre-upgrade backup installation.json disagrees with identity")
+                self._validate_installation_binding(
+                    payload,
+                    release_id=release_id,
+                    release_manifest_sha=release_manifest_sha,
+                )
+
+    def _validate_restorable_structure(self, manifest: object, names: list[str]) -> None:
+        valid_manifest = self._validate_manifest_envelope(manifest)
+        entries = valid_manifest["entries"]
+        assert isinstance(entries, dict)
+        self._entries = entries
+        self._validate_archive_entry_layout(names, entries)
+        self._verify_all_members()
+        identity = valid_manifest["identity"]
+        assert isinstance(identity, dict)
+        release_id, release_manifest_sha, pg_major = self._validate_archive_identity(identity)
+        self._validate_required_files(
+            pg_major=pg_major,
+            release_id=release_id,
+            release_manifest_sha=release_manifest_sha,
+        )
         self._validate_program_inventory(release_id, release_manifest_sha)
         self._validate_recovery_history(identity)
 
@@ -513,10 +589,8 @@ class _VerifiedBackupArchive:
             if (
                 not isinstance(expected, dict)
                 or set(expected) != {"size", "sha256"}
-                or type(expected["size"]) is not int
-                or expected["size"] < 0
-                or not isinstance(expected["sha256"], str)
-                or _SHA256_HEX.fullmatch(expected["sha256"]) is None
+                or not _is_nonnegative_int(expected["size"])
+                or not _is_hex_sha256(expected["sha256"])
             ):
                 raise ExistingDatasetUpgradeError(f"pre-upgrade backup entry metadata is invalid: {name}")
             observed_size, observed_sha = self._member_digest(name)
@@ -525,11 +599,20 @@ class _VerifiedBackupArchive:
                     f"pre-upgrade backup member checksum mismatch: {name}"
                 )
 
-    def _validate_program_inventory(self, release_id: str, release_manifest_sha: str) -> None:
-        manifest_member = f"program/releases/{release_id}/release-manifest.json"
-        release_bytes = self._read_verified_member_bytes(manifest_member)
-        if hashlib.sha256(release_bytes).hexdigest() != release_manifest_sha:
-            raise ExistingDatasetUpgradeError("pre-upgrade backup release manifest digest mismatch")
+    @staticmethod
+    def _is_valid_inventory_item(item: object) -> bool:
+        return (
+            isinstance(item, dict)
+            and _is_nonempty_str(item.get("path"))
+            and _is_nonnegative_int(item.get("size"))
+            and _is_hex_sha256(item.get("sha256"))
+        )
+
+    @classmethod
+    def _parse_program_inventory(
+        cls,
+        release_bytes: bytes,
+    ) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
         try:
             release = json.loads(release_bytes.decode("utf-8"))
             inventory = release["immutable_payload"]["files"]
@@ -537,15 +620,7 @@ class _VerifiedBackupArchive:
                 raise ValueError("empty inventory")
             expected: dict[str, dict[str, object]] = {}
             for item in inventory:
-                if (
-                    not isinstance(item, dict)
-                    or not isinstance(item.get("path"), str)
-                    or not item["path"]
-                    or type(item.get("size")) is not int
-                    or item["size"] < 0
-                    or not isinstance(item.get("sha256"), str)
-                    or _SHA256_HEX.fullmatch(item["sha256"]) is None
-                ):
+                if not cls._is_valid_inventory_item(item):
                     raise ValueError("invalid inventory entry")
                 key = "program/" + item["path"]
                 if key in expected:
@@ -553,6 +628,14 @@ class _VerifiedBackupArchive:
                 expected[key] = {"size": item["size"], "sha256": item["sha256"]}
         except (KeyError, TypeError, ValueError) as exc:
             raise ExistingDatasetUpgradeError("pre-upgrade backup program inventory is incomplete") from exc
+        return release, expected
+
+    def _validate_program_inventory(self, release_id: str, release_manifest_sha: str) -> None:
+        manifest_member = f"program/releases/{release_id}/release-manifest.json"
+        release_bytes = self._read_verified_member_bytes(manifest_member)
+        if hashlib.sha256(release_bytes).hexdigest() != release_manifest_sha:
+            raise ExistingDatasetUpgradeError("pre-upgrade backup release manifest digest mismatch")
+        release, expected = self._parse_program_inventory(release_bytes)
         actual = {
             key: value
             for key, value in self._entries.items()
@@ -566,8 +649,7 @@ class _VerifiedBackupArchive:
         if (
             release.get("release_id") != release_id
             or release.get("max_schema_revision") != self._source_revision
-            or not isinstance(release.get("min_semantic_revision"), str)
-            or not release["min_semantic_revision"]
+            or not _is_nonempty_str(release.get("min_semantic_revision"))
             or actual != expected
             or not archived_pg
         ):
@@ -602,7 +684,16 @@ class _VerifiedBackupArchive:
                 "pre-upgrade backup PostgreSQL program tree does not match the local installation"
             )
 
-    def _validate_recovery_history(self, identity: dict[str, object]) -> None:
+    def _is_matching_committed_operation(self, record: object) -> bool:
+        return (
+            isinstance(record, dict)
+            and record.get("schema") == "ticketbox-lifecycle-operation-v2"
+            and record.get("phase") == "committed"
+            and record.get("install_id") == self._installation_id
+            and record.get("dataset_id") == self._dataset_id
+        )
+
+    def _load_committed_history(self) -> list[dict[str, object]]:
         history_names = sorted(
             name
             for name in self._entries
@@ -611,20 +702,16 @@ class _VerifiedBackupArchive:
         committed: list[dict[str, object]] = []
         for name in history_names:
             record = json.loads(self._read_verified_member_bytes(name).decode("utf-8"))
-            if (
-                isinstance(record, dict)
-                and record.get("schema") == "ticketbox-lifecycle-operation-v2"
-                and record.get("phase") == "committed"
-                and record.get("install_id") == self._installation_id
-                and record.get("dataset_id") == self._dataset_id
-            ):
+            if self._is_matching_committed_operation(record):
                 committed.append(record)
-        origins = [rec for rec in committed if rec.get("kind") in {"install", "restore"}]
-        if len(origins) != 1 or not isinstance(origins[0].get("operation_id"), str) or not origins[0]["operation_id"]:
-            raise ExistingDatasetUpgradeError("pre-upgrade backup lacks committed owner recovery history")
-        origin = origins[0]
-        if origin.get("release_manifest_sha256") == identity["release_manifest_sha256"]:
-            return
+        return committed
+
+    def _validate_upgrade_provenance(
+        self,
+        committed: list[dict[str, object]],
+        origin: dict[str, object],
+        identity: dict[str, object],
+    ) -> None:
         upgrades = [
             rec
             for rec in committed
@@ -638,6 +725,16 @@ class _VerifiedBackupArchive:
         ]
         if len(targets) != 1 or not _upgrade_chain_reaches_origin(origin, targets[0], upgrades):
             raise ExistingDatasetUpgradeError("pre-upgrade backup lacks committed upgrade provenance")
+
+    def _validate_recovery_history(self, identity: dict[str, object]) -> None:
+        committed = self._load_committed_history()
+        origins = [rec for rec in committed if rec.get("kind") in {"install", "restore"}]
+        if len(origins) != 1 or not _is_nonempty_str(origins[0].get("operation_id")):
+            raise ExistingDatasetUpgradeError("pre-upgrade backup lacks committed owner recovery history")
+        origin = origins[0]
+        if origin.get("release_manifest_sha256") == identity["release_manifest_sha256"]:
+            return
+        self._validate_upgrade_provenance(committed, origin, identity)
 
     def _member_digest(self, relative: str) -> tuple[int, str]:
         cached = self._verified_members.get(relative)
@@ -716,21 +813,13 @@ def _verify_snapshot_original(
         ) from exc
 
 
-def _verify_expense_originals(
+def _verify_expense_primary_originals(
     connection: Connection,
+    columns: set[str],
     *,
     data_root: Path,
     archive: _VerifiedBackupArchive,
 ) -> None:
-    from app.services.attachment_cleanup_service import pending_cleanup_references
-    from app.services.file_service import resolve_upload_path_for_tenant
-
-    inspector = sa_inspect(connection)
-    if not inspector.has_table("expenses", schema="public"):
-        return
-    columns = {col["name"] for col in inspector.get_columns("expenses", schema="public")}
-    if "image_path" not in columns or "tenant_id" not in columns:
-        return
     select_hash = "image_hash" if "image_hash" in columns else "NULL AS image_hash"
     where_deleted = " AND image_deleted_at IS NULL" if "image_deleted_at" in columns else ""
     rows = connection.execute(
@@ -748,31 +837,73 @@ def _verify_expense_originals(
             archive=archive,
         )
 
-    if "thumbnail_path" in columns:
-        where_thumb = " AND thumbnail_deleted_at IS NULL" if "thumbnail_deleted_at" in columns else ""
-        for tenant_id, thumb_path in connection.execute(
-            text(
-                f"SELECT tenant_id, thumbnail_path FROM public.expenses "
-                f"WHERE thumbnail_path IS NOT NULL{where_thumb}"
-            )
-        ).all():
-            resolved = resolve_upload_path_for_tenant(str(thumb_path), str(tenant_id))
+
+def _verify_expense_thumbnails(
+    connection: Connection,
+    columns: set[str],
+    *,
+    data_root: Path,
+    archive: _VerifiedBackupArchive,
+) -> None:
+    from app.services.file_service import resolve_upload_path_for_tenant
+
+    if "thumbnail_path" not in columns:
+        return
+    where_thumb = " AND thumbnail_deleted_at IS NULL" if "thumbnail_deleted_at" in columns else ""
+    rows = connection.execute(
+        text(
+            f"SELECT tenant_id, thumbnail_path FROM public.expenses "
+            f"WHERE thumbnail_path IS NOT NULL{where_thumb}"
+        )
+    ).all()
+    for tenant_id, thumb_path in rows:
+        resolved = resolve_upload_path_for_tenant(str(thumb_path), str(tenant_id))
+        if resolved is None or not resolved.is_file():
+            raise ExistingDatasetUpgradeError("retained thumbnail is missing on disk")
+        archive.verify_file(resolved, data_root=data_root)
+
+
+def _verify_expense_pending_cleanups(
+    connection: Connection,
+    columns: set[str],
+    *,
+    data_root: Path,
+    archive: _VerifiedBackupArchive,
+) -> None:
+    from app.services.attachment_cleanup_service import pending_cleanup_references
+    from app.services.file_service import resolve_upload_path_for_tenant
+
+    if "attachment_cleanup_request" not in columns:
+        return
+    rows = connection.execute(
+        text(
+            "SELECT tenant_id, attachment_cleanup_request FROM public.expenses "
+            "WHERE attachment_cleanup_request IS NOT NULL"
+        )
+    ).all()
+    for tenant_id, cleanup_req in rows:
+        for reference in pending_cleanup_references(cleanup_req):
+            resolved = resolve_upload_path_for_tenant(reference, str(tenant_id))
             if resolved is None or not resolved.is_file():
-                raise ExistingDatasetUpgradeError("retained thumbnail is missing on disk")
+                raise ExistingDatasetUpgradeError("pending cleanup original reference is missing")
             archive.verify_file(resolved, data_root=data_root)
 
-    if "attachment_cleanup_request" in columns:
-        for tenant_id, cleanup_req in connection.execute(
-            text(
-                "SELECT tenant_id, attachment_cleanup_request FROM public.expenses "
-                "WHERE attachment_cleanup_request IS NOT NULL"
-            )
-        ).all():
-            for reference in pending_cleanup_references(cleanup_req):
-                resolved = resolve_upload_path_for_tenant(reference, str(tenant_id))
-                if resolved is None or not resolved.is_file():
-                    raise ExistingDatasetUpgradeError("pending cleanup original reference is missing")
-                archive.verify_file(resolved, data_root=data_root)
+
+def _verify_expense_originals(
+    connection: Connection,
+    *,
+    data_root: Path,
+    archive: _VerifiedBackupArchive,
+) -> None:
+    inspector = sa_inspect(connection)
+    if not inspector.has_table("expenses", schema="public"):
+        return
+    columns = {col["name"] for col in inspector.get_columns("expenses", schema="public")}
+    if "image_path" not in columns or "tenant_id" not in columns:
+        return
+    _verify_expense_primary_originals(connection, columns, data_root=data_root, archive=archive)
+    _verify_expense_thumbnails(connection, columns, data_root=data_root, archive=archive)
+    _verify_expense_pending_cleanups(connection, columns, data_root=data_root, archive=archive)
 
 
 def _expenses_projection_cte(inspector) -> str:
@@ -792,7 +923,11 @@ def _expenses_projection_cte(inspector) -> str:
             "CAST(NULL AS JSONB) AS attachment_cleanup_request WHERE FALSE"
         )
     hash_expr = "image_hash" if "image_hash" in columns else "CAST(NULL AS TEXT) AS image_hash"
-    deleted_expr = "image_deleted_at" if "image_deleted_at" in columns else "CAST(NULL AS TIMESTAMPTZ) AS image_deleted_at"
+    deleted_expr = (
+        "image_deleted_at"
+        if "image_deleted_at" in columns
+        else "CAST(NULL AS TIMESTAMPTZ) AS image_deleted_at"
+    )
     cleanup_expr = (
         "attachment_cleanup_request"
         if "attachment_cleanup_request" in columns
@@ -968,6 +1103,12 @@ def _verify_upgrade_originals(
         _verify_debt_bill_originals(connection, data_root=data_root, archive=archive)
 
 
+def _require_absolute_path(value: object, *, message: str) -> Path:
+    if not isinstance(value, Path) or not value.is_absolute():
+        raise ExistingDatasetUpgradeError(message)
+    return value
+
+
 def run_existing_dataset_upgrade_action(
     *,
     database_url: str,
@@ -989,7 +1130,7 @@ def run_existing_dataset_upgrade_action(
 ) -> dict[str, object]:
     bound_dataset_id = _canonical_uuid(dataset_id, label="dataset_id")
     bound_installation_id = _canonical_uuid(installation_id, label="installation_id")
-    if type(expected_restore_epoch) is not int or expected_restore_epoch < 0:
+    if not _is_nonnegative_int(expected_restore_epoch):
         raise ExistingDatasetUpgradeError("expected_restore_epoch is invalid")
     source = _require_revision(source_revision, label="source_revision")
     target = _require_revision(target_revision, label="target_revision")
@@ -997,14 +1138,14 @@ def run_existing_dataset_upgrade_action(
         bound_operation_id = validate_generation_operation_id(operation_id)
     except DatabaseGenerationExecutionError as exc:
         raise ExistingDatasetUpgradeError(str(exc)) from exc
-    if not isinstance(pgpassfile, Path) or not pgpassfile.is_absolute():
-        raise ExistingDatasetUpgradeError("pgpass path must be absolute")
-    if not isinstance(data_root, Path) or not data_root.is_absolute():
-        raise ExistingDatasetUpgradeError("data_root must be an absolute path")
-    if not isinstance(backup_archive, Path) or not backup_archive.is_absolute():
-        raise ExistingDatasetUpgradeError("backup_archive must be an absolute path")
-    if app_dir is not None and (not isinstance(app_dir, Path) or not app_dir.is_absolute()):
-        raise ExistingDatasetUpgradeError("app_dir must be an absolute path")
+    bound_pgpass = _require_absolute_path(pgpassfile, message="pgpass path must be absolute")
+    bound_data_root = _require_absolute_path(data_root, message="data_root must be an absolute path")
+    bound_backup_archive = _require_absolute_path(backup_archive, message="backup_archive must be an absolute path")
+    bound_app_dir = (
+        _require_absolute_path(app_dir, message="app_dir must be an absolute path")
+        if app_dir is not None
+        else None
+    )
     bound_backup_sha = _require_sha256(backup_archive_sha256, label="backup_archive_sha256")
     resolved_program = _resolve_program(program)
     if target != resolved_program.target_revision:
@@ -1019,7 +1160,7 @@ def run_existing_dataset_upgrade_action(
     try:
         outcome = ManagedPostgresMigrationRuntimeV1(effective_contract).run(
             database_url=database_url,
-            pgpassfile=pgpassfile,
+            pgpassfile=bound_pgpass,
             program=resolved_program,
             source_revision=source,
             target_revision=target,
@@ -1032,14 +1173,14 @@ def run_existing_dataset_upgrade_action(
             backup_archive_sha256=bound_backup_sha,
             pre_migration_check=lambda connection: _verify_upgrade_originals(
                 connection,
-                data_root=data_root,
-                backup_archive=backup_archive,
+                data_root=bound_data_root,
+                backup_archive=bound_backup_archive,
                 backup_archive_sha256=bound_backup_sha,
                 dataset_id=bound_dataset_id,
                 installation_id=bound_installation_id,
                 expected_restore_epoch=expected_restore_epoch,
                 source_revision=source,
-                app_dir=app_dir,
+                app_dir=bound_app_dir,
             ),
         )
     except ManagedPostgresMigrationRuntimeError as exc:

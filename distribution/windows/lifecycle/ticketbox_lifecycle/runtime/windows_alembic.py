@@ -96,6 +96,50 @@ class WindowsAlembicAdapter:
         if completed.returncode != 0 or observed not in {expected, f"SET\n{expected}"}:
             raise LifecycleError("postcondition_missing", "alembic_version is not the exact release target")
 
+    @staticmethod
+    def _parse_upgrade_migration_payload(
+        stdout: str,
+        *,
+        request: InstallRequest,
+        source_revision: str,
+        target_revision: str,
+        expected_restore_epoch: int,
+        backup_sha256: str,
+    ) -> UpgradeMigrationResult:
+        try:
+            payload = json.loads(stdout)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise LifecycleError("upgrade_migration_failed", "upgrade helper did not return JSON") from exc
+        expected_values = {
+            "schema": _MIGRATION_RESULT_SCHEMA,
+            "operation_id": request.operation_id,
+            "dataset_id": request.dataset_id,
+            "installation_id": request.install_id,
+            "restore_epoch": expected_restore_epoch,
+            "source_revision": source_revision,
+            "target_revision": target_revision,
+            "alembic_revision": target_revision,
+            "backup_archive_sha256": backup_sha256,
+        }
+        valid_outcome = (
+            isinstance(payload, dict)
+            and set(payload) == _MIGRATION_RESULT_FIELDS
+            and all(payload.get(key) == val for key, val in expected_values.items())
+            and payload.get("result") in {"target_committed", "target_observed_after_interruption"}
+        )
+        if not valid_outcome:
+            raise LifecycleViolation(
+                "upgrade_migration_mismatch",
+                "upgrade helper result does not match the exact upgrade contract",
+            )
+        return UpgradeMigrationResult(
+            outcome=payload["result"],
+            source_revision=source_revision,
+            target_revision=target_revision,
+            operation_id=request.operation_id,
+        )
+
+
     def upgrade_existing_dataset(
         self,
         request: InstallRequest,
@@ -152,31 +196,11 @@ class WindowsAlembicAdapter:
             input_text="",
         )
         require_ok(completed, code="upgrade_migration_failed")
-        try:
-            payload = json.loads(completed.stdout)
-        except (TypeError, json.JSONDecodeError) as exc:
-            raise LifecycleError("upgrade_migration_failed", "upgrade helper did not return JSON") from exc
-        if (
-            not isinstance(payload, dict)
-            or set(payload) != _MIGRATION_RESULT_FIELDS
-            or payload.get("schema") != _MIGRATION_RESULT_SCHEMA
-            or payload.get("operation_id") != request.operation_id
-            or payload.get("dataset_id") != request.dataset_id
-            or payload.get("installation_id") != request.install_id
-            or payload.get("restore_epoch") != expected_restore_epoch
-            or payload.get("source_revision") != source_revision
-            or payload.get("target_revision") != target_revision
-            or payload.get("alembic_revision") != target_revision
-            or payload.get("backup_archive_sha256") != backup_sha256
-            or payload.get("result") not in {"target_committed", "target_observed_after_interruption"}
-        ):
-            raise LifecycleViolation(
-                "upgrade_migration_mismatch",
-                "upgrade helper result does not match the exact upgrade contract",
-            )
-        return UpgradeMigrationResult(
-            outcome=payload["result"],
+        return self._parse_upgrade_migration_payload(
+            completed.stdout,
+            request=request,
             source_revision=source_revision,
             target_revision=target_revision,
-            operation_id=request.operation_id,
+            expected_restore_epoch=expected_restore_epoch,
+            backup_sha256=backup_sha256,
         )

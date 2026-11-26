@@ -28,9 +28,28 @@ class CommandRunner(Protocol):
     ) -> CompletedCommand: ...
 
 
+class _HasReturnCode(Protocol):
+    returncode: int
+
+
+class _ManagedJob(Protocol):
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        env: Mapping[str, str] | None = None,
+        timeout_s: int = 120,
+        input_text: str | None = None,
+        capture_output: bool = True,
+        on_timeout: Callable[[], None] | None = None,
+    ) -> _HasReturnCode: ...
+
+    def close(self) -> None: ...
+
+
 class _SubprocessManagedJob:
     def __init__(self) -> None:
-        self._job: object | None = None
+        self._job: _ManagedJob | None = None
 
     def __enter__(self) -> _SubprocessManagedJob:
         from ticketbox_lifecycle.runtime.windows_process import PersistentKillOnCloseJob
@@ -60,7 +79,7 @@ class _SubprocessManagedJob:
 
         program = os.path.basename(str(argv[0])) or "platform command"
         try:
-            completed = self._job.run(  # type: ignore[attr-defined]
+            completed = self._job.run(
                 argv,
                 env=env,
                 timeout_s=timeout_s,
@@ -93,7 +112,7 @@ class _SubprocessManagedJob:
     def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
         job, self._job = self._job, None
         if job is not None:
-            job.close()  # type: ignore[attr-defined]
+            job.close()
 
 
 class SubprocessCommandRunner:

@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, Literal, cast
 
 import pytest
 from fakes import MemoryMutex, MemoryStores, RecordingAdapterBundle, make_install_request
@@ -181,8 +182,8 @@ class FakeUpgradePlatform:
             orig_fence(req)
             self.running_mode = None
 
-        stores.adapters.scm.apply = tracking_scm_apply  # type: ignore[method-assign]
-        stores.adapters.scm.fence_backend = tracking_fence  # type: ignore[method-assign]
+        setattr(stores.adapters.scm, "apply", tracking_scm_apply)
+        setattr(stores.adapters.scm, "fence_backend", tracking_fence)
 
     def verify_staged_release(
         self,
@@ -337,7 +338,7 @@ class FakeUpgradePlatform:
         if self.fail_at == "migrate_after_commit_before_stdout":
             raise LifecycleError("upgrade_migration_failed", "helper crashed after PG commit before stdout")
         return UpgradeMigrationResult(
-            outcome=outcome,  # type: ignore[arg-type]
+            outcome=cast(Literal["target_committed", "target_observed_after_interruption"], outcome),
             source_revision=source_revision,
             target_revision=target_revision,
             operation_id=request.operation_id,
@@ -819,7 +820,7 @@ def test_cold_installation_allowed_operation_id_and_locked_cold_copy_no_reentry(
 
     control_sha = hashlib.sha256(control.read_bytes()).hexdigest()
     allowed_source = ColdInstallation(
-        FakeStores(upgrade_op),  # type: ignore[arg-type]
+        cast(Any, FakeStores(upgrade_op)),
         StoppedRunner(),
         req,
         binding,
@@ -829,7 +830,7 @@ def test_cold_installation_allowed_operation_id_and_locked_cold_copy_no_reentry(
     allowed_source.require_stopped()
 
     disallowed_other = ColdInstallation(
-        FakeStores(replace(upgrade_op, operation_id="upgrade-" + ("9" * 64))),  # type: ignore[arg-type]
+        cast(Any, FakeStores(replace(upgrade_op, operation_id="upgrade-" + ("9" * 64)))),
         StoppedRunner(),
         req,
         binding,
@@ -857,7 +858,7 @@ def test_cold_installation_allowed_operation_id_and_locked_cold_copy_no_reentry(
         health_attestation_key="e" * 64,
     )
     disallowed_kind = ColdInstallation(
-        FakeStores(install_op),  # type: ignore[arg-type]
+        cast(Any, FakeStores(install_op)),
         StoppedRunner(),
         req,
         binding,
@@ -868,7 +869,7 @@ def test_cold_installation_allowed_operation_id_and_locked_cold_copy_no_reentry(
         disallowed_kind.require_stopped()
 
     disallowed_default = ColdInstallation(
-        FakeStores(upgrade_op),  # type: ignore[arg-type]
+        cast(Any, FakeStores(upgrade_op)),
         StoppedRunner(),
         req,
         binding,
@@ -1103,11 +1104,11 @@ def test_windows_upgrade_platform_migrator_and_rebind_contracts(tmp_path: Path) 
 
     runner = FakeRunner()
     platform = WindowsUpgradePlatform(
-        SimpleNamespace(_mutex=ThreadMutex()),  # type: ignore[arg-type]
+        cast(Any, SimpleNamespace(_mutex=ThreadMutex())),
         runner,
-        FakeSecurity(),  # type: ignore[arg-type]
-        FakeScm(),  # type: ignore[arg-type]
-        FakeObserver(),  # type: ignore[arg-type]
+        cast(Any, FakeSecurity()),
+        cast(Any, FakeScm()),
+        cast(Any, FakeObserver()),
         expected_app_dir=Path(request.app_dir),
         expected_program_data_root=Path(request.program_data_root),
     )
@@ -1434,9 +1435,9 @@ def test_m1_pre_upgrade_cold_backup_is_natively_valid_without_exemption_and_sync
     platform = WindowsUpgradePlatform(
         stores,
         _stopped_pg_runner(),
-        SimpleNamespace(),  # type: ignore[arg-type]
-        SimpleNamespace(),  # type: ignore[arg-type]
-        SimpleNamespace(),  # type: ignore[arg-type]
+        cast(Any, SimpleNamespace()),
+        cast(Any, SimpleNamespace()),
+        cast(Any, SimpleNamespace()),
         staged_release_root=stage_130,
         expected_app_dir=app,
         expected_program_data_root=program_data,
@@ -1768,7 +1769,7 @@ def test_m7_residual_verify_only_process_is_rejected_and_forced_restart_reaches_
 
     adapter = WindowsDatasetAdapter(
         SimpleNamespace(run=lambda *_a, **_k: CompletedCommand((), 0, DATASET_ID + "\n", "")),
-        SimpleNamespace(),  # type: ignore[arg-type]
+        cast(Any, SimpleNamespace()),
     )
     monkeypatch.setattr(ds_mod, "fetch_installation_health_with_mode", fake_fetch)
     adapter.verify_runtime_mode(req, expected_mode="upgrade_verify_only")
@@ -2087,11 +2088,11 @@ def test_pg_start_type_must_be_auto_start_before_backup_and_sql(tmp_path: Path) 
             pass
 
     platform = WindowsUpgradePlatform(
-        SimpleNamespace(_mutex=ThreadMutex()),  # type: ignore[arg-type]
+        cast(Any, SimpleNamespace(_mutex=ThreadMutex())),
         _stopped_pg_runner(),
-        SimpleNamespace(),  # type: ignore[arg-type]
-        NoopScm(),  # type: ignore[arg-type]
-        DemandPgObserver(),  # type: ignore[arg-type]
+        cast(Any, SimpleNamespace()),
+        cast(Any, NoopScm()),
+        cast(Any, DemandPgObserver()),
         expected_app_dir=Path(request.app_dir),
         expected_program_data_root=Path(request.program_data_root),
     )
@@ -2506,9 +2507,9 @@ def test_pass2_f6_removed_connector_rebinds_and_reconfigures_on_b_and_shortcut_u
     platform = WindowsUpgradePlatform(
         stores,
         _stopped_pg_runner(),
-        SimpleNamespace(),  # type: ignore[arg-type]
-        SimpleNamespace(),  # type: ignore[arg-type]
-        SimpleNamespace(),  # type: ignore[arg-type]
+        cast(Any, SimpleNamespace()),
+        cast(Any, SimpleNamespace()),
+        cast(Any, SimpleNamespace()),
         staged_release_root=stage_b,
         expected_app_dir=app,
         expected_program_data_root=program_data,
@@ -2613,7 +2614,7 @@ def test_pass2_f7_double_readback_failure_after_committed_replace_never_overwrit
 
     sec = FailingReadbackSecurity()
     req, mem_stores, adapters, src_rev, tgt_rev = _make_upgrade_fixture(tmp_path)
-    adapters.security = sec  # type: ignore[assignment]
+    setattr(adapters, "security", sec)
     fs_stores = FilesystemStores(
         tmp_path / "programdata" / "machine",
         "TicketboxBackend",
@@ -2642,11 +2643,15 @@ def test_pass2_f7_double_readback_failure_after_committed_replace_never_overwrit
         binding_write=fs_stores,
     )
     plat = FakeUpgradePlatform(stores=mem_stores, source_revision=src_rev, target_revision=tgt_rev)
-    plat.stores = SimpleNamespace(  # type: ignore[assignment]
-        mutex=SimpleNamespace(_lock=SimpleNamespace(locked=lambda: True)),
-        read_active=fs_stores.read_active,
-        adapters=adapters,
-        bind_and_verify=mem_stores.bind_and_verify,
+    setattr(
+        plat,
+        "stores",
+        SimpleNamespace(
+            mutex=SimpleNamespace(_lock=SimpleNamespace(locked=lambda: True)),
+            read_active=fs_stores.read_active,
+            adapters=adapters,
+            bind_and_verify=mem_stores.bind_and_verify,
+        ),
     )
     result = upgrade(lifecycle, req, plat)
     assert result.ok is False
@@ -2903,11 +2908,11 @@ def test_pass3_m4_cli_and_platform_reject_spoofed_roots_against_system_known_fol
         release_manifest_sha256="2" * 64,
     )
     platform = WindowsUpgradePlatform(
-        SimpleNamespace(_mutex=ThreadMutex()),  # type: ignore[arg-type]
+        cast(Any, SimpleNamespace(_mutex=ThreadMutex())),
         _stopped_pg_runner(),
-        SimpleNamespace(),  # type: ignore[arg-type]
-        SimpleNamespace(),  # type: ignore[arg-type]
-        SimpleNamespace(),  # type: ignore[arg-type]
+        cast(Any, SimpleNamespace()),
+        cast(Any, SimpleNamespace()),
+        cast(Any, SimpleNamespace()),
         staged_release_root=stage_spoof,
         expected_app_dir=real_app,
         expected_program_data_root=real_pd,
@@ -2966,11 +2971,11 @@ def test_pass3_m4_cli_and_platform_reject_spoofed_roots_against_system_known_fol
 
         req_real = replace(req_spoof, app_dir=str(real_app), data_root=str(real_pd / "data"), program_data_root=str(real_pd))
         plat_real = WindowsUpgradePlatform(
-            SimpleNamespace(_mutex=ThreadMutex()),  # type: ignore[arg-type]
+            cast(Any, SimpleNamespace(_mutex=ThreadMutex())),
             _stopped_pg_runner(),
             real_sec,
-            SimpleNamespace(),  # type: ignore[arg-type]
-            SimpleNamespace(),  # type: ignore[arg-type]
+            cast(Any, SimpleNamespace()),
+            cast(Any, SimpleNamespace()),
             staged_release_root=user_writable_stage,
             expected_app_dir=real_app,
             expected_program_data_root=real_pd,
@@ -3090,7 +3095,7 @@ def test_pass3_s1_pre_replace_commit_publish_failure_reports_release_activated_p
 
     sec = FailingTempSecurity()
     req, mem_stores, adapters, src_rev, tgt_rev = _make_upgrade_fixture(tmp_path)
-    adapters.security = sec  # type: ignore[assignment]
+    setattr(adapters, "security", sec)
     fs_stores = FilesystemStores(
         tmp_path / "programdata" / "machine",
         "TicketboxBackend",
@@ -3118,11 +3123,15 @@ def test_pass3_s1_pre_replace_commit_publish_failure_reports_release_activated_p
         binding_write=fs_stores,
     )
     plat = FakeUpgradePlatform(stores=mem_stores, source_revision=src_rev, target_revision=tgt_rev)
-    plat.stores = SimpleNamespace(  # type: ignore[assignment]
-        mutex=SimpleNamespace(_lock=SimpleNamespace(locked=lambda: True)),
-        read_active=fs_stores.read_active,
-        adapters=adapters,
-        bind_and_verify=mem_stores.bind_and_verify,
+    setattr(
+        plat,
+        "stores",
+        SimpleNamespace(
+            mutex=SimpleNamespace(_lock=SimpleNamespace(locked=lambda: True)),
+            read_active=fs_stores.read_active,
+            adapters=adapters,
+            bind_and_verify=mem_stores.bind_and_verify,
+        ),
     )
     result = upgrade(lifecycle, req, plat)
     assert result.ok is False
@@ -3519,7 +3528,7 @@ def test_u1_rollback_verifies_real_121_health_without_mode_headers_and_checks_re
 
     dataset = WindowsDatasetAdapter(SimpleNamespace(), SimpleNamespace())
     platform = WindowsUpgradePlatform(
-        stores,  # type: ignore[arg-type]
+        cast(Any, stores),
         SimpleNamespace(),
         SimpleNamespace(),
         SimpleNamespace(),
@@ -3869,7 +3878,7 @@ def test_u1_second_space_precheck_failure_does_not_fence_or_stop_running_previou
         if space_calls == 2:
             raise LifecycleError("cold_space_insufficient", "volume filled before stopping services")
 
-    platform.check_backup_disk_space = fail_on_second_space_check  # type: ignore[method-assign]
+    setattr(platform, "check_backup_disk_space", fail_on_second_space_check)
     result = upgrade(stores.as_lifecycle_stores(), request, platform)
 
     assert result.ok is False
@@ -4080,7 +4089,7 @@ def test_u1_shared_payload_restore_enforces_same_volume_temp_dir_on_app_parent(
         business_writes_opened=False,
     )
     platform = wu_mod.WindowsUpgradePlatform(
-        SimpleNamespace(),  # type: ignore[arg-type]
+        cast(Any, SimpleNamespace()),
         SimpleNamespace(),
         SimpleNamespace(),
         SimpleNamespace(),
@@ -4271,7 +4280,7 @@ def test_all_six_clis_resolve_known_roots_only_once_without_secondary_resolution
         return CommandResult(
             schema=RESULT_SCHEMA,
             ok=True,
-            command=command,  # type: ignore[arg-type]
+            command=cast(Any, command),
             operation_id="op-single-shot",
             phase="committed",
             code="committed",

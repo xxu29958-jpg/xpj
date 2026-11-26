@@ -94,52 +94,37 @@ def _arg_value(argv: tuple[str, ...], flag: str) -> str | None:
     return None
 
 
-def _verify_owned_connector_service(
+def _match_owned_connector_release(
     request: InstallRequest,
     binding: InstallationBinding,
-    observed_conn: object,
-) -> None:
-    argv = tuple(getattr(observed_conn, "argv", ()) or ())
-    if not argv:
-        raise LifecycleViolation(
-            "uninstall_foreign_service_refused",
-            "TicketboxCloudflared service has no observable command line",
-        )
+    argv: tuple[str, ...],
+) -> str:
     candidate_releases = [binding.active_release_id]
     if binding.previous_release_id and binding.previous_release_id != binding.active_release_id:
         candidate_releases.append(binding.previous_release_id)
     exe = _norm_path(argv[0])
     config_arg = _arg_value(argv, "--config")
     token_arg = _arg_value(argv, "--token-file")
-    matched_release = None
-    for rid in candidate_releases:
-        connector_dir = Path(request.app_dir) / "releases" / rid / "connector"
-        if (
-            exe == _norm_path(connector_dir / "cloudflared.exe")
-            and config_arg is not None
-            and _norm_path(config_arg) == _norm_path(connector_dir / "config.json")
-        ):
-            matched_release = rid
-            break
-    if matched_release is None or token_arg is None:
+    matched = any(
+        exe == _norm_path(Path(request.app_dir) / "releases" / rid / "connector" / "cloudflared.exe")
+        and config_arg is not None
+        and _norm_path(config_arg) == _norm_path(Path(request.app_dir) / "releases" / rid / "connector" / "config.json")
+        for rid in candidate_releases
+    )
+    if not matched or token_arg is None:
         raise LifecycleViolation(
             "uninstall_foreign_service_refused",
             "TicketboxCloudflared service does not belong to this verified installation",
         )
-    connector_root = layout.machine_root(request) / "connectors" / "cloudflare"
-    secret_root = connector_root / "secrets"
-    state_path = connector_root / "state.json"
-    token_path = Path(token_arg)
-    for path in (connector_root, secret_root, state_path, token_path):
-        reject_reparse_components(path)
-    if (
-        _norm_path(token_path.parent) != _norm_path(secret_root)
-        or _CONNECTOR_TOKEN_FILE.fullmatch(token_path.name) is None
-    ):
-        raise LifecycleViolation(
-            "uninstall_foreign_service_refused",
-            "TicketboxCloudflared token file does not belong to this installation",
-        )
+    return token_arg
+
+
+def _verify_connector_state_ownership(
+    state_path: Path,
+    secret_root: Path,
+    token_path: Path,
+    binding: InstallationBinding,
+) -> None:
     if not state_path.is_file():
         raise LifecycleViolation(
             "uninstall_foreign_service_refused",
@@ -174,6 +159,35 @@ def _verify_owned_connector_service(
             "uninstall_foreign_service_refused",
             "TicketboxCloudflared credential generation does not match installation state",
         )
+
+
+def _verify_owned_connector_service(
+    request: InstallRequest,
+    binding: InstallationBinding,
+    observed_conn: object,
+) -> None:
+    argv = tuple(getattr(observed_conn, "argv", ()) or ())
+    if not argv:
+        raise LifecycleViolation(
+            "uninstall_foreign_service_refused",
+            "TicketboxCloudflared service has no observable command line",
+        )
+    token_arg = _match_owned_connector_release(request, binding, argv)
+    connector_root = layout.machine_root(request) / "connectors" / "cloudflare"
+    secret_root = connector_root / "secrets"
+    state_path = connector_root / "state.json"
+    token_path = Path(token_arg)
+    for path in (connector_root, secret_root, state_path, token_path):
+        reject_reparse_components(path)
+    if (
+        _norm_path(token_path.parent) != _norm_path(secret_root)
+        or _CONNECTOR_TOKEN_FILE.fullmatch(token_path.name) is None
+    ):
+        raise LifecycleViolation(
+            "uninstall_foreign_service_refused",
+            "TicketboxCloudflared token file does not belong to this installation",
+        )
+    _verify_connector_state_ownership(state_path, secret_root, token_path, binding)
 
 
 class WindowsUninstallPlatform:
@@ -267,6 +281,176 @@ class WindowsUninstallPlatform:
             return self._shortcut_remover()
         return remove_manager_start_menu_shortcut()
 
+    @staticmethod
+    def _is_hex_sha256(value: object) -> bool:
+        return (
+            isinstance(value, str)
+            and len(value) == 64
+            and all(ch in "0123456789abcdefABCDEF" for ch in value)
+        )
+
+    @classmethod
+    def _normalized_expected_manifests(
+        cls,
+        binding: InstallationBinding,
+        expected_manifests: Mapping[str, str] | None,
+    ) -> dict[str, str]:
+        manifest_shas = {
+            rid.casefold(): sha.lower()
+            for rid, sha in (expected_manifests or {}).items()
+            if cls._is_hex_sha256(sha)
+        }
+        active_key = binding.active_release_id.casefold()
+        if active_key not in manifest_shas and cls._is_hex_sha256(binding.release_manifest_sha256):
+            manifest_shas[active_key] = binding.release_manifest_sha256.lower()
+        return manifest_shas
+
+    @staticmethod
+    def _verify_expected_release_files(
+        rid: str,
+        app_dir: Path,
+        release_dir: Path,
+        manifest_path: Path,
+        expected: Mapping[str, Mapping[str, object]],
+        *,
+        resuming_cleanup: bool,
+    ) -> tuple[set[str], list[Path]]:
+        release_prefix = f"releases/{rid.casefold()}/"
+        expected_norm_paths: set[str] = {_norm_path(manifest_path)}
+        payload_files: list[Path] = []
+        for key, record in expected.items():
+            if not key.startswith(release_prefix):
+                continue
+            target = app_dir / Path(str(record["path"]))
+            reject_reparse_components(target)
+            try:
+                Path(os.path.abspath(target)).relative_to(Path(os.path.abspath(release_dir)))
+            except ValueError as exc:
+                raise LifecycleViolation(
+                    "uninstall_path_escaped",
+                    f"release manifest file escapes release directory: {record['path']}",
+                ) from exc
+            expected_file_sha = record.get("sha256")
+            if (
+                not isinstance(expected_file_sha, str)
+                or len(expected_file_sha) != 64
+                or not all(ch in "0123456789abcdef" for ch in expected_file_sha)
+            ):
+                raise LifecycleViolation(
+                    "uninstall_release_file_hash_mismatch",
+                    f"release {rid} manifest lacks a valid SHA-256 digest for {record['path']}",
+                )
+            expected_norm_paths.add(_norm_path(target))
+            if not os.path.lexists(target):
+                if not resuming_cleanup:
+                    raise LifecycleViolation(
+                        "uninstall_release_file_missing",
+                        f"release {rid} payload file is missing before uninstall: {record['path']}",
+                    )
+            elif not target.is_file() or _sha256_file(target) != expected_file_sha:
+                raise LifecycleViolation(
+                    "uninstall_release_file_hash_mismatch",
+                    f"release {rid} payload file digest does not match verified manifest: {record['path']}",
+                )
+            payload_files.append(target)
+        return expected_norm_paths, payload_files
+
+    @staticmethod
+    def _verify_release_dir_entries(
+        rid: str,
+        release_dir: Path,
+        expected_norm_paths: set[str],
+    ) -> None:
+        for root_dir, dirs, files in os.walk(
+            release_dir,
+            topdown=True,
+            followlinks=False,
+            onerror=_raise_walk_error,
+        ):
+            root_path = Path(root_dir)
+            reject_reparse_components(root_path)
+            for dirname in dirs:
+                reject_reparse_components(root_path / dirname)
+            for filename in files:
+                candidate = root_path / filename
+                reject_reparse_components(candidate)
+                if not candidate.is_file():
+                    raise LifecycleViolation(
+                        "uninstall_release_unexpected_file",
+                        f"release {rid} contains a non-regular file: {candidate.relative_to(release_dir)}",
+                    )
+                if _norm_path(candidate) not in expected_norm_paths:
+                    raise LifecycleViolation(
+                        "uninstall_release_unexpected_file",
+                        f"release {rid} contains an unexpected file outside its verified manifest: "
+                        f"{candidate.relative_to(release_dir)}",
+                    )
+
+    def _plan_single_release_cleanup(
+        self,
+        rid: str,
+        *,
+        app_dir: Path,
+        releases_root: Path,
+        binding: InstallationBinding,
+        manifest_shas: Mapping[str, str],
+        running_exe: str,
+        resuming_cleanup: bool,
+    ) -> tuple[str, Path, Path | None, list[Path]] | None:
+        release_dir = releases_root / rid
+        manifest_path = release_dir / "release-manifest.json"
+        reject_reparse_components(release_dir)
+        reject_reparse_components(manifest_path)
+        is_active = rid.casefold() == binding.active_release_id.casefold()
+        if not os.path.lexists(release_dir):
+            if is_active and not resuming_cleanup:
+                raise LifecycleViolation(
+                    "uninstall_release_manifest_missing",
+                    f"active release directory {rid} is missing; refusing uninstall cleanup",
+                )
+            return None
+        if _is_path_inside_dir(running_exe, release_dir):
+            raise LifecycleViolation(
+                "uninstall_running_from_release_dir",
+                f"controlled uninstall must execute from shared bin/lifecycle, not from release {rid}",
+            )
+        if resuming_cleanup and release_dir.is_dir() and not os.path.lexists(manifest_path):
+            if not any(release_dir.iterdir()):
+                return (rid, release_dir, None, [])
+            raise LifecycleViolation(
+                "uninstall_release_manifest_missing",
+                f"release {rid} lacks release-manifest.json while non-empty; refusing blind deletion",
+            )
+        expected_sha = manifest_shas.get(rid.casefold())
+        if expected_sha is None:
+            raise LifecycleViolation(
+                "uninstall_release_manifest_unverified",
+                f"release {rid} lacks a verified manifest digest from installation history; refusing deletion",
+            )
+        if not manifest_path.is_file():
+            raise LifecycleViolation(
+                "uninstall_release_manifest_missing",
+                f"release {rid} lacks release-manifest.json; refusing blind deletion",
+            )
+        manifest_bytes = manifest_path.read_bytes()
+        if hashlib.sha256(manifest_bytes).hexdigest().lower() != expected_sha:
+            raise LifecycleViolation(
+                "uninstall_release_manifest_mismatch",
+                f"release {rid} manifest digest does not match verified installation history",
+            )
+        manifest = _parse_manifest(manifest_bytes, rid)
+        expected = _expected_files(manifest, app_dir, manifest_path)
+        expected_norm_paths, payload_files = self._verify_expected_release_files(
+            rid,
+            app_dir,
+            release_dir,
+            manifest_path,
+            expected,
+            resuming_cleanup=resuming_cleanup,
+        )
+        self._verify_release_dir_entries(rid, release_dir, expected_norm_paths)
+        return (rid, release_dir, manifest_path, payload_files)
+
     def _plan_registered_release_cleanup(
         self,
         request: InstallRequest,
@@ -280,18 +464,7 @@ class WindowsUninstallPlatform:
         releases_root = app_dir / "releases"
         reject_reparse_components(app_dir)
         reject_reparse_components(releases_root)
-        manifest_shas = {
-            rid.casefold(): sha.lower()
-            for rid, sha in (expected_manifests or {}).items()
-            if isinstance(sha, str) and len(sha) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in sha)
-        }
-        if (
-            binding.active_release_id.casefold() not in manifest_shas
-            and isinstance(binding.release_manifest_sha256, str)
-            and len(binding.release_manifest_sha256) == 64
-            and all(ch in "0123456789abcdefABCDEF" for ch in binding.release_manifest_sha256)
-        ):
-            manifest_shas[binding.active_release_id.casefold()] = binding.release_manifest_sha256.lower()
+        manifest_shas = self._normalized_expected_manifests(binding, expected_manifests)
         if os.path.lexists(releases_root) and not releases_root.is_dir():
             raise LifecycleViolation(
                 "uninstall_release_manifest_missing",
@@ -317,119 +490,17 @@ class WindowsUninstallPlatform:
         running_exe = sys.executable or ""
         planned: list[tuple[str, Path, Path | None, list[Path]]] = []
         for rid in release_ids:
-            release_dir = releases_root / rid
-            manifest_path = release_dir / "release-manifest.json"
-            reject_reparse_components(release_dir)
-            reject_reparse_components(manifest_path)
-            is_active = rid.casefold() == binding.active_release_id.casefold()
-            if not os.path.lexists(release_dir):
-                if is_active and not resuming_cleanup:
-                    raise LifecycleViolation(
-                        "uninstall_release_manifest_missing",
-                        f"active release directory {rid} is missing; refusing uninstall cleanup",
-                    )
-                continue
-            if _is_path_inside_dir(running_exe, release_dir):
-                raise LifecycleViolation(
-                    "uninstall_running_from_release_dir",
-                    f"controlled uninstall must execute from shared bin/lifecycle, not from release {rid}",
-                )
-            if resuming_cleanup and release_dir.is_dir() and not os.path.lexists(manifest_path):
-                if not any(release_dir.iterdir()):
-                    planned.append((rid, release_dir, None, []))
-                    continue
-                raise LifecycleViolation(
-                    "uninstall_release_manifest_missing",
-                    f"release {rid} lacks release-manifest.json while non-empty; refusing blind deletion",
-                )
-            expected_sha = manifest_shas.get(rid.casefold())
-            if expected_sha is None:
-                raise LifecycleViolation(
-                    "uninstall_release_manifest_unverified",
-                    f"release {rid} lacks a verified manifest digest from installation history; refusing deletion",
-                )
-            if not manifest_path.is_file():
-                raise LifecycleViolation(
-                    "uninstall_release_manifest_missing",
-                    f"release {rid} lacks release-manifest.json; refusing blind deletion",
-                )
-            manifest_bytes = manifest_path.read_bytes()
-            if hashlib.sha256(manifest_bytes).hexdigest().lower() != expected_sha:
-                raise LifecycleViolation(
-                    "uninstall_release_manifest_mismatch",
-                    f"release {rid} manifest digest does not match verified installation history",
-                )
-            manifest = _parse_manifest(manifest_bytes, rid)
-            expected = _expected_files(manifest, app_dir, manifest_path)
-            release_prefix = f"releases/{rid.casefold()}/"
-            expected_norm_paths: set[str] = {_norm_path(manifest_path)}
-            payload_files: list[Path] = []
-            for key, record in expected.items():
-                if not key.startswith(release_prefix):
-                    continue
-                target = app_dir / Path(str(record["path"]))
-                reject_reparse_components(target)
-                try:
-                    Path(os.path.abspath(target)).relative_to(Path(os.path.abspath(release_dir)))
-                except ValueError as exc:
-                    raise LifecycleViolation(
-                        "uninstall_path_escaped",
-                        f"release manifest file escapes release directory: {record['path']}",
-                    ) from exc
-                expected_file_sha = record.get("sha256")
-                if (
-                    not isinstance(expected_file_sha, str)
-                    or len(expected_file_sha) != 64
-                    or not all(ch in "0123456789abcdef" for ch in expected_file_sha)
-                ):
-                    raise LifecycleViolation(
-                        "uninstall_release_file_hash_mismatch",
-                        f"release {rid} manifest lacks a valid SHA-256 digest for {record['path']}",
-                    )
-                expected_norm_paths.add(_norm_path(target))
-                if not os.path.lexists(target):
-                    if not resuming_cleanup:
-                        raise LifecycleViolation(
-                            "uninstall_release_file_missing",
-                            f"release {rid} payload file is missing before uninstall: {record['path']}",
-                        )
-                else:
-                    if not target.is_file():
-                        raise LifecycleViolation(
-                            "uninstall_release_file_hash_mismatch",
-                            f"release {rid} payload entry is not a regular file: {record['path']}",
-                        )
-                    if _sha256_file(target) != expected_file_sha:
-                        raise LifecycleViolation(
-                            "uninstall_release_file_hash_mismatch",
-                            f"release {rid} payload file digest does not match verified manifest: {record['path']}",
-                        )
-                payload_files.append(target)
-            for root_dir, dirs, files in os.walk(
-                release_dir,
-                topdown=True,
-                followlinks=False,
-                onerror=_raise_walk_error,
-            ):
-                root_path = Path(root_dir)
-                reject_reparse_components(root_path)
-                for dirname in dirs:
-                    reject_reparse_components(root_path / dirname)
-                for filename in files:
-                    candidate = root_path / filename
-                    reject_reparse_components(candidate)
-                    if not candidate.is_file():
-                        raise LifecycleViolation(
-                            "uninstall_release_unexpected_file",
-                            f"release {rid} contains a non-regular file: {candidate.relative_to(release_dir)}",
-                        )
-                    if _norm_path(candidate) not in expected_norm_paths:
-                        raise LifecycleViolation(
-                            "uninstall_release_unexpected_file",
-                            f"release {rid} contains an unexpected file outside its verified manifest: "
-                            f"{candidate.relative_to(release_dir)}",
-                        )
-            planned.append((rid, release_dir, manifest_path, payload_files))
+            entry_plan = self._plan_single_release_cleanup(
+                rid,
+                app_dir=app_dir,
+                releases_root=releases_root,
+                binding=binding,
+                manifest_shas=manifest_shas,
+                running_exe=running_exe,
+                resuming_cleanup=resuming_cleanup,
+            )
+            if entry_plan is not None:
+                planned.append(entry_plan)
         return planned
 
     def verify_registered_release_manifests(
@@ -448,6 +519,49 @@ class WindowsUninstallPlatform:
             expected_manifests=expected_manifests,
             resuming_cleanup=resuming_cleanup,
         )
+
+    @staticmethod
+    def _remove_planned_release(
+        rid: str,
+        release_dir: Path,
+        manifest_path: Path | None,
+        payload_files: list[Path],
+    ) -> None:
+        if manifest_path is None:
+            if release_dir.is_dir() and not any(release_dir.iterdir()):
+                release_dir.rmdir()
+        else:
+            for file_path in payload_files:
+                if os.path.lexists(file_path):
+                    reject_reparse_components(file_path)
+                    if file_path.is_file():
+                        file_path.unlink()
+            for root_dir, dirs, _files in os.walk(
+                release_dir,
+                topdown=False,
+                followlinks=False,
+                onerror=_raise_walk_error,
+            ):
+                root_path = Path(root_dir)
+                for dirname in dirs:
+                    candidate = root_path / dirname
+                    reject_reparse_components(candidate)
+                    if candidate.is_dir() and not any(candidate.iterdir()):
+                        candidate.rmdir()
+            remaining = list(release_dir.iterdir())
+            if (
+                len(remaining) == 1
+                and _norm_path(remaining[0]) == _norm_path(manifest_path)
+                and manifest_path.is_file()
+            ):
+                reject_reparse_components(manifest_path)
+                manifest_path.unlink()
+                release_dir.rmdir()
+        if os.path.lexists(release_dir):
+            raise LifecycleError(
+                "uninstall_release_cleanup_incomplete",
+                f"release directory {rid} could not be completely removed after verified cleanup",
+            )
 
     def cleanup_registered_release_payloads(
         self,
@@ -470,48 +584,10 @@ class WindowsUninstallPlatform:
         ordered_planned = [item for item in planned if item[0].casefold() != active_key] + [
             item for item in planned if item[0].casefold() == active_key
         ]
-
         removed_releases: list[str] = []
         for rid, release_dir, manifest_path, payload_files in ordered_planned:
-            if manifest_path is None:
-                if release_dir.is_dir() and not any(release_dir.iterdir()):
-                    release_dir.rmdir()
-            else:
-                for file_path in payload_files:
-                    if os.path.lexists(file_path):
-                        reject_reparse_components(file_path)
-                        if file_path.is_file():
-                            file_path.unlink()
-
-                for root_dir, dirs, _files in os.walk(
-                    release_dir,
-                    topdown=False,
-                    followlinks=False,
-                    onerror=_raise_walk_error,
-                ):
-                    root_path = Path(root_dir)
-                    for dirname in dirs:
-                        candidate = root_path / dirname
-                        reject_reparse_components(candidate)
-                        if candidate.is_dir() and not any(candidate.iterdir()):
-                            candidate.rmdir()
-
-                remaining = list(release_dir.iterdir())
-                if (
-                    len(remaining) == 1
-                    and _norm_path(remaining[0]) == _norm_path(manifest_path)
-                    and manifest_path.is_file()
-                ):
-                    reject_reparse_components(manifest_path)
-                    manifest_path.unlink()
-                    release_dir.rmdir()
-            if os.path.lexists(release_dir):
-                raise LifecycleError(
-                    "uninstall_release_cleanup_incomplete",
-                    f"release directory {rid} could not be completely removed after verified cleanup",
-                )
+            self._remove_planned_release(rid, release_dir, manifest_path, payload_files)
             removed_releases.append(rid)
-
         if releases_root.is_dir() and not any(releases_root.iterdir()):
             releases_root.rmdir()
         return removed_releases

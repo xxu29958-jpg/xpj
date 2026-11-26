@@ -169,6 +169,20 @@ def _read_manifest(archive: zipfile.ZipFile) -> dict[str, object]:
     return manifest
 
 
+def _require_valid_matching_installer(installer: object) -> None:
+    if not isinstance(installer, dict) or set(installer) != _MATCHING_INSTALLER_KEYS:
+        raise LifecycleError("cold_recovery_point_invalid", "cold copy matching_installer_requirement is invalid")
+    installer_pg = installer.get("postgres_major")
+    if (
+        not isinstance(installer["release_id"], str)
+        or not isinstance(installer["release_manifest_sha256"], str)
+        or (installer_pg is not None and (type(installer_pg) is not int or installer_pg <= 0))
+        or not isinstance(installer["verify_command"], str)
+        or not installer["verify_command"]
+    ):
+        raise LifecycleError("cold_recovery_point_invalid", "cold copy matching_installer_requirement is invalid")
+
+
 def _require_valid_recovery_point(recovery_point: object) -> None:
     if not isinstance(recovery_point, dict) or set(recovery_point) != _RECOVERY_POINT_KEYS:
         raise LifecycleError("cold_recovery_point_invalid", "cold copy recovery_point metadata is invalid")
@@ -182,18 +196,7 @@ def _require_valid_recovery_point(recovery_point: object) -> None:
         or recovery_point["secret_disposition"] != SECRET_DISPOSITION
     ):
         raise LifecycleError("cold_recovery_point_invalid", "cold copy recovery_point fields are invalid")
-    installer = recovery_point["matching_installer_requirement"]
-    installer_pg = installer.get("postgres_major")
-    if (
-        not isinstance(installer, dict)
-        or set(installer) != _MATCHING_INSTALLER_KEYS
-        or not isinstance(installer["release_id"], str)
-        or not isinstance(installer["release_manifest_sha256"], str)
-        or (installer_pg is not None and (type(installer_pg) is not int or installer_pg <= 0))
-        or not isinstance(installer["verify_command"], str)
-        or not installer["verify_command"]
-    ):
-        raise LifecycleError("cold_recovery_point_invalid", "cold copy matching_installer_requirement is invalid")
+    _require_valid_matching_installer(recovery_point["matching_installer_requirement"])
 
 
 def _require_archive_components(manifest: dict, names: list[str]) -> None:

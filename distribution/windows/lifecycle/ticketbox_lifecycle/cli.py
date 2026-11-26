@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from ticketbox_lifecycle import command_io
@@ -23,36 +24,69 @@ from ticketbox_lifecycle.schemas import (
 )
 
 
+def _run_connector(argv: list[str]) -> int:
+    from ticketbox_lifecycle.connector_cli import main as connector_main
+
+    return connector_main(argv)
+
+
+def _run_restore(argv: list[str]) -> int:
+    from ticketbox_lifecycle.restore_cli import main as restore_main
+
+    return restore_main(argv)
+
+
+def _run_upgrade(argv: list[str]) -> int:
+    from ticketbox_lifecycle.upgrade_cli import main as upgrade_main
+
+    return upgrade_main(argv)
+
+
+def _run_uninstall(argv: list[str]) -> int:
+    from ticketbox_lifecycle.uninstall_cli import main as uninstall_main
+
+    return uninstall_main(argv)
+
+
+def _run_reinstall(argv: list[str]) -> int:
+    from ticketbox_lifecycle.reinstall_cli import main as reinstall_main
+
+    return reinstall_main(argv)
+
+
+def _run_purge_data(argv: list[str]) -> int:
+    from ticketbox_lifecycle.purge_data_cli import main as purge_main
+
+    return purge_main(argv)
+
+
+def _run_cold_copy(argv: list[str]) -> int:
+    from ticketbox_lifecycle.cold_copy_cli import main as cold_main
+
+    return cold_main(argv)
+
+
+_SUBCOMMAND_HANDLERS: dict[str, Callable[[list[str]], int]] = {
+    "connector": _run_connector,
+    "restore": _run_restore,
+    "upgrade": _run_upgrade,
+    "rollback-upgrade": _run_upgrade,
+    "uninstall": _run_uninstall,
+    "reinstall": _run_reinstall,
+    "purge-data": _run_purge_data,
+    "cold-copy": _run_cold_copy,
+    "verify-cold-copy": _run_cold_copy,
+    "encrypt-cold-copy": _run_cold_copy,
+    "decrypt-cold-copy": _run_cold_copy,
+    "verify-encrypted-cold-copy": _run_cold_copy,
+}
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] == "connector":
-        from ticketbox_lifecycle.connector_cli import main as connector_main
-
-        return connector_main(argv)
-    if argv and argv[0] == "restore":
-        from ticketbox_lifecycle.restore_cli import main as restore_main
-
-        return restore_main(argv)
-    if argv and argv[0] in {"upgrade", "rollback-upgrade"}:
-        from ticketbox_lifecycle.upgrade_cli import main as upgrade_main
-
-        return upgrade_main(argv)
-    if argv and argv[0] == "uninstall":
-        from ticketbox_lifecycle.uninstall_cli import main as uninstall_main
-
-        return uninstall_main(argv)
-    if argv and argv[0] == "reinstall":
-        from ticketbox_lifecycle.reinstall_cli import main as reinstall_main
-
-        return reinstall_main(argv)
-    if argv and argv[0] == "purge-data":
-        from ticketbox_lifecycle.purge_data_cli import main as purge_main
-
-        return purge_main(argv)
-    if argv and argv[0] in {"cold-copy", "verify-cold-copy", "encrypt-cold-copy", "decrypt-cold-copy", "verify-encrypted-cold-copy"}:
-        from ticketbox_lifecycle.cold_copy_cli import main as cold_main
-
-        return cold_main(argv)
+    handler = _SUBCOMMAND_HANDLERS.get(argv[0]) if argv else None
+    if handler is not None:
+        return handler(argv)
     return _install_main(argv)
 
 

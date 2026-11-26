@@ -8,12 +8,14 @@ import json
 import uuid
 from dataclasses import asdict
 from pathlib import Path
+from typing import cast
 
 from ticketbox_lifecycle import command_io
 from ticketbox_lifecycle.domain.purge_data import PurgeDataRequest, purge_data
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.command import SubprocessCommandRunner
 from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
+from ticketbox_lifecycle.runtime.windows_dataset import WindowsDatasetAdapter
 from ticketbox_lifecycle.runtime.windows_known_folders import (
     ticketbox_install_root,
     ticketbox_program_data_root,
@@ -72,7 +74,7 @@ def main(argv: list[str]) -> int:
         )
         platform = WindowsPurgeDataPlatform(
             SubprocessCommandRunner(),
-            dataset=fs_stores._adapters.dataset,  # type: ignore[arg-type]
+            dataset=cast(WindowsDatasetAdapter, fs_stores._adapters.dataset),
             app_dir=app_dir,
         )
         result = purge_data(stores, request, platform)

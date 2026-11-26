@@ -155,6 +155,33 @@ def _require_upgrade_active_match(
         raise LifecycleViolation("upgrade_binding_mismatch", "installation.json release drifted during upgrade")
 
 
+def _validate_new_upgrade_target(
+    request: InstallRequest,
+    observation: HostObservation,
+    binding: InstallationBinding,
+    supported_source_releases: frozenset[str] | None,
+) -> None:
+    if observation.active_operation_present:
+        raise LifecycleViolation("operation_conflict", "an active operation already owns the machine")
+    if binding.active_release_id == request.target_release_id:
+        raise LifecycleViolation("already_at_target_release", "installation is already running this release")
+    current_ver = _semver_tuple(binding.active_release_id)
+    target_ver = _semver_tuple(request.target_release_id)
+    if current_ver is not None and target_ver is not None and target_ver < current_ver:
+        raise LifecycleViolation("upgrade_downgrade_forbidden", "managed upgrade refuses release downgrade")
+    allowed_sources = (
+        supported_source_releases
+        if supported_source_releases is not None
+        else SUPPORTED_UPGRADE_SOURCE_RELEASES.get(request.target_release_id)
+    )
+    if allowed_sources is not None and binding.active_release_id not in allowed_sources:
+        raise LifecycleViolation(
+            "upgrade_source_release_unsupported",
+            f"managed upgrade to {request.target_release_id} only supports source release(s): "
+            + ", ".join(sorted(allowed_sources)),
+        )
+
+
 def plan_managed_upgrade(
     request: InstallRequest,
     observation: HostObservation,
@@ -170,11 +197,7 @@ def plan_managed_upgrade(
             "upgrade_installation_missing",
             "managed upgrade requires an existing verified installation.json",
         )
-    if (
-        not observation.pgdata_present
-        or not observation.pg_service_present
-        or not observation.backend_service_present
-    ):
+    if not (observation.pgdata_present and observation.pg_service_present and observation.backend_service_present):
         raise LifecycleViolation(
             "upgrade_installation_incomplete",
             "managed upgrade requires existing pgdata and both installed services",
@@ -186,25 +209,7 @@ def plan_managed_upgrade(
         )
     _require_upgrade_binding_match(request, binding)
     if active is None:
-        if observation.active_operation_present:
-            raise LifecycleViolation("operation_conflict", "an active operation already owns the machine")
-        if binding.active_release_id == request.target_release_id:
-            raise LifecycleViolation("already_at_target_release", "installation is already running this release")
-        current_ver = _semver_tuple(binding.active_release_id)
-        target_ver = _semver_tuple(request.target_release_id)
-        if current_ver is not None and target_ver is not None and target_ver < current_ver:
-            raise LifecycleViolation("upgrade_downgrade_forbidden", "managed upgrade refuses release downgrade")
-        allowed_sources = (
-            supported_source_releases
-            if supported_source_releases is not None
-            else SUPPORTED_UPGRADE_SOURCE_RELEASES.get(request.target_release_id)
-        )
-        if allowed_sources is not None and binding.active_release_id not in allowed_sources:
-            raise LifecycleViolation(
-                "upgrade_source_release_unsupported",
-                f"managed upgrade to {request.target_release_id} only supports source release(s): "
-                + ", ".join(sorted(allowed_sources)),
-            )
+        _validate_new_upgrade_target(request, observation, binding, supported_source_releases)
     else:
         _require_upgrade_active_match(request, binding, active)
     steps = tuple(

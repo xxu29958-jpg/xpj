@@ -20,6 +20,42 @@ _ALLOWED_EXISTING_RESULT_SCHEMAS = frozenset({
 })
 
 
+def _default_forbidden_root_list(install_root: Path, program_data_root: Path) -> list[Path]:
+    return [
+        install_root,
+        program_data_root,
+        program_data_root / "data",
+        program_data_root / "backups",
+    ]
+
+
+def _try_resolve_root(resolver: Callable[[], Path]) -> tuple[Path | None, Exception | None]:
+    try:
+        return resolver(), None
+    except Exception as exc:
+        return None, exc
+
+
+def _is_windows_required_error(exc: Exception | None) -> bool:
+    return isinstance(exc, LifecycleError) and exc.code == "windows_required"
+
+
+def _resolve_non_windows_forbidden_roots(
+    install_root_fn: Callable[[], Path],
+    program_data_root_fn: Callable[[], Path],
+) -> tuple[Path | None, Path | None, list[Path]]:
+    install_root, install_err = _try_resolve_root(install_root_fn)
+    program_data_root, pd_err = _try_resolve_root(program_data_root_fn)
+    if _is_windows_required_error(install_err) and _is_windows_required_error(pd_err):
+        return None, None, []
+    if install_err is not None or pd_err is not None or install_root is None or program_data_root is None:
+        raise LifecycleViolation(
+            "forbidden_roots_unavailable",
+            "cannot resolve protected installation and ProgramData roots; refusing to write result output",
+        ) from (install_err or pd_err)
+    return install_root, program_data_root, _default_forbidden_root_list(install_root, program_data_root)
+
+
 def resolve_default_forbidden_roots(
     *,
     install_root_fn: Callable[[], Path],
@@ -27,38 +63,7 @@ def resolve_default_forbidden_roots(
     allow_non_windows: bool = False,
 ) -> tuple[Path | None, Path | None, list[Path]]:
     if allow_non_windows and os.name != "nt":
-        install_root: Path | None = None
-        program_data_root: Path | None = None
-        install_err: Exception | None = None
-        pd_err: Exception | None = None
-        try:
-            install_root = install_root_fn()
-        except Exception as exc:
-            install_err = exc
-        try:
-            program_data_root = program_data_root_fn()
-        except Exception as exc:
-            pd_err = exc
-        if (
-            install_err is not None
-            and pd_err is not None
-            and isinstance(install_err, LifecycleError)
-            and install_err.code == "windows_required"
-            and isinstance(pd_err, LifecycleError)
-            and pd_err.code == "windows_required"
-        ):
-            return None, None, []
-        if install_err is not None or pd_err is not None or install_root is None or program_data_root is None:
-            raise LifecycleViolation(
-                "forbidden_roots_unavailable",
-                "cannot resolve protected installation and ProgramData roots; refusing to write result output",
-            ) from (install_err or pd_err)
-        return install_root, program_data_root, [
-            install_root,
-            program_data_root,
-            program_data_root / "data",
-            program_data_root / "backups",
-        ]
+        return _resolve_non_windows_forbidden_roots(install_root_fn, program_data_root_fn)
     try:
         install_root = install_root_fn()
         program_data_root = program_data_root_fn()
@@ -67,12 +72,7 @@ def resolve_default_forbidden_roots(
             "forbidden_roots_unavailable",
             "cannot resolve protected installation and ProgramData roots; refusing to write result output",
         ) from exc
-    return install_root, program_data_root, [
-        install_root,
-        program_data_root,
-        program_data_root / "data",
-        program_data_root / "backups",
-    ]
+    return install_root, program_data_root, _default_forbidden_root_list(install_root, program_data_root)
 
 
 def _norm_abs(path: Path) -> str:
@@ -84,6 +84,32 @@ def _is_same_or_under(target: str, root: str) -> bool:
         return True
     prefix = root if root.endswith(os.sep) else root + os.sep
     return target.startswith(prefix)
+
+
+def _verify_existing_result_file(path: Path) -> None:
+    if path.is_dir() or not path.is_file():
+        raise LifecycleViolation(
+            "unsafe_result_path",
+            "lifecycle result destination must be a regular file",
+        )
+    raw = path.read_bytes()
+    if not raw or len(raw) > 65536:
+        raise LifecycleViolation(
+            "unsafe_result_path",
+            "refusing to overwrite an existing empty or non-result file",
+        )
+    try:
+        existing = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, ValueError) as exc:
+        raise LifecycleViolation(
+            "unsafe_result_path",
+            "refusing to overwrite an existing non-result file",
+        ) from exc
+    if not isinstance(existing, dict) or existing.get("schema") not in _ALLOWED_EXISTING_RESULT_SCHEMAS:
+        raise LifecycleViolation(
+            "unsafe_result_path",
+            "refusing to overwrite an existing non-result JSON file",
+        )
 
 
 def require_safe_result_path(
@@ -101,48 +127,19 @@ def require_safe_result_path(
         )
     target_key = _norm_abs(path)
     for protected in protected_files:
-        if not os.fspath(protected):
-            continue
-        if target_key == _norm_abs(protected):
+        if os.fspath(protected) and target_key == _norm_abs(protected):
             raise LifecycleViolation(
                 "unsafe_result_path",
                 "refusing to overwrite a protected backup or source file with lifecycle result output",
             )
     for root in forbidden_roots:
-        if not os.fspath(root):
-            continue
-        if _is_same_or_under(target_key, _norm_abs(root)):
+        if os.fspath(root) and _is_same_or_under(target_key, _norm_abs(root)):
             raise LifecycleViolation(
                 "unsafe_result_path",
                 "lifecycle result path must lie outside installation, data, machine and backup directories",
             )
     if os.path.lexists(path):
-        if path.is_dir() or not path.is_file():
-            raise LifecycleViolation(
-                "unsafe_result_path",
-                "lifecycle result destination must be a regular file",
-            )
-        raw = path.read_bytes()
-        if not raw or len(raw) > 65536:
-            raise LifecycleViolation(
-                "unsafe_result_path",
-                "refusing to overwrite an existing empty or non-result file",
-            )
-        try:
-            existing = json.loads(raw.decode("utf-8"))
-        except (UnicodeError, ValueError) as exc:
-            raise LifecycleViolation(
-                "unsafe_result_path",
-                "refusing to overwrite an existing non-result file",
-            ) from exc
-        if (
-            not isinstance(existing, dict)
-            or existing.get("schema") not in _ALLOWED_EXISTING_RESULT_SCHEMAS
-        ):
-            raise LifecycleViolation(
-                "unsafe_result_path",
-                "refusing to overwrite an existing non-result JSON file",
-            )
+        _verify_existing_result_file(path)
 
 
 def emit_failure(result: CommandResult) -> None:

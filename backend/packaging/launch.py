@@ -644,12 +644,17 @@ def _closed_authorities(
     return authorities
 
 
-def _closed_upgrade_active_authority(active: dict[str, object], binding: dict[str, object] | None) -> None:
-    if binding is None:
-        raise RuntimeError("upgrade operation requires existing installation binding")
-    epoch = active["expected_restore_epoch"]
-    if type(epoch) is not int or epoch < 0 or binding["expected_restore_epoch"] != epoch:
-        raise RuntimeError("upgrade operation requires an exact non-negative restore epoch")
+def _require_upgrade_backup_evidence(active: dict[str, object]) -> None:
+    if (
+        not isinstance(active["backup_path"], str)
+        or not active["backup_path"]
+        or not isinstance(active["backup_sha256"], str)
+        or re.fullmatch(r"[0-9a-f]{64}", active["backup_sha256"]) is None
+    ):
+        raise RuntimeError("upgrade operation requires verified pre-upgrade backup evidence")
+
+
+def _validate_upgrade_active_fields(active: dict[str, object]) -> tuple[str, str]:
     previous = active["previous_release_id"]
     if (
         not isinstance(previous, str)
@@ -670,24 +675,32 @@ def _closed_upgrade_active_authority(active: dict[str, object], binding: dict[st
         raise RuntimeError("upgrade operation requires boolean business_writes_opened")
     if active["phase"] != "committed" and active["business_writes_opened"] is not False:
         raise RuntimeError("uncommitted upgrade candidate cannot mark business writes opened")
-    if (
-        not isinstance(active["backup_path"], str)
-        or not active["backup_path"]
-        or not isinstance(active["backup_sha256"], str)
-        or re.fullmatch(r"[0-9a-f]{64}", active["backup_sha256"]) is None
-    ):
-        raise RuntimeError("upgrade operation requires verified pre-upgrade backup evidence")
-    identity_match = (
+    _require_upgrade_backup_evidence(active)
+    return previous, previous_manifest
+
+
+def _upgrade_binding_identity_matches(active: dict[str, object], binding: dict[str, object]) -> bool:
+    binding_root = os.path.normcase(os.path.abspath(str(binding["data_root"])))
+    active_root = os.path.normcase(os.path.abspath(str(active["data_root"])))
+    return (
         binding["install_id"] == active["install_id"]
         and binding["dataset_id"] == active["dataset_id"]
-        and os.path.normcase(os.path.abspath(str(binding["data_root"])))
-        == os.path.normcase(os.path.abspath(str(active["data_root"])))
+        and binding_root == active_root
         and type(binding["backend_port"]) is int
         and binding["backend_port"] == active["backend_port"]
         and re.fullmatch(r"[0-9a-f]{64}", str(binding.get("release_manifest_sha256", ""))) is not None
         and re.fullmatch(r"[0-9a-f]{64}", str(binding.get("health_attestation_key", ""))) is not None
     )
-    if not identity_match:
+
+
+def _validate_upgrade_binding_lineage(
+    active: dict[str, object],
+    binding: dict[str, object],
+    *,
+    previous: str,
+    previous_manifest: str,
+) -> None:
+    if not _upgrade_binding_identity_matches(active, binding):
         raise RuntimeError("upgrade operation disagrees with installation binding")
     pre_publish = (
         binding["active_release_id"] == previous
@@ -704,6 +717,21 @@ def _closed_upgrade_active_authority(active: dict[str, object], binding: dict[st
             raise RuntimeError("committed upgrade disagrees with installation binding")
     elif not (pre_publish or post_publish):
         raise RuntimeError("upgrade candidate disagrees with installation binding release lineage")
+
+
+def _closed_upgrade_active_authority(active: dict[str, object], binding: dict[str, object] | None) -> None:
+    if binding is None:
+        raise RuntimeError("upgrade operation requires existing installation binding")
+    epoch = active["expected_restore_epoch"]
+    if type(epoch) is not int or epoch < 0 or binding["expected_restore_epoch"] != epoch:
+        raise RuntimeError("upgrade operation requires an exact non-negative restore epoch")
+    previous, previous_manifest = _validate_upgrade_active_fields(active)
+    _validate_upgrade_binding_lineage(
+        active,
+        binding,
+        previous=previous,
+        previous_manifest=previous_manifest,
+    )
 
 
 def _closed_reinstall_active_authority(active: dict[str, object], binding: dict[str, object] | None) -> None:
@@ -726,42 +754,47 @@ def _closed_reinstall_active_authority(active: dict[str, object], binding: dict[
         raise RuntimeError("reinstall operation disagrees with installation binding")
 
 
-def _closed_active_authority(active: dict[str, object], binding: dict[str, object] | None) -> None:
-    active_fields = {
-        "schema",
-        "operation_id",
-        "kind",
-        "request_hash",
-        "target_release_id",
-        "data_root",
-        "release_manifest_sha256",
-        "backend_port",
-        "phase",
-        "no_return_point",
-        "completed_step",
-        "install_id",
-        "dataset_id",
-        "schema_revision",
-        "health_attestation_key",
-    }
-    kind = active.get("kind")
+_BASE_ACTIVE_FIELDS = frozenset({
+    "schema",
+    "operation_id",
+    "kind",
+    "request_hash",
+    "target_release_id",
+    "data_root",
+    "release_manifest_sha256",
+    "backend_port",
+    "phase",
+    "no_return_point",
+    "completed_step",
+    "install_id",
+    "dataset_id",
+    "schema_revision",
+    "health_attestation_key",
+})
+_UPGRADE_EXTRA_ACTIVE_FIELDS = frozenset({
+    "expected_restore_epoch",
+    "previous_release_id",
+    "previous_release_manifest_sha256",
+    "source_schema_revision",
+    "backup_path",
+    "backup_sha256",
+    "business_writes_opened",
+})
+
+
+def _expected_active_fields(kind: object) -> frozenset[str]:
     if kind in {"restore", "reinstall"}:
-        active_fields.add("expected_restore_epoch")
-    elif kind == "upgrade":
-        active_fields.update({
-            "expected_restore_epoch",
-            "previous_release_id",
-            "previous_release_manifest_sha256",
-            "source_schema_revision",
-            "backup_path",
-            "backup_sha256",
-            "business_writes_opened",
-        })
-    if set(active) != active_fields or kind not in {"install", "restore", "upgrade", "reinstall"}:
-        raise RuntimeError("active.json runtime authority fields are not closed")
-    phase = active.get("phase")
-    if phase not in {"data_ready", "release_activated", "committed"}:
-        raise RuntimeError("active.json is not in a runtime-capable install phase")
+        return _BASE_ACTIVE_FIELDS | {"expected_restore_epoch"}
+    if kind == "upgrade":
+        return _BASE_ACTIVE_FIELDS | _UPGRADE_EXTRA_ACTIVE_FIELDS
+    return _BASE_ACTIVE_FIELDS
+
+
+def _validate_active_kind_authority(
+    kind: object,
+    active: dict[str, object],
+    binding: dict[str, object] | None,
+) -> None:
     if kind == "restore":
         epoch = active["expected_restore_epoch"]
         if type(epoch) is not int or epoch <= 0 or (binding is not None and binding["expected_restore_epoch"] != epoch):
@@ -772,6 +805,16 @@ def _closed_active_authority(active: dict[str, object], binding: dict[str, objec
         _closed_reinstall_active_authority(active, binding)
     elif binding is not None and binding["expected_restore_epoch"] != 0:
         raise RuntimeError("Fresh cannot adopt a restored dataset")
+
+
+def _closed_active_authority(active: dict[str, object], binding: dict[str, object] | None) -> None:
+    kind = active.get("kind")
+    if set(active) != _expected_active_fields(kind) or kind not in {"install", "restore", "upgrade", "reinstall"}:
+        raise RuntimeError("active.json runtime authority fields are not closed")
+    phase = active.get("phase")
+    if phase not in {"data_ready", "release_activated", "committed"}:
+        raise RuntimeError("active.json is not in a runtime-capable install phase")
+    _validate_active_kind_authority(kind, active, binding)
     expected_step = {
         "data_ready": "scm" if kind in {"upgrade", "reinstall"} else "owner_claim",
         "release_activated": "health",
@@ -809,6 +852,45 @@ def _assert_authority_contract(
             raise RuntimeError("Ticketbox runtime authority does not match the service contract")
 
 
+def _assert_published_and_active_agree(
+    binding: dict[str, object] | None,
+    active: dict[str, object] | None,
+) -> None:
+    if binding is None or active is None:
+        return
+    if active.get("schema") == "ticketbox-lifecycle-operation-v3":
+        return
+    if active.get("kind") in {"upgrade", "reinstall"} and active.get("phase") != "committed":
+        return
+    for field in (
+        "install_id",
+        "dataset_id",
+        "data_root",
+        "release_manifest_sha256",
+        "backend_port",
+        "health_attestation_key",
+    ):
+        if binding[field] != active[field]:
+            raise RuntimeError("published and active runtime authorities disagree")
+
+
+def _export_runtime_authority_env(
+    binding: dict[str, object] | None,
+    active: dict[str, object] | None,
+    authorities: list[dict[str, object]],
+) -> None:
+    epoch = binding["expected_restore_epoch"] if binding else active.get("expected_restore_epoch", 0)
+    os.environ["TICKETBOX_EXPECTED_RESTORE_EPOCH"] = str(epoch)
+    os.environ["TICKETBOX_RELEASE_MANIFEST_SHA256"] = str(authorities[0]["release_manifest_sha256"])
+    uncommitted_active = active is not None and active["phase"] != "committed"
+    os.environ["TICKETBOX_RESTORE_VERIFY_ONLY"] = (
+        "1" if uncommitted_active and active["kind"] == "restore" else "0"
+    )
+    os.environ["TICKETBOX_UPGRADE_VERIFY_ONLY"] = (
+        "1" if uncommitted_active and active["kind"] in {"upgrade", "reinstall"} else "0"
+    )
+
+
 def _assert_vnext_runtime_authority(data_dir: Path) -> str:
     install_id, dataset_id, release_id, port = _frozen_service_contract(data_dir)
     executable = Path(os.path.abspath(sys.executable))
@@ -828,36 +910,8 @@ def _assert_vnext_runtime_authority(data_dir: Path) -> str:
         release_id=release_id,
         port=port,
     )
-    if (
-        binding is not None
-        and active is not None
-        and active.get("schema") != "ticketbox-lifecycle-operation-v3"
-        and not (active.get("kind") in {"upgrade", "reinstall"} and active.get("phase") != "committed")
-    ):
-        for field in (
-            "install_id",
-            "dataset_id",
-            "data_root",
-            "release_manifest_sha256",
-            "backend_port",
-            "health_attestation_key",
-        ):
-            if binding[field] != active[field]:
-                raise RuntimeError("published and active runtime authorities disagree")
-    os.environ["TICKETBOX_EXPECTED_RESTORE_EPOCH"] = str(
-        binding["expected_restore_epoch"] if binding else active.get("expected_restore_epoch", 0)
-    )
-    os.environ["TICKETBOX_RELEASE_MANIFEST_SHA256"] = str(authorities[0]["release_manifest_sha256"])
-    os.environ["TICKETBOX_RESTORE_VERIFY_ONLY"] = (
-        "1" if active is not None and active["kind"] == "restore" and active["phase"] != "committed" else "0"
-    )
-    os.environ["TICKETBOX_UPGRADE_VERIFY_ONLY"] = (
-        "1"
-        if active is not None
-        and active["kind"] in {"upgrade", "reinstall"}
-        and active["phase"] != "committed"
-        else "0"
-    )
+    _assert_published_and_active_agree(binding, active)
+    _export_runtime_authority_env(binding, active, authorities)
     return str(authorities[0]["health_attestation_key"])
 
 
@@ -1003,43 +1057,43 @@ def _initialize_installed_runtime_settings(data_dir: Path) -> None:
     )
 
 
+def _run_cold_restore_mode(arguments: list[str]) -> int:
+    from app.cold_restore_runtime import run_cold_restore
+
+    return run_cold_restore(arguments)
+
+
+def _run_verify_preserved_dataset_mode(arguments: list[str]) -> int:
+    from app.cold_restore_runtime import run_verify_preserved_dataset
+
+    return run_verify_preserved_dataset(arguments)
+
+
+def _dispatch_maintenance_mode(arguments: list[str]) -> int | None:
+    handlers = (
+        (_FRESH_SCHEMA_UPGRADE_SWITCH, _run_fresh_schema_upgrade),
+        (_EXISTING_DATASET_UPGRADE_SWITCH, _run_existing_dataset_upgrade),
+        (_FRESH_OWNER_CLAIM_SWITCH, _run_fresh_owner_claim),
+        (_COLD_RESTORE_SWITCH, _run_cold_restore_mode),
+        (_VERIFY_PRESERVED_DATASET_SWITCH, _run_verify_preserved_dataset_mode),
+        (_DATABASE_GENERATION_TARGET_VERIFY_SWITCH, _run_database_generation_target_verification),
+        (_GENERATION_PROGRAM_VALIDATE_SWITCH, _run_generation_program_validation),
+    )
+    matched = [handler for switch, handler in handlers if switch in arguments]
+    if len(matched) > 1:
+        raise RuntimeError("database generation helper accepts exactly one mode")
+    if not matched:
+        return None
+    if getattr(sys, "frozen", False) and not _is_database_generation_helper():
+        raise RuntimeError("database generation requires the dedicated frozen helper")
+    return matched[0](arguments)
+
+
 def main() -> int | None:
     arguments = sys.argv[1:]
-    maintenance_switches = [
-        switch
-        for switch in (
-            _FRESH_SCHEMA_UPGRADE_SWITCH,
-            _EXISTING_DATASET_UPGRADE_SWITCH,
-            _FRESH_OWNER_CLAIM_SWITCH,
-            _COLD_RESTORE_SWITCH,
-            _VERIFY_PRESERVED_DATASET_SWITCH,
-            _DATABASE_GENERATION_TARGET_VERIFY_SWITCH,
-            _GENERATION_PROGRAM_VALIDATE_SWITCH,
-        )
-        if switch in arguments
-    ]
-    if len(maintenance_switches) > 1:
-        raise RuntimeError("database generation helper accepts exactly one mode")
-    if maintenance_switches:
-        if getattr(sys, "frozen", False) and not _is_database_generation_helper():
-            raise RuntimeError("database generation requires the dedicated frozen helper")
-        if maintenance_switches[0] == _FRESH_SCHEMA_UPGRADE_SWITCH:
-            return _run_fresh_schema_upgrade(arguments)
-        if maintenance_switches[0] == _EXISTING_DATASET_UPGRADE_SWITCH:
-            return _run_existing_dataset_upgrade(arguments)
-        if maintenance_switches[0] == _FRESH_OWNER_CLAIM_SWITCH:
-            return _run_fresh_owner_claim(arguments)
-        if maintenance_switches[0] == _COLD_RESTORE_SWITCH:
-            from app.cold_restore_runtime import run_cold_restore
-
-            return run_cold_restore(arguments)
-        if maintenance_switches[0] == _VERIFY_PRESERVED_DATASET_SWITCH:
-            from app.cold_restore_runtime import run_verify_preserved_dataset
-
-            return run_verify_preserved_dataset(arguments)
-        if maintenance_switches[0] == _DATABASE_GENERATION_TARGET_VERIFY_SWITCH:
-            return _run_database_generation_target_verification(arguments)
-        return _run_generation_program_validation(arguments)
+    maintenance_rc = _dispatch_maintenance_mode(arguments)
+    if maintenance_rc is not None:
+        return maintenance_rc
     if _is_database_generation_helper():
         raise RuntimeError("the dedicated database generation helper requires an explicit mode")
 

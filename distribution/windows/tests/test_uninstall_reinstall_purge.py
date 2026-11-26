@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from fakes import MemoryStores, RecordingAdapterBundle, make_install_request
@@ -672,7 +674,7 @@ def test_uninstall_verifies_manifests_before_unregistering_services_and_never_cl
         unregister_called = True
         return orig_stop(*args, **kwargs)
 
-    real_platform.stop_and_unregister_services = guarded_stop  # type: ignore[method-assign]
+    setattr(real_platform, "stop_and_unregister_services", guarded_stop)
     uninstall_req = replace(
         req,
         command="uninstall",
@@ -1100,8 +1102,14 @@ def test_uninstall_verifies_manifests_before_unregistering_services_and_never_cl
 
 def test_purge_data_stopped_pgdata_probe_writes_ephemeral_port_matched_pgpass_and_cleans_up(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import contextlib
+
+    from ticketbox_lifecycle.runtime import windows_pgdata_security as pgdata_security
     from ticketbox_lifecycle.runtime.windows_dataset import WindowsDatasetAdapter
+
+    monkeypatch.setattr(pgdata_security, "temporary_probe_access", lambda _pgdata: contextlib.nullcontext())
 
     req, _stores, _adapters, binding = _installed_fixture(tmp_path)
     app_dir = Path(req.app_dir)
@@ -1197,9 +1205,13 @@ def test_purge_data_probe_creates_pgpass_before_start_and_stops_on_psql_exceptio
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import contextlib
     import tempfile
 
+    from ticketbox_lifecycle.runtime import windows_pgdata_security as pgdata_security
     from ticketbox_lifecycle.runtime.windows_dataset import WindowsDatasetAdapter
+
+    monkeypatch.setattr(pgdata_security, "temporary_probe_access", lambda _pgdata: contextlib.nullcontext())
 
     req, _stores, _adapters, binding = _installed_fixture(tmp_path)
     app_dir = Path(req.app_dir)
@@ -1596,12 +1608,81 @@ def test_temporary_probe_access_restores_probe_created_owners_and_fails_closed_o
     monkeypatch.setattr(pgdata_security.os, "walk", real_walk)
 
 
-def test_purge_data_probe_retries_stop_until_clean_shutdown_verified_and_never_swallows_stop_failure(
+class _ProbeRetryJob:
+    def __init__(self, events: list[str], on_start: Callable[[Callable[[], None] | None], Any]) -> None:
+        self._events = events
+        self._on_start = on_start
+
+    def __enter__(self) -> _ProbeRetryJob:
+        self._events.append("job_enter")
+        return self
+
+    def run_background_starter(
+        self,
+        argv: list[str],
+        *,
+        on_timeout: Callable[[], None] | None = None,
+        **_kw: Any,
+    ) -> Any:
+        del argv
+        return self._on_start(on_timeout)
+
+    def __exit__(self, *_exc: Any) -> None:
+        self._events.append("job_exit")
+
+
+class _ProbeRetryRunner:
+    def __init__(self, pgdata: Path, on_start: Callable[[Callable[[], None] | None], Any]) -> None:
+        self.pgdata = pgdata
+        self.on_start = on_start
+        self.events: list[str] = []
+        self.stop_calls = 0
+        self.stop_succeeds_on = 2
+        self.cluster_running = False
+
+    def reset(self, *, stop_succeeds_on: int, on_start: Callable[[Callable[[], None] | None], Any] | None = None) -> None:
+        self.events.clear()
+        self.stop_calls = 0
+        self.stop_succeeds_on = stop_succeeds_on
+        self.cluster_running = False
+        pid_file = self.pgdata / "postmaster.pid"
+        if pid_file.exists():
+            pid_file.unlink()
+        if on_start is not None:
+            self.on_start = on_start
+
+    def open_managed_job(self) -> _ProbeRetryJob:
+        return _ProbeRetryJob(self.events, self.on_start)
+
+    def run(self, argv: list[str], **_kw: Any) -> CompletedCommand:
+        exe = Path(argv[0]).name.lower()
+        if exe == "pg_controldata.exe":
+            state = "in production" if self.cluster_running else "shut down"
+            return CompletedCommand(
+                tuple(argv),
+                0,
+                f"Database cluster state:               {state}\n"
+                "Database system identifier:           7123456789012345678\n",
+                "",
+            )
+        if exe == "pg_ctl.exe" and "stop" in argv:
+            self.stop_calls += 1
+            self.events.append(f"pg_ctl_stop_{self.stop_calls}")
+            if self.stop_calls >= self.stop_succeeds_on:
+                self.cluster_running = False
+                pid_file = self.pgdata / "postmaster.pid"
+                if pid_file.exists():
+                    pid_file.unlink()
+                return CompletedCommand(tuple(argv), 0, "", "")
+            return CompletedCommand(tuple(argv), 1, "", "stop timed out")
+        raise AssertionError(f"unexpected command: {argv}")
+
+
+def _prepare_probe_retry_fixture(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+) -> tuple[InstallationBinding, Path, Path, Path]:
     from ticketbox_lifecycle.runtime import windows_security_native as native
-    from ticketbox_lifecycle.runtime.windows_dataset import WindowsDatasetAdapter
 
     req, _stores, _adapters, binding = _installed_fixture(tmp_path)
     app_dir = Path(req.app_dir)
@@ -1617,114 +1698,62 @@ def test_purge_data_probe_retries_stop_until_clean_shutdown_verified_and_never_s
     secrets_dir.mkdir(parents=True, exist_ok=True)
     (secrets_dir / "ticketbox_runtime.password").write_text("rt-secret\n", encoding="ascii")
     (secrets_dir / "pgpass").write_text("127.0.0.1:5432:ticketbox:ticketbox_runtime:rt-secret\n", encoding="ascii")
-
     monkeypatch.setattr(native, "current_process_user_sid", lambda: None)
+    return binding, app_dir, program_data, pgdata
 
-    events: list[str] = []
-    stop_calls = {"count": 0}
-    stop_succeeds_on = {"attempt": 2}
-    cluster_running = {"value": False}
 
-    class RetryStopRunner:
-        def open_managed_job(self):
-            class Job:
-                def __enter__(self_job):
-                    events.append("job_enter")
-                    return self_job
+def test_purge_data_probe_retries_stop_until_clean_shutdown_verified_and_never_swallows_stop_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ticketbox_lifecycle.runtime.windows_dataset import WindowsDatasetAdapter
 
-                def run_background_starter(self_job, argv, *, on_timeout=None, **_kw):
-                    del argv
-                    events.append("pg_ctl_start_timeout")
-                    cluster_running["value"] = True
-                    (pgdata / "postmaster.pid").write_text("12345\n", encoding="ascii")
-                    if on_timeout is not None:
-                        on_timeout()
-                    raise LifecycleError("command_outcome_unknown", "pg_ctl start timed out")
+    binding, app_dir, program_data, pgdata = _prepare_probe_retry_fixture(tmp_path, monkeypatch)
 
-                def __exit__(self_job, *_exc):
-                    events.append("job_exit")
+    def _timeout_after_pid(on_timeout: Callable[[], None] | None) -> None:
+        runner.events.append("pg_ctl_start_timeout")
+        runner.cluster_running = True
+        (pgdata / "postmaster.pid").write_text("12345\n", encoding="ascii")
+        if on_timeout is not None:
+            on_timeout()
+        raise LifecycleError("command_outcome_unknown", "pg_ctl start timed out")
 
-            return Job()
+    def _delayed_pid_start(on_timeout: Callable[[], None] | None) -> None:
+        runner.events.append("pg_ctl_start_timeout_before_pid")
+        if on_timeout is not None:
+            on_timeout()
+        runner.cluster_running = True
+        (pgdata / "postmaster.pid").write_text("54321\n", encoding="ascii")
+        runner.events.append("delayed_pid_created")
+        raise LifecycleError("command_outcome_unknown", "pg_ctl start timed out")
 
-        def run(self, argv, **_kw):
-            exe = Path(argv[0]).name.lower()
-            if exe == "pg_controldata.exe":
-                state = "in production" if cluster_running["value"] else "shut down"
-                return CompletedCommand(
-                    tuple(argv),
-                    0,
-                    f"Database cluster state:               {state}\n"
-                    "Database system identifier:           7123456789012345678\n",
-                    "",
-                )
-            if exe == "pg_ctl.exe" and "stop" in argv:
-                stop_calls["count"] += 1
-                events.append(f"pg_ctl_stop_{stop_calls['count']}")
-                if stop_calls["count"] >= stop_succeeds_on["attempt"]:
-                    cluster_running["value"] = False
-                    if (pgdata / "postmaster.pid").exists():
-                        (pgdata / "postmaster.pid").unlink()
-                    return CompletedCommand(tuple(argv), 0, "", "")
-                return CompletedCommand(tuple(argv), 1, "", "stop timed out")
-            raise AssertionError(f"unexpected command: {argv}")
+    def _unconfirmed_exit_start(on_timeout: Callable[[], None] | None) -> None:
+        del on_timeout
+        runner.events.append("starter_not_exited")
+        raise LifecycleError("starter_process_not_exited", "pg_ctl.exe did not confirm exit")
 
-    adapter = WindowsDatasetAdapter(RetryStopRunner(), SimpleNamespace())
+    runner = _ProbeRetryRunner(pgdata, _timeout_after_pid)
+    adapter = WindowsDatasetAdapter(runner, SimpleNamespace())
 
-    # 1) First stop in on_timeout fails -> outer finally retries BEFORE job_exit and verifies clean shutdown!
     with pytest.raises(LifecycleError) as retry_ok_exc:
         adapter.verify_stopped_pgdata_dataset_id(binding, app_dir=app_dir, program_data_root=program_data)
     assert retry_ok_exc.value.code == "command_outcome_unknown"
-    assert events == ["job_enter", "pg_ctl_start_timeout", "pg_ctl_stop_1", "pg_ctl_stop_2", "job_exit"]
+    assert runner.events == ["job_enter", "pg_ctl_start_timeout", "pg_ctl_stop_1", "pg_ctl_stop_2", "job_exit"]
 
-    # 2) Both stop attempts fail to verify clean shutdown -> raises purge_probe_stop_failed with primary error context!
-    events.clear()
-    stop_calls["count"] = 0
-    stop_succeeds_on["attempt"] = 99
+    runner.reset(stop_succeeds_on=99)
     with pytest.raises(LifecycleError) as stop_fail_exc:
         adapter.verify_stopped_pgdata_dataset_id(binding, app_dir=app_dir, program_data_root=program_data)
     assert stop_fail_exc.value.code == "purge_probe_stop_failed"
     assert "command_outcome_unknown" in stop_fail_exc.value.message
-    assert events == ["job_enter", "pg_ctl_start_timeout", "pg_ctl_stop_1", "pg_ctl_stop_2", "job_exit"]
-    if (pgdata / "postmaster.pid").exists():
-        (pgdata / "postmaster.pid").unlink()
-    cluster_running["value"] = False
+    assert runner.events == ["job_enter", "pg_ctl_start_timeout", "pg_ctl_stop_1", "pg_ctl_stop_2", "job_exit"]
 
-    # 3) Delayed PID race: on_timeout sees pre-start shut down + no PID, then postmaster.pid appears BEFORE starter exits;
-    # outer finally MUST re-check AFTER starter exit and run pg_ctl stop before job_exit!
-    class DelayedPidRunner(RetryStopRunner):
-        def open_managed_job(self):
-            class Job:
-                def __enter__(self_job):
-                    events.append("job_enter")
-                    return self_job
-
-                def run_background_starter(self_job, argv, *, on_timeout=None, **_kw):
-                    del argv
-                    events.append("pg_ctl_start_timeout_before_pid")
-                    # on_timeout runs while cluster still looks shut down and no postmaster.pid exists yet!
-                    if on_timeout is not None:
-                        on_timeout()
-                    # Delayed grandchild startup writes postmaster.pid after on_timeout returns, before starter exits.
-                    cluster_running["value"] = True
-                    (pgdata / "postmaster.pid").write_text("54321\n", encoding="ascii")
-                    events.append("delayed_pid_created")
-                    raise LifecycleError("command_outcome_unknown", "pg_ctl start timed out")
-
-                def __exit__(self_job, *_exc):
-                    events.append("job_exit")
-
-            return Job()
-
-    events.clear()
-    stop_calls["count"] = 0
-    stop_succeeds_on["attempt"] = 2
-    delayed_adapter = WindowsDatasetAdapter(DelayedPidRunner(), SimpleNamespace())
+    runner.reset(stop_succeeds_on=2, on_start=_delayed_pid_start)
     with pytest.raises(LifecycleError) as delayed_exc:
-        delayed_adapter.verify_stopped_pgdata_dataset_id(binding, app_dir=app_dir, program_data_root=program_data)
+        adapter.verify_stopped_pgdata_dataset_id(binding, app_dir=app_dir, program_data_root=program_data)
     assert delayed_exc.value.code == "command_outcome_unknown"
     assert not (pgdata / "postmaster.pid").exists()
-    assert cluster_running["value"] is False
-    assert events == [
+    assert runner.cluster_running is False
+    assert runner.events == [
         "job_enter",
         "pg_ctl_start_timeout_before_pid",
         "pg_ctl_stop_1",
@@ -1733,36 +1762,13 @@ def test_purge_data_probe_retries_stop_until_clean_shutdown_verified_and_never_s
         "job_exit",
     ]
 
-    # 4) If starter process failed to confirm exit (starter_process_not_exited), outer finally MUST NEVER
-    # accept pre-start shut down / absent postmaster.pid as stop_verified=True; MUST raise purge_probe_stop_failed!
-    class UnconfirmedStarterExitRunner(RetryStopRunner):
-        def open_managed_job(self):
-            class Job:
-                def __enter__(self_job):
-                    events.append("job_enter")
-                    return self_job
-
-                def run_background_starter(self_job, argv, *, on_timeout=None, **_kw):
-                    del argv, on_timeout
-                    events.append("starter_not_exited")
-                    raise LifecycleError("starter_process_not_exited", "pg_ctl.exe did not confirm exit")
-
-                def __exit__(self_job, *_exc):
-                    events.append("job_exit")
-
-            return Job()
-
-    events.clear()
-    stop_calls["count"] = 0
-    stop_succeeds_on["attempt"] = 1
-    cluster_running["value"] = False
-    unconfirmed_adapter = WindowsDatasetAdapter(UnconfirmedStarterExitRunner(), SimpleNamespace())
+    runner.reset(stop_succeeds_on=1, on_start=_unconfirmed_exit_start)
     with pytest.raises(LifecycleError) as unconfirmed_exc:
-        unconfirmed_adapter.verify_stopped_pgdata_dataset_id(binding, app_dir=app_dir, program_data_root=program_data)
+        adapter.verify_stopped_pgdata_dataset_id(binding, app_dir=app_dir, program_data_root=program_data)
     assert unconfirmed_exc.value.code == "purge_probe_stop_failed"
     assert isinstance(unconfirmed_exc.value.__cause__, LifecycleError)
     assert unconfirmed_exc.value.__cause__.code == "starter_process_not_exited"
-    assert events == ["job_enter", "starter_not_exited", "pg_ctl_stop_1", "job_exit"]
+    assert runner.events == ["job_enter", "starter_not_exited", "pg_ctl_stop_1", "job_exit"]
 
 
 def test_run_windows_process_raises_termination_unconfirmed_when_process_survives_kill_wait(
@@ -1809,7 +1815,7 @@ def test_run_windows_process_raises_termination_unconfirmed_when_process_survive
             env={},
             timeout_s=1,
             input_text=None,
-            job=FakeJob(),  # type: ignore[arg-type]
+            job=cast(Any, FakeJob()),
             capture_output=False,
         )
 
@@ -1903,7 +1909,7 @@ def test_purge_data_cli_reports_purge_probe_stop_failed_not_unhandled_on_dual_te
 
     dual_runner = DualUnconfirmedRunner()
     real_dataset = windows_dataset.WindowsDatasetAdapter(dual_runner, SimpleNamespace())
-    stores._adapters = SimpleNamespace(dataset=real_dataset)  # type: ignore[attr-defined]
+    setattr(stores, "_adapters", SimpleNamespace(dataset=real_dataset))
 
     result_file = tmp_path / "purge-dual-result.json"
     monkeypatch.setattr(purge_data_cli, "require_windows", lambda: None)
@@ -2227,7 +2233,7 @@ def test_uninstall_rejects_ambiguous_or_non_recoverable_active_operation_before_
             "expected_restore_epoch": binding.expected_restore_epoch,
         }
         fields.update(overrides)
-        return UninstallOperation(**fields)  # type: ignore[arg-type]
+        return UninstallOperation(**cast(dict[str, Any], fields))
 
     for bad_overrides in (
         {"phase": "prepared"},
@@ -2519,17 +2525,68 @@ def test_uninstall_cli_check_preflight_single_authority_admission_and_zero_write
         assert _snapshot(tmp_path) == before
 
 
-def test_uninstall_cli_from_installed_single_authority_flow_and_forbidden_roots(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+class _NoopMachineSecurity:
+    def verify_machine_json(self, _path: Path, _service: str) -> None:
+        return None
+
+    def verify_binding_json(self, _path: Path, _service: str) -> None:
+        return None
+
+    def protect_machine_json(self, _path: Path, _service: str) -> None:
+        return None
+
+    def grant_backend_binding_read(self, _path: Path, _service: str) -> None:
+        return None
+
+    def prepare_operation_store(self, _request: InstallRequest) -> None:
+        return None
+
+
+class _RecordingUninstallPlatform:
+    def __init__(self, active_release_id: str) -> None:
+        self._active_release_id = active_release_id
+        self.requests: list[InstallRequest] = []
+        self.verify_called = False
+        self.unregister_called = False
+        self.cleanup_called = False
+
+    def verify_owned_services(self, request: InstallRequest, _binding: InstallationBinding) -> None:
+        self.verify_called = True
+        self.requests.append(request)
+
+    def verify_registered_release_manifests(self, _request: Any, _binding: Any, **_kw: Any) -> None:
+        self.verify_called = True
+
+    def stop_and_unregister_services(self, _request: Any, _binding: Any) -> list[str]:
+        self.unregister_called = True
+        return ["TicketboxBackend", "TicketboxPg"]
+
+    def remove_start_menu_shortcut(self, _request: Any) -> bool:
+        return True
+
+    def cleanup_registered_release_payloads(self, _request: Any, _binding: Any, **_kw: Any) -> list[str]:
+        self.cleanup_called = True
+        return [self._active_release_id]
+
+
+def _make_hookable_mutex(mutex_on_acquire: list[Callable[[], object]]) -> Any:
+    from ticketbox_lifecycle.runtime.mutex import ThreadMutex
+
+    class HookableMutex(ThreadMutex):
+        def acquire(self) -> None:
+            super().acquire()
+            if mutex_on_acquire:
+                hook = mutex_on_acquire.pop(0)
+                hook()
+
+    return HookableMutex()
+
+
+def _setup_from_installed_cli_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     from dataclasses import asdict
 
     from ticketbox_lifecycle import uninstall_cli
     from ticketbox_lifecycle.runtime.filesystem_stores import FilesystemStores
-    from ticketbox_lifecycle.runtime.mutex import ThreadMutex
-    from ticketbox_lifecycle.schemas import UninstallOperation
 
     app_dir = tmp_path / "app"
     app_dir.mkdir(parents=True)
@@ -2537,49 +2594,24 @@ def test_uninstall_cli_from_installed_single_authority_flow_and_forbidden_roots(
     machine_root = program_data / "machine"
     machine_root.mkdir(parents=True)
     chinese_data_root = str(program_data / "data")
-
     _, _mem, _adapters, base_binding = _installed_fixture(tmp_path)
     binding = replace(base_binding, data_root=chinese_data_root)
     manifest_sha = binding.release_manifest_sha256.lower()
     expected_op_id = f"uninstall-{manifest_sha}"
-
-    class NoopSecurity:
-        def verify_machine_json(self, _path: Path, _service: str) -> None:
-            return None
-
-        def verify_binding_json(self, _path: Path, _service: str) -> None:
-            return None
-
-        def protect_machine_json(self, _path: Path, _service: str) -> None:
-            return None
-
-        def grant_backend_binding_read(self, _path: Path, _service: str) -> None:
-            return None
-
-        def prepare_operation_store(self, _request: InstallRequest) -> None:
-            return None
-
-    mutex_on_acquire: list[object] = []
-
-    class HookableMutex(ThreadMutex):
-        def acquire(self) -> None:
-            super().acquire()
-            if mutex_on_acquire:
-                hook = mutex_on_acquire.pop(0)
-                hook()  # type: ignore[operator]
+    mutex_on_acquire: list[Callable[[], object]] = []
+    root_calls = {"install": 0, "program_data": 0}
+    platform_box = [_RecordingUninstallPlatform(binding.active_release_id)]
 
     def _from_installed(*, install_root: Path | None = None, program_data_root: Path | None = None) -> FilesystemStores:
         resolved_pd = program_data_root if program_data_root is not None else program_data
         return FilesystemStores(
             resolved_pd / "machine",
             binding.backend_service_name,
-            SimpleNamespace(security=NoopSecurity()),
-            HookableMutex(),
+            SimpleNamespace(security=_NoopMachineSecurity()),
+            _make_hookable_mutex(mutex_on_acquire),
             install_root=install_root,
             program_data_root=resolved_pd,
         )
-
-    root_calls = {"install": 0, "program_data": 0}
 
     def _counted_install_root() -> Path:
         root_calls["install"] += 1
@@ -2588,33 +2620,6 @@ def test_uninstall_cli_from_installed_single_authority_flow_and_forbidden_roots(
     def _counted_program_data_root() -> Path:
         root_calls["program_data"] += 1
         return program_data
-
-    class RecordingUninstallPlatform:
-        def __init__(self) -> None:
-            self.requests: list[InstallRequest] = []
-            self.verify_called = False
-            self.unregister_called = False
-            self.cleanup_called = False
-
-        def verify_owned_services(self, request: InstallRequest, _binding: InstallationBinding) -> None:
-            self.verify_called = True
-            self.requests.append(request)
-
-        def verify_registered_release_manifests(self, _request, _binding, **_kw) -> None:
-            self.verify_called = True
-
-        def stop_and_unregister_services(self, _request, _binding) -> list[str]:
-            self.unregister_called = True
-            return ["TicketboxBackend", "TicketboxPg"]
-
-        def remove_start_menu_shortcut(self, _request) -> bool:
-            return True
-
-        def cleanup_registered_release_payloads(self, _request, _binding, **_kw) -> list[str]:
-            self.cleanup_called = True
-            return [binding.active_release_id]
-
-    platform_box = [RecordingUninstallPlatform()]
 
     monkeypatch.setattr(uninstall_cli, "require_windows", lambda: None)
     monkeypatch.setattr(uninstall_cli, "ticketbox_install_root", _counted_install_root)
@@ -2626,34 +2631,53 @@ def test_uninstall_cli_from_installed_single_authority_flow_and_forbidden_roots(
         raising=False,
     )
     monkeypatch.setattr(uninstall_cli.FilesystemStores, "from_installed", staticmethod(_from_installed))
-    monkeypatch.setattr(
-        uninstall_cli,
-        "WindowsUninstallPlatform",
-        lambda *_args, **_kw: platform_box[0],
-    )
-
+    monkeypatch.setattr(uninstall_cli, "WindowsUninstallPlatform", lambda *_args, **_kw: platform_box[0])
     binding_path = machine_root / "installation.json"
     active_path = machine_root / "operations" / "active.json"
     active_path.parent.mkdir(parents=True, exist_ok=True)
+    return SimpleNamespace(
+        uninstall_cli=uninstall_cli,
+        app_dir=app_dir,
+        program_data=program_data,
+        machine_root=machine_root,
+        chinese_data_root=chinese_data_root,
+        binding=binding,
+        binding_raw=json.dumps(asdict(binding), indent=2, sort_keys=True) + "\n",
+        manifest_sha=manifest_sha,
+        expected_op_id=expected_op_id,
+        mutex_on_acquire=mutex_on_acquire,
+        root_calls=root_calls,
+        platform_box=platform_box,
+        binding_path=binding_path,
+        active_path=active_path,
+    )
 
-    # Case 1: installation.json has a single Unicode-escaped top-level key ("active_releas\u0065_id")
-    # AND Chinese \uXXXX data_root AND matching failed_recoverable active.json.
-    # Both --check-preflight AND --from-installed MUST run through REAL uninstall_action.uninstall()
-    # with the exact binding digest and archive committed history!
-    binding_raw = json.dumps(asdict(binding), indent=2, sort_keys=True) + "\n"
-    escaped_key_binding = binding_raw.replace('"active_release_id"', r'"active_releas\u0065_id"', 1)
+
+def test_uninstall_cli_from_installed_single_authority_flow_and_forbidden_roots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from dataclasses import asdict
+
+    from ticketbox_lifecycle.schemas import UninstallOperation
+
+    env = _setup_from_installed_cli_env(tmp_path, monkeypatch)
+    uninstall_cli = env.uninstall_cli
+    binding = env.binding
+
+    escaped_key_binding = env.binding_raw.replace('"active_release_id"', r'"active_releas\u0065_id"', 1)
     assert r'"active_releas\u0065_id"' in escaped_key_binding
-    assert r"\u" in binding_raw
-    binding_path.write_text(escaped_key_binding, encoding="utf-8")
-
+    assert r"\u" in env.binding_raw
+    env.binding_path.write_text(escaped_key_binding, encoding="utf-8")
     active_op = UninstallOperation(
         schema=OPERATION_SCHEMA,
-        operation_id=expected_op_id,
+        operation_id=env.expected_op_id,
         kind="uninstall",
         request_hash="a" * 64,
         target_release_id=binding.active_release_id,
-        data_root=chinese_data_root,
-        release_manifest_sha256=manifest_sha,
+        data_root=env.chinese_data_root,
+        release_manifest_sha256=env.manifest_sha,
         backend_port=binding.backend_port,
         phase="failed_recoverable",
         no_return_point=True,
@@ -2664,47 +2688,43 @@ def test_uninstall_cli_from_installed_single_authority_flow_and_forbidden_roots(
         health_attestation_key="d" * 64,
         expected_restore_epoch=binding.expected_restore_epoch,
     )
-    active_path.write_text(json.dumps(asdict(active_op), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    env.active_path.write_text(json.dumps(asdict(active_op), indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     assert uninstall_cli.main(["uninstall", "--check-preflight"]) == 0
-
-    root_calls["install"] = 0
-    root_calls["program_data"] = 0
+    env.root_calls["install"] = 0
+    env.root_calls["program_data"] = 0
     safe_result = tmp_path / "private-result" / "uninstall-result.json"
     safe_result.parent.mkdir(parents=True)
-    rc = uninstall_cli.main(["uninstall", "--from-installed", "--result", str(safe_result)])
-    assert rc == 0
-    assert root_calls == {"install": 1, "program_data": 1}
-    assert platform_box[0].unregister_called is True
-    assert platform_box[0].cleanup_called is True
-    assert len(platform_box[0].requests) == 1
-    assert platform_box[0].requests[0].operation_id == expected_op_id
-    assert platform_box[0].requests[0].target_release_id == binding.active_release_id
-    assert platform_box[0].requests[0].release_manifest_sha256 == manifest_sha
-    assert platform_box[0].requests[0].install_id == binding.install_id
-    assert platform_box[0].requests[0].dataset_id == binding.dataset_id
-    assert not active_path.exists()
-    assert (machine_root / "operations" / "history" / f"{expected_op_id}.json").is_file()
+    assert uninstall_cli.main(["uninstall", "--from-installed", "--result", str(safe_result)]) == 0
+    assert env.root_calls == {"install": 1, "program_data": 1}
+    assert env.platform_box[0].unregister_called is True
+    assert env.platform_box[0].cleanup_called is True
+    assert len(env.platform_box[0].requests) == 1
+    req0 = env.platform_box[0].requests[0]
+    assert req0.operation_id == env.expected_op_id
+    assert req0.target_release_id == binding.active_release_id
+    assert req0.release_manifest_sha256 == env.manifest_sha
+    assert req0.install_id == binding.install_id
+    assert req0.dataset_id == binding.dataset_id
+    assert not env.active_path.exists()
+    assert (env.machine_root / "operations" / "history" / f"{env.expected_op_id}.json").is_file()
     result_payload = json.loads(safe_result.read_text(encoding="utf-8"))
     assert result_payload["ok"] is True
     assert result_payload["phase"] == "committed"
-    assert result_payload["operation_id"] == expected_op_id
+    assert result_payload["operation_id"] == env.expected_op_id
     assert result_payload["code"] == "uninstalled_data_preserved"
 
-    # Case 1b: TOCTOU race — binding upgrades from release A (digest A) to release B (digest B)
-    # AFTER --from-installed constructs uninstall-A and BEFORE uninstall_action.uninstall acquires the lock.
-    # Real _uninstall_locked MUST reject with uninstall_identity_mismatch, zero service unregister, zero active.json!
-    binding_path.write_text(binding_raw, encoding="utf-8")
-    assert not active_path.exists()
+    env.binding_path.write_text(env.binding_raw, encoding="utf-8")
+    assert not env.active_path.exists()
     upgraded_binding = replace(
         binding,
         active_release_id="1.4.0",
         previous_release_id=binding.active_release_id,
         release_manifest_sha256="b" * 64,
     )
-    platform_box[0] = RecordingUninstallPlatform()
-    mutex_on_acquire.append(
-        lambda: binding_path.write_text(
+    env.platform_box[0] = _RecordingUninstallPlatform(binding.active_release_id)
+    env.mutex_on_acquire.append(
+        lambda: env.binding_path.write_text(
             json.dumps(asdict(upgraded_binding), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
@@ -2712,22 +2732,33 @@ def test_uninstall_cli_from_installed_single_authority_flow_and_forbidden_roots(
     race_result = tmp_path / "private-result" / "race-result.json"
     assert uninstall_cli.main(["uninstall", "--from-installed", "--result", str(race_result)]) == 2
     assert "uninstall_identity_mismatch" in capsys.readouterr().err
-    assert platform_box[0].verify_called is False
-    assert platform_box[0].unregister_called is False
-    assert not active_path.exists()
+    assert env.platform_box[0].verify_called is False
+    assert env.platform_box[0].unregister_called is False
+    assert not env.active_path.exists()
     race_payload = json.loads(race_result.read_text(encoding="utf-8"))
     assert race_payload["ok"] is False
     assert race_payload["code"] == "uninstall_identity_mismatch"
 
-    # Case 2: Duplicate top-level data_root or pure bracket syntax mismatch (closing } -> ]) in installation.json ->
-    # BOTH --check-preflight AND --from-installed MUST reject BEFORE uninstall()/service unregister!
-    platform_box[0] = RecordingUninstallPlatform()
+
+def test_uninstall_cli_from_installed_rejects_bad_binding_and_forbidden_roots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from dataclasses import asdict
+
+    env = _setup_from_installed_cli_env(tmp_path, monkeypatch)
+    uninstall_cli = env.uninstall_cli
+    binding = env.binding
+    safe_result = tmp_path / "private-result" / "uninstall-result.json"
+    safe_result.parent.mkdir(parents=True)
+
     compact_binding = json.dumps(asdict(binding), sort_keys=True)
     for bad_binding_text in (
         compact_binding[:-1] + ', "data_root": "C:/evil/data"}',
         compact_binding[:-1] + "]",
     ):
-        binding_path.write_text(bad_binding_text, encoding="utf-8")
+        env.binding_path.write_text(bad_binding_text, encoding="utf-8")
         assert uninstall_cli.main(["uninstall", "--check-preflight"]) == 2
         capsys.readouterr()
         err_result = tmp_path / "private-result" / "bad-binding-result.json"
@@ -2735,23 +2766,19 @@ def test_uninstall_cli_from_installed_single_authority_flow_and_forbidden_roots(
             err_result.unlink()
         assert uninstall_cli.main(["uninstall", "--from-installed", "--result", str(err_result)]) == 2
         capsys.readouterr()
-        assert platform_box[0].verify_called is False
-        assert platform_box[0].unregister_called is False
-        err_payload = json.loads(err_result.read_text(encoding="utf-8"))
-        assert err_payload["ok"] is False
+        assert env.platform_box[0].verify_called is False
+        assert env.platform_box[0].unregister_called is False
+        assert json.loads(err_result.read_text(encoding="utf-8"))["ok"] is False
 
-    # Case 3: Forbidden result paths inside app_dir or program_data_root -> refused with zero file writes!
-    binding_path.write_text(binding_raw, encoding="utf-8")
-    platform_box[0] = RecordingUninstallPlatform()
-    for evil_result in (app_dir / "evil.json", program_data / "evil.json"):
+    env.binding_path.write_text(env.binding_raw, encoding="utf-8")
+    env.platform_box[0] = _RecordingUninstallPlatform(binding.active_release_id)
+    for evil_result in (env.app_dir / "evil.json", env.program_data / "evil.json"):
         assert uninstall_cli.main(["uninstall", "--from-installed", "--result", str(evil_result)]) == 2
         assert "unsafe_result_path" in capsys.readouterr().err
         assert not evil_result.exists()
-        assert platform_box[0].verify_called is False
-        assert platform_box[0].unregister_called is False
+        assert env.platform_box[0].verify_called is False
+        assert env.platform_box[0].unregister_called is False
 
-    # Case 3b: Invalid manifest digest with custom external binding.data_root MUST STILL protect
-    # binding.data_root before raising uninstall_binding_missing (zero failure receipt written into it)!
     external_data_root = tmp_path / "external-binding-data"
     external_data_root.mkdir(parents=True)
     bad_digest_external_binding = replace(
@@ -2759,7 +2786,7 @@ def test_uninstall_cli_from_installed_single_authority_flow_and_forbidden_roots(
         data_root=str(external_data_root),
         release_manifest_sha256="not-a-valid-sha256",
     )
-    binding_path.write_text(
+    env.binding_path.write_text(
         json.dumps(asdict(bad_digest_external_binding), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
@@ -2769,7 +2796,6 @@ def test_uninstall_cli_from_installed_single_authority_flow_and_forbidden_roots(
     assert not evil_external_result.exists()
     assert list(external_data_root.iterdir()) == []
 
-    # Case 4: Incompatible flags with --from-installed -> exit 2!
     for bad_argv in (
         ["uninstall", "--from-installed"],
         ["uninstall", "--from-installed", "--result="],

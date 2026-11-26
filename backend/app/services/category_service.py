@@ -69,6 +69,41 @@ def merge_categories(
 CATEGORY_OPTION_LIMIT = 200
 
 
+def resolve_known_category(
+    db: Session, *, tenant_id: str, selected: str | None,
+) -> str | None:
+    selected_name = (selected or "").strip()
+    if is_uncategorized_expense_category(selected_name):
+        return None
+    normalized = normalize_category(selected_name)
+    for default_name in DEFAULT_CATEGORIES:
+        if default_name.casefold() == normalized.casefold():
+            return default_name
+    pref = db.scalar(
+        select(CategoryPreference.name)
+        .where(
+            CategoryPreference.tenant_id == tenant_id,
+            CategoryPreference.deleted_at.is_(None),
+            func.lower(CategoryPreference.name) == normalized.lower(),
+        )
+        .limit(1)
+    )
+    if pref:
+        return normalize_category(pref)
+    used = db.scalar(
+        select(Expense.category)
+        .where(
+            Expense.tenant_id == tenant_id,
+            Expense.category.is_not(None),
+            func.lower(Expense.category) == normalized.lower(),
+        )
+        .limit(1)
+    )
+    if used:
+        return normalize_category(used)
+    return None
+
+
 def list_ledger_category_options(
     db: Session, *, tenant_id: str, query: str = "", selected: str | None = None,
 ) -> list[str]:

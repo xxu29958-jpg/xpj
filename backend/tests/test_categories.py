@@ -663,7 +663,7 @@ def test_category_search_normalizes_pinned_choices_and_reports_genuine_misses(we
         assert response.status_code == 200
         return response.json()
 
-    for missing in (None, "   ", "\u0085", " NuLl ", "未分類"):
+    for missing in (None, "   ", "\u0085", " NuLl ", "未分類", "<script>alert(1)</script>"):
         assert lookup("zzz-nomatch", missing) == []
     for selected in (" 餐饮 ", "吃饭"):
         assert lookup("餐", selected) == ["餐饮"]
