@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select
+from sqlalchemy import func, literal, select
 from sqlalchemy.orm import Session
 
 from app.models import CategoryPreference, CategoryRule, Expense
@@ -82,22 +82,27 @@ def resolve_known_category(
     for default_name in DEFAULT_CATEGORIES:
         if default_name.casefold() == normalized.casefold():
             return default_name
-    target_lowers = tuple({val.lower() for val in category_filter_values(normalized)})
-    pref = db.scalar(
-        select(CategoryPreference.name)
-        .where(
-            CategoryPreference.tenant_id == tenant_id,
-            CategoryPreference.deleted_at.is_(None),
-            func.lower(func.trim(CategoryPreference.name, _UNICODE_WHITESPACE)).in_(target_lowers),
+    key = category_key_for_existing(normalized)
+    pref = (
+        db.scalar(
+            select(CategoryPreference.name)
+            .where(
+                CategoryPreference.tenant_id == tenant_id,
+                CategoryPreference.deleted_at.is_(None),
+                CategoryPreference.key == key,
+            )
+            .limit(1)
         )
-        .limit(1)
+        if key
+        else None
     )
+    target_exprs = [func.lower(literal(val).collate("unicode")) for val in category_filter_values(normalized)]
     used = db.scalar(
         select(Expense.category)
         .where(
             Expense.tenant_id == tenant_id,
             Expense.category.is_not(None),
-            func.lower(func.trim(Expense.category, _UNICODE_WHITESPACE)).in_(target_lowers),
+            func.lower(func.trim(Expense.category, _UNICODE_WHITESPACE).collate("unicode")).in_(target_exprs),
         )
         .limit(1)
     )
