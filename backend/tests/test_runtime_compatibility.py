@@ -98,6 +98,13 @@ def test_runtime_snapshot_is_authenticated_private_and_product_facing(
         "contract": RUNTIME_COMPATIBILITY_CONTRACT,
         "api_version": CURRENT_API_VERSION,
         "api_version_header": TICKETBOX_API_VERSION_HEADER,
+        "min_read_client_version": CURRENT_API_VERSION,
+        "min_write_client_version": CURRENT_API_VERSION,
+        "supported_payload_revisions": {
+            "accounting_time_input": [1], "repayment_time_input": [1],
+            "original_attachment_create": [1], "debt_bill_source": [1],
+            "expense_confirmation": [2], "notification_batch": [1],
+        },
         "read_compatibility": "owner_action_required",
         "write_compatibility": "owner_action_required",
         "legacy_write_compatibility": "client_upgrade_required",
@@ -467,3 +474,75 @@ def test_openapi_publishes_runtime_headers_on_mutating_api_operations(
     ]
     assert currency_parameter["required"] is False
     assert currency_parameter["schema"]["pattern"].endswith(":[A-Z]{3}$")
+
+
+@pytest.mark.parametrize("path", ["/api/ledgers", "/api/settings/account"])
+def test_account_reader_rejects_obsolete_protocol_without_currency_negotiation(client, identity, path):
+    headers = {**identity.auth_headers, TICKETBOX_API_VERSION_HEADER: "2026-01-01"}
+    refused = client.get(path, headers=headers)
+    assert refused.status_code == 409 and refused.json()["error"] == "client_upgrade_required"
+    assert client.get(path, headers=identity.auth_headers).status_code == 200
+
+
+def test_account_write_floor_preserves_readable_profile_and_original_name(client, identity, monkeypatch):
+    monkeypatch.setattr("app.runtime_compatibility_contract.MIN_WRITE_CLIENT_VERSION", "2099-01-01")
+    snapshot = client.get("/api/system/runtime-compatibility", headers=identity.auth_headers).json()
+    assert snapshot["min_write_client_version"] == "2099-01-01"
+    headers = {**identity.auth_headers, TICKETBOX_API_VERSION_HEADER: CURRENT_API_VERSION}
+    before = client.get("/api/settings/account", headers=headers)
+    assert before.status_code == 200
+    refused = client.post("/api/settings/account", headers=headers, json={
+        "expected_name": before.json()["display_name"], "display_name": "future write",
+    })
+    assert refused.status_code == 409 and refused.json()["error"] == "client_upgrade_required"
+    assert client.get("/api/settings/account", headers=headers).json() == before.json()
+
+
+@pytest.mark.parametrize("version", ["2026-01-01", "2099-01-01"])
+def test_ledger_reads_enforce_supported_range_except_handshake(client, identity, version):
+    headers = {**identity.auth_headers, TICKETBOX_API_VERSION_HEADER: version}
+    for path in ("/api/expenses/confirmed", "/api/budgets/monthly?month=2026-08", "/api/debts", "/api/expenses/categories"):
+        refused = client.get(path, headers=headers)
+        assert refused.status_code == 409, (path, refused.text)
+        assert refused.json()["error"] == "client_upgrade_required"
+    snapshot = client.get("/api/system/runtime-compatibility", headers=headers)
+    assert snapshot.status_code == 200
+    assert snapshot.json()["api_version"] == CURRENT_API_VERSION
+
+
+@pytest.mark.parametrize(("version", "write_floor", "expected"), [
+    ("2026-10-11", "2099-01-01", 409),
+    ("2026-10-11", "2026-10-11", 200),
+    ("2026-10-31", "2026-10-11", 200),
+    ("2099-01-01", "2026-10-11", 409),
+])
+def test_budget_manual_and_currency_proof_share_writer_range(
+    client, identity, activate_currency, monkeypatch, version, write_floor, expected,
+):
+    activate_currency("CNY")
+    if write_floor == "2026-10-11":
+        monkeypatch.setattr("app.runtime_compatibility_contract.CURRENT_API_VERSION", "2026-11-01")
+    monkeypatch.setattr("app.runtime_compatibility_contract.MIN_WRITE_CLIENT_VERSION", write_floor)
+    headers = _runtime_headers(identity.auth_headers, api_version=version, binding="1:1:CNY")
+    budget = _put_budget(client, headers=headers)
+    manual = client.post("/api/expenses/manual", headers=headers, json={
+        "client_ref": str(uuid4()), "home_currency_code": "CNY", "original_currency": "CNY",
+        "original_amount": "12.00", "category": "餐饮",
+    })
+    for response in (budget, manual):
+        assert response.status_code == expected, response.text
+        if expected == 409:
+            assert response.json()["error"] == "client_upgrade_required"
+
+    with SessionLocal() as db:
+        assert db.query(Budget).count() == int(expected == 200)
+        assert db.query(Expense).count() == int(expected == 200)
+        db.info[RUNTIME_COMPATIBILITY_SESSION_KEY] = RuntimeCompatibilityRequest(version, "1:1:CNY")
+        # Both currency proof paths also guard callers that reached the service directly.
+        for proof in ({}, {"expected_contract_version": 1, "expected_revision": 1}):
+            if expected == 409:
+                with pytest.raises(AppError) as refused:
+                    resolve_write_capability(db, **proof)
+                assert refused.value.error == "client_upgrade_required"
+            else:
+                assert resolve_write_capability(db, **proof).home_currency_code == "CNY"

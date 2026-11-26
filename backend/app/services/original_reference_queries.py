@@ -1,6 +1,7 @@
 """Retained original references shared by export and orphan maintenance."""
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import Select, and_, case, func, or_, select
@@ -9,6 +10,16 @@ from sqlalchemy.orm import Session
 from app import models as m
 from app.services.attachment_cleanup_service import pending_cleanup_references
 from app.services.file_service import resolve_upload_path_for_tenant, upload_reference_for_path
+
+
+@dataclass(frozen=True, slots=True)
+class RetainedOriginalCheck:
+    tenant_id: str
+    relative_path: str
+    expected_sha256: str | None
+    expected_size_bytes: int | None
+    require_digest: bool
+    source_kind: str
 
 
 def original_receipt_references_query(receipt_query: Select, *, tenant_id: str) -> Select:
@@ -85,6 +96,161 @@ def _normalize_upload_reference(relative_path: str | None, tenant_id: str) -> st
     if candidate is None:
         return None
     return _relative_upload_path(candidate)
+
+
+def _require_normalized_upload_reference(
+    relative_path: str | None,
+    tenant_id: str,
+    *,
+    source_kind: str,
+) -> str:
+    if not isinstance(relative_path, str) or not relative_path.strip():
+        raise ValueError(f"invalid retained original reference ({source_kind})")
+    normalized = _normalize_upload_reference(relative_path, tenant_id)
+    if normalized is None:
+        raise ValueError(f"invalid retained original reference ({source_kind})")
+    return normalized
+
+
+def iter_retained_original_checks(db: Session, tenant_id: str) -> list[RetainedOriginalCheck]:
+    checks: list[RetainedOriginalCheck] = []
+    expense_rows = db.execute(
+        select(
+            m.Expense.image_path,
+            m.Expense.image_hash,
+            m.Expense.thumbnail_path,
+            m.Expense.image_deleted_at,
+            m.Expense.thumbnail_deleted_at,
+            m.Expense.attachment_cleanup_request,
+        )
+        .where(m.Expense.tenant_id == tenant_id)
+        .where(
+            or_(
+                and_(m.Expense.image_path.is_not(None), m.Expense.image_deleted_at.is_(None)),
+                and_(m.Expense.thumbnail_path.is_not(None), m.Expense.thumbnail_deleted_at.is_(None)),
+                m.Expense.attachment_cleanup_request.is_not(None),
+            )
+        )
+    )
+    for image_path, image_hash, thumbnail_path, image_deleted_at, thumbnail_deleted_at, cleanup_request in expense_rows:
+        if image_path is not None and image_deleted_at is None:
+            normalized = _require_normalized_upload_reference(
+                image_path, tenant_id, source_kind="expense_image",
+            )
+            checks.append(
+                RetainedOriginalCheck(
+                    tenant_id=tenant_id,
+                    relative_path=normalized,
+                    expected_sha256=image_hash,
+                    expected_size_bytes=None,
+                    require_digest=False,
+                    source_kind="expense_image",
+                )
+            )
+        if thumbnail_path is not None and thumbnail_deleted_at is None:
+            normalized = _require_normalized_upload_reference(
+                thumbnail_path, tenant_id, source_kind="expense_thumbnail",
+            )
+            checks.append(
+                RetainedOriginalCheck(
+                    tenant_id=tenant_id,
+                    relative_path=normalized,
+                    expected_sha256=None,
+                    expected_size_bytes=None,
+                    require_digest=False,
+                    source_kind="expense_thumbnail",
+                )
+            )
+        for reference in pending_cleanup_references(cleanup_request):
+            normalized = _require_normalized_upload_reference(
+                reference, tenant_id, source_kind="expense_pending_cleanup",
+            )
+            checks.append(
+                RetainedOriginalCheck(
+                    tenant_id=tenant_id,
+                    relative_path=normalized,
+                    expected_sha256=image_hash if reference == image_path else None,
+                    expected_size_bytes=None,
+                    require_digest=False,
+                    source_kind="expense_pending_cleanup",
+                )
+            )
+
+    capture_rows = db.execute(
+        select(
+            m.DebtBillCapture.image_path,
+            m.DebtBillCapture.image_hash,
+            m.DebtBillCapture.image_size_bytes,
+            m.DebtBillCapture.image_deleted_at,
+            m.DebtBillCapture.attachment_cleanup_request,
+        ).where(m.DebtBillCapture.tenant_id == tenant_id)
+    )
+    for image_path, image_hash, image_size_bytes, deleted_at, cleanup_request in capture_rows:
+        if deleted_at is None:
+            normalized = _require_normalized_upload_reference(
+                image_path, tenant_id, source_kind="debt_bill_capture",
+            )
+            checks.append(
+                RetainedOriginalCheck(
+                    tenant_id=tenant_id,
+                    relative_path=normalized,
+                    expected_sha256=image_hash,
+                    expected_size_bytes=image_size_bytes,
+                    require_digest=True,
+                    source_kind="debt_bill_capture",
+                )
+            )
+        for reference in pending_cleanup_references(cleanup_request):
+            normalized = _require_normalized_upload_reference(
+                reference, tenant_id, source_kind="debt_bill_capture_pending_cleanup",
+            )
+            matches_primary = reference == image_path
+            checks.append(
+                RetainedOriginalCheck(
+                    tenant_id=tenant_id,
+                    relative_path=normalized,
+                    expected_sha256=image_hash if matches_primary else None,
+                    expected_size_bytes=image_size_bytes if matches_primary else None,
+                    require_digest=matches_primary,
+                    source_kind="debt_bill_capture_pending_cleanup",
+                )
+            )
+
+    history = original_receipt_references_query(select(m.ApiIdempotencyKey), tenant_id=tenant_id)
+    for original in db.execute(history).mappings():
+        if historical_original_is_cleaned(original):
+            continue
+        hist_image = original["image_path"]
+        if hist_image is not None:
+            normalized = _require_normalized_upload_reference(
+                hist_image, tenant_id, source_kind="historical_original",
+            )
+            checks.append(
+                RetainedOriginalCheck(
+                    tenant_id=tenant_id,
+                    relative_path=normalized,
+                    expected_sha256=original["image_hash"],
+                    expected_size_bytes=None,
+                    require_digest=False,
+                    source_kind="historical_original",
+                )
+            )
+        hist_thumb = original["thumbnail_path"]
+        if hist_thumb is not None and original["thumbnail_deleted_at"] is None:
+            normalized = _require_normalized_upload_reference(
+                hist_thumb, tenant_id, source_kind="historical_thumbnail",
+            )
+            checks.append(
+                RetainedOriginalCheck(
+                    tenant_id=tenant_id,
+                    relative_path=normalized,
+                    expected_sha256=None,
+                    expected_size_bytes=None,
+                    require_digest=False,
+                    source_kind="historical_thumbnail",
+                )
+            )
+    return checks
 
 
 def referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:

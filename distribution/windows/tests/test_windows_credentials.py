@@ -59,6 +59,8 @@ def test_pgpass_consumer_topology_is_closed_and_follows_acl_verification() -> No
     restore = (runtime.parent / "domain" / "restore.py").read_text(encoding="utf-8")
     assert restore.index('security.verify(bound, "acl")') < restore.index("platform.rotate_credentials(")
     assert restore.index('security.verify(bound, "acl")') < restore.index("platform.rebind_identity(")
+    reinstall = (runtime.parent / "domain" / "reinstall.py").read_text(encoding="utf-8")
+    assert reinstall.index('security.verify(bound, "acl")') < reinstall.index("platform.verify_preserved_dataset(")
 
 
 def _request(tmp_path: Path) -> InstallRequest:

@@ -28,7 +28,7 @@ import ast
 import pathlib
 import sys
 
-APP_DIR = pathlib.Path("app")
+APP_DIR = pathlib.Path(__file__).resolve().parents[1] / "app"
 ERRORS_FILE = APP_DIR / "errors.py"
 
 
@@ -81,7 +81,7 @@ def main() -> int:
         for lineno, code in _messageless_apperror_codes(tree):
             if code not in keys:
                 failures.append(
-                    f"{path.as_posix()}:{lineno} AppError(\"{code}\") has no explicit "
+                    f"{path.relative_to(APP_DIR.parent).as_posix()}:{lineno} AppError(\"{code}\") has no explicit "
                     f"message and \"{code}\" is not in ERROR_MESSAGES -> degrades to server_error"
                 )
 

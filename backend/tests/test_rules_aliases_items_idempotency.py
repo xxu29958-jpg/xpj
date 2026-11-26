@@ -452,12 +452,28 @@ def test_replace_items_in_progress_returns_409(
     items = [{"name": "拿铁", "amount_cents": 500, "category": "餐饮"}]
     key = str(uuid4())
     payload = ExpenseItemReplaceRequest(expected_row_version=v0, items=items)
+    with SessionLocal() as db:
+        from sqlalchemy import select
+
+        from app.models import AuthToken
+        from app.services.identity_service import hash_secret
+
+        token = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(identity.app_token))
+        )
+        assert token is not None
+        actor_account_id = token.account_id
+        actor_device_id = token.device_id
     fingerprint = fingerprint_request(
         operation="replace_items",
         target_id=str(expense_id),
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body={
+            **payload.model_dump(
+                mode="json", exclude_unset=True, exclude={"expected_row_version"}
+            ),
+            "actor_account_id": actor_account_id,
+            "actor_device_id": actor_device_id,
+        },
         expected_row_version=v0,
     )
     with SessionLocal() as db:

@@ -12,6 +12,7 @@ _APP_META = table(
     column("value"),
     schema="public",
 )
+MANAGED_UPGRADE_ATTESTATION_KEY = "managed_upgrade_attestation"
 
 
 def read_app_meta_value(connection: Any, key: str) -> object:
@@ -23,4 +24,4 @@ def read_app_meta_value(connection: Any, key: str) -> object:
     )
 
 
-__all__ = ["read_app_meta_value"]
+__all__ = ["MANAGED_UPGRADE_ATTESTATION_KEY", "read_app_meta_value"]

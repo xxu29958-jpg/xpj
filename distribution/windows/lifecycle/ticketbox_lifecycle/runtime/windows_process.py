@@ -4,7 +4,7 @@ import contextlib
 import ctypes
 import os
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from ctypes import wintypes
 from functools import lru_cache
 
@@ -167,36 +167,115 @@ def _resume_suspended_process(pid: int) -> None:
         raise OSError(f"expected one suspended primary thread, resumed {resumed}")
 
 
+class ProcessTerminationUnconfirmedError(RuntimeError):
+    """Raised when a child process is still alive after forced termination and wait."""
+
+
+class PersistentKillOnCloseJob:
+    def __init__(self) -> None:
+        if os.name != "nt":
+            raise OSError("Windows Job Objects are unavailable")
+        self._job: _KillOnCloseJob | None = _KillOnCloseJob()
+
+    def __enter__(self) -> PersistentKillOnCloseJob:
+        return self
+
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        env: Mapping[str, str] | None = None,
+        timeout_s: int = 120,
+        input_text: str | None = None,
+        capture_output: bool = True,
+        on_timeout: Callable[[], None] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        if self._job is None:
+            raise OSError("Windows Job Object is already closed")
+        return run_windows_process(
+            argv,
+            env=env,
+            timeout_s=timeout_s,
+            input_text=input_text,
+            job=self._job,
+            capture_output=capture_output,
+            on_timeout=on_timeout,
+        )
+
+    def close(self) -> None:
+        job, self._job = self._job, None
+        if job is not None:
+            job.close()
+
+    def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
+        self.close()
+
+
 def run_windows_process(
     argv: Sequence[str],
     *,
     env: Mapping[str, str] | None,
     timeout_s: int,
     input_text: str | None,
+    job: _KillOnCloseJob | None = None,
+    capture_output: bool = True,
+    on_timeout: Callable[[], None] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     if os.name != "nt":
         raise OSError("Windows Job Objects are unavailable")
     command = [str(part) for part in argv]
-    job = _KillOnCloseJob()
+    owns_job = job is None
+    active_job = _KillOnCloseJob() if owns_job else job
     process: subprocess.Popen[str] | None = None
     try:
         process = subprocess.Popen(
             command,
             stdin=subprocess.PIPE if input_text is not None else subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE if capture_output else subprocess.DEVNULL,
+            stderr=subprocess.PIPE if capture_output else subprocess.DEVNULL,
             text=True,
             env=dict(env) if env is not None else None,
             creationflags=_CREATE_SUSPENDED | _CREATE_NO_WINDOW,
         )
-        job.assign(process.pid)
+        active_job.assign(process.pid)
         _resume_suspended_process(process.pid)
         try:
-            stdout, stderr = process.communicate(input=input_text, timeout=timeout_s)
+            if capture_output:
+                stdout, stderr = process.communicate(input=input_text, timeout=timeout_s)
+            else:
+                process.wait(timeout=timeout_s)
+                stdout, stderr = "", ""
         except subprocess.TimeoutExpired as timeout:
             try:
-                job.terminate()
-                stdout, stderr = process.communicate(timeout=_TERMINATION_TIMEOUT_S)
+                if owns_job:
+                    active_job.terminate()
+                elif on_timeout is not None:
+                    with contextlib.suppress(Exception):
+                        on_timeout()
+                else:
+                    with contextlib.suppress(OSError):
+                        process.kill()
+                if capture_output:
+                    try:
+                        stdout, stderr = process.communicate(timeout=_TERMINATION_TIMEOUT_S)
+                    except subprocess.TimeoutExpired:
+                        if not owns_job and on_timeout is not None and process.poll() is None:
+                            with contextlib.suppress(OSError):
+                                process.kill()
+                            stdout, stderr = process.communicate(timeout=_TERMINATION_TIMEOUT_S)
+                        else:
+                            raise
+                else:
+                    try:
+                        process.wait(timeout=_TERMINATION_TIMEOUT_S)
+                    except subprocess.TimeoutExpired:
+                        if not owns_job and on_timeout is not None and process.poll() is None:
+                            with contextlib.suppress(OSError):
+                                process.kill()
+                            process.wait(timeout=_TERMINATION_TIMEOUT_S)
+                        else:
+                            raise
+                    stdout, stderr = "", ""
             except (OSError, subprocess.TimeoutExpired) as termination_failure:
                 raise subprocess.TimeoutExpired(command, timeout_s) from termination_failure
             raise subprocess.TimeoutExpired(
@@ -207,14 +286,21 @@ def run_windows_process(
             ) from timeout
         return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     finally:
-        job.close()
+        if owns_job:
+            active_job.close()
+        still_alive = False
         if process is not None:
             if process.poll() is None:
                 with contextlib.suppress(OSError):
                     process.kill()
                 with contextlib.suppress(OSError, subprocess.TimeoutExpired):
                     process.wait(timeout=5)
+            still_alive = process.poll() is None
             for stream in (process.stdin, process.stdout, process.stderr):
                 if stream is not None:
                     with contextlib.suppress(OSError, ValueError):
                         stream.close()
+        if still_alive:
+            raise ProcessTerminationUnconfirmedError(
+                f"process did not exit after forced termination: {command[0]}"
+            )

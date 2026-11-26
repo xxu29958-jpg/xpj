@@ -80,9 +80,14 @@ def test_fresh_schema_real_caller_seals_runtime_authority_tables(
     target = "20260821_0001"
     connection = _ActiveConnection()
     sealed: list[object] = []
+    guarded: list[tuple[object, str | None]] = []
 
     def seal_runtime_authority_tables(actual: object) -> bool:
         sealed.append(actual)
+        return True
+
+    def seal_upgrade_attestation_guard(actual: object, *, owner_role: str | None = None) -> bool:
+        guarded.append((actual, owner_role))
         return True
 
     monkeypatch.setattr(fresh_schema, "assume_managed_postgres_schema_owner", lambda *_a, **_k: None)
@@ -92,6 +97,11 @@ def test_fresh_schema_real_caller_seals_runtime_authority_tables(
         fresh_schema,
         "seal_runtime_authority_tables",
         seal_runtime_authority_tables,
+    )
+    monkeypatch.setattr(
+        fresh_schema,
+        "seal_upgrade_attestation_guard",
+        seal_upgrade_attestation_guard,
     )
 
     result = fresh_schema._run_on_connection(
@@ -105,3 +115,4 @@ def test_fresh_schema_real_caller_seals_runtime_authority_tables(
 
     assert result == "already-at-target"
     assert sealed == [connection]
+    assert guarded == [(connection, "ticketbox_owner")]

@@ -9,6 +9,7 @@ import com.ticketbox.data.remote.ApiService
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -75,19 +76,65 @@ internal class RetryOcrDispatcherTest : ExpensePendingRepositoryOutboxTestBase()
 
         assertEquals(row.idempotencyKey, stub.lastRetryOcrIdempotencyKey)
         assertEquals(1, publicationAttempts)
-        assertEquals(DispatchResult.Success(newRowVersion = 2L, cacheRefreshVersion = 2L,
+        assertEquals(DispatchResult.Success(newRowVersion = null, cacheRefreshVersion = 2L,
             receiptJson = """{"expenseId":42}"""), result)
     }
 
     @Test
-    fun `dispatch replays the row's idempotency key and returns the new row_version`() = runTest {
+    fun `dispatch replays the row's idempotency key without returning a cascade token`() = runTest {
         val stub = ApiServiceStub(retryOcrResult = ApiResult.Success(successExpenseDto()))
 
         val result = dispatcherFor(stub).dispatch(retryOcrRow(idempotencyKey = "key-abc"))
 
         assertEquals("key-abc", stub.lastRetryOcrIdempotencyKey, "dispatcher must send the row's key")
-        assertEquals(DispatchResult.Success(newRowVersion = 2L), result)
+        assertEquals(DispatchResult.Success(newRowVersion = null), result)
         assertEquals(listOf("owner" to successExpenseDto()), published)
+    }
+
+    @Test
+    fun `accepted OCR retry never cascades response rowVersion onto queued ReplaceSplits`() = runTest {
+        val payloadJson = moshi().adapter(ExpenseStateTokenRequest::class.java)
+            .toJson(ExpenseStateTokenRequest(expectedRowVersion = 0L))
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao)
+        val retryOcrId = outbox.enqueue(
+            type = PendingMutationType.RetryOcr,
+            targetId = "expense:42",
+            payloadJson = payloadJson,
+            expectedRowVersion = 7L,
+            idempotencyKey = "key-retry-ocr-replay",
+        )
+        val replaceSplitsId = outbox.enqueue(
+            type = PendingMutationType.ReplaceSplits,
+            targetId = "expense:42",
+            payloadJson = "{}",
+            expectedRowVersion = 7L,
+            idempotencyKey = "key-splits",
+        )
+        dao.tokenCascadeIds += listOf(replaceSplitsId)
+        dao.runnableBatches += listOf(retryOcrId)
+
+        val driftedResponse = successExpenseDto().copy(rowVersion = 9L)
+        val stub = ApiServiceStub(retryOcrResult = ApiResult.Success(driftedResponse))
+        val summary = OutboxDrainEngine(outbox, listOf(dispatcherFor(stub))).drainOnce()
+
+        assertEquals(1, summary.done)
+        assertTrue(dao.tokenCascadeCalls.isEmpty())
+        assertEquals(7L, dao.rows.getValue(replaceSplitsId).expectedRowVersion)
+
+        val engineGuardDao = FakePendingMutationDao()
+        val engineGuardOutbox = testOutboxRepository(engineGuardDao)
+        val guardedRetryId = engineGuardOutbox.enqueue(PendingMutationType.RetryOcr, "expense:42", payloadJson, 7L, "k-guard")
+        val guardedSplitsId = engineGuardOutbox.enqueue(PendingMutationType.ReplaceSplits, "expense:42", "{}", 7L, "k-guard-splits")
+        engineGuardDao.tokenCascadeIds += listOf(guardedSplitsId)
+        engineGuardDao.runnableBatches += listOf(guardedRetryId)
+        val syntheticDispatcher = object : OutboxMutationDispatcher {
+            override val type = PendingMutationType.RetryOcr
+            override suspend fun dispatch(row: OutboxRow) = DispatchResult.Success(newRowVersion = 9L)
+        }
+        assertEquals(1, OutboxDrainEngine(engineGuardOutbox, listOf(syntheticDispatcher)).drainOnce().done)
+        assertTrue(engineGuardDao.tokenCascadeCalls.isEmpty())
+        assertEquals(7L, engineGuardDao.rows.getValue(guardedSplitsId).expectedRowVersion)
     }
 
     @Test
@@ -120,5 +167,42 @@ internal class RetryOcrDispatcherTest : ExpensePendingRepositoryOutboxTestBase()
         val result = dispatcherFor(stub).dispatch(retryOcrRow(idempotencyKey = "key-abc"))
 
         assertTrue(result is DispatchResult.Conflict, "state_conflict must stay Conflict: $result")
+    }
+
+    @Test
+    fun `404 task_not_found and expense_not_found both stay Failed in OutboxDrainEngine`() = runTest {
+        val payloadJson = moshi().adapter(ExpenseStateTokenRequest::class.java)
+            .toJson(ExpenseStateTokenRequest(expectedRowVersion = 0L))
+        for ((key, targetId, body, expectedMessage) in listOf(
+            listOf("key-task-404", "expense:42", """{"error":"task_not_found","message":"后台任务不存在或已结束。"}""", "后台任务不存在或已结束。"),
+            listOf("key-expense-404", "expense:99", """{"error":"expense_not_found","message":"账单不存在。"}""", "账单不存在。"),
+        )) {
+            assertEquals(
+                DispatchResult.Failure(expectedMessage, definitelyRejected = true),
+                dispatcherFor(ApiServiceStub(retryOcrResult = ApiResult.Throw(httpException(404, body))))
+                    .dispatch(retryOcrRow(idempotencyKey = key)),
+            )
+
+            val dao = FakePendingMutationDao()
+            val outbox = testOutboxRepository(dao)
+            val rowId = outbox.enqueue(
+                type = PendingMutationType.RetryOcr,
+                targetId = targetId,
+                payloadJson = payloadJson,
+                expectedRowVersion = 1L,
+                idempotencyKey = key,
+            )
+            dao.runnableBatches += listOf(rowId)
+
+            val stub = ApiServiceStub(retryOcrResult = ApiResult.Throw(httpException(404, body)))
+            val summary = OutboxDrainEngine(outbox, listOf(dispatcherFor(stub))).drainOnce()
+            assertEquals(1, summary.failures)
+            assertEquals(0, summary.done)
+            assertEquals(0, summary.discarded)
+            val failedRow = dao.rows.getValue(rowId)
+            assertEquals(PendingMutationStatus.Failed.wireValue, failedRow.status)
+            assertEquals(expectedMessage, failedRow.lastError)
+            assertNull(failedRow.completedAt)
+        }
     }
 }

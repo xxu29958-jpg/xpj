@@ -13,8 +13,7 @@ from ticketbox_lifecycle.runtime.cold_restore_source import ColdRestoreSource
 from ticketbox_lifecycle.schemas import REQUEST_SCHEMA, InstallRequest
 
 
-@pytest.fixture
-def source(tmp_path):
+def make_restore_source(tmp_path, *, receipt=b"original-receipt"):
     roots = {name: tmp_path / "source" / name for name in COMPONENTS}
     for root in roots.values():
         root.mkdir(parents=True)
@@ -23,7 +22,7 @@ def source(tmp_path):
         "data/pgdata/global/pg_control": b"stopped-cluster",
         "data/pgdata/base/facts": b"amount=1234;revision=9;receipt=original",
         "data/app/.env": b"old-credentials-stay-in-backup",
-        "data/app/uploads/receipt.jpg": b"original-receipt",
+        "data/app/uploads/receipt.jpg": receipt,
         "program/postgresql/bin/postgres.exe": b"trusted-pg",
         "program/releases/1.2.0/backend/backend.exe": b"old-program-never-executed",
     }
@@ -58,6 +57,11 @@ def source(tmp_path):
         str(tmp_path / "new-data"), str(tmp_path / "new-install"), "TicketboxPg", "TicketboxBackend", 5432, 8000, 17,
         "new-release", schema_revision="20261023_0002", semantic_revision="ticketbox-dataset-semantics-v1")
     return target, request
+
+
+@pytest.fixture
+def source(tmp_path):
+    return make_restore_source(tmp_path)
 
 
 def _digest(path):

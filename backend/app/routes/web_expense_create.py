@@ -150,6 +150,7 @@ def _manual_expense_context(
             "category_options": list_ledger_category_options(
                 db,
                 tenant_id=selected_id,
+                selected=current_values.get("category"),
             ),
             "client_ref": client_ref or uuid4().hex,
             "form_home_currency_code": current_values.get("home_currency_code", home),

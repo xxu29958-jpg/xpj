@@ -1,6 +1,3 @@
-function TicketboxGetFileAttributes(FileName: String): LongWord;
-external 'GetFileAttributesW@kernel32.dll stdcall';
-
 function TicketboxLeasePath: String;
 begin
   Result := ExpandConstant('{commoncf64}\Ticketbox\setup.lock');

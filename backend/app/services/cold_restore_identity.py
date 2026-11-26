@@ -6,7 +6,7 @@ import hashlib
 import hmac
 from datetime import timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -35,6 +35,29 @@ from app.services.time_service import now_utc
 def rebind_cold_dataset(db: Session, *, source: dict, installation_id: str, backup_id: str,
                        operation_id: str, bootstrap_secret: str, recovery_secret: str) -> InstallationOwnerBootstrapResult:
     """The maintenance owner commits this together with the new dataset generation."""
+    result, _summary = rebind_cold_dataset_with_summary(
+        db,
+        source=source,
+        installation_id=installation_id,
+        backup_id=backup_id,
+        operation_id=operation_id,
+        bootstrap_secret=bootstrap_secret,
+        recovery_secret=recovery_secret,
+    )
+    return result
+
+
+def rebind_cold_dataset_with_summary(
+    db: Session,
+    *,
+    source: dict,
+    installation_id: str,
+    backup_id: str,
+    operation_id: str,
+    bootstrap_secret: str,
+    recovery_secret: str,
+) -> tuple[InstallationOwnerBootstrapResult, dict[str, int]]:
+    """The maintenance owner commits this together with the new dataset generation."""
     authority = db.get(DatasetAuthorityRecord, 1, with_for_update=True)
     rows = list(db.scalars(select(InstallationOwnerClaim).with_for_update().limit(2)))
     if authority is None or len(rows) != 1:
@@ -42,8 +65,18 @@ def rebind_cold_dataset(db: Session, *, source: dict, installation_id: str, back
     claim = rows[0]
     fingerprint = hashlib.sha256((operation_id + "\0" + backup_id).encode()).hexdigest()
     if authority.client_generation == installation_id and authority.restored_from_backup_id == backup_id:
-        return claims.claim_result(db, claim=claim, secret=bootstrap_secret, operation_id=operation_id,
-            installation_id=installation_id, request_fingerprint=fingerprint)
+        summary = {
+            "auth_tokens": int(db.scalar(select(func.count()).select_from(AuthToken).where(AuthToken.revoked_at.is_not(None))) or 0),
+            "devices": int(db.scalar(select(func.count()).select_from(Device).where(Device.revoked_at.is_not(None))) or 0),
+            "pairing_codes": int(db.scalar(select(func.count()).select_from(PairingCode).where(PairingCode.revoked_at.is_not(None))) or 0),
+            "upload_links": int(db.scalar(select(func.count()).select_from(UploadLink).where(UploadLink.revoked_at.is_not(None))) or 0),
+            "invitations": int(db.scalar(select(func.count()).select_from(Invitation).where(Invitation.revoked_at.is_not(None))) or 0),
+        }
+        return (
+            claims.claim_result(db, claim=claim, secret=bootstrap_secret, operation_id=operation_id,
+                installation_id=installation_id, request_fingerprint=fingerprint),
+            summary,
+        )
     _require_source_authority(authority, claim, source, installation_id)
     account = _authorized_owner(db, claim, recovery_secret)
     return _publish_restored_identity(db, authority, claim, account, installation_id=installation_id,
@@ -81,15 +114,17 @@ def _authorized_owner(db: Session, claim: InstallationOwnerClaim, recovery_secre
 
 def _publish_restored_identity(db: Session, authority, claim, account, *, installation_id: str,
                               backup_id: str, operation_id: str, bootstrap_secret: str,
-                              fingerprint: str) -> InstallationOwnerBootstrapResult:
+                              fingerprint: str) -> tuple[InstallationOwnerBootstrapResult, dict[str, int]]:
     timestamp = now_utc()
     # Preserve credential history, but no credential recovered from the snapshot
     # (including a refresh/enrollment response) can regain access to the new host.
-    db.execute(update(AuthToken).where(AuthToken.revoked_at.is_(None)).values(revoked_at=timestamp))
-    db.execute(update(Device).where(Device.revoked_at.is_(None)).values(revoked_at=timestamp))
-    db.execute(update(PairingCode).where(PairingCode.revoked_at.is_(None)).values(revoked_at=timestamp))
-    db.execute(update(UploadLink).where(UploadLink.revoked_at.is_(None)).values(revoked_at=timestamp))
-    db.execute(update(Invitation).where(Invitation.revoked_at.is_(None)).values(revoked_at=timestamp))
+    revoked_summary = {
+        "auth_tokens": int(db.execute(update(AuthToken).where(AuthToken.revoked_at.is_(None)).values(revoked_at=timestamp)).rowcount or 0),
+        "devices": int(db.execute(update(Device).where(Device.revoked_at.is_(None)).values(revoked_at=timestamp)).rowcount or 0),
+        "pairing_codes": int(db.execute(update(PairingCode).where(PairingCode.revoked_at.is_(None)).values(revoked_at=timestamp)).rowcount or 0),
+        "upload_links": int(db.execute(update(UploadLink).where(UploadLink.revoked_at.is_(None)).values(revoked_at=timestamp)).rowcount or 0),
+        "invitations": int(db.execute(update(Invitation).where(Invitation.revoked_at.is_(None)).values(revoked_at=timestamp)).rowcount or 0),
+    }
     db.execute(update(AuthToken).values(grace_until=None))
     db.execute(update(DeviceEnrollmentAttempt).values(expires_at=timestamp))
     db.execute(update(DesktopActivationAttempt).values(expires_at=timestamp))
@@ -117,8 +152,9 @@ def _publish_restored_identity(db: Session, authority, claim, account, *, instal
     authority.client_generation = installation_id
     authority.restore_epoch += 1
     authority.restored_from_backup_id = backup_id
-    # Same-environment recovery preserves database signing/audit identity.
-    # Every recovered bearer and one-shot grant above is nevertheless revoked.
     db.flush()
-    return claims.claim_result(db, claim=claim, secret=bootstrap_secret, operation_id=operation_id,
-        installation_id=installation_id, request_fingerprint=fingerprint)
+    return (
+        claims.claim_result(db, claim=claim, secret=bootstrap_secret, operation_id=operation_id,
+            installation_id=installation_id, request_fingerprint=fingerprint),
+        revoked_summary,
+    )

@@ -41,12 +41,24 @@ def submit_expense_subtask(
             raise AppError("idempotency_key_required", status_code=422)
         if len(idempotency_key) > 64:
             raise AppError("invalid_request", status_code=422)
+        raw_body = payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"})
+        legacy_fingerprint = fingerprint_request(
+            operation=operation,
+            target_id=str(expense_id),
+            body=raw_body,
+            expected_row_version=payload.expected_row_version,
+        )
+        intent_body = dict(raw_body)
+        if actor_account_id is not None:
+            intent_body["actor_account_id"] = actor_account_id
+        if actor_device_id is not None:
+            intent_body["actor_device_id"] = actor_device_id
         claim = claim_idempotency_key(db, tenant_id=tenant_id, idempotency_key=idempotency_key,
             operation=operation, target_type="expense", target_id=str(expense_id),
             request_fingerprint=fingerprint_request(operation=operation, target_id=str(expense_id),
-                body=payload.model_dump(mode="json", exclude_unset=True, exclude={"expected_row_version"}),
+                body=intent_body,
                 expected_row_version=payload.expected_row_version))
-        replay = _replayed_receipt(claim, payload)
+        replay = _replayed_receipt(claim, payload, legacy_fingerprint=legacy_fingerprint)
         if replay is not None:
             return replay
         response = _apply_subtask(db, expense_id, tenant_id,
@@ -75,8 +87,22 @@ def _apply_subtask(
         actor_device_id=actor_device_id, idempotency_key=idempotency_key, commit=False)
 
 
-def _replayed_receipt(claim: IdempotencyOutcome, payload: SubtaskRequest) -> SubtaskReceipt | None:
+def _replayed_receipt(
+    claim: IdempotencyOutcome,
+    payload: SubtaskRequest,
+    *,
+    legacy_fingerprint: str | None = None,
+) -> SubtaskReceipt | None:
     if claim.kind is IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
+        if (
+            legacy_fingerprint is not None
+            and claim.row.request_fingerprint == legacy_fingerprint
+        ):
+            raise AppError(
+                "expense_subtask_original_requires_review",
+                "原分项记录缺少完整的操作者设备绑定，无法自动重放；请核对账单当前状态后再继续。",
+                status_code=409,
+            )
         raise AppError("idempotency_key_reused", status_code=422)
     if claim.kind is IdempotencyOutcomeKind.IN_PROGRESS:
         raise AppError("idempotency_key_in_progress", status_code=409)

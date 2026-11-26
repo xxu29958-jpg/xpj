@@ -71,10 +71,16 @@
   {% endmacro %}
   <fieldset class="uncategorized-category-field"{% if not uncategorized_items %} hidden{% endif %}>
     <legend>选择分类</legend>
+    {% if can_write %}<div data-category-search hidden>
+      <label>按分类名称开头查找 <input type="search" maxlength="64" data-category-prefix></label>
+      <button type="button" data-category-find>查找分类</button><span role="status"></span>
+    </div>{% endif %}
+    <div data-category-options>
     {{ choices(primary_categories) }}
     {% if more_categories %}
     <details{% if category in more_categories %} open{% endif %}><summary>更多分类</summary>{{ choices(more_categories) }}</details>
     {% endif %}
+    </div>
   </fieldset>
   <p class="uncategorized-explanation"><strong>只更新所选账单的分类</strong><span class="text-meta">更新后仍需逐笔核对金额，再确认入账。</span></p>
   <div class="product-form-actions"><button type="submit" class="product-button product-button--primary" data-category-apply{% if not can_write or not uncategorized_items %} hidden{% endif %}>应用到所选账单</button></div>

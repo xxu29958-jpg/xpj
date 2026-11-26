@@ -231,3 +231,86 @@ def test_legacy_copy_keeps_its_original_policy_but_new_format_cannot_smuggle_tun
             with pytest.raises(LifecycleError, match="exclude"):
                 cold_archive.verify_archive(stream)
     assert candidate.read_bytes() == before
+
+
+def test_rev32_recovery_point_manifest_and_legacy_v2_compatibility(tmp_path: Path, materials: dict[str, Path], capsys) -> None:
+    target = tmp_path / "rev32.tbxcold"
+    identity = {
+        "install_id": "11111111-1111-4111-8111-111111111111",
+        "dataset_id": "22222222-2222-4222-8222-222222222222",
+        "restore_epoch": 0,
+        "release_id": "1.3.0",
+        "release_manifest_sha256": "a" * 64,
+        "schema_revision": "20261101_0001",
+        "postgres_major": 17,
+    }
+    with target.open("x+b") as handle:
+        written = cold_archive.write_archive(handle, materials, identity, lambda: None)
+    assert "recovery_point" in written
+    rp = written["recovery_point"]
+    assert rp["api_version"] == "2026-10-11"
+    assert rp["semantic_revision"] == "ticketbox-dataset-semantics-v1"
+    assert rp["schema_revision"] == "20261101_0001"
+    assert rp["secret_disposition"] == cold_archive.SECRET_DISPOSITION
+    assert rp["matching_installer_requirement"]["release_id"] == "1.3.0"
+    assert rp["matching_installer_requirement"]["release_manifest_sha256"] == "a" * 64
+    assert rp["matching_installer_requirement"]["postgres_major"] == 17
+    assert "verify-cold-copy" in rp["matching_installer_requirement"]["verify_command"]
+
+    assert cli.main(["verify-cold-copy", "--source", str(target)]) == 0
+    verified = json.loads(capsys.readouterr().out)
+    assert verified["ok"] is True
+    assert verified["archive_sha256"] == hashlib.sha256(target.read_bytes()).hexdigest()
+    assert verified["backup_id"]
+    assert verified["recovery_point"] == rp
+    assert "fixture-only-secret" not in json.dumps(verified)
+
+    legacy_v2 = tmp_path / "legacy-v2-no-rp.tbxcold"
+    with zipfile.ZipFile(target) as src, zipfile.ZipFile(legacy_v2, "w") as dst:
+        manifest = json.loads(src.read(cold_archive.MANIFEST))
+        manifest.pop("recovery_point")
+        for name in src.namelist():
+            if name != cold_archive.MANIFEST:
+                dst.writestr(name, src.read(name))
+        dst.writestr(cold_archive.MANIFEST, json.dumps(manifest))
+    with legacy_v2.open("rb") as stream:
+        legacy_summary = cold_archive.verify_archive(stream)
+    assert legacy_summary["schema"] == cold_archive.SCHEMA
+    assert "recovery_point" not in legacy_summary
+
+
+def test_rev32_cold_copy_space_budget_fails_closed_before_creating_archive(
+    tmp_path: Path,
+    materials: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ticketbox_lifecycle.runtime import windows_cold_copy
+
+    target = tmp_path / "no-space.tbxcold"
+    mutex = MemoryMutex()
+    created = False
+
+    def fake_disk_usage(_anchor):
+        return SimpleNamespace(total=1024, used=1000, free=24)
+
+    monkeypatch.setattr(windows_cold_copy.shutil, "disk_usage", fake_disk_usage)
+
+    def create_archive(_path):
+        nonlocal created
+        created = True
+        return target.open("x+b")
+
+    source = SimpleNamespace(roots=lambda: materials, identity=lambda: {"dataset_id": "original"}, require_stopped=lambda: None)
+    platform = SimpleNamespace(
+        mutex=mutex,
+        read_source=lambda: source,
+        check_disk_space=windows_cold_copy.require_cold_copy_disk_space,
+        create_archive=create_archive,
+        write_archive=lambda *_args: {},
+        verify_archive=lambda *_args: {},
+    )
+    with pytest.raises(LifecycleError) as exc_info:
+        create_cold_copy(target, platform)
+    assert exc_info.value.code == "cold_space_insufficient"
+    assert created is False
+    assert not target.exists()

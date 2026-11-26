@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 
 from app.models import Expense, LedgerLearningEvent
-from app.services.category_service import list_ledger_category_options
+from app.services.category_preference_service import deleted_category_keys
+from app.services.category_service import merge_categories
 from app.services.duplicate_evidence import _identifiers
 from app.services.learning_service._category_context import category_context_key, category_contexts
 from app.services.learning_service._source_eligibility import _event_payload, eligible_feedback
@@ -116,7 +117,8 @@ def personal_category_counts(db, *, tenant_id: str, merchant_filter, actor_accou
     target_key = category_context_key(contexts[target.id]) if target is not None else None
     valid = {event.id for event in eligible_feedback(db, tenant_id=tenant_id,
         events=[event for event, _ in rows], actor_account_id=actor_account_id)}
-    categories = set(list_ledger_category_options(db, tenant_id=tenant_id))
+    names = [expense.category for _, expense in rows]
+    categories = set(merge_categories(names, suppressed_keys=deleted_category_keys(db, tenant_id=tenant_id, names=names)))
     examples = [(event, expense) for event, expense in rows if event.id in valid
         and _personal_example_matches(event, expense, expense_id=expense_id, observed_at=observed_at,
             categories=categories, contexts=contexts, target_key=target_key)]

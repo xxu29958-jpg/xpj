@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import AppError
-from app.runtime_compatibility_contract import CURRENT_API_VERSION, TICKETBOX_API_VERSION_HEADER
+from app.runtime_compatibility_contract import (
+    TICKETBOX_API_VERSION_HEADER,
+    client_version_supported,
+)
 from app.services.identity_service import (
     authenticate_session_principal,
     authenticate_session_token,
@@ -36,6 +39,7 @@ def _raise_legacy_app_removed() -> None:
 
 
 def get_current_app_context(
+    request: Request,
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
     x_ticketbox_ledger_id: str | None = Header(
@@ -46,12 +50,15 @@ def get_current_app_context(
     token = _bearer_token(authorization)
     if is_legacy_app_token(token):
         _raise_legacy_app_removed()
-    return authenticate_session_token(
+    auth = authenticate_session_token(
         db,
         token,
         {"app"},
         selected_ledger_id=(x_ticketbox_ledger_id or "").strip() or None,
     )
+    if request.url.path != "/api/system/runtime-compatibility":
+        _require_client_floor(request)
+    return auth
 
 
 def get_optional_current_app_session(
@@ -73,14 +80,24 @@ def get_optional_current_app_session(
     return AuthenticatedAppSession(token=token, principal=principal)
 
 
+def _require_client_floor(request: Request) -> None:
+    """Check a declared client version independently of currency binding."""
+    version = request.headers.get(TICKETBOX_API_VERSION_HEADER)
+    if version is not None and not client_version_supported(version, write=request.method not in {"GET", "HEAD"}):
+        raise AppError("client_upgrade_required", status_code=409)
+
+
 def get_current_app_principal(
+    request: Request,
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> SessionPrincipal:
     token = _bearer_token(authorization)
     if is_legacy_app_token(token):
         _raise_legacy_app_removed()
-    return authenticate_session_principal(db, token, {"app"})
+    principal = authenticate_session_principal(db, token, {"app"})
+    _require_client_floor(request)
+    return principal
 
 
 def get_current_admin_context(
@@ -121,6 +138,7 @@ def get_current_owner_or_admin_context(
 
 
 def get_current_ledger_app_context(
+    request: Request,
     ledger_id: str,
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
@@ -133,13 +151,15 @@ def get_current_ledger_app_context(
     token = _bearer_token(authorization)
     if is_legacy_app_token(token):
         _raise_legacy_app_removed()
-    return authenticate_session_token(
+    auth = authenticate_session_token(
         db,
         token,
         {"app"},
         selected_ledger_id=ledger_id,
         selected_ledger_error="ledger_not_found",
     )
+    _require_client_floor(request)
+    return auth
 
 
 def get_current_member_manager_context(
@@ -162,9 +182,9 @@ def get_current_writer_context(
     return auth
 
 
-def require_current_api_version(api_version: str | None) -> None:
+def require_current_api_version(api_version: str | None, *, write: bool) -> None:
     """Reject an unsupported protocol without claiming any write state."""
-    if api_version != CURRENT_API_VERSION:
+    if not client_version_supported(api_version, write=write):
         raise AppError("client_upgrade_required", status_code=409)
 
 
@@ -177,7 +197,7 @@ def get_current_protocol_reader_context(
     ),
 ) -> AuthContext:
     """Negotiate changed response semantics while retaining read-only access."""
-    require_current_api_version(api_version)
+    require_current_api_version(api_version, write=False)
     return auth
 
 
@@ -190,7 +210,7 @@ def get_current_protocol_writer_context(
     ),
 ) -> AuthContext:
     """Authenticate and negotiate before validating a new command body."""
-    require_current_api_version(api_version)
+    require_current_api_version(api_version, write=True)
     return auth
 
 

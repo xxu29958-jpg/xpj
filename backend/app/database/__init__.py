@@ -101,9 +101,8 @@ def init_db() -> None:
         )
     elif plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE and installed_runtime:
         raise DatabaseMigrationPreflightError(
-            "拒绝由安装版 runtime 执行 schema DDL:当前安装版不提供既有数据集升级；"
-            "repair/upgrade/restore 继续 HOLD；"
-            "数据库未执行 backup/DDL/DML。"
+            "拒绝由安装版 runtime 执行 schema DDL:既有数据集升级必须通过受管安装器离线升级入口执行；"
+            "普通后端进程不会执行 backup/DDL/DML。"
         )
     elif plan.action is not DatabaseLifecycleAction.MANAGED_UPGRADE:
         raise DatabaseMigrationPreflightError(
@@ -111,13 +110,10 @@ def init_db() -> None:
             f"current={lifecycle.current_revision!r}, head={alembic.head_revision!r}；"
             "数据库未执行 backup/DDL/DML。"
         )
-    # Existing-dataset mutation remains outside current qualified authority in
-    # both source and installed runtimes. Fresh creation is the only live path.
     if plan.action is DatabaseLifecycleAction.MANAGED_UPGRADE:
         raise DatabaseMigrationPreflightError(
-            "拒绝由普通后端启动执行既有数据集升级:当前没有已资格的离线升级 owner；"
-            "完整数据集 backup/restore 与 upgrade 继续 HOLD；"
-            "本进程未执行 backup/DDL/DML。"
+            "拒绝由普通后端启动执行既有数据集升级:普通后端进程入口禁止自动执行 schema 迁移，"
+            "请使用受管离线升级流程；本进程未执行 backup/DDL/DML。"
         )
     _apply_schema_lifecycle(plan, alembic)
     _assert_schema_at_head(alembic.head_revision)
@@ -125,9 +121,12 @@ def init_db() -> None:
         alembic,
         installed_program=installed_program,
     )
-    if os.environ.get("TICKETBOX_RESTORE_VERIFY_ONLY") == "1":
+    if (
+        os.environ.get("TICKETBOX_RESTORE_VERIFY_ONLY") == "1"
+        or os.environ.get("TICKETBOX_UPGRADE_VERIFY_ONLY") == "1"
+    ):
         if not installed_runtime or plan.action is not DatabaseLifecycleAction.NOOP:
-            raise DatabaseMigrationPreflightError("恢复候选只允许 exact schema 的只读核验。")
+            raise DatabaseMigrationPreflightError("恢复或升级候选只允许 exact schema 的只读核验。")
         return
     record_schema_migration(
         BASELINE_MIGRATION_NAME,

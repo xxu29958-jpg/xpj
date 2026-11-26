@@ -1,92 +1,21 @@
 package com.ticketbox.data.repository
 
-import android.database.sqlite.SQLiteException
 import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.time.Clock
 import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.util.UUID
-import java.util.concurrent.atomic.AtomicLong
-
-internal data class PendingMutationIntent(
-    val type: PendingMutationType,
-    val targetId: String,
-    val payloadJson: String,
-    val expectedRowVersion: Long,
-    val idempotencyKey: String? = null,
-) {
-    /** Single and batch acceptance encode the same immutable command under the verified binding. */
-    fun toEntity(binding: OutboxBinding, createdAt: String): PendingMutationEntity = PendingMutationEntity(
-        serverUrl = binding.serverUrl,
-        ledgerId = binding.ledgerId,
-        ownerKey = requireNotNull(binding.owner).storageKey,
-        type = type.wireValue,
-        targetId = targetId,
-        payload = payloadJson,
-        expectedRowVersion = expectedRowVersion,
-        idempotencyKey = idempotencyKey,
-        status = PendingMutationStatus.Pending.wireValue,
-        createdAt = createdAt,
-    )
-}
-
-/**
- * ADR-0038 PR-2g: offline outbox queue.
- *
- * This repository is the queue surface mutation call sites use
- * when going offline. Rows are scoped to the current ``serverUrl``
- * and ``ledgerId`` so cloud/server switches, ledger switches, and
- * device rebinds do not replay old rows under the new binding.
- *
- * Concurrency contract enforced here:
- * 1. [enqueue] publishes the original bound intent. Each mutation owner
- *    decides its local presentation; a queued correction is never a fact.
- *    Room acceptance precedes the scheduler notification.
- * 2. Drain happens in [dequeueNextRunnable] which respects "same
- *    target_id serial": a row is skipped if another row for the
- *    same target is currently IN_FLIGHT / CONFLICT / FAILED. The
- *    SQL filter ([PendingMutationDao.nextRunnableBatch]) excludes
- *    blocked targets BEFORE applying ``LIMIT`` so a long PENDING
- *    queue for a blocked target doesn't starve other runnable
- *    targets. The WorkManager drain worker calls this in a loop.
- * 3. [resolveConflict] is the user-facing "keep mine / drop mine"
- *    branch. ``keepMine`` re-enqueues with a fresh token (caller
- *    fetched the row again); ``dropMine`` deletes the row.
- *
- * The repository is intentionally Moshi-free: payloads land as
- * already-serialised JSON strings, so a future mutation type can
- * be added without touching this layer.
- */
-private data class OutboxBindingSource(
-    val current: () -> OutboxBinding,
-    val changes: Flow<OutboxBinding>?,
-)
-
-private data class OutboxLifecycleHooks(
-    val onEnqueued: () -> Unit,
-    val onClearAll: () -> Unit,
-    val onRowsDeleted: suspend () -> Unit,
-)
 
 class OutboxRepository private constructor(
     private val dao: PendingMutationDao,
@@ -95,52 +24,28 @@ class OutboxRepository private constructor(
     lifecycleHooks: OutboxLifecycleHooks,
     private val writeBlock: Flow<OutboxWriteBlock?>,
 ) {
-    private val bindingProvider = bindingSource.current
-    /**
-     * Reactive binding source for the live UI streams ([observeStatus] and
-     * friends). When supplied (AppContainer wires it from the active-ledger
-     * settings flow), observe* re-subscribe to the new binding on a ledger
-     * switch. [bindingRevision] also re-reads [bindingProvider] after a
-     * same-ledger server transition, so status flows cannot stay pinned to
-     * the previous origin. Null keeps the same revision-driven behaviour for
-     * tests and non-Android callers.
-     */
-    private val bindingChanges = bindingSource.changes
-    /**
-     * Fired immediately after a row is persisted by [enqueue]. Used
-     * by AppContainer to schedule a one-time [OutboxDrainWorker]
-     * tick — same pattern as the [OutboxDrainWorker]'s ``logWarning``
-     * injection (PR-2g.2): the side effect that needs Android
-     * primitives (WorkManager / Context) stays out of the
-     * repository, the repository stays a pure persistence layer.
-     *
-     * Defaulted to no-op so existing tests and any non-Android
-     * caller can construct ``OutboxRepository`` without wiring the
-     * scheduler.
-     */
     private val onEnqueued = lifecycleHooks.onEnqueued
-    /**
-     * Fired immediately after [clearAll] drains the DAO. AppContainer
-     * wires this to [OutboxScheduler.cancel] FOLLOWED by
-     * [OutboxScheduler.ensurePeriodic] so an in-flight worker
-     * doesn't try to drain a now-empty queue under the new session
-     * AND the periodic heartbeat is re-armed for whatever queue the
-     * next session populates (codex round-9 P2 fix — without the
-     * re-arm, cold restart was the only path back to a periodic
-     * tick).
-     *
-     * Same best-effort semantics as [onEnqueued] (we catch
-     * [Exception] internally; JVM-level Errors propagate).
-     */
     private val onClearAll = lifecycleHooks.onClearAll
     private val onRowsDeleted = lifecycleHooks.onRowsDeleted
+
+    private val binding = OutboxBindingCoordinator(
+        dao = dao,
+        bindingSource = bindingSource,
+        onClearBoundary = ::notifyClearBoundary,
+        onRowsDeleted = ::notifyRowsDeleted,
+    )
+    private val settlement = OutboxSettlementCoordinator(
+        dao = dao,
+        binding = binding,
+        clock = clock,
+        onSchedulePending = ::schedulePending,
+        onRowsDeleted = ::notifyRowsDeleted,
+    )
 
     private val mutableAcceptedReplayRevision = MutableStateFlow(0L)
     val acceptedReplayRevision: StateFlow<Long> = mutableAcceptedReplayRevision.asStateFlow()
     internal fun noteAcceptedReplay() = mutableAcceptedReplayRevision.update { it + 1L }
 
-    // Composition boundary: the compatibility flow is a real status dependency,
-    // alongside persistence, binding and scheduling. Keep these inputs explicit.
     @Suppress("LongParameterList")
     constructor(
         dao: PendingMutationDao,
@@ -159,182 +64,28 @@ class OutboxRepository private constructor(
         writeBlock = writeBlock,
     )
 
-    /**
-     * ADR-0038 PR-2g.3 round-9 P1: session-boundary epoch.
-     *
-     * Incremented at the start of every [withBindingTransition]. A drain pass captures
-     * this value before dequeue and re-checks it after [tryClaim]
-     * but before dispatch. If the epoch changed, the drain knows a
-     * session boundary fired mid-pass. The drain must not dispatch
-     * a row loaded under the old binding after credentials changed,
-     * so it skips the rest of the batch and exits.
-     *
-     * Room rows also carry ``serverUrl`` / ``ledgerId`` and all DAO
-     * drain reads are binding-scoped. The epoch is still needed for
-     * the narrower in-process case where a worker has already loaded
-     * a row and is about to dispatch while credentials are changing.
-     */
-    private val sessionEpoch = AtomicLong(0L)
+    fun currentSessionEpoch(): Long = binding.currentSessionEpoch()
 
-    /**
-     * Snapshot of the session-boundary epoch — used by
-     * [OutboxDrainEngine.drainOnce] to detect whether a binding transition
-     * fired between dequeue and dispatch.
-     */
-    fun currentSessionEpoch(): Long = sessionEpoch.get()
+    internal fun bumpSessionEpochForTesting() = binding.bumpSessionEpochForTesting()
 
-    /**
-     * Test-only hook: bump the epoch counter without wiping the
-     * DAO. Production code uses [withBindingTransition], which also
-     * atomically; this lets the OutboxDrainEngine post-claim guard
-     * be exercised in a unit test without the dao.clearAll() also
-     * deleting the row the test wants to keep claimed.
-     */
-    internal fun bumpSessionEpochForTesting() {
-        sessionEpoch.incrementAndGet()
-    }
+    suspend fun <T> withDispatchLease(block: suspend () -> T): T = binding.withDispatchLease(block)
 
-    private val dispatchLease = Mutex()
-    private val bindingTransitionLease = Mutex()
-    private val bindingRevision = MutableStateFlow(0L)
-
-    private suspend fun currentBinding(): OutboxBinding =
-        bindingTransitionLease.withLock {
-            canonicalBindingWithAliasesMigratedLocked(bindingProvider())
-        }
-
-    private suspend fun canonicalBindingWithAliasesMigratedLocked(
-        binding: OutboxBinding,
-    ): OutboxBinding {
-        val raw = binding.trimmed()
-        val canonical = raw.normalized()
-        if (
-            raw.serverUrl != canonical.serverUrl &&
-            raw.ledgerId.isNotEmpty() &&
-            raw.owner != null &&
-            canonical.serverUrl.isNotEmpty()
-        ) {
-            dao.migrateServerUrlAlias(
-                ownerKey = requireNotNull(raw.owner).storageKey,
-                oldServerUrl = raw.serverUrl,
-                newServerUrl = canonical.serverUrl,
-                ledgerId = raw.ledgerId,
-            )
-        }
-        return canonical
-    }
-
-    /**
-     * Hold the dispatch lease across the epoch check and
-     * [OutboxDrainEngine.drainOnce] dispatch so a binding transition cannot
-     * change credentials between claim and send. [withBindingTransition]
-     * takes the same lease for the epoch bump and credential writes.
-     */
-    suspend fun <T> withDispatchLease(block: suspend () -> T): T =
-        dispatchLease.withLock { block() }
-
-    /**
-     * Commit binding-scoped local state at the same linearization boundary as
-     * session transitions. The complete origin/ledger/token snapshot is checked
-     * only after the lease is held, so an old response cannot repopulate Room
-     * after a same-ledger rebind cleared it.
-     */
     internal suspend fun <T> withActiveBinding(
         boundRequest: BoundLedgerRequest,
         block: suspend (OutboxBinding) -> T,
-    ): T = bindingTransitionLease.withLock {
-        val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
-        boundRequest.requireStillActiveFor(binding)
-        block(binding)
-    }
+    ): T = binding.withActiveBinding(boundRequest, block)
 
-    /**
-     * Hold the complete credential/binding mutation boundary.
-     *
-     * [enqueue] snapshots ``serverUrl`` + ``ledgerId`` from local
-     * settings. During a server or ledger switch those two values
-     * are written in separate stores, so an enqueue that interleaves
-     * with the transition could otherwise persist a mixed binding.
-     * This method blocks both dispatch and enqueue while the caller
-     * mutates credentials, bumps the epoch before any new credential
-     * is visible, and optionally clears the queue for explicit
-     * sign-out or debug rebinding.
-     */
     suspend fun <T> withBindingTransition(
         clearExistingRows: Boolean = false,
         serverAliasMigration: OutboxServerAliasMigration? = null,
         block: suspend () -> T,
-    ): T {
-        var notifyBoundary = false
-        var removed = 0
-        try {
-            return dispatchLease.withLock {
-                bindingTransitionLease.withLock {
-                    sessionEpoch.incrementAndGet()
-                    notifyBoundary = true
-                    try {
-                        if (clearExistingRows) {
-                            removed = dao.clearAll()
-                        }
-                        serverAliasMigration?.let { migration ->
-                            bindingProvider().owner?.storageKey?.let { ownerKey ->
-                                dao.migrateServerUrlAlias(
-                                    ownerKey = ownerKey,
-                                    oldServerUrl = migration.oldServerUrl,
-                                    newServerUrl = migration.newServerUrl,
-                                    ledgerId = migration.ledgerId,
-                                )
-                            }
-                        }
-                        block()
-                    } finally {
-                        bindingRevision.update { revision -> revision + 1 }
-                    }
-                }
-            }
-        } finally {
-            if (notifyBoundary) {
-                notifyClearBoundary()
-            }
-            notifyRowsDeleted(removed)
-        }
-    }
+    ): T = binding.withBindingTransition(clearExistingRows, serverAliasMigration, block)
 
-    /**
-     * Persist a mutation snapshot for later replay.
-     *
-     * [onEnqueued] fires after the row is committed so the caller's
-     * scheduler (WorkManager in production) can fire a one-time
-     * drain ASAP — the user doesn't wait up to 15 min for the
-     * periodic tick. The drain itself respects same-target serial
-     * (see [dequeueNextRunnable]) so a burst of enqueues collapses
-     * into the existing serial drain chain via [OutboxScheduler].
-     *
-     * Note the callback is wrapped in a try/catch (Exception): it's
-     * a best-effort "wake the worker now" signal, not a precondition
-     * for the row being usable. If [OutboxScheduler.enqueueOnce]
-     * throws (WorkManager not initialised in a test / IPC failure /
-     * etc.) the row is still committed and the periodic worker will
-     * pick it up. Letting that exception escape would make a
-     * persisted mutation look like a failed insert to the caller.
-     *
-     * We catch [Exception], **not** [Throwable] — [codex round-8 P2]
-     * fix. The original ``runCatching`` formulation caught Throwable
-     * by definition (Kotlin's runCatching), which conflicts with
-     * the round-5 rule we enforce in [OutboxDrainEngine] (catch
-     * Exception, not Throwable, so OOM / LinkageError /
-     * StackOverflow propagate up to the OS-level worker restart).
-     *
-     * @return the row id of the freshly inserted outbox entry.
-     */
     suspend fun enqueue(
         type: PendingMutationType,
         targetId: String,
         payloadJson: String,
         expectedRowVersion: Long,
-        // ADR-0042 request idempotency key. Defaulted null so Slice A (column +
-        // plumbing) lands without touching call sites; Slice B+ passes the
-        // intent-time UUID so committed-but-unseen replays dedupe server-side.
         idempotencyKey: String? = null,
     ): Long = enqueue(
         boundRequest = null,
@@ -347,70 +98,77 @@ class OutboxRepository private constructor(
         ),
     )
 
-    /**
-     * Persist a fallback intent only if the request's complete origin/ledger/
-     * credential snapshot is still current at the outbox linearization point.
-     */
     internal suspend fun enqueue(
         boundRequest: BoundLedgerRequest?,
         intent: PendingMutationIntent,
         validateTargetRows: ((List<OutboxRow>) -> Unit)? = null,
         afterPersisted: suspend () -> Unit = {},
     ): Long {
-        val id = bindingTransitionLease.withLock {
-            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
-            boundRequest?.requireStillActiveFor(binding)
-            binding.requireReadyForEnqueue()
-            validateTargetRows?.invoke(dao.expenseAdmissionRows(binding, intent.targetId, activeForTarget(binding, intent.targetId,
-                ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue)))
-            val row = intent.toEntity(binding, nowIso())
-            dao.insertAndPublish(row, afterPersisted)
+        val id = binding.withBindingLock { current ->
+            boundRequest?.requireStillActiveFor(current)
+            current.requireReadyForEnqueue()
+            validateTargetRows?.invoke(
+                dao.expenseAdmissionRows(
+                    current,
+                    intent.targetId,
+                    activeForTarget(current, intent.targetId, ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue),
+                ),
+            )
+            dao.insertAndPublish(intent.toEntity(current, clock.outboxNowIso()), afterPersisted)
         }
         schedulePending()
         return id
     }
 
-    /** Reuses the existing scheduler after a durable insertion or explicit original retry. */
     internal fun schedulePending() {
         try {
             onEnqueued()
         } catch (_: Exception) {
-            // The durable row remains; the existing periodic worker will drain it.
         }
     }
 
-    /** Room, rather than this instance's binding mutex, owns the original create's atomic acceptance. */
     internal suspend fun enqueueOriginalCreation(boundRequest: BoundLedgerRequest, intent: PendingMutationIntent): Long {
-        require(intent.type in setOf(PendingMutationType.FinancialAccountCommand, PendingMutationType.CreateIncomePlan, PendingMutationType.CreateGoal,
-            PendingMutationType.CapturePaymentNotification, PendingMutationType.CreateDebt, PendingMutationType.AcceptBillSplitInvitation))
-        val id = withActiveBinding(boundRequest) { binding ->
-            binding.requireReadyForEnqueue()
-            dao.insertOriginalCreation(intent.toEntity(binding, nowIso()))
+        require(
+            intent.type in setOf(
+                PendingMutationType.FinancialAccountCommand,
+                PendingMutationType.CreateIncomePlan,
+                PendingMutationType.CreateGoal,
+                PendingMutationType.CapturePaymentNotification,
+                PendingMutationType.CreateDebt,
+                PendingMutationType.AcceptBillSplitInvitation,
+            ),
+        )
+        val id = withActiveBinding(boundRequest) { current ->
+            current.requireReadyForEnqueue()
+            dao.insertOriginalCreation(intent.toEntity(current, clock.outboxNowIso()))
         }
         schedulePending()
         return id
     }
 
     internal suspend fun originalCreation(boundRequest: BoundLedgerRequest, key: String, type: PendingMutationType): OutboxRow? =
-        withActiveBinding(boundRequest) { binding ->
+        withActiveBinding(boundRequest) { current ->
             require(type in setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.CreateDebt))
-            val rows = dao.findByIdempotencyKeys(binding.ownerStorageKey, binding.ledgerId,
-                type.wireValue, listOf(key))
+            val rows = dao.findByIdempotencyKeys(current.ownerStorageKey, current.ledgerId, type.wireValue, listOf(key))
             val row = rows.singleOrNull()
-            require(rows.size <= 1 && (row == null || row.serverUrl == binding.serverUrl)) {
+            require(rows.size <= 1 && (row == null || row.serverUrl == current.serverUrl)) {
                 "原创建归属无法确认，请先核对原提交。"
             }
             row?.toDomain()
         }
 
-    internal suspend fun enqueueNotificationSnapshot(boundRequest: BoundLedgerRequest,
-        snapshots: com.ticketbox.data.local.NotificationSnapshotDao, delivery: NotificationSnapshotDelivery,
-        plan: (com.ticketbox.data.local.NotificationSnapshotEntity?, OutboxRow?) -> NotificationSnapshotAdmission): Long {
-        val id = withActiveBinding(boundRequest) { binding ->
-            binding.requireReadyForEnqueue()
+    internal suspend fun enqueueNotificationSnapshot(
+        boundRequest: BoundLedgerRequest,
+        snapshots: com.ticketbox.data.local.NotificationSnapshotDao,
+        delivery: NotificationSnapshotDelivery,
+        plan: (com.ticketbox.data.local.NotificationSnapshotEntity?, OutboxRow?) -> NotificationSnapshotAdmission,
+    ): Long {
+        val id = withActiveBinding(boundRequest) { current ->
+            current.requireReadyForEnqueue()
             snapshots.acceptNotificationSnapshot(delivery.slotKey, delivery.key) { previous, original ->
                 val admission = plan(previous, original?.toDomain())
-                val savedId = admission.intent?.let { dao.insert(it.toEntity(binding, nowIso())) } ?: admission.snapshot.originalId
+                val savedId = admission.intent?.let { dao.insert(it.toEntity(current, clock.outboxNowIso())) }
+                    ?: admission.snapshot.originalId
                 require(savedId > 0)
                 admission.snapshot.copy(originalId = savedId)
             }
@@ -419,22 +177,20 @@ class OutboxRepository private constructor(
         return id
     }
 
-    /** Save+confirm and ready-bulk preserve every original before any worker may send. */
     internal suspend fun enqueueExpenseBatch(
         boundRequest: BoundLedgerRequest,
         intents: List<PendingMutationIntent>,
         afterPersisted: suspend () -> Unit = {},
         validateTargetRows: (List<OutboxRow>) -> Unit,
     ): List<Long> {
-        val ids = withActiveBinding(boundRequest) { binding ->
-            binding.requireReadyForEnqueue()
-            dao.insertExpenseCommands(binding, intents, nowIso(), validateTargetRows, afterPersisted)
+        val ids = withActiveBinding(boundRequest) { current ->
+            current.requireReadyForEnqueue()
+            dao.insertExpenseCommands(current, intents, clock.outboxNowIso(), validateTargetRows, afterPersisted)
         }
         schedulePending()
         return ids
     }
 
-    /** Files must already be durable, with the upload file lock held across this bound transaction. */
     internal suspend fun enqueueUploadBatch(
         boundRequest: BoundLedgerRequest,
         intents: List<PendingMutationIntent>,
@@ -442,26 +198,32 @@ class OutboxRepository private constructor(
     ): List<Long> {
         require(intents.size in 1..100)
         require(intents.map { it.type }.distinct().size == 1)
-        require(intents.all { (it.type in setOf(PendingMutationType.UploadScreenshot, PendingMutationType.CaptureDebtBill) && it.expectedRowVersion == 0L) ||
-            (it.type == PendingMutationType.OriginalAttachment && it.expectedRowVersion > 0L) })
+        require(
+            intents.all {
+                (it.type in setOf(PendingMutationType.UploadScreenshot, PendingMutationType.CaptureDebtBill) && it.expectedRowVersion == 0L) ||
+                    (it.type == PendingMutationType.OriginalAttachment && it.expectedRowVersion > 0L)
+            },
+        )
         val keys = intents.map { requireNotNull(it.idempotencyKey) }
         require(keys.distinct().size == keys.size && keys.all(::isUploadIntentFileKey))
-        val ids = withActiveBinding(boundRequest) { binding ->
-            binding.requireReadyForEnqueue()
-            val existing = dao.findByIdempotencyKeys(binding.ownerStorageKey, binding.ledgerId,
-                intents.first().type.wireValue, keys)
+        val ids = withActiveBinding(boundRequest) { current ->
+            current.requireReadyForEnqueue()
+            val existing = dao.findByIdempotencyKeys(current.ownerStorageKey, current.ledgerId, intents.first().type.wireValue, keys)
             if (existing.isNotEmpty()) {
                 check(existing.size == intents.size) { "Incomplete original upload acceptance" }
                 val byKey = existing.associateBy { it.idempotencyKey }
                 intents.map { intent ->
                     val row = checkNotNull(byKey[intent.idempotencyKey])
-                    check(row.payload == intent.payloadJson && row.targetId == intent.targetId &&
-                        row.expectedRowVersion == intent.expectedRowVersion) { "Original upload intent changed" }
+                    check(
+                        row.payload == intent.payloadJson &&
+                            row.targetId == intent.targetId &&
+                            row.expectedRowVersion == intent.expectedRowVersion,
+                    ) { "Original upload intent changed" }
                     row.id
                 }
             } else {
-                val createdAt = nowIso()
-                val rows = intents.map { it.toEntity(binding, createdAt) }
+                val createdAt = clock.outboxNowIso()
+                val rows = intents.map { it.toEntity(current, createdAt) }
                 if (afterPersisted == null) dao.insertBatch(rows) else dao.insertBatchAndPublish(rows, afterPersisted)
             }
         }
@@ -469,52 +231,22 @@ class OutboxRepository private constructor(
         return ids
     }
 
-    /** Includes delivered and expired originals, so an uncertain acceptance cannot allocate another command. */
-    internal suspend fun originalUploadRows(boundRequest: BoundLedgerRequest, keys: List<String>,
-        type: PendingMutationType = PendingMutationType.UploadScreenshot): List<OutboxRow> =
-        withActiveBinding(boundRequest) { binding ->
-            dao.findByIdempotencyKeys(binding.ownerStorageKey, binding.ledgerId,
-                type.wireValue, keys).map { it.toDomain() }
-        }
+    internal suspend fun originalUploadRows(
+        boundRequest: BoundLedgerRequest,
+        keys: List<String>,
+        type: PendingMutationType = PendingMutationType.UploadScreenshot,
+    ): List<OutboxRow> = withActiveBinding(boundRequest) { current ->
+        dao.findByIdempotencyKeys(current.ownerStorageKey, current.ledgerId, type.wireValue, keys).map { it.toDomain() }
+    }
 
-    /** Raw types stay visible: an unknown future kind makes file ownership unprovable. */
     internal suspend fun allRowsForUploadFileReferences(): List<PendingMutationEntity> = dao.allRows()
 
-    /** Stop and Retry share the original send/binding boundary; neither can replace an original key. */
     internal suspend fun recoverUploadGroup(
         boundRequest: BoundLedgerRequest,
         targetId: String,
         drop: Boolean,
         retryIds: List<Long> = emptyList(),
-    ): Boolean {
-        var retried = 0
-        var removed = 0
-        val changed = dispatchLease.withLock {
-            withActiveBinding(boundRequest) { binding ->
-                if (drop) {
-                    removed = dao.deleteUnfinishedUploadGroup(binding.ownerStorageKey, binding.ledgerId, targetId)
-                    removed > 0
-                } else {
-                    val eligible = activeForTarget(binding, targetId).filter { row ->
-                        row.type == PendingMutationType.UploadScreenshot &&
-                            row.status == PendingMutationStatus.Failed && row.id in retryIds
-                    }
-                    var expired = false
-                    for (row in eligible) {
-                        if (dao.expireBoundIfOverAge(row.id, binding, PendingMutationStatus.Failed.wireValue, overAgeCutoffIso())) {
-                            expired = true
-                        } else {
-                            retried += dao.retryFailed(row.id, binding.ownerStorageKey, binding.ledgerId, NON_RETRYABLE_UPLOAD_ERRORS)
-                        }
-                    }
-                    expired || retried > 0
-                }
-            }
-        }
-        if (retried > 0) schedulePending()
-        notifyRowsDeleted(removed)
-        return changed
-    }
+    ): Boolean = settlement.recoverUploadGroup(boundRequest, targetId, drop, retryIds)
 
     private suspend fun notifyRowsDeleted(removed: Int) {
         if (removed <= 0) return
@@ -533,132 +265,107 @@ class OutboxRepository private constructor(
         }
     }
 
-    private fun bindingFlow(): Flow<OutboxBinding> {
-        val invalidations = bindingChanges?.combine(bindingRevision) { _, revision ->
-            revision
-        } ?: bindingRevision
-        return invalidations.map { currentBinding() }.distinctUntilChanged()
-    }
-
     suspend fun dequeueNextRunnable(limit: Int = DEFAULT_DRAIN_BATCH, excludedIds: List<Long> = emptyList()): List<OutboxRow> =
-        dao.nextRunnableRows(currentBinding(), UNRESOLVED_STATUS_VALUES, limit, excludedIds)
+        dao.nextRunnableRows(binding.currentBinding(), UNRESOLVED_STATUS_VALUES, limit, excludedIds)
 
     suspend fun recoverStaleInFlight(staleAfterMillis: Long = DEFAULT_STALE_IN_FLIGHT_MS): Int {
-        val binding = currentBinding()
+        val current = binding.currentBinding()
         return dao.recoverStaleInFlight(
-            ownerKey = binding.ownerStorageKey,
-            ledgerId = binding.ledgerId,
-            staleCutoffIso = ISO.format(Instant.now(clock).minusMillis(staleAfterMillis)),
+            ownerKey = current.ownerStorageKey,
+            ledgerId = current.ledgerId,
+            staleCutoffIso = OUTBOX_ISO_FORMATTER.format(Instant.now(clock).minusMillis(staleAfterMillis)),
             recoveryMessage = "recovered_from_stuck_in_flight",
         )
     }
 
     suspend fun tryClaim(id: Long): Boolean =
-        dao.markInFlightIfPending(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue, nowIso()) > 0
+        dao.markInFlightIfPending(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue, clock.outboxNowIso()) > 0
 
-    internal var onDebtDispatchPreparing: suspend (OutboxRow) -> Unit = {}
-    internal var onDebtDispatchFinished: suspend (OutboxRow, DispatchResult?) -> Unit = { _, _ -> }
-    internal var onDebtAccepted: suspend (OutboxRow) -> Unit = {}
+    internal var onDebtDispatchPreparing: suspend (OutboxRow) -> Unit
+        get() = settlement.onDebtDispatchPreparing
+        set(value) { settlement.onDebtDispatchPreparing = value }
+    internal var onDebtDispatchFinished: suspend (OutboxRow, DispatchResult?) -> Unit
+        get() = settlement.onDebtDispatchFinished
+        set(value) { settlement.onDebtDispatchFinished = value }
+    internal var onDebtAccepted: suspend (OutboxRow) -> Unit
+        get() = settlement.onDebtAccepted
+        set(value) { settlement.onDebtAccepted = value }
 
-    internal var onRecurringDispatchPreparing: suspend (OutboxRow) -> Unit = {}
-    internal var onRecurringDispatchFinished: suspend (OutboxRow, DispatchResult?) -> Unit = { _, _ -> }
-    internal var onRecurringAccepted: suspend (OutboxRow) -> Unit = {}
-    internal var onIncomeDispatchPreparing: suspend (OutboxRow) -> Unit = {}
-    internal var onIncomeDispatchFinished: suspend (OutboxRow, DispatchResult?) -> Unit = { _, _ -> }
-    internal var onIncomeAccepted: suspend (OutboxRow) -> Unit = {}
+    internal var onRecurringDispatchPreparing: suspend (OutboxRow) -> Unit
+        get() = settlement.onRecurringDispatchPreparing
+        set(value) { settlement.onRecurringDispatchPreparing = value }
+    internal var onRecurringDispatchFinished: suspend (OutboxRow, DispatchResult?) -> Unit
+        get() = settlement.onRecurringDispatchFinished
+        set(value) { settlement.onRecurringDispatchFinished = value }
+    internal var onRecurringAccepted: suspend (OutboxRow) -> Unit
+        get() = settlement.onRecurringAccepted
+        set(value) { settlement.onRecurringAccepted = value }
 
-    internal fun affectsRecurringReads(row: OutboxRow) = row.type in setOf(
-        PendingMutationType.ConfirmRecurringCandidate, PendingMutationType.CreateRecurringItem, PendingMutationType.UpdateRecurringItem,
-        PendingMutationType.SetRecurringOccurrencePayment, PendingMutationType.PatchExpense, PendingMutationType.CorrectExpense,
-        PendingMutationType.CreateExpense, PendingMutationType.AcceptBillSplitInvitation, PendingMutationType.ConfirmExpense, PendingMutationType.UndoExpense,
-        PendingMutationType.CreateExpenseOffset, PendingMutationType.VoidExpenseOffset, PendingMutationType.ConfirmRepaymentDraft)
+    internal var onIncomeDispatchPreparing: suspend (OutboxRow) -> Unit
+        get() = settlement.onIncomeDispatchPreparing
+        set(value) { settlement.onIncomeDispatchPreparing = value }
+    internal var onIncomeDispatchFinished: suspend (OutboxRow, DispatchResult?) -> Unit
+        get() = settlement.onIncomeDispatchFinished
+        set(value) { settlement.onIncomeDispatchFinished = value }
+    internal var onIncomeAccepted: suspend (OutboxRow) -> Unit
+        get() = settlement.onIncomeAccepted
+        set(value) { settlement.onIncomeAccepted = value }
 
+    internal fun affectsRecurringReads(row: OutboxRow): Boolean = row.affectsRecurringReads()
 
-    internal suspend fun prepareReadProtection(row: OutboxRow) {
-        if (affectsRecurringReads(row)) onRecurringDispatchPreparing(row)
-        if (row.type in DEBT_QUERY_MUTATION_TYPES) onDebtDispatchPreparing(row)
-        if (row.type in INCOME_QUERY_MUTATION_TYPES) onIncomeDispatchPreparing(row)
-    }
+    internal suspend fun prepareReadProtection(row: OutboxRow) = settlement.prepareReadProtection(row)
 
-    internal suspend fun finishReadProtection(row: OutboxRow, result: DispatchResult?) {
-        if (affectsRecurringReads(row)) onRecurringDispatchFinished(row, result)
-        if (row.type in DEBT_QUERY_MUTATION_TYPES) onDebtDispatchFinished(row, result)
-        if (row.type in INCOME_QUERY_MUTATION_TYPES) onIncomeDispatchFinished(row, result)
-    }
+    internal suspend fun finishReadProtection(row: OutboxRow, result: DispatchResult?) =
+        settlement.finishReadProtection(row, result)
 
-    suspend fun markDone(id: Long, cacheRefreshVersion: Long? = null, receiptJson: String? = null,
-        acceptedReadRefreshRequired: Boolean = false, acceptedRow: OutboxRow? = null) {
-        val refreshError = if (acceptedReadRefreshRequired) mapOf(
-            PendingMutationType.SaveMonthlyBudget to BUDGET_READ_REFRESH_REQUIRED,
-            PendingMutationType.ApplyConfirmedRules to RULE_APPLICATION_READ_REFRESH,
-        ).getValue(requireNotNull(acceptedRow).type) else cacheRefreshVersion?.let { "$EXPENSE_REFRESH_PREFIX$it" }
-        val recurringAccepted = acceptedRow?.let(::affectsRecurringReads) == true
-        val debtAccepted = acceptedRow?.type in DEBT_QUERY_MUTATION_TYPES
-        val incomeAccepted = acceptedRow?.type in INCOME_QUERY_MUTATION_TYPES
-        try {
-            // Retirement commits first; a later Done failure cannot roll back its read proof.
-            if (recurringAccepted) onRecurringAccepted(requireNotNull(acceptedRow))
-            if (debtAccepted) onDebtAccepted(requireNotNull(acceptedRow))
-            if (incomeAccepted) onIncomeAccepted(requireNotNull(acceptedRow))
-            dao.markDone(id, PendingMutationStatus.Done.wireValue, nowIso(), refreshError, receiptJson)
-        } catch (error: SQLiteException) {
-            // The server has accepted this attempt. Reentry repeats the original key; it never refunds the send.
-            val diagnostic = when {
-                recurringAccepted -> "accepted_recurring_read_publication_pending"
-                debtAccepted -> "accepted_debt_read_publication_pending"
-                incomeAccepted -> "accepted_income_read_publication_pending"
-                else -> null
-            }
-            if (diagnostic != null) withContext(NonCancellable) { markRetryable(id, diagnostic) }
-            throw error // The existing worker schedules retry, without claiming local delivery completed.
-        }
-    }
+    suspend fun markDone(
+        id: Long,
+        cacheRefreshVersion: Long? = null,
+        receiptJson: String? = null,
+    ): Boolean = settlement.markDone(
+        id = id,
+        settlement = OutboxDoneSettlement(
+            cacheRefreshVersion = cacheRefreshVersion,
+            receiptJson = receiptJson,
+        ),
+    )
 
-    internal suspend fun recoverBudgetReadRefresh(bound: BoundLedgerRequest, month: String,
-        cleanup: suspend (OutboxRow) -> Unit) = withActiveBinding(bound) { binding ->
-        val rows = dao.activeRowsForTarget(binding, monthlyBudgetTarget(month), listOf(PendingMutationStatus.Done.wireValue))
-            .filter { it.requiresBudgetReadRefresh() }
-        for (row in rows) {
-            cleanup(row)
-            dao.clearAcceptedReadRefresh(row.id, requireNotNull(row.receiptJson), BUDGET_READ_REFRESH_REQUIRED)
-        }
-    }
+    internal suspend fun markDone(id: Long, settlement: OutboxDoneSettlement): Boolean =
+        this.settlement.markDone(id, settlement)
+
+    internal suspend fun recoverBudgetReadRefresh(
+        bound: BoundLedgerRequest,
+        month: String,
+        cleanup: suspend (OutboxRow) -> Unit,
+    ) = settlement.recoverBudgetReadRefresh(bound, month, cleanup)
 
     internal suspend fun acknowledgeRuleApplicationRefresh(bound: BoundLedgerRequest, original: OutboxRow) =
-        withActiveBinding(bound) { binding ->
-            val current = dao.activeRowsForTarget(binding, RULE_APPLICATION_TARGET, listOf(PendingMutationStatus.Done.wireValue))
-                .firstOrNull { it.id == original.id }
-            require(current == original && original.requiresRuleApplicationRefresh()) { "原应用状态已变化，请重新核对。" }
-            check(dao.clearAcceptedReadRefresh(original.id, requireNotNull(original.receiptJson), RULE_APPLICATION_READ_REFRESH) == 1)
-        }
+        settlement.acknowledgeRuleApplicationRefresh(bound, original)
 
     internal suspend fun acknowledgeExpenseRefresh(boundRequest: BoundLedgerRequest, versions: Map<Long, Long>) =
-        bindingTransitionLease.withLock {
-            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
-            try {
-                boundRequest.requireStillActiveFor(binding)
-            } catch (_: RepositoryException) {
-                return@withLock
-            }
-            dao.clearAdoptedExpenseRefreshes(binding, versions)
-        }
+        settlement.acknowledgeExpenseRefresh(boundRequest, versions)
 
     suspend fun cascadeFreshToken(targetId: String, newToken: Long): Int =
-        dao.cascadePreservedTokens(currentBinding(), targetId, newToken)
+        dao.cascadePreservedTokens(binding.currentBinding(), targetId, newToken)
+
     suspend fun markRetryable(id: Long, error: String) {
         dao.markRetryable(id, PendingMutationStatus.Pending.wireValue, error)
     }
+
     internal suspend fun revertClaimWithoutAttempt(id: Long) {
         dao.revertClaimWithoutAttempt(id, PendingMutationStatus.Pending.wireValue, PendingMutationStatus.InFlight.wireValue)
     }
+
     suspend fun markConflict(id: Long, serverMessage: String) {
         dao.markConflict(id, PendingMutationStatus.Conflict.wireValue, serverMessage)
     }
+
     suspend fun markFailed(id: Long, error: String, blocksFollowing: Boolean = true) {
         dao.markFailed(id, PendingMutationStatus.Failed.wireValue, error, blocksFollowing)
     }
+
     suspend fun reapExpiredPending(nowMillis: Long): Int =
-        dao.reapExpiredPendingRows(ISO.format(Instant.ofEpochMilli(nowMillis - OUTBOX_PENDING_AGE_CAP_MILLIS)))
+        dao.reapExpiredPendingRows(OUTBOX_ISO_FORMATTER.format(Instant.ofEpochMilli(nowMillis - OUTBOX_PENDING_AGE_CAP_MILLIS)))
 
     suspend fun clearAll(): Int {
         val removed = withBindingTransition(clearExistingRows = false) { dao.clearAll() }
@@ -667,11 +374,10 @@ class OutboxRepository private constructor(
     }
 
     suspend fun clearQuarantined(): Int {
-        val removed = dispatchLease.withLock {
-            bindingTransitionLease.withLock {
-                val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
-                binding.requireReadyForEnqueue()
-                dao.deleteQuarantined(binding.ownerStorageKey)
+        val removed = binding.withDispatchLease {
+            binding.withBindingLock { current ->
+                current.requireReadyForEnqueue()
+                dao.deleteQuarantined(current.ownerStorageKey)
             }
         }
         if (removed > 0) notifyClearBoundary()
@@ -683,60 +389,38 @@ class OutboxRepository private constructor(
         boundRequest: BoundLedgerRequest,
         row: OutboxRow,
         afterDeleted: suspend () -> Unit = {},
-    ): Boolean = withActiveBinding(boundRequest) { binding ->
-        check(row.type in setOf(PendingMutationType.CreateExpense, PendingMutationType.CorrectExpense) && row.status in setOf(
-            PendingMutationStatus.Failed, PendingMutationStatus.Conflict, PendingMutationStatus.Done, PendingMutationStatus.Pending,
-        ))
-        check(row.type != PendingMutationType.CreateExpense || row.status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict))
-        check(row.ownerKey == binding.ownerStorageKey && row.ledgerId == binding.ledgerId)
-        dao.deleteAndPublish(row.id, binding.ownerStorageKey, binding.ledgerId, row.status.wireValue, afterDeleted)
-    }.also { changed -> if (changed) { schedulePending(); if (row.type == PendingMutationType.CreateExpense) notifyRowsDeleted(1) } }
+    ): Boolean = settlement.discardOriginalExpense(boundRequest, row, afterDeleted)
 
     internal suspend fun resolveConflict(id: Long, resolution: ConflictResolution, boundRequest: BoundLedgerRequest? = null): Boolean =
-        resolveStatus(id, PendingMutationStatus.Conflict, resolution == ConflictResolution.DropMine,
-            (resolution as? ConflictResolution.KeepMine)?.freshToken, boundRequest)
+        settlement.resolveStatus(
+            id,
+            PendingMutationStatus.Conflict,
+            resolution == ConflictResolution.DropMine,
+            (resolution as? ConflictResolution.KeepMine)?.freshToken,
+            boundRequest,
+        )
 
     internal suspend fun resolveFailed(id: Long, resolution: FailedResolution, boundRequest: BoundLedgerRequest? = null): Boolean =
-        resolveStatus(id, PendingMutationStatus.Failed, resolution == FailedResolution.Drop,
-            (resolution as? FailedResolution.Retry)?.freshToken, boundRequest)
+        settlement.resolveStatus(
+            id,
+            PendingMutationStatus.Failed,
+            resolution == FailedResolution.Drop,
+            (resolution as? FailedResolution.Retry)?.freshToken,
+            boundRequest,
+        )
 
     internal suspend fun discardCompletedOriginalSubmission(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean {
-        require(row.type in setOf(PendingMutationType.CreateIncomePlan, PendingMutationType.UpdateIncomePlan,
-            PendingMutationType.SaveManualExchangeRate))
+        require(
+            row.type in setOf(
+                PendingMutationType.CreateIncomePlan,
+                PendingMutationType.UpdateIncomePlan,
+                PendingMutationType.SaveManualExchangeRate,
+            ),
+        )
         require(row.status == PendingMutationStatus.Done)
         boundRequest.requireStillActiveFor(requireNotNull(row.bindingOrNull()))
-        return resolveStatus(row.id, PendingMutationStatus.Done, true, null, boundRequest)
+        return settlement.resolveStatus(row.id, PendingMutationStatus.Done, true, null, boundRequest)
     }
-
-    private suspend fun resolveStatus(id: Long, status: PendingMutationStatus, drop: Boolean, freshToken: Long?, boundRequest: BoundLedgerRequest? = null): Boolean {
-        val requeue = if (status == PendingMutationStatus.Conflict) dao::requeueConflictWithFreshToken
-            else dao::requeueFailedWithFreshToken
-        var expired = false
-        val changed = bindingTransitionLease.withLock {
-            val binding = canonicalBindingWithAliasesMigratedLocked(bindingProvider())
-            boundRequest?.requireStillActiveFor(binding)
-            if (!drop && dao.refusesExpenseRecovery(binding, id, status, freshToken)) return@withLock false
-            when {
-                drop -> dao.deleteIfStatus(id, binding.ownerStorageKey, binding.ledgerId, status.wireValue) > 0
-                dao.expireBoundIfOverAge(id, binding, status.wireValue, overAgeCutoffIso()) -> {
-                    // Recovery reuses the original body, OCC and key. A fresh token/key
-                    // is forbidden until that original has a definite server result.
-                    expired = freshToken != null || status != PendingMutationStatus.Failed ||
-                        dao.retryFailed(id, binding.ownerStorageKey, binding.ledgerId, NON_RETRYABLE_UPLOAD_ERRORS) == 0
-                    true
-                }
-                freshToken != null -> requeue(id, binding.ownerStorageKey, binding.ledgerId,
-                    freshToken, UUID.randomUUID().toString()) > 0
-                else -> dao.retryFailed(id, binding.ownerStorageKey, binding.ledgerId, NON_RETRYABLE_UPLOAD_ERRORS) > 0
-            }
-        }
-        if (changed && !expired) schedulePending()
-        if (changed && drop) notifyRowsDeleted(1)
-        return changed
-    }
-
-    private fun overAgeCutoffIso(): String =
-        ISO.format(Instant.now(clock).minusMillis(OUTBOX_PENDING_AGE_CAP_MILLIS))
 
     internal suspend fun replaceCreateExpensePayload(id: Long, payloadJson: String): Boolean =
         dao.replacePayload(id, PendingMutationType.CreateExpense.wireValue, payloadJson) == 1
@@ -744,43 +428,57 @@ class OutboxRepository private constructor(
     fun observeActiveByTypes(types: Set<PendingMutationType>, includeCompleted: Boolean = false): Flow<List<OutboxRow>> {
         val wireTypes = types.filterNot { it == PendingMutationType.Unknown }.map(PendingMutationType::wireValue)
         val statuses = if (includeCompleted) ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue else ACTIVE_STATUS_VALUES
-        return observeBoundActiveRows(dao, bindingFlow(), wireTypes, statuses)
+        return observeBoundActiveRows(dao, binding.bindingFlow(), wireTypes, statuses)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    internal fun observeOriginalCommand(type: PendingMutationType, idempotencyKey: String? = null,
-        originalId: Long? = null): Flow<List<OutboxRow>> {
+    internal fun observeOriginalCommand(
+        type: PendingMutationType,
+        idempotencyKey: String? = null,
+        originalId: Long? = null,
+    ): Flow<List<OutboxRow>> {
         require((idempotencyKey != null) != (originalId != null)) { "请选择一份原提交。" }
-        return bindingFlow().flatMapLatest { binding ->
-            val originals = if (originalId != null)
-                dao.observeOriginalCommandById(binding.serverUrl, binding.ownerStorageKey, binding.ledgerId, type.wireValue, originalId)
-            else dao.observeOriginalCommand(binding.serverUrl, binding.ownerStorageKey, binding.ledgerId, type.wireValue,
-                requireNotNull(idempotencyKey))
+        return binding.bindingFlow().flatMapLatest { current ->
+            val originals = if (originalId != null) {
+                dao.observeOriginalCommandById(current.serverUrl, current.ownerStorageKey, current.ledgerId, type.wireValue, originalId)
+            } else {
+                dao.observeOriginalCommand(current.serverUrl, current.ownerStorageKey, current.ledgerId, type.wireValue, requireNotNull(idempotencyKey))
+            }
             originals.map { rows -> rows.map { it.toDomain() } }
         }
     }
 
-    fun observeStatus(): Flow<OutboxStatus> = observeBoundOutboxStatus(dao, bindingFlow(), writeBlock)
+    fun observeStatus(): Flow<OutboxStatus> = observeBoundOutboxStatus(dao, binding.bindingFlow(), writeBlock)
 
     suspend fun activeForTarget(targetId: String): List<OutboxRow> =
-        dao.activeRowsForTarget(currentBinding(), targetId, ACTIVE_STATUS_VALUES)
+        dao.activeRowsForTarget(binding.currentBinding(), targetId, ACTIVE_STATUS_VALUES)
 
     internal suspend fun abandonOriginalCommand(boundRequest: BoundLedgerRequest, row: OutboxRow): Boolean =
-        withActiveBinding(boundRequest) { binding ->
-            require(row.type in DEBT_WRITE_TYPES || row.type in setOf(PendingMutationType.CreateGoal,
-                PendingMutationType.DismissRepaymentDraft, PendingMutationType.ResolvePaymentCapture))
-            dao.abandonOriginalCommand(row.id, binding.ownerStorageKey, binding.ledgerId,
-                row.status.wireValue, ISO.format(Instant.now(clock))) > 0
+        withActiveBinding(boundRequest) { current ->
+            require(
+                row.type in DEBT_WRITE_TYPES || row.type in setOf(
+                    PendingMutationType.CreateGoal,
+                    PendingMutationType.DismissRepaymentDraft,
+                    PendingMutationType.ResolvePaymentCapture,
+                ),
+            )
+            dao.abandonOriginalCommand(
+                row.id,
+                current.ownerStorageKey,
+                current.ledgerId,
+                row.status.wireValue,
+                clock.outboxNowIso(),
+            ) > 0
         }.also { changed -> if (changed) schedulePending() }
 
     internal fun observeDebtWrites(): Flow<List<OutboxRow>> = observeBoundDebtWrites(
         dao,
-        bindingFlow(),
+        binding.bindingFlow(),
         ACTIVE_STATUS_VALUES + listOf(PendingMutationStatus.Done.wireValue, PendingMutationStatus.Abandoned.wireValue),
     )
 
     internal suspend fun activeForTarget(boundRequest: BoundLedgerRequest, targetId: String): List<OutboxRow> =
-        withActiveBinding(boundRequest) { binding -> activeForTarget(binding, targetId) }
+        withActiveBinding(boundRequest) { current -> activeForTarget(current, targetId) }
 
     private suspend fun activeForTarget(
         binding: OutboxBinding,
@@ -788,27 +486,15 @@ class OutboxRepository private constructor(
         statuses: List<String> = ACTIVE_STATUS_VALUES,
     ): List<OutboxRow> = dao.activeRowsForTarget(binding, targetId, statuses)
 
-    private fun nowIso(): String = ISO.format(Instant.now(clock))
-
     companion object {
-        /** Fixed-width UTC text so SQLite lex order matches createdAt time order. */
-        private val ISO: DateTimeFormatter = DateTimeFormatter
-            .ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSS'Z'")
-            .withZone(ZoneOffset.UTC)
-
         const val DEFAULT_DRAIN_BATCH: Int = 25
-        /** 7 days — enough to power undo / audit and not enough to
-         *  let the DB grow unbounded on a phone. */
-        /** 5 minutes — any IN_FLIGHT older than this is presumed
-         *  abandoned by a cancelled / dead worker and is swept
-         *  back to PENDING at next drain start. */
         const val DEFAULT_STALE_IN_FLIGHT_MS: Long = 5L * 60L * 1000L
-        private val UNRESOLVED_STATUS_VALUES = listOf(
+        internal val UNRESOLVED_STATUS_VALUES = listOf(
             PendingMutationStatus.InFlight.wireValue,
             PendingMutationStatus.Conflict.wireValue,
             PendingMutationStatus.Failed.wireValue,
         )
-        private val ACTIVE_STATUS_VALUES = listOf(
+        internal val ACTIVE_STATUS_VALUES = listOf(
             PendingMutationStatus.Pending.wireValue,
             PendingMutationStatus.InFlight.wireValue,
             PendingMutationStatus.Conflict.wireValue,
@@ -817,153 +503,6 @@ class OutboxRepository private constructor(
     }
 }
 
-/**
- * Public outbox row view. Decouples UI / VM code from the Room
- * Entity so renaming a column doesn't break callers.
- */
-data class OutboxRow(
-    val id: Long,
-    val serverUrl: String,
-    val ledgerId: String,
-    val ownerKey: String? = null,
-    val type: PendingMutationType,
-    val targetId: String,
-    val payloadJson: String,
-    val expectedRowVersion: Long,
-    val status: PendingMutationStatus,
-    val retryCount: Int,
-    val lastError: String?,
-    val createdAt: String,
-    val attemptedAt: String?,
-    val completedAt: String?,
-    val idempotencyKey: String? = null,
-    val receiptJson: String? = null,
-    val blocksFollowing: Boolean = true,
-)
-
-internal fun OutboxRow.bindingOrNull(): OutboxBinding? {
-    val owner = OutboxOwnerIdentity.parseOrNull(ownerKey) ?: return null
-    val canonicalOrigin = canonicalServerOriginOrNull(serverUrl) ?: return null
-    val cleanLedgerId = ledgerId.trim().takeIf(String::isNotEmpty) ?: return null
-    return OutboxBinding(
-        serverUrl = canonicalOrigin,
-        ledgerId = cleanLedgerId,
-        owner = owner,
-    )
-}
-
-data class OutboxBinding(
-    val serverUrl: String,
-    val ledgerId: String,
-    val owner: OutboxOwnerIdentity?,
-) {
-    internal val ownerStorageKey: String
-        get() = owner?.storageKey.orEmpty()
-
-    internal fun trimmed(): OutboxBinding =
-        OutboxBinding(
-            serverUrl = serverUrl.trim().trimEnd('/'),
-            ledgerId = ledgerId.trim(),
-            owner = owner,
-        )
-
-    fun normalized(): OutboxBinding {
-        val trimmed = trimmed()
-        return trimmed.copy(
-            serverUrl = canonicalServerOriginOrNull(trimmed.serverUrl) ?: trimmed.serverUrl,
-        )
-    }
-
-    internal fun requireReadyForEnqueue() {
-        if (serverUrl.isBlank() || ledgerId.isBlank() || owner == null) {
-            throw RepositoryException("设备身份尚未完成校验，已停止保存离线操作。")
-        }
-    }
-
-    companion object {
-        val DEFAULT = OutboxBinding(serverUrl = "", ledgerId = "", owner = null)
-    }
-}
-
-data class OutboxServerAliasMigration(
-    val oldServerUrl: String,
-    val newServerUrl: String,
-    val ledgerId: String,
-) {
-    init {
-        val oldCanonical = canonicalServerOriginOrNull(oldServerUrl)
-        require(
-            ledgerId.isNotBlank() &&
-                oldCanonical != null &&
-                oldCanonical == newServerUrl &&
-                oldCanonical == canonicalServerOriginOrNull(newServerUrl),
-        ) {
-            "Outbox rows may only migrate between aliases of one canonical origin."
-        }
-    }
-}
-
-data class OutboxStatus(
-    val queueDepth: Int,
-    val conflicts: List<OutboxRow>,
-    val failed: List<OutboxRow>,
-    val quarantinedCount: Int = 0,
-    val writeBlock: OutboxWriteBlock? = null,
-    val binding: OutboxBinding? = null,
-    val refreshRequired: List<OutboxRow> = emptyList(),
-    val queuedRows: List<OutboxRow> = emptyList(),
-) {
-    val needsUserAction: Boolean
-        get() = conflicts.isNotEmpty() || failed.isNotEmpty() || quarantinedCount > 0 || refreshRequired.isNotEmpty()
-}
-
-enum class OutboxWriteBlock {
-    CURRENCY_ADOPTION_REQUIRED,
-}
-
-internal fun PendingMutationEntity.toDomain(): OutboxRow = OutboxRow(
-    id = id,
-    serverUrl = serverUrl,
-    ledgerId = ledgerId,
-    ownerKey = ownerKey,
-    type = PendingMutationType.fromWire(type),
-    targetId = targetId,
-    payloadJson = payload,
-    expectedRowVersion = expectedRowVersion,
-    status = PendingMutationStatus.fromWire(status),
-    retryCount = retryCount,
-    lastError = lastError,
-    createdAt = createdAt,
-    attemptedAt = attemptedAt,
-    completedAt = completedAt,
-    idempotencyKey = idempotencyKey,
-    receiptJson = receiptJson,
-    blocksFollowing = blocksFollowing,
-)
-
-/**
- * User-facing branch on a CONFLICT row. The "keep mine" branch
- * needs a freshly-fetched token from the call site (the previous
- * one is by definition stale).
- */
-sealed interface ConflictResolution {
-    data class KeepMine(val freshToken: Long) : ConflictResolution
-    data object DropMine : ConflictResolution
-}
-
-/**
- * User-facing branch on a FAILED row. Unlike [ConflictResolution]
- * the fresh token is optional — most FAILED rows are payload-parse
- * errors or unsupported-dispatcher rows where re-fetching server
- * state isn't meaningful; the user is just deciding "try again on
- * an upgraded build" vs "give up".
- */
-sealed interface FailedResolution {
-    data class Retry(val freshToken: Long? = null) : FailedResolution
-    data object Drop : FailedResolution
-}
-
-/** Runs under the existing binding lease before the single Room batch transaction. */
 private suspend fun PendingMutationDao.insertExpenseCommands(
     binding: OutboxBinding,
     intents: List<PendingMutationIntent>,
@@ -973,9 +512,18 @@ private suspend fun PendingMutationDao.insertExpenseCommands(
 ): List<Long> {
     require(intents.isNotEmpty() && intents.all { it.type in PENDING_EXPENSE_COMMAND_TYPES })
     for (targetId in intents.map { it.targetId }.distinct()) {
-        val targetRows = activeForTarget(binding.ownerStorageKey, binding.ledgerId, targetId,
-            listOf(PendingMutationStatus.Pending, PendingMutationStatus.InFlight, PendingMutationStatus.Conflict,
-                PendingMutationStatus.Failed, PendingMutationStatus.Done).map { it.wireValue }).map { it.toDomain() }
+        val targetRows = activeForTarget(
+            binding.ownerStorageKey,
+            binding.ledgerId,
+            targetId,
+            listOf(
+                PendingMutationStatus.Pending,
+                PendingMutationStatus.InFlight,
+                PendingMutationStatus.Conflict,
+                PendingMutationStatus.Failed,
+                PendingMutationStatus.Done,
+            ).map { it.wireValue },
+        ).map { it.toDomain() }
         validateTargetRows(expenseAdmissionRows(binding, targetId, targetRows))
     }
     return insertBatchAndPublish(intents.map { it.toEntity(binding, createdAt) }, afterPersisted)

@@ -79,7 +79,7 @@ def _render_views(request, db, *, options, selected, message="", error="", draft
         command_kind=kind, command_result=result, saved_view_scope=scope, binding_required=binding_required,
         command_available=not editing_public_id or view is not None, current_view=view,
         tag_options=list_tags_with_usage(db, selected), currency_codes=sorted(supported_currency_codes()),
-        category_options=list_ledger_category_options(db, tenant_id=selected),
+        category_options=list_ledger_category_options(db, tenant_id=selected, selected=(draft or {}).get("category")),
         q="?" + urlencode({"ledger_id": selected}))
     return templates.TemplateResponse(request=request, name="saved_views.html", context=ctx,
                                       status_code=status_code, headers={"Cache-Control": "no-store"})

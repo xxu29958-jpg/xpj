@@ -38,6 +38,16 @@
       }
       const category = form().querySelector('[name="category"][value="自选分类"]');
       category.checked = true; category.dispatchEvent(new Event("change", {bubbles: true}));
+      const search = form().querySelector("[data-category-search]");
+      const input = search.querySelector("input"), lookup = search.querySelector("button");
+      const names = () => [...form().querySelectorAll('[name="category"]')].map(radio => radio.value);
+      const previous = names();
+      input.value = "zzz-nomatch"; lookup.click(); await wait(() => !lookup.disabled);
+      assert(search.querySelector("[role=status]").textContent === "没有匹配的分类，已保留原选项。" &&
+        JSON.stringify(names()) === JSON.stringify(previous) && category.checked, "empty search changed options or selection");
+      input.value = "餐"; lookup.click(); await wait(() => !lookup.disabled);
+      assert(names().join() === "餐饮,自选分类" && form().elements.category.value === "自选分类" &&
+        !search.querySelector("[role=status]").textContent, "matching search lost selection or retained stale status");
       state.ref = form().elements.draft_ref.value; state.command = form().elements.idempotency_key.value;
       state.stage = "detail"; save(); form().querySelector('[data-category-row="42"] a').click(); return;
     }

@@ -22,11 +22,9 @@ import retrofit2.HttpException
  * copy — only the token is overwritten — so a KeepMine token refresh doesn't
  * require re-serialising the whole text body.
  *
- * The server parses ``raw_text`` into the draft fields and bumps the expense's
- * ``row_version``; the recognize response is the refreshed Expense, so the
- * dispatcher returns ``response.rowVersion`` directly as [DispatchResult.Success]'s
- * ``newRowVersion`` — the drain then cascades it onto a chained same-target
- * PENDING row so the follow-up doesn't replay with a stale token (ADR-0041 P1).
+ * The server parses ``raw_text`` into the draft fields and returns the current
+ * Expense; the dispatcher publishes the projection but does not cascade
+ * ``rowVersion`` because idempotent replay returns the latest expense row.
  */
 class RecognizeTextDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
@@ -65,8 +63,9 @@ class RecognizeTextDispatcher(
             // canonical row) instead of false-409ing on the stale row_version.
             val recognized = apiProvider(row).recognizeText(expenseRef, request, idempotencyKey)
             publishAcceptedExpense(recognized.id, recognized.rowVersion) { publishExpense(row.ledgerId, recognized) }
+                .copy(newRowVersion = null)
         } catch (e: HttpException) {
-            mapOutboxHttpException(e)
+            mapOutboxHttpException(e, discardable404ErrorCodes = emptySet())
         } catch (e: IOException) {
             DispatchResult.RetryableFailure(e.message ?: "network IO failure")
         } catch (e: CancellationException) {

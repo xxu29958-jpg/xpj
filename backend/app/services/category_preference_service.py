@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
@@ -60,35 +60,38 @@ def default_category_keys() -> set[str]:
     return {category_preference_key(item) for item in DEFAULT_CATEGORIES}
 
 
-def category_preference_option_state(
-    db: Session,
-    *,
-    tenant_id: str,
-) -> tuple[list[str], set[str]]:
-    rows = db.scalars(
-        select(CategoryPreference)
-        .where(CategoryPreference.tenant_id == tenant_id)
-        .order_by(CategoryPreference.name.asc(), CategoryPreference.id.asc())
-    )
-    active: list[str] = []
-    deleted: set[str] = set()
-    for item in rows:
-        if item.deleted_at is None:
-            active.append(item.name)
-        else:
-            deleted.add(item.key)
-    return active, deleted
+def deleted_category_keys(db: Session, *, tenant_id: str, names: list[str]) -> set[str]:
+    keys = {key for name in names if (key := category_key_for_existing(name))}
+    if not keys:
+        return set()
+    return set(db.scalars(select(CategoryPreference.key).where(
+        CategoryPreference.tenant_id == tenant_id, CategoryPreference.deleted_at.is_not(None),
+        CategoryPreference.key.in_(keys),
+    )))
+
+
+_PREFERENCE_PAGE_SIZE = 200
 
 
 def list_category_preferences(db: Session, *, tenant_id: str) -> list[CategoryPreferenceView]:
+    """Management and library consumers need every active preference in display order."""
     usage_counts = _usage_counts_by_category_key(db, tenant_id=tenant_id)
-    rows = db.scalars(
+    ordered = (
         select(CategoryPreference)
         .where(CategoryPreference.tenant_id == tenant_id)
         .where(CategoryPreference.deleted_at.is_(None))
         .order_by(CategoryPreference.name.asc(), CategoryPreference.id.asc())
+        .limit(_PREFERENCE_PAGE_SIZE)
     )
-    return [_preference_view(item, usage_counts=usage_counts) for item in rows]
+    result = []
+    page = ordered
+    while True:
+        rows = db.scalars(page).all()
+        result.extend(_preference_view(item, usage_counts=usage_counts) for item in rows)
+        if len(rows) < _PREFERENCE_PAGE_SIZE:
+            return result
+        last = rows[-1]
+        page = ordered.where(tuple_(CategoryPreference.name, CategoryPreference.id) > (last.name, last.id))
 
 
 def inspect_category_preference(

@@ -1,9 +1,14 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -124,6 +129,74 @@ class OutboxUploadContinuationTest {
         assertEquals(ids, sends)
         assertEquals(originalTail.payload, dao.rows.getValue(ids[1]).payload)
         assertEquals(originalTail.idempotencyKey, dao.rows.getValue(ids[1]).idempotencyKey)
+    }
+
+    @Test
+    fun recoverUploadGroupEvaluatesOverAgeCutoffPerRow() = runTest {
+        val createdAt = Instant.parse("2026-05-01T00:00:00.000Z")
+        val instants = ArrayDeque(
+            listOf(
+                createdAt,
+                createdAt,
+                createdAt.plusMillis(OUTBOX_PENDING_AGE_CAP_MILLIS),
+                createdAt.plusMillis(OUTBOX_PENDING_AGE_CAP_MILLIS + 1L),
+            ),
+        )
+        val clock = object : Clock() {
+            override fun getZone(): ZoneId = ZoneOffset.UTC
+            override fun withZone(zone: ZoneId): Clock = this
+            override fun instant(): Instant = instants.removeFirst()
+        }
+        val baseDao = FakePendingMutationDao()
+        val dao = object : PendingMutationDao by baseDao {
+            override suspend fun expireBoundRowIfStatusAndOverAge(
+                id: Long,
+                ownerKey: String,
+                ledgerId: String,
+                fromStatus: String,
+                cutoffCreatedAtIso: String,
+            ): Int {
+                val current = baseDao.rows[id] ?: return 0
+                val overAge = current.ownerKey == ownerKey &&
+                    current.ledgerId == ledgerId &&
+                    current.status == fromStatus &&
+                    current.createdAt < cutoffCreatedAtIso
+                if (!overAge) return 0
+                baseDao.rows[id] = current.copy(
+                    status = PendingMutationStatus.Failed.wireValue,
+                    lastError = "outbox_row_expired",
+                    blocksFollowing = true,
+                )
+                return 1
+            }
+        }
+        val binding = testOutboxBinding()
+        val snapshot = BoundSessionSnapshot(
+            serverUrl = binding.serverUrl,
+            ledgerId = binding.ledgerId,
+            owner = requireNotNull(binding.owner),
+            token = "token-upload",
+            sessionGeneration = "session-upload",
+            bindingRevision = "revision-upload",
+        )
+        val bound = BoundLedgerRequest(
+            service = FakeApiService(mutableListOf(), confirmedFailuresRemaining = 0),
+            snapshot = snapshot,
+            currentSnapshot = { snapshot },
+        )
+        val outbox = testOutboxRepository(dao = dao, clock = clock, bindingProvider = { binding })
+        val firstId = outbox.enqueue(PendingMutationType.UploadScreenshot, "upload_batch:boundary", "row-1", 0L, "key-1")
+        val secondId = outbox.enqueue(PendingMutationType.UploadScreenshot, "upload_batch:boundary", "row-2", 0L, "key-2")
+        outbox.markFailed(firstId, "transient_upload_error")
+        outbox.markFailed(secondId, "transient_upload_error")
+
+        assertTrue(outbox.recoverUploadGroup(bound, "upload_batch:boundary", drop = false, retryIds = listOf(firstId, secondId)))
+
+        assertEquals(PendingMutationStatus.Pending.wireValue, baseDao.rows.getValue(firstId).status)
+        assertEquals("manual_retry", baseDao.rows.getValue(firstId).lastError)
+        assertEquals(PendingMutationStatus.Failed.wireValue, baseDao.rows.getValue(secondId).status)
+        assertEquals("outbox_row_expired", baseDao.rows.getValue(secondId).lastError)
+        assertTrue(instants.isEmpty())
     }
 
     private suspend fun enqueue(outbox: OutboxRepository, count: Int) = (0 until count).map { index ->

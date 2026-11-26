@@ -1,8 +1,10 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationDao
+import com.ticketbox.data.local.PendingMutationDoneUpdate
 import com.ticketbox.data.local.PendingMutationEntity
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationTokenCascade
 import java.util.Collections
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,9 +19,11 @@ class FakePendingMutationDao : PendingMutationDao {
     val batchCalls = mutableListOf<RunnableBatchCall>()
     val tokenCascadeIds = ArrayDeque<List<Long>>()
     val tokenCascadeCalls = mutableListOf<TokenCascadeCall>()
+    val doneAndCascadeCalls = mutableListOf<Pair<PendingMutationDoneUpdate, PendingMutationTokenCascade?>>()
     var beforeNextRunnableBatchReturn: (suspend () -> Unit)? = null
     var beforeInsert: (suspend () -> Unit)? = null
     var replacePayloadError: Throwable? = null
+    var tokenCascadeError: Throwable? = null
     val refusedClaims = mutableSetOf<Long>()
     val refusedRecoveries = mutableSetOf<Long>()
     val refusedStops = mutableSetOf<Long>()
@@ -126,6 +130,23 @@ class FakePendingMutationDao : PendingMutationDao {
         return 1
     }
 
+    override suspend fun markDoneAndCascadeToken(
+        done: PendingMutationDoneUpdate,
+        cascade: PendingMutationTokenCascade?,
+    ): Int {
+        doneAndCascadeCalls += done to cascade
+        val snapshot = rows[done.id]
+        return try {
+            super.markDoneAndCascadeToken(done, cascade)
+        } catch (error: Throwable) {
+            if (snapshot != null) {
+                rows[done.id] = snapshot
+                refreshObservables()
+            }
+            throw error
+        }
+    }
+
     override suspend fun markConflict(id: Long, status: String, lastError: String): Int {
         val current = rows[id] ?: return 0
         rows[id] = current.copy(status = status, lastError = lastError)
@@ -179,6 +200,7 @@ class FakePendingMutationDao : PendingMutationDao {
         freshToken: Long,
     ): Int {
         tokenCascadeCalls += TokenCascadeCall(ownerKey, ledgerId, targetId, preservedTokenTypes, freshToken)
+        tokenCascadeError?.let { throw it }
         val ids = tokenCascadeIds.removeFirstOrNull().orEmpty()
         for (id in ids) rows[id] = rows.getValue(id).copy(expectedRowVersion = freshToken)
         if (ids.isNotEmpty()) refreshObservables()

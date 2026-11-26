@@ -229,10 +229,10 @@ internal fun SyncStatusDebtSections(state: OutboxStatusUiState, actions: SyncSta
 }
 
 internal fun overviewCaptionResource(overview: SyncStatusOverview): Int =
-    if (overview.writeBlock == OutboxWriteBlock.CURRENCY_ADOPTION_REQUIRED) {
-        R.string.error_currency_adoption_required
-    } else {
-        R.string.sync_status_overview_caption_queued
+    when (overview.writeBlock) {
+        OutboxWriteBlock.CLIENT_UPGRADE_REQUIRED -> R.string.sync_status_error_protocol_mismatch
+        OutboxWriteBlock.CURRENCY_ADOPTION_REQUIRED -> R.string.error_currency_adoption_required
+        null -> R.string.sync_status_overview_caption_queued
     }
 
 /** Translate known outbox error markers; never expose raw transport or engine errors to users. */
@@ -263,6 +263,9 @@ internal val syncStatusExactErrorMessageResources = mapOf(
     "budget_save_unverified" to R.string.budget_save_unverified,
     "runtime_version_mismatch" to R.string.sync_status_error_protocol_mismatch,
     "offset_create_requires_review" to R.string.expense_offset_original_requires_review,
+    "expense_reversal_active" to R.string.correction_submission_reversal_active,
+    "expense_refund_exists" to R.string.correction_submission_refund_exists,
+    "expense_refund_exceeds_remaining" to R.string.correction_submission_refund_exceeds_remaining,
     "client_upgrade_required" to R.string.sync_status_error_protocol_mismatch,
     "rule_category_deleted" to R.string.sync_status_error_rule_category_deleted,
     "debt_repayment_payload_unsupported" to R.string.debt_write_unsupported,

@@ -9,8 +9,6 @@ from pathlib import Path
 
 from _powershell_contract import powershell_contract_engines
 
-from app.version import BACKEND_VERSION
-
 ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = ROOT.parent
 PACKAGING = ROOT / "packaging"
@@ -118,7 +116,10 @@ def test_all_frozen_builds_share_sealed_binary_only_uv_policy() -> None:
     assert '@("-I", "-B", "-c", "import platform;' in manager
 
 
-def test_installer_publish_verification_rejects_provenance_byte_mutation(tmp_path: Path) -> None:
+def test_installer_publish_verification_rejects_provenance_byte_mutation(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(ROOT))
+    from app.version import BACKEND_VERSION
+
     publish = tmp_path / "publish"
     publish.mkdir()
     installer = publish / f"Ticketbox-Setup-{BACKEND_VERSION}.exe"
@@ -294,6 +295,7 @@ _INSTALLER_RECIPE_PATHS = (
     "distribution/windows/installer/setup_private_result.iss",
     "distribution/windows/build/build_installer.ps1",
     "distribution/windows/build/check_source_inputs.ps1",
+    "distribution/windows/build/probe_encrypted_cold_copy.py",
     "distribution/windows/build/installed_payload_manifest.ps1",
     "distribution/windows/build/ticketbox-lifecycle.spec",
     "distribution/windows/payload/release-manifest.json",
@@ -303,6 +305,10 @@ _INSTALLER_RECIPE_PATHS = (
     "distribution/windows/lifecycle/ticketbox_lifecycle/command_io.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/cold_copy_cli.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/restore_cli.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/upgrade_cli.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/uninstall_cli.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/reinstall_cli.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/purge_data_cli.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/errors.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/schemas.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/connector_schema.py",
@@ -311,12 +317,18 @@ _INSTALLER_RECIPE_PATHS = (
     "distribution/windows/lifecycle/ticketbox_lifecycle/adapters/windows_known_folders.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/adapters/cold_copy.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/adapters/restore.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/adapters/upgrade.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/adapters/ports.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/adapters/scm.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/__init__.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/operation.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/cold_copy.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/domain/encrypted_cold_copy.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/restore.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/domain/upgrade.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/domain/uninstall.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/domain/reinstall.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/domain/purge_data.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/binding.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/install.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/domain/connector.py",
@@ -330,6 +342,7 @@ _INSTALLER_RECIPE_PATHS = (
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/__init__.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/command.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/cold_archive.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/cold_copy_encryption.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/cold_installation.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/cold_restore_source.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_cold_file.py",
@@ -367,7 +380,12 @@ _INSTALLER_RECIPE_PATHS = (
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_security_native.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_known_folders.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_shipment.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_shortcut.py",
     "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_services.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_upgrade.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_uninstall.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_reinstall.py",
+    "distribution/windows/lifecycle/ticketbox_lifecycle/runtime/windows_purge_data.py",
 )
 
 
@@ -630,6 +648,8 @@ def test_installer_compiles_only_from_locked_snapshot_and_clean_git() -> None:
     assert "--distpath $PayloadDir" not in build
     assert "$startupProbeOutput = @(& $lifecycleExe --help 2>&1)" in build
     assert '$lifecycleToolchain["startup_probe"] = [ordered]@{' in build
+    assert '(Join-Path $StagedScriptDir "probe_encrypted_cold_copy.py")' in build
+    assert '$lifecycleToolchain["encrypted_cold_copy_probe"]' in build
     assert "tree =" in provenance
     assert "$manifest.git.tree -cne $currentGit.tree" in provenance
 

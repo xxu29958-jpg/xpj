@@ -30,7 +30,51 @@ class OutboxHttpErrorTest {
             classify("""{ "error": "expense_subtask_original_requires_review", "message": "核对原分项操作。" }"""))
     }
 
-    private fun classify(body: String) = mapOutboxHttpException(HttpException(
-        Response.error<Any>(409, body.toResponseBody("application/json".toMediaType())),
-    ))
+    @Test
+    fun businessReferenceAndRoute404RefusalsStayVisibleFailures() {
+        listOf(
+            "member_not_found" to "成员不存在或已停用。",
+            "task_not_found" to "后台任务不存在或已结束。",
+            "fund_account_not_found" to "这个资金账户不存在或你没有访问权限。",
+            "route_not_found" to "账本版本过旧，请重启电脑上的小票夹后再试。",
+            "ledger_not_found" to "账本不存在或没有访问权限。",
+            "future_ref_not_found" to "关联记录不存在。",
+        ).forEach { (code, expectedMessage) ->
+            val result = classify(404, """{ "error": "$code", "message": "$expectedMessage" }""")
+            assertEquals(DispatchResult.Failure(expectedMessage, definitelyRejected = true), result)
+        }
+        for (unparsedBody in listOf("", "{}", "<html>404</html>", """{"detail":"Not Found"}""")) {
+            val result = classify(404, unparsedBody)
+            assertTrue(result is DispatchResult.Failure && result.definitelyRejected, "unparsed 404 must fail visibly: $result")
+        }
+        listOf(
+            "not_found" to "账单不存在。",
+            "expense_not_found" to "账单不存在。",
+            "debt_not_found" to "这笔欠款不存在。",
+            "goal_not_found" to "目标不存在。",
+            "recurring_item_not_found" to "固定支出不存在。",
+            "merchant_alias_not_found" to "商家别名不存在。",
+            "rule_not_found" to "分类规则不存在。",
+        ).forEach { (code, expectedMessage) ->
+            assertEquals(
+                DispatchResult.Discarded(expectedMessage),
+                classify(404, """{ "error": "$code", "message": "$expectedMessage" }"""),
+            )
+        }
+        assertEquals(
+            DispatchResult.Failure("没有找到对应的记录。", definitelyRejected = true),
+            mapOutboxHttpException(
+                httpError(404, """{ "error": "not_found", "message": "没有找到对应的记录。" }"""),
+                discardable404ErrorCodes = setOf("expense_not_found"),
+            ),
+        )
+    }
+
+    private fun classify(body: String) = classify(409, body)
+
+    private fun classify(statusCode: Int, body: String) = mapOutboxHttpException(httpError(statusCode, body))
+
+    private fun httpError(statusCode: Int, body: String) = HttpException(
+        Response.error<Any>(statusCode, body.toResponseBody("application/json".toMediaType())),
+    )
 }

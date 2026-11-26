@@ -31,7 +31,7 @@ Manager BFF 只连接 `127.0.0.1`，从 WinCred 临时读取既有 app identity�
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop\scripts\build_manager_exe.ps1 -Clean
 ```
 
-输出是 `desktop\dist\ticketbox-manager\ticketbox-manager.exe` 与同目录 `BUILD_PROVENANCE.json`。Inno 构建会验证该 manifest 与当前 Manager 源码、版本和 payload hash 一致，再把整份 onedir 安装到 `{app}\manager` 并创建开始菜单入口。普通双击 Setup 后经 UAC 提权时，完成页会先释放安装生命周期锁，再用 Inno `ExecAsOriginalUser` 尝试在原登录用户上下文启动 Manager；若 Setup 本来就是直接提权启动、Windows 无法恢复原用户，安装仍成功并明确提示从开始菜单打开。Manager 由普通用户消费 8 位短期 pairing code，并由该进程通过 `CredWriteW` 把长期桌面 session 写入当前登录会话的 WinCred；提权安装器不接触用户长期凭据。repair、preserved reinstall、upgrade/downgrade 与 complete uninstall 当前均为 `HOLD`；仓库中的历史安装器路径不构成这些能力已出货或已资格化。
+输出是 `desktop\dist\ticketbox-manager\ticketbox-manager.exe` 与同目录 `BUILD_PROVENANCE.json`。Inno 构建会验证该 manifest 与当前 Manager 源码、版本和 payload hash 一致，再把整份 onedir 安装到 `{app}\releases\<release>\manager` 并创建开始菜单入口。Manager 由普通用户从开始菜单打开并消费 8 位短期 pairing code，通过 `CredWriteW` 把长期桌面 session 写入当前登录会话的 WinCred；提权安装器不接触用户长期凭据，也不自动启动 Manager。既有实例受管升级由管理员显式运行目标版本 Setup 并携带 `/UPGRADE=YES`（支持 `1.2.1 → 1.3.0`，升级前在 Manager 移除公网连接器，验收前失败按 U1 恢复 `1.2.1`，放写后强拒回退）；默认卸载保留数据，保留数据重装走 `/REINSTALL=YES`，永久删数据走独立 `TicketboxLifecycle.exe purge-data`；洁净 Windows VM exact-HEAD 真实 EXE 分发资格仍需独立实机签收。
 
 ## 结构（一文件一职责）
 
@@ -89,7 +89,7 @@ scripts/               Manager provenance 与冻结构建入口
 - **CSRF-safe**:控制 POST 需 per-process token + 同源,跨站页面打不动。
 - **诊断默认脱敏**：一键导出的 ZIP 只含 allowlist 服务状态、OS 版本和构建摘要；不含 token、数据库内容、原始日志、LAN/公网 URL 或数据绝对路径。
 - **桌面身份两阶段提交**：绑定/切账时客户端生成 attempt 证明并以与后端一致的 KDF 派生 5 分钟 `desktop_pending` 暂存值（服务端永不另发 token）；Manager 先把 attempt 证明持久写入 WinCred recovery 位，再调用 `/api/auth/desktop/activate` 同值晋升为正式 app 会话，最后把新会话提升到 primary。激活响应丢失、Manager 崩溃或 primary 写入失败都可从 recovery 幂等重放——重放响应的元数据（真实过期时间）永远以 activate 响应为准，不信陈旧的暂存副本；recovery 写入失败则不会发起激活。切账不把源账本凭据当作激活前任证明（后端只接受同账本前任），新会话落盘后才显式撤销旧凭据，TTL 兜底。
-- **生命周期不进 Manager**：Manager 不自动选择或提权运行安装包；repair、preserved reinstall、upgrade/downgrade 与 complete uninstall 保持 `HOLD`。
+- **生命周期不进 Manager**：Manager 不自动选择或提权运行安装包；既有实例受管升级（`/UPGRADE=YES`）、U1 失败恢复（`rollback-upgrade`）、R1/R2 恢复（`/RESTOREMODE=`）、保留数据重装（`/REINSTALL=YES`）、受控默认卸载与独立永久删数据（`purge-data`）均由离线管理员 Setup / `TicketboxLifecycle.exe` 承接，且正式对外发布仍须洁净 VM 真实 EXE 资格验证。
 - **零硬编码**:host/port/路径/URL 全来自 `config.py` 解析。
 
 测试：`cd desktop && ..\backend\.venv\Scripts\python.exe -m pytest tests/`。Windows 测试会通过本机 Edge DevTools 协议真实渲染 390×844 / 820×660 的正常与修复态，检查 overflow、控件交叠和可访问名称；还会直接调用生产 `open_app_window()` 和窗口会话，验证普通／后台进程留存时的真实关窗、多窗口仍有一个打开及最后关闭后的进程/profile 回收，以及页面完全不响应时宿主仍能终止并回收 Edge。缺少 Edge 会使 Windows 门禁失败而不是静默跳过。ruff 配置复用 `desktop/pyproject.toml`。

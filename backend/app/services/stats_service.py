@@ -51,8 +51,8 @@ def _clean_month_filter(month: str) -> str:
     return _contract_clean_month(month)
 
 
-def list_categories(db: Session, tenant_id: str) -> list[str]:
-    return list_ledger_category_options(db, tenant_id=tenant_id)
+def list_categories(db: Session, tenant_id: str, *, query: str = "", selected: str | None = None) -> list[str]:
+    return list_ledger_category_options(db, tenant_id=tenant_id, query=query, selected=selected)
 
 
 def list_months(

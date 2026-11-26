@@ -31663,6 +31663,16 @@
             "title": "Legacy Write Compatibility",
             "type": "string"
           },
+          "min_read_client_version": {
+            "description": "Minimum reader protocol date (YYYY-MM-DD).",
+            "title": "Min Read Client Version",
+            "type": "string"
+          },
+          "min_write_client_version": {
+            "description": "Minimum writer protocol date (YYYY-MM-DD).",
+            "title": "Min Write Client Version",
+            "type": "string"
+          },
           "observed_at": {
             "title": "Observed At",
             "type": "string"
@@ -31677,6 +31687,17 @@
             ],
             "title": "Read Compatibility",
             "type": "string"
+          },
+          "supported_payload_revisions": {
+            "additionalProperties": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "description": "Accepted revisions by versioned request payload family.",
+            "title": "Supported Payload Revisions",
+            "type": "object"
           },
           "write_compatibility": {
             "enum": [
@@ -31695,6 +31716,9 @@
           "observed_at",
           "api_version",
           "api_version_header",
+          "min_read_client_version",
+          "min_write_client_version",
+          "supported_payload_revisions",
           "read_compatibility",
           "write_compatibility",
           "legacy_write_compatibility",
@@ -33375,7 +33399,7 @@
   "info": {
     "description": "私人半自动记账系统后端。",
     "title": "小票夹 API",
-    "version": "1.2.1"
+    "version": "1.3.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -40971,6 +40995,34 @@
       "get": {
         "operationId": "get_expense_categories_api_expenses_categories_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 64,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selected",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selected"
+            }
+          },
           {
             "in": "header",
             "name": "authorization",
@@ -63877,11 +63929,53 @@
               "title": "Draft Ref",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "category_query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "selected",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Selected"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
               "text/html": {
                 "schema": {
                   "type": "string"

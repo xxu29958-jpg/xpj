@@ -173,11 +173,15 @@ def test_manager_shell_identity_is_offered_only_by_the_installed_manager(
 
 
 def test_installer_shortcut_carries_the_manager_app_id() -> None:
-    iss = Path(__file__).resolve().parents[2] / "distribution" / "windows" / "installer" / "ticketbox.iss"
+    repo_root = Path(__file__).resolve().parents[2]
+    iss = repo_root / "distribution" / "windows" / "installer" / "ticketbox.iss"
     shortcut = next(line for line in iss.read_text(encoding="utf-8").splitlines() if "ticketbox-manager.exe" in line
                     and line.startswith("Name:"))
-
+    shortcut_runtime = (
+        repo_root / "distribution" / "windows" / "lifecycle" / "ticketbox_lifecycle" / "runtime" / "windows_shortcut.py"
+    )
     assert f'AppUserModelID: "{desktop_shell.MANAGER_APP_ID}"' in shortcut
+    assert f'MANAGER_APP_ID = "{desktop_shell.MANAGER_APP_ID}"' in shortcut_runtime.read_text(encoding="utf-8")
 
 
 def test_app_window_receives_the_manager_identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

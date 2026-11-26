@@ -58,15 +58,36 @@ _FROZEN_HOST_AUTHORITY_KEYS = (
 )
 _HEALTH_ATTESTATION_ENV = "TICKETBOX_HEALTH_ATTESTATION_KEY"
 _FRESH_SCHEMA_UPGRADE_SWITCH = "--fresh-schema-upgrade"
+_EXISTING_DATASET_UPGRADE_SWITCH = "--upgrade-existing-dataset"
 _FRESH_OWNER_CLAIM_SWITCH = "--fresh-owner-claim"
 _COLD_RESTORE_SWITCH = "--restore-cold-dataset"
-_RESTORE_ENV_KEYS = ("TICKETBOX_EXPECTED_RESTORE_EPOCH", "TICKETBOX_RESTORE_VERIFY_ONLY", "TICKETBOX_RELEASE_MANIFEST_SHA256")
+_VERIFY_PRESERVED_DATASET_SWITCH = "--verify-preserved-dataset"
+_RESTORE_ENV_KEYS = (
+    "TICKETBOX_EXPECTED_RESTORE_EPOCH",
+    "TICKETBOX_RESTORE_VERIFY_ONLY",
+    "TICKETBOX_UPGRADE_VERIFY_ONLY",
+    "TICKETBOX_RELEASE_MANIFEST_SHA256",
+)
 _DATABASE_GENERATION_TARGET_VERIFY_SWITCH = "--database-generation-verify-target"
 _GENERATION_PROGRAM_VALIDATE_SWITCH = "--validate-generation-program"
 _DATABASE_GENERATION_HELPER_NAME = "ticketbox-database-maintenance.exe"
 _GENERATION_PROGRAM_VALIDATION_MODULE_NAME = "_ticketbox_database_generation_program_validation"
 _FRESH_SCHEMA_MODULE_NAME = "_ticketbox_fresh_schema_upgrade"
+_EXISTING_DATASET_UPGRADE_MODULE_NAME = "_ticketbox_existing_dataset_upgrade"
 _DATABASE_GENERATION_TARGET_MODULE_NAME = "_ticketbox_database_generation_target"
+_RELEASE_ID_PATTERN = re.compile(r"[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}\Z")
+_EXISTING_DATASET_UPGRADE_RESULT_FIELDS = (
+    "schema",
+    "operation_id",
+    "dataset_id",
+    "installation_id",
+    "restore_epoch",
+    "source_revision",
+    "target_revision",
+    "alembic_revision",
+    "backup_archive_sha256",
+    "result",
+)
 _GENERATION_PROGRAM_VALIDATION_FIELDS = (
     "schema",
     "source_revision",
@@ -156,6 +177,32 @@ def _parse_fresh_schema_upgrade_args(argv: list[str]) -> Namespace:
     return parser.parse_args(argv)
 
 
+def _parse_existing_dataset_upgrade_args(argv: list[str]) -> Namespace:
+    parser = ArgumentParser(
+        prog="ticketbox-database-maintenance",
+        add_help=False,
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        _EXISTING_DATASET_UPGRADE_SWITCH,
+        action="store_true",
+        required=True,
+    )
+    parser.add_argument("--database-url", required=True)
+    parser.add_argument("--pgpassfile", type=Path, required=True)
+    parser.add_argument("--source-revision", required=True)
+    parser.add_argument("--target-revision", required=True)
+    parser.add_argument("--dataset-id", required=True)
+    parser.add_argument("--installation-id", required=True)
+    parser.add_argument("--expected-restore-epoch", type=int, required=True)
+    parser.add_argument("--operation-id", required=True)
+    parser.add_argument("--data-root", type=Path, required=True)
+    parser.add_argument("--backup-archive", type=Path, required=True)
+    parser.add_argument("--backup-archive-sha256", required=True)
+    parser.add_argument("--app-dir", type=Path, default=None)
+    return parser.parse_args(argv)
+
+
 def _parse_fresh_owner_claim_args(argv: list[str]) -> Namespace:
     parser = ArgumentParser(
         prog="ticketbox-database-maintenance",
@@ -203,6 +250,14 @@ def _load_fresh_schema_upgrade_module() -> ModuleType:
     return _load_standalone_database_module(
         module_name=_FRESH_SCHEMA_MODULE_NAME,
         filename="_fresh_schema_upgrade.py",
+        database_package_seam=True,
+    )
+
+
+def _load_existing_dataset_upgrade_module() -> ModuleType:
+    return _load_standalone_database_module(
+        module_name=_EXISTING_DATASET_UPGRADE_MODULE_NAME,
+        filename="_existing_dataset_upgrade.py",
         database_package_seam=True,
     )
 
@@ -274,6 +329,45 @@ def _run_fresh_schema_upgrade(
     )
     if tuple(result) != _FRESH_SCHEMA_RESULT_FIELDS:
         raise RuntimeError("fresh schema upgrade returned an unsupported result shape")
+    output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
+    output_stream.flush()
+    return 0
+
+
+def _run_existing_dataset_upgrade(
+    argv: list[str],
+    *,
+    input_stream: BinaryIO | None = None,
+    output_stream: TextIO | None = None,
+) -> int:
+    args = _parse_existing_dataset_upgrade_args(argv)
+    if input_stream is None:
+        input_stream = sys.stdin.buffer
+    if output_stream is None:
+        output_stream = sys.stdout
+    if input_stream is None or output_stream is None:
+        raise RuntimeError("existing dataset upgrade requires redirected stdin/stdout")
+    if input_stream.read(1) != b"":
+        raise RuntimeError("existing dataset upgrade requires empty stdin")
+
+    _assert_maintenance_libpq_environment(args.pgpassfile)
+    module = _load_existing_dataset_upgrade_module()
+    result = module.run_existing_dataset_upgrade_action(
+        database_url=args.database_url,
+        pgpassfile=args.pgpassfile,
+        source_revision=args.source_revision,
+        target_revision=args.target_revision,
+        dataset_id=args.dataset_id,
+        installation_id=args.installation_id,
+        expected_restore_epoch=args.expected_restore_epoch,
+        operation_id=args.operation_id,
+        data_root=args.data_root,
+        backup_archive=args.backup_archive,
+        backup_archive_sha256=args.backup_archive_sha256,
+        app_dir=args.app_dir,
+    )
+    if tuple(result) != _EXISTING_DATASET_UPGRADE_RESULT_FIELDS:
+        raise RuntimeError("existing dataset upgrade returned an unsupported result shape")
     output_stream.write(json.dumps(result, ensure_ascii=True, separators=(",", ":")) + "\n")
     output_stream.flush()
     return 0
@@ -469,7 +563,12 @@ def _read_temporal_authorities() -> tuple[dict[str, object] | None, dict[str, ob
         ("ticketbox-lifecycle-operation-v2", "ticketbox-lifecycle-operation-v3"),
         root=ticketbox_root,
     )
-    if active is not None and active.get("phase") != "committed" and active.get("schema") != "ticketbox-lifecycle-operation-v3":
+    if (
+        active is not None
+        and active.get("phase") != "committed"
+        and active.get("schema") != "ticketbox-lifecycle-operation-v3"
+        and active.get("kind") not in {"upgrade", "reinstall"}
+    ):
         return None, active
     binding = _read_vnext_authority(
         machine / "installation.json",
@@ -481,11 +580,18 @@ def _read_temporal_authorities() -> tuple[dict[str, object] | None, dict[str, ob
     return binding, active
 
 
-def _closed_authorities(
-    binding: dict[str, object] | None,
-    active: dict[str, object] | None,
-) -> list[dict[str, object]]:
-    authorities: list[dict[str, object]] = []
+def _valid_previous_release_id(binding: dict[str, object]) -> bool:
+    previous = binding["previous_release_id"]
+    if previous is None:
+        return True
+    return (
+        isinstance(previous, str)
+        and _RELEASE_ID_PATTERN.fullmatch(previous) is not None
+        and previous != binding["active_release_id"]
+    )
+
+
+def _validate_closed_binding(binding: dict[str, object]) -> None:
     binding_fields = {
         "schema",
         "install_id",
@@ -502,15 +608,30 @@ def _closed_authorities(
         "backend_port",
         "health_attestation_key",
     }
+    if set(binding) != binding_fields:
+        raise RuntimeError("installation.json runtime authority fields are not closed")
+    if (
+        type(binding["expected_restore_epoch"]) is not int
+        or binding["expected_restore_epoch"] < 0
+        or not _valid_previous_release_id(binding)
+    ):
+        raise RuntimeError("installation.json has an invalid restore epoch or unsupported release transition")
+
+
+def _closed_authorities(
+    binding: dict[str, object] | None,
+    active: dict[str, object] | None,
+) -> list[dict[str, object]]:
+    authorities: list[dict[str, object]] = []
     if binding is not None:
-        if set(binding) != binding_fields:
-            raise RuntimeError("installation.json runtime authority fields are not closed")
-        if (
-            type(binding["expected_restore_epoch"]) is not int
-            or binding["expected_restore_epoch"] < 0
-            or binding["previous_release_id"] is not None
-        ):
-            raise RuntimeError("installation.json has an invalid restore epoch or unsupported release transition")
+        _validate_closed_binding(binding)
+    is_verify_candidate_with_binding = (
+        active is not None
+        and active.get("schema") == "ticketbox-lifecycle-operation-v2"
+        and active.get("kind") in {"upgrade", "reinstall"}
+        and active.get("phase") != "committed"
+    )
+    if binding is not None and not is_verify_candidate_with_binding:
         authorities.append(binding)
     if active is not None:
         if active.get("schema") == "ticketbox-lifecycle-operation-v3":
@@ -521,6 +642,88 @@ def _closed_authorities(
         _closed_active_authority(active, binding)
         authorities.append(active)
     return authorities
+
+
+def _closed_upgrade_active_authority(active: dict[str, object], binding: dict[str, object] | None) -> None:
+    if binding is None:
+        raise RuntimeError("upgrade operation requires existing installation binding")
+    epoch = active["expected_restore_epoch"]
+    if type(epoch) is not int or epoch < 0 or binding["expected_restore_epoch"] != epoch:
+        raise RuntimeError("upgrade operation requires an exact non-negative restore epoch")
+    previous = active["previous_release_id"]
+    if (
+        not isinstance(previous, str)
+        or _RELEASE_ID_PATTERN.fullmatch(previous) is None
+        or previous == active["target_release_id"]
+    ):
+        raise RuntimeError("upgrade operation requires a valid previous release identity")
+    previous_manifest = active["previous_release_manifest_sha256"]
+    if (
+        not isinstance(previous_manifest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", previous_manifest) is None
+        or previous_manifest == active["release_manifest_sha256"]
+    ):
+        raise RuntimeError("upgrade operation requires a valid previous release manifest digest")
+    if not isinstance(active["source_schema_revision"], str) or not active["source_schema_revision"]:
+        raise RuntimeError("upgrade operation requires source schema revision")
+    if type(active["business_writes_opened"]) is not bool:
+        raise RuntimeError("upgrade operation requires boolean business_writes_opened")
+    if active["phase"] != "committed" and active["business_writes_opened"] is not False:
+        raise RuntimeError("uncommitted upgrade candidate cannot mark business writes opened")
+    if (
+        not isinstance(active["backup_path"], str)
+        or not active["backup_path"]
+        or not isinstance(active["backup_sha256"], str)
+        or re.fullmatch(r"[0-9a-f]{64}", active["backup_sha256"]) is None
+    ):
+        raise RuntimeError("upgrade operation requires verified pre-upgrade backup evidence")
+    identity_match = (
+        binding["install_id"] == active["install_id"]
+        and binding["dataset_id"] == active["dataset_id"]
+        and os.path.normcase(os.path.abspath(str(binding["data_root"])))
+        == os.path.normcase(os.path.abspath(str(active["data_root"])))
+        and type(binding["backend_port"]) is int
+        and binding["backend_port"] == active["backend_port"]
+        and re.fullmatch(r"[0-9a-f]{64}", str(binding.get("release_manifest_sha256", ""))) is not None
+        and re.fullmatch(r"[0-9a-f]{64}", str(binding.get("health_attestation_key", ""))) is not None
+    )
+    if not identity_match:
+        raise RuntimeError("upgrade operation disagrees with installation binding")
+    pre_publish = (
+        binding["active_release_id"] == previous
+        and binding["release_manifest_sha256"] == previous_manifest
+    )
+    post_publish = (
+        binding["active_release_id"] == active["target_release_id"]
+        and binding["previous_release_id"] == previous
+        and binding["release_manifest_sha256"] == active["release_manifest_sha256"]
+        and binding["health_attestation_key"] == active["health_attestation_key"]
+    )
+    if active["phase"] == "committed":
+        if not post_publish:
+            raise RuntimeError("committed upgrade disagrees with installation binding")
+    elif not (pre_publish or post_publish):
+        raise RuntimeError("upgrade candidate disagrees with installation binding release lineage")
+
+
+def _closed_reinstall_active_authority(active: dict[str, object], binding: dict[str, object] | None) -> None:
+    if binding is None:
+        raise RuntimeError("reinstall operation requires existing installation binding")
+    epoch = active["expected_restore_epoch"]
+    if type(epoch) is not int or epoch < 0 or binding["expected_restore_epoch"] != epoch:
+        raise RuntimeError("reinstall operation requires an exact non-negative restore epoch")
+    identity_match = (
+        binding["install_id"] == active["install_id"]
+        and binding["dataset_id"] == active["dataset_id"]
+        and binding["active_release_id"] == active["target_release_id"]
+        and binding["release_manifest_sha256"] == active["release_manifest_sha256"]
+        and os.path.normcase(os.path.abspath(str(binding["data_root"])))
+        == os.path.normcase(os.path.abspath(str(active["data_root"])))
+        and type(binding["backend_port"]) is int
+        and binding["backend_port"] == active["backend_port"]
+    )
+    if not identity_match:
+        raise RuntimeError("reinstall operation disagrees with installation binding")
 
 
 def _closed_active_authority(active: dict[str, object], binding: dict[str, object] | None) -> None:
@@ -541,21 +744,36 @@ def _closed_active_authority(active: dict[str, object], binding: dict[str, objec
         "schema_revision",
         "health_attestation_key",
     }
-    if active.get("kind") == "restore":
+    kind = active.get("kind")
+    if kind in {"restore", "reinstall"}:
         active_fields.add("expected_restore_epoch")
-    if set(active) != active_fields or active.get("kind") not in {"install", "restore"}:
+    elif kind == "upgrade":
+        active_fields.update({
+            "expected_restore_epoch",
+            "previous_release_id",
+            "previous_release_manifest_sha256",
+            "source_schema_revision",
+            "backup_path",
+            "backup_sha256",
+            "business_writes_opened",
+        })
+    if set(active) != active_fields or kind not in {"install", "restore", "upgrade", "reinstall"}:
         raise RuntimeError("active.json runtime authority fields are not closed")
-    if active["kind"] == "restore":
-        epoch = active["expected_restore_epoch"]
-        if type(epoch) is not int or epoch <= 0 or (binding is not None and binding["expected_restore_epoch"] != epoch):
-            raise RuntimeError("restore operation requires an exact positive target epoch")
-    elif binding is not None and binding["expected_restore_epoch"] != 0:
-        raise RuntimeError("Fresh cannot adopt a restored dataset")
     phase = active.get("phase")
     if phase not in {"data_ready", "release_activated", "committed"}:
         raise RuntimeError("active.json is not in a runtime-capable install phase")
+    if kind == "restore":
+        epoch = active["expected_restore_epoch"]
+        if type(epoch) is not int or epoch <= 0 or (binding is not None and binding["expected_restore_epoch"] != epoch):
+            raise RuntimeError("restore operation requires an exact positive target epoch")
+    elif kind == "upgrade":
+        _closed_upgrade_active_authority(active, binding)
+    elif kind == "reinstall":
+        _closed_reinstall_active_authority(active, binding)
+    elif binding is not None and binding["expected_restore_epoch"] != 0:
+        raise RuntimeError("Fresh cannot adopt a restored dataset")
     expected_step = {
-        "data_ready": "owner_claim",
+        "data_ready": "scm" if kind in {"upgrade", "reinstall"} else "owner_claim",
         "release_activated": "health",
         "committed": "health",
     }[phase]
@@ -610,7 +828,12 @@ def _assert_vnext_runtime_authority(data_dir: Path) -> str:
         release_id=release_id,
         port=port,
     )
-    if binding is not None and active is not None and active.get("schema") != "ticketbox-lifecycle-operation-v3":
+    if (
+        binding is not None
+        and active is not None
+        and active.get("schema") != "ticketbox-lifecycle-operation-v3"
+        and not (active.get("kind") in {"upgrade", "reinstall"} and active.get("phase") != "committed")
+    ):
         for field in (
             "install_id",
             "dataset_id",
@@ -627,6 +850,13 @@ def _assert_vnext_runtime_authority(data_dir: Path) -> str:
     os.environ["TICKETBOX_RELEASE_MANIFEST_SHA256"] = str(authorities[0]["release_manifest_sha256"])
     os.environ["TICKETBOX_RESTORE_VERIFY_ONLY"] = (
         "1" if active is not None and active["kind"] == "restore" and active["phase"] != "committed" else "0"
+    )
+    os.environ["TICKETBOX_UPGRADE_VERIFY_ONLY"] = (
+        "1"
+        if active is not None
+        and active["kind"] in {"upgrade", "reinstall"}
+        and active["phase"] != "committed"
+        else "0"
     )
     return str(authorities[0]["health_attestation_key"])
 
@@ -779,8 +1009,10 @@ def main() -> int | None:
         switch
         for switch in (
             _FRESH_SCHEMA_UPGRADE_SWITCH,
+            _EXISTING_DATASET_UPGRADE_SWITCH,
             _FRESH_OWNER_CLAIM_SWITCH,
             _COLD_RESTORE_SWITCH,
+            _VERIFY_PRESERVED_DATASET_SWITCH,
             _DATABASE_GENERATION_TARGET_VERIFY_SWITCH,
             _GENERATION_PROGRAM_VALIDATE_SWITCH,
         )
@@ -793,12 +1025,18 @@ def main() -> int | None:
             raise RuntimeError("database generation requires the dedicated frozen helper")
         if maintenance_switches[0] == _FRESH_SCHEMA_UPGRADE_SWITCH:
             return _run_fresh_schema_upgrade(arguments)
+        if maintenance_switches[0] == _EXISTING_DATASET_UPGRADE_SWITCH:
+            return _run_existing_dataset_upgrade(arguments)
         if maintenance_switches[0] == _FRESH_OWNER_CLAIM_SWITCH:
             return _run_fresh_owner_claim(arguments)
         if maintenance_switches[0] == _COLD_RESTORE_SWITCH:
             from app.cold_restore_runtime import run_cold_restore
 
             return run_cold_restore(arguments)
+        if maintenance_switches[0] == _VERIFY_PRESERVED_DATASET_SWITCH:
+            from app.cold_restore_runtime import run_verify_preserved_dataset
+
+            return run_verify_preserved_dataset(arguments)
         if maintenance_switches[0] == _DATABASE_GENERATION_TARGET_VERIFY_SWITCH:
             return _run_database_generation_target_verification(arguments)
         return _run_generation_program_validation(arguments)

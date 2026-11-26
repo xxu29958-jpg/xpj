@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import json
 from urllib.parse import quote, urlencode
+from urllib.request import parse_http_list
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Form, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Form, Query, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse
+from python_multipart.multipart import parse_options_header
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -258,7 +260,23 @@ def web_category_preference_delete(
     )
 
 
-@router.get("/categories/uncategorized", response_class=HTMLResponse)
+def _accepts_category_json(request: Request) -> bool:
+    for header in request.headers.getlist("accept"):
+        for item in parse_http_list(header):
+            media_type, params = parse_options_header(item.strip())
+            if media_type.lower() == b"application/json":
+                try:
+                    if 0 < float(params.get(b"q", b"1")) <= 1:
+                        return True
+                except ValueError:
+                    continue
+    return False
+
+
+@router.get(
+    "/categories/uncategorized", response_class=HTMLResponse,
+    responses={200: {"content": {"application/json": {"schema": {"type": "array", "items": {"type": "string"}}}}}},
+)
 def web_uncategorized(
     request: Request,
     ledger_id: str = "",
@@ -266,11 +284,18 @@ def web_uncategorized(
     filter: str = "",
     receipt: str = "",
     draft_ref: str = "",
+    category_query: str | None = Query(default=None, max_length=64),
+    selected: str | None = Query(default=None, max_length=64),
     _local: None = LocalOnly,
     db: Session = Depends(get_db),
-) -> HTMLResponse:
+) -> Response:
     options = _list_ledger_options(db)
     selected_id = _resolve_selected_ledger_id(db, ledger_id or None, options, request=request)
+    if category_query is not None and _accepts_category_json(request):
+        if ledger_id != selected_id:
+            raise AppError("state_conflict", "当前账本已变更，请重新打开分类任务。", status_code=409)
+        categories = list_ledger_category_options(db, tenant_id=selected_id, query=category_query, selected=selected)
+        return JSONResponse(categories, headers={"Cache-Control": "private, no-store", "Vary": "Accept"})
     accepted = read_pending_category_receipt(db, tenant_id=selected_id, command_key=receipt) if receipt else None
     if receipt and accepted is None:
         raise AppError("not_found", "暂未找到这次分类操作的回执，请从原任务核实。", status_code=404)
@@ -303,11 +328,9 @@ def _uncategorized_task_items(db, *, selected_id: str, home: str, filter: str, s
 
 
 def _uncategorized_category_choices(db, selected_id: str, selected_category: str):
-    categories = list_ledger_category_options(db, tenant_id=selected_id)
+    categories = list_ledger_category_options(db, tenant_id=selected_id, selected=selected_category)
     primary = [name for name in ("购物", "餐饮", "交通", "住房", "医疗", "其他") if name in categories]
     more = [name for name in categories if name not in primary]
-    if selected_category and selected_category not in categories:
-        more.append(selected_category)
     return primary, more
 
 

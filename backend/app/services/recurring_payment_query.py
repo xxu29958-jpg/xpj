@@ -14,6 +14,7 @@ def _ineligible_payment_conditions():
     )).correlate(Expense)
     return (
         (Expense.status != "confirmed", "not_confirmed"),
+        (Expense.amount_cents.is_(None), "unavailable"),
         (Expense.amount_cents < 0, "negative_amount"),
         (reversal, "reversed"),
     )

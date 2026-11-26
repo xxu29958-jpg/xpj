@@ -329,7 +329,7 @@ def _render_confirmed_page(
         month=effective_month,
         tag=tag or "",
         query_text=query_text, category=category,
-        category_options=list_ledger_category_options(db, tenant_id=selected_id),
+        category_options=list_ledger_category_options(db, tenant_id=selected_id, selected=category),
         filter=filter if filter in CONFIRMED_CROSS_PERIOD_FILTERS else "",
         pager_query=pager_query,
         confirmed_edit_query=_confirmed_edit_query(

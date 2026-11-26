@@ -110,8 +110,12 @@ def occurrence_response(
     )).one_or_none() if row is not None and row.expense_id is not None else None
     expense = linked_payment[0] if linked_payment else None
     review_reason = linked_payment[1] if linked_payment else "unavailable"
-    paid = fulfilled_periods(db, tenant_id=item.tenant_id, series_ids=[item.id]).get(item.id, set())
-    valid = period in paid
+    valid = expense is not None and review_reason is None
+    paid = set(fulfilled_periods(db, tenant_id=item.tenant_id, series_ids=[item.id]).get(item.id, set()))
+    if valid:
+        paid.add(period)
+    else:
+        paid.discard(period)
     state = "fulfilled" if valid else "needs_review" if row and row.expense_id else "unfulfilled"
     baseline = projection_sum_to_int(item.baseline_amount_cents, label="recurring.occurrence_baseline")
     return RecurringOccurrenceResponse(

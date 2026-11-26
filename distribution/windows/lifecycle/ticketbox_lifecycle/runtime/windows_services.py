@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.command import (
@@ -64,3 +65,33 @@ def scm_query_state(runner: CommandRunner, name: str) -> str:
         if token in text:
             return token
     return "UNKNOWN"
+
+
+def stop_service_and_wait(
+    runner: CommandRunner,
+    name: str,
+    *,
+    code: str,
+    timeout_s: float = 60.0,
+) -> None:
+    if not service_exists(runner, name):
+        return
+    if scm_query_state(runner, name) != "STOPPED":
+        stop_service(runner, name, code=code)
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if scm_query_state(runner, name) == "STOPPED":
+            return
+        time.sleep(1)
+    raise LifecycleError(code, f"service {name} did not reach STOPPED")
+
+
+def delete_service(runner: CommandRunner, name: str, *, code: str) -> None:
+    if not service_exists(runner, name):
+        return
+    stop_service_and_wait(runner, name, code=code)
+    completed = runner.run(["sc.exe", "delete", name])
+    combined = f"{completed.stdout}\n{completed.stderr}"
+    if completed.returncode == 0 or "1060" in combined or "1072" in combined:
+        return
+    require_ok(completed, code=code)

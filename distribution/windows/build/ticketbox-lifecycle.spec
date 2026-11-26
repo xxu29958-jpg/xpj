@@ -14,7 +14,10 @@ a = Analysis(
     pathex=[lifecycle_dir],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=[
+        "cryptography.hazmat.primitives.ciphers.aead",
+        "cryptography.hazmat.primitives.kdf.argon2",
+    ],
     hookspath=[],
     runtime_hooks=[],
     excludes=[],

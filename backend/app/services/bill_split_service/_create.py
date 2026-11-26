@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import Account, BillSplitInvitation, Expense
+from app.models import Account, BillSplitInvitation, Expense, ExpenseOffsetFact
 from app.money_contract import MoneySign, ensure_money_minor, fold_sum_to_int
 from app.services.accounting_time_service import accounting_time_snapshot
 from app.services.bill_split_service._common import (
@@ -214,6 +214,22 @@ def _active_split_total(db: Session, expense_id: int) -> int:
     ), label="bill_split.active_split_total")
 
 
+def _ensure_parent_not_reversed(db: Session, expense: Expense) -> None:
+    if db.scalar(
+        select(ExpenseOffsetFact.id)
+        .where(ExpenseOffsetFact.tenant_id == expense.tenant_id)
+        .where(ExpenseOffsetFact.expense_id == expense.id)
+        .where(ExpenseOffsetFact.kind == "reversal")
+        .where(ExpenseOffsetFact.status == "active")
+        .limit(1)
+    ) is not None:
+        raise AppError(
+            "expense_reversal_active",
+            "原账单已冲销，无法发起或增加拆账邀请。",
+            status_code=409,
+        )
+
+
 def ensure_changed_share_capacity(
     db: Session, *, invitation: BillSplitInvitation, previous_share: int, new_share: int,
 ) -> None:
@@ -222,6 +238,7 @@ def ensure_changed_share_capacity(
         expense_id=invitation.sender_expense_id)
     if new_share <= previous_share:
         return  # A decrease must still help resolve an already-corrected source.
+    _ensure_parent_not_reversed(db, expense)
     _ensure_parent_can_be_split(expense, amount_cents=new_share)
     settle_expired_source_invitations(db, expense)
     total = _active_split_total(db, expense.id) - previous_share + new_share
@@ -237,6 +254,7 @@ def _ensure_invitation_capacity(
     amount_cents: int,
 ) -> None:
     assert expense.amount_cents is not None
+    _ensure_parent_not_reversed(db, expense)
     settle_expired_source_invitations(db, expense)
     active_split_total = _active_split_total(db, expense.id)
     requested_total = fold_sum_to_int(

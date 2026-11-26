@@ -17,6 +17,8 @@ analysis = Analysis(
     binaries=[],
     datas=[
         (os.path.join(DESKTOP, "backend_manager", "ui.html"), "backend_manager"),
+        (os.path.join(DESKTOP, "backend_manager", "ui.css"), "backend_manager"),
+        (os.path.join(DESKTOP, "backend_manager", "ui.js"), "backend_manager"),
         # Served as the Manager window's favicon so Windows shows the product icon.
         (os.path.join(REPO_ROOT, "backend", "packaging", "ticketbox.ico"), "backend_manager"),
     ],

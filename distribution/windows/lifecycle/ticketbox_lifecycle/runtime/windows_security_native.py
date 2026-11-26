@@ -13,6 +13,14 @@ ADMINISTRATORS_SID = "S-1-5-32-544"
 SYSTEM_SID = "S-1-5-18"
 _TRUSTED_OWNER_SIDS = frozenset({ADMINISTRATORS_SID, SYSTEM_SID})
 _LIFECYCLE_DIRECTORY_BASE_SDDL = "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+INSTALLED_PROGRAM_DIR_SDDL = (
+    "D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+    "(A;OICI;0x1200a9;;;BU)(A;OICI;0x1200a9;;;LS)(A;OICI;0x1200a9;;;AC)"
+)
+INSTALLED_PROGRAM_FILE_SDDL = (
+    "D:PAI(A;;FA;;;SY)(A;;FA;;;BA)"
+    "(A;;0x1200a9;;;BU)(A;;0x1200a9;;;LS)(A;;0x1200a9;;;AC)"
+)
 _SERVICE_SID_PATTERN = re.compile(r"S-1-5-80-(?:[0-9]+-){4}[0-9]+\Z")
 _SID_PATTERN = re.compile(r"S-[0-9]+(?:-[0-9]+)+\Z")
 _DACL_INFORMATION = 0x00000004
@@ -235,7 +243,7 @@ def _object_dacl_sddl(path: Path) -> str:
         kernel.LocalFree(descriptor)
 
 
-def _security_descriptor_sddl(descriptor) -> str:
+def _security_descriptor_sddl(descriptor, information: int = _DACL_INFORMATION) -> str:
     import ctypes
     from ctypes import wintypes
 
@@ -254,7 +262,7 @@ def _security_descriptor_sddl(descriptor) -> str:
     if not convert(
         descriptor,
         1,
-        _DACL_INFORMATION,
+        information,
         ctypes.byref(text),
         None,
     ):
@@ -300,6 +308,58 @@ def require_trusted_owner(path: Path, *, code: str, message: str) -> None:
         raise LifecycleViolation(code, message) from exc
     if owner_sid not in _TRUSTED_OWNER_SIDS:
         raise LifecycleViolation(code, message)
+
+
+def publish_installed_program_acl(path: Path, *, is_dir: bool) -> None:
+    from ticketbox_lifecycle.runtime import windows_dacl
+
+    require_windows()
+    reject_reparse_components(path)
+    valid = path.is_dir() if is_dir else path.is_file()
+    if not valid:
+        raise LifecycleViolation(
+            "installed_program_acl_failed",
+            f"installed program target has unexpected type: {path.name}",
+        )
+    sddl = INSTALLED_PROGRAM_DIR_SDDL if is_dir else INSTALLED_PROGRAM_FILE_SDDL
+    windows_dacl.apply_protected_dacl(path, sddl, code="installed_program_acl_failed")
+
+
+def verify_installed_program_acl(
+    path: Path,
+    *,
+    is_dir: bool,
+    require_admin_owner: bool = True,
+) -> None:
+    require_windows()
+    reject_reparse_components(path)
+    valid = path.is_dir() if is_dir else path.is_file()
+    if not valid:
+        raise LifecycleViolation(
+            "installed_program_acl_untrusted",
+            f"installed program target has unexpected type: {path.name}",
+        )
+    if require_admin_owner:
+        require_trusted_owner(
+            path,
+            code="installed_program_acl_untrusted",
+            message=f"installed program target must have a trusted owner: {path.name}",
+        )
+    expected = _canonical_dacl_sddl(
+        INSTALLED_PROGRAM_DIR_SDDL if is_dir else INSTALLED_PROGRAM_FILE_SDDL
+    )
+    try:
+        observed = _object_dacl_sddl(path)
+    except OSError as exc:
+        raise LifecycleViolation(
+            "installed_program_acl_untrusted",
+            f"cannot inspect installed program DACL: {path.name}",
+        ) from exc
+    if observed != expected:
+        raise LifecycleViolation(
+            "installed_program_acl_untrusted",
+            f"installed program target does not have expected Program Files DACL: {path.name}",
+        )
 
 
 def require_protected_file_acl(

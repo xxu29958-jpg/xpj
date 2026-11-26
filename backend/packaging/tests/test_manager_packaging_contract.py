@@ -69,7 +69,14 @@ def test_inno_installs_manager_under_release_without_postinstall_launch() -> Non
     assert "TicketboxLifecycle.exe" in run_section
     assert "if CurStep = ssPostInstall then" in installer
     assert "waituntilterminated" in run_section
-    assert "Exec(" not in installer.split("[Code]", 1)[1]
+    code_section = installer.split("[Code]", 1)[1]
+    install_code_before_uninstall = code_section.split(
+        "function TicketboxUninstallPreflightOk(", 1
+    )[0]
+    install_code_after_uninstall = code_section.split("procedure DeinitializeUninstall", 1)[1]
+    assert "Exec(" not in install_code_before_uninstall
+    assert "Exec(" not in install_code_after_uninstall
+    assert "ticketbox-manager.exe" not in code_section
     assert "TicketboxResultIsCommitted" in installer
     assert "GetCustomSetupExitCode" in installer
     assert "FinishedHeadingLabel.Caption" in installer

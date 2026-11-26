@@ -15,7 +15,7 @@ from backend_manager.desktop_shell import discover_edge_executable
 from backend_manager.manager_startup import ManagerWindowSession
 from tests import _edge_cdp
 from tests._edge_cdp import evaluate_page, wait_for_app_window_close
-from tests._manager_ui_test_support import _STARTUP_SCRIPT, _UI_HTML, _render_probe_page, _status
+from tests._manager_ui_test_support import _STARTUP_SCRIPT, _load_standalone_ui_html, _render_probe_page, _status
 
 
 def _probe_script(status: dict[str, object]) -> str:
@@ -74,7 +74,7 @@ def _probe_script(status: dict[str, object]) -> str:
 def _render_with_edge(tmp_path: Path, *, width: int, height: int, degraded: bool) -> dict[str, object]:
     edge = discover_edge_executable()
     assert edge is not None, "Microsoft Edge is required for the Windows Desktop Manager layout gate"
-    source = _UI_HTML.read_text(encoding="utf-8")
+    source = _load_standalone_ui_html()
     assert source.count(_STARTUP_SCRIPT) == 1
     rendered = source.replace(_STARTUP_SCRIPT, _probe_script(_status(degraded=degraded)))
     page = tmp_path / f"manager-{width}x{height}-{'degraded' if degraded else 'healthy'}.html"
@@ -95,7 +95,7 @@ def _render_with_edge(tmp_path: Path, *, width: int, height: int, degraded: bool
 def _render_behavior_probe(tmp_path: Path) -> dict[str, object]:
     edge = discover_edge_executable()
     assert edge is not None, "Microsoft Edge is required for the Windows Desktop Manager behavior gate"
-    source = _UI_HTML.read_text(encoding="utf-8")
+    source = _load_standalone_ui_html()
     assert source.count(_STARTUP_SCRIPT) == 1
     healthy = _status(degraded=False)
     script = f"""    (async () => {{
@@ -654,7 +654,7 @@ def test_manager_shutdown_state_closes_real_edge_app_window(tmp_path: Path) -> N
     assert edge is not None, "Microsoft Edge is required for the Windows Desktop Manager gate"
     status = _status(degraded=False)
     status["manager_shutdown_requested"] = True
-    source = _UI_HTML.read_text(encoding="utf-8")
+    source = _load_standalone_ui_html()
     rendered = source.replace(_STARTUP_SCRIPT, f"    render({json.dumps(status)});")
     rendered = rendered.replace("setTimeout(() => window.close(), 50)", "setTimeout(() => window.close(), 1500)")
     page = tmp_path / "manager-shutdown.html"

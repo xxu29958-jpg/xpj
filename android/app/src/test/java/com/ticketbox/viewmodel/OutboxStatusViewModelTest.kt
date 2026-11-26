@@ -66,6 +66,37 @@ class OutboxStatusViewModelTest {
     }
 
     @Test
+    fun voidOffsetConflictCannotBeRebasedWithParentExpenseVersion() = runTest(dispatcher) {
+        val harness = outboxStatusHarness()
+        val id = harness.outbox.enqueue(
+            PendingMutationType.VoidExpenseOffset,
+            "expense:7",
+            """{"offsetPublicId":"refund-1","voidReason":"撤销误记"}""",
+            3L,
+            "original-void-key",
+        )
+        harness.outbox.markConflict(id, "state_conflict")
+        val original = harness.outbox.observeStatus().first().conflicts.single()
+        val vm = outboxStatusViewModelFactory(harness.outbox, harness.expenseRepository,
+            OutboxRecoveryRepositories(harness.debtCreation, null, harness.incomePlans, harness.debtWrites, harness.goalEdits, harness.budgetSaves, harness.recurringItems, harness.rules, repaymentReviews = com.ticketbox.data.repository.unusedRepaymentReviews()))
+            .create(OutboxStatusViewModel::class.java)
+        try {
+            runCurrent()
+            vm.keepMine(original)
+            runCurrent()
+            val unchanged = harness.outbox.observeStatus().first().conflicts.single()
+            assertEquals(original, unchanged)
+            assertEquals(3L, unchanged.expectedRowVersion)
+            assertEquals("original-void-key", unchanged.idempotencyKey)
+            assertEquals(UiText.res(R.string.expense_offset_void_requires_review), vm.uiState.value.message)
+            assertEquals(MessageTone.Danger, vm.uiState.value.messageTone)
+            assertNull(vm.uiState.value.busyRowId)
+        } finally {
+            vm.viewModelScope.coroutineContext.job.cancelAndJoin()
+        }
+    }
+
+    @Test
     fun rejectedKeepMineShowsFeedbackAndDropClearsIt() = runTest(dispatcher) {
         val harness = outboxStatusHarness()
         val rowId = harness.outbox.enqueue(PendingMutationType.PatchExpense,

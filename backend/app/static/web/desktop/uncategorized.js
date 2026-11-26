@@ -7,7 +7,9 @@
     const selected = boxes(form).filter(box => box.checked).map(box => ({snapshot: box.value,
       label: box.closest("[data-category-row]").querySelector("strong").textContent}));
     form.elements.selected_rows.value = JSON.stringify(selected);
-    return Object.fromEntries(fields.map(name => [name, form.elements.namedItem(name)?.value || ""]));
+    const values = Object.fromEntries(fields.map(name => [name, form.elements.namedItem(name)?.value || ""]));
+    values.category = form.querySelector('[name="category"]:checked')?.value || "";
+    return values;
   }
   function href(record, scope, form) {
     const saved = record?.values;
@@ -54,14 +56,59 @@
       row.querySelector("strong").textContent = selected.label;
       row.querySelector("a").href = detailHref(form, identity);
     }
-    let chosen = [...form.querySelectorAll('[name="category"]')].find(input => input.value === saved.category);
-    if (saved.category && !chosen) {
-      const label = document.createElement("label"); label.className = "uncategorized-choice";
-      chosen = document.createElement("input"); chosen.type = "radio"; chosen.name = "category"; chosen.value = saved.category; chosen.required = true;
-      const title = document.createElement("strong"); title.textContent = saved.category;
-      label.append(chosen, title); form.querySelector(".uncategorized-choices").append(label);
+    selectCategory(form, saved.category);
+  }
+  function categoryChoice(name) {
+    const label = document.createElement("label"); label.className = "uncategorized-choice";
+    const radio = document.createElement("input");
+    radio.type = "radio"; radio.name = "category"; radio.value = name; radio.required = true;
+    const title = document.createElement("strong"); title.textContent = name;
+    label.append(radio, title);
+    return label;
+  }
+  function selectCategory(form, name) {
+    const radios = [...form.querySelectorAll('[name="category"]')];
+    radios.forEach(input => { input.checked = input.value === name; });
+    if (name && !radios.some(input => input.checked)) {
+      const label = categoryChoice(name);
+      label.querySelector("input").checked = true;
+      form.querySelector(".uncategorized-choices").append(label);
     }
-    form.querySelectorAll('[name="category"]').forEach(input => { input.checked = input === chosen; });
+  }
+  function bindCategorySearch(form, canEdit) {
+    const search = form.querySelector("[data-category-search]");
+    if (!search) return;
+    search.hidden = false;
+    const input = search.querySelector("input"), button = search.querySelector("button"), status = search.querySelector("[role=status]");
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter") { event.preventDefault(); button.click(); }
+    });
+    button.addEventListener("click", async () => {
+      const selected = () => form.querySelector('[name="category"]:checked')?.value || "";
+      if (!canEdit()) return;
+      const original = selected();
+      const params = new URLSearchParams({ledger_id: form.elements.ledger_id.value, category_query: input.value});
+      button.disabled = true;
+      try {
+        const response = await fetch("/web/categories/uncategorized?" + params, {headers: {Accept: "application/json"}, cache: "no-store"});
+        if (!response.ok) throw Error("category_options_unavailable");
+        const names = await response.json();
+        if (!canEdit() || selected() !== original) return;
+        if (!names.length) {
+          status.textContent = "没有匹配的分类，已保留原选项。";
+          return;
+        }
+        const choices = document.createElement("div"); choices.className = "uncategorized-choices";
+        choices.append(...names.map(categoryChoice));
+        form.querySelector("[data-category-options]").replaceChildren(choices);
+        selectCategory(form, original);
+        status.textContent = "";
+      } catch {
+        status.textContent = "分类查找失败，请重试。";
+      } finally {
+        button.disabled = false;
+      }
+    });
   }
   function init() {
     const form = document.querySelector(".uncategorized-form");
@@ -74,6 +121,7 @@
       reviewNote.textContent = "如账单已在其他端修改，请先打开核对，再采用当前内容。分类选择仍保留，应用时需再次确认。";
     }
     let state = {phase: "editing", editable: form.dataset.categorybatchCanWrite === "true", busy: false};
+    bindCategorySearch(form, () => state.editable && !state.busy);
     let continuity = null;
     function refresh() {
       const items = boxes(form), count = items.filter(box => box.checked).length;

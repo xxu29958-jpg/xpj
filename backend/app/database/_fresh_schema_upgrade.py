@@ -35,7 +35,10 @@ from app.database._postgres_operation_failures import (
     close_postgres_owner_resources,
     raise_postgres_operation_failures,
 )
-from app.database._runtime_authority_privileges import seal_runtime_authority_tables
+from app.database._runtime_authority_privileges import (
+    seal_runtime_authority_tables,
+    seal_upgrade_attestation_guard,
+)
 from app.services.secure_file import hold_installer_machine_secret_for_read
 
 RESULT_SCHEMA = "ticketbox-fresh-schema-upgrade-result-v1"
@@ -236,6 +239,8 @@ def _run_on_connection(
     )
     if not seal_runtime_authority_tables(connection):
         raise FreshSchemaUpgradeError("runtime authority tables are not read-only")
+    if not seal_upgrade_attestation_guard(connection, owner_role=SCHEMA_OWNER_ROLE):
+        raise FreshSchemaUpgradeError("upgrade attestation guard could not be sealed")
     return result
 
 

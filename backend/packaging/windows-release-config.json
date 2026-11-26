@@ -43,5 +43,11 @@
   "backend_health_request_timeout_ms": 2000,
   "bootstrap_request_timeout_ms": 20000,
   "scm_failure_reset_seconds": 3600,
-  "scm_restart_delays_ms": [5000, 10000, 60000]
+  "scm_restart_delays_ms": [5000, 10000, 60000],
+  "managed_upgrade_policy": {
+    "target_release_id": "1.3.0",
+    "supported_source_releases": ["1.2.1"],
+    "min_source_release": "1.2.1",
+    "max_source_release_exclusive": "1.3.0"
+  }
 }

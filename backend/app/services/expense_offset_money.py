@@ -75,7 +75,8 @@ def resolve_offset_money(
     imported_snapshot: ImportedCurrencyPayload | None = None,
 ) -> OffsetMoney:
     gross_original = gross_original_minor(expense)
-    active_refunded = sum(offset.original_amount_minor for offset in offsets if offset.kind != "reversal")
+    refunds = [offset for offset in offsets if offset.kind != "reversal"]
+    active_refunded = sum(offset.original_amount_minor for offset in refunds)
     if imported_snapshot is not None:
         _validate_imported_offset_snapshot(imported_snapshot, expense)
     if payload.kind == "reversal":
@@ -90,6 +91,14 @@ def resolve_offset_money(
             exchange_rate_to_cny=expense.exchange_rate_to_cny,
             exchange_rate_date=expense.exchange_rate_date,
             exchange_rate_source=expense.exchange_rate_source,
+        )
+
+    if any(offset.original_currency_code != expense.original_currency_code for offset in refunds):
+        db.rollback()
+        raise AppError(
+            "expense_refund_exists",
+            "已有生效退款的币种与原消费不一致，请先将原消费币种核对一致后再登记退款。",
+            status_code=409,
         )
 
     original_amount_minor = int(payload.original_amount_minor or 0)
@@ -153,12 +162,17 @@ def resolve_corrected_offset_money(
 
     if payload.original_amount_minor is None:
         raise AppError("amount_required", status_code=409)
+    refunds = [item for item in active_offsets if item.kind != "reversal"]
+    if offset.original_currency_code != expense.original_currency_code or any(
+        item.original_currency_code != expense.original_currency_code for item in refunds
+    ):
+        raise AppError(
+            "expense_refund_exists",
+            "退款记录与原消费币种不一致，请先将原消费币种核对一致后再更正退款。",
+            status_code=409,
+        )
     original_amount_minor = int(payload.original_amount_minor)
-    other_refunded = sum(
-        item.original_amount_minor
-        for item in active_offsets
-        if item.id != offset.id and item.kind != "reversal"
-    )
+    other_refunded = sum(item.original_amount_minor for item in refunds if item.id != offset.id)
     if original_amount_minor > gross_original_minor(expense) - other_refunded:
         raise AppError("expense_refund_exceeds_remaining", status_code=409)
 

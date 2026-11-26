@@ -43,7 +43,7 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -194,21 +194,19 @@ def claim_idempotency_key(
     if existing.request_fingerprint != request_fingerprint:
         return IdempotencyOutcome(IdempotencyOutcomeKind.FINGERPRINT_MISMATCH, existing)
 
-    # Same request. Reclaim the slot if its owner went stale (crashed before
-    # recording success); otherwise a concurrent same-key request is still in
-    # flight. Staleness is checked Python-side via ensure_utc so it stays
-    # dialect-safe (SQLite reads timestamps back naive). operation/target/
-    # fingerprint already match (guarded above), so the reclaim only restarts
-    # the clock. Residual race: two requests both finding the SAME stale
-    # placeholder within the window could both reclaim and double-apply — an
-    # extreme tail (a >stale_after-old crash plus concurrent retries) accepted
-    # for now.
     age = now - ensure_utc(existing.created_at)
     if age > stale_in_progress_after:
-        existing.created_at = now
-        existing.expires_at = now + retention
-        db.flush()
-        return IdempotencyOutcome(IdempotencyOutcomeKind.PROCEED, existing)
+        reclaimed = db.execute(
+            update(ApiIdempotencyKey)
+            .where(ApiIdempotencyKey.id == existing.id)
+            .where(ApiIdempotencyKey.status == IDEMPOTENCY_STATUS_IN_PROGRESS)
+            .where(ApiIdempotencyKey.created_at == existing.created_at)
+            .values(created_at=now, expires_at=now + retention)
+            .execution_options(synchronize_session=False)
+        ).rowcount
+        if reclaimed == 1:
+            db.refresh(existing)
+            return IdempotencyOutcome(IdempotencyOutcomeKind.PROCEED, existing)
 
     return IdempotencyOutcome(IdempotencyOutcomeKind.IN_PROGRESS, existing)
 

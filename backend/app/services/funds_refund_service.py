@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import AccountMovement, Expense, ExpenseFunding, ExpenseOffsetFact
+from app.models import AccountMovement, Expense, ExpenseFunding, ExpenseOffsetFact, FinancialAccount
 from app.schemas.funds import RefundDestination
 from app.services.expense_funding_service import expense_funding_account_ids, reverse_expense_funding
 from app.services.funds_commands import movement, require_account_version
@@ -81,9 +81,70 @@ def reverse_offset_funds(db, *, expense, offset, actor_account_id, reason) -> se
     roots = reverse_movements(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id, rows=rows,
         reason=reason, occurred_on=offset.accounting_date)
     if offset.kind == "reversal":
-        for funding in db.scalars(select(ExpenseFunding).join(AccountMovement, AccountMovement.funding_id == ExpenseFunding.id)
-                .where(AccountMovement.id.in_(roots.values()))):
-            funding.voided_at = None
+        root_movements = (
+            list(db.scalars(select(AccountMovement).where(AccountMovement.id.in_(roots.values()))))
+            if roots
+            else []
+        )
+        restored_fundings = (
+            list(
+                db.scalars(
+                    select(ExpenseFunding)
+                    .join(AccountMovement, AccountMovement.funding_id == ExpenseFunding.id)
+                    .where(AccountMovement.id.in_(roots.values()))
+                )
+            )
+            if roots
+            else []
+        )
+        restored_ids = {funding.id for funding in restored_fundings}
+        existing_active_query = (
+            select(ExpenseFunding)
+            .where(ExpenseFunding.expense_id == expense.id)
+            .where(ExpenseFunding.voided_at.is_(None))
+        )
+        if restored_ids:
+            existing_active_query = existing_active_query.where(ExpenseFunding.id.not_in(restored_ids))
+        existing_active_rows = list(db.scalars(existing_active_query))
+        if restored_fundings or existing_active_rows:
+            expected_total = expense.original_amount_minor if expense.original_amount_minor is not None else expense.amount_cents
+            restored_total = sum(row.expense_amount_minor for row in existing_active_rows) + sum(
+                funding.expense_amount_minor for funding in restored_fundings
+            )
+            dates_match = all(m.occurred_on == expense.accounting_date for m in root_movements)
+            opening_account_ids = {
+                row.account_id
+                for row in (*existing_active_rows, *restored_fundings)
+                if row.included_in_opening
+            }
+            if opening_account_ids:
+                opening_accounts = list(
+                    db.scalars(
+                        select(FinancialAccount).where(FinancialAccount.id.in_(opening_account_ids))
+                    )
+                )
+                dates_match = dates_match and len(opening_accounts) == len(opening_account_ids) and all(
+                    account.balance_known and expense.accounting_date <= account.opening_date
+                    for account in opening_accounts
+                )
+            home_matches = (
+                expense.amount_cents is not None
+                and offset.amount_cents == expense.amount_cents
+            )
+            if (
+                expected_total is None
+                or restored_total != expected_total
+                or offset.original_currency_code != expense.original_currency_code
+                or not dates_match
+                or not home_matches
+            ):
+                raise AppError(
+                    "funding_review_required",
+                    "原消费金额、币种、估值或账务日期与待恢复的付款组成不一致，请先核对并恢复原消费后再撤销冲销。",
+                    status_code=409,
+                )
+            for funding in restored_fundings:
+                funding.voided_at = None
     # The offset owner expires its snapshot before applying the reviewed correction.
     db.flush()
     return {row.account_id for row in rows}

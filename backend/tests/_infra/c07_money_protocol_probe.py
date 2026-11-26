@@ -13,6 +13,7 @@ from scripts.build_database_generation_program import write_program
 
 _C07_PROTOCOL_UPGRADE_PROBE = r"""
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, sys.argv[1])
@@ -38,6 +39,7 @@ with engine.connect() as connection, _prearmed_transaction(
         program=program,
         source_revision=source_revision,
         target_revision=target_revision,
+        operation_id=str(uuid.uuid4()),
     )
 
 engine.dispose()

@@ -2,6 +2,29 @@ package com.ticketbox.data.remote.dto
 
 import com.squareup.moshi.Json
 import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
+import java.time.LocalDate
+import java.time.format.DateTimeParseException
+
+private val versionFormat = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+private val clientDate = LocalDate.parse(CURRENT_TICKETBOX_API_VERSION)
+
+private fun protocolDate(value: String?): LocalDate? {
+    if (value == null || !versionFormat.matches(value)) return null
+    return try {
+        LocalDate.parse(value).takeIf { it.year > 0 }
+    } catch (_: DateTimeParseException) {
+        null
+    }
+}
+
+private fun serverSupportsClient(version: String?): Boolean =
+    protocolDate(version)?.let { it >= clientDate } == true
+
+private fun clientMeetsFloor(minimum: String?): Boolean =
+    protocolDate(minimum)?.let { it <= clientDate } == true
+
+private fun acceptsReader(server: String?, readFloor: String? = null): Boolean =
+    serverSupportsClient(server) && clientMeetsFloor(readFloor ?: server)
 
 data class RuntimeCompatibilityDto(
     @param:Json(name = "api_version")
@@ -9,7 +32,16 @@ data class RuntimeCompatibilityDto(
     @param:Json(name = "write_compatibility")
     val writeCompatibility: String,
     val capabilities: RuntimeProductCapabilitiesDto,
-)
+    @param:Json(name = "min_read_client_version")
+    val minReadClientVersion: String? = null,
+    @param:Json(name = "min_write_client_version")
+    val minWriteClientVersion: String? = null,
+    @param:Json(name = "supported_payload_revisions")
+    val supportedPayloadRevisions: Map<String, List<Int>>? = null,
+) {
+    val readerVersionAccepted: Boolean get() = acceptsReader(apiVersion, minReadClientVersion)
+    val writerVersionAccepted: Boolean get() = readerVersionAccepted && clientMeetsFloor(minWriteClientVersion ?: apiVersion)
+}
 
 data class RuntimeProductCapabilitiesDto(
     val currency: RuntimeCurrencyCapabilityDto,
@@ -57,14 +89,24 @@ data class RuntimeWriteCompatibility(
     val debtBillSourceVersion: Int? = null,
     val expenseConfirmationVersion: Int? = null,
     val notificationBatchVersion: Int? = null,
+    val readerVersionAccepted: Boolean = acceptsReader(apiVersion),
+    val writerVersionAccepted: Boolean = readerVersionAccepted,
+    val supportedPayloadRevisions: Map<String, List<Int>>? = null,
 ) {
-    val supportsOriginalAttachment: Boolean get() = originalAttachmentVersion == 1 && apiVersion == CURRENT_TICKETBOX_API_VERSION
-    val supportsAccountingTimeInput: Boolean get() = accountingTimeInputVersion == 1
-    val supportsRepaymentTimeInput: Boolean get() = repaymentTimeInputVersion == 1
+    val supportsOriginalAttachment: Boolean get() = originalAttachmentVersion == 1 && serverSupportsClient(apiVersion)
+    private fun acceptsPayload(family: String, revision: Int, legacy: Int?): Boolean =
+        if (supportedPayloadRevisions == null) legacy == revision else revision in supportedPayloadRevisions[family].orEmpty()
+
+    val supportsAccountingTimeInput: Boolean get() = acceptsPayload("accounting_time_input", 1, accountingTimeInputVersion)
+    val supportsRepaymentTimeInput: Boolean get() = acceptsPayload("repayment_time_input", 1, repaymentTimeInputVersion)
+    val supportsFirstAttachment: Boolean get() = acceptsPayload("original_attachment_create", 1, originalAttachmentCreateVersion)
+    val supportsDebtBillSource: Boolean get() = acceptsPayload("debt_bill_source", 1, debtBillSourceVersion)
+    val supportsAtomicConfirmation: Boolean get() = acceptsPayload("expense_confirmation", 2, expenseConfirmationVersion)
+    val supportsNotificationBatch: Boolean get() = acceptsPayload("notification_batch", 1, notificationBatchVersion)
 
     val canWrite: Boolean
         get() = conclusion == "compatible" &&
-            apiVersion == CURRENT_TICKETBOX_API_VERSION &&
+            writerVersionAccepted &&
             !requestBinding.isNullOrBlank()
 
     companion object {
@@ -78,7 +120,10 @@ data class RuntimeWriteCompatibility(
 
 fun RuntimeCompatibilityDto.toWriteCompatibility(): RuntimeWriteCompatibility =
     RuntimeWriteCompatibility(
-        conclusion = writeCompatibility,
+        conclusion = if (writerVersionAccepted) writeCompatibility else "client_upgrade_required",
+        readerVersionAccepted = readerVersionAccepted,
+        supportedPayloadRevisions = supportedPayloadRevisions,
+        writerVersionAccepted = writerVersionAccepted,
         apiVersion = apiVersion,
         requestBinding = capabilities.currency.requestBinding,
         uploadOriginalReceiptVersion = capabilities.uploadOriginalReceiptVersion,

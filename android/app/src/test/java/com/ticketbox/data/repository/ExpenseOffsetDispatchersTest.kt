@@ -21,6 +21,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 class ExpenseOffsetDispatchersTest {
@@ -132,12 +133,25 @@ class ExpenseOffsetDispatchersTest {
     }
 
     @Test
+    fun createFundAccountNotFoundPreservesAccountErrorInsteadOfTargetReview() = runTest {
+        val body = """{"error":"fund_account_not_found","message":"这个资金账户不存在或你没有访问权限。"}"""
+        val stub = Stub(Result.failure(httpException(404, body)))
+        val dispatcher = CreateExpenseOffsetDispatcher({ stub },
+            moshi.adapter(ExpenseOffsetCreateRequestDto::class.java), { _, _ -> })
+
+        assertEquals(
+            DispatchResult.Failure("这个资金账户不存在或你没有访问权限。", definitelyRejected = true),
+            dispatcher.dispatch(createRow()),
+        )
+    }
+
+    @Test
     fun `domain conflict remains visible instead of discarding queued intent`() = runTest {
         val stub = Stub(
             Result.failure(
                 httpException(
                     409,
-                    """{"error":"expense_offset_exceeds_remaining","message":"退款金额超过可退余额"}""",
+                    """{"error":"expense_refund_exceeds_remaining","message":"退款金额超过可退余额"}""",
                 ),
             ),
         )
@@ -229,6 +243,65 @@ class ExpenseOffsetDispatchersTest {
         val cancelled = CancellationException("binding changed")
         failure = cancelled
         assertSame(cancelled, assertFailsWith<CancellationException> { dispatcher.dispatch(original) })
+    }
+
+    @Test
+    fun voidAnomalous404StaysVisibleFailureWhileAlreadyVoided409Discards() = runTest {
+        val adapter = moshi.adapter(ExpenseOffsetVoidOutboxPayload::class.java)
+        for ((body, expectedMessage) in listOf(
+            """{"error":"fund_account_not_found","message":"这个资金账户不存在或你没有访问权限。"}""" to "这个资金账户不存在或你没有访问权限。",
+            """{"error":"expense_offset_not_found","message":"没有找到这条退款或冲销记录。"}""" to "没有找到这条退款或冲销记录。",
+            """{"error":"expense_not_found","message":"账单不存在。"}""" to "账单不存在。",
+            """{"error":"route_not_found","message":"没有找到这个功能入口。"}""" to "账本版本过旧，请重启电脑上的小票夹后再试。",
+        )) {
+            val stub = Stub(Result.failure(AssertionError("create not expected")), Result.failure(httpException(404, body)))
+            val dispatcher = VoidExpenseOffsetDispatcher({ stub }, adapter, { _, _ -> })
+            assertEquals(DispatchResult.Failure(expectedMessage, definitelyRejected = true), dispatcher.dispatch(voidRow()))
+        }
+
+        val alreadyVoided = Stub(
+            Result.failure(AssertionError("create not expected")),
+            Result.failure(httpException(409, """{"error":"expense_offset_not_active","message":"这条退款或冲销记录已经撤销。"}""")),
+        )
+        assertEquals(
+            DispatchResult.Discarded("这条退款或冲销记录已经撤销。"),
+            VoidExpenseOffsetDispatcher({ alreadyVoided }, adapter, { _, _ -> }).dispatch(voidRow()),
+        )
+
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao)
+        val rowId = outbox.enqueue(
+            type = PendingMutationType.VoidExpenseOffset,
+            targetId = expenseTargetId(42),
+            payloadJson = voidRow().payloadJson,
+            expectedRowVersion = 3L,
+            idempotencyKey = "void-key-404",
+        )
+        val stub404 = Stub(
+            Result.failure(AssertionError("create not expected")),
+            Result.failure(httpException(404, """{"error":"fund_account_not_found","message":"这个资金账户不存在或你没有访问权限。"}""")),
+        )
+        dao.runnableBatches += listOf(rowId)
+        val summary = OutboxDrainEngine(outbox, listOf(VoidExpenseOffsetDispatcher({ stub404 }, adapter, { _, _ -> }))).drainOnce()
+        assertEquals(1, summary.failures)
+        assertEquals(0, summary.done)
+        assertEquals(0, summary.discarded)
+        assertEquals(PendingMutationStatus.Failed.wireValue, dao.rows.getValue(rowId).status)
+        assertNull(dao.rows.getValue(rowId).completedAt)
+    }
+
+    @Test
+    fun offset409ClassifiesStrictlyByErrorCodeNotMessageSubstring() = runTest {
+        val adapter = moshi.adapter(ExpenseOffsetVoidOutboxPayload::class.java)
+        for (spoofedMessage in listOf(
+            "expense_offset_not_active",
+            "state_conflict / idempotency_key_in_progress",
+        )) {
+            val body = """{"error":"expense_not_confirmed","message":"$spoofedMessage"}"""
+            val stub = Stub(Result.failure(AssertionError("create not expected")), Result.failure(httpException(409, body)))
+            val result = VoidExpenseOffsetDispatcher({ stub }, adapter, { _, _ -> }).dispatch(voidRow())
+            assertEquals(DispatchResult.Failure(spoofedMessage), result)
+        }
     }
 
     private fun createRow() = OutboxRow(

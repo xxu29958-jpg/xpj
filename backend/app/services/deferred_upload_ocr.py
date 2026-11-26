@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from sqlalchemy import select
 from sqlalchemy.orm import aliased
 
 from app.config import get_settings
 from app.database import SessionLocal
+from app.error_reporting import report_error
 from app.errors import AppError
 from app.models import BackgroundTask, Expense, OcrFact
 from app.services.background_task_handler_api import OCR_TASK_TYPES
@@ -18,6 +20,8 @@ from app.services.pending_enrichment_task_service import (
     prepare_pending_expense_enrichment,
 )
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
+
+logger = logging.getLogger(__name__)
 
 
 def _pending_uploads():
@@ -97,4 +101,7 @@ def queue_skipped_uploads(after_id: int, *, limit: int = 8) -> int:
         except AppError as exc:
             if exc.error not in {"enrichment_capacity_full", "upload_storage_full"}:
                 raise
+        except OSError as exc:
+            report_error(logger, "deferred upload OCR admission skipped due to IO error", error=exc)
+            continue
     return ids[-1] if len(ids) == limit else 0

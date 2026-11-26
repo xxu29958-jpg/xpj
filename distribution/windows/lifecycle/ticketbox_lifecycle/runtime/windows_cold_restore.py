@@ -120,4 +120,14 @@ class WindowsColdRestore:
         pairing = result["pairing"]
         if pairing["installation_id"] != request.install_id or pairing["operation_id"] != request.operation_id:
             raise LifecycleError("restore_result_mismatch", "owner pairing does not match the restore operation")
-        return OwnerPairing(pairing_code=pairing["pairing_code"], pairing_expires_at=pairing["pairing_expires_at"])
+        revoked = result.get("revoked_credentials_summary")
+        revoked_summary = (
+            {str(k): int(v) for k, v in revoked.items()}
+            if isinstance(revoked, dict)
+            else None
+        )
+        return OwnerPairing(
+            pairing_code=pairing["pairing_code"],
+            pairing_expires_at=pairing["pairing_expires_at"],
+            revoked_credentials_summary=revoked_summary,
+        )

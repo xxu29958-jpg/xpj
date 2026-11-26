@@ -316,7 +316,7 @@ def web_edit_context(
         currency_code=record_currency,
     )
     ctx["split_members"] = web_split_members(db, selected_id)
-    ctx["category_options"] = list_ledger_category_options(db, tenant_id=selected_id)
+    ctx["category_options"] = list_ledger_category_options(db, tenant_id=selected_id, selected=expense_view["category_input"])
     return ctx
 
 

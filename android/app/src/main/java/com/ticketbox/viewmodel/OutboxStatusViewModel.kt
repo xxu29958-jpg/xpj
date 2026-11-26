@@ -162,7 +162,11 @@ class OutboxStatusViewModel(
         if (!_uiState.value.accepts(row, binding)) return
         if (row.type in setOf(PendingMutationType.CorrectExpense, PendingMutationType.UploadScreenshot, PendingMutationType.OriginalAttachment)) return
         if (row.type == PendingMutationType.CreateExpenseOffset) {
-            explainOffsetReview()
+            explainOffsetReview(R.string.expense_offset_original_requires_review)
+            return
+        }
+        if (row.type == PendingMutationType.VoidExpenseOffset) {
+            explainOffsetReview(R.string.expense_offset_void_requires_review)
             return
         }
         if (_uiState.value.busyRowId != null) return
@@ -357,8 +361,8 @@ class OutboxStatusViewModel(
         }
     }
 
-    private fun explainOffsetReview() = _uiState.update {
-        it.copy(message = UiText.res(R.string.expense_offset_original_requires_review), messageTone = MessageTone.Danger)
+    private fun explainOffsetReview(messageRes: Int = R.string.expense_offset_original_requires_review) = _uiState.update {
+        it.copy(message = UiText.res(messageRes), messageTone = MessageTone.Danger)
     }
 
     private fun resolve(row: OutboxRow, block: suspend () -> Unit) {

@@ -17,8 +17,13 @@ def expense_financial_summary(
     gross_home = int(expense.amount_cents or 0)
     reversal = next((offset for offset in offsets if offset.kind == "reversal"), None)
     refunds = [offset for offset in offsets if offset.kind != "reversal"]
-    refunded_original = sum(offset.original_amount_minor for offset in refunds)
-    remaining_original = max(gross_original - refunded_original, 0)
+    currency_mismatch = any(
+        offset.original_currency_code != expense.original_currency_code for offset in refunds
+    )
+    refunded_original = (
+        0 if currency_mismatch else sum(offset.original_amount_minor for offset in refunds)
+    )
+    remaining_original = 0 if currency_mismatch else max(gross_original - refunded_original, 0)
 
     if reversal is not None:
         remaining_original = 0
@@ -26,8 +31,10 @@ def expense_financial_summary(
         status = "reversed"
     else:
         net_home = gross_home - sum(offset.amount_cents for offset in refunds)
-        if refunded_original == 0:
+        if not refunds:
             status = "confirmed"
+        elif currency_mismatch:
+            status = "partially_refunded"
         elif remaining_original == 0:
             status = "fully_refunded"
         else:
@@ -46,7 +53,7 @@ def expense_financial_summary(
         active_refunded_original_minor=refunded_original,
         remaining_refundable_original_minor=remaining_original,
         lineage_home_net_cents=net_home,
-        fx_difference_cents=net_home - baseline_remaining_home,
+        fx_difference_cents=0 if currency_mismatch else net_home - baseline_remaining_home,
         status=status,
     )
 

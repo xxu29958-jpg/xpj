@@ -4,11 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import exists, select
+from sqlalchemy.orm import Session, aliased
 
 from app.errors import AppError
-from app.models import ApiIdempotencyKey, Expense, ExpenseRevision
+from app.models import (
+    AccountMovement,
+    ApiIdempotencyKey,
+    Expense,
+    ExpenseFunding,
+    ExpenseOffsetFact,
+    ExpenseRevision,
+    FinancialAccount,
+)
 from app.schemas import (
     ConfirmedExpenseBatchUpdateRequest,
     ConfirmedExpenseBatchUpdateResponse,
@@ -422,7 +430,14 @@ def _apply_correction_sections(
         )
     if expense.amount_cents != amount_before or payload.splits is not None:
         validate_current_expense_split_allocation(db, expense=expense)
-    apply_funding_correction(db, expense=expense, before_money=before_money, payload=payload, actor_account_id=actor_account_id)
+    restoring_legacy_reversal = _validate_expense_offsets_for_correction(
+        db,
+        expense=expense,
+        before_money=before_money,
+        funding_requested=payload.funding is not None,
+    )
+    if not restoring_legacy_reversal:
+        apply_funding_correction(db, expense=expense, before_money=before_money, payload=payload, actor_account_id=actor_account_id)
     fields_recorded = record_field_choices(db, expense=expense, choices=payload.recognition_field_choices, actor_account_id=actor_account_id)
     record_unmatched_saves(db, expense=expense, before=readings_before, actor_account_id=actor_account_id,
         recorded_fields=fields_recorded)
@@ -432,6 +447,186 @@ def _apply_correction_sections(
             previous_merchant=merchant_before, actor_account_id=actor_account_id,
             choice=payload.category_choice, decision_public_id=payload.category_decision_public_id)
     expense.updated_at = now
+
+
+def _restores_legacy_reversal_funding(
+    db: Session,
+    *,
+    expense: Expense,
+    before_money: tuple[object, ...],
+    reversals: list[ExpenseOffsetFact],
+) -> bool:
+    child = aliased(AccountMovement)
+    reversal_rows = list(
+        db.scalars(
+            select(AccountMovement)
+            .where(AccountMovement.offset_id.in_([offset.id for offset in reversals]))
+            .where(
+                ~exists(
+                    select(child.id).where(child.reversal_of_id == AccountMovement.id)
+                )
+            )
+        )
+    )
+    root_movements: list[AccountMovement] = []
+    restored_fundings: list[ExpenseFunding] = []
+    if reversal_rows:
+        account_ids = {row.account_id for row in reversal_rows}
+        lineage = dict(
+            db.execute(
+                select(AccountMovement.id, AccountMovement.reversal_of_id).where(
+                    AccountMovement.account_id.in_(account_ids)
+                )
+            ).all()
+        )
+        root_ids: set[int] = set()
+        for row in reversal_rows:
+            root = row.id
+            while lineage.get(root) is not None:
+                root = lineage[root]
+            root_ids.add(root)
+        root_movements = list(
+            db.scalars(select(AccountMovement).where(AccountMovement.id.in_(root_ids)))
+        )
+        restored_fundings = list(
+            db.scalars(
+                select(ExpenseFunding)
+                .join(AccountMovement, AccountMovement.funding_id == ExpenseFunding.id)
+                .where(AccountMovement.id.in_(root_ids))
+            )
+        )
+    restored_ids = {funding.id for funding in restored_fundings}
+    existing_active_query = (
+        select(ExpenseFunding)
+        .where(ExpenseFunding.expense_id == expense.id)
+        .where(ExpenseFunding.voided_at.is_(None))
+    )
+    if restored_ids:
+        existing_active_query = existing_active_query.where(ExpenseFunding.id.not_in(restored_ids))
+    existing_active = list(db.scalars(existing_active_query))
+    all_fundings = (*existing_active, *restored_fundings)
+    if not all_fundings:
+        return False
+    restorable_currencies = {offset.original_currency_code for offset in reversals}
+    restorable_homes = {offset.amount_cents for offset in reversals}
+    if len(restorable_currencies) != 1 or len(restorable_homes) != 1:
+        return False
+    before_currency, before_original, before_home, before_date = before_money
+    opening_account_ids = {
+        funding.account_id for funding in all_fundings if funding.included_in_opening
+    }
+    opening_accounts = (
+        list(
+            db.scalars(
+                select(FinancialAccount).where(FinancialAccount.id.in_(opening_account_ids))
+            )
+        )
+        if opening_account_ids
+        else []
+    )
+    if len(opening_accounts) != len(opening_account_ids):
+        return False
+
+    def _opening_dates_valid(candidate_date) -> bool:
+        return all(
+            account.balance_known and candidate_date <= account.opening_date
+            for account in opening_accounts
+        )
+
+    if root_movements:
+        restorable_dates = {row.occurred_on for row in root_movements}
+        if len(restorable_dates) != 1:
+            return False
+        restorable_date = next(iter(restorable_dates))
+        before_date_invalid = before_date != restorable_date or not _opening_dates_valid(before_date)
+        after_date_valid = expense.accounting_date == restorable_date and _opening_dates_valid(expense.accounting_date)
+    else:
+        before_date_invalid = not _opening_dates_valid(before_date)
+        after_date_valid = (
+            _opening_dates_valid(expense.accounting_date)
+            and (expense.accounting_date == before_date or before_date_invalid)
+        )
+    restorable_currency = next(iter(restorable_currencies))
+    restorable_home = next(iter(restorable_homes))
+    restorable_total = sum(funding.expense_amount_minor for funding in all_fundings)
+    before_amount = before_original if before_original is not None else before_home
+    after_amount = (
+        expense.original_amount_minor
+        if expense.original_amount_minor is not None
+        else expense.amount_cents
+    )
+    is_legacy_mismatch = (
+        before_amount != restorable_total
+        or before_currency != restorable_currency
+        or before_home != restorable_home
+        or before_date_invalid
+    )
+    return (
+        is_legacy_mismatch
+        and expense.original_currency_code == restorable_currency
+        and after_amount == restorable_total
+        and expense.amount_cents == restorable_home
+        and after_date_valid
+    )
+
+
+def _validate_expense_offsets_for_correction(
+    db: Session,
+    *,
+    expense: Expense,
+    before_money: tuple[object, ...],
+    funding_requested: bool,
+) -> bool:
+    from app.services.expense_funding_service import funding_money_identity
+    from app.services.expense_offset_money import gross_original_minor
+
+    money_changed = before_money != funding_money_identity(expense)
+    if not money_changed and not funding_requested:
+        return False
+    active_offsets = list(
+        db.scalars(
+            select(ExpenseOffsetFact)
+            .where(ExpenseOffsetFact.tenant_id == expense.tenant_id)
+            .where(ExpenseOffsetFact.expense_id == expense.id)
+            .where(ExpenseOffsetFact.status == "active")
+            .order_by(ExpenseOffsetFact.id)
+            .with_for_update()
+        )
+    )
+    if not active_offsets:
+        return False
+    reversals = [offset for offset in active_offsets if offset.kind == "reversal"]
+    if reversals:
+        if funding_requested or not _restores_legacy_reversal_funding(
+            db,
+            expense=expense,
+            before_money=before_money,
+            reversals=reversals,
+        ):
+            raise AppError(
+                "expense_reversal_active",
+                "这笔账单已经冲销，请先撤销冲销记录后再更正金额、币种或付款组成。",
+                status_code=409,
+            )
+        return True
+    if not money_changed:
+        return False
+    refund_offsets = [offset for offset in active_offsets if offset.kind != "reversal"]
+    refund_currencies = {offset.original_currency_code for offset in refund_offsets}
+    if len(refund_currencies) != 1 or expense.original_currency_code != next(iter(refund_currencies)):
+        raise AppError(
+            "expense_refund_exists",
+            "这笔账单已有生效退款，请先核对币种或撤销退款记录后再更正。",
+            status_code=409,
+        )
+    active_refunded = sum(offset.original_amount_minor for offset in refund_offsets)
+    if active_refunded > gross_original_minor(expense):
+        raise AppError(
+            "expense_refund_exceeds_remaining",
+            "更正后的金额不能低于已生效的累计退款金额。",
+            status_code=409,
+        )
+    return False
 
 
 def _scalar_payload(payload: ExpenseCorrectionRequest) -> ExpenseUpdateRequest | None:

@@ -143,7 +143,7 @@ def finalize_install_result(
 def _is_exact_commit(operation: ActiveOperation | None, operation_id: str) -> bool:
     return (
         operation is not None
-        and operation.kind in {"install", "restore"}
+        and operation.kind in {"install", "restore", "upgrade", "uninstall", "reinstall"}
         and operation.phase == "committed"
         and operation.operation_id == operation_id
     )

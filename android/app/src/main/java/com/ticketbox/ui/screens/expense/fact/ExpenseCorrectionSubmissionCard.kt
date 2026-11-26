@@ -16,6 +16,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.ticketbox.R
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.repository.EXPENSE_REFUND_EXCEEDS_REMAINING
+import com.ticketbox.data.repository.EXPENSE_REFUND_EXISTS
+import com.ticketbox.data.repository.EXPENSE_REVERSAL_ACTIVE
 import com.ticketbox.data.repository.PendingExpenseCorrection
 import com.ticketbox.data.repository.LogicalSessionBinding
 import com.ticketbox.domain.model.CurrencyProjectionGap
@@ -82,13 +85,21 @@ private fun CorrectionRetryActions(pending: PendingExpenseCorrection, options: C
     }
 }
 
+private val correctionExactStatusResources = mapOf(
+    "outbox_row_expired" to R.string.correction_submission_expired,
+    EXPENSE_REVERSAL_ACTIVE to R.string.correction_submission_reversal_active,
+    EXPENSE_REFUND_EXISTS to R.string.correction_submission_refund_exists,
+    EXPENSE_REFUND_EXCEEDS_REMAINING to R.string.correction_submission_refund_exceeds_remaining,
+)
+
 @Composable
 private fun correctionStatusText(pending: PendingExpenseCorrection, refreshPending: Boolean): String {
     if (pending.exchangeRatePending) return stringResource(if (pending.missingExchangeRate == null)
         R.string.correction_rate_context_missing else R.string.correction_rate_required)
+    val exactStatus = correctionExactStatusResources[pending.row.lastError]
     val fallback = stringResource(when {
         !pending.hasSupportedIntent -> R.string.correction_submission_unsupported
-        pending.row.lastError == "outbox_row_expired" -> R.string.correction_submission_expired
+        exactStatus != null -> exactStatus
         pending.row.status == PendingMutationStatus.Failed && !pending.canRetry -> R.string.correction_submission_review_required
         pending.delivered -> if (refreshPending) R.string.expense_correction_saved_refresh_pending else R.string.expense_correction_saved
         pending.row.status == PendingMutationStatus.Conflict -> R.string.correction_submission_conflict

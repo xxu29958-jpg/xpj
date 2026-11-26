@@ -161,7 +161,10 @@
   }
 
   function renderShelf() {
-    const records = drafts.list(scope);
+    const inspected = drafts.inspect
+      ? drafts.inspect(scope)
+      : {records: drafts.list(scope), unreadableCount: 0, unattributableErrorCount: 0};
+    const {records, unreadableCount, unattributableErrorCount = 0} = inspected;
     const list = shelf.querySelector("[data-manual-draft-list]");
     list.replaceChildren();
     records.forEach(record => {
@@ -176,8 +179,20 @@
       item.append(link, detail);
       list.appendChild(item);
     });
+    if (unreadableCount > 0) {
+      const warning = document.createElement("li");
+      warning.setAttribute("data-manual-draft-unreadable", String(unreadableCount));
+      warning.textContent = `有 ${unreadableCount} 条本地草稿读取失败，原记录已保留，请刷新或检查浏览器存储。`;
+      list.appendChild(warning);
+    }
+    if (unattributableErrorCount > 0) {
+      const warning = document.createElement("li");
+      warning.setAttribute("data-manual-draft-storage-warning", "1");
+      warning.textContent = "浏览器本地草稿存储存在无法解析的异常记录，原记录已保留，请检查浏览器存储。";
+      list.appendChild(warning);
+    }
     shelf.querySelector("[data-manual-draft-count]").textContent = String(records.length);
-    shelf.hidden = records.length === 0;
+    shelf.hidden = records.length === 0 && unreadableCount === 0 && unattributableErrorCount === 0;
   }
 
   function persist(nextPhase) {

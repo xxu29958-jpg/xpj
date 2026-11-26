@@ -85,9 +85,11 @@ assert not any(name == "app.database" or name.startswith("app.database.") for na
 validation = launch._load_generation_program_validation_module()
 target = launch._load_database_generation_target_module()
 fresh = launch._load_fresh_schema_upgrade_module()
+upgrade = launch._load_existing_dataset_upgrade_module()
 assert callable(validation.validate_database_generation_program)
 assert callable(target.run_database_generation_target_verification_action)
 assert callable(fresh.run_fresh_schema_upgrade_action)
+assert callable(upgrade.run_existing_dataset_upgrade_action)
 assert not any(name == "app.database" or name.startswith("app.database.") for name in sys.modules)
 """
 

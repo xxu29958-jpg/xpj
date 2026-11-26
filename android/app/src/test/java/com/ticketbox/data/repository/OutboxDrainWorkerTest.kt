@@ -1,9 +1,12 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
+import com.ticketbox.data.remote.ApiService
+import com.ticketbox.data.remote.ApiServiceFactory
 
 import com.ticketbox.data.repository.OutboxDrainWorker.DrainOutcome
 import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
+import com.ticketbox.data.remote.dto.toWriteCompatibility
 import com.ticketbox.security.LocalSessionIdentity
 import com.ticketbox.security.LocalSessionRecord
 import com.ticketbox.security.StoredSessionToken
@@ -222,6 +225,42 @@ class OutboxDrainWorkerTest {
 
         assertEquals(DrainOutcome.RETRY, outcome)
         assertFalse(dispatched)
+    }
+
+    @Test
+    fun `either client floor keeps queued intents out of the drain`() = runTest {
+        val runtime = FakeApiService(mutableListOf(), 0).runtimeCompatibility()
+        for (incompatible in listOf(runtime.copy(minReadClientVersion = "2099-01-01"),
+            runtime.copy(minWriteClientVersion = "2099-01-01"))) {
+            val result = incompatible.toWriteCompatibility()
+            assertEquals("client_upgrade_required", result.conclusion)
+            var dispatched = false
+            assertEquals(DrainOutcome.RETRY, OutboxDrainWorker.runCompatibleDrain(compatibility = { result }) {
+                dispatched = true
+                summary()
+            })
+            assertFalse(dispatched)
+        }
+    }
+
+    @Test
+    fun `new server write floor reports upgrade and pauses the outbox`() = runTest {
+        val fallback = FakeApiService(mutableListOf(), 0)
+        val api = object : ApiService by fallback {
+            override suspend fun runtimeCompatibility() = fallback.runtimeCompatibility().copy(
+                apiVersion = "2026-11-01", minReadClientVersion = "2026-10-11", minWriteClientVersion = "2026-11-01",
+            )
+        }
+        val factory = object : ApiServiceFactory {
+            override fun create(baseUrl: String, tokenProvider: () -> String?) = api
+        }
+        val session = TestSessionFixture().apply { saveToken("token") }
+        val runtime = OutboxRuntimeCompatibility(LedgerRequestGuard(testApiServiceProvider(factory, session)))
+        val outcome = OutboxDrainWorker.runCompatibleDrain(compatibility = runtime::refresh) {
+            error("Queued write reached dispatch")
+        }
+        assertEquals(DrainOutcome.RETRY, outcome)
+        assertEquals(OutboxWriteBlock.CLIENT_UPGRADE_REQUIRED, runtime.writeBlock.value)
     }
 
     @Test

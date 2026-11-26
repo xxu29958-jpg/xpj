@@ -156,12 +156,29 @@ def build_split_invite_context(
     invitations = bsplit.list_sent_for_expense(db, sender_account_id=sender_account_id, expense_id=expense["id"])
     debt_links = accepted_split_debt_links(db, invitations, selected_id=selected_ledger_id, account_id=sender_account_id)
     presented_at = now_utc()
+    from sqlalchemy import select
+
+    from app.models import ExpenseOffsetFact
+
+    is_reversed = (
+        db.scalar(
+            select(ExpenseOffsetFact.id)
+            .where(ExpenseOffsetFact.tenant_id == selected_ledger_id)
+            .where(ExpenseOffsetFact.expense_id == expense["id"])
+            .where(ExpenseOffsetFact.kind == "reversal")
+            .where(ExpenseOffsetFact.status == "active")
+            .limit(1)
+        )
+        is not None
+    )
     expense_currency, remaining_cents = _remaining_split_capacity(
         expense,
         invitations,
         presentation_currency=require_runtime_home_currency_code(db),
         presented_at=presented_at,
     )
+    if is_reversed:
+        remaining_cents = 0
     sent_rows = []
     for inv in invitations:
         is_expired = _is_expired(inv, presented_at)
@@ -183,7 +200,8 @@ def build_split_invite_context(
         "expected_row_version": expense["row_version"],
         "sent_rows": sent_rows,
         "remaining_yuan": _cents_to_yuan(remaining_cents, expense_currency),
-        "has_capacity": remaining_cents > 0,
+        "has_capacity": (not is_reversed) and remaining_cents > 0,
+        "is_reversed": is_reversed,
     }
 
 

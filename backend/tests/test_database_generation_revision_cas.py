@@ -132,6 +132,7 @@ def _assert_executor_requires_caller_transaction(topology: _ManagedTopology) -> 
                 program=topology.program,
                 source_revision=_C07_TARGET_REVISION,
                 target_revision=topology.program.target_revision,
+                operation_id=topology.operation_id,
             )
     finally:
         engine.dispose()

@@ -331,6 +331,11 @@ private fun SyncStatusQuarantineSection(count: Int, clearEnabled: Boolean, onCle
     }
 }
 
+private val offsetConflictReviewResources = mapOf(
+    PendingMutationType.CreateExpenseOffset to R.string.expense_offset_original_requires_review,
+    PendingMutationType.VoidExpenseOffset to R.string.expense_offset_void_requires_review,
+)
+
 @Composable
 internal fun ConflictCard(
     row: OutboxRow,
@@ -338,7 +343,8 @@ internal fun ConflictCard(
     actions: SyncStatusActions,
 ) {
     // Only expense mutations can refresh state and retry as "keep mine".
-    val originalOffset = row.type == PendingMutationType.CreateExpenseOffset
+    val offsetReviewMessage = offsetConflictReviewResources[row.type]
+    val originalOffset = offsetReviewMessage != null
     val reviewOriginal = row.type == PendingMutationType.UndoExpense || row.lastError in EXPENSE_ORIGINAL_REVIEW_ERRORS || row.canReviewFunding()
     val canKeep = !reviewOriginal && row.type !in com.ticketbox.viewmodel.incomePlanSubmissionTypes && !originalOffset && row.type !in com.ticketbox.viewmodel.categoryRuleSubmissionTypes &&
         row.type !in setOf(PendingMutationType.CreateExpense, PendingMutationType.CorrectExpense, PendingMutationType.CreateBillSplitInvitation) && row.targetId.startsWith("expense:")
@@ -355,7 +361,7 @@ internal fun ConflictCard(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = if (originalOffset) stringResource(R.string.expense_offset_original_requires_review)
+                text = if (offsetReviewMessage != null) stringResource(offsetReviewMessage)
                     else friendlyLastError(row.lastError, fallback = stringResource(R.string.sync_status_conflict_fallback)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

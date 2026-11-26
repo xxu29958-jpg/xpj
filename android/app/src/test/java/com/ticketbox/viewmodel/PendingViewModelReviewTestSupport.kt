@@ -262,13 +262,35 @@ internal class FakeReviewActions(
     fun publishCommand(
         expenseId: Long, type: PendingMutationType, status: PendingMutationStatus,
         acceptedExpense: Expense? = null, error: String? = null,
+        confirmationReceipt: com.ticketbox.domain.model.ExpenseConfirmationReceipt? =
+            if (type == PendingMutationType.ConfirmExpense && status == PendingMutationStatus.Done) {
+                testConfirmationReceipt(expenseId)
+            } else null,
     ) {
         val original = commands.value.last { it.row.targetId == "expense:$expenseId" && it.row.type == type }
         commands.value = commands.value.map {
             if (it.row.id == original.row.id) it.copy(row = it.row.copy(status = status, lastError = error),
-                acceptedExpense = acceptedExpense) else it
+                acceptedExpense = acceptedExpense, confirmationReceipt = confirmationReceipt) else it
         }
     }
+
+    private fun testConfirmationReceipt(expenseId: Long) = com.ticketbox.domain.model.ExpenseConfirmationReceipt(
+        id = expenseId,
+        publicId = "pub-$expenseId",
+        rowVersion = 2L,
+        factRevision = 1L,
+        status = "confirmed",
+        amountCents = 100L,
+        homeCurrency = "CNY",
+        originalCurrencyCode = "CNY",
+        originalAmountMinor = 100L,
+        exchangeRateToCny = null,
+        exchangeRateDate = null,
+        exchangeRateSource = null,
+        merchant = "Merchant",
+        category = "其他",
+        confirmedAt = "2026-09-13T00:01:00Z",
+    )
 
     fun dropCommands(expenseId: Long, type: PendingMutationType? = null) {
         commands.value = commands.value.filterNot {

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import CategoryRule, Expense
+from app.models import CategoryPreference, CategoryRule, Expense
 from app.money_contract import projection_sum_to_int
 from app.services.category_common import (
     DEFAULT_CATEGORIES,
@@ -15,11 +15,14 @@ from app.services.category_common import (
 )
 from app.services.category_preference_service import (
     category_key_for_existing,
-    category_preference_option_state,
     default_category_keys,
+    deleted_category_keys,
 )
 from app.services.currency_binding_service import authorize_currency_metadata_write
-from app.services.data_quality_service import is_uncategorized_expense_category
+from app.services.data_quality_service import (
+    is_uncategorized_expense_category,
+    uncategorized_expense_category_predicate,
+)
 from app.services.expense_revision_service import (
     prepare_correction_revision,
     record_prepared_correction_revision,
@@ -63,28 +66,31 @@ def merge_categories(
     return sorted(categories, key=category_sort_key)
 
 
-def list_ledger_category_options(db: Session, *, tenant_id: str) -> list[str]:
-    """Categories to offer as a ``<datalist>`` autocomplete on the edit page:
-    the ledger's own already-used categories unioned with ``DEFAULT_CATEGORIES``,
-    legacy aliases normalised, defaults first then the rest alphabetically.
+CATEGORY_OPTION_LIMIT = 200
 
-    Pure suggestion surface — the category field stays free text (AI/OCR only
-    fills blanks, ENGINEERING_RULES §8). The datalist just curbs spelling drift
-    (餐饮 vs 餐厅) at the input.
-    """
-    used = list(
-        db.scalars(
-            select(Expense.category)
-            .where(Expense.tenant_id == tenant_id)
-            .where(Expense.category.is_not(None))
-            .distinct()
-        )
+
+def list_ledger_category_options(
+    db: Session, *, tenant_id: str, query: str = "", selected: str | None = None,
+) -> list[str]:
+    prefix = query.strip()
+    history = select(Expense.category).where(Expense.tenant_id == tenant_id, Expense.category.is_not(None))
+    active = select(CategoryPreference.name).where(
+        CategoryPreference.tenant_id == tenant_id, CategoryPreference.deleted_at.is_(None),
     )
-    active_names, deleted_keys = category_preference_option_state(db, tenant_id=tenant_id)
-    return merge_categories(
-        [str(value) for value in used] + active_names,
-        suppressed_keys=deleted_keys,
-    )
+    if prefix:
+        history = history.where(Expense.category.istartswith(prefix, autoescape=True))
+        active = active.where(CategoryPreference.name.istartswith(prefix, autoescape=True))
+    used = list(db.scalars(history.distinct().order_by(Expense.category).limit(CATEGORY_OPTION_LIMIT)))
+    preferences = db.scalars(active.order_by(CategoryPreference.name, CategoryPreference.id).limit(CATEGORY_OPTION_LIMIT))
+    suppressed = deleted_category_keys(db, tenant_id=tenant_id, names=used)
+    choices = merge_categories([*used, *preferences], suppressed_keys=suppressed)
+    window = [name for name in choices if name.casefold().startswith(prefix.casefold())][:CATEGORY_OPTION_LIMIT]
+    selected_name = (selected or "").strip()
+    if not is_uncategorized_expense_category(selected_name):
+        name = normalize_category(selected_name)
+        if all(choice.casefold() != name.casefold() for choice in window):
+            return [*window[:CATEGORY_OPTION_LIMIT - 1], name]
+    return window
 
 
 def normalize_existing_expense_categories(db: Session, tenant_id: str) -> None:
@@ -301,28 +307,10 @@ def list_category_summary(
 
 def list_uncategorized_pending(db: Session, *, tenant_id: str, include_other: bool = False) -> list[Expense]:
     """Use the inbox's missing-category caliber; optionally include valid 其他 rows for sorting."""
-    categories = (
-        db.execute(
-            select(Expense.category).where(Expense.tenant_id == tenant_id).where(Expense.status == "pending").distinct()
-        )
-        .scalars()
-        .all()
-    )
-    matching = [category for category in categories if is_uncategorized_expense_category(category)
-        or (include_other and (category or "").strip() == "其他")]
-    if not matching:
-        return []
-    rows = (
-        db.execute(
-            select(Expense)
-            .where(Expense.tenant_id == tenant_id)
-            .where(Expense.status == "pending")
-            .where(or_(Expense.category.in_([value for value in matching if value is not None]),
-                Expense.category.is_(None) if None in matching else False))
-            .order_by(Expense.created_at.desc(), Expense.id.desc())
-            .limit(200)
-        )
-        .scalars()
-        .all()
-    )
-    return list(rows)
+    return list(db.scalars(
+        select(Expense)
+        .where(Expense.tenant_id == tenant_id, Expense.status == "pending",
+               uncategorized_expense_category_predicate(Expense.category, include_other=include_other))
+        .order_by(Expense.created_at.desc(), Expense.id.desc())
+        .limit(200)
+    ))

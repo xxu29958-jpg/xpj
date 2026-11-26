@@ -6,15 +6,16 @@
 
 | 维度 | 版本 | 代码位置 |
 |------|------|----------|
-| 后端 `BACKEND_VERSION` | `1.2.1` | [backend/app/version.py](../../backend/app/version.py) |
+| 后端 `BACKEND_VERSION` | `1.3.0` | [backend/app/version.py](../../backend/app/version.py) |
 | 后端 `IDENTITY_SCHEMA_VERSION` | `v0.3` | [backend/app/version.py](../../backend/app/version.py) |
-| Android `versionName` | `1.2.1` | [android/app/build.gradle.kts](../../android/app/build.gradle.kts) |
-| Android `versionCode` | `10201000` | [android/app/build.gradle.kts](../../android/app/build.gradle.kts) |
+| Android `versionName` | `1.3.0` | [android/app/build.gradle.kts](../../android/app/build.gradle.kts) |
+| Android `versionCode` | `10300000` | [android/app/build.gradle.kts](../../android/app/build.gradle.kts) |
 
 > Android internal 构建会自动追加 `-internal` 后缀；正式发布请走 release 配置。
 
 ## 阶段标签
 
+- v1.3.0：Windows Rev3.2 受管升级（`1.2.1 → 1.3.0` 含验收前失败回退）、R1/R2 恢复点清单与异机受控恢复模式、受控保留数据卸载/重装与独立永久删除。
 - v1.2.1：新安装默认用本机 RapidOCR 识别小票，重新开启后自动补识别此前跳过的待核对原图。
 
 - v0.9.0a1：Reports / Goals / Dashboard 卡片配置 + Vico 图表 + `/web` ECharts 收口。

@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Literal
 
 RUNTIME_COMPATIBILITY_CONTRACT = "ticketbox-runtime-compatibility-v1"
 # Repayment facts may preserve a date without an instant; old decoders require paid_at.
 CURRENT_API_VERSION = "2026-10-11"
+MIN_READ_CLIENT_VERSION = CURRENT_API_VERSION
+MIN_WRITE_CLIENT_VERSION = CURRENT_API_VERSION
 # Optional keyed app uploads can replay their complete original committed receipt.
 UPLOAD_ORIGINAL_RECEIPT_VERSION = 1
 ACCOUNTING_TIME_INPUT_VERSION = 1
@@ -22,6 +25,9 @@ REPAYMENT_TIME_INPUT_VERSION = 1
 DEBT_ACTIVITY_READ_VERSION = 1
 DEBT_BILL_SOURCE_VERSION = 1
 EXPENSE_CONFIRMATION_VERSION = 2
+ORIGINAL_ATTACHMENT_VERSION = 1
+ORIGINAL_ATTACHMENT_CREATE_VERSION = 1
+NOTIFICATION_BATCH_VERSION = 1
 
 # RFC 6648 discourages new ``X-`` names.  The application prefix keeps these
 # limited-use fields unambiguous, as recommended for new HTTP fields by RFC
@@ -53,6 +59,20 @@ class RuntimeCompatibilityRequest:
             and self.api_version is None
             and self.currency_binding is None
         )
+
+
+def client_version_supported(version: str | None, *, write: bool) -> bool:
+    if version is None:
+        return False
+    try:
+        canonical = date.fromisoformat(version).isoformat()
+    except ValueError:
+        return False
+    return (
+        canonical == version
+        and MIN_READ_CLIENT_VERSION <= version <= CURRENT_API_VERSION
+        and (not write or version >= MIN_WRITE_CLIENT_VERSION)
+    )
 
 
 def parse_currency_binding(value: str) -> tuple[int, int, str]:
@@ -89,6 +109,8 @@ def format_currency_binding(
 
 __all__ = [
     "CURRENT_API_VERSION",
+    "MIN_READ_CLIENT_VERSION",
+    "MIN_WRITE_CLIENT_VERSION",
     "DEBT_ACTIVITY_READ_VERSION",
     "DEBT_BILL_SOURCE_VERSION",
     "RUNTIME_COMPATIBILITY_CONTRACT",
@@ -97,6 +119,7 @@ __all__ = [
     "TICKETBOX_API_VERSION_HEADER",
     "TICKETBOX_CURRENCY_BINDING_HEADER",
     "UPLOAD_ORIGINAL_RECEIPT_VERSION",
+    "client_version_supported",
     "format_currency_binding",
     "parse_currency_binding",
 ]

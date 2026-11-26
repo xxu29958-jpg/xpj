@@ -45,11 +45,10 @@ end;
 
 procedure TicketboxReleasePrivateResult;
 begin
+  if TicketboxResultDirectoryHandle = 0 then
+    Exit;
   TicketboxDeletePrivateResult;
-  if TicketboxResultDirectoryHandle <> 0 then
-  begin
-    TicketboxCloseHandle(TicketboxResultDirectoryHandle);
-    TicketboxResultDirectoryHandle := 0;
-  end;
+  TicketboxCloseHandle(TicketboxResultDirectoryHandle);
+  TicketboxResultDirectoryHandle := 0;
   RemoveDir(TicketboxResultDirectory);
 end;

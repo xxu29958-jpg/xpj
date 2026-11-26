@@ -13,9 +13,8 @@ import retrofit2.HttpException
 
 /**
  * ADR-0038 PR-2g.8: replay a queued ``POST /api/expenses/{id}/ocr/retry``.
- * Same token-only shape as [ConfirmExpenseDispatcher]. The re-run OCR
- * returns the refreshed Expense; its ``rowVersion`` cascades onto
- * same-target PENDING rows.
+ * Same token-only shape as [ConfirmExpenseDispatcher]. Does not cascade
+ * ``rowVersion`` because idempotent replay returns the latest expense row.
  */
 class RetryOcrDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
@@ -55,8 +54,9 @@ class RetryOcrDispatcher(
             // canonical row) instead of false-409ing on the stale row_version.
             val retried = apiProvider(row).retryOcr(expenseRef, request, idempotencyKey)
             publishAcceptedExpense(retried.id, retried.rowVersion) { publishExpense(row.ledgerId, retried) }
+                .copy(newRowVersion = null)
         } catch (e: HttpException) {
-            mapOutboxHttpException(e)
+            mapOutboxHttpException(e, discardable404ErrorCodes = emptySet())
         } catch (e: IOException) {
             DispatchResult.RetryableFailure(e.message ?: "network IO failure")
         } catch (e: CancellationException) {
