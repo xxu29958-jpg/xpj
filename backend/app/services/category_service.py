@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, literal, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import CategoryPreference, CategoryRule, Expense
@@ -67,7 +67,26 @@ def merge_categories(
 
 
 CATEGORY_OPTION_LIMIT = 200
-_UNICODE_WHITESPACE = "".join(chr(cp) for cp in range(0x110000) if chr(cp).isspace())
+
+
+def _find_known_expense_category(
+    db: Session, *, tenant_id: str, normalized_casefold: str,
+) -> str | None:
+    stmt = (
+        select(Expense.category)
+        .where(Expense.tenant_id == tenant_id, Expense.category.is_not(None))
+        .distinct()
+        .order_by(Expense.category)
+        .execution_options(yield_per=CATEGORY_OPTION_LIMIT)
+    )
+    for raw in db.scalars(stmt):
+        cleaned = raw.strip()
+        if not cleaned or is_uncategorized_expense_category(cleaned):
+            continue
+        candidate = normalize_category(cleaned)
+        if candidate.casefold() == normalized_casefold:
+            return candidate
+    return None
 
 
 def resolve_known_category(
@@ -79,12 +98,13 @@ def resolve_known_category(
     if is_uncategorized_expense_category(selected_name):
         return None
     normalized = normalize_category(selected_name)
+    normalized_fold = normalized.casefold()
     for default_name in DEFAULT_CATEGORIES:
-        if default_name.casefold() == normalized.casefold():
+        if default_name.casefold() == normalized_fold:
             return default_name
     key = category_key_for_existing(normalized)
-    pref = (
-        db.scalar(
+    if key:
+        pref = db.scalar(
             select(CategoryPreference.name)
             .where(
                 CategoryPreference.tenant_id == tenant_id,
@@ -93,24 +113,14 @@ def resolve_known_category(
             )
             .limit(1)
         )
-        if key
-        else None
-    )
-    target_exprs = [func.lower(literal(val).collate("unicode")) for val in category_filter_values(normalized)]
-    used = db.scalar(
-        select(Expense.category)
-        .where(
-            Expense.tenant_id == tenant_id,
-            Expense.category.is_not(None),
-            func.lower(func.trim(Expense.category, _UNICODE_WHITESPACE).collate("unicode")).in_(target_exprs),
-        )
-        .limit(1)
-    )
-    used_list = [used] if used else []
-    suppressed = deleted_category_keys(db, tenant_id=tenant_id, names=used_list)
-    found = [*used_list, *([pref] if pref else [])]
-    for choice in merge_categories(found, suppressed_keys=suppressed):
-        if choice.casefold() == normalized.casefold():
+        if pref and normalize_category(pref).casefold() == normalized_fold:
+            return normalize_category(pref)
+    matched = _find_known_expense_category(db, tenant_id=tenant_id, normalized_casefold=normalized_fold)
+    if matched is None:
+        return None
+    suppressed = deleted_category_keys(db, tenant_id=tenant_id, names=[matched])
+    for choice in merge_categories([matched], suppressed_keys=suppressed):
+        if choice.casefold() == normalized_fold:
             return choice
     return None
 

@@ -668,7 +668,8 @@ def test_category_search_normalizes_pinned_choices_and_reports_genuine_misses(we
         stamp = now_utc()
         db.add(Expense(tenant_id="owner", category=" 手作 ", status="pending", created_at=stamp, updated_at=stamp))
         db.add(Expense(tenant_id="owner", category="École", status="pending", created_at=stamp, updated_at=stamp))
-        ensure_category_preference_for_name(db, tenant_id="owner", name="Café")
+        db.add(Expense(tenant_id="owner", category="Straße", status="pending", created_at=stamp, updated_at=stamp))
+        ensure_category_preference_for_name(db, tenant_id="owner", name="CAFÉ")
         db.add_all(
             Expense(tenant_id="owner", category=f"a{i:03}-z", status="pending", created_at=stamp, updated_at=stamp)
             for i in range(CATEGORY_OPTION_LIMIT)
@@ -681,8 +682,9 @@ def test_category_search_normalizes_pinned_choices_and_reports_genuine_misses(we
     assert lookup("zzz-nomatch", "手作") == ["手作"]
     assert lookup("zzz-nomatch", "École") == ["École"]
     assert lookup("zzz-nomatch", "école") == ["École"]
-    assert lookup("zzz-nomatch", "Café") == ["Café"]
-    assert lookup("zzz-nomatch", "café") == ["Café"]
+    assert lookup("zzz-nomatch", "STRASSE") == ["Straße"]
+    assert lookup("zzz-nomatch", "CAFÉ") == ["CAFÉ"]
+    assert lookup("zzz-nomatch", "café") == ["CAFÉ"]
     assert lookup("zzz-nomatch", "z") == ["z"]
     for selected in (" 餐饮 ", "吃饭"):
         assert lookup("餐", selected) == ["餐饮"]
