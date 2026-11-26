@@ -352,13 +352,13 @@ REVIEWED_BOUNDARIES = {
     ("distribution/windows/lifecycle/ticketbox_lifecycle/cold_copy_cli.py", "main"): {
         "sha256": "fc2b312c9de32cce88077fc03b30785fda94aabe14da419820e39520477b246e",
         "owner": "existing Lifecycle sanitized CLI JSON/stderr terminal owner",
-        "test": "distribution/windows/tests/test_encrypted_cold_copy_cli.py",
+        "test": "distribution/windows/tests/test_encrypted_cold_copy.py",
         "reason": "CLI entrypoint catches LifecycleError and unexpected Exception at the process boundary, emits one static sanitized error payload without leaking passphrases, key material or raw exception text, and exits non-zero.",
     },
     ("distribution/windows/lifecycle/ticketbox_lifecycle/command_io.py", "_try_resolve_root"): {
         "sha256": "ff77086e77dfbf2effc2ceb4ac39ee485da1e04cbce6da911dabd7b00c2a03f0",
         "owner": "resolve_default_forbidden_roots fail-closed LifecycleViolation owner",
-        "test": "distribution/windows/tests/test_cli.py",
+        "test": "distribution/windows/tests/test_upgrade_lifecycle.py",
         "reason": "Captures resolver errors only to re-raise LifecycleViolation('forbidden_roots_unavailable') with exception chaining so CLI refuses to write result output when protected roots cannot be verified.",
     },
     ("distribution/windows/lifecycle/ticketbox_lifecycle/domain/reinstall.py", "_reinstall_locked"): {

@@ -667,11 +667,17 @@ def test_category_search_normalizes_pinned_choices_and_reports_genuine_misses(we
         authorize_currency_metadata_write(db)
         stamp = now_utc()
         db.add(Expense(tenant_id="owner", category=" 手作 ", status="pending", created_at=stamp, updated_at=stamp))
+        db.add_all(
+            Expense(tenant_id="owner", category=f"a{i:03}-z", status="pending", created_at=stamp, updated_at=stamp)
+            for i in range(CATEGORY_OPTION_LIMIT)
+        )
+        db.add(Expense(tenant_id="owner", category="z", status="pending", created_at=stamp, updated_at=stamp))
         db.commit()
 
     for missing in (None, "   ", "\u0085", " NuLl ", "未分類", "<script>alert(1)</script>", "bad\x00cat"):
         assert lookup("zzz-nomatch", missing) == []
     assert lookup("zzz-nomatch", "手作") == ["手作"]
+    assert lookup("zzz-nomatch", "z") == ["z"]
     for selected in (" 餐饮 ", "吃饭"):
         assert lookup("餐", selected) == ["餐饮"]
         assert lookup("zzz-nomatch", selected) == ["餐饮"]

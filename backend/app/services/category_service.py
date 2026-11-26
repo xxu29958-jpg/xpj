@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import CategoryPreference, CategoryRule, Expense
@@ -67,6 +67,7 @@ def merge_categories(
 
 
 CATEGORY_OPTION_LIMIT = 200
+_UNICODE_WHITESPACE = "".join(chr(cp) for cp in range(0x110000) if chr(cp).isspace())
 
 
 def resolve_known_category(
@@ -81,28 +82,29 @@ def resolve_known_category(
     for default_name in DEFAULT_CATEGORIES:
         if default_name.casefold() == normalized.casefold():
             return default_name
-    filter_values = category_filter_values(normalized)
-    pref_pred = or_(*(CategoryPreference.name.icontains(val, autoescape=True) for val in filter_values))
-    prefs = list(
-        db.scalars(
-            select(CategoryPreference.name)
-            .where(CategoryPreference.tenant_id == tenant_id, CategoryPreference.deleted_at.is_(None), pref_pred)
-            .order_by(CategoryPreference.name, CategoryPreference.id)
-            .limit(CATEGORY_OPTION_LIMIT)
+    target_lowers = tuple({val.lower() for val in category_filter_values(normalized)})
+    pref = db.scalar(
+        select(CategoryPreference.name)
+        .where(
+            CategoryPreference.tenant_id == tenant_id,
+            CategoryPreference.deleted_at.is_(None),
+            func.lower(func.trim(CategoryPreference.name, _UNICODE_WHITESPACE)).in_(target_lowers),
         )
+        .limit(1)
     )
-    used_pred = or_(*(Expense.category.icontains(val, autoescape=True) for val in filter_values))
-    used = list(
-        db.scalars(
-            select(Expense.category)
-            .where(Expense.tenant_id == tenant_id, Expense.category.is_not(None), used_pred)
-            .distinct()
-            .order_by(Expense.category)
-            .limit(CATEGORY_OPTION_LIMIT)
+    used = db.scalar(
+        select(Expense.category)
+        .where(
+            Expense.tenant_id == tenant_id,
+            Expense.category.is_not(None),
+            func.lower(func.trim(Expense.category, _UNICODE_WHITESPACE)).in_(target_lowers),
         )
+        .limit(1)
     )
-    suppressed = deleted_category_keys(db, tenant_id=tenant_id, names=used)
-    for choice in merge_categories([*used, *prefs], suppressed_keys=suppressed):
+    used_list = [used] if used else []
+    suppressed = deleted_category_keys(db, tenant_id=tenant_id, names=used_list)
+    found = [*used_list, *([pref] if pref else [])]
+    for choice in merge_categories(found, suppressed_keys=suppressed):
         if choice.casefold() == normalized.casefold():
             return choice
     return None
