@@ -43,6 +43,7 @@ from app.services.manual_expense_receipt import (
     _manual_review_error,
     local_ref_storage_key,
 )
+from app.services.ocr_service import OCR_DRAFT_FIELDS, serialize_ocr_draft_fields
 from app.services.rule_service import classify_expense
 from app.services.session_credential_lock import lock_and_revalidate_mutation_actor
 from app.services.tag_service import normalize_tags, sync_expense_tags
@@ -90,6 +91,7 @@ def stage_pending_expense(
         image_perceptual_hash=saved_file.image_perceptual_hash,
         raw_text="",
         confidence=None,
+        ocr_draft_fields=serialize_ocr_draft_fields(OCR_DRAFT_FIELDS),
         status="pending",
         created_at=now,
         updated_at=now,

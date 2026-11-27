@@ -11,8 +11,8 @@ from app.models import Expense, ExpenseSourceCandidate
 from app.services.attachment_publication_lock import retain_publication
 from app.services.expense_source_identity import match_source_events
 from app.services.file_service import save_original_replenishment_bytes
-from app.services.ocr_service import OcrResult
-from app.services.ocr_service._draft_fields import ocr_draft_fields
+from app.services.ocr_service import OCR_DRAFT_FIELDS, OcrResult, serialize_ocr_draft_fields
+from app.services.ocr_service._draft_fields import can_apply_ocr_field
 from app.services.original_read_service import read_original_snapshot
 from app.services.receipt_parse_common import FIELD_PARSE_VERSION
 from app.services.time_service import now_utc
@@ -39,7 +39,11 @@ def stage_source_event_drafts(db: Session, *, expense: Expense, result: OcrResul
     matched = match_source_events(result.raw_text, parsed.events, previous)
     extraction_hash = hashlib.sha256(result.raw_text.encode()).hexdigest()
     staged = []
-    reuse_source = use_source_draft and (expense.amount_cents is None or "amount_cents" in ocr_draft_fields(expense))
+    reuse_source = use_source_draft and can_apply_ocr_field(
+        expense,
+        "amount_cents",
+        is_empty_or_default=expense.amount_cents is None,
+    )
     for index, event in enumerate(parsed.events):
         row = matched.get(event["id"])
         fresh = row is None
@@ -117,6 +121,7 @@ def _stage_child(db, source, *, evidence_owner):
         image_path=saved.relative_path if saved else None, image_hash=saved.image_hash if saved else None,
         image_evidence=saved.image_evidence if saved else None,
         image_perceptual_hash=saved.image_perceptual_hash if saved else None,
+        ocr_draft_fields=serialize_ocr_draft_fields(OCR_DRAFT_FIELDS),
         status="pending", created_at=now, updated_at=now)
     db.add(child)
     db.flush()

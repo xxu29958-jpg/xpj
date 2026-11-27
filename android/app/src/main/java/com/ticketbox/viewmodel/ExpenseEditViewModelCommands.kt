@@ -15,9 +15,18 @@ import com.ticketbox.domain.model.UiText
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** User-actionable refusals survive the Outbox and a process restart as their error code. */
+internal val ocrRegionFailureMessageResources = mapOf(
+    "ocr_region_no_text" to R.string.ocr_region_no_text_recovery,
+    "ocr_region_incomplete" to R.string.ocr_region_incomplete_recovery,
+    "ocr_region_invalid" to R.string.ocr_region_invalid_recovery,
+    "ocr_region_source_unavailable" to R.string.ocr_region_source_unavailable_recovery,
+)
+
 /** One submission keeps the original rows; completion never replaces a user's current raw form. */
 internal fun ExpenseEditViewModel.submitExpenseCommand(
     @StringRes failureMessage: Int,
+    unlockOnDrop: Boolean = false,
     submit: suspend (LogicalSessionBinding, Expense) -> Result<ExpenseCommandAcceptance>,
 ) {
     val state = uiState.value
@@ -42,10 +51,11 @@ internal fun ExpenseEditViewModel.submitExpenseCommand(
             if (repository.captureDeferredLedgerBinding() != captured) return@onSuccess
             savedState["expense_command_binding"] = com.ticketbox.data.repository.logicalBindingAdapter.toJson(captured)
             savedState["expense_command_ids"] = accepted.rowIds.toLongArray()
+            savedState["expense_command_drop_unlock"] = unlockOnDrop
             _uiState.update { it.copy(expense = accepted.expense, saving = false, ocrRunning = false,
-                commandRowIds = accepted.rowIds, commandsCompleted = false, done = false, confirmationReceipt = null,
-                doneAdviceInputsChanged = false, message = UiText.res(R.string.expense_command_accepted),
-                messageTone = MessageTone.Info) }
+                commandRowIds = accepted.rowIds, commandAllowsDropUnlock = unlockOnDrop, commandsCompleted = false,
+                done = false, confirmationReceipt = null, doneAdviceInputsChanged = false,
+                message = UiText.res(R.string.expense_command_accepted), messageTone = MessageTone.Info) }
             reconcileExpenseCommands()
         }.onFailure { error ->
             if (repository.captureDeferredLedgerBinding() != captured) return@onFailure
@@ -94,7 +104,31 @@ internal fun ExpenseEditViewModel.reconcileExpenseCommands() {
     }
     val ids = uiState.value.commandRowIds
     if (ids.isEmpty()) return
-    applyExpenseCommandProgress(observation.commands.filter { it.row.id in ids }, ids)
+    val remainingIds = if (uiState.value.commandAllowsDropUnlock) {
+        ids.filterNot { it in observation.droppedRowIds }
+    } else {
+        ids
+    }
+    if (remainingIds.size != ids.size) {
+        if (remainingIds.isEmpty()) {
+            savedState.remove<LongArray>("expense_command_ids")
+            savedState.remove<String>("expense_command_binding")
+            savedState.remove<Boolean>("expense_command_drop_unlock")
+            _uiState.update {
+                it.copy(
+                    commandRowIds = emptyList(),
+                    commandAllowsDropUnlock = false,
+                    commandsCompleted = false,
+                    confirmationReceipt = null,
+                    message = null,
+                )
+            }
+            return
+        }
+        savedState["expense_command_ids"] = remainingIds.toLongArray()
+        _uiState.update { it.copy(commandRowIds = remainingIds) }
+    }
+    applyExpenseCommandProgress(observation.commands.filter { it.row.id in remainingIds }, remainingIds)
 }
 
 private fun ExpenseEditViewModel.applyExpenseCommandProgress(
@@ -103,13 +137,16 @@ private fun ExpenseEditViewModel.applyExpenseCommandProgress(
 ) {
     val progress = expenseCommandProgress(originals, ids)
     val receipt = originals.singleOrNull { it.row.type == PendingMutationType.ConfirmExpense }?.confirmationReceipt
+    val refusalMessage = originals.firstNotNullOfOrNull { command ->
+        ocrRegionFailureMessageResources[command.row.lastError]
+    }.takeIf { progress.failed }
     _uiState.update {
         it.copy(
             commandsCompleted = progress.complete,
             confirmationReceipt = receipt.takeIf { progress.complete },
             done = it.done || progress.leavesEditor,
             doneAdviceInputsChanged = it.doneAdviceInputsChanged || progress.confirmed,
-            message = UiText.res(progress.message),
+            message = UiText.res(refusalMessage ?: progress.message),
             messageTone = if (progress.failed) MessageTone.Danger else MessageTone.Info,
         )
     }

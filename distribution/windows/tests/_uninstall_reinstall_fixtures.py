@@ -361,12 +361,36 @@ def _make_uninstall_operation(
     install_id: str = INSTALL_ID,
     dataset_id: str = DATASET_ID,
     expected_restore_epoch: int = 1,
+    health_attestation_key: str = "c" * 64,
+    request_hash: str | None = None,
 ) -> UninstallOperation:
+    from ticketbox_lifecycle.domain.uninstall import _uninstall_request_hash
+
+    resolved_hash = request_hash
+    if resolved_hash is None:
+        resolved_hash = _uninstall_request_hash(
+            InstallationBinding(
+                schema=INSTALLATION_SCHEMA,
+                install_id=install_id,
+                dataset_id=dataset_id,
+                expected_restore_epoch=expected_restore_epoch,
+                data_root=data_root,
+                active_release_id=target_release_id,
+                previous_release_id=None,
+                release_manifest_sha256=release_manifest_sha256,
+                postgres_major=17,
+                pg_service_name="TicketboxPg",
+                backend_service_name="TicketboxBackend",
+                pg_port=5432,
+                backend_port=backend_port,
+                health_attestation_key=health_attestation_key,
+            )
+        )
     return UninstallOperation(
         schema=OPERATION_SCHEMA,
         operation_id=operation_id,
         kind="uninstall",
-        request_hash="a" * 64,
+        request_hash=resolved_hash,
         target_release_id=target_release_id,
         data_root=data_root,
         release_manifest_sha256=release_manifest_sha256,
@@ -377,6 +401,6 @@ def _make_uninstall_operation(
         install_id=install_id,
         dataset_id=dataset_id,
         schema_revision="20261101_0001",
-        health_attestation_key="d" * 64,
+        health_attestation_key=health_attestation_key,
         expected_restore_epoch=expected_restore_epoch,
     )

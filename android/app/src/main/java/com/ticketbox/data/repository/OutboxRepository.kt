@@ -425,9 +425,17 @@ class OutboxRepository private constructor(
     internal suspend fun replaceCreateExpensePayload(id: Long, payloadJson: String): Boolean =
         dao.replacePayload(id, PendingMutationType.CreateExpense.wireValue, payloadJson) == 1
 
-    fun observeActiveByTypes(types: Set<PendingMutationType>, includeCompleted: Boolean = false): Flow<List<OutboxRow>> {
+    fun observeActiveByTypes(
+        types: Set<PendingMutationType>,
+        includeCompleted: Boolean = false,
+        includeAbandoned: Boolean = false,
+    ): Flow<List<OutboxRow>> {
         val wireTypes = types.filterNot { it == PendingMutationType.Unknown }.map(PendingMutationType::wireValue)
-        val statuses = if (includeCompleted) ACTIVE_STATUS_VALUES + PendingMutationStatus.Done.wireValue else ACTIVE_STATUS_VALUES
+        val statuses = buildList {
+            addAll(ACTIVE_STATUS_VALUES)
+            if (includeCompleted) add(PendingMutationStatus.Done.wireValue)
+            if (includeAbandoned) add(PendingMutationStatus.Abandoned.wireValue)
+        }
         return observeBoundActiveRows(dao, binding.bindingFlow(), wireTypes, statuses)
     }
 

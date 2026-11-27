@@ -15,7 +15,7 @@ from app.services.category_common import DEFAULT_CATEGORIES
 from app.services.local_llm_vision import call_local_llm_vision, require_local_llm_base_url
 from app.services.ocr_service._llm_parsing import _result_from_llm_json
 from app.services.ocr_service._merge import _merge_result_with_text_parse
-from app.services.ocr_service._models import OcrProvider, OcrResult
+from app.services.ocr_service._models import OcrProvider, OcrResult, ocr_runtime_error_status
 from app.services.ocr_worker_client import recognize_snapshot
 from app.services.original_read_service import OriginalSnapshot, read_original_snapshot
 from app.services.receipt_parse_service import parse_receipt_text
@@ -74,7 +74,7 @@ class RapidOcrProvider:
             texts = [block["text"].strip() for block in blocks if block["text"].strip()]
             scores = [float(block["confidence"]) for block in blocks]
         except OcrRuntimeError as exc:
-            raise AppError(exc.code, status_code=503) from exc
+            raise AppError(exc.code, status_code=ocr_runtime_error_status(exc.code)) from exc
         except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
             raise AppError("ocr_inference_failed", status_code=503) from exc
         raw_text = "\n".join(texts)

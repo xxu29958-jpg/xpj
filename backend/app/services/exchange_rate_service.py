@@ -437,12 +437,17 @@ def apply_currency_payload(
     payload: CurrencyPayload,
     amount_was_explicit: bool,
     manual_exchange_rate: Decimal | None = None,
+    original_amount_cleared: bool = False,
 ) -> None:
     validate_currency_payload_money_command(
         payload,
         amount_was_explicit=amount_was_explicit,
     )
-    has_original_fields = _currency_payload_has_original_fields(payload) or manual_exchange_rate is not None
+    has_original_fields = (
+        _currency_payload_has_original_fields(payload)
+        or original_amount_cleared
+        or manual_exchange_rate is not None
+    )
     if not has_original_fields and not amount_was_explicit:
         # R10②：纯元数据维护不读 env、不过门（不碰币种快照，漂移/配错 env 不拖死它）。
         return
@@ -459,7 +464,7 @@ def apply_currency_payload(
         home=home,
         amount_was_explicit=amount_was_explicit,
     )
-    if original_amount is None:
+    if original_amount is None and not original_amount_cleared:
         original_amount = expense.original_amount_minor
     explicit_rate_date = _payload_attr(payload, "exchange_rate_date")
     time_changed = any(_payload_attr(payload, field) is not None for field in ("spent_at", "expense_time", "time_input"))

@@ -27,11 +27,11 @@ import com.ticketbox.data.local.PendingMutationType
  *      - 408 / 429 / 5xx / network ``IOException`` →
  *        [DispatchResult.RetryableFailure] (drain keeps the row
  *        PENDING for the next tick instead of marking FAILED)
- *      - payload deserialise errors, protocol refusals, unrecognized
+ *      - payload deserialise errors, protocol refusals, HTTP 404 without a
+ *        domain receipt (retains the row rather than discarding it), unrecognized
  *        409 errors and other non-recoverable 4xx → [DispatchResult.Failure]
  *      - "the row's already been resolved by another path" /
- *        "the target was deleted" / 404 / status-specific 409 →
- *        [DispatchResult.Discarded]
+ *        status-specific 409 → [DispatchResult.Discarded]
  *
  * Why a Map<Type, Dispatcher> registry instead of a sealed-class
  * hierarchy: new mutation kinds will be wired one by one in

@@ -89,9 +89,22 @@ def check_cancellation_requested(db: Session, task_id: int) -> bool:
     return task.cancellation_requested_at is not None
 
 
+def _record_failure_status(task: BackgroundTask, status_code: int | None) -> None:
+    if task.task_type not in OCR_TASK_TYPES or status_code is None:
+        return
+    try:
+        context = json.loads(task.execution_context_json) if task.execution_context_json else {}
+    except (TypeError, ValueError):
+        context = {}
+    if not isinstance(context, dict):
+        context = {}
+    context["failure_status_code"] = int(status_code)
+    task.execution_context_json = json.dumps(context, sort_keys=True, separators=(",", ":"))
+
+
 def mark_failed(
     db: Session, task_id: int, *, expected_status: Literal["queued", "running"],
-    error_code: str, error_message: str,
+    error_code: str, error_message: str, failure_status_code: int | None = None,
 ) -> None:
     """Publish failure only while the caller still owns the expected task phase."""
     task = db.scalar(select(BackgroundTask).where(BackgroundTask.id == task_id)
@@ -102,6 +115,7 @@ def mark_failed(
         else:
             task.status, task.completed_at, task.recovery_after = "failed", now_utc(), None
             task.error_code, task.error_message = error_code, error_message
+            _record_failure_status(task, failure_status_code)
             schedule_task_recovery(task)
     db.commit()
 

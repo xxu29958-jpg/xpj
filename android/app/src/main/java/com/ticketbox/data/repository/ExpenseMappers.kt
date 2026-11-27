@@ -351,7 +351,7 @@ fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): Expen
 }
 
 fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
-    val submittedOriginalMinor = originalAmountMinor ?: amountCents
+    val submittedOriginalMinor = if (clearAmount) null else (originalAmountMinor ?: amountCents)
     val submittedCurrency = originalCurrencyCode
         ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
     val submittedAmountText = minorToMajorText(
@@ -359,11 +359,29 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
         submittedCurrency ?: FxContract.HomeCurrency,
     )
     val isCreate = baseline == null
-    val currencyChanged = baseline != null && submittedCurrency != baseline.originalCurrencyCode
-    val amountChanged = baseline != null && submittedOriginalMinor != baseline.originalAmountMinor
+    val baselineAmountMinor = baseline?.originalAmountMinor ?: baseline?.amountCents
+    val currencyChanged = baseline != null && submittedCurrency != null && submittedCurrency != baseline.originalCurrencyCode
+    val amountCleared = baseline != null && clearAmount && baselineAmountMinor != null
+    val amountChanged = baseline != null && !amountCleared && submittedOriginalMinor != null &&
+        submittedOriginalMinor != baselineAmountMinor
     val timeChanged = baseline != null && expenseTime != baseline.expenseTime
     val changedTimeInput = timeInput?.takeUnless { it.matches(baseline?.accountingTime) }
     val legacyTime = expenseTime.takeIf { timeInput == null && (isCreate || timeChanged) }
+    val baselineMerchant = baseline?.merchant?.trim().orEmpty()
+    val requestMerchant = when {
+        isCreate -> merchant
+        merchant == null -> null
+        merchant.trim() == baselineMerchant -> null
+        else -> merchant.trim()
+    }
+    val normalizedCategory = category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory)
+    val baselineCategory = baseline?.category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory)
+    val requestCategory = when {
+        isCreate -> normalizedCategory
+        normalizedCategory == null -> null
+        categoryChoice != null || normalizedCategory != baselineCategory -> normalizedCategory
+        else -> null
+    }
 
     return ExpenseUpdateRequest(
         recognitionTimeChoice = recognitionTimeChoice,
@@ -380,16 +398,17 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
         originalAmount = if (isCreate || amountChanged) submittedAmountText else null,
         spentAt = legacyTime,
         manualExchangeRate = manualExchangeRate,
-        merchant = merchant,
-        // null/blank category stays OUT of the PATCH body (exclude_unset):
-        // writing 其他 here would silently erase the missing-category fact on
-        // every quick-fix/edit of an uncategorized row (PR #230 round 12).
-        category = category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory),
+        merchant = requestMerchant,
+        // Untouched category stays OUT of the PATCH body (exclude_unset) so
+        // default "其他" or missing-category facts are not overwritten by
+        // unrelated edits; explicit user picks (categoryChoice != null) still send.
+        category = requestCategory,
         note = note,
         expenseTime = legacyTime,
         tags = tags,
         valueScore = valueScore,
         regretScore = regretScore,
+        clearOriginalAmount = amountCleared,
     )
 }
 

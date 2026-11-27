@@ -425,22 +425,26 @@ fun ExpenseEditScreen(
         }
         val funding = if (confirming) runCatching { com.ticketbox.data.repository.readExpenseFunding(state.fundingJson, currency, originalMinor) }
             .getOrElse { message = it.message; return null } else emptyList()
+        val baselineAmountMinor = currentExpense.originalAmountMinor ?: currentExpense.amountCents
+        val clearAmount = isPendingExpense && originalMinor == null && baselineAmountMinor != null
+        val baselineMerchant = currentExpense.merchant.orEmpty().trim()
+        val submittedMerchant = merchant.trim().takeUnless { it == baselineMerchant }
+        val normalizedCategory = category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) }
+        val baselineCategory = currentExpense.category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) }
+        val submittedCategory = normalizedCategory?.takeIf { categoryChoice != null || it != baselineCategory }
         return ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = currency,
             originalAmountMinor = originalMinor,
             manualExchangeRate = manualRate.rate?.takeIf { manualExchangeRateNeedsReview },
-            // Blank merchant/tags submit as "" (NOT null): Moshi omits null
-            // keys and the backend PATCH is exclude_unset, so null silently
-            // means "unchanged" — clearing a field then never took effect.
-            // The backend's _clean_optional_text("") / normalize_tags("")
-            // already treat "" as an explicit clear.
-            merchant = merchant,
-            // Blank category submits as null (NOT 其他): the PATCH is
-            // exclude_unset, so a row whose category is genuinely missing
-            // keeps that fact instead of being silently recategorized to the
-            // display fallback on any unrelated edit (PR #230 round 12).
-            category = category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) },
+            // Preserve untouched / explicit set / explicit clear states:
+            // untouched merchant stays null (omitted from PATCH so OCR ownership
+            // is preserved), while clearing a non-blank baseline sends "".
+            merchant = submittedMerchant,
+            // Untouched category stays null (omitted from PATCH so OCR/rules
+            // remain eligible on default "其他"), while an explicit user pick
+            // (including re-selecting "其他") sets categoryChoice != null and sends it.
+            category = submittedCategory,
             categoryChoice = categoryChoice,
             categoryDecisionPublicId = categoryDecisionPublicId,
             recognitionTimeChoice = timeForm.recognitionChoice,
@@ -453,6 +457,7 @@ fun ExpenseEditScreen(
             valueScore = valueScore,
             regretScore = regretScore,
             funding = funding,
+            clearAmount = clearAmount,
         )
     }
 

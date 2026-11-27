@@ -510,11 +510,13 @@ def test_uninstall_cli_check_preflight_single_authority_admission_and_zero_write
     assert _snapshot(tmp_path) == before
 
     # 3. Valid failed_recoverable uninstall record with Chinese data_root (\uXXXX) -> allowed (exit 0)!
+    from ticketbox_lifecycle.domain.uninstall import _uninstall_request_hash
+
     valid_active = UninstallOperation(
         schema=OPERATION_SCHEMA,
         operation_id=op_id,
         kind="uninstall",
-        request_hash="a" * 64,
+        request_hash=_uninstall_request_hash(binding),
         target_release_id=binding.active_release_id,
         data_root=chinese_data_root,
         release_manifest_sha256=binding.release_manifest_sha256,
@@ -525,7 +527,7 @@ def test_uninstall_cli_check_preflight_single_authority_admission_and_zero_write
         install_id=binding.install_id,
         dataset_id=binding.dataset_id,
         schema_revision="20261101_0001",
-        health_attestation_key="d" * 64,
+        health_attestation_key=binding.health_attestation_key,
         expected_restore_epoch=binding.expected_restore_epoch,
     )
     active_dict = asdict(valid_active)
@@ -632,11 +634,13 @@ def test_uninstall_cli_from_installed_single_authority_flow_and_forbidden_roots(
     assert r'"active_releas\u0065_id"' in escaped_key_binding
     assert r"\u" in env.binding_raw
     env.binding_path.write_text(escaped_key_binding, encoding="utf-8")
+    from ticketbox_lifecycle.domain.uninstall import _uninstall_request_hash
+
     active_op = UninstallOperation(
         schema=OPERATION_SCHEMA,
         operation_id=env.expected_op_id,
         kind="uninstall",
-        request_hash="a" * 64,
+        request_hash=_uninstall_request_hash(binding),
         target_release_id=binding.active_release_id,
         data_root=env.chinese_data_root,
         release_manifest_sha256=env.manifest_sha,
@@ -647,7 +651,7 @@ def test_uninstall_cli_from_installed_single_authority_flow_and_forbidden_roots(
         install_id=binding.install_id,
         dataset_id=binding.dataset_id,
         schema_revision="20261101_0001",
-        health_attestation_key="d" * 64,
+        health_attestation_key=binding.health_attestation_key,
         expected_restore_epoch=binding.expected_restore_epoch,
     )
     env.active_path.write_text(json.dumps(asdict(active_op), indent=2, sort_keys=True) + "\n", encoding="utf-8")

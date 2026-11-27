@@ -57,17 +57,10 @@ class OutboxHttpErrorTest {
             "rule_not_found" to "分类规则不存在。",
         ).forEach { (code, expectedMessage) ->
             assertEquals(
-                DispatchResult.Discarded(expectedMessage),
+                DispatchResult.Failure(expectedMessage, definitelyRejected = true),
                 classify(404, """{ "error": "$code", "message": "$expectedMessage" }"""),
             )
         }
-        assertEquals(
-            DispatchResult.Failure("没有找到对应的记录。", definitelyRejected = true),
-            mapOutboxHttpException(
-                httpError(404, """{ "error": "not_found", "message": "没有找到对应的记录。" }"""),
-                discardable404ErrorCodes = setOf("expense_not_found"),
-            ),
-        )
     }
 
     private fun classify(body: String) = classify(409, body)

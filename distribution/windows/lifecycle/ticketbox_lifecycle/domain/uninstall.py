@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import secrets
 from collections.abc import Mapping
 from dataclasses import replace
 from typing import Protocol
@@ -19,6 +18,7 @@ from ticketbox_lifecycle.schemas import (
     CommandResult,
     InstallationBinding,
     InstallRequest,
+    ReinstallOperation,
     UninstallOperation,
     UpgradeOperation,
 )
@@ -134,29 +134,318 @@ def _require_uninstall_binding_match(
         )
 
 
+def _uninstall_request_hash(binding: InstallationBinding) -> str:
+    return hash_request_payload(
+        {
+            "kind": "uninstall",
+            "install_id": binding.install_id,
+            "dataset_id": binding.dataset_id,
+            "expected_restore_epoch": binding.expected_restore_epoch,
+            "active_release_id": binding.active_release_id,
+            "release_manifest_sha256": binding.release_manifest_sha256.lower(),
+            "data_root": _norm_path(binding.data_root),
+            "health_attestation_key": binding.health_attestation_key,
+        }
+    )
+
+
+def _legacy_uninstall_request_hash(binding: InstallationBinding) -> str:
+    return hash_request_payload(
+        {
+            "kind": "uninstall",
+            "install_id": binding.install_id,
+            "dataset_id": binding.dataset_id,
+            "expected_restore_epoch": binding.expected_restore_epoch,
+            "active_release_id": binding.active_release_id,
+            "release_manifest_sha256": binding.release_manifest_sha256,
+            "data_root": binding.data_root,
+        }
+    )
+
+
+def _is_legacy_uninstall_predated_by_incarnation(
+    stores: LifecycleStores,
+    binding: InstallationBinding,
+    uninstall_op: UninstallOperation,
+    *,
+    uninstall_is_active: bool = False,
+) -> bool:
+    binding_checker = getattr(stores.operations_read, "written_strictly_after_binding", None)
+    if not callable(binding_checker) or not binding_checker(
+        uninstall_op.operation_id,
+        is_active=uninstall_is_active,
+    ):
+        return True
+    checker = getattr(stores.operations_read, "committed_strictly_after", None)
+    for record in stores.operations_read.list_committed():
+        if not (
+            isinstance(record, ReinstallOperation)
+            and record.kind == "reinstall"
+            and record.phase == "committed"
+            and record.install_id == binding.install_id
+            and record.dataset_id == binding.dataset_id
+            and record.expected_restore_epoch == binding.expected_restore_epoch
+            and _is_sha256_hex(record.health_attestation_key)
+            and record.health_attestation_key == binding.health_attestation_key
+        ):
+            continue
+        if callable(checker) and checker(
+            record.operation_id,
+            uninstall_op.operation_id,
+            later_is_active=uninstall_is_active,
+        ):
+            continue
+        return True
+    return False
+
+
+def _matches_uninstall_identity(
+    op: ActiveOperation | ConnectorOperation | None,
+    binding: InstallationBinding,
+    *,
+    expected_operation_id: str,
+) -> bool:
+    return (
+        isinstance(op, UninstallOperation)
+        and op.kind == "uninstall"
+        and op.operation_id == expected_operation_id
+        and op.install_id == binding.install_id
+        and op.dataset_id == binding.dataset_id
+        and op.target_release_id == binding.active_release_id
+        and op.backend_port == binding.backend_port
+        and _norm_path(op.data_root) == _norm_path(binding.data_root)
+        and _is_sha256_hex(op.release_manifest_sha256)
+        and _is_sha256_hex(binding.release_manifest_sha256)
+        and op.release_manifest_sha256.lower() == binding.release_manifest_sha256.lower()
+        and _is_sha256_hex(op.health_attestation_key)
+    )
+
+
+def _is_committed_uninstall_complete(op: UninstallOperation) -> bool:
+    return (
+        op.phase == "committed"
+        and op.no_return_point is True
+        and op.completed_step == "remove_shortcut"
+    )
+
+
+def _matches_strict_current_incarnation(
+    op: UninstallOperation,
+    binding: InstallationBinding,
+    *,
+    expected_request_hash: str,
+) -> bool:
+    return (
+        op.expected_restore_epoch == binding.expected_restore_epoch
+        and op.health_attestation_key == binding.health_attestation_key
+        and op.request_hash == expected_request_hash
+    )
+
+
+def _is_same_incarnation_hash_conflict(
+    op: UninstallOperation,
+    binding: InstallationBinding,
+    *,
+    expected_request_hash: str,
+) -> bool:
+    return (
+        op.expected_restore_epoch == binding.expected_restore_epoch
+        and op.health_attestation_key == binding.health_attestation_key
+        and op.request_hash != expected_request_hash
+    )
+
+
+def _matches_legacy_committed_incarnation(
+    op: UninstallOperation,
+    binding: InstallationBinding,
+    stores: LifecycleStores,
+    *,
+    legacy_request_hash: str,
+    from_active: bool = False,
+) -> bool:
+    return (
+        _is_committed_uninstall_complete(op)
+        and op.expected_restore_epoch == binding.expected_restore_epoch
+        and op.health_attestation_key != binding.health_attestation_key
+        and op.request_hash == legacy_request_hash
+        and not _is_legacy_uninstall_predated_by_incarnation(
+            stores,
+            binding,
+            op,
+            uninstall_is_active=from_active,
+        )
+    )
+
+
+def _is_prior_committed_uninstall(
+    op: UninstallOperation,
+    binding: InstallationBinding,
+    stores: LifecycleStores,
+) -> bool:
+    epoch_advanced = op.expected_restore_epoch < binding.expected_restore_epoch
+    key_rotated = (
+        op.expected_restore_epoch == binding.expected_restore_epoch
+        and op.health_attestation_key != binding.health_attestation_key
+    )
+    if not epoch_advanced and not key_rotated:
+        return False
+    prior_binding = replace(
+        binding,
+        expected_restore_epoch=op.expected_restore_epoch,
+        health_attestation_key=op.health_attestation_key,
+    )
+    if op.request_hash == _uninstall_request_hash(prior_binding):
+        return True
+    return op.request_hash == _legacy_uninstall_request_hash(prior_binding) and (
+        epoch_advanced
+        or _is_legacy_uninstall_predated_by_incarnation(stores, binding, op, uninstall_is_active=False)
+    )
+
+
+def _resolve_committed_uninstall(
+    stores: LifecycleStores,
+    committed: ActiveOperation | ConnectorOperation | None,
+    binding: InstallationBinding,
+    *,
+    expected_operation_id: str,
+    expected_request_hash: str,
+    legacy_request_hash: str,
+) -> UninstallOperation | None:
+    if committed is None:
+        return None
+    if not _matches_uninstall_identity(
+        committed,
+        binding,
+        expected_operation_id=expected_operation_id,
+    ) or not isinstance(committed, UninstallOperation) or not _is_committed_uninstall_complete(committed):
+        raise LifecycleViolation(
+            "uninstall_operation_conflict",
+            "committed lifecycle history for this operation_id does not match the installation binding",
+        )
+    if _matches_strict_current_incarnation(
+        committed,
+        binding,
+        expected_request_hash=expected_request_hash,
+    ):
+        return committed
+    if _is_same_incarnation_hash_conflict(
+        committed,
+        binding,
+        expected_request_hash=expected_request_hash,
+    ):
+        raise LifecycleViolation(
+            "uninstall_operation_conflict",
+            "committed uninstall history conflicts with the current installation incarnation",
+        )
+    if _matches_legacy_committed_incarnation(
+        committed,
+        binding,
+        stores,
+        legacy_request_hash=legacy_request_hash,
+        from_active=False,
+    ):
+        return committed
+    if _is_prior_committed_uninstall(committed, binding, stores):
+        return None
+    raise LifecycleViolation(
+        "uninstall_operation_conflict",
+        "committed uninstall history conflicts with the current installation incarnation",
+    )
+
+
 def _validate_existing_uninstall_operation(
+    stores: LifecycleStores,
     existing: ActiveOperation | ConnectorOperation | None,
     binding: InstallationBinding,
     *,
     expected_operation_id: str,
-) -> None:
+    expected_request_hash: str,
+    legacy_request_hash: str,
+) -> UninstallOperation | None:
     if existing is None:
-        return
+        return None
     if (
-        not isinstance(existing, UninstallOperation)
-        or existing.kind != "uninstall"
-        or existing.phase != "failed_recoverable"
-        or existing.operation_id != expected_operation_id
-        or existing.install_id != binding.install_id
-        or existing.dataset_id != binding.dataset_id
-        or not _is_sha256_hex(existing.release_manifest_sha256)
-        or not _is_sha256_hex(binding.release_manifest_sha256)
-        or existing.release_manifest_sha256.lower() != binding.release_manifest_sha256.lower()
+        not _matches_uninstall_identity(
+            existing,
+            binding,
+            expected_operation_id=expected_operation_id,
+        )
+        or not isinstance(existing, UninstallOperation)
+        or (
+            existing.phase != "failed_recoverable"
+            and not _is_committed_uninstall_complete(existing)
+        )
     ):
         raise LifecycleViolation(
             "uninstall_operation_active",
             "another active lifecycle operation owns the machine; refusing uninstall",
         )
+    if _is_same_incarnation_hash_conflict(
+        existing,
+        binding,
+        expected_request_hash=expected_request_hash,
+    ):
+        raise LifecycleViolation(
+            "uninstall_operation_conflict",
+            "active uninstall request_hash conflicts with the current installation binding",
+        )
+    if existing.phase == "failed_recoverable":
+        if not _matches_strict_current_incarnation(
+            existing,
+            binding,
+            expected_request_hash=expected_request_hash,
+        ):
+            raise LifecycleViolation(
+                "uninstall_operation_active",
+                "another active lifecycle operation owns the machine; refusing uninstall",
+            )
+    elif not _matches_strict_current_incarnation(
+        existing,
+        binding,
+        expected_request_hash=expected_request_hash,
+    ) and not _matches_legacy_committed_incarnation(
+        existing,
+        binding,
+        stores,
+        legacy_request_hash=legacy_request_hash,
+        from_active=True,
+    ):
+        raise LifecycleViolation(
+            "uninstall_operation_active",
+            "another active lifecycle operation owns the machine; refusing uninstall",
+        )
+    history_record = stores.operations_read.read_committed(expected_operation_id)
+    if existing.phase == "committed":
+        if history_record is not None and history_record != existing:
+            if not (
+                _matches_uninstall_identity(
+                    history_record,
+                    binding,
+                    expected_operation_id=expected_operation_id,
+                )
+                and isinstance(history_record, UninstallOperation)
+                and _is_committed_uninstall_complete(history_record)
+                and _is_prior_committed_uninstall(history_record, binding, stores)
+            ):
+                raise LifecycleViolation(
+                    "uninstall_operation_conflict",
+                    "committed active uninstall conflicts with archived history for this operation_id",
+                )
+    elif history_record is not None:
+        matched = _resolve_committed_uninstall(
+            stores,
+            history_record,
+            binding,
+            expected_operation_id=expected_operation_id,
+            expected_request_hash=expected_request_hash,
+            legacy_request_hash=legacy_request_hash,
+        )
+        if matched is not None:
+            raise LifecycleViolation(
+                "uninstall_operation_conflict",
+                "failed_recoverable active uninstall conflicts with already-archived history for this incarnation",
+            )
+    return existing
 
 
 def check_uninstall_preflight(
@@ -192,11 +481,26 @@ def check_uninstall_preflight(
             "uninstall_identity_mismatch",
             "installed binding does not match the closed machine contract",
         )
-    _validate_existing_uninstall_operation(
+    expected_operation_id = f"uninstall-{binding.release_manifest_sha256.lower()}"
+    request_hash = _uninstall_request_hash(binding)
+    legacy_hash = _legacy_uninstall_request_hash(binding)
+    validated = _validate_existing_uninstall_operation(
+        stores,
         existing,
         binding,
-        expected_operation_id=f"uninstall-{binding.release_manifest_sha256.lower()}",
+        expected_operation_id=expected_operation_id,
+        expected_request_hash=request_hash,
+        legacy_request_hash=legacy_hash,
     )
+    if validated is None:
+        _resolve_committed_uninstall(
+            stores,
+            stores.operations_read.read_committed(expected_operation_id),
+            binding,
+            expected_operation_id=expected_operation_id,
+            expected_request_hash=request_hash,
+            legacy_request_hash=legacy_hash,
+        )
 
 
 def uninstall(
@@ -214,113 +518,14 @@ def uninstall(
         stores.mutex.release()
 
 
-def _uninstall_locked(
-    stores: LifecycleStores,
-    request: InstallRequest,
-    platform: UninstallPlatform,
+def _committed_uninstall_result(
+    bound: InstallRequest,
+    binding: InstallationBinding,
+    *,
+    removed_services: list[str],
+    removed_releases: list[str],
+    shortcut_removed: bool,
 ) -> CommandResult:
-    binding = stores.binding_read.read()
-    existing = stores.operations_read.read_active()
-    if binding is None:
-        raise LifecycleViolation(
-            "uninstall_binding_missing",
-            "controlled uninstall requires a verified installation.json; refusing unbound deletion",
-        )
-    _require_uninstall_binding_match(request, binding)
-    _validate_existing_uninstall_operation(
-        existing,
-        binding,
-        expected_operation_id=request.operation_id,
-    )
-
-    bound = replace(
-        request,
-        install_id=binding.install_id,
-        dataset_id=binding.dataset_id,
-        target_release_id=binding.active_release_id,
-        release_manifest_sha256=binding.release_manifest_sha256,
-        health_attestation_key=secrets.token_hex(32),
-    )
-    resuming_cleanup = existing is not None and existing.no_return_point
-    platform.verify_owned_services(bound, binding)
-    registered_releases, expected_manifests = _registered_releases(stores, binding)
-    platform.verify_registered_release_manifests(
-        bound,
-        binding,
-        release_ids=registered_releases,
-        expected_manifests=expected_manifests,
-        resuming_cleanup=resuming_cleanup,
-    )
-
-    if existing is not None:
-        active = existing
-    else:
-        request_hash = hash_request_payload(
-            {
-                "kind": "uninstall",
-                "install_id": binding.install_id,
-                "dataset_id": binding.dataset_id,
-                "expected_restore_epoch": binding.expected_restore_epoch,
-                "active_release_id": binding.active_release_id,
-                "release_manifest_sha256": binding.release_manifest_sha256,
-                "data_root": binding.data_root,
-            }
-        )
-        stores.operations_write.prepare(bound)
-        active = UninstallOperation(
-            schema=OPERATION_SCHEMA,
-            operation_id=bound.operation_id,
-            kind="uninstall",
-            request_hash=request_hash,
-            target_release_id=binding.active_release_id,
-            data_root=binding.data_root,
-            release_manifest_sha256=binding.release_manifest_sha256,
-            backend_port=binding.backend_port,
-            phase="prepared",
-            no_return_point=False,
-            completed_step=None,
-            install_id=binding.install_id,
-            dataset_id=binding.dataset_id,
-            schema_revision=bound.schema_revision or "",
-            health_attestation_key=bound.health_attestation_key,
-            expected_restore_epoch=binding.expected_restore_epoch,
-        )
-        stores.operations_write.publish_active(active)
-
-    try:
-        removed_services = platform.stop_and_unregister_services(bound, binding)
-        active = replace(active, completed_step="unregister_services", no_return_point=True)
-        stores.operations_write.publish_active(active)
-        shortcut_removed = platform.remove_start_menu_shortcut(bound)
-        removed_releases = platform.cleanup_registered_release_payloads(
-            bound,
-            binding,
-            release_ids=registered_releases,
-            expected_manifests=expected_manifests,
-            resuming_cleanup=resuming_cleanup,
-        )
-        active = replace(active, phase="committed", completed_step="remove_shortcut", no_return_point=True)
-        stores.operations_write.publish_active(active)
-        stores.operations_write.archive_committed(active)
-    except Exception as exc:
-        code = exc.code if isinstance(exc, LifecycleError) else "uninstall_failed"
-        message = exc.message if isinstance(exc, LifecycleError) else "controlled uninstall failed; preserved data untouched"
-        failed = replace(active, phase="failed_recoverable")
-        try:
-            stores.operations_write.publish_active(failed)
-        except (LifecycleError, OSError):
-            pass
-        return CommandResult(
-            schema=RESULT_SCHEMA,
-            ok=False,
-            command="uninstall",
-            operation_id=bound.operation_id,
-            phase="failed_recoverable",
-            code=code,
-            message=message,
-            installation_published=True,
-        )
-
     return CommandResult(
         schema=RESULT_SCHEMA,
         ok=True,
@@ -341,4 +546,187 @@ def _uninstall_locked(
             "backups_preserved": True,
             "binding_preserved": True,
         },
+    )
+
+
+def _prepare_uninstall_active(
+    stores: LifecycleStores,
+    bound: InstallRequest,
+    binding: InstallationBinding,
+    existing: ActiveOperation | ConnectorOperation | None,
+    request_hash: str,
+) -> UninstallOperation:
+    if isinstance(existing, UninstallOperation):
+        return existing
+    stores.operations_write.prepare(bound)
+    active = UninstallOperation(
+        schema=OPERATION_SCHEMA,
+        operation_id=bound.operation_id,
+        kind="uninstall",
+        request_hash=request_hash,
+        target_release_id=binding.active_release_id,
+        data_root=binding.data_root,
+        release_manifest_sha256=binding.release_manifest_sha256,
+        backend_port=binding.backend_port,
+        phase="prepared",
+        no_return_point=False,
+        completed_step=None,
+        install_id=binding.install_id,
+        dataset_id=binding.dataset_id,
+        schema_revision=bound.schema_revision or "",
+        health_attestation_key=bound.health_attestation_key,
+        expected_restore_epoch=binding.expected_restore_epoch,
+    )
+    stores.operations_write.publish_active(active)
+    return active
+
+
+def _uninstall_locked(
+    stores: LifecycleStores,
+    request: InstallRequest,
+    platform: UninstallPlatform,
+) -> CommandResult:
+    binding = stores.binding_read.read()
+    existing = stores.operations_read.read_active()
+    if binding is None:
+        raise LifecycleViolation(
+            "uninstall_binding_missing",
+            "controlled uninstall requires a verified installation.json; refusing unbound deletion",
+        )
+    _require_uninstall_binding_match(request, binding)
+    request_hash = _uninstall_request_hash(binding)
+    legacy_hash = _legacy_uninstall_request_hash(binding)
+    validated_existing = _validate_existing_uninstall_operation(
+        stores,
+        existing,
+        binding,
+        expected_operation_id=request.operation_id,
+        expected_request_hash=request_hash,
+        legacy_request_hash=legacy_hash,
+    )
+    committed = (
+        _resolve_committed_uninstall(
+            stores,
+            stores.operations_read.read_committed(request.operation_id),
+            binding,
+            expected_operation_id=request.operation_id,
+            expected_request_hash=request_hash,
+            legacy_request_hash=legacy_hash,
+        )
+        if validated_existing is None
+        else None
+    )
+
+    bound = replace(
+        request,
+        install_id=binding.install_id,
+        dataset_id=binding.dataset_id,
+        target_release_id=binding.active_release_id,
+        release_manifest_sha256=binding.release_manifest_sha256,
+        health_attestation_key=binding.health_attestation_key,
+    )
+    resuming_cleanup = (
+        validated_existing is not None and validated_existing.no_return_point
+    ) or committed is not None
+    platform.verify_owned_services(bound, binding)
+    registered_releases, expected_manifests = _registered_releases(stores, binding)
+    platform.verify_registered_release_manifests(
+        bound,
+        binding,
+        release_ids=registered_releases,
+        expected_manifests=expected_manifests,
+        resuming_cleanup=resuming_cleanup,
+    )
+
+    durable_committed = committed is not None or (
+        validated_existing is not None and validated_existing.phase == "committed"
+    )
+    if committed is not None:
+        active: UninstallOperation | None = None
+    elif validated_existing is not None and validated_existing.phase == "committed":
+        active = validated_existing
+    else:
+        active = _prepare_uninstall_active(stores, bound, binding, validated_existing, request_hash)
+
+    try:
+        removed_services = platform.stop_and_unregister_services(bound, binding)
+        if active is not None and not durable_committed:
+            progressed = replace(
+                active,
+                request_hash=request_hash,
+                health_attestation_key=binding.health_attestation_key,
+                completed_step="unregister_services",
+                no_return_point=True,
+            )
+            stores.operations_write.publish_active(progressed)
+            active = progressed
+        shortcut_removed = platform.remove_start_menu_shortcut(bound)
+        removed_releases = platform.cleanup_registered_release_payloads(
+            bound,
+            binding,
+            release_ids=registered_releases,
+            expected_manifests=expected_manifests,
+            resuming_cleanup=resuming_cleanup,
+        )
+        if active is not None:
+            if not durable_committed:
+                committed_op = replace(
+                    active,
+                    phase="committed",
+                    completed_step="remove_shortcut",
+                    no_return_point=True,
+                )
+                stores.operations_write.publish_active(committed_op)
+                active = committed_op
+                durable_committed = True
+            stores.operations_write.archive_committed(active)
+    except Exception as exc:
+        code = exc.code if isinstance(exc, LifecycleError) else "uninstall_failed"
+        message = exc.message if isinstance(exc, LifecycleError) else "controlled uninstall failed; preserved data untouched"
+        if active is not None and not durable_committed:
+            failed = replace(active, phase="failed_recoverable")
+            try:
+                stores.operations_write.publish_active(failed)
+            except (LifecycleError, OSError) as publish_exc:
+                if (
+                    isinstance(publish_exc, LifecycleViolation)
+                    and publish_exc.code == "committed_operation_immutable"
+                ):
+                    durable_committed = True
+                else:
+                    try:
+                        observed = stores.operations_read.read_active()
+                    except (LifecycleError, OSError, ValueError):
+                        observed = None
+                    if (
+                        isinstance(observed, UninstallOperation)
+                        and observed.operation_id == bound.operation_id
+                    ):
+                        active = observed
+                        if observed.phase == "committed":
+                            durable_committed = True
+            else:
+                active = failed
+        reported_phase = (
+            "committed"
+            if durable_committed
+            else (active.phase if active is not None else "failed_recoverable")
+        )
+        return CommandResult(
+            schema=RESULT_SCHEMA,
+            ok=False,
+            command="uninstall",
+            operation_id=bound.operation_id,
+            phase=reported_phase,
+            code=code,
+            message=message,
+            installation_published=True,
+        )
+
+    return _committed_uninstall_result(
+        bound,
+        binding,
+        removed_services=removed_services,
+        removed_releases=removed_releases,
+        shortcut_removed=shortcut_removed,
     )

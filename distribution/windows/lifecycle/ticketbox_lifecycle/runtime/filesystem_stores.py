@@ -285,6 +285,44 @@ class FilesystemStores:
             records.append(operation)
         return tuple(records)
 
+    def written_strictly_after_binding(
+        self,
+        operation_id: str,
+        *,
+        is_active: bool = False,
+    ) -> bool:
+        pattern = r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}"
+        if not re.fullmatch(pattern, operation_id):
+            return False
+        target_path = self._active_path if is_active else (self._history_dir / f"{operation_id}.json")
+        reject_reparse_components(target_path)
+        reject_reparse_components(self._binding_path)
+        if not target_path.is_file() or not self._binding_path.is_file():
+            return False
+        return target_path.stat().st_mtime_ns > self._binding_path.stat().st_mtime_ns
+
+    def committed_strictly_after(
+        self,
+        earlier_operation_id: str,
+        later_operation_id: str,
+        *,
+        later_is_active: bool = False,
+    ) -> bool:
+        pattern = r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}"
+        if not re.fullmatch(pattern, earlier_operation_id) or not re.fullmatch(pattern, later_operation_id):
+            return False
+        earlier_path = self._history_dir / f"{earlier_operation_id}.json"
+        later_path = self._active_path if later_is_active else (self._history_dir / f"{later_operation_id}.json")
+        reject_reparse_components(earlier_path)
+        reject_reparse_components(later_path)
+        reject_reparse_components(self._binding_path)
+        if not earlier_path.is_file() or not later_path.is_file() or not self._binding_path.is_file():
+            return False
+        earlier_ns = earlier_path.stat().st_mtime_ns
+        later_ns = later_path.stat().st_mtime_ns
+        binding_ns = self._binding_path.stat().st_mtime_ns
+        return later_ns > earlier_ns and later_ns > binding_ns
+
     def known_sibling_releases(
         self,
         binding: InstallationBinding | None,

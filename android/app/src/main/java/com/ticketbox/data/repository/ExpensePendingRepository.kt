@@ -1,5 +1,6 @@
 package com.ticketbox.data.repository
 
+import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.ExpenseRecognizeTextRequestDto
@@ -38,12 +39,25 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
     override fun observeExpenseCommands(): Flow<ExpenseCommandObservation> = core.apiProvider.observeActiveLedgerAccess()
         .flatMapLatest { access ->
             if (access == null) flowOf(ExpenseCommandObservation(null, emptyList()))
-            else outbox.observeActiveByTypes(PENDING_EXPENSE_COMMAND_TYPES, includeCompleted = true).map { rows ->
+            else outbox.observeActiveByTypes(
+                PENDING_EXPENSE_COMMAND_TYPES,
+                includeCompleted = true,
+                includeAbandoned = true,
+            ).map { rows ->
                 val current = access.takeIf { core.ledgerRequestGuard.captureLogicalBinding() == it.binding }
-                ExpenseCommandObservation(current, if (current == null) emptyList() else rows.filter {
+                val scopedRows = if (current == null) emptyList() else rows.filter {
                     it.ownerKey == current.binding.ownerKey && it.ledgerId == current.binding.ledgerId
-                }.map { row -> PendingExpenseCommand(row, expenseAcceptanceReceiptSnapshot(row)?.toDomain(),
-                    expenseConfirmationReceiptSnapshot(row), hasOriginalTextFeedback(row)) })
+                }
+                ExpenseCommandObservation(
+                    access = current,
+                    commands = scopedRows.filterNot { it.status == PendingMutationStatus.Abandoned }.map { row ->
+                        PendingExpenseCommand(row, expenseAcceptanceReceiptSnapshot(row)?.toDomain(),
+                            expenseConfirmationReceiptSnapshot(row), hasOriginalTextFeedback(row))
+                    },
+                    droppedRowIds = scopedRows.filter {
+                        it.status == PendingMutationStatus.Abandoned && it.type == PendingMutationType.RetryOcr
+                    }.mapTo(mutableSetOf()) { it.id },
+                )
             }.distinctUntilChanged()
         }.distinctUntilChanged()
 
@@ -189,20 +203,7 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
         // and ready snapshot are no longer true after the rate changes. Keep
         // the user's original-side edits visible, but wait for the server to
         // calculate and return the new home-side snapshot.
-        val projected = baseline.copy(
-            amountCents = draft.amountCents ?: baseline.amountCents,
-            originalCurrencyCode = draft.originalCurrencyCode ?: baseline.originalCurrencyCode,
-            originalAmountMinor = draft.originalAmountMinor ?: baseline.originalAmountMinor,
-            merchant = draft.merchant ?: baseline.merchant,
-            category = draft.category ?: baseline.category,
-            note = draft.note ?: baseline.note,
-            expenseTime = if (draft.timeInput == null) draft.expenseTime ?: baseline.expenseTime else draft.timeInput.instantUtc,
-            accountingTime = draft.timeInput?.takeUnless { it.matches(baseline.accountingTime) }
-                ?.toCapturedTime() ?: baseline.accountingTime,
-            tags = draft.tags ?: baseline.tags,
-            valueScore = draft.valueScore ?: baseline.valueScore,
-            regretScore = draft.regretScore ?: baseline.regretScore,
-        )
+        val projected = projectDraftFields(baseline, draft)
         if (draft.manualExchangeRate == null) return projected
         return projected.copy(
             amountCents = null,
@@ -216,6 +217,28 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
             fxStatus = FxContract.StatusPending,
         )
     }
+
+    private fun projectDraftFields(baseline: Expense, draft: ExpenseDraft): Expense = baseline.copy(
+        amountCents = projectedAmount(baseline.amountCents, draft.amountCents, draft.clearAmount),
+        homeAmountCents = if (draft.clearAmount) null else baseline.homeAmountCents,
+        originalCurrencyCode = draft.originalCurrencyCode ?: baseline.originalCurrencyCode,
+        originalAmountMinor = projectedAmount(baseline.originalAmountMinor, draft.originalAmountMinor, draft.clearAmount),
+        merchant = projectedMerchant(baseline.merchant, draft.merchant),
+        category = draft.category ?: baseline.category,
+        note = draft.note ?: baseline.note,
+        expenseTime = if (draft.timeInput == null) draft.expenseTime ?: baseline.expenseTime else draft.timeInput.instantUtc,
+        accountingTime = draft.timeInput?.takeUnless { it.matches(baseline.accountingTime) }
+            ?.toCapturedTime() ?: baseline.accountingTime,
+        tags = draft.tags ?: baseline.tags,
+        valueScore = draft.valueScore ?: baseline.valueScore,
+        regretScore = draft.regretScore ?: baseline.regretScore,
+    )
+
+    private fun projectedAmount(baselineAmount: Long?, draftAmount: Long?, clearAmount: Boolean): Long? =
+        if (clearAmount) null else draftAmount ?: baselineAmount
+
+    private fun projectedMerchant(baselineMerchant: String?, draftMerchant: String?): String? =
+        if (draftMerchant != null) draftMerchant.trim().ifBlank { null } else baselineMerchant
 
     override suspend fun fetchThumbnail(id: Long): Result<ProtectedImage> = core.errorHandler.safeCall {
         val bound = core.ledgerRequestGuard.bind()

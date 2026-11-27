@@ -118,3 +118,98 @@ def test_skipped_upload_and_old_receipt_catch_up_once_without_reupload(client, i
         assert upload(keys[1]) == legacy
     finally:
         reset_settings_cache()
+
+
+@pytest.mark.real_db
+def test_catch_up_ocr_preserves_explicit_other_category_and_cleared_fields(client, identity, monkeypatch):
+    monkeypatch.setenv("XPJ_BACKGROUND_TASK_INLINE", "1")
+    monkeypatch.setenv("OCR_PROVIDER", "empty")
+    reset_settings_cache()
+
+    def upload():
+        response = client.post(
+            "/api/app/upload-screenshot",
+            content=PNG_BYTES,
+            headers={**identity.app_headers, "Content-Type": "image/png", "Idempotency-Key": str(uuid4())},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def patch(expense_id: int, fields: dict):
+        basis = client.get(f"/api/expenses/{expense_id}", headers=identity.app_headers).json()["row_version"]
+        resp = client.patch(
+            f"/api/expenses/{expense_id}",
+            headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+            json={"expected_row_version": basis, **fields},
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    rule = client.post(
+        "/api/rules/categories",
+        headers={**identity.app_headers, "Idempotency-Key": str(uuid4())},
+        json={"keyword": "好想来", "category": "餐饮", "enabled": True, "priority": 1},
+    )
+    assert rule.status_code == 200, rule.text
+
+    explicit_other = upload()
+    cleared_merchant = upload()
+    cleared_money_time = upload()
+    legacy_edited = upload()
+
+    from app.services.currency_binding_service import resolve_write_capability
+
+    patch(explicit_other["id"], {"category": "其他"})
+    patch(cleared_merchant["id"], {"merchant": ""})
+    patch(cleared_money_time["id"], {"amount_cents": None, "expense_time": None})
+    with SessionLocal.begin() as db:
+        resolve_write_capability(db)
+        legacy_row = db.get(Expense, legacy_edited["id"])
+        assert legacy_row is not None
+        legacy_row.ocr_draft_fields = "[]"
+        legacy_row.row_version += 1
+
+    monkeypatch.delenv("OCR_PROVIDER")
+    monkeypatch.delenv("OCR_AUTO_RUN", raising=False)
+    reset_settings_cache()
+    monkeypatch.setattr(
+        RapidOcrProvider,
+        "extract",
+        lambda *_args, **_kw: OcrResult(
+            "商户：好想来零食乐园\n实付：17.89元\n支付时间：2026-05-05 21:38:13",
+            0.99,
+            category="餐饮",
+        ),
+    )
+    try:
+        queue_skipped_uploads(0)
+        resume_due_ocr_tasks()
+        with SessionLocal() as db:
+            other_row = db.get(Expense, explicit_other["id"])
+            assert other_row is not None
+            assert other_row.category == "其他"
+            assert other_row.amount_cents == 1789
+            assert other_row.merchant == "好想来零食乐园"
+
+            merchant_row = db.get(Expense, cleared_merchant["id"])
+            assert merchant_row is not None
+            assert merchant_row.merchant is None
+            assert merchant_row.amount_cents == 1789
+
+            money_time_row = db.get(Expense, cleared_money_time["id"])
+            assert money_time_row is not None
+            assert money_time_row.amount_cents is None
+            assert money_time_row.expense_time is None
+            assert money_time_row.merchant == "好想来零食乐园"
+
+            legacy_row = db.get(Expense, legacy_edited["id"])
+            assert legacy_row is not None
+            assert legacy_row.category == "其他"
+            assert legacy_row.merchant is None
+            assert legacy_row.amount_cents is None
+
+            for receipt in (explicit_other, cleared_merchant, cleared_money_time, legacy_edited):
+                facts = list(db.scalars(select(OcrFact).where(OcrFact.expense_id == receipt["id"])))
+                assert [fact.ocr_provider for fact in facts] == ["rapidocr"]
+    finally:
+        reset_settings_cache()

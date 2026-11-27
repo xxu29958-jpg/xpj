@@ -53,7 +53,7 @@ internal data class ExpenseEditFormValues(
             if (changes == null) return baseline
             return baseline.copy(
                 currency = changes.originalCurrency?.let { requireNotNull(CurrencyCode.fromStorageKeyOrNull(it)) } ?: baseline.currency,
-                amountText = changes.originalAmount ?: baseline.amountText,
+                amountText = if (changes.clearOriginalAmount) "" else changes.originalAmount ?: baseline.amountText,
                 manualExchangeRateText = changes.manualExchangeRate ?: baseline.manualExchangeRateText,
                 merchant = changes.merchant ?: baseline.merchant, category = changes.category ?: baseline.category,
                 note = changes.note ?: baseline.note, tags = changes.tags ?: baseline.tags,

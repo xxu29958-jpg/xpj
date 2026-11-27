@@ -4,6 +4,7 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.dto.ExpenseStateTokenRequest
 import com.ticketbox.data.remote.dto.PendingDuplicateCandidateDto
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import java.io.IOException
 import kotlin.test.Test
@@ -210,6 +211,85 @@ internal class ExpensePendingRepositoryOutboxStateActionsTest : ExpensePendingRe
 
         assertTrue(result.isFailure, "409 must surface, not silently queue")
         assertEquals(0, dao.rows.size)
+    }
+
+    @Test
+    fun `dropping a failed OCR region command persists abandoned tombstone across repository restart`() = runTest {
+        val baseline = baselineExpense()
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao)
+        val repo = buildRepository(ApiServiceStub(retryOcrResult = ApiResult.Success(successExpenseDto())), outbox)
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+        val selection = com.ticketbox.domain.model.OcrRegionSelection("a".repeat(64), listOf(60, 25, 110, 50))
+
+        val accepted = repo.retryOcrAllowingOffline(binding, baseline, selection).getOrThrow()
+        val rowId = accepted.rowIds.single()
+        outbox.markFailed(rowId, "ocr_region_no_text")
+
+        val dropped = outbox.resolveFailed(rowId, FailedResolution.Drop)
+        assertTrue(dropped)
+        assertEquals(PendingMutationStatus.Abandoned.wireValue, dao.rows.getValue(rowId).status)
+        assertTrue(outbox.observeStatus().first().failed.isEmpty())
+
+        // Same-process observation sees droppedRowIds without listing abandoned rows as active commands.
+        val observation = repo.observeExpenseCommands().first()
+        assertEquals(binding, observation.access?.binding)
+        assertTrue(observation.commands.isEmpty())
+        assertEquals(setOf(rowId), observation.droppedRowIds)
+
+        // Simulated process death: brand-new OutboxRepository + ExpensePendingRepository over the same DAO.
+        val restartedOutbox = testOutboxRepository(dao)
+        val restartedRepo = buildRepository(ApiServiceStub(retryOcrResult = ApiResult.Success(successExpenseDto())), restartedOutbox)
+        val restartedObservation = restartedRepo.observeExpenseCommands().first()
+        assertEquals(binding, restartedObservation.access?.binding)
+        assertTrue(restartedObservation.commands.isEmpty())
+        assertEquals(setOf(rowId), restartedObservation.droppedRowIds)
+
+        // Age-paused RetryOcr rows still cannot be dropped or abandoned.
+        val expiredAccepted = restartedRepo.retryOcrAllowingOffline(binding, baseline, selection).getOrThrow()
+        val expiredRowId = expiredAccepted.rowIds.single()
+        restartedOutbox.markFailed(expiredRowId, "outbox_row_expired")
+        assertTrue(!restartedOutbox.resolveFailed(expiredRowId, FailedResolution.Drop))
+        assertEquals(PendingMutationStatus.Failed.wireValue, dao.rows.getValue(expiredRowId).status)
+
+        restartedOutbox.clearAll()
+        val afterClear = restartedRepo.observeExpenseCommands().first()
+        assertTrue(afterClear.droppedRowIds.isEmpty())
+    }
+
+    @Test
+    fun `dropping a failed PatchExpense does not propagate droppedRowIds and clearing amount clears optimistic homeAmountCents`() = runTest {
+        val legacyBaseline = successExpenseDto().copy(
+            status = "pending",
+            amountCents = 1789L,
+            originalCurrencyCode = "CNY",
+            originalAmountMinor = null,
+        ).toDomain()
+        assertEquals(1789L, legacyBaseline.homeAmountCents)
+
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao)
+        val repo = buildRepository(ApiServiceStub(), outbox)
+        val binding = requireNotNull(repo.captureDeferredLedgerBinding())
+
+        val clearDraft = draft.copy(
+            amountCents = null,
+            originalAmountMinor = null,
+            clearAmount = true,
+            merchant = "B",
+        )
+        val accepted = repo.saveExpenseAllowingOffline(binding, legacyBaseline.id, clearDraft, legacyBaseline).getOrThrow()
+        assertNull(accepted.expense.amountCents)
+        assertNull(accepted.expense.originalAmountMinor)
+        assertNull(accepted.expense.homeAmountCents)
+        assertEquals("待填写金额", com.ticketbox.presentation.formatExpensePrimaryAmount(accepted.expense))
+
+        val patchRowId = accepted.rowIds.single()
+        outbox.markFailed(patchRowId, "validation_error")
+        assertTrue(outbox.resolveFailed(patchRowId, FailedResolution.Drop))
+
+        val observation = repo.observeExpenseCommands().first()
+        assertTrue(observation.droppedRowIds.isEmpty())
     }
 
     // endregion

@@ -17,8 +17,10 @@ from app.services.expense_service._helpers import (
     _clean_text,
     _ensure_expense_can_confirm,
 )
+from app.services.expense_service._ocr_facts import resolve_legacy_ocr_eligibility
 from app.services.expense_service._update_currency import _apply_update_currency
-from app.services.ocr_service import clear_ocr_draft_fields
+from app.services.ocr_service import can_apply_ocr_field, clear_ocr_draft_fields
+from app.services.ocr_service._draft_fields import untouched_ocr_draft_fields
 from app.services.receipt_item_service import recompute_items_sum_status
 from app.services.rule_service import classify_expense
 from app.services.tag_service import normalize_tags, sync_expense_tags
@@ -58,6 +60,7 @@ def _apply_classification_and_duplicate_projection(
         expense.status == "pending"
         and "category" not in updates
         and expense.category == "其他"
+        and can_apply_ocr_field(expense, "category", is_empty_or_default=True)
         and any(field in updates for field in {"merchant", "note"})
     ):
         classify_expense(db, expense)
@@ -96,6 +99,13 @@ def apply_expense_fields_to_claimed_row(
     )
     updates = payload.model_dump(exclude_unset=True, exclude={"expected_row_version"})
     assert_no_immutable_field_changes(expense, set(updates))
+    pre_claim_row_version = (
+        payload.expected_row_version
+        if payload.expected_row_version and payload.expected_row_version > 0
+        else max(1, (expense.row_version or 2) - 1)
+    )
+    untouched_before = untouched_ocr_draft_fields(expense)
+    allow_ocr_only, allow_untouched = resolve_legacy_ocr_eligibility(db, expense, pre_claim_row_version)
     time_changed = apply_expense_time_input(db, expense, payload)
     _apply_basic_expense_fields(db, expense=expense, tenant_id=tenant_id, updates=updates)
     amount_cents_before = expense.amount_cents
@@ -109,9 +119,19 @@ def apply_expense_fields_to_claimed_row(
     )
     if expense.status == "confirmed":
         _ensure_expense_can_confirm(expense)
-    clear_ocr_draft_fields(expense, list(updates))
-    if payload.time_input is not None:
-        clear_ocr_draft_fields(expense, ["expense_time"])
+    cleared_fields = [
+        field
+        for field, value in updates.items()
+        if not (field in {"category", "manual_exchange_rate", "time_input"} and not value)
+    ]
+    clear_ocr_draft_fields(
+        expense,
+        cleared_fields,
+        effective_row_version=pre_claim_row_version,
+        initial_untouched=untouched_before,
+        allow_legacy_ocr_only=allow_ocr_only,
+        allow_legacy_untouched=allow_untouched,
+    )
     _apply_classification_and_duplicate_projection(
         db, expense=expense, tenant_id=tenant_id, updates=updates
     )

@@ -51,7 +51,11 @@ interface PendingReviewActions {
 /** Local acceptance carries a draft projection, never an invented server status or row version. */
 data class ExpenseCommandAcceptance(val expense: Expense, val rowIds: List<Long>)
 
-data class ExpenseCommandObservation(val access: LedgerAccessContext?, val commands: List<PendingExpenseCommand>)
+data class ExpenseCommandObservation(
+    val access: LedgerAccessContext?,
+    val commands: List<PendingExpenseCommand>,
+    val droppedRowIds: Set<Long> = emptySet(),
+)
 
 /** Command receipts remain distinct from the latest expense query. */
 data class PendingExpenseCommand(val row: OutboxRow, val acceptedExpense: Expense?,

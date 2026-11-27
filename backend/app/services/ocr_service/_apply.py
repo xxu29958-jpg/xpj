@@ -20,7 +20,12 @@ from app.money_contract import (
 from app.services.category_service import normalize_category
 from app.services.currency_common import minor_unit_digits
 from app.services.exchange_rate_service import expense_rate_date
-from app.services.ocr_service._draft_fields import _write_ocr_draft_fields, ocr_draft_fields
+from app.services.ocr_service._draft_fields import (
+    _write_ocr_draft_fields,
+    can_apply_ocr_field,
+    ocr_draft_fields,
+    untouched_ocr_draft_fields,
+)
 from app.services.ocr_service._merge import _best_confidence, _safe_category
 from app.services.ocr_service._models import (
     OcrAttempt,
@@ -302,14 +307,21 @@ def _apply_ocr_candidate_fields(
     materialization_context: tuple[str, int] | None,
     draft_fields: set[str],
     split_allocation_floor_cents: int | None,
+    effective_row_version: int | None = None,
+    allow_legacy_ocr_only: bool = False,
+    allow_legacy_untouched: bool = False,
 ) -> set[str]:
     applied_fields: set[str] = set()
     if (
         materialization_context is not None
-        and _can_apply_ocr_field(
+        and can_apply_ocr_field(
+            expense,
             "amount_cents",
             draft_fields,
-            expense.amount_cents is None,
+            is_empty_or_default=expense.amount_cents is None,
+            effective_row_version=effective_row_version,
+            allow_legacy_ocr_only=allow_legacy_ocr_only,
+            allow_legacy_untouched=allow_legacy_untouched,
         )
         and merged_amount is not None
         and (
@@ -319,19 +331,46 @@ def _apply_ocr_candidate_fields(
     ):
         expense.amount_cents = merged_amount
         applied_fields.add("amount_cents")
-    if _can_apply_ocr_field("merchant", draft_fields, not (expense.merchant or "").strip()) and merged.merchant:
+    if (
+        can_apply_ocr_field(
+            expense,
+            "merchant",
+            draft_fields,
+            is_empty_or_default=not (expense.merchant or "").strip(),
+            effective_row_version=effective_row_version,
+            allow_legacy_ocr_only=allow_legacy_ocr_only,
+            allow_legacy_untouched=allow_legacy_untouched,
+        )
+        and merged.merchant
+    ):
         expense.merchant = merged.merchant
         applied_fields.add("merchant")
     if (
         expense.time_precision not in {"instant", "date_only"}
         and expense.accounting_date_basis != "recorded_date"
-        and _can_apply_ocr_field("expense_time", draft_fields, expense.expense_time is None)
+        and can_apply_ocr_field(
+            expense,
+            "expense_time",
+            draft_fields,
+            is_empty_or_default=expense.expense_time is None,
+            effective_row_version=effective_row_version,
+            allow_legacy_ocr_only=allow_legacy_ocr_only,
+            allow_legacy_untouched=allow_legacy_untouched,
+        )
         and merged.expense_time is not None
     ):
         expense.expense_time = ensure_utc(merged.expense_time)
         applied_fields.add("expense_time")
     if (
-        _can_apply_ocr_field("category", draft_fields, normalize_category(expense.category) == "其他")
+        can_apply_ocr_field(
+            expense,
+            "category",
+            draft_fields,
+            is_empty_or_default=normalize_category(expense.category) == "其他",
+            effective_row_version=effective_row_version,
+            allow_legacy_ocr_only=allow_legacy_ocr_only,
+            allow_legacy_untouched=allow_legacy_untouched,
+        )
         and merged.category
     ):
         expense.category = normalize_category(merged.category)
@@ -361,6 +400,9 @@ def _apply_ocr_result_to_expense(
     *,
     allow_session_bound: bool,
     split_allocation_floor_cents: int | None,
+    effective_row_version: int | None = None,
+    allow_legacy_ocr_only: bool = False,
+    allow_legacy_untouched: bool = False,
 ) -> None:
     if expense.status != "pending":
         return
@@ -376,7 +418,18 @@ def _apply_ocr_result_to_expense(
         merged.amount_cents,
         label="ocr.merged_amount_cents",
     )
-    draft_fields = ocr_draft_fields(expense)
+    draft_fields = ocr_draft_fields(
+        expense,
+        effective_row_version=effective_row_version,
+        allow_legacy_ocr_only=allow_legacy_ocr_only,
+    )
+    eff_ver = expense.row_version if effective_row_version is None else effective_row_version
+    pre_existing_untouched = (
+        untouched_ocr_draft_fields(expense)
+        if allow_legacy_untouched
+        or (expense.ocr_draft_fields is None and expense.confidence is None and (eff_ver is None or eff_ver <= 1))
+        else set()
+    )
 
     # v1.2 OCR single-source migration: ``ocr_facts`` is the source
     # of truth for OCR text. The API response assembler now reads
@@ -402,11 +455,14 @@ def _apply_ocr_result_to_expense(
         materialization_context=materialization_context,
         draft_fields=draft_fields,
         split_allocation_floor_cents=split_allocation_floor_cents,
+        effective_row_version=effective_row_version,
+        allow_legacy_ocr_only=allow_legacy_ocr_only,
+        allow_legacy_untouched=allow_legacy_untouched,
     )
     if not allow_session_bound:
         _apply_ocr_home_snapshot(expense, materialization_context)
     if applied_fields:
-        _write_ocr_draft_fields(expense, draft_fields.union(applied_fields))
+        _write_ocr_draft_fields(expense, draft_fields | applied_fields | pre_existing_untouched)
 
 
 def _ensure_ocr_apply_is_not_session_bound(expense: Expense) -> None:
@@ -417,10 +473,6 @@ def _ensure_ocr_apply_is_not_session_bound(expense: Expense) -> None:
             "use apply_ocr_result_and_append_fact so OCR facts stay paired "
             "with the response mirror."
         )
-
-
-def _can_apply_ocr_field(field: str, draft_fields: set[str], is_empty_or_default: bool) -> bool:
-    return is_empty_or_default or field in draft_fields
 
 
 def _needs_fallback(expense: Expense) -> bool:

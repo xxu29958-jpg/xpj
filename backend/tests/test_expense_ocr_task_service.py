@@ -105,6 +105,120 @@ def test_legacy_timeout_does_not_acknowledge_queue_or_hold_database(retry_input)
         assert db.scalar(select(func.count()).select_from(OcrFact)) == 0
 
 
+@pytest.mark.parametrize(
+    ("error_code", "expected_status"),
+    [
+        ("ocr_region_no_text", 422),
+        ("ocr_region_incomplete", 422),
+        ("ocr_region_invalid", 422),
+        ("ocr_region_source_unavailable", 409),
+        ("ocr_input_changed", 409),
+        ("image_not_found", 404),
+        ("image_integrity_mismatch", 409),
+        ("amount_invalid", 422),
+    ],
+)
+def test_terminal_ocr_refusal_keeps_4xx_status_and_blocks_duplicate_legacy_task(
+    retry_input, error_code, expected_status,
+):
+    """A terminal OCR refusal requires new input or source state, never 503 or another identical task."""
+    with SessionLocal() as db:
+        original = submit_expense_ocr_task(db, **retry_input, legacy=True)
+        original_id = original.id
+        original.status, original.error_code = "failed", error_code
+        db.commit()
+    with SessionLocal() as db:
+        original = db.get(BackgroundTask, original_id)
+        with pytest.raises(AppError) as caught:
+            wait_legacy_ocr_result(db, original)
+        assert (caught.value.error, caught.value.status_code) == (error_code, expected_status)
+        repeated = submit_expense_ocr_task(db, **retry_input, legacy=True)
+        assert repeated.id == original_id
+        assert db.scalar(select(func.count()).select_from(BackgroundTask)
+            .where(BackgroundTask.task_type == "expense_ocr_retry")) == 1
+        assert db.scalar(select(func.count()).select_from(OcrFact)) == 0
+        assert db.get(Expense, retry_input["expense_id"]).row_version == retry_input["expected_row_version"]
+
+
+@pytest.mark.parametrize(
+    ("error_code", "expected_status"),
+    [
+        ("file_too_large", 413),
+        ("ledger_forbidden", 403),
+        ("unsupported_file_type", 415),
+    ],
+)
+def test_real_worker_4xx_app_error_persists_status_and_blocks_duplicate_legacy_task(
+    retry_input, monkeypatch, error_code, expected_status,
+):
+    """Real worker 4xx AppErrors (e.g. file_too_large/413, ledger_forbidden/403) must stay 4xx and not re-enqueue."""
+    def fail_terminal(_expense):
+        raise AppError(error_code, status_code=expected_status)
+
+    monkeypatch.setattr(_ocr, "extract_ocr_result", fail_terminal)
+    with SessionLocal() as db:
+        first = submit_expense_ocr_task(db, **retry_input, legacy=True)
+        first_id, payload = first.id, json.loads(first.input_payload_json)
+    background_task_worker.run_task(first_id, payload)
+    with SessionLocal() as db:
+        first = db.get(BackgroundTask, first_id)
+        assert first.status == "failed"
+        assert first.error_code == error_code
+        assert json.loads(first.execution_context_json)["failure_status_code"] == expected_status
+        with pytest.raises(AppError) as caught:
+            wait_legacy_ocr_result(db, first)
+        assert (caught.value.error, caught.value.status_code) == (error_code, expected_status)
+        repeated = submit_expense_ocr_task(db, **retry_input, legacy=True)
+        assert repeated.id == first_id
+        assert db.scalar(select(func.count()).select_from(BackgroundTask)
+            .where(BackgroundTask.task_type == "expense_ocr_retry")) == 1
+
+
+def test_rapidocr_provider_maps_ocr_input_changed_runtime_error_to_409_in_worker(
+    retry_input, monkeypatch, tmp_path,
+):
+    """Provider boundary must map OcrRuntimeError('ocr_input_changed') to 409, not 503."""
+    from app.services.ocr_service import _providers
+    from app.services.original_read_service import OriginalSnapshot
+    from ocr_runtime.protocol import OcrRuntimeError
+
+    sample = tmp_path / "sample.png"
+    sample.write_bytes(b"\x89PNG\r\n\x1a\n")
+    monkeypatch.setattr(
+        _providers,
+        "recognize_snapshot",
+        lambda _path, _sha: (_ for _ in ()).throw(OcrRuntimeError("ocr_input_changed")),
+    )
+    provider = _providers.RapidOcrProvider()
+    snapshot = OriginalSnapshot(
+        path=sample,
+        sha256="a" * 64,
+        media_type="image/png",
+        size_bytes=8,
+        verified=True,
+        source_modified_at=None,
+        _cleanup=lambda: None,
+    )
+
+    monkeypatch.setattr(_ocr, "extract_ocr_result", lambda _expense: provider.extract_snapshot(snapshot))
+    with SessionLocal() as db:
+        first = submit_expense_ocr_task(db, **retry_input, legacy=True)
+        first_id, payload = first.id, json.loads(first.input_payload_json)
+    background_task_worker.run_task(first_id, payload)
+    with SessionLocal() as db:
+        first = db.get(BackgroundTask, first_id)
+        assert first.status == "failed"
+        assert first.error_code == "ocr_input_changed"
+        assert json.loads(first.execution_context_json)["failure_status_code"] == 409
+        with pytest.raises(AppError) as caught:
+            wait_legacy_ocr_result(db, first)
+        assert (caught.value.error, caught.value.status_code) == ("ocr_input_changed", 409)
+        repeated = submit_expense_ocr_task(db, **retry_input, legacy=True)
+        assert repeated.id == first_id
+        assert db.scalar(select(func.count()).select_from(BackgroundTask)
+            .where(BackgroundTask.task_type == "expense_ocr_retry")) == 1
+
+
 def test_legacy_failed_attempt_remains_retryable_without_acknowledging_failure(retry_input, monkeypatch):
     def unavailable(_expense):
         raise AppError("ocr_model_missing", status_code=503)

@@ -25,13 +25,17 @@ from app.services.expense_service._enrichment_receipt import (
 from app.services.expense_service._helpers import (
     _replace_ocr_draft_items_from_text,
 )
-from app.services.expense_service._ocr_facts import append_ocr_fact, apply_ocr_result_and_append_fact
+from app.services.expense_service._ocr_facts import (
+    append_ocr_fact,
+    apply_ocr_result_and_append_fact,
+    resolve_legacy_ocr_eligibility,
+)
 from app.services.expense_service._thumbnail_publication import (
     claim_staged_thumbnail,
     publish_claimed_thumbnail,
 )
 from app.services.ocr_retry_receipt import stage_legacy_retry_receipt
-from app.services.ocr_service import OcrRun, collect_auto_ocr_extractions
+from app.services.ocr_service import OcrRun, can_apply_ocr_field, collect_auto_ocr_extractions
 from app.services.optimistic_concurrency import bump_row_version
 from app.services.original_read_service import read_original_snapshot
 from app.services.rule_service import classify_expense
@@ -220,7 +224,8 @@ def _apply_extractions(db: Session, expense: Expense, prepared: _PreparedEnrichm
             region_base(db, expense, extraction.result.evidence["regional_retry"])
         applied = apply_ocr_result_and_append_fact(db, expense=expense, result=extraction.result,
             provider_name=extraction.provider_name, ocr_model=extraction.ocr_model, timezone_name=timezone_name,
-            apply_to_draft=extraction.apply_to_draft)
+            apply_to_draft=extraction.apply_to_draft,
+            pre_claim_row_version=prepared.predecessor_row_version)
         if applied is not None:
             _replace_ocr_draft_items_from_text(db, expense, applied.raw_text, timezone_name=timezone_name)
     # Let the selected extraction claim the original draft first. Alternative
@@ -228,8 +233,19 @@ def _apply_extractions(db: Session, expense: Expense, prepared: _PreparedEnrichm
     for extraction in alternatives:
         apply_ocr_result_and_append_fact(db, expense=expense, result=extraction.result,
             provider_name=extraction.provider_name, ocr_model=extraction.ocr_model, timezone_name=timezone_name,
-            apply_to_draft=False, record_source_fact=False)
-    if expense.category == "其他":
+            apply_to_draft=False, record_source_fact=False,
+            pre_claim_row_version=prepared.predecessor_row_version)
+    allow_ocr_only, allow_untouched = resolve_legacy_ocr_eligibility(
+        db, expense, prepared.predecessor_row_version,
+    )
+    if expense.category == "其他" and can_apply_ocr_field(
+        expense,
+        "category",
+        is_empty_or_default=True,
+        effective_row_version=prepared.predecessor_row_version,
+        allow_legacy_ocr_only=allow_ocr_only,
+        allow_legacy_untouched=allow_untouched,
+    ):
         classify_expense(db, expense)
     ensure_category_preference_for_name(db, tenant_id=expense.tenant_id, name=expense.category)
     if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:

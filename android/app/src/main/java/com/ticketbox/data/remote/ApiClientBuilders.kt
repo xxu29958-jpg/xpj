@@ -4,6 +4,7 @@ import com.squareup.moshi.Moshi
 import com.ticketbox.data.remote.dto.addCategoryRuleWireAdapters
 import com.ticketbox.data.remote.dto.addBudgetWireAdapters
 import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
+import com.ticketbox.data.remote.dto.addExpenseUpdateWireAdapters
 import com.ticketbox.data.remote.dto.addRecurringWireAdapters
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.ticketbox.BuildConfig
@@ -159,6 +160,7 @@ internal fun buildApiService(normalizedBaseUrl: String, client: OkHttpClient): A
         .addBudgetWireAdapters()
         .addCategoryRuleWireAdapters()
         .addExpenseCorrectionWireAdapters()
+        .addExpenseUpdateWireAdapters()
         .addRecurringWireAdapters()
         .add(KotlinJsonAdapterFactory())
         .build()

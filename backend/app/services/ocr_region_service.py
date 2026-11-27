@@ -115,7 +115,9 @@ def extract_region(expense, request, base) -> OcrExtraction:
         with _original_snapshot(expense) as original:
             retry = recognize_region_snapshot(original.path, request["image_sha256"], request["box"])
     except OcrRuntimeError as exc:
-        raise AppError(exc.code, status_code=503) from exc
+        from app.services.ocr_service._models import ocr_runtime_error_status
+
+        raise AppError(exc.code, status_code=ocr_runtime_error_status(exc.code)) from exc
     evidence = merge_region_evidence(base, retry, request)
     text = "\n".join(block["text"].strip() for block in evidence["blocks"] if block["text"].strip())
     scores = [block["confidence"] for block in evidence["blocks"]]

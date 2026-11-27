@@ -51,6 +51,15 @@ class MonthlyArrangementDispatcherTest {
             assertIs<DispatchResult.Failure>(SaveMonthlyArrangementDispatcher({ api }, adapters.budget.arrangementSaveAdapter,
                 adapters.budget.arrangementReceiptAdapter).dispatch(row()))
         }
+        val missingRoute = object : ApiService by FakeApiService(mutableListOf(), 0) {
+            override suspend fun saveMonthlyArrangement(month: String, request: MonthlyArrangementChange, idempotencyKey: String): MonthlyArrangement {
+                throw HttpException(Response.error<MonthlyArrangement>(404,
+                    """{"detail":"Not Found"}""".toResponseBody()))
+            }
+        }
+        val refusal = assertIs<DispatchResult.Failure>(SaveMonthlyArrangementDispatcher({ missingRoute },
+            adapters.budget.arrangementSaveAdapter, adapters.budget.arrangementReceiptAdapter).dispatch(row()))
+        assertEquals("monthly_arrangement_unverified", refusal.message)
     }
     @Test fun occConflictRemainsAnOriginalRequiringReview() = runTest {
         val api = object : ApiService by FakeApiService(mutableListOf(), 0) {

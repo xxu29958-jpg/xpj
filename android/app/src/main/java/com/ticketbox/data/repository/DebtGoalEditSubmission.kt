@@ -75,10 +75,9 @@ class DebtGoalEditDispatcher(
                 DispatchResult.Success(newRowVersion = receipt.rowVersion, receiptJson = receiptAdapter.toJson(receipt))
             }
         } catch (error: HttpException) {
-            when (val result = mapOutboxHttpException(error)) {
-                is DispatchResult.Discarded -> DispatchResult.Failure("目标无法读取，原修改已保留，请核对。", definitelyRejected = true)
-                else -> result
-            }
+            val result = mapOutboxHttpException(error)
+            if (error.code() == 404) DispatchResult.Failure("目标无法读取，原修改已保留，请核对。", definitelyRejected = true)
+            else result
         } catch (error: IOException) {
             logNetworkWarning("operation=$type transport interrupted", error)
             DispatchResult.RetryableFailure("目标修改的连接中断，将继续核对原提交。")

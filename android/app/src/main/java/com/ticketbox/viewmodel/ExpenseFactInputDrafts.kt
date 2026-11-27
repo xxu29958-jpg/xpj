@@ -3,6 +3,7 @@ package com.ticketbox.viewmodel
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.ticketbox.data.remote.dto.addExpenseUpdateWireAdapters
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseItems
@@ -62,7 +63,11 @@ internal data class ExpenseFactInputDraft(
 data class PendingReviewValues(val value: String? = null, val custom: String = "", val confirmed: Boolean = false)
 
 internal object ExpenseFactInputCodec {
-    private val adapter = Moshi.Builder().add(KotlinJsonAdapterFactory()).build().adapter(ExpenseFactInputDraft::class.java)
+    private val adapter = Moshi.Builder()
+        .addExpenseUpdateWireAdapters()
+        .add(KotlinJsonAdapterFactory())
+        .build()
+        .adapter(ExpenseFactInputDraft::class.java)
     fun encode(draft: ExpenseFactInputDraft): String = adapter.toJson(draft.copy(baseline = draft.baseline.copy(
         imagePath = null, thumbnailPath = null, fxTask = null)))
     fun decode(json: String, expenseId: Long): ExpenseFactInputDraft = requireNotNull(adapter.fromJson(json)).also {

@@ -163,8 +163,12 @@ class MemoryStores:
         self._app_dir = app_dir
         self._data_root = data_root
         self._active: ActiveOperation | None = None
+        self._active_after_history_len = 0
+        self._active_binding_seq = 0
         self._history: list[ActiveOperation] = []
         self._binding: InstallationBinding | None = None
+        self._binding_history_len = 0
+        self._binding_seq = 0
         self.binding_publish_count = 0
         self.operation_store_prepared = False
         self.fresh_inputs_check_count = 0
@@ -209,6 +213,47 @@ class MemoryStores:
 
     def list_committed(self) -> tuple[ActiveOperation, ...]:
         return tuple(self._history)
+
+    def written_strictly_after_binding(
+        self,
+        operation_id: str,
+        *,
+        is_active: bool = False,
+    ) -> bool:
+        if self._binding is None:
+            return False
+        if is_active:
+            return (
+                self._active is not None
+                and self._active.operation_id == operation_id
+                and self._active_binding_seq == self._binding_seq
+                and self._active_after_history_len >= self._binding_history_len
+            )
+        indices = [idx for idx, item in enumerate(self._history) if item.operation_id == operation_id]
+        return bool(indices) and indices[-1] >= self._binding_history_len
+
+    def committed_strictly_after(
+        self,
+        earlier_operation_id: str,
+        later_operation_id: str,
+        *,
+        later_is_active: bool = False,
+    ) -> bool:
+        earlier_indices = [
+            idx for idx, item in enumerate(self._history) if item.operation_id == earlier_operation_id
+        ]
+        if not earlier_indices:
+            return False
+        if later_is_active:
+            return (
+                self._active is not None
+                and self._active.operation_id == later_operation_id
+                and self._active_after_history_len > earlier_indices[-1]
+            )
+        later_indices = [
+            idx for idx, item in enumerate(self._history) if item.operation_id == later_operation_id
+        ]
+        return bool(later_indices) and later_indices[-1] > earlier_indices[-1]
 
     def bind_and_verify(
         self,
@@ -257,6 +302,8 @@ class MemoryStores:
         if operation.schema != OPERATION_SCHEMA:
             raise LifecycleViolation("bad_operation_schema", "active operation schema")
         self._active = operation
+        self._active_after_history_len = len(self._history)
+        self._active_binding_seq = self._binding_seq
 
     def archive_committed(self, operation: ActiveOperation) -> None:
         if operation.phase != "committed":
@@ -308,6 +355,8 @@ class MemoryStores:
                 raise LifecycleViolation("second_writer", "installation.json publisher must be unique")
         self._binding = binding
         self.binding_publish_count += 1
+        self._binding_seq += 1
+        self._binding_history_len = len(self._history)
 
     @property
     def history(self) -> list[ActiveOperation]:

@@ -17,6 +17,7 @@ import com.ticketbox.data.remote.dto.MerchantAliasUpdateRequest
 import com.ticketbox.data.remote.dto.addBudgetWireAdapters
 import com.ticketbox.data.remote.dto.addCategoryRuleWireAdapters
 import com.ticketbox.data.remote.dto.addExpenseCorrectionWireAdapters
+import com.ticketbox.data.remote.dto.addExpenseUpdateWireAdapters
 import com.ticketbox.data.remote.dto.addRecurringWireAdapters
 import com.ticketbox.data.repository.ExpenseOffsetVoidOutboxPayload
 import com.ticketbox.data.repository.lazyJsonAdapter
@@ -40,6 +41,7 @@ internal class OutboxAdapterGraph {
     private val moshi: Moshi by lazy {
         Moshi.Builder()
             .addExpenseCorrectionWireAdapters()
+            .addExpenseUpdateWireAdapters()
             .addRecurringWireAdapters()
             .addBudgetWireAdapters()
             .addCategoryRuleWireAdapters()
