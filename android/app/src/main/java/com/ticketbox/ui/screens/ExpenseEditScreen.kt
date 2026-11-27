@@ -425,26 +425,16 @@ fun ExpenseEditScreen(
         }
         val funding = if (confirming) runCatching { com.ticketbox.data.repository.readExpenseFunding(state.fundingJson, currency, originalMinor) }
             .getOrElse { message = it.message; return null } else emptyList()
-        val baselineAmountMinor = currentExpense.originalAmountMinor ?: currentExpense.amountCents
-        val clearAmount = isPendingExpense && originalMinor == null && baselineAmountMinor != null
-        val baselineMerchant = currentExpense.merchant.orEmpty().trim()
-        val submittedMerchant = merchant.trim().takeUnless { it == baselineMerchant }
-        val normalizedCategory = category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) }
-        val baselineCategory = currentExpense.category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) }
-        val submittedCategory = normalizedCategory?.takeIf { categoryChoice != null || it != baselineCategory }
+        val ownership = submittedExpenseDraftOwnership(
+            SubmittedDraftInput(currentExpense, confirming, originalMinor, merchant, category, categoryChoice),
+        )
         return ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = currency,
             originalAmountMinor = originalMinor,
             manualExchangeRate = manualRate.rate?.takeIf { manualExchangeRateNeedsReview },
-            // Preserve untouched / explicit set / explicit clear states:
-            // untouched merchant stays null (omitted from PATCH so OCR ownership
-            // is preserved), while clearing a non-blank baseline sends "".
-            merchant = submittedMerchant,
-            // Untouched category stays null (omitted from PATCH so OCR/rules
-            // remain eligible on default "其他"), while an explicit user pick
-            // (including re-selecting "其他") sets categoryChoice != null and sends it.
-            category = submittedCategory,
+            merchant = ownership.merchant,
+            category = ownership.category,
             categoryChoice = categoryChoice,
             categoryDecisionPublicId = categoryDecisionPublicId,
             recognitionTimeChoice = timeForm.recognitionChoice,
@@ -457,7 +447,7 @@ fun ExpenseEditScreen(
             valueScore = valueScore,
             regretScore = regretScore,
             funding = funding,
-            clearAmount = clearAmount,
+            clearAmount = ownership.clearAmount,
         )
     }
 
@@ -848,4 +838,39 @@ private fun allowsFactMutation(readOnly: Boolean, commandOpen: Boolean) = !readO
 internal fun editInitialCategory(expense: Expense): String {
     val raw = expense.serverCategory ?: expense.category
     return if (isUncategorizedExpenseCategory(raw)) "" else expense.category
+}
+
+private data class SubmittedDraftInput(
+    val baseline: Expense,
+    val confirming: Boolean,
+    val originalMinor: Long?,
+    val merchant: String,
+    val category: String,
+    val categoryChoice: String?,
+)
+
+private data class SubmittedDraftOwnership(
+    val clearAmount: Boolean,
+    val merchant: String?,
+    val category: String?,
+)
+
+private fun submittedExpenseDraftOwnership(input: SubmittedDraftInput): SubmittedDraftOwnership {
+    val baselineAmountMinor = input.baseline.originalAmountMinor ?: input.baseline.amountCents
+    val clearAmount = input.baseline.status == "pending" && input.originalMinor == null && baselineAmountMinor != null
+    val baselineMerchant = input.baseline.merchant.orEmpty().trim()
+    val trimmedMerchant = input.merchant.trim()
+    val submittedMerchant = if (input.confirming) {
+        trimmedMerchant.takeUnless { it.isEmpty() && baselineMerchant.isEmpty() }
+    } else {
+        trimmedMerchant.takeUnless { it == baselineMerchant }
+    }
+    val normalizedCategory = input.category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) }
+    val baselineCategory = input.baseline.category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) }
+    val submittedCategory = normalizedCategory?.takeIf { input.categoryChoice != null || it != baselineCategory }
+    return SubmittedDraftOwnership(
+        clearAmount = clearAmount,
+        merchant = submittedMerchant,
+        category = submittedCategory,
+    )
 }

@@ -1097,7 +1097,7 @@ def test_uninstall_recovers_interrupted_committed_active_and_rejects_tampered_fa
             def _boom(*_a, **_kw):
                 raise LifecycleError("uninstall_cleanup_io", "simulated transient cleanup failure")
 
-            plat.cleanup_registered_release_payloads = _boom  # type: ignore[method-assign]
+            setattr(plat, "cleanup_registered_release_payloads", _boom)
         return plat
 
     committed_active = _make_uninstall_operation(
@@ -1190,10 +1190,7 @@ def test_uninstall_recovers_interrupted_committed_active_and_rejects_tampered_fa
         assert uninst_exc.value.code == expected_code
 
 
-def test_uninstall_first_commit_publish_io_failure_stays_recoverable_and_retries(
-    tmp_path: Path,
-) -> None:
-    from ticketbox_lifecycle.domain.uninstall import check_uninstall_preflight
+def _make_fs_commit_fail_harness(tmp_path: Path):
     from ticketbox_lifecycle.policy.windows_scm_contract import (
         SERVICE_DEMAND_START,
         expected_backend_service,
@@ -1221,7 +1218,6 @@ def test_uninstall_first_commit_publish_io_failure_stays_recoverable_and_retries
         operation_id=op_id,
         release_manifest_sha256=manifest_sha,
     )
-
     machine_root = tmp_path / "fs-commit-fail" / "machine"
     fs_stores = FilesystemStores(
         machine_root,
@@ -1247,8 +1243,20 @@ def test_uninstall_first_commit_publish_io_failure_stays_recoverable_and_retries
             shortcut_remover=lambda: False,
         )
 
-    # Fault injection: first publish_active(phase="committed") raises transient OSError BEFORE replacing active.json.
+    return app_dir, manifest_sha, op_id, uninstall_req, machine_root, fs_stores, make_platform
+
+
+def test_uninstall_first_commit_publish_io_failure_stays_recoverable_and_retries(
+    tmp_path: Path,
+) -> None:
+    from ticketbox_lifecycle.domain.uninstall import check_uninstall_preflight
+
+    app_dir, manifest_sha, op_id, uninstall_req, machine_root, fs_stores, make_platform = (
+        _make_fs_commit_fail_harness(tmp_path)
+    )
     real_publish = fs_stores.publish_active
+
+    # Fault injection B1: first publish_active(phase="committed") raises transient OSError BEFORE replacing active.json.
     injected = {"triggered": False}
 
     def flaky_publish(operation):
@@ -1257,20 +1265,16 @@ def test_uninstall_first_commit_publish_io_failure_stays_recoverable_and_retries
             raise OSError("simulated transient replace failure before commit publish")
         real_publish(operation)
 
-    fs_stores.publish_active = flaky_publish  # type: ignore[method-assign]
-
+    setattr(fs_stores, "publish_active", flaky_publish)
     first = uninstall(fs_stores.as_lifecycle_stores(), uninstall_req, make_platform())
     assert injected["triggered"] is True
     assert first.ok is False
     assert first.phase == "failed_recoverable"
     assert fs_stores.read_committed(op_id) is None
     persisted = fs_stores.read_active()
-    assert persisted is not None
-    assert persisted.phase == "failed_recoverable"
-    assert persisted.no_return_point is True
+    assert persisted is not None and persisted.phase == "failed_recoverable" and persisted.no_return_point is True
 
-    # Preflight and retry recover cleanly even though releases/1.3.0 was already removed before the OSError.
-    fs_stores.publish_active = real_publish  # type: ignore[method-assign]
+    setattr(fs_stores, "publish_active", real_publish)
     check_uninstall_preflight(fs_stores.as_lifecycle_stores())
     recovered = uninstall(fs_stores.as_lifecycle_stores(), uninstall_req, make_platform())
     assert recovered.ok is True
@@ -1290,7 +1294,7 @@ def test_uninstall_first_commit_publish_io_failure_stays_recoverable_and_retries
             post_replace["triggered"] = True
             raise OSError("simulated transient post-replace verify failure after commit persisted")
 
-    fs_stores.publish_active = post_replace_fail  # type: ignore[method-assign]
+    setattr(fs_stores, "publish_active", post_replace_fail)
     partial = uninstall(fs_stores.as_lifecycle_stores(), uninstall_req, make_platform())
     assert post_replace["triggered"] is True
     assert partial.ok is False
@@ -1298,7 +1302,7 @@ def test_uninstall_first_commit_publish_io_failure_stays_recoverable_and_retries
     persisted_commit = fs_stores.read_active()
     assert persisted_commit is not None and persisted_commit.phase == "committed"
 
-    fs_stores.publish_active = real_publish  # type: ignore[method-assign]
+    setattr(fs_stores, "publish_active", real_publish)
     check_uninstall_preflight(fs_stores.as_lifecycle_stores())
     finished = uninstall(fs_stores.as_lifecycle_stores(), uninstall_req, make_platform())
     assert finished.ok is True
@@ -1306,11 +1310,19 @@ def test_uninstall_first_commit_publish_io_failure_stays_recoverable_and_retries
     assert fs_stores.read_active() is None
     assert fs_stores.read_committed(op_id) is not None
 
-    # Sub-case B3a: commit publish fails before os.replace AND fallback failed_recoverable publish succeeds at
-    # os.replace then raises on post-replace verify -> readback matches disk ("failed_recoverable") and retry works.
-    (machine_root / "operations" / "history" / f"{op_id}.json").unlink()
-    assert _write_release_manifest(app_dir, "1.3.0") == manifest_sha
 
+def test_uninstall_double_publish_io_failure_readback_matches_durable_phase(
+    tmp_path: Path,
+) -> None:
+    from ticketbox_lifecycle.domain.uninstall import check_uninstall_preflight
+
+    app_dir, manifest_sha, op_id, uninstall_req, machine_root, fs_stores, make_platform = (
+        _make_fs_commit_fail_harness(tmp_path)
+    )
+    real_publish = fs_stores.publish_active
+
+    # Sub-case B3a: commit publish fails before os.replace AND fallback failed_recoverable succeeds at os.replace
+    # then raises on post-replace verify -> readback matches disk ("failed_recoverable") and retry succeeds.
     def commit_fail_fallback_post_verify_fail(operation):
         if operation.phase == "committed":
             raise OSError("simulated replace failure before commit publish")
@@ -1318,24 +1330,20 @@ def test_uninstall_first_commit_publish_io_failure_stays_recoverable_and_retries
         if operation.phase == "failed_recoverable":
             raise OSError("simulated transient post-replace verify failure after failed_recoverable persisted")
 
-    fs_stores.publish_active = commit_fail_fallback_post_verify_fail  # type: ignore[method-assign]
+    setattr(fs_stores, "publish_active", commit_fail_fallback_post_verify_fail)
     double_transient = uninstall(fs_stores.as_lifecycle_stores(), uninstall_req, make_platform())
     assert double_transient.ok is False
     assert double_transient.phase == "failed_recoverable"
     persisted_b3a = fs_stores.read_active()
-    assert persisted_b3a is not None
-    assert persisted_b3a.phase == "failed_recoverable"
-    assert persisted_b3a.no_return_point is True
+    assert persisted_b3a is not None and persisted_b3a.phase == "failed_recoverable" and persisted_b3a.no_return_point is True
 
-    fs_stores.publish_active = real_publish  # type: ignore[method-assign]
+    setattr(fs_stores, "publish_active", real_publish)
     check_uninstall_preflight(fs_stores.as_lifecycle_stores())
     recovered_b3a = uninstall(fs_stores.as_lifecycle_stores(), uninstall_req, make_platform())
-    assert recovered_b3a.ok is True
-    assert recovered_b3a.phase == "committed"
+    assert recovered_b3a.ok is True and recovered_b3a.phase == "committed"
     assert fs_stores.read_active() is None
 
-    # Sub-case B3b: both commit and fallback fail BEFORE os.replace -> disk & receipt both stay "prepared"
-    # and preflight intentionally blocks as uninstall_operation_active.
+    # Sub-case B3b: both commit and fallback fail BEFORE os.replace -> disk & receipt stay "prepared".
     (machine_root / "operations" / "history" / f"{op_id}.json").unlink()
     assert _write_release_manifest(app_dir, "1.3.0") == manifest_sha
 
@@ -1344,19 +1352,17 @@ def test_uninstall_first_commit_publish_io_failure_stays_recoverable_and_retries
             raise OSError("simulated persistent disk I/O failure before replace")
         real_publish(operation)
 
-    fs_stores.publish_active = both_fail_before_replace  # type: ignore[method-assign]
+    setattr(fs_stores, "publish_active", both_fail_before_replace)
     double_pre_replace = uninstall(fs_stores.as_lifecycle_stores(), uninstall_req, make_platform())
-    assert double_pre_replace.ok is False
-    assert double_pre_replace.phase == "prepared"
+    assert double_pre_replace.ok is False and double_pre_replace.phase == "prepared"
     persisted_b3b = fs_stores.read_active()
     assert persisted_b3b is not None and persisted_b3b.phase == "prepared"
-    fs_stores.publish_active = real_publish  # type: ignore[method-assign]
+    setattr(fs_stores, "publish_active", real_publish)
     with pytest.raises(LifecycleViolation) as prepared_exc:
         check_uninstall_preflight(fs_stores.as_lifecycle_stores())
     assert prepared_exc.value.code == "uninstall_operation_active"
 
-    # Sub-case B3c: fallback publish raises OSError AND readback sees corrupt JSON (JSONDecodeError/ValueError) ->
-    # uninstall still returns a sanitized CommandResult(ok=False) instead of leaking JSONDecodeError.
+    # Sub-case B3c: fallback publish raises OSError AND readback sees corrupt JSON (JSONDecodeError/ValueError).
     (machine_root / "operations" / "active.json").unlink()
     assert _write_release_manifest(app_dir, "1.3.0") == manifest_sha
 
@@ -1368,11 +1374,10 @@ def test_uninstall_first_commit_publish_io_failure_stays_recoverable_and_retries
             raise OSError("simulated post-replace verify failure leaving corrupt json")
         real_publish(operation)
 
-    fs_stores.publish_active = fail_and_corrupt_active  # type: ignore[method-assign]
+    setattr(fs_stores, "publish_active", fail_and_corrupt_active)
     corrupt_readback = uninstall(fs_stores.as_lifecycle_stores(), uninstall_req, make_platform())
-    assert corrupt_readback.ok is False
-    assert corrupt_readback.phase == "prepared"
-    fs_stores.publish_active = real_publish  # type: ignore[method-assign]
+    assert corrupt_readback.ok is False and corrupt_readback.phase == "prepared"
+    setattr(fs_stores, "publish_active", real_publish)
 
 
 def test_uninstall_reinstall_then_baseline_uninstall_immediate_replay_succeeds_and_ties_fail_closed(

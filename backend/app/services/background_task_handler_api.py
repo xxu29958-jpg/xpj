@@ -115,8 +115,9 @@ def mark_failed(
         else:
             task.status, task.completed_at, task.recovery_after = "failed", now_utc(), None
             task.error_code, task.error_message = error_code, error_message
-            _record_failure_status(task, failure_status_code)
             schedule_task_recovery(task)
+            if task.status == "failed":
+                _record_failure_status(task, failure_status_code)
     db.commit()
 
 

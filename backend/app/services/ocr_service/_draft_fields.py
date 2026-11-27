@@ -182,35 +182,7 @@ def can_apply_ocr_field(
     return is_empty_or_default
 
 
-def _legacy_pending_ocr_draft_fields(
-    expense: Expense,
-    *,
-    effective_row_version: int | None = None,
-    allow_legacy_ocr_only: bool = False,
-) -> set[str]:
-    if expense.status != "pending":
-        return set()
-    eff_ver = expense.row_version if effective_row_version is None else effective_row_version
-    if eff_ver is not None and eff_ver > 1 and not allow_legacy_ocr_only:
-        return set()
-    # v1.2 OCR single-source migration (step 5): the legacy gate
-    # used to require non-empty ``expense.raw_text`` *and* a non-null
-    # confidence. Confidence alone is the more reliable "OCR ran"
-    # signal — ``apply_ocr_result`` sets it on every successful pass
-    # and was already the second half of the original AND. Dropping
-    # the raw_text check lets us stay off the deprecated column
-    # without losing legacy-row detection for any expense that has
-    # been OCR'd.
-    if expense.confidence is None:
-        return set()
-    if not allow_legacy_ocr_only:
-        created_at = ensure_utc(expense.created_at)
-        updated_at = ensure_utc(expense.updated_at)
-        if created_at is None or updated_at is None:
-            return set()
-        if updated_at - created_at > LEGACY_AUTO_OCR_WINDOW:
-            return set()
-
+def _populated_legacy_draft_fields(expense: Expense) -> set[str]:
     fields: set[str] = set()
     if expense.amount_cents is not None:
         fields.add("amount_cents")
@@ -221,6 +193,22 @@ def _legacy_pending_ocr_draft_fields(
     if expense.expense_time is not None:
         fields.add("expense_time")
     return fields
+
+
+def _legacy_pending_ocr_draft_fields(
+    expense: Expense,
+    *,
+    effective_row_version: int | None = None,
+    allow_legacy_ocr_only: bool = False,
+) -> set[str]:
+    if expense.status != "pending" or expense.confidence is None:
+        return set()
+    eff_ver = expense.row_version if effective_row_version is None else effective_row_version
+    if eff_ver is not None and eff_ver > 1 and not allow_legacy_ocr_only:
+        return set()
+    if not allow_legacy_ocr_only and not is_within_legacy_auto_ocr_window(expense):
+        return set()
+    return _populated_legacy_draft_fields(expense)
 
 
 def _write_ocr_draft_fields(expense: Expense, fields: set[str]) -> None:

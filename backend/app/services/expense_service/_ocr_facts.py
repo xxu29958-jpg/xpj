@@ -23,14 +23,7 @@ from app.services.ocr_service._draft_fields import is_within_legacy_auto_ocr_win
 _HUMAN_LEARNING_EVENT_TYPES = frozenset({"edit", "manual_override", "accept", "reject"})
 
 
-def has_proven_ocr_only_version_chain(
-    db: Session,
-    expense: Expense,
-    pre_claim_row_version: int,
-) -> bool:
-    """True when DB records prove every version bump up to ``pre_claim_row_version`` was OCR-only."""
-    if (expense.source or "") == "手动记账" or expense.id is None or pre_claim_row_version < 1:
-        return False
+def _has_non_ocr_expense_changes(db: Session, expense: Expense) -> bool:
     has_rule_change = db.scalar(
         select(RuleApplicationChange.id)
         .where(
@@ -40,7 +33,7 @@ def has_proven_ocr_only_version_chain(
         .limit(1)
     )
     if has_rule_change is not None:
-        return False
+        return True
     has_human_learning = db.scalar(
         select(LedgerLearningEvent.id)
         .where(
@@ -51,7 +44,37 @@ def has_proven_ocr_only_version_chain(
         )
         .limit(1)
     )
-    if has_human_learning is not None:
+    return has_human_learning is not None
+
+
+def _ocr_task_completed_version_step(task: BackgroundTask) -> int | None:
+    try:
+        payload = json.loads(task.input_payload_json or "{}")
+        summary = json.loads(task.result_summary_json or "{}")
+    except (TypeError, ValueError):
+        return None
+    expected_ver = payload.get("expected_row_version")
+    result_ver = summary.get("row_version")
+    outcome = summary.get("outcome")
+    if (
+        isinstance(expected_ver, int)
+        and isinstance(result_ver, int)
+        and result_ver == expected_ver + 1
+        and outcome in {"updated", "no_result"}
+    ):
+        return expected_ver
+    return None
+
+
+def has_proven_ocr_only_version_chain(
+    db: Session,
+    expense: Expense,
+    pre_claim_row_version: int,
+) -> bool:
+    """True when DB records prove every version bump up to ``pre_claim_row_version`` was OCR-only."""
+    if (expense.source or "") == "手动记账" or expense.id is None or pre_claim_row_version < 1:
+        return False
+    if _has_non_ocr_expense_changes(db, expense):
         return False
     if pre_claim_row_version == 1:
         return True
@@ -65,23 +88,11 @@ def has_proven_ocr_only_version_chain(
             BackgroundTask.result_summary_json.is_not(None),
         )
     )
-    steps: set[int] = set()
-    for task in tasks:
-        try:
-            payload = json.loads(task.input_payload_json or "{}")
-            summary = json.loads(task.result_summary_json or "{}")
-        except (TypeError, ValueError):
-            continue
-        expected_ver = payload.get("expected_row_version")
-        result_ver = summary.get("row_version")
-        outcome = summary.get("outcome")
-        if (
-            isinstance(expected_ver, int)
-            and isinstance(result_ver, int)
-            and result_ver == expected_ver + 1
-            and outcome in {"updated", "no_result"}
-        ):
-            steps.add(expected_ver)
+    steps = {
+        step
+        for task in tasks
+        if (step := _ocr_task_completed_version_step(task)) is not None
+    }
     return all(version in steps for version in range(1, pre_claim_row_version))
 
 

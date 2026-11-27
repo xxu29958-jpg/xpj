@@ -211,6 +211,9 @@ def _apply_extractions(db: Session, expense: Expense, prepared: _PreparedEnrichm
                        timezone_name: str | None) -> bool:
     """Stage draft fields and immutable facts under the caller's apply locks."""
     occ_snapshot = _enrichment_occ_snapshot(expense)
+    pre_claim_row_version = getattr(prepared, "predecessor_row_version", None)
+    if pre_claim_row_version is None:
+        pre_claim_row_version = expense.row_version or 1
     alternatives = []
     for extraction in prepared.ocr_run.extractions:
         if not extraction.apply_to_draft:
@@ -225,7 +228,7 @@ def _apply_extractions(db: Session, expense: Expense, prepared: _PreparedEnrichm
         applied = apply_ocr_result_and_append_fact(db, expense=expense, result=extraction.result,
             provider_name=extraction.provider_name, ocr_model=extraction.ocr_model, timezone_name=timezone_name,
             apply_to_draft=extraction.apply_to_draft,
-            pre_claim_row_version=prepared.predecessor_row_version)
+            pre_claim_row_version=pre_claim_row_version)
         if applied is not None:
             _replace_ocr_draft_items_from_text(db, expense, applied.raw_text, timezone_name=timezone_name)
     # Let the selected extraction claim the original draft first. Alternative
@@ -234,15 +237,15 @@ def _apply_extractions(db: Session, expense: Expense, prepared: _PreparedEnrichm
         apply_ocr_result_and_append_fact(db, expense=expense, result=extraction.result,
             provider_name=extraction.provider_name, ocr_model=extraction.ocr_model, timezone_name=timezone_name,
             apply_to_draft=False, record_source_fact=False,
-            pre_claim_row_version=prepared.predecessor_row_version)
+            pre_claim_row_version=pre_claim_row_version)
     allow_ocr_only, allow_untouched = resolve_legacy_ocr_eligibility(
-        db, expense, prepared.predecessor_row_version,
+        db, expense, pre_claim_row_version,
     )
     if expense.category == "其他" and can_apply_ocr_field(
         expense,
         "category",
         is_empty_or_default=True,
-        effective_row_version=prepared.predecessor_row_version,
+        effective_row_version=pre_claim_row_version,
         allow_legacy_ocr_only=allow_ocr_only,
         allow_legacy_untouched=allow_untouched,
     ):

@@ -382,8 +382,13 @@ class OpenApiContractGateTest {
     // ── reflection: the DTO's wire names (@param:Json name, else the property name) ──
     private fun dtoJsonNames(dto: KClass<*>): Set<String> {
         val ctor = dto.primaryConstructor ?: error("${dto.simpleName} has no primary constructor")
-        return ctor.parameters.map { param ->
-            param.annotations.filterIsInstance<Json>().firstOrNull()?.name ?: param.name!!
+        return ctor.parameters.mapNotNull { param ->
+            val json = param.annotations.filterIsInstance<Json>().firstOrNull()
+            if (json?.ignore == true) {
+                null
+            } else {
+                json?.name?.takeIf { it != Json.UNSET_NAME } ?: param.name!!
+            }
         }.toSet()
     }
 

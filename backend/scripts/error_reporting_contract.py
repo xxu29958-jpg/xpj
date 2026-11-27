@@ -380,7 +380,7 @@ REVIEWED_BOUNDARIES = {
         "reason": "Terminal domain boundary for controlled reinstall: fences Backend on failure, marks active operation failed_recoverable, maps known LifecycleError codes and static unhandled errors without exposing private exception details.",
     },
     ("distribution/windows/lifecycle/ticketbox_lifecycle/domain/uninstall.py", "_uninstall_locked"): {
-        "sha256": "ef69bac35e9e60cf63edd64dae53fc08c50c2a9dacb16c7aadf67fd03200e70b",
+        "sha256": "c70b5e15a59dd184f113c5b6d3b1baf8b00a5842883d861c762951f54f31266e",
         "owner": "existing Lifecycle CommandResult private result file and sanitized CLI stderr",
         "test": "distribution/windows/tests/test_uninstall_lifecycle.py::test_uninstall_first_commit_publish_io_failure_stays_recoverable_and_retries",
         "reason": "Terminal domain boundary for controlled uninstall: checks matching committed active/history before release-manifest verification, flips durable_committed only after publish_active(committed) succeeds (or on committed_operation_immutable / committed active readback), attempts to persist failed_recoverable on pre-commit failure and reads back active.json on publish failure (catching LifecycleError, OSError, and ValueError) so CommandResult.phase reflects observed durable state when readable (falling back to the last confirmed phase if readback also fails; when starting from prepared and both publish calls fail before replacing active.json, disk remains prepared and preflight intentionally blocks as uninstall_operation_active, whereas a retry starting from failed_recoverable keeps failed_recoverable), and returns static sanitized CommandResult codes without exposing raw exception text.",

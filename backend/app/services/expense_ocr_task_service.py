@@ -76,6 +76,17 @@ def _terminal_refusal_status(task: BackgroundTask) -> int | None:
     return _TERMINAL_OCR_REFUSAL_STATUS.get(task.error_code or "")
 
 
+def _is_legacy_retryable_failed_task(task: BackgroundTask) -> bool:
+    return (
+        task.status == "failed"
+        and task.error_code not in INTERRUPTED_TASK_CODES
+        and _terminal_refusal_status(task) is None
+        and task.result_summary_json is None
+        and task.cancellation_requested_at is None
+        and task.recovery_attempts == 0
+    )
+
+
 def _existing_task(db: Session, claim, *, legacy: bool) -> BackgroundTask | Expense | None:
     if claim.kind == IdempotencyOutcomeKind.FINGERPRINT_MISMATCH:
         raise AppError("idempotency_key_reused", status_code=422)
@@ -92,11 +103,7 @@ def _existing_task(db: Session, claim, *, legacy: bool) -> BackgroundTask | Expe
         raise AppError("task_not_found", status_code=404)
     # Legacy errors were never successful command acknowledgements. A later
     # retry may compute again, but cancellation, terminal refusals, and an applied receipt are final.
-    if (legacy and task.status == "failed"
-            and task.error_code not in INTERRUPTED_TASK_CODES
-            and _terminal_refusal_status(task) is None
-            and task.result_summary_json is None and task.cancellation_requested_at is None
-            and task.recovery_attempts == 0):
+    if legacy and _is_legacy_retryable_failed_task(task):
         return None
     return task
 
