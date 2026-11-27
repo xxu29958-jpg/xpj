@@ -83,7 +83,7 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
         originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
         val intent = stateIntent(PendingMutationType.ConfirmExpense, expense, draft.funding,
-            changes = draft.toRequest(baseline = expense).copy(expectedRowVersion = null))
+            changes = draft.toRequest(baseline = expense, confirming = true).copy(expectedRowVersion = null))
         ExpenseCommandAcceptance(projectOptimisticExpense(expense, draft), admit(expectedBinding, listOf(intent), originalInput))
     }
 

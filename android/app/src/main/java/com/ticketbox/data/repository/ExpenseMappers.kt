@@ -350,7 +350,22 @@ fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): Expen
     )
 }
 
-fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
+private fun resolveRequestMerchant(merchant: String?, baseline: Expense?, confirming: Boolean): String? {
+    if (baseline == null) return merchant
+    val trimmed = merchant?.trim() ?: return null
+    if (confirming && trimmed.isNotEmpty()) return trimmed
+    return trimmed.takeUnless { it == baseline.merchant?.trim().orEmpty() }
+}
+
+private fun resolveRequestCategory(category: String?, categoryChoice: String?, baseline: Expense?): String? {
+    val normalized = category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory)
+    if (baseline == null) return normalized
+    if (normalized == null) return null
+    val baselineCategory = baseline.category.trim().takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory)
+    return normalized.takeIf { categoryChoice != null || it != baselineCategory }
+}
+
+fun ExpenseDraft.toRequest(baseline: Expense?, confirming: Boolean = false): ExpenseUpdateRequest {
     val submittedOriginalMinor = if (clearAmount) null else (originalAmountMinor ?: amountCents)
     val submittedCurrency = originalCurrencyCode
         ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
@@ -367,21 +382,8 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
     val timeChanged = baseline != null && expenseTime != baseline.expenseTime
     val changedTimeInput = timeInput?.takeUnless { it.matches(baseline?.accountingTime) }
     val legacyTime = expenseTime.takeIf { timeInput == null && (isCreate || timeChanged) }
-    val baselineMerchant = baseline?.merchant?.trim().orEmpty()
-    val requestMerchant = when {
-        isCreate -> merchant
-        merchant == null -> null
-        merchant.trim() == baselineMerchant -> null
-        else -> merchant.trim()
-    }
-    val normalizedCategory = category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory)
-    val baselineCategory = baseline?.category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory)
-    val requestCategory = when {
-        isCreate -> normalizedCategory
-        normalizedCategory == null -> null
-        categoryChoice != null || normalizedCategory != baselineCategory -> normalizedCategory
-        else -> null
-    }
+    val requestMerchant = resolveRequestMerchant(merchant, baseline, confirming)
+    val requestCategory = resolveRequestCategory(category, categoryChoice, baseline)
 
     return ExpenseUpdateRequest(
         recognitionTimeChoice = recognitionTimeChoice,

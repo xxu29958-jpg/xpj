@@ -242,7 +242,7 @@ class ExpenseMappersTest {
             ),
         ).toDomain()
 
-        val request = ExpenseDraft(
+        val draft = ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = CurrencyCode.USD,
             originalAmountMinor = 12345,
@@ -253,7 +253,8 @@ class ExpenseMappersTest {
             tags = null,
             valueScore = null,
             regretScore = null,
-        ).toRequest(baseline = baseline)
+        )
+        val request = draft.toRequest(baseline = baseline)
 
         assertEquals(null, request.originalCurrency)
         assertEquals(null, request.originalAmount)
@@ -263,6 +264,7 @@ class ExpenseMappersTest {
         assertEquals(null, request.merchant)
         assertEquals(null, request.category)
         assertEquals(1L, request.expectedRowVersion)
+        assertEquals("测试商家", draft.toRequest(baseline = baseline, confirming = true).merchant)
     }
 
     @Test
