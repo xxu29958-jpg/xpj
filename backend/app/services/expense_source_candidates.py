@@ -26,7 +26,9 @@ class SourceEventDraft:
 
 
 def stage_source_event_drafts(db: Session, *, expense: Expense, result: OcrResult, parsed,
-        provider_name: str, ocr_model: str | None, use_source_draft: bool = True) -> list[SourceEventDraft]:
+        provider_name: str, ocr_model: str | None, use_source_draft: bool = True,
+        effective_row_version: int | None = None, allow_legacy_ocr_only: bool = False,
+        allow_legacy_untouched: bool = False) -> list[SourceEventDraft]:
     """One source lock serializes retries; existing siblings are never edited here.
 
     The original upload remains the first candidate. Each additional candidate
@@ -43,6 +45,9 @@ def stage_source_event_drafts(db: Session, *, expense: Expense, result: OcrResul
         expense,
         "amount_cents",
         is_empty_or_default=expense.amount_cents is None,
+        effective_row_version=effective_row_version,
+        allow_legacy_ocr_only=allow_legacy_ocr_only,
+        allow_legacy_untouched=allow_legacy_untouched,
     )
     for index, event in enumerate(parsed.events):
         row = matched.get(event["id"])

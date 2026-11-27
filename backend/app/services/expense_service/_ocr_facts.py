@@ -19,6 +19,7 @@ from app.services.ocr_service._apply import (
     _parse_and_merge_for_expense,
 )
 from app.services.ocr_service._draft_fields import is_within_legacy_auto_ocr_window
+from app.services.receipt_parse_common import ParsedReceipt
 
 _HUMAN_LEARNING_EVENT_TYPES = frozenset({"edit", "manual_override", "accept", "reject"})
 
@@ -157,14 +158,30 @@ def apply_ocr_result_and_append_fact(
     return result
 
 
-def _apply_source_events(db, *, expense, result, parsed, provider_name, ocr_model, timezone_name, apply_to_draft, record_source_fact, pre_claim_row_version=None):
+def _apply_source_events(
+    db: Session,
+    *,
+    expense: Expense,
+    result: OcrResult,
+    parsed: ParsedReceipt,
+    provider_name: str,
+    ocr_model: str | None,
+    timezone_name: str | None,
+    apply_to_draft: bool,
+    record_source_fact: bool,
+    pre_claim_row_version: int | None = None,
+) -> OcrResult | None:
     from app.services.duplicate_service import mark_duplicate_status
     from app.services.expense_service._helpers import _replace_ocr_draft_items_from_text
     from app.services.expense_source_candidates import stage_source_event_drafts
 
+    eff_ver = expense.row_version if pre_claim_row_version is None else pre_claim_row_version
+    allow_ocr_only, allow_untouched = resolve_legacy_ocr_eligibility(db, expense, eff_ver or 1)
     current = None
     for event in stage_source_event_drafts(db, expense=expense, result=result, parsed=parsed,
-            provider_name=provider_name, ocr_model=ocr_model, use_source_draft=apply_to_draft):
+            provider_name=provider_name, ocr_model=ocr_model, use_source_draft=apply_to_draft,
+            effective_row_version=eff_ver, allow_legacy_ocr_only=allow_ocr_only,
+            allow_legacy_untouched=allow_untouched):
         event_pre_claim = pre_claim_row_version if event.expense.id == expense.id else 1
         _apply_one_result(db, expense=event.expense, result=event.result, provider_name=provider_name,
             ocr_model=ocr_model, timezone_name=timezone_name, pre_claim_row_version=event_pre_claim)

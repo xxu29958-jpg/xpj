@@ -9,7 +9,7 @@ import com.ticketbox.data.repository.FundsRepository
 import com.ticketbox.data.repository.canReviewFunding
 import com.ticketbox.data.repository.confirmationChanges
 import com.ticketbox.data.repository.reviewedFundingInputs
-import com.ticketbox.data.repository.toRequest
+import com.ticketbox.data.repository.toPatchPayload
 import com.ticketbox.domain.model.UiText
 import com.ticketbox.domain.model.Expense
 import com.ticketbox.domain.model.ExpenseDraft
@@ -121,7 +121,7 @@ internal suspend fun ExpenseEditViewModel.retainPendingConfirmationEdits(expense
     session.flush().getOrThrow()
     val retained = session.draft("pending_funding") ?: return@runCatching
     if (retained.confirmationChanges == null) return@runCatching
-    val changes = draft.toRequest(baseline = expense).copy(expectedRowVersion = null)
+    val changes = draft.toPatchPayload(baseline = expense)
     session.keep("pending_funding", retained.copy(confirmationChanges = changes))
     session.flush().getOrThrow()
     _uiState.update { it.copy(confirmationChanges = changes) }

@@ -365,6 +365,14 @@ private fun resolveRequestCategory(category: String?, categoryChoice: String?, b
     return normalized.takeIf { categoryChoice != null || it != baselineCategory }
 }
 
+/** PATCH diff payload: omits unchanged fields for backend ``exclude_unset`` while keeping explicit clears. */
+fun ExpenseDraft.toPatchPayload(baseline: Expense): ExpenseUpdateRequest =
+    toRequest(baseline = baseline, confirming = false).copy(expectedRowVersion = null)
+
+/** ConfirmExpense atomic-change payload: keeps reviewed non-blank merchant and explicit clears/edits. */
+fun ExpenseDraft.toConfirmationChanges(baseline: Expense): ExpenseUpdateRequest =
+    toRequest(baseline = baseline, confirming = true).copy(expectedRowVersion = null)
+
 fun ExpenseDraft.toRequest(baseline: Expense?, confirming: Boolean = false): ExpenseUpdateRequest {
     val submittedOriginalMinor = if (clearAmount) null else (originalAmountMinor ?: amountCents)
     val submittedCurrency = originalCurrencyCode

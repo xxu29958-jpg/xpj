@@ -3,6 +3,7 @@ package com.ticketbox.data.repository
 import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
+import com.ticketbox.data.remote.dto.addExpenseUpdateWireAdapters
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseFunding
 import com.ticketbox.domain.model.parseExactMoneyMinor
@@ -39,7 +40,10 @@ internal fun fundingInputs(view: com.ticketbox.domain.model.ExpenseFundingView):
             text(requireNotNull(row.accountAmountMinor), row.currencyCode), row.includedInOpening)
     })
 
-private val confirmationAdapter = Moshi.Builder().build().adapter(com.ticketbox.data.remote.dto.ExpenseStateTokenRequest::class.java)
+private val confirmationAdapter = Moshi.Builder()
+    .addExpenseUpdateWireAdapters()
+    .build()
+    .adapter(com.ticketbox.data.remote.dto.ExpenseStateTokenRequest::class.java)
 
 internal fun OutboxRow.confirmationChanges() = if (type == com.ticketbox.data.local.PendingMutationType.ConfirmExpense)
     confirmationAdapter.fromJson(payloadJson)?.changes else null

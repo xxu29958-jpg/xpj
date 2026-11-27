@@ -83,7 +83,7 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
         originalInput: com.ticketbox.data.repository.ExpenseFactOriginalInput?,
     ): Result<ExpenseCommandAcceptance> = core.errorHandler.safeCall {
         val intent = stateIntent(PendingMutationType.ConfirmExpense, expense, draft.funding,
-            changes = draft.toRequest(baseline = expense, confirming = true).copy(expectedRowVersion = null))
+            changes = draft.toConfirmationChanges(baseline = expense))
         ExpenseCommandAcceptance(projectOptimisticExpense(expense, draft), admit(expectedBinding, listOf(intent), originalInput))
     }
 
@@ -179,7 +179,7 @@ internal class ExpensePendingRepository(private val core: ExpenseRepositoryCore)
     private fun patchIntent(expense: Expense, draft: ExpenseDraft): PendingMutationIntent {
         requireBaseline(expense)
         return PendingMutationIntent(PendingMutationType.PatchExpense, expenseOutboxTargetId(expense),
-            core.offlineMutations.patchExpenseAdapter.toJson(draft.toRequest(baseline = expense).copy(expectedRowVersion = null)),
+            core.offlineMutations.patchExpenseAdapter.toJson(draft.toPatchPayload(baseline = expense)),
             expense.rowVersion, UUID.randomUUID().toString())
     }
 
