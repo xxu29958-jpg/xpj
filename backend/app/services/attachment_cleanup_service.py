@@ -13,7 +13,13 @@ from uuid import UUID, uuid4
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.attachment_cleanup_contract import CleanupFile, CleanupRequest
+from app.attachment_cleanup_contract import (
+    CleanupFile,
+    CleanupRequest,
+)
+from app.attachment_cleanup_contract import (
+    pending_cleanup_references as pending_cleanup_references,
+)
 from app.config import get_settings
 from app.errors import AppError
 from app.models import DebtBillCapture, Expense, LedgerAuditLog
@@ -50,17 +56,6 @@ def cleanup_request_covers_source(expense: Expense, source_reference: str | None
     request = read_cleanup_request(expense)
     return bool(source and request and request.image and request.image.reference == source
                 and any(item and item.outcome == "pending" for item in (request.image, request.thumbnail)))
-
-
-def pending_cleanup_references(raw: dict | None) -> tuple[str, ...]:
-    """Protect old paths still owned by an unresolved request from orphan GC."""
-    if raw is None:
-        return ()
-    try:
-        request = CleanupRequest.model_validate(raw)
-    except ValidationError as exc:
-        raise AppError("attachment_cleanup_invalid", status_code=409) from exc
-    return tuple(item.reference for item in (request.image, request.thumbnail) if item and item.outcome == "pending")
 
 
 def cleanup_policy_enabled(request: CleanupRequest, settings) -> bool:

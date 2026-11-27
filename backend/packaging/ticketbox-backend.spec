@@ -63,6 +63,7 @@ for required_app_module in (
     "app.database_model_registry",
     "app.database._money_schema_attestation",
     "app.database._postgres_operation_failures",
+    "app.services.upload_path_resolver",
     "app.tenant_contract",
 ):
     if required_app_module not in app_hiddenimports:

@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 
-from app.database_maintenance_runtime import DatabaseMaintenanceContractError, assert_maintenance_libpq_environment
+from app.database_maintenance_runtime import (
+    DatabaseMaintenanceContractError,
+    assert_maintenance_libpq_environment,
+    standalone_database_package,
+)
 
 
 def _payload(stream) -> dict:
@@ -33,10 +36,10 @@ def _payload(stream) -> dict:
     return payload
 
 
-def _verify_single_original(check) -> int:
+def _verify_single_original(check, *, upload_root: Path) -> int:
     from app.errors import AppError
-    from app.services.file_service import resolve_upload_path_for_tenant
-    from app.services.original_read_service import read_original_snapshot, recorded_original_digest
+    from app.services.original_read_service import read_original_snapshot_in_root, recorded_original_digest
+    from app.services.upload_path_resolver import resolve_upload_path_for_tenant_in_root
 
     if check.require_digest and recorded_original_digest(check.expected_sha256) is None:
         raise DatabaseMaintenanceContractError(
@@ -47,17 +50,22 @@ def _verify_single_original(check) -> int:
         or bool(check.expected_sha256)
     )
     if not needs_snapshot:
-        path = resolve_upload_path_for_tenant(check.relative_path, check.tenant_id)
+        path = resolve_upload_path_for_tenant_in_root(
+            check.relative_path,
+            check.tenant_id,
+            upload_root=upload_root,
+        )
         if path is None or not path.is_file():
             raise DatabaseMaintenanceContractError(
                 f"restore is missing a retained original reference ({check.source_kind})"
             )
         return 0
     try:
-        with read_original_snapshot(
+        with read_original_snapshot_in_root(
             relative_path=check.relative_path,
             tenant_id=check.tenant_id,
             expected_sha256=check.expected_sha256,
+            upload_root=upload_root,
         ) as snapshot:
             if check.expected_size_bytes is not None and snapshot.size_bytes != check.expected_size_bytes:
                 raise DatabaseMaintenanceContractError(
@@ -70,20 +78,24 @@ def _verify_single_original(check) -> int:
     return 1
 
 
-def _verify_originals(db) -> int:
+def _verify_originals(db, *, upload_root: Path) -> int:
     from sqlalchemy import select
 
     from app.models import Ledger
-    from app.services.original_reference_queries import iter_retained_original_checks
+    from app.services.original_reference_queries import iter_retained_original_checks_in_root
 
     count = 0
     for ledger in db.scalars(select(Ledger)):
         try:
-            checks = iter_retained_original_checks(db, ledger.ledger_id)
+            checks = iter_retained_original_checks_in_root(
+                db,
+                ledger.ledger_id,
+                upload_root=upload_root,
+            )
         except ValueError as exc:
             raise DatabaseMaintenanceContractError(str(exc)) from exc
         for check in checks:
-            count += _verify_single_original(check)
+            count += _verify_single_original(check, upload_root=upload_root)
     return count
 
 
@@ -91,6 +103,7 @@ def _execute_cold_restore_transaction(
     connection,
     payload: dict,
     *,
+    upload_root: Path,
     database_name: str,
     migrator_role: str,
     schema_owner_role: str,
@@ -115,7 +128,7 @@ def _execute_cold_restore_transaction(
     )
     assert_release_head(connection, expected_revision=payload["source"]["schema_revision"])
     with Session(bind=connection, expire_on_commit=False) as db:
-        originals = _verify_originals(db)
+        originals = _verify_originals(db, upload_root=upload_root)
         result, revoked_summary = rebind_cold_dataset_with_summary(db, **payload)
         db.flush()
         pairing = asdict(result)
@@ -135,31 +148,33 @@ def run_cold_restore(argv: list[str]) -> int:
     assert_maintenance_libpq_environment(args.pgpassfile)
     if not args.data_root.is_absolute():
         raise DatabaseMaintenanceContractError("restore data root must be explicit")
-    os.environ["TICKETBOX_DATA_DIR"] = str(args.data_root / "app")
-    os.environ["UPLOAD_DIR"] = str(args.data_root / "app" / "uploads")
+    upload_root = (args.data_root / "app" / "uploads").resolve()
 
     from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
 
-    from app.database._managed_postgres_contract import DATABASE_NAME, MIGRATOR_ROLE, SCHEMA_OWNER_ROLE
-    from app.database._managed_postgres_url import validated_local_role_url
     from app.services.secure_file import hold_installer_machine_secret_for_read
 
-    url = validated_local_role_url(args.database_url, database_name="ticketbox", role="ticketbox_migrator",
-        purpose="cold restore")
-    with hold_installer_machine_secret_for_read(args.pgpassfile):
-        engine = create_engine(url, poolclass=NullPool, connect_args={"connect_timeout": 10})
-        try:
-            with engine.begin() as connection:
-                pairing, originals, revoked_summary = _execute_cold_restore_transaction(
-                    connection,
-                    payload,
-                    database_name=DATABASE_NAME,
-                    migrator_role=MIGRATOR_ROLE,
-                    schema_owner_role=SCHEMA_OWNER_ROLE,
-                )
-        finally:
-            engine.dispose()
+    with standalone_database_package():
+        from app.database._managed_postgres_contract import DATABASE_NAME, MIGRATOR_ROLE, SCHEMA_OWNER_ROLE
+        from app.database._managed_postgres_url import validated_local_role_url
+
+        url = validated_local_role_url(args.database_url, database_name="ticketbox", role="ticketbox_migrator",
+            purpose="cold restore")
+        with hold_installer_machine_secret_for_read(args.pgpassfile):
+            engine = create_engine(url, poolclass=NullPool, connect_args={"connect_timeout": 10})
+            try:
+                with engine.begin() as connection:
+                    pairing, originals, revoked_summary = _execute_cold_restore_transaction(
+                        connection,
+                        payload,
+                        upload_root=upload_root,
+                        database_name=DATABASE_NAME,
+                        migrator_role=MIGRATOR_ROLE,
+                        schema_owner_role=SCHEMA_OWNER_ROLE,
+                    )
+            finally:
+                engine.dispose()
     print(json.dumps({"schema": "ticketbox-cold-restore-dataset-v1", "pairing": pairing,
         "dataset_id": payload["source"]["dataset_id"], "restore_epoch": payload["source"]["restore_epoch"] + 1,
         "installation_id": payload["installation_id"], "backup_id": payload["backup_id"],
@@ -170,6 +185,7 @@ def run_cold_restore(argv: list[str]) -> int:
 def _verify_preserved_dataset_transaction(
     connection,
     *,
+    upload_root: Path,
     dataset_id: str,
     installation_id: str,
     expected_restore_epoch: int,
@@ -210,7 +226,7 @@ def _verify_preserved_dataset_transaction(
             or authority.semantic_revision != semantic_revision
         ):
             raise DatabaseMaintenanceContractError("preserved dataset authority does not match installation binding")
-        originals = _verify_originals(db)
+        originals = _verify_originals(db, upload_root=upload_root)
     return {
         "schema": "ticketbox-preserved-dataset-verify-v1",
         "dataset_id": dataset_id,
@@ -244,38 +260,40 @@ def run_verify_preserved_dataset(argv: list[str]) -> int:
             raise DatabaseMaintenanceContractError("dataset identity is not canonical")
     if args.expected_restore_epoch < 0:
         raise DatabaseMaintenanceContractError("restore epoch is invalid")
-    os.environ["TICKETBOX_DATA_DIR"] = str(args.data_root / "app")
-    os.environ["UPLOAD_DIR"] = str(args.data_root / "app" / "uploads")
+    upload_root = (args.data_root / "app" / "uploads").resolve()
 
     from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
 
-    from app.database._managed_postgres_contract import DATABASE_NAME, MIGRATOR_ROLE, SCHEMA_OWNER_ROLE
-    from app.database._managed_postgres_url import validated_local_role_url
     from app.services.secure_file import hold_installer_machine_secret_for_read
 
-    url = validated_local_role_url(
-        args.database_url,
-        database_name="ticketbox",
-        role="ticketbox_migrator",
-        purpose="preserved dataset verification",
-    )
-    with hold_installer_machine_secret_for_read(args.pgpassfile):
-        engine = create_engine(url, poolclass=NullPool, connect_args={"connect_timeout": 10})
-        try:
-            with engine.begin() as connection:
-                result = _verify_preserved_dataset_transaction(
-                    connection,
-                    dataset_id=args.dataset_id,
-                    installation_id=args.installation_id,
-                    expected_restore_epoch=args.expected_restore_epoch,
-                    schema_revision=args.schema_revision,
-                    semantic_revision=args.semantic_revision,
-                    database_name=DATABASE_NAME,
-                    migrator_role=MIGRATOR_ROLE,
-                    schema_owner_role=SCHEMA_OWNER_ROLE,
-                )
-        finally:
-            engine.dispose()
+    with standalone_database_package():
+        from app.database._managed_postgres_contract import DATABASE_NAME, MIGRATOR_ROLE, SCHEMA_OWNER_ROLE
+        from app.database._managed_postgres_url import validated_local_role_url
+
+        url = validated_local_role_url(
+            args.database_url,
+            database_name="ticketbox",
+            role="ticketbox_migrator",
+            purpose="preserved dataset verification",
+        )
+        with hold_installer_machine_secret_for_read(args.pgpassfile):
+            engine = create_engine(url, poolclass=NullPool, connect_args={"connect_timeout": 10})
+            try:
+                with engine.begin() as connection:
+                    result = _verify_preserved_dataset_transaction(
+                        connection,
+                        upload_root=upload_root,
+                        dataset_id=args.dataset_id,
+                        installation_id=args.installation_id,
+                        expected_restore_epoch=args.expected_restore_epoch,
+                        schema_revision=args.schema_revision,
+                        semantic_revision=args.semantic_revision,
+                        database_name=DATABASE_NAME,
+                        migrator_role=MIGRATOR_ROLE,
+                        schema_owner_role=SCHEMA_OWNER_ROLE,
+                    )
+            finally:
+                engine.dispose()
     print(json.dumps(result, ensure_ascii=True))
     return 0

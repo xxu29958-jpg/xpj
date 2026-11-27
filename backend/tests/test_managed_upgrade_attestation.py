@@ -1053,6 +1053,7 @@ def test_cold_restore_transaction_installs_upgrade_attestation_trigger_on_baseli
                         "bootstrap_secret": new_secret,
                         "recovery_secret": old_secret,
                     },
+                    upload_root=data_root / "app" / "uploads",
                     database_name=topology.database,
                     migrator_role=topology.migrator,
                     schema_owner_role=topology.owner,

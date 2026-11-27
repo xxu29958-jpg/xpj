@@ -157,86 +157,181 @@ def test_restore_originals_verifies_debt_bill_capture_hash_and_rejects_tamper_an
 ):
     import hashlib
 
-    from app import config
     from app.cold_restore_runtime import _verify_originals
     from app.database_maintenance_runtime import DatabaseMaintenanceContractError
     from app.models import DebtBillCapture, Expense
 
-    upload_dir = tmp_path / "uploads"
+    upload_dir = tmp_path / "explicit" / "app" / "uploads"
+    ambient_dir = tmp_path / "ambient" / "app" / "uploads"
     upload_dir.mkdir(parents=True)
-    monkeypatch.setenv("UPLOAD_DIR", str(upload_dir))
-    config.reset_settings_cache()
+    ambient_dir.mkdir(parents=True)
+    monkeypatch.setenv("UPLOAD_DIR", str(ambient_dir))
 
-    try:
-        with SessionLocal() as db:
-            _source(db)
-            claim = db.get(InstallationOwnerClaim, "source-install")
-            ledger_dir = upload_dir / claim.ledger_id
-            ledger_dir.mkdir(parents=True)
+    with SessionLocal() as db:
+        _source(db)
+        claim = db.get(InstallationOwnerClaim, "source-install")
+        ledger_dir = upload_dir / claim.ledger_id
+        ambient_ledger_dir = ambient_dir / claim.ledger_id
+        ledger_dir.mkdir(parents=True)
+        ambient_ledger_dir.mkdir(parents=True)
 
-            capture_bytes = b"\x89PNG\r\n\x1a\nfake-debt-bill-original-bytes"
-            capture_sha = hashlib.sha256(capture_bytes).hexdigest()
-            capture_file = ledger_dir / "debt-bill.png"
-            capture_file.write_bytes(capture_bytes)
+        capture_bytes = b"\x89PNG\r\n\x1a\nfake-debt-bill-original-bytes"
+        capture_sha = hashlib.sha256(capture_bytes).hexdigest()
+        capture_file = ledger_dir / "debt-bill.png"
+        capture_file.write_bytes(capture_bytes)
+        (ambient_ledger_dir / "debt-bill.png").write_bytes(b"ambient-poison-bytes")
 
-            deleted_capture_bytes = b"\x89PNG\r\n\x1a\ncleaned-debt-bill"
-            deleted_capture_sha = hashlib.sha256(deleted_capture_bytes).hexdigest()
+        deleted_capture_bytes = b"\x89PNG\r\n\x1a\ncleaned-debt-bill"
+        deleted_capture_sha = hashlib.sha256(deleted_capture_bytes).hexdigest()
 
-            capture = DebtBillCapture(
+        capture = DebtBillCapture(
+            tenant_id=claim.ledger_id,
+            created_by_account_id=claim.account_id,
+            creation_key="c" * 64,
+            capture_key="k" * 64,
+            request_fingerprint="f" * 64,
+            accepted_receipt={"ok": True},
+            file_name="debt-bill.png",
+            media_type="image/png",
+            input_sha256=capture_sha,
+            image_path=f"uploads/{claim.ledger_id}/debt-bill.png",
+            image_hash=capture_sha,
+            image_size_bytes=len(capture_bytes),
+        )
+        cleaned_capture = DebtBillCapture(
+            tenant_id=claim.ledger_id,
+            created_by_account_id=claim.account_id,
+            creation_key="d" * 64,
+            capture_key="m" * 64,
+            request_fingerprint="e" * 64,
+            accepted_receipt={"ok": True},
+            file_name="cleaned.png",
+            media_type="image/png",
+            input_sha256=deleted_capture_sha,
+            image_path=f"uploads/{claim.ledger_id}/cleaned-missing.png",
+            image_hash=deleted_capture_sha,
+            image_size_bytes=len(deleted_capture_bytes),
+            image_deleted_at=now_utc(),
+        )
+        db.add_all([capture, cleaned_capture])
+        db.flush()
+
+        assert _verify_originals(db, upload_root=upload_dir) == 1
+
+        # Ambient root holding the good copy cannot satisfy an explicit root mismatch.
+        (ambient_ledger_dir / "debt-bill.png").write_bytes(capture_bytes)
+        capture_file.write_bytes(b"\x89PNG\r\n\x1a\ntampered-debt-bill-original!")
+        with pytest.raises(DatabaseMaintenanceContractError, match="debt_bill_capture"):
+            _verify_originals(db, upload_root=upload_dir)
+
+        capture_file.write_bytes(capture_bytes)
+        assert _verify_originals(db, upload_root=upload_dir) == 1
+
+        bad_expense = Expense(
+            tenant_id=claim.ledger_id,
+            amount_cents=1000,
+            original_amount_minor=1000,
+            category="餐饮",
+            image_path="../../escape/evil.png",
+        )
+        db.add(bad_expense)
+        db.flush()
+        with pytest.raises(DatabaseMaintenanceContractError, match="invalid retained original reference"):
+            _verify_originals(db, upload_root=upload_dir)
+
+
+def test_verify_originals_explicit_root_covers_all_reference_kinds_and_leaves_missing_dir_absent(tmp_path):
+    import hashlib
+    from uuid import uuid4
+
+    from app.cold_restore_runtime import _verify_originals
+    from app.database_maintenance_runtime import DatabaseMaintenanceContractError
+    from app.models import ApiIdempotencyKey, Expense
+
+    absent_upload_dir = tmp_path / "never-created" / "app" / "uploads"
+    with SessionLocal() as db:
+        _source(db)
+        assert _verify_originals(db, upload_root=absent_upload_dir) == 0
+        assert not absent_upload_dir.exists()
+
+        claim = db.get(InstallationOwnerClaim, "source-install")
+        explicit_root = tmp_path / "explicit-all" / "app" / "uploads"
+        tenant_dir = explicit_root / claim.ledger_id
+        legacy_dir = explicit_root / "2026" / "04"
+        tenant_dir.mkdir(parents=True)
+        legacy_dir.mkdir(parents=True)
+
+        img_bytes = b"\x89PNG\r\n\x1a\nexpense-primary-image"
+        img_sha = hashlib.sha256(img_bytes).hexdigest()
+        (tenant_dir / "exp.png").write_bytes(img_bytes)
+        (tenant_dir / "thumb.jpg").write_bytes(b"\xff\xd8\xffthumb")
+        (tenant_dir / "pending-old.png").write_bytes(b"\x89PNG\r\n\x1a\npending-cleanup")
+        hist_bytes = b"\x89PNG\r\n\x1a\nlegacy-historical-receipt"
+        hist_sha = hashlib.sha256(hist_bytes).hexdigest()
+        (legacy_dir / "legacy.png").write_bytes(hist_bytes)
+
+        expense = Expense(
+            tenant_id=claim.ledger_id,
+            amount_cents=1234,
+            original_amount_minor=1234,
+            category="餐饮",
+            image_path=f"uploads/{claim.ledger_id}/exp.png",
+            image_hash=img_sha,
+            thumbnail_path=f"uploads/{claim.ledger_id}/thumb.jpg",
+            attachment_cleanup_request={
+                "request_id": str(uuid4()),
+                "reason": "after_confirm",
+                "requested_at": "2026-11-26T00:00:00Z",
+                "image": {
+                    "reference": f"uploads/{claim.ledger_id}/pending-old.png",
+                    "outcome": "pending",
+                    "completed_at": None,
+                    "error_code": None,
+                },
+                "thumbnail": None,
+            },
+        )
+        db.add(expense)
+        db.flush()
+        db.add(
+            ApiIdempotencyKey(
                 tenant_id=claim.ledger_id,
-                created_by_account_id=claim.account_id,
-                creation_key="c" * 64,
-                capture_key="k" * 64,
-                request_fingerprint="f" * 64,
-                accepted_receipt={"ok": True},
-                file_name="debt-bill.png",
-                media_type="image/png",
-                input_sha256=capture_sha,
-                image_path=f"uploads/{claim.ledger_id}/debt-bill.png",
-                image_hash=capture_sha,
-                image_size_bytes=len(capture_bytes),
+                idempotency_key="hist-key-1",
+                operation="expense_write",
+                request_fingerprint="a" * 64,
+                status="succeeded",
+                resource_type="expense",
+                resource_id=str(expense.id),
+                expires_at=now_utc(),
+                response_body={
+                    "id": expense.id,
+                    "public_id": expense.public_id,
+                    "image_path": "uploads/2026/04/legacy.png",
+                    "image_hash": hist_sha,
+                    "image_deleted_at": None,
+                    "thumbnail_path": None,
+                    "thumbnail_deleted_at": None,
+                },
             )
-            cleaned_capture = DebtBillCapture(
-                tenant_id=claim.ledger_id,
-                created_by_account_id=claim.account_id,
-                creation_key="d" * 64,
-                capture_key="m" * 64,
-                request_fingerprint="e" * 64,
-                accepted_receipt={"ok": True},
-                file_name="cleaned.png",
-                media_type="image/png",
-                input_sha256=deleted_capture_sha,
-                image_path=f"uploads/{claim.ledger_id}/cleaned-missing.png",
-                image_hash=deleted_capture_sha,
-                image_size_bytes=len(deleted_capture_bytes),
-                image_deleted_at=now_utc(),
-            )
-            db.add_all([capture, cleaned_capture])
-            db.flush()
+        )
+        db.flush()
 
-            assert _verify_originals(db) == 1
+        # Snapshots counted: primary expense image (1) + historical legacy receipt (1) = 2;
+        # thumbnail and digestless pending cleanup are existence-verified (0 snapshots).
+        assert _verify_originals(db, upload_root=explicit_root) == 2
 
-            capture_file.write_bytes(b"\x89PNG\r\n\x1a\ntampered-debt-bill-original!")
-            with pytest.raises(DatabaseMaintenanceContractError, match="debt_bill_capture"):
-                _verify_originals(db)
-
-            capture_file.write_bytes(capture_bytes)
-            assert _verify_originals(db) == 1
-
-            bad_expense = Expense(
-                tenant_id=claim.ledger_id,
-                amount_cents=1000,
-                original_amount_minor=1000,
-                category="餐饮",
-                image_path="../../escape/evil.png",
-            )
-            db.add(bad_expense)
-            db.flush()
-            with pytest.raises(DatabaseMaintenanceContractError, match="invalid retained original reference"):
-                _verify_originals(db)
-    finally:
-        monkeypatch.undo()
-        config.reset_settings_cache()
+        # Cross-tenant reference must be rejected.
+        cross_tenant = Expense(
+            tenant_id=claim.ledger_id,
+            amount_cents=500,
+            original_amount_minor=500,
+            category="餐饮",
+            image_path="uploads/other-ledger/stolen.png",
+        )
+        db.add(cross_tenant)
+        db.flush()
+        with pytest.raises(DatabaseMaintenanceContractError, match="invalid retained original reference"):
+            _verify_originals(db, upload_root=explicit_root)
 
 
 @pytest.mark.real_db
@@ -245,7 +340,6 @@ def test_verify_preserved_dataset_transaction_is_read_only_and_checks_authority(
 ):
     import hashlib
 
-    from app import config
     from app.cold_restore_runtime import _verify_preserved_dataset_transaction
     from app.database import _managed_postgres_role_authority as role_authority
     from app.database import engine
@@ -253,72 +347,68 @@ def test_verify_preserved_dataset_transaction_is_read_only_and_checks_authority(
     from app.database_maintenance_runtime import DatabaseMaintenanceContractError
     from app.models import DebtBillCapture
 
-    upload_dir = tmp_path / "uploads"
+    upload_dir = tmp_path / "explicit" / "app" / "uploads"
     upload_dir.mkdir(parents=True)
-    monkeypatch.setenv("UPLOAD_DIR", str(upload_dir))
-    config.reset_settings_cache()
 
-    try:
-        with SessionLocal() as db:
-            source = _source(db)
-            claim = db.get(InstallationOwnerClaim, "source-install")
-            ledger_dir = upload_dir / claim.ledger_id
-            ledger_dir.mkdir(parents=True)
-            capture_bytes = b"\x89PNG\r\n\x1a\npreserved-dataset-original"
-            capture_sha = hashlib.sha256(capture_bytes).hexdigest()
-            (ledger_dir / "preserved.png").write_bytes(capture_bytes)
-            db.add(
-                DebtBillCapture(
-                    tenant_id=claim.ledger_id,
-                    created_by_account_id=claim.account_id,
-                    creation_key="1" * 64,
-                    capture_key="2" * 64,
-                    request_fingerprint="3" * 64,
-                    accepted_receipt={"ok": True},
-                    file_name="preserved.png",
-                    media_type="image/png",
-                    input_sha256=capture_sha,
-                    image_path=f"uploads/{claim.ledger_id}/preserved.png",
-                    image_hash=capture_sha,
-                    image_size_bytes=len(capture_bytes),
-                )
+    with SessionLocal() as db:
+        source = _source(db)
+        claim = db.get(InstallationOwnerClaim, "source-install")
+        ledger_dir = upload_dir / claim.ledger_id
+        ledger_dir.mkdir(parents=True)
+        capture_bytes = b"\x89PNG\r\n\x1a\npreserved-dataset-original"
+        capture_sha = hashlib.sha256(capture_bytes).hexdigest()
+        (ledger_dir / "preserved.png").write_bytes(capture_bytes)
+        db.add(
+            DebtBillCapture(
+                tenant_id=claim.ledger_id,
+                created_by_account_id=claim.account_id,
+                creation_key="1" * 64,
+                capture_key="2" * 64,
+                request_fingerprint="3" * 64,
+                accepted_receipt={"ok": True},
+                file_name="preserved.png",
+                media_type="image/png",
+                input_sha256=capture_sha,
+                image_path=f"uploads/{claim.ledger_id}/preserved.png",
+                image_hash=capture_sha,
+                image_size_bytes=len(capture_bytes),
             )
-            db.commit()
+        )
+        db.commit()
 
-        monkeypatch.setattr(role_authority, "assume_managed_postgres_schema_owner", lambda *_a, **_kw: None)
-        with engine.begin() as connection:
-            result = _verify_preserved_dataset_transaction(
-                connection,
-                dataset_id=source["dataset_id"],
-                installation_id=source["install_id"],
-                expected_restore_epoch=source["restore_epoch"],
-                schema_revision=source["schema_revision"],
-                semantic_revision="ticketbox-dataset-semantics-v1",
-                database_name=DATABASE_NAME,
-                migrator_role=MIGRATOR_ROLE,
-                schema_owner_role=SCHEMA_OWNER_ROLE,
-            )
-        assert result["schema"] == "ticketbox-preserved-dataset-verify-v1"
-        assert result["verified_originals"] == 1
+    monkeypatch.setattr(role_authority, "assume_managed_postgres_schema_owner", lambda *_a, **_kw: None)
+    with engine.begin() as connection:
+        result = _verify_preserved_dataset_transaction(
+            connection,
+            upload_root=upload_dir,
+            dataset_id=source["dataset_id"],
+            installation_id=source["install_id"],
+            expected_restore_epoch=source["restore_epoch"],
+            schema_revision=source["schema_revision"],
+            semantic_revision="ticketbox-dataset-semantics-v1",
+            database_name=DATABASE_NAME,
+            migrator_role=MIGRATOR_ROLE,
+            schema_owner_role=SCHEMA_OWNER_ROLE,
+        )
+    assert result["schema"] == "ticketbox-preserved-dataset-verify-v1"
+    assert result["verified_originals"] == 1
 
-        with (
-            pytest.raises(DatabaseMaintenanceContractError, match="does not match installation binding"),
-            engine.begin() as connection,
-        ):
-            _verify_preserved_dataset_transaction(
-                connection,
-                dataset_id=source["dataset_id"],
-                installation_id=source["install_id"],
-                expected_restore_epoch=source["restore_epoch"] + 1,
-                schema_revision=source["schema_revision"],
-                semantic_revision="ticketbox-dataset-semantics-v1",
-                database_name=DATABASE_NAME,
-                migrator_role=MIGRATOR_ROLE,
-                schema_owner_role=SCHEMA_OWNER_ROLE,
-            )
-    finally:
-        monkeypatch.undo()
-        config.reset_settings_cache()
+    with (
+        pytest.raises(DatabaseMaintenanceContractError, match="does not match installation binding"),
+        engine.begin() as connection,
+    ):
+        _verify_preserved_dataset_transaction(
+            connection,
+            upload_root=upload_dir,
+            dataset_id=source["dataset_id"],
+            installation_id=source["install_id"],
+            expected_restore_epoch=source["restore_epoch"] + 1,
+            schema_revision=source["schema_revision"],
+            semantic_revision="ticketbox-dataset-semantics-v1",
+            database_name=DATABASE_NAME,
+            migrator_role=MIGRATOR_ROLE,
+            schema_owner_role=SCHEMA_OWNER_ROLE,
+        )
 
 
 def test_rebind_cold_dataset_with_summary_reports_exact_revoked_counts():

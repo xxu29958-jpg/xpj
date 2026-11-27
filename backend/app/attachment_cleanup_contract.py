@@ -5,7 +5,18 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import AfterValidator, AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
+
+from app.errors import AppError
 
 
 def _explicit_instant(value):
@@ -52,6 +63,17 @@ class CleanupRequest(BaseModel):
         if self.image is None and self.thumbnail is None:
             raise ValueError("cleanup requests require at least one frozen reference")
         return self
+
+
+def pending_cleanup_references(raw: dict | None) -> tuple[str, ...]:
+    """Protect old paths still owned by an unresolved cleanup request."""
+    if raw is None:
+        return ()
+    try:
+        request = CleanupRequest.model_validate(raw)
+    except ValidationError as exc:
+        raise AppError("attachment_cleanup_invalid", status_code=409) from exc
+    return tuple(item.reference for item in (request.image, request.thumbnail) if item and item.outcome == "pending")
 
 
 # PostgreSQL checks the canonical serialized shape even for writers bypassing ORM

@@ -11,7 +11,6 @@ import stat
 import sys
 import zipfile
 import zlib
-from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 from uuid import UUID
@@ -250,29 +249,6 @@ def _resolve_program(program: DatabaseGenerationProgram | None) -> DatabaseGener
         except DatabaseGenerationProgramError as exc:
             raise ExistingDatasetUpgradeError(str(exc)) from exc
     return _load_source_generation_program()
-
-
-@contextmanager
-def _scoped_upload_env(data_root: Path):
-    from app.config import get_settings
-
-    previous_data = os.environ.get("TICKETBOX_DATA_DIR")
-    previous_upload = os.environ.get("UPLOAD_DIR")
-    os.environ["TICKETBOX_DATA_DIR"] = str(data_root / "app")
-    os.environ["UPLOAD_DIR"] = str(data_root / "app" / "uploads")
-    get_settings.cache_clear()
-    try:
-        yield
-    finally:
-        if previous_data is None:
-            os.environ.pop("TICKETBOX_DATA_DIR", None)
-        else:
-            os.environ["TICKETBOX_DATA_DIR"] = previous_data
-        if previous_upload is None:
-            os.environ.pop("UPLOAD_DIR", None)
-        else:
-            os.environ["UPLOAD_DIR"] = previous_upload
-        get_settings.cache_clear()
 
 
 def _require_sha256(value: object, *, label: str) -> str:
@@ -791,19 +767,25 @@ def _verify_snapshot_original(
     tenant_id: str,
     expected_sha256: str | None,
     data_root: Path,
+    upload_root: Path,
     archive: _VerifiedBackupArchive,
 ) -> None:
     from app.errors import AppError
-    from app.services.file_service import resolve_upload_path_for_tenant
-    from app.services.original_read_service import read_original_snapshot
+    from app.services.original_read_service import read_original_snapshot_in_root
+    from app.services.upload_path_resolver import resolve_upload_path_for_tenant_in_root
 
     try:
-        with read_original_snapshot(
+        with read_original_snapshot_in_root(
             relative_path=relative_path,
             tenant_id=tenant_id,
             expected_sha256=expected_sha256,
+            upload_root=upload_root,
         ) as snapshot:
-            resolved = resolve_upload_path_for_tenant(relative_path, tenant_id)
+            resolved = resolve_upload_path_for_tenant_in_root(
+                relative_path,
+                tenant_id,
+                upload_root=upload_root,
+            )
             if resolved is None or not resolved.is_file():
                 raise ExistingDatasetUpgradeError("retained original is missing on disk")
             archive.verify_file(resolved, data_root=data_root, expected_sha256=snapshot.sha256)
@@ -818,6 +800,7 @@ def _verify_expense_primary_originals(
     columns: set[str],
     *,
     data_root: Path,
+    upload_root: Path,
     archive: _VerifiedBackupArchive,
 ) -> None:
     select_hash = "image_hash" if "image_hash" in columns else "NULL AS image_hash"
@@ -834,6 +817,7 @@ def _verify_expense_primary_originals(
             tenant_id=str(tenant_id),
             expected_sha256=None if image_hash is None else str(image_hash),
             data_root=data_root,
+            upload_root=upload_root,
             archive=archive,
         )
 
@@ -843,9 +827,10 @@ def _verify_expense_thumbnails(
     columns: set[str],
     *,
     data_root: Path,
+    upload_root: Path,
     archive: _VerifiedBackupArchive,
 ) -> None:
-    from app.services.file_service import resolve_upload_path_for_tenant
+    from app.services.upload_path_resolver import resolve_upload_path_for_tenant_in_root
 
     if "thumbnail_path" not in columns:
         return
@@ -857,7 +842,11 @@ def _verify_expense_thumbnails(
         )
     ).all()
     for tenant_id, thumb_path in rows:
-        resolved = resolve_upload_path_for_tenant(str(thumb_path), str(tenant_id))
+        resolved = resolve_upload_path_for_tenant_in_root(
+            str(thumb_path),
+            str(tenant_id),
+            upload_root=upload_root,
+        )
         if resolved is None or not resolved.is_file():
             raise ExistingDatasetUpgradeError("retained thumbnail is missing on disk")
         archive.verify_file(resolved, data_root=data_root)
@@ -868,10 +857,11 @@ def _verify_expense_pending_cleanups(
     columns: set[str],
     *,
     data_root: Path,
+    upload_root: Path,
     archive: _VerifiedBackupArchive,
 ) -> None:
-    from app.services.attachment_cleanup_service import pending_cleanup_references
-    from app.services.file_service import resolve_upload_path_for_tenant
+    from app.attachment_cleanup_contract import pending_cleanup_references
+    from app.services.upload_path_resolver import resolve_upload_path_for_tenant_in_root
 
     if "attachment_cleanup_request" not in columns:
         return
@@ -883,7 +873,11 @@ def _verify_expense_pending_cleanups(
     ).all()
     for tenant_id, cleanup_req in rows:
         for reference in pending_cleanup_references(cleanup_req):
-            resolved = resolve_upload_path_for_tenant(reference, str(tenant_id))
+            resolved = resolve_upload_path_for_tenant_in_root(
+                reference,
+                str(tenant_id),
+                upload_root=upload_root,
+            )
             if resolved is None or not resolved.is_file():
                 raise ExistingDatasetUpgradeError("pending cleanup original reference is missing")
             archive.verify_file(resolved, data_root=data_root)
@@ -893,6 +887,7 @@ def _verify_expense_originals(
     connection: Connection,
     *,
     data_root: Path,
+    upload_root: Path,
     archive: _VerifiedBackupArchive,
 ) -> None:
     inspector = sa_inspect(connection)
@@ -901,9 +896,15 @@ def _verify_expense_originals(
     columns = {col["name"] for col in inspector.get_columns("expenses", schema="public")}
     if "image_path" not in columns or "tenant_id" not in columns:
         return
-    _verify_expense_primary_originals(connection, columns, data_root=data_root, archive=archive)
-    _verify_expense_thumbnails(connection, columns, data_root=data_root, archive=archive)
-    _verify_expense_pending_cleanups(connection, columns, data_root=data_root, archive=archive)
+    _verify_expense_primary_originals(
+        connection, columns, data_root=data_root, upload_root=upload_root, archive=archive
+    )
+    _verify_expense_thumbnails(
+        connection, columns, data_root=data_root, upload_root=upload_root, archive=archive
+    )
+    _verify_expense_pending_cleanups(
+        connection, columns, data_root=data_root, upload_root=upload_root, archive=archive
+    )
 
 
 def _expenses_projection_cte(inspector) -> str:
@@ -943,6 +944,7 @@ def _verify_historical_receipt_originals(
     connection: Connection,
     *,
     data_root: Path,
+    upload_root: Path,
     archive: _VerifiedBackupArchive,
 ) -> None:
     from app.services.original_reference_queries import historical_original_is_cleaned
@@ -1024,6 +1026,7 @@ def _verify_historical_receipt_originals(
             tenant_id=str(row["tenant_id"]),
             expected_sha256=image_hash if isinstance(image_hash, str) and image_hash else None,
             data_root=data_root,
+            upload_root=upload_root,
             archive=archive,
         )
 
@@ -1032,10 +1035,11 @@ def _verify_debt_bill_originals(
     connection: Connection,
     *,
     data_root: Path,
+    upload_root: Path,
     archive: _VerifiedBackupArchive,
 ) -> None:
-    from app.services.attachment_cleanup_service import pending_cleanup_references
-    from app.services.file_service import resolve_upload_path_for_tenant
+    from app.attachment_cleanup_contract import pending_cleanup_references
+    from app.services.upload_path_resolver import resolve_upload_path_for_tenant_in_root
 
     inspector = sa_inspect(connection)
     if not inspector.has_table("debt_bill_captures", schema="public"):
@@ -1063,10 +1067,15 @@ def _verify_debt_bill_originals(
                 tenant_id=str(tenant_id),
                 expected_sha256=None if image_hash is None else str(image_hash),
                 data_root=data_root,
+                upload_root=upload_root,
                 archive=archive,
             )
         for reference in pending_cleanup_references(cleanup_req):
-            resolved = resolve_upload_path_for_tenant(reference, str(tenant_id))
+            resolved = resolve_upload_path_for_tenant_in_root(
+                reference,
+                str(tenant_id),
+                upload_root=upload_root,
+            )
             if resolved is None or not resolved.is_file():
                 raise ExistingDatasetUpgradeError("retained debt bill original is missing")
             archive.verify_file(resolved, data_root=data_root)
@@ -1086,21 +1095,21 @@ def _verify_upgrade_originals(
 ) -> None:
     if not data_root.is_absolute() or not data_root.is_dir():
         raise ExistingDatasetUpgradeError("upgrade data_root is invalid or missing")
-    with (
-        _VerifiedBackupArchive(
-            backup_archive,
-            backup_archive_sha256,
-            dataset_id=dataset_id,
-            installation_id=installation_id,
-            expected_restore_epoch=expected_restore_epoch,
-            source_revision=source_revision,
-            app_dir=app_dir,
-        ) as archive,
-        _scoped_upload_env(data_root),
-    ):
-        _verify_expense_originals(connection, data_root=data_root, archive=archive)
-        _verify_historical_receipt_originals(connection, data_root=data_root, archive=archive)
-        _verify_debt_bill_originals(connection, data_root=data_root, archive=archive)
+    upload_root = (data_root / "app" / "uploads").resolve()
+    with _VerifiedBackupArchive(
+        backup_archive,
+        backup_archive_sha256,
+        dataset_id=dataset_id,
+        installation_id=installation_id,
+        expected_restore_epoch=expected_restore_epoch,
+        source_revision=source_revision,
+        app_dir=app_dir,
+    ) as archive:
+        _verify_expense_originals(connection, data_root=data_root, upload_root=upload_root, archive=archive)
+        _verify_historical_receipt_originals(
+            connection, data_root=data_root, upload_root=upload_root, archive=archive
+        )
+        _verify_debt_bill_originals(connection, data_root=data_root, upload_root=upload_root, archive=archive)
 
 
 def _require_absolute_path(value: object, *, message: str) -> Path:

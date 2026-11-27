@@ -9,7 +9,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.errors import AppError
 from app.models import (
     Account,
@@ -361,12 +360,17 @@ def bootstrap_owner(
         scope="admin",
         token_value=credentials.admin_token if credentials else None,
     )
+    resolved_timezone = default_timezone
+    if not resolved_timezone:
+        from app.config import get_settings
+
+        resolved_timezone = get_settings().ocr_default_timezone
     upload_key = _create_upload_link(
         db,
         account_id=owner.id,
         device_id=bootstrap_device.id,
         ledger_id=default_ledger.ledger_id,
-        default_timezone=default_timezone or get_settings().ocr_default_timezone,
+        default_timezone=resolved_timezone,
         upload_key_value=credentials.upload_key if credentials else None,
     )
     pairing = _create_pairing_code(

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from hmac import compare_digest
 
-from app.config import get_settings
 from app.tenants import (
     DEFAULT_TENANT_ID,
     DEFAULT_TENANT_NAME,
@@ -14,6 +13,8 @@ from app.tenants import (
 
 
 def _legacy_token_values(kind: str) -> set[str]:
+    from app.config import get_settings
+
     settings = get_settings()
     values: set[str] = set()
     if kind == "app" and settings.app_token:

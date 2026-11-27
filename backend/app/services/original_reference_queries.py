@@ -8,8 +8,11 @@ from sqlalchemy import Select, and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app import models as m
-from app.services.attachment_cleanup_service import pending_cleanup_references
-from app.services.file_service import resolve_upload_path_for_tenant, upload_reference_for_path
+from app.attachment_cleanup_contract import pending_cleanup_references
+from app.services.upload_path_resolver import (
+    resolve_upload_path_for_tenant_in_root,
+    upload_reference_for_path_in_root,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,20 +85,44 @@ def historical_original_is_cleaned(row: Mapping[str, object]) -> bool:
     return isinstance(image, dict) and image.get("reference") == source and image.get("outcome") == "deleted"
 
 
-def _relative_upload_path(path: Path) -> str | None:
+def _relative_upload_path(
+    path: Path,
+    *,
+    upload_root: Path,
+    legacy_backend_root: Path | None = None,
+) -> str | None:
     try:
-        return upload_reference_for_path(path)
+        return upload_reference_for_path_in_root(
+            path,
+            upload_root=upload_root,
+            legacy_backend_root=legacy_backend_root,
+        )
     except RuntimeError:
         return None
 
 
-def _normalize_upload_reference(relative_path: str | None, tenant_id: str) -> str | None:
+def _normalize_upload_reference(
+    relative_path: str | None,
+    tenant_id: str,
+    *,
+    upload_root: Path,
+    legacy_backend_root: Path | None = None,
+) -> str | None:
     if not relative_path:
         return None
-    candidate = resolve_upload_path_for_tenant(relative_path, tenant_id)
+    candidate = resolve_upload_path_for_tenant_in_root(
+        relative_path,
+        tenant_id,
+        upload_root=upload_root,
+        legacy_backend_root=legacy_backend_root,
+    )
     if candidate is None:
         return None
-    return _relative_upload_path(candidate)
+    return _relative_upload_path(
+        candidate,
+        upload_root=upload_root,
+        legacy_backend_root=legacy_backend_root,
+    )
 
 
 def _require_normalized_upload_reference(
@@ -103,10 +130,17 @@ def _require_normalized_upload_reference(
     tenant_id: str,
     *,
     source_kind: str,
+    upload_root: Path,
+    legacy_backend_root: Path | None = None,
 ) -> str:
     if not isinstance(relative_path, str) or not relative_path.strip():
         raise ValueError(f"invalid retained original reference ({source_kind})")
-    normalized = _normalize_upload_reference(relative_path, tenant_id)
+    normalized = _normalize_upload_reference(
+        relative_path,
+        tenant_id,
+        upload_root=upload_root,
+        legacy_backend_root=legacy_backend_root,
+    )
     if normalized is None:
         raise ValueError(f"invalid retained original reference ({source_kind})")
     return normalized
@@ -117,12 +151,18 @@ def _build_retained_check(
     tenant_id: str,
     relative_path: str | None,
     source_kind: str,
+    upload_root: Path,
+    legacy_backend_root: Path | None = None,
     expected_sha256: str | None = None,
     expected_size_bytes: int | None = None,
     require_digest: bool = False,
 ) -> RetainedOriginalCheck:
     normalized = _require_normalized_upload_reference(
-        relative_path, tenant_id, source_kind=source_kind,
+        relative_path,
+        tenant_id,
+        source_kind=source_kind,
+        upload_root=upload_root,
+        legacy_backend_root=legacy_backend_root,
     )
     return RetainedOriginalCheck(
         tenant_id=tenant_id,
@@ -134,7 +174,13 @@ def _build_retained_check(
     )
 
 
-def _iter_expense_original_checks(db: Session, tenant_id: str) -> list[RetainedOriginalCheck]:
+def _iter_expense_original_checks(
+    db: Session,
+    tenant_id: str,
+    *,
+    upload_root: Path,
+    legacy_backend_root: Path | None = None,
+) -> list[RetainedOriginalCheck]:
     checks: list[RetainedOriginalCheck] = []
     expense_rows = db.execute(
         select(
@@ -161,6 +207,8 @@ def _iter_expense_original_checks(db: Session, tenant_id: str) -> list[RetainedO
                     tenant_id=tenant_id,
                     relative_path=image_path,
                     source_kind="expense_image",
+                    upload_root=upload_root,
+                    legacy_backend_root=legacy_backend_root,
                     expected_sha256=image_hash,
                 )
             )
@@ -170,6 +218,8 @@ def _iter_expense_original_checks(db: Session, tenant_id: str) -> list[RetainedO
                     tenant_id=tenant_id,
                     relative_path=thumbnail_path,
                     source_kind="expense_thumbnail",
+                    upload_root=upload_root,
+                    legacy_backend_root=legacy_backend_root,
                 )
             )
         for reference in pending_cleanup_references(cleanup_request):
@@ -178,13 +228,21 @@ def _iter_expense_original_checks(db: Session, tenant_id: str) -> list[RetainedO
                     tenant_id=tenant_id,
                     relative_path=reference,
                     source_kind="expense_pending_cleanup",
+                    upload_root=upload_root,
+                    legacy_backend_root=legacy_backend_root,
                     expected_sha256=image_hash if reference == image_path else None,
                 )
             )
     return checks
 
 
-def _iter_debt_capture_original_checks(db: Session, tenant_id: str) -> list[RetainedOriginalCheck]:
+def _iter_debt_capture_original_checks(
+    db: Session,
+    tenant_id: str,
+    *,
+    upload_root: Path,
+    legacy_backend_root: Path | None = None,
+) -> list[RetainedOriginalCheck]:
     checks: list[RetainedOriginalCheck] = []
     capture_rows = db.execute(
         select(
@@ -202,6 +260,8 @@ def _iter_debt_capture_original_checks(db: Session, tenant_id: str) -> list[Reta
                     tenant_id=tenant_id,
                     relative_path=image_path,
                     source_kind="debt_bill_capture",
+                    upload_root=upload_root,
+                    legacy_backend_root=legacy_backend_root,
                     expected_sha256=image_hash,
                     expected_size_bytes=image_size_bytes,
                     require_digest=True,
@@ -214,6 +274,8 @@ def _iter_debt_capture_original_checks(db: Session, tenant_id: str) -> list[Reta
                     tenant_id=tenant_id,
                     relative_path=reference,
                     source_kind="debt_bill_capture_pending_cleanup",
+                    upload_root=upload_root,
+                    legacy_backend_root=legacy_backend_root,
                     expected_sha256=image_hash if matches_primary else None,
                     expected_size_bytes=image_size_bytes if matches_primary else None,
                     require_digest=matches_primary,
@@ -222,7 +284,13 @@ def _iter_debt_capture_original_checks(db: Session, tenant_id: str) -> list[Reta
     return checks
 
 
-def _iter_historical_original_checks(db: Session, tenant_id: str) -> list[RetainedOriginalCheck]:
+def _iter_historical_original_checks(
+    db: Session,
+    tenant_id: str,
+    *,
+    upload_root: Path,
+    legacy_backend_root: Path | None = None,
+) -> list[RetainedOriginalCheck]:
     checks: list[RetainedOriginalCheck] = []
     history = original_receipt_references_query(select(m.ApiIdempotencyKey), tenant_id=tenant_id)
     for original in db.execute(history).mappings():
@@ -235,6 +303,8 @@ def _iter_historical_original_checks(db: Session, tenant_id: str) -> list[Retain
                     tenant_id=tenant_id,
                     relative_path=hist_image,
                     source_kind="historical_original",
+                    upload_root=upload_root,
+                    legacy_backend_root=legacy_backend_root,
                     expected_sha256=original["image_hash"],
                 )
             )
@@ -245,20 +315,50 @@ def _iter_historical_original_checks(db: Session, tenant_id: str) -> list[Retain
                     tenant_id=tenant_id,
                     relative_path=hist_thumb,
                     source_kind="historical_thumbnail",
+                    upload_root=upload_root,
+                    legacy_backend_root=legacy_backend_root,
                 )
             )
     return checks
 
 
-def iter_retained_original_checks(db: Session, tenant_id: str) -> list[RetainedOriginalCheck]:
+def iter_retained_original_checks_in_root(
+    db: Session,
+    tenant_id: str,
+    *,
+    upload_root: Path,
+) -> list[RetainedOriginalCheck]:
+    """Enumerate retained originals normalized strictly against ``upload_root``."""
     return [
-        *_iter_expense_original_checks(db, tenant_id),
-        *_iter_debt_capture_original_checks(db, tenant_id),
-        *_iter_historical_original_checks(db, tenant_id),
+        *_iter_expense_original_checks(db, tenant_id, upload_root=upload_root),
+        *_iter_debt_capture_original_checks(db, tenant_id, upload_root=upload_root),
+        *_iter_historical_original_checks(db, tenant_id, upload_root=upload_root),
+    ]
+
+
+def _runtime_upload_roots() -> tuple[Path, Path]:
+    from app.services import file_service
+
+    return file_service.get_settings().upload_dir.resolve(), file_service.BACKEND_ROOT
+
+
+def iter_retained_original_checks(db: Session, tenant_id: str) -> list[RetainedOriginalCheck]:
+    upload_root, legacy_backend_root = _runtime_upload_roots()
+    return [
+        *_iter_expense_original_checks(
+            db, tenant_id, upload_root=upload_root, legacy_backend_root=legacy_backend_root
+        ),
+        *_iter_debt_capture_original_checks(
+            db, tenant_id, upload_root=upload_root, legacy_backend_root=legacy_backend_root
+        ),
+        *_iter_historical_original_checks(
+            db, tenant_id, upload_root=upload_root, legacy_backend_root=legacy_backend_root
+        ),
     ]
 
 
 def referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
+    upload_root, legacy_backend_root = _runtime_upload_roots()
     rows = db.execute(
         select(
             m.Expense.image_path,
@@ -279,15 +379,21 @@ def referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
     referenced: set[str] = set()
     for image_path, thumbnail_path, image_deleted_at, thumbnail_deleted_at, cleanup_request in rows:
         if image_deleted_at is None:
-            normalized_image = _normalize_upload_reference(image_path, tenant_id)
+            normalized_image = _normalize_upload_reference(
+                image_path, tenant_id, upload_root=upload_root, legacy_backend_root=legacy_backend_root
+            )
             if normalized_image:
                 referenced.add(normalized_image)
         if thumbnail_deleted_at is None:
-            normalized_thumbnail = _normalize_upload_reference(thumbnail_path, tenant_id)
+            normalized_thumbnail = _normalize_upload_reference(
+                thumbnail_path, tenant_id, upload_root=upload_root, legacy_backend_root=legacy_backend_root
+            )
             if normalized_thumbnail:
                 referenced.add(normalized_thumbnail)
         for reference in pending_cleanup_references(cleanup_request):
-            normalized = _normalize_upload_reference(reference, tenant_id)
+            normalized = _normalize_upload_reference(
+                reference, tenant_id, upload_root=upload_root, legacy_backend_root=legacy_backend_root
+            )
             if normalized:
                 referenced.add(normalized)
     history = original_receipt_references_query(select(m.ApiIdempotencyKey), tenant_id=tenant_id)
@@ -298,13 +404,17 @@ def referenced_upload_paths(db: Session, tenant_id: str) -> set[str]:
         if deleted_at is None:
             references = (*references, image_path)
         for reference in references:
-            normalized = _normalize_upload_reference(reference, tenant_id)
+            normalized = _normalize_upload_reference(
+                reference, tenant_id, upload_root=upload_root, legacy_backend_root=legacy_backend_root
+            )
             if normalized:
                 referenced.add(normalized)
     for original in db.execute(history).mappings():
         if historical_original_is_cleaned(original):
             continue
-        normalized = _normalize_upload_reference(original["image_path"], tenant_id)
+        normalized = _normalize_upload_reference(
+            original["image_path"], tenant_id, upload_root=upload_root, legacy_backend_root=legacy_backend_root
+        )
         if normalized:
             referenced.add(normalized)
     return referenced

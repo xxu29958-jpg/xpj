@@ -77,6 +77,25 @@ def _temporary_database_package(source_path: Path) -> Iterator[None]:
             delattr(app_package, "database")
 
 
+@contextmanager
+def standalone_database_package() -> Iterator[None]:
+    """Expose ``app.database`` submodules without executing ``app.database.__init__``.
+
+    Anchor to an already-shipped physical action file (never ``__init__.py``),
+    because frozen PyInstaller builds ship the four maintenance action files on
+    disk while keeping ``app.database.__init__`` inside PYZ.
+    """
+
+    source_path = _maintenance_source_path("_fresh_schema_upgrade.py").resolve()
+    if not source_path.is_file():
+        raise DatabaseMaintenanceContractError("standalone database maintenance package root is unavailable")
+    backend_root_text = str(source_path.parents[2])
+    if backend_root_text not in sys.path:
+        sys.path.insert(0, backend_root_text)
+    with _temporary_database_package(source_path):
+        yield
+
+
 def load_standalone_database_module(
     *,
     module_name: str,
@@ -135,4 +154,5 @@ __all__ = [
     "assert_maintenance_libpq_environment",
     "load_standalone_database_module",
     "resolve_generation_program",
+    "standalone_database_package",
 ]

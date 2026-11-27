@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.errors import AppError
 from app.models import AuthToken, UploadLink
 from app.services.session_lifecycle_service import (
@@ -25,6 +24,8 @@ class _BootstrapPrincipal:
 
 
 def _configured_bootstrap_principal(db: Session) -> _BootstrapPrincipal | None:
+    from app.config import get_settings
+
     settings = get_settings()
     secret = settings.http_bootstrap_secret
     if (

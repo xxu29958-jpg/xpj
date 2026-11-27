@@ -20,7 +20,6 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.errors import AppError
 from app.models import (
     Account,
@@ -323,6 +322,8 @@ def _supersede_predecessors(
     is untouched: this runs once inside the committing transaction; a
     response-loss replay re-reads the already-committed state.
     """
+
+    from app.config import get_settings
 
     grace_seconds = max(get_settings().app_token_rotation_grace_seconds, 0)
     grace_until = checked_at + timedelta(seconds=grace_seconds) if grace_seconds > 0 else None
