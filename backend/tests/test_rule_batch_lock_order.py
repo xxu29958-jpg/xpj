@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models import Expense, RuleApplicationBatch, RuleApplicationChange
-from app.services import expense_correction_service
+from app.services import expense_correction_batch
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.rule_application_service import _apply, _history
 from tests.test_rule_application_commands import _expense, _preview
@@ -51,7 +51,7 @@ def _coordinate_first_rows(monkeypatch, action):
     rule_locked, correction_attempted, correction_locked, rule_continue = (Event() for _ in range(4))
     module, name = (_apply, "_try_apply_rule_category") if action == "apply" else (_history, "_try_rollback_rule_change")
     original_rule = getattr(module, name)
-    original_correction = expense_correction_service._apply_one_batch_correction
+    original_correction = expense_correction_batch._apply_one_batch_correction
     rule_calls = 0
     correction_calls = 0
 
@@ -80,7 +80,7 @@ def _coordinate_first_rows(monkeypatch, action):
         return result
 
     monkeypatch.setattr(module, name, rule_row)
-    monkeypatch.setattr(expense_correction_service, "_apply_one_batch_correction", correction_row)
+    monkeypatch.setattr(expense_correction_batch, "_apply_one_batch_correction", correction_row)
     return rule_locked
 
 
