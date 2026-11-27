@@ -59,11 +59,13 @@ for required_app_module in (
     "app.canonical_money_facts_contract",
     "app.database._database_generation_program",
     "app.database._database_generation_runtime_admission",
+    "app.database._existing_dataset_upgrade_archive",
+    "app.database._existing_dataset_upgrade_archive_rules",
+    "app.database._existing_dataset_upgrade_originals",
     "app.database._managed_postgres_role_authority",
     "app.database_model_registry",
     "app.database._money_schema_attestation",
     "app.database._postgres_operation_failures",
-    "app.services.upload_path_resolver",
     "app.tenant_contract",
 ):
     if required_app_module not in app_hiddenimports:
@@ -74,6 +76,14 @@ for required_app_module in (
 hiddenimports = (
     collect_submodules("uvicorn")
     + app_hiddenimports
+    # app.services is a PEP 420 namespace package (no __init__.py), so
+    # collect_submodules("app") does not traverse it; name dynamically
+    # imported maintenance helpers and packaging launcher modules explicitly.
+    + [
+        "_database_maintenance_cli",
+        "_runtime_authority_contract",
+        "app.services.upload_path_resolver",
+    ]
     # PG-only (debt #4): bundle the PostgreSQL dialect + psycopg 3 binary driver.
     # SQLAlchemy's PyInstaller hook only auto-detects psycopg2, and SQLAlchemy
     # dialects load dynamically by URL scheme, so they must be named explicitly.
@@ -159,7 +169,7 @@ excludes = [
 
 a = Analysis(
     [os.path.join(HERE, "launch.py")],
-    pathex=[BACKEND],
+    pathex=[BACKEND, HERE],
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,

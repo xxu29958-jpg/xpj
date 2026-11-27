@@ -379,7 +379,7 @@ REVIEWED_BOUNDARIES = {
         "test": "distribution/windows/tests/test_upgrade_lifecycle.py",
         "reason": "Terminal domain coordinator for managed upgrade: checks durable commit/write-open state fail-closed, fences candidate Backend, triggers pre-write rollback only when eligible, and returns static sanitized CommandResult.",
     },
-    ("distribution/windows/lifecycle/ticketbox_lifecycle/domain/upgrade.py", "_execute_rollback_to_previous_locked"): {
+    ("distribution/windows/lifecycle/ticketbox_lifecycle/domain/upgrade_rollback.py", "_execute_rollback_to_previous_locked"): {
         "sha256": "69102240050a81f64869bc0ce043c1ac736255a8e99e68e00ed09724cbc9d128",
         "owner": "existing Lifecycle CommandResult private result file and sanitized CLI stderr",
         "test": "distribution/windows/tests/test_upgrade_lifecycle.py",
