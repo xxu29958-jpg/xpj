@@ -17,10 +17,13 @@ from app.schemas import ExpenseRecognizeTextRequest
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.duplicate_service import mark_duplicate_status
 from app.services.expense_service._helpers import _replace_ocr_draft_items_from_text
-from app.services.expense_service._ocr_facts import apply_ocr_result_and_append_fact
+from app.services.expense_service._ocr_facts import (
+    apply_ocr_result_and_append_fact,
+    resolve_legacy_ocr_eligibility,
+)
 from app.services.expense_service._query import get_expense, resolve_expense
 from app.services.learning_service import read_ocr_text
-from app.services.ocr_service import OcrExtraction, OcrResult, extract_ocr_result
+from app.services.ocr_service import OcrExtraction, OcrResult, can_apply_ocr_field, extract_ocr_result
 from app.services.optimistic_concurrency import claim_row_with_token
 from app.services.rule_service import classify_expense
 from app.services.time_service import now_utc
@@ -86,6 +89,7 @@ def retry_expense_ocr(
     # detection still anchors on the pre-claim updated_at, so snapshot it off the
     # row loaded above before the claim bumps it.
     anchor_updated_at = expense.updated_at
+    pre_claim_row_version = expense.row_version
     expense = _claim_pending_expense_for_ocr(
         db,
         expense_id=expense_id,
@@ -95,12 +99,14 @@ def retry_expense_ocr(
     )
     # Keep legacy OCR draft-field detection anchored to the pre-claim snapshot.
     expense.updated_at = anchor_updated_at
+    allow_ocr_only, allow_untouched = resolve_legacy_ocr_eligibility(db, expense, pre_claim_row_version)
     applied = apply_ocr_result_and_append_fact(
         db,
         expense=expense,
         result=result,
         provider_name=provider_name,
         ocr_model=_active_provider_model(provider_name),
+        pre_claim_row_version=pre_claim_row_version,
     )
     # v1.2 OCR single-source migration (step 4): pull the canonical
     # OCR text via ``read_ocr_text`` instead of the deprecated
@@ -109,7 +115,14 @@ def retry_expense_ocr(
     # the row we just inserted (no N+1, no stale-read risk).
     if applied is not None:
         _replace_ocr_draft_items_from_text(db, expense, read_ocr_text(db, tenant_id=expense.tenant_id, expense=expense) or "")
-    if expense.category == "其他":
+    if expense.category == "其他" and can_apply_ocr_field(
+        expense,
+        "category",
+        is_empty_or_default=True,
+        effective_row_version=pre_claim_row_version,
+        allow_legacy_ocr_only=allow_ocr_only,
+        allow_legacy_untouched=allow_untouched,
+    ):
         classify_expense(db, expense)
     if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
         mark_duplicate_status(db, expense)
@@ -147,6 +160,7 @@ def recognize_expense_text(
     # ADR-0041: snapshot pre-claim updated_at for the legacy draft-field anchor
     # (token is row_version now, not the updated_at datetime).
     anchor_updated_at = expense.updated_at
+    pre_claim_row_version = expense.row_version
     expense = _claim_pending_expense_for_ocr(
         db,
         expense_id=expense_id,
@@ -158,16 +172,25 @@ def recognize_expense_text(
     # snapshot — apply_ocr_result_and_append_fact reads expense.updated_at
     # to decide which draft fields it owns and is allowed to overwrite.
     expense.updated_at = anchor_updated_at
+    allow_ocr_only, allow_untouched = resolve_legacy_ocr_eligibility(db, expense, pre_claim_row_version)
     result = OcrResult(raw_text=raw_text, confidence=None)
     applied = apply_ocr_result_and_append_fact(
         db,
         expense=expense,
         result=result,
         provider_name="manual_text",
+        pre_claim_row_version=pre_claim_row_version,
     )
     if applied is not None:
         _replace_ocr_draft_items_from_text(db, expense, applied.raw_text)
-    if expense.category == "其他":
+    if expense.category == "其他" and can_apply_ocr_field(
+        expense,
+        "category",
+        is_empty_or_default=True,
+        effective_row_version=pre_claim_row_version,
+        allow_legacy_ocr_only=allow_ocr_only,
+        allow_legacy_untouched=allow_untouched,
+    ):
         classify_expense(db, expense)
     if expense.amount_cents is not None or expense.merchant or expense.expense_time is not None:
         mark_duplicate_status(db, expense)

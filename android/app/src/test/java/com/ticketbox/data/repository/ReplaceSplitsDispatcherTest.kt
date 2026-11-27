@@ -169,10 +169,10 @@ class ReplaceSplitsDispatcherTest {
     }
 
     @Test
-    fun `404 expense_not_found still discards while unknown 404 stays Failure`() = runTest {
+    fun `404 expense_not_found and missing route both stay Failure without discarding`() = runTest {
         val gone = Stub(Result.failure(httpException(404, """{"error":"expense_not_found","message":"账单不存在。"}""")))
         assertEquals(
-            DispatchResult.Discarded("账单不存在。"),
+            DispatchResult.Failure("账单不存在。", definitelyRejected = true),
             dispatcherFor(gone).dispatch(splitsRow(idempotencyKey = "key-abc")),
         )
 

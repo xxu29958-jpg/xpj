@@ -214,9 +214,17 @@ internal class OutboxSettlementCoordinator(
         val outcome = binding.withBindingLock { current ->
             boundRequest?.requireStillActiveFor(current)
             if (drop) {
-                StatusResolutionOutcome(
-                    changed = dao.deleteIfStatus(id, current.ownerStorageKey, current.ledgerId, status.wireValue) > 0,
-                )
+                val abandonedRetryOcr = status in setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict) &&
+                    dao.abandonDroppedRetryOcr(
+                        id = id,
+                        ownerKey = current.ownerStorageKey,
+                        ledgerId = current.ledgerId,
+                        expectedStatus = status.wireValue,
+                        stoppedAt = clock.outboxNowIso(),
+                    ) > 0
+                val changed = abandonedRetryOcr ||
+                    dao.deleteIfStatus(id, current.ownerStorageKey, current.ledgerId, status.wireValue) > 0
+                StatusResolutionOutcome(changed = changed)
             } else {
                 applyRetryResolutionLocked(current, id, status, freshToken)
             }

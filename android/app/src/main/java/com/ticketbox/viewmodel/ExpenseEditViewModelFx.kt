@@ -121,12 +121,16 @@ private suspend fun ExpenseEditViewModel.applyFxReview(binding: LogicalSessionBi
         if (failure != null) {
             it.copy(expenseLoading = false, fx = it.fx.copy(loading = false, message = failure))
         } else {
+            savedState.remove<LongArray>("expense_command_ids")
+            savedState.remove<String>("expense_command_binding")
+            savedState.remove<Boolean>("expense_command_drop_unlock")
             it.copy(
                 expense = fresh,
                 formRevision = it.formRevision + 1,
                 preservedFormTimestamp = null,
                 originalBaselineRequired = false,
                 commandRowIds = emptyList(),
+                commandAllowsDropUnlock = false,
                 commandsCompleted = false,
                 expenseLoading = false,
                 expenseItems = items,

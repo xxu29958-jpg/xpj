@@ -47,6 +47,20 @@ internal class RejectExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestB
     )
 
     @Test
+    fun `missing reject endpoint or expense_not_found 404 never settles as Done`() = runTest {
+        for (body in listOf("""{"detail":"Not Found"}""", """{"error":"expense_not_found","message":"没有找到这笔账单。"}""")) {
+            val stub = ApiServiceStub(rejectExpenseResult = ApiResult.Throw(httpException(404, body)))
+            var publications = 0
+            val result = dispatcherFor(stub) { _, _ -> publications++ }
+                .dispatch(rejectRow(idempotencyKey = "original-ignore-786"))
+
+            assertTrue(result is DispatchResult.Failure && result.definitelyRejected, "HTTP 404 refusal is not a deletion receipt: $result")
+            assertEquals(0, publications)
+            assertEquals("original-ignore-786", stub.lastRejectIdempotencyKey)
+        }
+    }
+
+    @Test
     fun `accepted reject retains its receipt when cache publication fails`() = runTest {
         val response = successExpenseDto().copy(status = "rejected")
         val stub = ApiServiceStub(rejectExpenseResult = ApiResult.Success(response))

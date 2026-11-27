@@ -162,6 +162,7 @@ data class ExpenseDraft(
     val recognitionTimeChoice: RecognitionTimeChoice? = null,
     val recognitionFieldChoices: List<RecognitionFieldChoice>? = null,
     val originalTextFeedback: List<OriginalTextFeedback>? = null,
+    val clearAmount: Boolean = false,
 )
 
 data class ExpenseItem(

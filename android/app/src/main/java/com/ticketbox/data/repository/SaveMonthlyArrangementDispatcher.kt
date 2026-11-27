@@ -25,7 +25,7 @@ class SaveMonthlyArrangementDispatcher(private val apiProvider: (OutboxRow) -> A
                 DispatchResult.Failure("monthly_arrangement_unverified")
             else DispatchResult.Success(receiptJson = receiptAdapter.toJson(receipt))
         } catch (error: HttpException) {
-            mapOutboxHttpException(error).let { if (it is DispatchResult.Discarded) DispatchResult.Failure("monthly_arrangement_unverified") else it }
+            mapOutboxHttpException(error).let { if (error.code() == 404) DispatchResult.Failure("monthly_arrangement_unverified") else it }
         } catch (_: IOException) { DispatchResult.RetryableFailure("连接中断，保留原安排提交等待重试。")
         } catch (error: CancellationException) { throw error
         } catch (_: Exception) { DispatchResult.Failure("monthly_arrangement_unverified") }

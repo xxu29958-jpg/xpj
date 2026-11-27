@@ -182,6 +182,9 @@ data class ExpenseUpdateRequest(
     val regretScore: Int?,
     @param:Json(name = "time_input")
     val timeInput: ExpenseTimeInputDto? = null,
+    @param:Json(ignore = true)
+    @Transient
+    val clearOriginalAmount: Boolean = false,
 )
 
 /**

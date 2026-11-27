@@ -72,9 +72,26 @@ OCR_DRAFT_FIELD_ALIASES = {
     "exchange_rate_date": "amount_cents",
     "exchange_rate_source": "amount_cents",
     "fx_status": "amount_cents",
+    "manual_exchange_rate": "amount_cents",
     "merchant": "merchant",
     "category": "category",
     "expense_time": "expense_time",
     "spent_at": "expense_time",
+    "time_input": "expense_time",
 }
 LEGACY_AUTO_OCR_WINDOW = timedelta(minutes=5)
+
+TERMINAL_OCR_RUNTIME_STATUS: dict[str, int] = {
+    "ocr_input_changed": 409,
+    "ocr_region_invalid": 422,
+    "ocr_region_incomplete": 422,
+    "ocr_region_no_text": 422,
+    "ocr_region_source_unavailable": 409,
+    "ocr_input_limit": 422,
+    "ocr_image_invalid": 422,
+}
+
+
+def ocr_runtime_error_status(code: str) -> int:
+    """Classify deterministic OCR runtime refusals vs retryable 503 failures."""
+    return TERMINAL_OCR_RUNTIME_STATUS.get(code, 503)

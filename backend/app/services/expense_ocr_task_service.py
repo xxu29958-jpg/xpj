@@ -29,7 +29,62 @@ from app.services.idempotency import (
     mark_idempotency_succeeded,
 )
 from app.services.ocr_retry_receipt import OCR_RETRY_TASK_TYPE
+from app.services.ocr_service._models import TERMINAL_OCR_RUNTIME_STATUS
 from app.services.session_credential_lock import lock_bootstrap_owner_transaction
+
+# Terminal refusals require new user input or resolved source state. Replaying
+# the original must return its durable 4xx refusal, not map to 503 or spawn
+# another identical OCR task.
+_TERMINAL_OCR_REFUSAL_STATUS = {
+    "permission_denied": 403,
+    "ledger_forbidden": 403,
+    "state_conflict": 409,
+    "expense_not_found": 404,
+    "image_not_found": 404,
+    "image_integrity_mismatch": 409,
+    "file_too_large": 413,
+    "unsupported_file_type": 415,
+    "amount_invalid": 422,
+    **TERMINAL_OCR_RUNTIME_STATUS,
+}
+_RETRYABLE_CLIENT_STATUSES = frozenset({408, 429})
+
+
+def _persisted_failure_status(task: BackgroundTask) -> int | None:
+    if not task.execution_context_json:
+        return None
+    try:
+        context = json.loads(task.execution_context_json)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(context, dict):
+        return None
+    status = context.get("failure_status_code")
+    if isinstance(status, int) and not isinstance(status, bool) and 400 <= status <= 599:
+        return status
+    return None
+
+
+def _terminal_refusal_status(task: BackgroundTask) -> int | None:
+    if task.error_code in INTERRUPTED_TASK_CODES:
+        return None
+    persisted = _persisted_failure_status(task)
+    if persisted is not None:
+        if 400 <= persisted < 500 and persisted not in _RETRYABLE_CLIENT_STATUSES:
+            return persisted
+        return None
+    return _TERMINAL_OCR_REFUSAL_STATUS.get(task.error_code or "")
+
+
+def _is_legacy_retryable_failed_task(task: BackgroundTask) -> bool:
+    return (
+        task.status == "failed"
+        and task.error_code not in INTERRUPTED_TASK_CODES
+        and _terminal_refusal_status(task) is None
+        and task.result_summary_json is None
+        and task.cancellation_requested_at is None
+        and task.recovery_attempts == 0
+    )
 
 
 def _existing_task(db: Session, claim, *, legacy: bool) -> BackgroundTask | Expense | None:
@@ -47,10 +102,8 @@ def _existing_task(db: Session, claim, *, legacy: bool) -> BackgroundTask | Expe
     if task is None or str(task.source_expense_id) != row.target_id:
         raise AppError("task_not_found", status_code=404)
     # Legacy errors were never successful command acknowledgements. A later
-    # retry may compute again, but cancellation and an applied receipt are final.
-    if (legacy and task.status == "failed" and task.error_code not in INTERRUPTED_TASK_CODES
-            and task.result_summary_json is None and task.cancellation_requested_at is None
-            and task.recovery_attempts == 0):
+    # retry may compute again, but cancellation, terminal refusals, and an applied receipt are final.
+    if legacy and _is_legacy_retryable_failed_task(task):
         return None
     return task
 
@@ -171,7 +224,7 @@ def _require_legacy_completion(task: BackgroundTask) -> None:
         raise AppError("state_conflict", "原识别请求已取消，请核对后重新发起。", status_code=409)
     if task.status == "failed":
         code = task.error_code if task.error_code in ERROR_MESSAGES else "ocr_inference_failed"
-        status = {"permission_denied": 403, "state_conflict": 409, "expense_not_found": 404}.get(code, 503)
+        status = _terminal_refusal_status(task) or _persisted_failure_status(task) or 503
         raise AppError(code, status_code=status)
     outcome = json.loads(task.result_summary_json or "{}").get("outcome")
     if outcome not in {"updated", "no_result"}:

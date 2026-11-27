@@ -234,3 +234,45 @@ def test_copied_original_is_protected_from_orphan_disposal_until_publication_com
     with SessionLocal() as maintenance:
         assert try_claim_orphan(maintenance, copied[0])
         assert maintenance.scalar(select(Expense).where(Expense.image_path == copied[0])) is not None
+
+
+def test_legacy_null_draft_fields_upload_reuses_source_for_first_card_on_recognize_text(client, identity):
+    root_id = upload_png(client, identity=identity)
+    with SessionLocal() as db:
+        root = db.get(Expense, root_id)
+        root.ocr_draft_fields = None
+        root.amount_cents = None
+        root.original_amount_minor = None
+        root.row_version = 1
+        db.commit()
+
+    response = recognize_text_api(client, root_id, headers=identity.app_headers, raw_text=_cards())
+    assert response.status_code == 200, response.text
+    assert response.json()["amount_cents"] == 1000
+    with SessionLocal() as db:
+        rows = _rows(db, root_id)
+        assert len(rows) == 2
+        assert rows[0].expense_id == root_id
+        assert db.scalar(select(func.count()).select_from(Expense)) == 2
+        assert [db.get(Expense, row.expense_id).amount_cents for row in rows] == [1000, 1290]
+
+
+def test_edited_legacy_null_draft_fields_upload_does_not_reuse_source_on_recognize_text(client, identity):
+    root_id = upload_png(client, identity=identity)
+    with SessionLocal() as db:
+        root = db.get(Expense, root_id)
+        root.ocr_draft_fields = None
+        root.amount_cents = None
+        root.original_amount_minor = None
+        root.row_version = 2
+        db.commit()
+
+    response = recognize_text_api(client, root_id, headers=identity.app_headers, raw_text=_cards())
+    assert response.status_code == 200, response.text
+    assert response.json()["amount_cents"] is None
+    with SessionLocal() as db:
+        rows = _rows(db, root_id)
+        assert len(rows) == 2
+        assert all(row.expense_id != root_id for row in rows)
+        assert db.scalar(select(func.count()).select_from(Expense)) == 3
+        assert [db.get(Expense, row.expense_id).amount_cents for row in rows] == [1000, 1290]

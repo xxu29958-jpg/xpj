@@ -29,7 +29,7 @@ from app.schemas import NotificationDraftCreateRequest
 from app.services.category_service import normalize_category
 from app.services.data_quality_service import is_uncategorized_expense_category
 from app.services.expense_query import EDITABLE_STATUSES  # re-exported
-from app.services.ocr_service import serialize_ocr_draft_fields
+from app.services.ocr_service import OCR_DRAFT_FIELDS, serialize_ocr_draft_fields
 from app.services.ocr_service._apply import _expense_ocr_source_money_context
 from app.services.receipt_parse_service import parse_receipt_text
 from app.services.time_service import ensure_utc
@@ -145,23 +145,11 @@ def _notification_draft_key(
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
-def _notification_draft_fields(payload: NotificationDraftCreateRequest) -> str | None:
-    fields: set[str] = set()
-    if payload.amount_cents is not None:
-        fields.add("amount_cents")
-    if payload.original_amount is not None or payload.original_amount_minor is not None:
-        fields.add("original_amount")
-    if payload.original_currency or payload.original_currency_code:
-        fields.add("original_currency")
-    if _clean_optional_text(payload.merchant):
-        fields.add("merchant")
-    if payload.expense_time is not None or payload.spent_at is not None:
-        fields.add("expense_time")
-    if _clean_optional_text(payload.category):
-        fields.add("category")
-    if not fields:
-        return None
-    return serialize_ocr_draft_fields(list(fields))
+def _notification_draft_fields(payload: NotificationDraftCreateRequest) -> str:
+    del payload
+    # Notification drafts are machine-captured with zero human edits, so all four
+    # canonical fields start OCR-eligible until a user explicitly saves or clears one.
+    return serialize_ocr_draft_fields(OCR_DRAFT_FIELDS)
 
 
 def _expense_has_pending_fx(expense: Expense) -> bool:

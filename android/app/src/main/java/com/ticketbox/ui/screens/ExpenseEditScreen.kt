@@ -425,22 +425,16 @@ fun ExpenseEditScreen(
         }
         val funding = if (confirming) runCatching { com.ticketbox.data.repository.readExpenseFunding(state.fundingJson, currency, originalMinor) }
             .getOrElse { message = it.message; return null } else emptyList()
+        val ownership = submittedExpenseDraftOwnership(
+            SubmittedDraftInput(currentExpense, confirming, originalMinor, merchant, category, categoryChoice),
+        )
         return ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = currency,
             originalAmountMinor = originalMinor,
             manualExchangeRate = manualRate.rate?.takeIf { manualExchangeRateNeedsReview },
-            // Blank merchant/tags submit as "" (NOT null): Moshi omits null
-            // keys and the backend PATCH is exclude_unset, so null silently
-            // means "unchanged" — clearing a field then never took effect.
-            // The backend's _clean_optional_text("") / normalize_tags("")
-            // already treat "" as an explicit clear.
-            merchant = merchant,
-            // Blank category submits as null (NOT 其他): the PATCH is
-            // exclude_unset, so a row whose category is genuinely missing
-            // keeps that fact instead of being silently recategorized to the
-            // display fallback on any unrelated edit (PR #230 round 12).
-            category = category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) },
+            merchant = ownership.merchant,
+            category = ownership.category,
             categoryChoice = categoryChoice,
             categoryDecisionPublicId = categoryDecisionPublicId,
             recognitionTimeChoice = timeForm.recognitionChoice,
@@ -453,6 +447,7 @@ fun ExpenseEditScreen(
             valueScore = valueScore,
             regretScore = regretScore,
             funding = funding,
+            clearAmount = ownership.clearAmount,
         )
     }
 
@@ -843,4 +838,39 @@ private fun allowsFactMutation(readOnly: Boolean, commandOpen: Boolean) = !readO
 internal fun editInitialCategory(expense: Expense): String {
     val raw = expense.serverCategory ?: expense.category
     return if (isUncategorizedExpenseCategory(raw)) "" else expense.category
+}
+
+private data class SubmittedDraftInput(
+    val baseline: Expense,
+    val confirming: Boolean,
+    val originalMinor: Long?,
+    val merchant: String,
+    val category: String,
+    val categoryChoice: String?,
+)
+
+private data class SubmittedDraftOwnership(
+    val clearAmount: Boolean,
+    val merchant: String?,
+    val category: String?,
+)
+
+private fun submittedExpenseDraftOwnership(input: SubmittedDraftInput): SubmittedDraftOwnership {
+    val baselineAmountMinor = input.baseline.originalAmountMinor ?: input.baseline.amountCents
+    val clearAmount = input.baseline.status == "pending" && input.originalMinor == null && baselineAmountMinor != null
+    val baselineMerchant = input.baseline.merchant.orEmpty().trim()
+    val trimmedMerchant = input.merchant.trim()
+    val submittedMerchant = if (input.confirming) {
+        trimmedMerchant.takeUnless { it.isEmpty() && baselineMerchant.isEmpty() }
+    } else {
+        trimmedMerchant.takeUnless { it == baselineMerchant }
+    }
+    val normalizedCategory = input.category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) }
+    val baselineCategory = input.baseline.category.trim().ifBlank { null }?.let { normalizeExpenseCategory(it) }
+    val submittedCategory = normalizedCategory?.takeIf { input.categoryChoice != null || it != baselineCategory }
+    return SubmittedDraftOwnership(
+        clearAmount = clearAmount,
+        merchant = submittedMerchant,
+        category = submittedCategory,
+    )
 }

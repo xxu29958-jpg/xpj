@@ -9,6 +9,7 @@ import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
 import com.ticketbox.data.remote.dto.MonthlyStatsDto
 import com.ticketbox.data.remote.dto.PendingCategorySuggestionDto
 import com.ticketbox.data.remote.dto.TagStatsDto
+import com.ticketbox.data.remote.dto.addExpenseUpdateWireAdapters
 import com.ticketbox.domain.model.CategoryStats
 import com.ticketbox.domain.model.CurrencyCode
 import com.ticketbox.domain.model.ExpenseDraft
@@ -241,7 +242,7 @@ class ExpenseMappersTest {
             ),
         ).toDomain()
 
-        val request = ExpenseDraft(
+        val draft = ExpenseDraft(
             amountCents = null,
             originalCurrencyCode = CurrencyCode.USD,
             originalAmountMinor = 12345,
@@ -252,14 +253,122 @@ class ExpenseMappersTest {
             tags = null,
             valueScore = null,
             regretScore = null,
-        ).toRequest(baseline = baseline)
+        )
+        val request = draft.toRequest(baseline = baseline)
 
         assertEquals(null, request.originalCurrency)
         assertEquals(null, request.originalAmount)
         assertEquals(null, request.spentAt)
         assertEquals(null, request.expenseTime)
         assertEquals("新加的备注", request.note)
+        assertEquals(null, request.merchant)
+        assertEquals(null, request.category)
         assertEquals(1L, request.expectedRowVersion)
+        assertEquals("测试商家", draft.toRequest(baseline = baseline, confirming = true).merchant)
+    }
+
+    @Test
+    fun noteOnlyPatchOmitsUntouchedEmptyMerchantAndDefaultOtherCategory() {
+        val pendingBlank = expenseDto(
+            publicId = "pending-blank",
+            fixture = ExpenseDtoFixture(
+                category = "其他",
+                currency = ExpenseDtoCurrencyFixture(originalCurrencyCode = "CNY", originalAmountMinor = null),
+            ),
+        ).copy(status = "pending", amountCents = null, merchant = null, note = "").toDomain()
+
+        val draft = ExpenseDraft(
+            amountCents = null,
+            originalCurrencyCode = CurrencyCode.CNY,
+            originalAmountMinor = null,
+            merchant = "",
+            category = "其他",
+            note = "只改备注",
+            expenseTime = pendingBlank.expenseTime,
+            tags = null,
+            valueScore = null,
+            regretScore = null,
+        )
+        val request = draft.toRequest(baseline = pendingBlank)
+        val wireMoshi = com.squareup.moshi.Moshi.Builder()
+            .addExpenseUpdateWireAdapters()
+            .build()
+        val json = wireMoshi.adapter(com.ticketbox.data.remote.dto.ExpenseUpdateRequest::class.java).toJson(request)
+
+        assertEquals(null, request.merchant)
+        assertEquals(null, request.category)
+        assertEquals(null, request.originalAmount)
+        assertEquals(false, request.clearOriginalAmount)
+        assertEquals(false, json.contains("\"merchant\""))
+        assertEquals(false, json.contains("\"category\""))
+        assertEquals(false, json.contains("\"original_amount\""))
+        assertEquals(true, json.contains("\"note\":\"只改备注\""))
+    }
+
+    @Test
+    fun explicitOtherSelectionAndExplicitClearsSerializeThroughWireAdapter() {
+        val pendingFilled = expenseDto(
+            publicId = "pending-filled",
+            fixture = ExpenseDtoFixture(
+                category = "其他",
+                currency = ExpenseDtoCurrencyFixture(originalCurrencyCode = "CNY", originalAmountMinor = 1789L),
+            ),
+        ).copy(status = "pending", amountCents = 1789L, merchant = "好想来零食乐园").toDomain()
+
+        val wireMoshi = com.squareup.moshi.Moshi.Builder()
+            .addExpenseUpdateWireAdapters()
+            .build()
+        val adapter = wireMoshi.adapter(com.ticketbox.data.remote.dto.ExpenseUpdateRequest::class.java)
+
+        // Explicitly re-selecting "其他" sets categoryChoice="manual" and must emit category + category_choice.
+        val explicitOtherReq = ExpenseDraft(
+            amountCents = null,
+            originalCurrencyCode = CurrencyCode.CNY,
+            originalAmountMinor = 1789L,
+            merchant = "好想来零食乐园",
+            category = "其他",
+            categoryChoice = "manual",
+            note = "",
+            expenseTime = pendingFilled.expenseTime,
+            tags = null,
+            valueScore = null,
+            regretScore = null,
+        ).toRequest(baseline = pendingFilled)
+        val explicitOtherJson = adapter.toJson(explicitOtherReq)
+        assertEquals("其他", explicitOtherReq.category)
+        assertEquals("manual", explicitOtherReq.categoryChoice)
+        assertEquals(true, explicitOtherJson.contains("\"category\":\"其他\""))
+        assertEquals(true, explicitOtherJson.contains("\"category_choice\":\"manual\""))
+        assertEquals(false, explicitOtherJson.contains("\"merchant\""))
+        assertEquals(false, explicitOtherJson.contains("\"original_amount\""))
+
+        // Explicitly clearing merchant and amount must emit "merchant":"" and "original_amount":null and round-trip.
+        val clearedReq = ExpenseDraft(
+            amountCents = null,
+            originalCurrencyCode = CurrencyCode.CNY,
+            originalAmountMinor = null,
+            clearAmount = true,
+            merchant = "",
+            category = "其他",
+            note = "",
+            expenseTime = pendingFilled.expenseTime,
+            tags = null,
+            valueScore = null,
+            regretScore = null,
+        ).toRequest(baseline = pendingFilled).copy(expectedRowVersion = null)
+        val clearedJson = adapter.toJson(clearedReq)
+        assertEquals(true, clearedJson.contains("\"merchant\":\"\""))
+        assertEquals(true, clearedJson.contains("\"original_amount\":null"))
+        assertEquals(false, clearedJson.contains("\"category\""))
+
+        val roundTripped = requireNotNull(adapter.fromJson(clearedJson)).copy(expectedRowVersion = 2L)
+        assertEquals(true, roundTripped.clearOriginalAmount)
+        assertEquals(null, roundTripped.originalAmount)
+        assertEquals("", roundTripped.merchant)
+        val replayJson = adapter.toJson(roundTripped)
+        assertEquals(true, replayJson.contains("\"expected_row_version\":2"))
+        assertEquals(true, replayJson.contains("\"original_amount\":null"))
+        assertEquals(true, replayJson.contains("\"merchant\":\"\""))
     }
 
     @Test

@@ -2,13 +2,9 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.local.PendingMutationType
-import com.ticketbox.data.remote.dto.IncomePlanDto
 import com.ticketbox.domain.model.CurrencyCode
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
-import okhttp3.ResponseBody.Companion.toResponseBody
-import retrofit2.HttpException
-import retrofit2.Response
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,9 +14,8 @@ class IncomePlanLegacyCompletionTest {
     @Test fun oldSuccessAndDiscarded404BothRequireReviewAndAnExplicitLocalStop() = runTest {
         // The old income dispatcher returned Success() without a receipt or mapped 404 to Discarded.
         // Both outcomes were persisted as Done, so neither is proof of the original accepted command.
-        val old404 = mapOutboxHttpException(HttpException(Response.error<IncomePlanDto>(404,
-            """{"error":"not_found","message":"Synthetic old missing plan"}""".toResponseBody())))
-        assertTrue(old404 is DispatchResult.Discarded)
+        // Recreate the historical result directly; today's HTTP mapper must reject 404.
+        val old404 = DispatchResult.Discarded("Synthetic old missing plan")
         for (legacyResult in listOf(DispatchResult.Success(), old404)) {
             val f = IncomeCreationFixture()
             val payload = """{"revision":1,"planPublicId":"income-created","originalLabel":"原工资","originalAmountCents":1000,"homeCurrencyCode":"JPY","originSessionGeneration":"${f.binding.sessionGeneration}","originBindingRevision":"${f.binding.bindingRevision}","request":{"intent_month":"2026-09","expected_row_version":0,"amount_cents":1200}}"""

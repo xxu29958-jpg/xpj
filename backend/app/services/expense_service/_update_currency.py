@@ -96,6 +96,11 @@ def _apply_frozen_snapshot_update(
             currency_code=current_currency,
         )
         if original_amount_minor is None:
+            if expense.status != "pending":
+                return
+            resolve_write_capability(db)
+            expense.original_amount_minor = None
+            expense.amount_cents = None
             return
     else:
         if current_currency != expense.home_currency_code:
@@ -133,6 +138,12 @@ def _apply_update_currency(
         currency_intent -= {"spent_at", "expense_time", "time_input"}
     if not currency_intent:
         return
+    original_amount_cleared = (
+        expense.status == "pending"
+        and bool(_ORIGINAL_AMOUNT_FIELDS & updates.keys())
+        and updates.get("original_amount") is None
+        and updates.get("original_amount_minor") is None
+    )
     if payload.manual_exchange_rate is not None:
         if expense.status != "pending":
             raise AppError("currency_snapshot_immutable", status_code=422)
@@ -144,6 +155,7 @@ def _apply_update_currency(
             payload=payload,
             amount_was_explicit="amount_cents" in updates,
             manual_exchange_rate=payload.manual_exchange_rate,
+            original_amount_cleared=original_amount_cleared,
         )
         return
     if _has_frozen_snapshot(expense):
@@ -168,4 +180,5 @@ def _apply_update_currency(
         expense=expense,
         payload=payload,
         amount_was_explicit="amount_cents" in updates,
+        original_amount_cleared=original_amount_cleared,
     )

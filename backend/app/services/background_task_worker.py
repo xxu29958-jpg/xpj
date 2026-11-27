@@ -77,6 +77,7 @@ def run_task(
                 expected_status="running",
                 error_code=exc.error if isinstance(exc, AppError) else type(exc).__name__,
                 error_message=_failure_message(task.task_type, exc),
+                failure_status_code=exc.status_code if isinstance(exc, AppError) else None,
             )
         else:
             # The handler owns result_summary_json; this worker owns only the

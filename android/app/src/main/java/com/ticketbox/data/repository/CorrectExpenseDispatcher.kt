@@ -63,14 +63,13 @@ class CorrectExpenseDispatcher(
             return if (parsed.errorCode in correctionUnavailable404ErrorCodes) {
                 DispatchResult.Failure("correction_target_unavailable", definitelyRejected = true)
             } else {
-                mapOutboxHttpError(error.code(), parsed, discardable404ErrorCodes = emptySet())
+                mapOutboxHttpError(error.code(), parsed)
             }
         }
         if (error.code() == 409 && parsed.errorCode == CORRECTION_RATE_PENDING) {
             return DispatchResult.Failure(parsed.correctionRateFailure())
         }
-        val result = mapOutboxHttpError(error.code(), parsed)
-        return if (result is DispatchResult.Discarded) DispatchResult.Failure("correction_target_unavailable", definitelyRejected = true) else result
+        return mapOutboxHttpError(error.code(), parsed)
     }
 }
 

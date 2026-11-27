@@ -350,8 +350,31 @@ fun ExpenseDraft.toLocalCreateEntity(ledgerId: String, clientRef: String): Expen
     )
 }
 
-fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
-    val submittedOriginalMinor = originalAmountMinor ?: amountCents
+private fun resolveRequestMerchant(merchant: String?, baseline: Expense?, confirming: Boolean): String? {
+    if (baseline == null) return merchant
+    val trimmed = merchant?.trim() ?: return null
+    if (confirming && trimmed.isNotEmpty()) return trimmed
+    return trimmed.takeUnless { it == baseline.merchant?.trim().orEmpty() }
+}
+
+private fun resolveRequestCategory(category: String?, categoryChoice: String?, baseline: Expense?): String? {
+    val normalized = category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory)
+    if (baseline == null) return normalized
+    if (normalized == null) return null
+    val baselineCategory = baseline.category.trim().takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory)
+    return normalized.takeIf { categoryChoice != null || it != baselineCategory }
+}
+
+/** PATCH diff payload: omits unchanged fields for backend ``exclude_unset`` while keeping explicit clears. */
+fun ExpenseDraft.toPatchPayload(baseline: Expense): ExpenseUpdateRequest =
+    toRequest(baseline = baseline, confirming = false).copy(expectedRowVersion = null)
+
+/** ConfirmExpense atomic-change payload: keeps reviewed non-blank merchant and explicit clears/edits. */
+fun ExpenseDraft.toConfirmationChanges(baseline: Expense): ExpenseUpdateRequest =
+    toRequest(baseline = baseline, confirming = true).copy(expectedRowVersion = null)
+
+fun ExpenseDraft.toRequest(baseline: Expense?, confirming: Boolean = false): ExpenseUpdateRequest {
+    val submittedOriginalMinor = if (clearAmount) null else (originalAmountMinor ?: amountCents)
     val submittedCurrency = originalCurrencyCode
         ?: if (submittedOriginalMinor != null) FxContract.HomeCurrency else null
     val submittedAmountText = minorToMajorText(
@@ -359,11 +382,16 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
         submittedCurrency ?: FxContract.HomeCurrency,
     )
     val isCreate = baseline == null
-    val currencyChanged = baseline != null && submittedCurrency != baseline.originalCurrencyCode
-    val amountChanged = baseline != null && submittedOriginalMinor != baseline.originalAmountMinor
+    val baselineAmountMinor = baseline?.originalAmountMinor ?: baseline?.amountCents
+    val currencyChanged = baseline != null && submittedCurrency != null && submittedCurrency != baseline.originalCurrencyCode
+    val amountCleared = baseline != null && clearAmount && baselineAmountMinor != null
+    val amountChanged = baseline != null && !amountCleared && submittedOriginalMinor != null &&
+        submittedOriginalMinor != baselineAmountMinor
     val timeChanged = baseline != null && expenseTime != baseline.expenseTime
     val changedTimeInput = timeInput?.takeUnless { it.matches(baseline?.accountingTime) }
     val legacyTime = expenseTime.takeIf { timeInput == null && (isCreate || timeChanged) }
+    val requestMerchant = resolveRequestMerchant(merchant, baseline, confirming)
+    val requestCategory = resolveRequestCategory(category, categoryChoice, baseline)
 
     return ExpenseUpdateRequest(
         recognitionTimeChoice = recognitionTimeChoice,
@@ -380,16 +408,17 @@ fun ExpenseDraft.toRequest(baseline: Expense?): ExpenseUpdateRequest {
         originalAmount = if (isCreate || amountChanged) submittedAmountText else null,
         spentAt = legacyTime,
         manualExchangeRate = manualExchangeRate,
-        merchant = merchant,
-        // null/blank category stays OUT of the PATCH body (exclude_unset):
-        // writing 其他 here would silently erase the missing-category fact on
-        // every quick-fix/edit of an uncategorized row (PR #230 round 12).
-        category = category?.trim()?.takeIf { it.isNotBlank() }?.let(::normalizeExpenseCategory),
+        merchant = requestMerchant,
+        // Untouched category stays OUT of the PATCH body (exclude_unset) so
+        // default "其他" or missing-category facts are not overwritten by
+        // unrelated edits; explicit user picks (categoryChoice != null) still send.
+        category = requestCategory,
         note = note,
         expenseTime = legacyTime,
         tags = tags,
         valueScore = valueScore,
         regretScore = regretScore,
+        clearOriginalAmount = amountCleared,
     )
 }
 

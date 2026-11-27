@@ -27,6 +27,7 @@ from app.services.ocr_service._apply import (
     retry_ocr,
 )
 from app.services.ocr_service._draft_fields import (
+    can_apply_ocr_field,
     canonical_ocr_draft_fields,
     clear_ocr_draft_fields,
     ocr_draft_fields,
@@ -66,6 +67,7 @@ __all__ = [
     "OcrFactSnapshot",
     "RapidOcrProvider",
     "apply_ocr_result",
+    "can_apply_ocr_field",
     "canonical_ocr_draft_fields",
     "clear_ocr_draft_fields",
     "collect_auto_ocr_extractions",

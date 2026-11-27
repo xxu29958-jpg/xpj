@@ -56,7 +56,7 @@ class RetryOcrDispatcher(
             publishAcceptedExpense(retried.id, retried.rowVersion) { publishExpense(row.ledgerId, retried) }
                 .copy(newRowVersion = null)
         } catch (e: HttpException) {
-            mapOutboxHttpException(e, discardable404ErrorCodes = emptySet())
+            mapOutboxHttpException(e)
         } catch (e: IOException) {
             DispatchResult.RetryableFailure(e.message ?: "network IO failure")
         } catch (e: CancellationException) {

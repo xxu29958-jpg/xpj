@@ -451,6 +451,25 @@ interface PendingMutationDao {
         stoppedAt: String,
     ): Int
 
+    /** Durable drop tombstone for user-discarded failed/conflicted OCR retries across process death. */
+    @Query(
+        """
+        UPDATE pending_mutations SET status = 'abandoned', completedAt = :stoppedAt
+        WHERE id = :id AND ownerKey = :ownerKey AND ledgerId = :ledgerId
+          AND type = 'retry_ocr'
+          AND status = :expectedStatus
+          AND status IN ('failed', 'conflict')
+          AND COALESCE(lastError, '') NOT LIKE 'outbox_row_expired%'
+        """,
+    )
+    suspend fun abandonDroppedRetryOcr(
+        id: Long,
+        ownerKey: String,
+        ledgerId: String,
+        expectedStatus: String,
+        stoppedAt: String,
+    ): Int
+
     /**
      * Cascade a new ``expected_row_version`` to every still-PENDING
      * row that targets the same row as a just-succeeded mutation.

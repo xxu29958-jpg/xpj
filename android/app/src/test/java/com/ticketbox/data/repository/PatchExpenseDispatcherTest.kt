@@ -162,15 +162,42 @@ internal class PatchExpenseDispatcherTest : ExpensePendingRepositoryOutboxTestBa
     }
 
     @Test
-    fun `404 still discards — the target row is gone`() = runTest {
-        // 404 means the expense was deleted / rejected server-side; the queued
-        // mutation is genuinely moot, so a silent Discard (vs the 422 Failure) is
-        // the correct branch — nothing for the user to keep or redo.
+    fun `404 retains the original edit for review without claiming it was applied`() = runTest {
+        // A missing route or resource does not establish this edit's outcome.
         val body = """{"error":"not_found","message":"账单不存在。"}"""
         val stub = ApiServiceStub(updateExpenseResult = ApiResult.Throw(httpException(404, body)))
 
         val result = dispatcherFor(stub).dispatch(patchRow(idempotencyKey = "key-abc"))
 
-        assertTrue(result is DispatchResult.Discarded, "404 (gone) must Discard: $result")
+        assertTrue(result is DispatchResult.Failure, "404 must retain the original: $result")
+    }
+
+    @Test
+    fun `explicit amount and merchant clears survive outbox storage and dispatch replay`() = runTest {
+        val adapter = moshi().adapter(ExpenseUpdateRequest::class.java)
+        val baseline = baselineExpense()
+        val clearDraft = draft.copy(
+            amountCents = null,
+            originalAmountMinor = null,
+            clearAmount = true,
+            merchant = "",
+        )
+        val storedJson = adapter.toJson(clearDraft.toRequest(baseline = baseline).copy(expectedRowVersion = null))
+        assertTrue(storedJson.contains("\"original_amount\":null"), "outbox JSON must keep explicit null: $storedJson")
+        assertTrue(storedJson.contains("\"merchant\":\"\""), "outbox JSON must keep explicit empty merchant: $storedJson")
+
+        val row = patchRow(idempotencyKey = "clear-amount-key").copy(payloadJson = storedJson, expectedRowVersion = 3L)
+        val stub = ApiServiceStub(updateExpenseResult = ApiResult.Success(successExpenseDto()))
+        val result = dispatcherFor(stub).dispatch(row)
+
+        assertTrue(result is DispatchResult.Success)
+        val dispatched = requireNotNull(stub.lastUpdateRequest)
+        assertEquals(3L, dispatched.expectedRowVersion)
+        assertEquals(true, dispatched.clearOriginalAmount)
+        assertEquals(null, dispatched.originalAmount)
+        assertEquals("", dispatched.merchant)
+        val wireJson = adapter.toJson(dispatched)
+        assertTrue(wireJson.contains("\"original_amount\":null"), "wire JSON must emit explicit null: $wireJson")
+        assertTrue(wireJson.contains("\"merchant\":\"\""), "wire JSON must emit explicit empty merchant: $wireJson")
     }
 }

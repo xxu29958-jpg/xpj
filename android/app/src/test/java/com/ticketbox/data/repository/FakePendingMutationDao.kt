@@ -286,6 +286,7 @@ class FakePendingMutationDao : PendingMutationDao {
     ): Int {
         deleteCalls += DeleteCall(id, ownerKey, ledgerId, expectedStatus)
         val current = rows[id] ?: return 0
+        if (current.ownerKey != ownerKey || current.ledgerId != ledgerId || current.status != expectedStatus) return 0
         if (id in refusedDeletes || current.type !in setOf("create_expense", "correct_expense") &&
             current.lastError?.startsWith("outbox_row_expired") == true) return 0
         rows.remove(id)
@@ -302,6 +303,27 @@ class FakePendingMutationDao : PendingMutationDao {
     ): Int {
         val current = rows[id] ?: return 0
         if (id in refusedStops) return 0
+        rows[id] = current.copy(status = "abandoned", completedAt = stoppedAt)
+        refreshObservables()
+        return 1
+    }
+
+    override suspend fun abandonDroppedRetryOcr(
+        id: Long,
+        ownerKey: String,
+        ledgerId: String,
+        expectedStatus: String,
+        stoppedAt: String,
+    ): Int {
+        val current = rows[id] ?: return 0
+        val matches = current.ownerKey == ownerKey &&
+            current.ledgerId == ledgerId &&
+            current.type == "retry_ocr" &&
+            current.status == expectedStatus &&
+            current.status in setOf("failed", "conflict") &&
+            current.lastError?.startsWith("outbox_row_expired") != true &&
+            id !in refusedDeletes
+        if (!matches) return 0
         rows[id] = current.copy(status = "abandoned", completedAt = stoppedAt)
         refreshObservables()
         return 1

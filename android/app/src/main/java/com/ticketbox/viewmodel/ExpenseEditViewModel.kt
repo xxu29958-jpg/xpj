@@ -93,6 +93,7 @@ data class ExpenseEditUiState(
     val fundingMessage: UiText? = null,
     val fundingReviewAvailable: Boolean = false,
     val commandRowIds: List<Long> = emptyList(),
+    val commandAllowsDropUnlock: Boolean = false,
     val commandsCompleted: Boolean = false,
     val confirmationReceipt: com.ticketbox.domain.model.ExpenseConfirmationReceipt? = null,
     val thumbnail: ProtectedImage? = null,
@@ -165,7 +166,9 @@ class ExpenseEditViewModel(
 
     internal val _uiState = MutableStateFlow(
         ExpenseEditUiState(readOnly = !repository.canModifyLedger(),
-            commandRowIds = savedState.get<LongArray>("expense_command_ids")?.toList().orEmpty()),
+            commandRowIds = savedState.get<LongArray>("expense_command_ids")?.toList().orEmpty(),
+            commandAllowsDropUnlock = savedState.get<Boolean>("expense_command_drop_unlock")
+                ?: (savedState.get<LongArray>("expense_command_ids") != null)),
     )
     val uiState: StateFlow<ExpenseEditUiState> = _uiState.asStateFlow()
 
@@ -432,9 +435,10 @@ class ExpenseEditViewModel(
         repository.rejectExpenseAllowingOffline(binding, expense)
     }
 
-    fun retryOcr(region: com.ticketbox.domain.model.OcrRegionSelection? = null) = submitExpenseCommand(R.string.expense_edit_recognize_failed) { binding, expense ->
-        repository.retryOcrAllowingOffline(binding, expense, region)
-    }
+    fun retryOcr(region: com.ticketbox.domain.model.OcrRegionSelection? = null) =
+        submitExpenseCommand(R.string.expense_edit_recognize_failed, unlockOnDrop = true) { binding, expense ->
+            repository.retryOcrAllowingOffline(binding, expense, region)
+        }
 
     fun openRecognizeTextDialog() {
         if (_uiState.value.expense == null) {
@@ -468,6 +472,7 @@ class ExpenseEditViewModel(
         if (wasDone) {
             savedState.remove<LongArray>("expense_command_ids")
             savedState.remove<String>("expense_command_binding")
+            savedState.remove<Boolean>("expense_command_drop_unlock")
             _uiState.update { it.copy(done = false, confirmationReceipt = null) }
         }
         return wasDone

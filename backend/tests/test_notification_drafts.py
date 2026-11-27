@@ -132,6 +132,8 @@ def test_long_notification_key_is_accepted_not_rejected(
 def test_notification_draft_canonicalizes_currency_ocr_ownership(
     client: TestClient, *, identity,
 ) -> None:
+    from api_contract_helpers import patch_expense, recognize_text_api
+
     response = client.post(
         "/api/expenses/notification-drafts",
         headers=identity.app_headers,
@@ -144,13 +146,43 @@ def test_notification_draft_canonicalizes_currency_ocr_ownership(
     )
 
     assert response.status_code == 200, response.text
+    expense_id = response.json()["id"]
     with SessionLocal() as db:
-        expense = db.get(Expense, response.json()["id"])
+        expense = db.get(Expense, expense_id)
         assert expense is not None
         assert set(json.loads(expense.ocr_draft_fields or "[]")) == {
             "amount_cents",
+            "category",
+            "expense_time",
             "merchant",
         }
+
+    # Empty category on a partial notification draft stays fillable by recognize_text.
+    recognized = recognize_text_api(
+        client,
+        expense_id,
+        headers=identity.app_headers,
+        raw_text="账单详情\n好想来零食乐园\n-17.89\n交易成功\n支付时间\n2026-05-05 21:38:13",
+    )
+    assert recognized.status_code == 200, recognized.text
+    assert recognized.json()["category"] == "餐饮"
+
+    # Explicitly saving category='其他' removes 'category' from the allow-list and protects it.
+    patched = patch_expense(
+        client,
+        expense_id,
+        headers=identity.app_headers,
+        fields={"category": "其他"},
+    )
+    assert patched.status_code == 200, patched.text
+    again = recognize_text_api(
+        client,
+        expense_id,
+        headers=identity.app_headers,
+        raw_text="账单详情\n好想来零食乐园\n-18.89\n交易成功\n支付时间\n2026-05-06 21:38:13",
+    )
+    assert again.status_code == 200, again.text
+    assert again.json()["category"] == "其他"
 
 
 def test_notification_draft_time_window_creates_new_pending_after_bucket(

@@ -88,10 +88,11 @@ class ConfirmExpenseDispatcher(
     }
 
     private fun confirmationFailure(e: HttpException, request: ExpenseStateTokenRequest): DispatchResult {
-        val result = mapOutboxHttpException(e, discardable404ErrorCodes = emptySet())
+        val result = mapOutboxHttpException(e)
         return if ((request.changes != null || !request.funding.isNullOrEmpty()) &&
             result is DispatchResult.Failure && result.definitelyRejected
         ) {
+            // A proven refusal returns all atomic edits to review, including an unfunded expense.
             DispatchResult.Conflict(result.message)
         } else {
             result
