@@ -1,61 +1,84 @@
-"""Localhost HTTP control surface for the GUI — CSRF-safe.
-
-The mutating endpoints (start / stop / restart …) run real process control, so an
-unauthenticated localhost server would be a CSRF hole: any web page the user has
-open could ``fetch('http://127.0.0.1:<port>/api/stop')`` and DoS the backend. Three
-layers stop that, all enforced by [is_authorized] on every POST:
-
-1. a per-process bearer token (in the served HTML, unreadable cross-origin) — and
-   requiring a custom header forces a CORS preflight that this server never grants,
-   so a cross-site POST is rejected before it is even sent;
-2. a ``Sec-Fetch-Site`` check (reject anything but same-origin / direct navigation);
-3. an ``Origin`` check (reject a foreign origin).
-
-GET endpoints are read-only, localhost-bound, and reject any Host other than the
-canonical address selected at startup. That last check prevents DNS rebinding
-from turning an attacker-controlled origin into the local control origin.
-"""
+"""Localhost HTTP control server for the Desktop Manager."""
 
 from __future__ import annotations
 
 import hashlib
-import hmac
 import html
-import http.client
-import ipaddress
 import json
 import os
 import re
 import secrets
 import threading
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from collections import deque
 from collections.abc import Callable
 from contextlib import suppress
-from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Protocol, cast
 
 from backend_manager.app_controller import ManagerShuttingDownError
-from backend_manager.product_data import ProductDataError
+from backend_manager.control_product_routes import (
+    OWNER_SHORTCUTS,
+    serve_owner_shortcut,
+    serve_product_ledger_switch,
+    serve_product_ledgers,
+    serve_product_pair,
+    serve_product_session,
+    serve_product_unpair,
+    serve_web_bootstrap,
+    serve_web_bridge,
+)
+from backend_manager.control_security import (
+    CHALLENGE_PATTERN,
+    CONTENT_SECURITY_POLICY,
+    CONTROL_SESSION_COOKIE,
+    IDENTITY,
+    REOPEN_REQUEST_CONTEXT,
+    REOPEN_RESPONSE_CONTEXT,
+    SHA256_PROOF_PATTERN,
+    EmptyRequestBodyState,
+    host_allowed,
+    is_authorized,
+    probe_existing_manager,
+    read_empty_request_body_state,
+    request_existing_manager_window,
+    sign_challenge,
+    token_allowed,
+)
 from backend_manager.web_bff import (
     ASSET_SESSION_COOKIE,
-    MAX_REQUEST_BYTES,
     SESSION_COOKIE,
-    BridgeResponse,
-    WebBridgeError,
     browser_session_valid,
-    relay,
-    same_origin_request,
 )
 from backend_manager.windows_user_security import set_exact_user_acl
 
+__all__ = [
+    "ControlServer",
+    "Controller",
+    "is_authorized",
+    "probe_existing_manager",
+    "request_existing_manager_window",
+]
+
 _TOKEN_PLACEHOLDER = "__CONTROL_TOKEN__"
-_CONTROL_SESSION_COOKIE = "ticketbox_manager_control"
+_CONTROL_SESSION_COOKIE = CONTROL_SESSION_COOKIE
+_CONTENT_SECURITY_POLICY = CONTENT_SECURITY_POLICY
+_OWNER_SHORTCUTS = OWNER_SHORTCUTS
+_DEFAULT_UI_DIR = Path(__file__).resolve().parent
+_UI_ASSETS = {
+    "/assets/ui.css": ("ui.css", "text/css; charset=utf-8"),
+    "/assets/ui.js": ("ui.js", "text/javascript; charset=utf-8"),
+}
+_UI_ASSET_FILENAMES = tuple(filename for filename, _ in _UI_ASSETS.values())
+
+
+def _resolve_ui_asset_dir(ui_html: Path) -> Path:
+    sibling_dir = ui_html.parent
+    if all((sibling_dir / filename).is_file() for filename in _UI_ASSET_FILENAMES):
+        return sibling_dir
+    return _DEFAULT_UI_DIR
 _ACTIONS = (
     "start",
     "stop",
@@ -78,228 +101,14 @@ _ACTIONS = (
     "continue_connector",
 )
 _ACTION_PATHS = {f"/api/{action}": action for action in _ACTIONS}
-_IDENTITY = {"product": "ticketbox-desktop-manager", "protocol": "v1"}
-_IDENTITY_RESPONSE_LIMIT = 512
-_CHALLENGE_PATTERN = re.compile(r"[A-Za-z0-9_-]{32,128}\Z")
-_SHA256_PROOF_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
-_MAX_PRODUCT_BODY_BYTES = 1024
-_MAX_BOOTSTRAP_FORM_BYTES = 1024
-_MAX_REJECTED_BODY_DRAIN_BYTES = 4096
-_REJECTED_BODY_DRAIN_CHUNK_BYTES = 1024
-_REJECTED_BODY_DRAIN_TIMEOUT_SECONDS = 0.25
 _BOOTSTRAP_TTL_SECONDS = 60.0
 _BOOTSTRAP_REPLAY_TTL_SECONDS = 300.0
 _BOOTSTRAP_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{43,128}\Z")
 _MAX_WEB_SESSIONS = 8
-_REOPEN_REQUEST_CONTEXT = b"ticketbox-manager-reopen-request-v1\0"
-_REOPEN_RESPONSE_CONTEXT = b"ticketbox-manager-reopen-response-v1\0"
-_OWNER_SHORTCUTS = {
-    "/owner": "open_console",
-    "/owner/pairing": "open_pairing",
-    "/owner/devices": "open_devices",
-    "/owner/upload-links": "open_upload_links",
-    "/owner/diagnostics": "open_diagnostics",
-    "/owner/settings": "open_settings",
-}
-_CONTENT_SECURITY_POLICY = (
-    "default-src 'none'; "
-    "script-src 'unsafe-inline'; "
-    "style-src 'unsafe-inline'; "
-    "connect-src 'self'; "
-    "img-src 'self' data:; "
-    "base-uri 'none'; "
-    "form-action 'none'; "
-    "frame-ancestors 'none'"
-)
-
-
-class _EmptyRequestBodyState(Enum):
-    EMPTY = "empty"
-    DRAINED_NONEMPTY = "drained_nonempty"
-    INCOMPLETE = "incomplete"
-
-
-def _normalized_host(host: str) -> str | None:
-    value = host.strip().strip("[]").casefold()
-    if not value:
-        return None
-    try:
-        return ipaddress.ip_address(value).compressed
-    except ValueError:
-        if value == "localhost":
-            return value
-        return None
-
-
-def _authority_tuple(value: str, *, scheme: str) -> tuple[str, str, int] | None:
-    try:
-        parsed = urllib.parse.urlsplit(f"{scheme}://{value.strip()}")
-        port = parsed.port
-    except ValueError:
-        return None
-    host = _normalized_host(parsed.hostname or "")
-    if (
-        parsed.scheme.casefold() != scheme
-        or host is None
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.path not in ("", "/")
-        or parsed.query
-        or parsed.fragment
-    ):
-        return None
-    return scheme, host, port if port is not None else 80
-
-
-def _origin_tuple(value: str) -> tuple[str, str, int] | None:
-    try:
-        parsed = urllib.parse.urlsplit(value.strip())
-        port = parsed.port
-    except ValueError:
-        return None
-    scheme = parsed.scheme.casefold()
-    host = _normalized_host(parsed.hostname or "")
-    if (
-        scheme != "http"
-        or host is None
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.path not in ("", "/")
-        or parsed.query
-        or parsed.fragment
-    ):
-        return None
-    return scheme, host, port if port is not None else 80
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001, ANN201
-        return None
-
-
-def probe_existing_manager(manager_url: str, instance_secret: str, *, timeout: float = 0.5) -> bool:
-    """Recognize an already-running local Manager before reopening its window."""
-    try:
-        parsed = urllib.parse.urlsplit(manager_url)
-        hostname = (parsed.hostname or "").lower()
-        port = parsed.port
-    except (TypeError, ValueError):
-        return False
-    try:
-        loopback_v4 = ipaddress.ip_address(hostname).version == 4 and ipaddress.ip_address(hostname).is_loopback
-    except ValueError:
-        loopback_v4 = False
-    if (
-        parsed.scheme != "http"
-        or not (hostname == "localhost" or loopback_v4)
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.path != "/"
-        or parsed.query
-        or parsed.fragment
-        or port is None
-    ):
-        return False
-    challenge = secrets.token_urlsafe(32)
-    identity_url = urllib.parse.urljoin(manager_url, "api/identity")
-    identity_url = f"{identity_url}?{urllib.parse.urlencode({'challenge': challenge})}"
-    request = urllib.request.Request(identity_url, headers={"Accept": "application/json"})
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
-    try:
-        with opener.open(request, timeout=timeout) as response:  # noqa: S310 - validated loopback
-            if response.status != 200:
-                return False
-            media_type = response.headers.get("Content-Type", "").partition(";")[0].lower()
-            if media_type != "application/json":
-                return False
-            raw = response.read(_IDENTITY_RESPONSE_LIMIT + 1)
-    except (OSError, ValueError, urllib.error.URLError):
-        return False
-    if len(raw) > _IDENTITY_RESPONSE_LIMIT:
-        return False
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except (UnicodeError, json.JSONDecodeError):
-        return False
-    if not isinstance(payload, dict) or set(payload) != {*_IDENTITY, "challenge", "proof"}:
-        return False
-    expected_proof = hmac.new(
-        instance_secret.encode("utf-8"),
-        challenge.encode("ascii"),
-        hashlib.sha256,
-    ).hexdigest()
-    proof = payload.get("proof")
-    return (
-        payload.get("product") == _IDENTITY["product"]
-        and payload.get("protocol") == _IDENTITY["protocol"]
-        and payload.get("challenge") == challenge
-        and isinstance(proof, str)
-        and secrets.compare_digest(proof, expected_proof)
-    )
-
-
-def request_existing_manager_window(
-    manager_url: str,
-    instance_secret: str,
-    *,
-    timeout: float = 0.5,
-) -> bool:
-    """Ask the authenticated owner process to open and own another UI window."""
-    if not probe_existing_manager(manager_url, instance_secret, timeout=timeout):
-        return False
-    challenge = secrets.token_urlsafe(32)
-    request_proof = hmac.new(
-        instance_secret.encode("utf-8"),
-        _REOPEN_REQUEST_CONTEXT + challenge.encode("ascii"),
-        hashlib.sha256,
-    ).hexdigest()
-    reopen_url = urllib.parse.urljoin(manager_url, "api/reopen")
-    request = urllib.request.Request(
-        reopen_url,
-        data=b"",
-        headers={
-            "Accept": "application/json",
-            "X-Ticketbox-Reopen-Challenge": challenge,
-            "X-Ticketbox-Reopen-Proof": request_proof,
-        },
-        method="POST",
-    )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
-    try:
-        with opener.open(request, timeout=timeout) as response:  # validated loopback
-            if response.status != 200:
-                return False
-            media_type = response.headers.get("Content-Type", "").partition(";")[0].lower()
-            if media_type != "application/json":
-                return False
-            raw = response.read(_IDENTITY_RESPONSE_LIMIT + 1)
-    except (OSError, ValueError, urllib.error.URLError):
-        return False
-    if len(raw) > _IDENTITY_RESPONSE_LIMIT:
-        return False
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except (UnicodeError, json.JSONDecodeError):
-        return False
-    if not isinstance(payload, dict) or set(payload) != {*_IDENTITY, "challenge", "proof"}:
-        return False
-    expected_proof = hmac.new(
-        instance_secret.encode("utf-8"),
-        _REOPEN_RESPONSE_CONTEXT + challenge.encode("ascii"),
-        hashlib.sha256,
-    ).hexdigest()
-    proof = payload.get("proof")
-    return (
-        payload.get("product") == _IDENTITY["product"]
-        and payload.get("protocol") == _IDENTITY["protocol"]
-        and payload.get("challenge") == challenge
-        and isinstance(proof, str)
-        and secrets.compare_digest(proof, expected_proof)
-    )
 
 
 class Controller(Protocol):
-    """What the control server drives — implemented by the app wiring."""
+    """App-wiring interface driven by the control server."""
 
     def status(self) -> dict: ...
     def product_principal(self) -> dict: ...
@@ -331,70 +140,26 @@ class Controller(Protocol):
     def is_manager_shutting_down(self) -> bool: ...
 
 
-def is_authorized(
-    *,
-    token: str,
-    provided_token: str | None,
-    sec_fetch_site: str | None,
-    origin: str | None,
-    expected_origin: str,
-    provided_host: str | None,
-    expected_host: str,
-) -> bool:
-    """Whether a mutating request may proceed (token + same-origin)."""
-    expected_authority = _authority_tuple(expected_host, scheme="http")
-    if (
-        expected_authority is None
-        or provided_host is None
-        or _authority_tuple(provided_host, scheme="http") != expected_authority
-    ):
-        return False
-    if not provided_token or not secrets.compare_digest(provided_token.encode(), token.encode()):
-        return False
-    if sec_fetch_site is not None and sec_fetch_site not in ("same-origin", "none"):
-        return False
-    expected_origin_tuple = _origin_tuple(expected_origin)
-    return origin is None or (expected_origin_tuple is not None and _origin_tuple(origin) == expected_origin_tuple)
-
-
-def _recovery_page(message: str, *, portable_available: bool = False) -> bytes:
-    """Recovery state with an authenticated route back to the manager UI.
-
-    The Edge app window has no address bar, so the recovery page must carry
-    the way back itself; `/` is gated by the same control cookie the
-    bootstrap issued.
-    """
-    portable_link = ('<p><a href="/web/exports">下载有权访问的账本数据</a></p>'
-                     '<p><a href="/web/settings">设置与设备</a></p>') if portable_available else ""
-    return (
-        '<!doctype html><meta charset=utf-8><meta name="google" content="notranslate">'
-        "<title>小票夹需要恢复</title><h1>暂时无法打开账本</h1>"
-        f"<p>{html.escape(message)}</p>"
-        f"{portable_link}"
-        '<p><a href="/">打开系统管理</a></p>'
-    ).encode()
-
-
 class _Handler(BaseHTTPRequestHandler):
     server_version = "TicketboxBackendManager/1.0"
 
-    def log_message(self, *_args: object) -> None:  # silence stderr access logging
+    def log_message(self, *_args: object) -> None:
         pass
+
+    def _control_server(self) -> ControlServer:
+        return cast(ControlServer, self.server)
 
     def end_headers(self) -> None:
         if getattr(self, "_web_bridge_response", False):
-            # Bridge responses carry the backend's own headers (plus the
-            # fallback CSP _serve_web_bridge adds); never overwrite them.
             super().end_headers()
             return
-        self.send_header("Content-Security-Policy", _CONTENT_SECURITY_POLICY)
+        self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Referrer-Policy", "no-referrer")
         super().end_headers()
 
-    # ---- helpers ----------------------------------------------------------
     def _send(self, code: int, body: bytes, content_type: str) -> None:
         self.send_response(code)
         self.send_header("Content-Type", content_type)
@@ -405,213 +170,11 @@ class _Handler(BaseHTTPRequestHandler):
     def _send_json(self, payload: dict, code: int = 200) -> None:
         self._send(code, json.dumps(payload).encode("utf-8"), "application/json")
 
-    def _send_json_list(self, payload: list, code: int = 200) -> None:
-        self._send(code, json.dumps(payload).encode("utf-8"), "application/json")
-
-    def _serve_web_bootstrap(self) -> None:
-        srv: ControlServer = self.server  # type: ignore[assignment]
-        if self.headers.get("Transfer-Encoding") is not None:
-            self._send(400, b"invalid bootstrap", "text/plain; charset=utf-8")
-            return
-        lengths = self.headers.get_all("Content-Length", [])
-        content_type = (self.headers.get("Content-Type") or "").partition(";")[0].strip().lower()
-        if len(lengths) != 1 or content_type != "application/x-www-form-urlencoded":
-            self._send(400, b"invalid bootstrap", "text/plain; charset=utf-8")
-            return
-        try:
-            length = int(lengths[0])
-        except ValueError:
-            length = -1
-        if length <= 0 or length > _MAX_BOOTSTRAP_FORM_BYTES:
-            self._send(400, b"invalid bootstrap", "text/plain; charset=utf-8")
-            return
-        try:
-            form = urllib.parse.parse_qs(
-                self.rfile.read(length).decode("ascii"),
-                keep_blank_values=True,
-                strict_parsing=True,
-            )
-        except (UnicodeDecodeError, ValueError):
-            form = {}
-        values = form.get("bootstrap_token")
-        if set(form) != {"bootstrap_token"} or values is None or len(values) != 1:
-            self._send(400, b"invalid bootstrap", "text/plain; charset=utf-8")
-            return
-        status = srv.consume_web_bootstrap(values[0])
-        if status != 200:
-            self._send(status, b"bootstrap rejected", "text/plain; charset=utf-8")
-            return
-        session_ids = srv.issue_web_session()
-        body = (
-            b'<!doctype html><meta charset=utf-8><meta name="google" content="notranslate">'
-            b"<title>Opening Ticketbox</title>"
-            b"<script>location.replace('/web')</script>"
-        )
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header(
-            "Set-Cookie",
-            f"{SESSION_COOKIE}={session_ids[SESSION_COOKIE]}; Path=/web; HttpOnly; SameSite=Strict",
-        )
-        self.send_header(
-            "Set-Cookie",
-            f"{ASSET_SESSION_COOKIE}={session_ids[ASSET_SESSION_COOKIE]}; Path=/static; HttpOnly; SameSite=Strict",
-        )
-        self.send_header(
-            "Set-Cookie",
-            f"{_CONTROL_SESSION_COOKIE}={session_ids[_CONTROL_SESSION_COOKIE]}; Path=/; HttpOnly; SameSite=Strict",
-        )
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _web_bridge_allowed(self) -> bool:
-        srv: ControlServer = self.server  # type: ignore[assignment]
-        path = urllib.parse.urlsplit(self.path).path
-        cookie_name = ASSET_SESSION_COOKIE if path.startswith("/static/") else SESSION_COOKIE
-        return (
-            self._host_allowed()
-            and srv.browser_session_valid(
-                self.headers.get("Cookie"),
-                cookie_name=cookie_name,
-            )
-            and same_origin_request(
-                method=self.command,
-                origin=self.headers.get("Origin"),
-                referer=self.headers.get("Referer"),
-                sec_fetch_site=self.headers.get("Sec-Fetch-Site"),
-                manager_origin=srv.expected_origin,
-            )
-        )
-
-    def _read_bridge_body(self) -> bytes | None:
-        if self.headers.get("Transfer-Encoding") is not None:
-            return None
-        values = self.headers.get_all("Content-Length", [])
-        if not values:
-            return b""
-        if len(values) != 1:
-            return None
-        try:
-            length = int(values[0])
-        except ValueError:
-            return None
-        if length < 0 or length > MAX_REQUEST_BYTES:
-            return None
-        return self.rfile.read(length)
-
-    def _serve_web_bridge(self) -> None:
-        srv: ControlServer = self.server  # type: ignore[assignment]
-        if not self._web_bridge_allowed():
-            self._send(403, b"forbidden", "text/plain; charset=utf-8")
-            return
-        body = self._read_bridge_body()
-        if body is None:
-            self._send(413, b"request rejected", "text/plain; charset=utf-8")
-            return
-        try:
-            context = srv.controller.product_bridge_context()
-            response = relay(
-                context,
-                method=self.command,
-                raw_target=self.path,
-                client_headers=self.headers,
-                body=body,
-                manager_origin=srv.expected_origin,
-                client_socket=self.connection,
-            )
-        except ProductDataError as exc:
-            self._serve_web_unavailable(exc)
-            return
-        except WebBridgeError as exc:
-            if exc.status != 499:
-                self._send(exc.status, str(exc).encode("utf-8"), "text/plain; charset=utf-8")
-            return
-        # A bridged 401 means the presented credential is dead: clear it
-        # BEFORE rendering — but only when it is still the stored one, so a
-        # request that raced a switch never wipes the fresh session. The
-        # recovery page renders only when the credential was truly retired.
-        if srv.controller.note_product_bridge_auth_failure(response.status, context.app_token):
-            path = urllib.parse.urlsplit(self.path).path
-            if not path.startswith("/api/"):
-                self._send(
-                    401,
-                    _recovery_page("桌面身份已失效，请从系统管理重新绑定。"),
-                    "text/html; charset=utf-8",
-                )
-                return
-        if response.status == 403 and self.command == "GET":
-            with suppress(ValueError, UnicodeError):
-                refusal = json.loads(response.body)
-                if isinstance(refusal, dict) and refusal.get("error") == "ledger_forbidden":
-                    self._send(403, _recovery_page(
-                        "当前账本已归档或不再允许访问。你仍可核对账户有权下载的账本。",
-                        portable_available=True), "text/html; charset=utf-8")
-                    return
-        try:
-            self._deliver_web_bridge(response)
-        except (OSError, http.client.HTTPException):
-            # Headers may already be sent. Closing preserves a failed/truncated
-            # download; never append an HTML success/error page to archive bytes.
-            self.close_connection = True
-        finally:
-            response.close()
-
-    def _serve_web_unavailable(self, error: ProductDataError) -> None:
-        if (
-            error.error == "product_principal_required"
-            and self.command == "GET"
-            and urllib.parse.urlsplit(self.path).path in {"/web", "/web/"}
-        ):
-            self.send_response(302)
-            self.send_header("Location", "/")
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-            return
-        message = (
-            "桌面账本尚未绑定，请从系统管理完成绑定。"
-            if error.status_code == 401
-            else "小票夹服务尚未就绪，请先从系统管理恢复服务。"
-        )
-        self._send(error.status_code, _recovery_page(message), "text/html; charset=utf-8")
-
-    def _deliver_web_bridge(self, response: BridgeResponse) -> None:
-        self._web_bridge_response = True
-        self.send_response(response.status, response.reason)
-        saw_length = False
-        saw_csp = False
-        for name, value in response.headers:
-            lower = name.casefold()
-            saw_length = saw_length or lower == "content-length"
-            saw_csp = saw_csp or lower == "content-security-policy"
-            self.send_header(name, value)
-        if not saw_length and response.download is None:
-            self.send_header("Content-Length", str(len(response.body)))
-        if not saw_csp:
-            self.send_header(
-                "Content-Security-Policy",
-                "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; form-action 'self'",
-            )
-        self.send_header("X-Frame-Options", "DENY")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.end_headers()
-        if self.command != "HEAD":
-            if response.download is None:
-                self.wfile.write(response.body)
-            else:
-                for chunk in response.download.chunks():
-                    self.wfile.write(chunk)
-
     def _host_allowed(self) -> bool:
-        srv: ControlServer = self.server  # type: ignore[assignment]
-        provided = self.headers.get("Host")
-        return provided is not None and _authority_tuple(
-            provided,
-            scheme="http",
-        ) == _authority_tuple(srv.expected_host, scheme="http")
+        return host_allowed(self.headers.get("Host"), self._control_server().expected_host)
 
     def _authorized(self) -> bool:
-        srv: ControlServer = self.server  # type: ignore[assignment]
+        srv = self._control_server()
         return is_authorized(
             token=srv.token,
             provided_token=self.headers.get("X-Control-Token"),
@@ -623,356 +186,101 @@ class _Handler(BaseHTTPRequestHandler):
         )
 
     def _token_allowed(self) -> bool:
-        srv: ControlServer = self.server  # type: ignore[assignment]
-        provided = self.headers.get("X-Control-Token")
-        return provided is not None and secrets.compare_digest(provided, srv.token)
+        return token_allowed(self.headers.get("X-Control-Token"), self._control_server().token)
 
-    def _read_empty_request_body_state(self) -> _EmptyRequestBodyState:
-        if self.headers.get("Transfer-Encoding") is not None:
-            self.close_connection = True
-            return _EmptyRequestBodyState.INCOMPLETE
-        lengths = self.headers.get_all("Content-Length", [])
-        if not lengths:
-            return _EmptyRequestBodyState.EMPTY
-        if len(lengths) != 1:
-            self.close_connection = True
-            return _EmptyRequestBodyState.INCOMPLETE
-        try:
-            length = int(lengths[0])
-        except ValueError:
-            self.close_connection = True
-            return _EmptyRequestBodyState.INCOMPLETE
-        if length == 0:
-            return _EmptyRequestBodyState.EMPTY
-        self.close_connection = True
-        if length < 0 or length > _MAX_REJECTED_BODY_DRAIN_BYTES:
-            return _EmptyRequestBodyState.INCOMPLETE
-        deadline = time.monotonic() + _REJECTED_BODY_DRAIN_TIMEOUT_SECONDS
-        remaining = length
-        previous_timeout = self.connection.gettimeout()
-        try:
-            while remaining:
-                timeout = deadline - time.monotonic()
-                if timeout <= 0:
-                    return _EmptyRequestBodyState.INCOMPLETE
-                self.connection.settimeout(timeout)
-                chunk = self.rfile.read(min(remaining, _REJECTED_BODY_DRAIN_CHUNK_BYTES))
-                if not chunk:
-                    return _EmptyRequestBodyState.INCOMPLETE
-                remaining -= len(chunk)
-        except (OSError, TimeoutError):
-            return _EmptyRequestBodyState.INCOMPLETE
-        finally:
-            with suppress(OSError):
-                self.connection.settimeout(previous_timeout)
-        return _EmptyRequestBodyState.DRAINED_NONEMPTY
-
-    def _read_json_body(self, *, max_bytes: int) -> dict | None:
-        if self.headers.get("Transfer-Encoding") is not None:
-            return None
-        lengths = self.headers.get_all("Content-Length", [])
-        if len(lengths) != 1:
-            return None
-        try:
-            length = int(lengths[0])
-        except ValueError:
-            return None
-        content_type = (self.headers.get("Content-Type") or "").partition(";")[0].strip().lower()
-        if length <= 0 or length > max_bytes or content_type != "application/json":
-            return None
-        try:
-            payload = json.loads(self.rfile.read(length).decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            return None
-        return payload if isinstance(payload, dict) else None
-
-    def _send_product_error(self, exc: ProductDataError) -> None:
-        self._send_json(
-            {"error": exc.error, "message": str(exc)},
-            code=exc.status_code,
-        )
-
-    def _serve_owner_shortcut(self, path: str) -> None:
-        """Hand /owner/* navigations to the manager's default-browser actions.
-
-        The desktop BFF never proxies /owner (it is the server-owner console,
-        not a product surface). Intercept the click instead of 404ing inside
-        the address-bar-less app window: open the task page in the user's
-        default browser via the manager's own authority, then offer the way
-        back. Gated by the same control cookie as the manager page itself.
-        """
-        srv: ControlServer = self.server  # type: ignore[assignment]
+    def _serve_ui_page(self) -> None:
+        srv = self._control_server()
         if not srv.browser_session_valid(
             self.headers.get("Cookie"),
-            cookie_name=_CONTROL_SESSION_COOKIE,
+            cookie_name=CONTROL_SESSION_COOKIE,
         ):
             self._send(403, b"forbidden", "text/plain; charset=utf-8")
             return
-        action = _OWNER_SHORTCUTS.get(path)
-        if action is None:
+        body = srv.ui_html.read_text(encoding="utf-8").replace(_TOKEN_PLACEHOLDER, srv.token)
+        self._send(200, body.encode("utf-8"), "text/html; charset=utf-8")
+
+    def _serve_ui_asset(self, path: str) -> None:
+        srv = self._control_server()
+        if not srv.browser_session_valid(
+            self.headers.get("Cookie"),
+            cookie_name=CONTROL_SESSION_COOKIE,
+        ):
+            self._send(403, b"forbidden", "text/plain; charset=utf-8")
+            return
+        filename, content_type = _UI_ASSETS[path]
+        payload = srv.read_ui_asset(filename)
+        if payload is None:
             self._send(404, b"not found", "text/plain; charset=utf-8")
             return
-        getattr(srv.controller, action)()
-        self._send(
-            200,
-            (
-                '<!doctype html><meta charset=utf-8><meta name="google" content="notranslate"><title>已打开系统管理</title>'
-                "<h1>已在本机默认浏览器打开系统管理页面</h1>"
-                '<p><a href="/web">返回日常账务</a> · <a href="/">返回管理器</a></p>'
-            ).encode(),
-            "text/html; charset=utf-8",
+        self._send(200, payload, content_type)
+
+    def _serve_identity(self, raw_query: str) -> None:
+        srv = self._control_server()
+        try:
+            query = urllib.parse.parse_qs(raw_query, keep_blank_values=True, strict_parsing=True)
+        except ValueError:
+            self._send(400, b"invalid challenge", "text/plain; charset=utf-8")
+            return
+        challenge_values = query.get("challenge")
+        if set(query) != {"challenge"} or challenge_values is None or len(challenge_values) != 1:
+            self._send(400, b"invalid challenge", "text/plain; charset=utf-8")
+            return
+        challenge = challenge_values[0]
+        if not CHALLENGE_PATTERN.fullmatch(challenge):
+            self._send(400, b"invalid challenge", "text/plain; charset=utf-8")
+            return
+        proof = sign_challenge(srv.instance_secret, challenge)
+        self._send_json({**IDENTITY, "challenge": challenge, "proof": proof})
+
+    def _serve_status(self) -> None:
+        if not self._token_allowed():
+            self._send(403, b"forbidden", "text/plain; charset=utf-8")
+            return
+        self._send_json(self._control_server().controller.status())
+
+    def _serve_reopen(self) -> None:
+        srv = self._control_server()
+        challenge = self.headers.get("X-Ticketbox-Reopen-Challenge", "")
+        request_proof = self.headers.get("X-Ticketbox-Reopen-Proof", "")
+        body_state = read_empty_request_body_state(self)
+        if body_state is EmptyRequestBodyState.INCOMPLETE:
+            return
+        if (
+            body_state is EmptyRequestBodyState.DRAINED_NONEMPTY
+            or self.headers.get("Origin") is not None
+            or self.headers.get("Sec-Fetch-Site") is not None
+            or not CHALLENGE_PATTERN.fullmatch(challenge)
+            or not SHA256_PROOF_PATTERN.fullmatch(request_proof)
+        ):
+            self._send(403, b"forbidden", "text/plain; charset=utf-8")
+            return
+        expected_request_proof = sign_challenge(
+            srv.instance_secret,
+            challenge,
+            context=REOPEN_REQUEST_CONTEXT,
         )
-
-    def _serve_product_session(self) -> None:
-        srv: ControlServer = self.server  # type: ignore[assignment]
-        if not self._token_allowed():
+        if not secrets.compare_digest(request_proof, expected_request_proof):
             self._send(403, b"forbidden", "text/plain; charset=utf-8")
             return
-        try:
-            payload = srv.controller.product_principal()
-        except ProductDataError as exc:
-            self._send_product_error(exc)
+        if srv.controller.is_manager_shutting_down() or not srv.request_window():
+            self._send_json({"error": "manager_shutting_down"}, code=409)
             return
-        self._send_json(payload)
+        proof = sign_challenge(
+            srv.instance_secret,
+            challenge,
+            context=REOPEN_RESPONSE_CONTEXT,
+        )
+        self._send_json({**IDENTITY, "challenge": challenge, "proof": proof})
 
-    def _serve_product_ledgers(self) -> None:
-        srv: ControlServer = self.server  # type: ignore[assignment]
-        if not self._token_allowed():
-            self._send(403, b"forbidden", "text/plain; charset=utf-8")
-            return
-        try:
-            payload = srv.controller.product_ledgers()
-        except ProductDataError as exc:
-            self._send_product_error(exc)
-            return
-        self._send_json({"ledgers": payload})
-
-    def _serve_product_pair(self) -> None:
-        srv: ControlServer = self.server  # type: ignore[assignment]
+    def _serve_control_action(self, action: str) -> None:
+        srv = self._control_server()
         if not self._authorized():
             self._send(403, b"forbidden", "text/plain; charset=utf-8")
             return
-        payload = self._read_json_body(max_bytes=_MAX_PRODUCT_BODY_BYTES)
-        if payload is None or set(payload) != {"pairing_code"}:
-            self._send_json({"error": "invalid_request"}, code=400)
+        body_state = read_empty_request_body_state(self)
+        if body_state is EmptyRequestBodyState.INCOMPLETE:
             return
-        pairing_code = payload["pairing_code"]
-        if not isinstance(pairing_code, str):
-            self._send_json({"error": "invalid_request"}, code=400)
-            return
-        if not srv.action_lock.acquire(blocking=False):
-            self._send_json({"error": "operation_in_progress"}, code=409)
-            return
-        try:
-            try:
-                response = srv.controller.pair_product_principal(pairing_code)
-            except ManagerShuttingDownError:
-                self._send_json({"error": "manager_shutting_down"}, code=409)
-                return
-            except ProductDataError as exc:
-                self._send_product_error(exc)
-                return
-        finally:
-            srv.action_lock.release()
-        self._send_json(response)
-
-    def _serve_product_unpair(self) -> None:
-        srv: ControlServer = self.server  # type: ignore[assignment]
-        if not self._authorized():
-            self._send(403, b"forbidden", "text/plain; charset=utf-8")
-            return
-        body_state = self._read_empty_request_body_state()
-        if body_state is _EmptyRequestBodyState.INCOMPLETE:
-            return
-        if body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY:
-            self._send_json({"error": "invalid_request"}, code=400)
-            return
-        if not srv.action_lock.acquire(blocking=False):
-            self._send_json({"error": "operation_in_progress"}, code=409)
-            return
-        try:
-            try:
-                response = srv.controller.unpair_product_principal()
-            except ManagerShuttingDownError:
-                self._send_json({"error": "manager_shutting_down"}, code=409)
-                return
-            except ProductDataError as exc:
-                self._send_product_error(exc)
-                return
-        finally:
-            srv.action_lock.release()
-        self._send_json(response)
-
-    def _serve_product_ledger_switch(self) -> None:
-        srv: ControlServer = self.server  # type: ignore[assignment]
-        if not self._authorized():
-            self._send(403, b"forbidden", "text/plain; charset=utf-8")
-            return
-        payload = self._read_json_body(max_bytes=_MAX_PRODUCT_BODY_BYTES)
-        if payload is None or set(payload) != {"ledger_id"}:
-            self._send_json({"error": "invalid_request"}, code=400)
-            return
-        ledger_id = payload["ledger_id"]
-        if not isinstance(ledger_id, str):
-            self._send_json({"error": "invalid_request"}, code=400)
-            return
-        if not srv.action_lock.acquire(blocking=False):
-            self._send_json({"error": "operation_in_progress"}, code=409)
-            return
-        try:
-            try:
-                response = srv.controller.switch_product_principal_ledger(ledger_id)
-            except ManagerShuttingDownError:
-                self._send_json({"error": "manager_shutting_down"}, code=409)
-                return
-            except ProductDataError as exc:
-                self._send_product_error(exc)
-                return
-        finally:
-            srv.action_lock.release()
-        self._send_json(response)
-
-    # ---- routes -----------------------------------------------------------
-    def do_GET(self) -> None:  # noqa: C901 - explicit fail-closed route matrix
-        srv: ControlServer = self.server  # type: ignore[assignment]
-        if not self._host_allowed():
-            self._send(421, b"misdirected request", "text/plain; charset=utf-8")
-            return
-        parsed_path = urllib.parse.urlsplit(self.path)
-        if parsed_path.path == "/web" or parsed_path.path.startswith(("/web/", "/static/web/", "/static/shared/")):
-            self._serve_web_bridge()
-        elif parsed_path.path == "/owner" or parsed_path.path.startswith("/owner/"):
-            self._serve_owner_shortcut(parsed_path.path)
-        elif parsed_path.path in ("/", "/index.html") and not parsed_path.query:
-            if not srv.browser_session_valid(
-                self.headers.get("Cookie"),
-                cookie_name=_CONTROL_SESSION_COOKIE,
-            ):
-                self._send(403, b"forbidden", "text/plain; charset=utf-8")
-                return
-            body = srv.ui_html.read_text(encoding="utf-8").replace(
-                _TOKEN_PLACEHOLDER,
-                srv.token,
-            )
-            self._send(200, body.encode("utf-8"), "text/html; charset=utf-8")
-        elif parsed_path.path == "/api/identity":
-            try:
-                query = urllib.parse.parse_qs(parsed_path.query, keep_blank_values=True, strict_parsing=True)
-            except ValueError:
-                self._send(400, b"invalid challenge", "text/plain; charset=utf-8")
-                return
-            challenge_values = query.get("challenge")
-            if set(query) != {"challenge"} or challenge_values is None or len(challenge_values) != 1:
-                self._send(400, b"invalid challenge", "text/plain; charset=utf-8")
-                return
-            challenge = challenge_values[0]
-            if not _CHALLENGE_PATTERN.fullmatch(challenge):
-                self._send(400, b"invalid challenge", "text/plain; charset=utf-8")
-                return
-            proof = hmac.new(
-                srv.instance_secret.encode("utf-8"),
-                challenge.encode("ascii"),
-                hashlib.sha256,
-            ).hexdigest()
-            self._send_json({**_IDENTITY, "challenge": challenge, "proof": proof})
-        elif parsed_path.path == "/api/product/session":
-            self._serve_product_session()
-        elif parsed_path.path == "/api/product/ledgers":
-            self._serve_product_ledgers()
-        elif self.path == "/api/status":
-            if not self._token_allowed():
-                self._send(403, b"forbidden", "text/plain; charset=utf-8")
-                return
-            self._send_json(srv.controller.status())
-        else:
-            self._serve_unrouted(parsed_path)
-
-    def _serve_unrouted(self, parsed_path: urllib.parse.SplitResult) -> None:
-        # Edge app windows take their window and taskbar icon from /favicon.ico;
-        # without it Windows shows Edge's generic globe for the Manager.
-        window_icon = cast(ControlServer, self.server).window_icon
-        if parsed_path.path == "/favicon.ico" and not parsed_path.query and window_icon is not None:
-            self._send(200, window_icon, "image/x-icon")
-        else:
-            self._send(404, b"not found", "text/plain; charset=utf-8")
-
-    def do_HEAD(self) -> None:
-        if self.path == "/web" or self.path.startswith(("/web/", "/static/web/", "/static/shared/")):
-            self._serve_web_bridge()
-            return
-        self._send(404, b"not found", "text/plain; charset=utf-8")
-
-    def do_PUT(self) -> None:
-        if not self._host_allowed():
-            self._send(421, b"misdirected request", "text/plain; charset=utf-8")
-            return
-        self._send(404, b"not found", "text/plain; charset=utf-8")
-
-    def do_POST(self) -> None:  # noqa: C901 - explicit fail-closed route matrix
-        srv: ControlServer = self.server  # type: ignore[assignment]
-        if not self._host_allowed():
-            self._send(421, b"misdirected request", "text/plain; charset=utf-8")
-            return
-        parsed_path = urllib.parse.urlsplit(self.path)
-        if parsed_path.path == "/api/bootstrap" and not parsed_path.query:
-            self._serve_web_bootstrap()
-            return
-        if parsed_path.path == "/web" or parsed_path.path.startswith("/web/"):
-            self._serve_web_bridge()
-            return
-        if parsed_path.path == "/api/product/ledger/switch" and not parsed_path.query:
-            self._serve_product_ledger_switch()
-            return
-        if parsed_path.path == "/api/product/pair" and not parsed_path.query:
-            self._serve_product_pair()
-            return
-        if parsed_path.path == "/api/product/unpair" and not parsed_path.query:
-            self._serve_product_unpair()
-            return
-        if self.path == "/api/reopen":
-            challenge = self.headers.get("X-Ticketbox-Reopen-Challenge", "")
-            request_proof = self.headers.get("X-Ticketbox-Reopen-Proof", "")
-            body_state = self._read_empty_request_body_state()
-            if body_state is _EmptyRequestBodyState.INCOMPLETE:
-                return
-            if (
-                body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY
-                or self.headers.get("Origin") is not None
-                or self.headers.get("Sec-Fetch-Site") is not None
-                or not _CHALLENGE_PATTERN.fullmatch(challenge)
-                or not _SHA256_PROOF_PATTERN.fullmatch(request_proof)
-            ):
-                self._send(403, b"forbidden", "text/plain; charset=utf-8")
-                return
-            expected_request_proof = hmac.new(
-                srv.instance_secret.encode("utf-8"),
-                _REOPEN_REQUEST_CONTEXT + challenge.encode("ascii"),
-                hashlib.sha256,
-            ).hexdigest()
-            if not secrets.compare_digest(request_proof, expected_request_proof):
-                self._send(403, b"forbidden", "text/plain; charset=utf-8")
-                return
-            if srv.controller.is_manager_shutting_down() or not srv.request_window():
-                self._send_json({"error": "manager_shutting_down"}, code=409)
-                return
-            proof = hmac.new(
-                srv.instance_secret.encode("utf-8"),
-                _REOPEN_RESPONSE_CONTEXT + challenge.encode("ascii"),
-                hashlib.sha256,
-            ).hexdigest()
-            self._send_json({**_IDENTITY, "challenge": challenge, "proof": proof})
-            return
-        action = _ACTION_PATHS.get(self.path)
-        if action is None:
-            self._send(404, b"unknown action", "text/plain; charset=utf-8")
-            return
-        if not self._authorized():
-            self._send(403, b"forbidden", "text/plain; charset=utf-8")
-            return
-        body_state = self._read_empty_request_body_state()
-        if body_state is _EmptyRequestBodyState.INCOMPLETE:
-            return
-        if body_state is _EmptyRequestBodyState.DRAINED_NONEMPTY:
+        if body_state is EmptyRequestBodyState.DRAINED_NONEMPTY:
             self._send(400, b"request body not allowed", "text/plain; charset=utf-8")
             return
         if srv.controller.is_manager_shutting_down():
@@ -991,6 +299,80 @@ class _Handler(BaseHTTPRequestHandler):
         finally:
             srv.action_lock.release()
         self._send_json(payload)
+
+    def _serve_unrouted(self, parsed_path: urllib.parse.SplitResult) -> None:
+        window_icon = self._control_server().window_icon
+        if parsed_path.path == "/favicon.ico" and not parsed_path.query and window_icon is not None:
+            self._send(200, window_icon, "image/x-icon")
+        else:
+            self._send(404, b"not found", "text/plain; charset=utf-8")
+
+    def do_GET(self) -> None:
+        if not self._host_allowed():
+            self._send(421, b"misdirected request", "text/plain; charset=utf-8")
+            return
+        parsed_path = urllib.parse.urlsplit(self.path)
+        path = parsed_path.path
+        if path == "/web" or path.startswith(("/web/", "/static/web/", "/static/shared/")):
+            serve_web_bridge(self)
+        elif path == "/owner" or path.startswith("/owner/"):
+            serve_owner_shortcut(self, path)
+        elif path in ("/", "/index.html") and not parsed_path.query:
+            self._serve_ui_page()
+        elif path in _UI_ASSETS and not parsed_path.query:
+            self._serve_ui_asset(path)
+        elif path == "/api/identity":
+            self._serve_identity(parsed_path.query)
+        elif path == "/api/product/session":
+            serve_product_session(self)
+        elif path == "/api/product/ledgers":
+            serve_product_ledgers(self)
+        elif self.path == "/api/status":
+            self._serve_status()
+        else:
+            self._serve_unrouted(parsed_path)
+
+    def do_HEAD(self) -> None:
+        if self.path == "/web" or self.path.startswith(("/web/", "/static/web/", "/static/shared/")):
+            serve_web_bridge(self)
+            return
+        self._send(404, b"not found", "text/plain; charset=utf-8")
+
+    def do_PUT(self) -> None:
+        if not self._host_allowed():
+            self._send(421, b"misdirected request", "text/plain; charset=utf-8")
+            return
+        self._send(404, b"not found", "text/plain; charset=utf-8")
+
+    def do_POST(self) -> None:
+        if not self._host_allowed():
+            self._send(421, b"misdirected request", "text/plain; charset=utf-8")
+            return
+        parsed_path = urllib.parse.urlsplit(self.path)
+        path = parsed_path.path
+        if path == "/api/bootstrap" and not parsed_path.query:
+            serve_web_bootstrap(self)
+            return
+        if path == "/web" or path.startswith("/web/"):
+            serve_web_bridge(self)
+            return
+        if path == "/api/product/ledger/switch" and not parsed_path.query:
+            serve_product_ledger_switch(self)
+            return
+        if path == "/api/product/pair" and not parsed_path.query:
+            serve_product_pair(self)
+            return
+        if path == "/api/product/unpair" and not parsed_path.query:
+            serve_product_unpair(self)
+            return
+        if self.path == "/api/reopen":
+            self._serve_reopen()
+            return
+        action = _ACTION_PATHS.get(self.path)
+        if action is None:
+            self._send(404, b"unknown action", "text/plain; charset=utf-8")
+            return
+        self._serve_control_action(action)
 
 
 class ControlServer(ThreadingHTTPServer):
@@ -1013,6 +395,7 @@ class ControlServer(ThreadingHTTPServer):
         self.token = token
         self.instance_secret = instance_secret
         self.ui_html = ui_html
+        self._ui_asset_dir = _resolve_ui_asset_dir(ui_html)
         self.window_icon = window_icon.read_bytes() if window_icon is not None else None
         self.request_window = request_window or (lambda: False)
         self.action_lock = threading.Lock()
@@ -1022,7 +405,7 @@ class ControlServer(ThreadingHTTPServer):
             for cookie_name in (
                 SESSION_COOKIE,
                 ASSET_SESSION_COOKIE,
-                _CONTROL_SESSION_COOKIE,
+                CONTROL_SESSION_COOKIE,
             )
         }
         self._bootstrap_lock = threading.Lock()
@@ -1032,9 +415,11 @@ class ControlServer(ThreadingHTTPServer):
         self.expected_host = f"{host}:{actual_port}"
         self.expected_origin = f"http://{self.expected_host}"
 
-    def issue_web_session(self) -> dict[str, str]:
-        """Mint opaque lookup ids while retaining only their digests."""
+    def read_ui_asset(self, filename: str) -> bytes | None:
+        candidate = self._ui_asset_dir / filename
+        return candidate.read_bytes() if candidate.is_file() else None
 
+    def issue_web_session(self) -> dict[str, str]:
         session_ids = {cookie_name: secrets.token_urlsafe(48) for cookie_name in self._web_session_digests}
         with self._web_session_lock:
             for cookie_name, session_id in session_ids.items():
@@ -1073,8 +458,6 @@ class ControlServer(ThreadingHTTPServer):
         return expired_paths
 
     def prepare_web_bootstrap(self, material_path: Path) -> str:
-        """Create one ACL-restricted HTML POST bootstrap with a single-use token."""
-
         path = Path(os.path.abspath(material_path))
         path.parent.mkdir(parents=True, exist_ok=True)
         if os.name == "nt":
@@ -1094,9 +477,6 @@ class ControlServer(ThreadingHTTPServer):
         try:
             descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         except FileExistsError:
-            # A manager killed between create and consume left unconsumed
-            # launch material at this per-process path; it can never be
-            # consumed now, so replace it instead of crash-looping.
             self._remove_bootstrap_file(path)
             descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
@@ -1113,17 +493,12 @@ class ControlServer(ThreadingHTTPServer):
         now = time.monotonic()
         with self._bootstrap_lock:
             expired = self._expire_bootstraps(now)
-            self._bootstrap_pending[digest] = (
-                now + _BOOTSTRAP_TTL_SECONDS,
-                path,
-            )
+            self._bootstrap_pending[digest] = (now + _BOOTSTRAP_TTL_SECONDS, path)
         for expired_path in expired:
             self._remove_bootstrap_file(expired_path)
         return path.as_uri()
 
     def cancel_web_bootstrap(self, material_path: Path) -> None:
-        """Revoke one unconsumed launch grant and remove its restricted file."""
-
         path = Path(os.path.abspath(material_path))
         now = time.monotonic()
         cancelled_path: Path | None = None

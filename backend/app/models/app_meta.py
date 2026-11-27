@@ -11,6 +11,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.app_meta_observation import MANAGED_UPGRADE_ATTESTATION_KEY
 from app.database_model_registry import Base
 from app.services.time_service import now_utc
 
@@ -37,3 +38,11 @@ LEARNING_CLEANUP_LAST_RUN_KEY = "learning_cleanup_last_run_at"
 # value rather than a dedicated audit table because operators only
 # need the last-run figure — long history goes in logs, not the DB.
 LEARNING_CLEANUP_LAST_SUMMARY_KEY = "learning_cleanup_last_summary"
+
+__all__ = [
+    "AppMeta",
+    "IDENTITY_SCHEMA_VERSION_KEY",
+    "LEARNING_CLEANUP_LAST_RUN_KEY",
+    "LEARNING_CLEANUP_LAST_SUMMARY_KEY",
+    "MANAGED_UPGRADE_ATTESTATION_KEY",
+]

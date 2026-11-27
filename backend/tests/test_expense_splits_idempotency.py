@@ -145,12 +145,26 @@ def test_replace_splits_in_progress_returns_409(client: TestClient, *, identity)
     splits = [{"member_id": member_id, "amount_cents": 1500}]
     key = str(uuid4())
     payload = ExpenseSplitReplaceRequest(expected_row_version=v0, splits=splits)
+    with SessionLocal() as db:
+        from app.models import AuthToken
+        from app.services.identity_service import hash_secret
+
+        token = db.scalar(
+            select(AuthToken).where(AuthToken.token_hash == hash_secret(identity.app_token))
+        )
+        assert token is not None
+        actor_account_id = token.account_id
+        actor_device_id = token.device_id
     fingerprint = fingerprint_request(
         operation="replace_splits",
         target_id=str(expense_id),
-        body=payload.model_dump(
-            mode="json", exclude_unset=True, exclude={"expected_row_version"}
-        ),
+        body={
+            **payload.model_dump(
+                mode="json", exclude_unset=True, exclude={"expected_row_version"}
+            ),
+            "actor_account_id": actor_account_id,
+            "actor_device_id": actor_device_id,
+        },
         expected_row_version=v0,
     )
     with SessionLocal() as db:

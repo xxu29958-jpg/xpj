@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import AppError
-from app.models import AccountMovement, Expense, ExpenseFunding, ExpenseOffsetFact
+from app.models import AccountMovement, Expense, ExpenseFunding, ExpenseOffsetFact, FinancialAccount
 from app.schemas.funds import RefundDestination
 from app.services.expense_funding_service import expense_funding_account_ids, reverse_expense_funding
 from app.services.funds_commands import movement, require_account_version
@@ -34,7 +34,11 @@ def apply_offset_funds(db: Session, *, expense: Expense, offset: ExpenseOffsetFa
         ExpenseFunding.voided_at.is_(None)).limit(1)) is not None
     if not destinations:
         if has_funding:
-            raise AppError("refund_destination_required", "请选择实际退入的账户；申请中的退款先保留原稿，到账后再确认。", status_code=422)
+            raise AppError(
+                "refund_destination_required",
+                "请选择实际退入的账户；申请中的退款先保留原稿，到账后再确认。",
+                status_code=422,
+            )
         return set()
     if sum(row.original_amount_minor for row in destinations) != offset.original_amount_minor:
         raise AppError("funding_amount_mismatch", "退款各去向的原币合计须等于本次退款金额。", status_code=422)
@@ -45,9 +49,16 @@ def apply_offset_funds(db: Session, *, expense: Expense, offset: ExpenseOffsetFa
         account = accounts[part.account_public_id]
         require_account_version(account, part.account_row_version)
         validate_movement_date(db, account, offset.accounting_date)
-        if account.currency_code == offset.original_currency_code and part.received_amount_minor != part.original_amount_minor:
+        if (
+            account.currency_code == offset.original_currency_code
+            and part.received_amount_minor != part.original_amount_minor
+        ):
             raise AppError("funding_amount_mismatch", "同币种实际退款与去向金额应一致。", status_code=422)
-        targets = refund_credit_targets(db, account, expense.id, part.received_amount_minor) if account.kind == "credit" else None
+        targets = (
+            refund_credit_targets(db, account, expense.id, part.received_amount_minor)
+            if account.kind == "credit"
+            else None
+        )
         movement(db, SimpleNamespace(account_id=actor_account_id), account, event=event, component=str(index),
             kind="refund", amount=part.received_amount_minor, occurred_on=offset.accounting_date,
             note=offset.reason[:255], offset_id=offset.id, settlement_targets=targets)
@@ -71,19 +82,133 @@ def refund_credit_targets(db, account, expense_id, amount):
     return result
 
 
+def _lock_reversal_accounts(
+    db: Session,
+    *,
+    expense: Expense,
+    rows: list[AccountMovement],
+    actor_account_id: int,
+) -> None:
+    opening_ids = db.scalars(
+        select(ExpenseFunding.account_id).where(
+            ExpenseFunding.expense_id == expense.id,
+            ExpenseFunding.included_in_opening.is_(True),
+            ExpenseFunding.voided_at.is_(None),
+        )
+    ).all()
+    lock_reviewed_accounts(
+        db,
+        ledger_id=expense.tenant_id,
+        actor_account_id=actor_account_id,
+        source_account_ids=[*opening_ids, *(row.account_id for row in rows)],
+        parts=[],
+    )
+
+
+def _load_reversal_funding_context(
+    db: Session,
+    *,
+    expense_id: int,
+    roots: dict[int, int],
+) -> tuple[list[AccountMovement], list[ExpenseFunding], list[ExpenseFunding]]:
+    if roots:
+        root_ids = roots.values()
+        root_movements = list(
+            db.scalars(select(AccountMovement).where(AccountMovement.id.in_(root_ids)))
+        )
+        restored_fundings = list(
+            db.scalars(
+                select(ExpenseFunding)
+                .join(AccountMovement, AccountMovement.funding_id == ExpenseFunding.id)
+                .where(AccountMovement.id.in_(root_ids))
+            )
+        )
+    else:
+        root_movements = []
+        restored_fundings = []
+    restored_ids = {funding.id for funding in restored_fundings}
+    existing_active_query = (
+        select(ExpenseFunding)
+        .where(ExpenseFunding.expense_id == expense_id)
+        .where(ExpenseFunding.voided_at.is_(None))
+    )
+    if restored_ids:
+        existing_active_query = existing_active_query.where(
+            ExpenseFunding.id.not_in(restored_ids)
+        )
+    existing_active_rows = list(db.scalars(existing_active_query))
+    return root_movements, restored_fundings, existing_active_rows
+
+
+def _opening_accounts_match_date(
+    db: Session,
+    *,
+    fundings: tuple[ExpenseFunding, ...],
+    accounting_date,
+) -> bool:
+    opening_account_ids = {row.account_id for row in fundings if row.included_in_opening}
+    if not opening_account_ids:
+        return True
+    opening_accounts = list(
+        db.scalars(
+            select(FinancialAccount).where(FinancialAccount.id.in_(opening_account_ids))
+        )
+    )
+    return len(opening_accounts) == len(opening_account_ids) and all(
+        account.balance_known and accounting_date <= account.opening_date
+        for account in opening_accounts
+    )
+
+
+def _restore_reversal_fundings(
+    db: Session,
+    *,
+    expense: Expense,
+    offset: ExpenseOffsetFact,
+    roots: dict[int, int],
+) -> None:
+    root_movements, restored_fundings, existing_active_rows = _load_reversal_funding_context(
+        db, expense_id=expense.id, roots=roots
+    )
+    if not restored_fundings and not existing_active_rows:
+        return
+    expected_total = (
+        expense.original_amount_minor
+        if expense.original_amount_minor is not None
+        else expense.amount_cents
+    )
+    all_fundings = (*existing_active_rows, *restored_fundings)
+    restored_total = sum(row.expense_amount_minor for row in all_fundings)
+    dates_match = all(
+        m.occurred_on == expense.accounting_date for m in root_movements
+    ) and _opening_accounts_match_date(
+        db, fundings=all_fundings, accounting_date=expense.accounting_date
+    )
+    home_matches = expense.amount_cents is not None and offset.amount_cents == expense.amount_cents
+    if (
+        expected_total is None
+        or restored_total != expected_total
+        or offset.original_currency_code != expense.original_currency_code
+        or not dates_match
+        or not home_matches
+    ):
+        raise AppError(
+            "funding_review_required",
+            "原消费金额、币种、估值或账务日期与待恢复的付款组成不一致，请先核对并恢复原消费后再撤销冲销。",
+            status_code=409,
+        )
+    for funding in restored_fundings:
+        funding.voided_at = None
+
+
 def reverse_offset_funds(db, *, expense, offset, actor_account_id, reason) -> set[int]:
     rows = list(db.scalars(unreversed_movements(select(AccountMovement).where(AccountMovement.offset_id == offset.id))))
     if offset.kind == "reversal":
-        opening_ids = db.scalars(select(ExpenseFunding.account_id).where(ExpenseFunding.expense_id == expense.id,
-            ExpenseFunding.included_in_opening.is_(True), ExpenseFunding.voided_at.is_(None))).all()
-        lock_reviewed_accounts(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id,
-            source_account_ids=[*opening_ids, *(row.account_id for row in rows)], parts=[])
+        _lock_reversal_accounts(db, expense=expense, rows=rows, actor_account_id=actor_account_id)
     roots = reverse_movements(db, ledger_id=expense.tenant_id, actor_account_id=actor_account_id, rows=rows,
         reason=reason, occurred_on=offset.accounting_date)
     if offset.kind == "reversal":
-        for funding in db.scalars(select(ExpenseFunding).join(AccountMovement, AccountMovement.funding_id == ExpenseFunding.id)
-                .where(AccountMovement.id.in_(roots.values()))):
-            funding.voided_at = None
+        _restore_reversal_fundings(db, expense=expense, offset=offset, roots=roots)
     # The offset owner expires its snapshot before applying the reviewed correction.
     db.flush()
     return {row.account_id for row in rows}

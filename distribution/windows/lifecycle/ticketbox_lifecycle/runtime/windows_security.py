@@ -141,6 +141,53 @@ class WindowsSecurityAdapter:
             ),
         )
 
+    def verify_upgrade_stage_directory(self, stage_dir: Path) -> None:
+        native.require_windows()
+        allowed = frozenset({
+            native._canonical_dacl_sddl("D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"),
+            native._canonical_dacl_sddl("D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"),
+        })
+        for candidate in (stage_dir.parent, stage_dir):
+            native.reject_reparse_components(candidate)
+            if not candidate.is_dir():
+                raise LifecycleViolation(
+                    "untrusted_stage_root",
+                    "upgrade stage directory must be a real local directory",
+                )
+            native.require_trusted_owner(
+                candidate,
+                code="untrusted_stage_root",
+                message="upgrade stage directory must be owned by SYSTEM or Administrators",
+            )
+            try:
+                observed = native._object_dacl_sddl(candidate)
+            except OSError as exc:
+                raise LifecycleViolation(
+                    "untrusted_stage_root",
+                    "cannot inspect upgrade stage directory DACL",
+                ) from exc
+            if observed not in allowed:
+                raise LifecycleViolation(
+                    "untrusted_stage_root",
+                    "upgrade stage directory must have an admin-only protected DACL",
+                )
+
+    def publish_installed_program_acl(self, path: Path, *, is_dir: bool) -> None:
+        native.publish_installed_program_acl(path, is_dir=is_dir)
+
+    def verify_installed_program_acl(
+        self,
+        path: Path,
+        *,
+        is_dir: bool,
+        require_admin_owner: bool = True,
+    ) -> None:
+        native.verify_installed_program_acl(
+            path,
+            is_dir=is_dir,
+            require_admin_owner=require_admin_owner,
+        )
+
     def _verify_machine_json_dacl(self, path: Path, reader_sids: tuple[str, ...]) -> None:
         native.require_windows()
         native.reject_reparse_components(path)

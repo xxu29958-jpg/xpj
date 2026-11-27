@@ -11,12 +11,12 @@ internal class OutboxRuntimeCompatibility(private val guard: LedgerRequestGuard)
     val writeBlock = currentBlock.asStateFlow()
 
     suspend fun refresh(): RuntimeWriteCompatibility = guard.guardedCall { api ->
-        api.runtimeCompatibility().toWriteCompatibility().also { compatibility ->
-            currentBlock.value = if (compatibility.conclusion == "owner_action_required") {
-                OutboxWriteBlock.CURRENCY_ADOPTION_REQUIRED
-            } else {
-                null
-            }
+        api.runtimeCompatibility().toWriteCompatibility()
+    }.also { compatibility ->
+        currentBlock.value = when (compatibility.conclusion) {
+            "client_upgrade_required" -> OutboxWriteBlock.CLIENT_UPGRADE_REQUIRED
+            "owner_action_required" -> OutboxWriteBlock.CURRENCY_ADOPTION_REQUIRED
+            else -> null
         }
     }
 

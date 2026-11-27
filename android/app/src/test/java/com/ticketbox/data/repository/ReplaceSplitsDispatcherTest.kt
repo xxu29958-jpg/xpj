@@ -7,6 +7,7 @@ import com.ticketbox.data.local.PendingMutationType
 import com.ticketbox.data.remote.ApiService
 import com.ticketbox.data.remote.dto.ExpenseSplitReplaceRequestDto
 import com.ticketbox.data.remote.dto.ExpenseSplitsResponseDto
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Protocol
@@ -16,6 +17,7 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.HttpException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -123,6 +125,62 @@ class ReplaceSplitsDispatcherTest {
         val result = dispatcherFor(stub).dispatch(splitsRow(idempotencyKey = "key-abc"))
 
         assertTrue(result is DispatchResult.Conflict, "state_conflict must stay Conflict: $result")
+    }
+
+    @Test
+    fun `404 member_not_found returns visible definitelyRejected Failure instead of Discarded`() = runTest {
+        val body = """{"error":"member_not_found","message":"成员不存在或已停用。"}"""
+        val stub = Stub(Result.failure(httpException(404, body)))
+
+        val result = dispatcherFor(stub).dispatch(splitsRow(idempotencyKey = "key-abc"))
+
+        assertEquals(DispatchResult.Failure("成员不存在或已停用。", definitelyRejected = true), result)
+    }
+
+    @Test
+    fun `404 member_not_found stays FAILED in OutboxDrainEngine and never becomes done`() = runTest {
+        val body = """{"error":"member_not_found","message":"成员不存在或已停用。"}"""
+        val stub = Stub(Result.failure(httpException(404, body)))
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao)
+        val payloadJson = moshi().adapter(ExpenseSplitReplaceRequestDto::class.java)
+            .toJson(ExpenseSplitReplaceRequestDto(expectedRowVersion = 0L, splits = emptyList()))
+        val rowId = outbox.enqueue(
+            type = PendingMutationType.ReplaceSplits,
+            targetId = "expense:42",
+            payloadJson = payloadJson,
+            expectedRowVersion = 1L,
+            idempotencyKey = "key-member-404",
+        )
+        dao.runnableBatches += listOf(rowId)
+
+        val summary = OutboxDrainEngine(outbox, listOf(dispatcherFor(stub))).drainOnce()
+
+        assertEquals(1, summary.attempted)
+        assertEquals(0, summary.done)
+        assertEquals(0, summary.discarded)
+        assertEquals(1, summary.failures)
+        val stored = dao.rows.getValue(rowId)
+        assertEquals(PendingMutationStatus.Failed.wireValue, stored.status)
+        assertEquals("成员不存在或已停用。", stored.lastError)
+        assertNull(stored.completedAt)
+        val failedRows = outbox.observeStatus().first().failed
+        assertEquals(listOf(rowId), failedRows.map { it.id })
+    }
+
+    @Test
+    fun `404 expense_not_found still discards while unknown 404 stays Failure`() = runTest {
+        val gone = Stub(Result.failure(httpException(404, """{"error":"expense_not_found","message":"账单不存在。"}""")))
+        assertEquals(
+            DispatchResult.Discarded("账单不存在。"),
+            dispatcherFor(gone).dispatch(splitsRow(idempotencyKey = "key-abc")),
+        )
+
+        val missingRoute = Stub(Result.failure(httpException(404, """{"error":"route_not_found","message":"没有找到这个功能入口。"}""")))
+        assertEquals(
+            DispatchResult.Failure("账本版本过旧，请重启电脑上的小票夹后再试。", definitelyRejected = true),
+            dispatcherFor(missingRoute).dispatch(splitsRow(idempotencyKey = "key-abc")),
+        )
     }
 
     private fun httpException(code: Int, body: String): HttpException {

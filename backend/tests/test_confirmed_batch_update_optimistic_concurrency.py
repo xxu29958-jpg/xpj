@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-import app.services.expense_correction_service as correction_service
+import app.services.expense_correction_batch as correction_batch
 from app.database import SessionLocal
 from app.errors import AppError
 from app.models import Expense, ExpenseRevision
@@ -164,7 +164,7 @@ def test_confirmed_batch_update_processes_rows_in_stable_id_order(
         observed.append(expense.id)
         return False
 
-    monkeypatch.setattr(correction_service, "_apply_one_batch_correction", observe_apply)
+    monkeypatch.setattr(correction_batch, "_apply_one_batch_correction", observe_apply)
 
     response = client.post(
         "/api/expenses/confirmed/batch-update",

@@ -651,3 +651,75 @@ def test_real_backend_switch_sequence_replacement_session_survives_cleanup(
 
     assert status == 200
     assert "切换目标账本" in body
+
+
+_MANAGER_HTTP_ASSET_PROBE = """
+(() => {
+  if (location.pathname !== "/" || document.readyState !== "complete") return undefined;
+  const overall = document.getElementById("overallText")?.textContent;
+  const productTitle = document.getElementById("productTitle")?.textContent;
+  if (overall !== "运行正常" || productTitle !== "填写连接信息") return undefined;
+  return JSON.stringify({
+    overall,
+    serviceTitle: document.getElementById("serviceTitle")?.textContent,
+    productTitle,
+    bodyBackground: getComputedStyle(document.body).backgroundColor,
+    homeLinkDisplay: getComputedStyle(document.getElementById("productHomeLink")).display,
+    stylesheetCount: document.styleSheets.length,
+  });
+})()
+"""
+
+
+def test_real_edge_loads_manager_page_external_assets_and_initial_refresh(tmp_path: Path) -> None:
+    from backend_manager.product_data import ProductDataError
+    from tests._manager_ui_test_support import _status
+
+    edge = discover_edge_executable()
+    assert edge is not None, "Microsoft Edge is required for the Manager asset loading gate"
+
+    class _ManagerOnlyController:
+        def status(self) -> dict[str, object]:
+            return {**_status(degraded=False), "product_available": True}
+
+        def product_principal(self) -> dict[str, object]:
+            return {"configured": False}
+
+        def product_bridge_context(self) -> BridgeContext:
+            raise ProductDataError(
+                "请先使用 8 位绑定码连接桌面账本。",
+                error="product_principal_required",
+                status_code=401,
+            )
+
+        def is_manager_shutting_down(self) -> bool:
+            return False
+
+    manager = ControlServer(
+        "127.0.0.1",
+        0,
+        controller=_ManagerOnlyController(),
+        token=_CONTROL_TOKEN,
+        instance_secret=_INSTANCE_SECRET,
+        ui_html=_UI_HTML,
+    )
+    with _serving(manager):
+        value = evaluate_page(
+            edge,
+            profile=tmp_path / "edge-manager-assets",
+            prepare_url=lambda attempt: manager.prepare_web_bootstrap(tmp_path / f"manager-bootstrap-{attempt}.html"),
+            width=820,
+            height=660,
+            expression=_MANAGER_HTTP_ASSET_PROBE,
+            document_url_prefix=manager.expected_origin + "/",
+        )
+
+    assert isinstance(value, str)
+    assert json.loads(value) == {
+        "overall": "运行正常",
+        "serviceTitle": "小票夹正在运行",
+        "productTitle": "填写连接信息",
+        "bodyBackground": "rgb(250, 251, 247)",
+        "homeLinkDisplay": "none",
+        "stylesheetCount": 1,
+    }

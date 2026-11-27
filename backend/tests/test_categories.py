@@ -27,7 +27,10 @@ from app.schemas import ExpenseUpdateRequest
 from app.services import pending_review_bulk_service
 from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.category_service import (
+    CATEGORY_OPTION_LIMIT,
     list_category_summary,
+    list_ledger_category_options,
+    list_uncategorized_pending,
     normalize_existing_expense_categories,
 )
 from app.services.currency_binding_service import authorize_currency_metadata_write
@@ -613,3 +616,91 @@ def test_web_uncategorized_includes_dirty_tokens(web_client: TestClient, *, iden
     assert str(none_id) in ids
     assert str(trad_id) in ids
     assert str(cat_id) not in ids
+
+
+@pytest.mark.real_db
+def test_high_cardinality_category_windows_preserve_selected_and_missing_rows(identity, web_client) -> None:
+    stamp = now_utc()
+    with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
+
+        def pending(name: str) -> Expense:
+            return Expense(tenant_id="owner", category=name, status="pending", created_at=stamp, updated_at=stamp)
+
+        history = [f"item-{index:04}" for index in range(CATEGORY_OPTION_LIMIT + 30)]
+        db.add_all(pending(name) for name in history)
+        other = pending("\u3000其他\t")
+        missing = [pending("\tNuLl\u3000") for _ in range(205)]
+        db.add_all([*missing, other, pending("item-%literal")])
+        db.flush()
+
+        options = list_ledger_category_options(db, tenant_id="owner", selected=history[-1])
+        assert len(options) == CATEGORY_OPTION_LIMIT and options[-1] == history[-1]
+        assert list_ledger_category_options(db, tenant_id="owner", query="ITEM-%") == ["item-%literal"]
+        assert list_ledger_category_options(db, tenant_id="owner", query=history[-1]) == [history[-1]]
+        newest = [row.id for row in reversed(missing)]
+        assert [row.id for row in list_uncategorized_pending(db, tenant_id="owner")] == newest[:200]
+        with_other = list_uncategorized_pending(db, tenant_id="owner", include_other=True)
+        assert [row.id for row in with_other] == [other.id, *newest[:199]]
+        db.commit()
+
+    results = web_client.get(
+        "/web/categories/uncategorized",
+        params={"ledger_id": "owner", "category_query": "item-%", "selected": history[-1]},
+        headers={"Accept": "application/json"},
+    )
+    assert results.status_code == 200
+    assert results.json() == ["item-%literal", history[-1]]
+
+
+@pytest.mark.parametrize("accept", ["application/json; charset=utf-8", "text/html, application/json;q=0.8"])
+def test_category_search_normalizes_pinned_choices_and_reports_genuine_misses(web_client, identity, accept):
+    def lookup(prefix, selected=None):
+        params = {"ledger_id": "owner", "category_query": prefix}
+        if selected is not None:
+            params["selected"] = selected
+        response = web_client.get("/web/categories/uncategorized", params=params, headers={"Accept": accept})
+        assert response.status_code == 200
+        return response.json()
+
+    with SessionLocal() as db:
+        authorize_currency_metadata_write(db)
+        stamp = now_utc()
+        db.add(Expense(tenant_id="owner", category=" 手作 ", status="pending", created_at=stamp, updated_at=stamp))
+        db.add(Expense(tenant_id="owner", category="École", status="pending", created_at=stamp, updated_at=stamp))
+        db.add(Expense(tenant_id="owner", category="Straße", status="pending", created_at=stamp, updated_at=stamp))
+        ensure_category_preference_for_name(db, tenant_id="owner", name="CAFÉ")
+        db.add_all(
+            Expense(tenant_id="owner", category=f"a{i:03}-z", status="pending", created_at=stamp, updated_at=stamp)
+            for i in range(CATEGORY_OPTION_LIMIT)
+        )
+        db.add(Expense(tenant_id="owner", category="z", status="pending", created_at=stamp, updated_at=stamp))
+        db.commit()
+
+    for missing in (None, "   ", "\u0085", " NuLl ", "未分類", "<script>alert(1)</script>", "bad\x00cat"):
+        assert lookup("zzz-nomatch", missing) == []
+    assert lookup("zzz-nomatch", "手作") == ["手作"]
+    assert lookup("zzz-nomatch", "École") == ["École"]
+    assert lookup("zzz-nomatch", "école") == ["École"]
+    assert lookup("zzz-nomatch", "STRASSE") == ["Straße"]
+    assert lookup("zzz-nomatch", "CAFÉ") == ["CAFÉ"]
+    assert lookup("zzz-nomatch", "café") == ["CAFÉ"]
+    assert lookup("zzz-nomatch", "z") == ["z"]
+    for selected in (" 餐饮 ", "吃饭"):
+        assert lookup("餐", selected) == ["餐饮"]
+        assert lookup("zzz-nomatch", selected) == ["餐饮"]
+
+
+def test_preferences_directory_and_library_count_span_sql_pages(client, web_client, identity):
+    names = [f"pref-{n:03}" for n in range(205)]
+    with SessionLocal() as db:
+        for name in reversed(names):
+            ensure_category_preference_for_name(db, tenant_id="owner", name=name)
+        db.commit()
+    response = client.get("/api/expenses/categories/preferences", headers=identity.app_headers)
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["items"]] == names
+    dashboard = web_client.get("/web/categories?ledger_id=owner")
+    assert dashboard.status_code == 200 and names[-1] in dashboard.text
+    library = web_client.get("/web/library?ledger_id=owner")
+    assert library.status_code == 200 and "205 个自定义分类" in library.text

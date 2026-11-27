@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.error_reporting import report_error
 from app.models import BackgroundTask, Expense
 from app.services.background_task_handler_api import can_recover_task, schedule_task_recovery
 from app.services.file_service import require_upload_storage, resolve_upload_path_for_tenant
 from app.services.time_service import now_utc
+
+logger = logging.getLogger(__name__)
 
 _ACTIVE_STATUSES = ("queued", "running")
 _ADMISSION_LOCK_LABEL = "ticketbox-background-task-admission"
@@ -109,16 +114,29 @@ def _reserve_active_slot(db: Session, *, ledger_id: str | None, source_expense_i
         return
     references = {(task.tenant_id, task.source_expense_id) for task in active if task.task_type in _IMAGE_TASK_TYPES}
     references.add((ledger_id, source_expense_id))
-    sizes = _pending_image_sizes(db, references)
-    if (sum(sizes.values()) > settings.background_task_max_image_bytes or
-            sum(size for (tenant, _), size in sizes.items() if tenant == ledger_id) > settings.background_task_max_ledger_image_bytes):
+    sizes, unreadable_tenants = _probe_pending_image_sizes(db, references)
+    if ledger_id in unreadable_tenants:
+        raise BackgroundTaskCapacityFullError
+    global_bytes = (
+        sum(size for (tenant, _), size in sizes.items() if tenant not in unreadable_tenants)
+        + len(unreadable_tenants) * settings.background_task_max_ledger_image_bytes
+    )
+    ledger_bytes = sum(size for (tenant, _), size in sizes.items() if tenant == ledger_id)
+    if (
+        global_bytes > settings.background_task_max_image_bytes
+        or ledger_bytes > settings.background_task_max_ledger_image_bytes
+    ):
         raise BackgroundTaskCapacityFullError
 
 
-def _pending_image_sizes(db: Session, references: set[tuple[str | None, int | None]]) -> dict[tuple[str, int], int]:
-    """Charge each referenced original once; use the existing protected-file resolver."""
+def _probe_pending_image_sizes(
+    db: Session,
+    references: set[tuple[str | None, int | None]],
+) -> tuple[dict[tuple[str, int], int], set[str]]:
+    """Charge each referenced original once; track ledgers with unreadable originals."""
     identifiers = {identifier for _, identifier in references if identifier is not None}
-    sizes = {}
+    sizes: dict[tuple[str, int], int] = {}
+    unreadable_tenants: set[str] = set()
     for expense in db.scalars(select(Expense).where(Expense.id.in_(identifiers))):
         key = (expense.tenant_id, expense.id)
         if key not in references or not expense.image_path or expense.image_deleted_at:
@@ -128,8 +146,16 @@ def _pending_image_sizes(db: Session, references: set[tuple[str | None, int | No
             try:
                 sizes[key] = path.stat().st_size
             except FileNotFoundError:
-                # Missing originals consume no storage; their task's source validation still fails.
                 continue
+            except OSError as exc:
+                report_error(logger, "pending original size probe failed", error=exc)
+                unreadable_tenants.add(expense.tenant_id)
+                continue
+    return sizes, unreadable_tenants
+
+
+def _pending_image_sizes(db: Session, references: set[tuple[str | None, int | None]]) -> dict[tuple[str, int], int]:
+    sizes, _ = _probe_pending_image_sizes(db, references)
     return sizes
 
 __all__ = ["BackgroundTaskCapacityFullError", "readmit_orphaned_task", "stage_queued_task"]

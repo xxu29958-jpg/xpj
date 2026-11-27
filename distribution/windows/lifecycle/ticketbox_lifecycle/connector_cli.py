@@ -19,15 +19,24 @@ from ticketbox_lifecycle.runtime.windows_shipment import WindowsShipmentVerifier
 
 
 def _installed_context():
-    stores = FilesystemStores.from_installed()
-    binding = stores.read()
     app_dir, program_data = ticketbox_install_root(), ticketbox_program_data_root()
+    stores = FilesystemStores.from_installed(
+        install_root=app_dir,
+        program_data_root=program_data,
+    )
+    binding = stores.read()
     if binding is None or (
         Path(binding.data_root) != program_data / "data" or binding.backend_service_name != "TicketboxBackend"
         or binding.pg_service_name != "TicketboxPg" or binding.backend_port != 8000 or binding.pg_port != 5432
     ):
         raise LifecycleViolation("connector_binding_invalid", "a supported installed instance is required")
-    WindowsShipmentVerifier(app_dir, program_data).verify_installed(binding)
+    WindowsShipmentVerifier(app_dir, program_data).verify_installed(
+        binding,
+        allowed_sibling_releases=stores.known_sibling_releases(
+            binding,
+            exclude_release_id=binding.active_release_id,
+        ),
+    )
     return stores, binding, app_dir, program_data
 
 

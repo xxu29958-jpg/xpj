@@ -7,7 +7,7 @@
 | 对象 | 当前处理方式 |
 |---|---|
 | 源码/测试后端 | 保留当前工作树和失败现场；在与目标代码匹配的可弃验证环境、隔离数据库中重新建立测试夹具 |
-| 已安装 Windows | 完整恢复、既有安装升级/降级、保留数据 repair/reinstall 继续 `QUALIFIED_HOLD`；不能用旧源码命令绕过安装和数据身份 |
+| 已安装 Windows | 同机受管升级使用显式管理员 `/UPGRADE=YES`（`1.2.1 → 1.3.0`，升级前在 Manager 移除公网连接器）；若迁移或候选验收边界失败且 `business_writes_opened=False`，可通过 U1 自动回退或 `TicketboxLifecycle.exe rollback-upgrade` 隔离失败候选并从升级前冷备恢复 `1.2.1`（返回 `phase=rolled_back_to_previous`、`code=upgrade_failed_restored_previous`）；放写后或状态不明强拒旧点覆盖（`upgrade_rollback_refused_writes_may_have_opened`）。R1/R2 分别通过 `/RESTOREMODE=same-environment|cross-machine` 执行；默认卸载保留数据，重装走 `/REINSTALL=YES`，永久删数据走独立 `purge-data`。正式分发仍须洁净 Windows VM exact-HEAD 真实 EXE 资格验证 |
 | Android 旧版回归 | 使用隔离测试设备或模拟器及一次性后端；同一 minor 不代表数据库、草稿、Outbox 和绑定一定向下兼容 |
 | 公网域名与 Tunnel 配置 | 保留当前配置，通过现行配置入口恢复目标域名/路由并验证实际连通；不改数据库或安装身份 |
 

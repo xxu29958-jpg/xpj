@@ -236,15 +236,28 @@ class OutboxDrainEngine(
         val summary = DrainSummary(1, 0, 0, 0)
         return when (result) {
             is DispatchResult.Success -> {
-                // A verified first receipt survives cancellation of the subsequent read.
-                withContext(if (row.type in setOf(PendingMutationType.SaveMonthlyBudget, PendingMutationType.ApplyConfirmedRules)) NonCancellable
-                    else kotlin.coroutines.EmptyCoroutineContext) {
-                    outbox.markDone(row.id, cacheRefreshVersion = result.cacheRefreshVersion, receiptJson = result.receiptJson,
-                        acceptedReadRefreshRequired = result.acceptedReadRefreshRequired, acceptedRow = row)
+                val cascadeToken = result.newRowVersion?.takeIf {
+                    it > 0L && row.type !in setOf(
+                        PendingMutationType.CreateExpense,
+                        PendingMutationType.RetryOcr,
+                        PendingMutationType.RecognizeText,
+                    )
                 }
+                val settled = withContext(if (row.type in setOf(PendingMutationType.SaveMonthlyBudget, PendingMutationType.ApplyConfirmedRules)) NonCancellable
+                    else kotlin.coroutines.EmptyCoroutineContext) {
+                    outbox.markDone(
+                        id = row.id,
+                        settlement = OutboxDoneSettlement(
+                            cacheRefreshVersion = result.cacheRefreshVersion,
+                            receiptJson = result.receiptJson,
+                            acceptedReadRefreshRequired = result.acceptedReadRefreshRequired,
+                            acceptedRow = row,
+                            cascadeNewToken = cascadeToken,
+                        ),
+                    )
+                }
+                if (!settled) return summary
                 outbox.noteAcceptedReplay()
-                result.newRowVersion?.takeIf { it != 0L && row.type != PendingMutationType.CreateExpense }
-                    ?.let { outbox.cascadeFreshToken(row.targetId, it) }
                 if (row.type in ADVICE_INPUT_MUTATION_TYPES) onAdviceInputReplaySucceeded()
                 summary.copy(done = 1)
             }
@@ -258,8 +271,7 @@ class OutboxDrainEngine(
                 summary.copy(failures = 1)
             }
             is DispatchResult.Discarded -> {
-                outbox.markDone(row.id)
-                summary.copy(discarded = 1)
+                if (outbox.markDone(row.id)) summary.copy(discarded = 1) else summary
             }
         }
     }

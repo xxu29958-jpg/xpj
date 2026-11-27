@@ -29,7 +29,9 @@ class LedgerCalendarRepository internal constructor(
         try {
             val bound = guard.bindExact(binding)
             val rule = bound.call { api ->
-                if (!api.runtimeCompatibility().toWriteCompatibility().supportsAccountingTimeInput) null
+                val runtime = api.runtimeCompatibility().toWriteCompatibility()
+                check(runtime.readerVersionAccepted) { "请将手机应用与服务端更新到配套版本。" }
+                if (!runtime.supportsAccountingTimeInput) null
                 else api.ledgerCalendar(binding.ledgerId, revision)
             }
             if (rule == null) {

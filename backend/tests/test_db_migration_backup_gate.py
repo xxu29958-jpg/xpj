@@ -49,7 +49,7 @@ def test_source_runtime_refuses_existing_dataset_upgrade_without_mutation() -> N
 
     with pytest.raises(
         db_pkg.DatabaseMigrationPreflightError,
-        match=r"当前没有已资格的离线升级 owner.*继续 HOLD",
+        match=r"拒绝由普通后端启动执行既有数据集升级.*请使用受管离线升级流程",
     ):
         db_pkg.init_db()
 
@@ -79,7 +79,7 @@ def test_installed_runtime_refuses_behind_revision_before_maintenance_owner(
 
     with pytest.raises(
         db_pkg.DatabaseMigrationPreflightError,
-        match=r"当前安装版不提供既有数据集升级.*继续 HOLD",
+        match=r"拒绝由安装版 runtime 执行 schema DDL:既有数据集升级必须通过受管安装器离线升级入口执行",
     ):
         db_pkg.init_db()
 

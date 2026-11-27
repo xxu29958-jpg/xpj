@@ -37,7 +37,15 @@ class WindowsConnectorHost:
 
     def verify_context(self, request: ConnectorRequest) -> None:
         require_binding(request, self.stores.read())
-        self.shipment.verify_installed(self.binding)
+        siblings = (
+            self.stores.known_sibling_releases(
+                self.binding,
+                exclude_release_id=self.binding.active_release_id,
+            )
+            if hasattr(self.stores, "known_sibling_releases")
+            else None
+        )
+        self.shipment.verify_installed(self.binding, allowed_sibling_releases=siblings)
         # Closing a precise owned entry stays possible after an Owner changes
         # the address. Opening it requires the revision originally authorized.
         if request.desired_enabled or request.action == "configure":

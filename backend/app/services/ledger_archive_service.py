@@ -19,21 +19,27 @@ AUDIT_LEDGER_UNARCHIVED = "ledger_unarchived"
 
 
 def find_owner_account_id_for_ledger(db: Session, *, ledger_id: str) -> int | None:
-    """Return the active owner's account id, or ``None``."""
-    return db.scalar(
-        select(LedgerMember.account_id)
-        .where(LedgerMember.ledger_id == ledger_id)
-        .where(LedgerMember.role == "owner")
-        .where(LedgerMember.disabled_at.is_(None))
-        .limit(1)
+    """Return the sole active owner's account id, or ``None``."""
+    owners = list(
+        db.scalars(
+            select(LedgerMember.account_id)
+            .where(LedgerMember.ledger_id == ledger_id)
+            .where(LedgerMember.role == "owner")
+            .where(LedgerMember.disabled_at.is_(None))
+            .limit(2)
+        )
     )
+    return owners[0] if len(owners) == 1 else None
 
 
 def _authorize_ledger_owner(db: Session, *, ledger_id: str, actor_account_id: int) -> Ledger:
     ledger = db.scalar(select(Ledger).where(Ledger.ledger_id == ledger_id).limit(1))
     if ledger is None:
         raise AppError("ledger_not_found", status_code=404)
-    if find_owner_account_id_for_ledger(db, ledger_id=ledger_id) != actor_account_id:
+    if (
+        ledger.owner_account_id != actor_account_id
+        or find_owner_account_id_for_ledger(db, ledger_id=ledger_id) != actor_account_id
+    ):
         raise AppError("ledger_forbidden", status_code=403)
     return ledger
 

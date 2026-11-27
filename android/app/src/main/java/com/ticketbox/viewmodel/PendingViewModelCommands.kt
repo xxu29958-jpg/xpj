@@ -25,7 +25,7 @@ internal fun PendingViewModel.reconcileExpenseCommands() {
     val observation = commandObservation ?: return
     if (observation.access?.binding == null || observation.access.binding != currentUploadBinding()) return
     val commands = observation.commands
-    val completed = commands.filter { it.row.status == PendingMutationStatus.Done && seenCommandCompletions.add(it.row.id) }
+    val completed = commands.filter { it.isCompletedCommand() && seenCommandCompletions.add(it.row.id) }
     completed.forEach { adoptPendingCommand(it) }
     val byId = commands.associateBy { it.row.id }
     publishBulkConfirmProgress(byId)
@@ -38,25 +38,38 @@ internal fun PendingViewModel.reconcileExpenseCommands() {
 
 private val expenseCommandAttentionStatuses = setOf(PendingMutationStatus.Failed, PendingMutationStatus.Conflict)
 
+private fun PendingExpenseCommand.isAcceptedConfirmation(): Boolean =
+    row.type == PendingMutationType.ConfirmExpense &&
+        row.status == PendingMutationStatus.Done &&
+        confirmationReceipt != null
+
+private fun PendingExpenseCommand.isCompletedCommand(): Boolean =
+    row.status == PendingMutationStatus.Done &&
+        (row.type != PendingMutationType.ConfirmExpense || confirmationReceipt != null)
+
+private fun PendingExpenseCommand.needsCommandAttention(): Boolean =
+    row.status in expenseCommandAttentionStatuses ||
+        (row.status == PendingMutationStatus.Done && !isCompletedCommand())
+
 private fun PendingViewModel.publishBulkConfirmProgress(byId: Map<Long, PendingExpenseCommand>) {
     if (bulkCommandRows.isEmpty()) return
     _uiState.update { state ->
         state.copy(bulkConfirm = state.bulkConfirm.copy(
-            succeeded = bulkCommandRows.count { byId[it]?.row?.status == PendingMutationStatus.Done },
-            failed = bulkCommandRows.count { byId[it]?.row?.status in expenseCommandAttentionStatuses }))
+            succeeded = bulkCommandRows.count { byId[it]?.isAcceptedConfirmation() == true },
+            failed = bulkCommandRows.count { byId[it]?.needsCommandAttention() == true }))
     }
 }
 
 private fun PendingViewModel.finishCompletedExpenseCommands(byId: Map<Long, PendingExpenseCommand>) {
     val finished = commandRowsByExpense.filterValues { ids ->
-        ids.isNotEmpty() && ids.all { byId[it]?.row?.status == PendingMutationStatus.Done }
+        ids.isNotEmpty() && ids.all { byId[it]?.isCompletedCommand() == true }
     }.keys.toList()
     val abandoned = commandRowsByExpense.filter { (expenseId, ids) ->
         expenseId !in finished && ids.isNotEmpty() &&
             ids.all { it in observedCommandRowIds } &&
             ids.none { id ->
-                val remaining = byId[id]?.row?.status
-                remaining != null && remaining != PendingMutationStatus.Done
+                val command = byId[id]
+                command != null && !command.isCompletedCommand()
             }
     }.keys.toList()
     observedCommandRowIds += byId.keys
@@ -72,7 +85,7 @@ private fun PendingViewModel.finishCompletedExpenseCommands(byId: Map<Long, Pend
 }
 
 private fun PendingViewModel.commandRowsNeedAttention(byId: Map<Long, PendingExpenseCommand>) =
-    commandRowsByExpense.values.flatten().any { byId[it]?.row?.status in expenseCommandAttentionStatuses }
+    commandRowsByExpense.values.flatten().any { byId[it]?.needsCommandAttention() == true }
 
 private fun PendingViewModel.notifyExpenseCommandCompletions(completed: List<PendingExpenseCommand>) {
     recomputeReviewRemaining()
@@ -82,7 +95,7 @@ private fun PendingViewModel.notifyExpenseCommandCompletions(completed: List<Pen
 }
 
 private fun PendingExpenseCommand.notifiesAdviceInputs() =
-    row.type == PendingMutationType.ConfirmExpense ||
+    isAcceptedConfirmation() ||
         (row.type == PendingMutationType.UndoExpense && acceptedExpense?.status == "confirmed")
 
 private fun PendingViewModel.adoptPendingCommand(command: PendingExpenseCommand) {

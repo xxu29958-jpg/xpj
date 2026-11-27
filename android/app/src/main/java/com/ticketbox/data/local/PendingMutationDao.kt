@@ -182,6 +182,24 @@ interface PendingMutationDao {
     )
     suspend fun markDone(id: Long, status: String, completedAt: String, lastError: String? = null, receiptJson: String? = null): Int
 
+    @Transaction
+    suspend fun markDoneAndCascadeToken(
+        done: PendingMutationDoneUpdate,
+        cascade: PendingMutationTokenCascade? = null,
+    ): Int {
+        val updated = markDone(done.id, done.status, done.completedAt, done.lastError, done.receiptJson)
+        if (updated > 0 && cascade != null && cascade.freshToken > 0L) {
+            cascadeFreshTokenForTarget(
+                ownerKey = cascade.ownerKey,
+                ledgerId = cascade.ledgerId,
+                targetId = cascade.targetId,
+                preservedTokenTypes = cascade.preservedTokenTypes,
+                freshToken = cascade.freshToken,
+            )
+        }
+        return updated
+    }
+
     @Query("""
         UPDATE pending_mutations SET lastError = NULL
         WHERE id = :id AND status = 'done' AND lastError = :expectedError
@@ -288,7 +306,7 @@ interface PendingMutationDao {
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'conflict'
-          AND type NOT IN ('correct_expense', 'create_expense_offset', 'upload_screenshot', 'original_attachment', 'create_bill_split_invitation')
+          AND type NOT IN ('correct_expense', 'create_expense_offset', 'void_expense_offset', 'upload_screenshot', 'original_attachment', 'create_bill_split_invitation')
         """,
     )
     suspend fun requeueConflictWithFreshToken(
@@ -316,7 +334,7 @@ interface PendingMutationDao {
           AND ownerKey = :ownerKey
           AND ledgerId = :ledgerId
           AND status = 'failed'
-          AND type NOT IN ('correct_expense', 'create_expense_offset', 'upload_screenshot', 'original_attachment', 'create_bill_split_invitation')
+          AND type NOT IN ('correct_expense', 'create_expense_offset', 'void_expense_offset', 'upload_screenshot', 'original_attachment', 'create_bill_split_invitation')
         """,
     )
     suspend fun requeueFailedWithFreshToken(
@@ -732,3 +750,19 @@ interface PendingMutationDao {
     )
     suspend fun deleteQuarantined(activeOwnerKey: String): Int
 }
+
+data class PendingMutationDoneUpdate(
+    val id: Long,
+    val status: String,
+    val completedAt: String,
+    val lastError: String? = null,
+    val receiptJson: String? = null,
+)
+
+data class PendingMutationTokenCascade(
+    val ownerKey: String,
+    val ledgerId: String,
+    val targetId: String,
+    val preservedTokenTypes: List<String>,
+    val freshToken: Long,
+)

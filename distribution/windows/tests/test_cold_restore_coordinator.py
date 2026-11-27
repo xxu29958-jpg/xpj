@@ -95,3 +95,101 @@ def test_unexpected_restore_failure_uses_existing_terminal_report_without_privat
     assert captured.err.count("TicketboxLifecycle failed [restore_incomplete]") == 1
     assert "preserve source and fenced candidate" in captured.err
     assert "private recovery secret" not in captured.err
+
+
+def test_r2_cross_machine_mode_reports_generation_revoked_summary_and_isolation_boundaries(
+    tmp_path, monkeypatch,
+):
+    request = replace(make_install_request(tmp_path), command="restore", schema_revision="20261101_0001")
+    adapters = RecordingAdapterBundle()
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    adapters.security.owner_bootstrap_secret = lambda _request: "a-new-protected-r2-secret"
+    adapters.postgres._done.update(("start_postgres", "roles_database"))
+    adapters.alembic._done.add("alembic")
+    revoked_counts = {"auth_tokens": 3, "devices": 2, "pairing_codes": 1, "upload_links": 2, "invitations": 1}
+
+    source = SimpleNamespace(
+        digest="b" * 64,
+        identity={"dataset_id": "22222222-2222-4222-8222-222222222222", "restore_epoch": 2},
+    )
+
+    @contextmanager
+    def open_source(_candidate, _path, _digest):
+        yield source
+
+    platform = SimpleNamespace(
+        open_source=open_source,
+        extract_data=lambda req, _src: Path(req.data_root).mkdir(parents=True),
+        prepare_data=lambda *_args: None,
+        rotate_credentials=lambda *_args: None,
+        rebind_identity=lambda *_args, **_kwargs: OwnerPairing(
+            pairing_code="99887766",
+            pairing_expires_at="2026-11-27T12:00:00Z",
+            revoked_credentials_summary=revoked_counts,
+        ),
+    )
+
+    with pytest.raises(LifecycleError) as unconfirmed:
+        restore(
+            stores.as_lifecycle_stores(),
+            request,
+            tmp_path / "r2.tbxcold",
+            source.digest,
+            platform,
+            restore_mode="cross-machine",
+            source_isolated_confirmed=False,
+        )
+    assert unconfirmed.value.code == "restore_source_isolation_required"
+
+    with pytest.raises(LifecycleError) as bad_mode:
+        restore(
+            stores.as_lifecycle_stores(),
+            request,
+            tmp_path / "r2.tbxcold",
+            source.digest,
+            platform,
+            restore_mode="in-place",
+            source_isolated_confirmed=True,
+        )
+    assert bad_mode.value.code == "restore_mode_invalid"
+
+    result = restore(
+        stores.as_lifecycle_stores(),
+        request,
+        tmp_path / "r2.tbxcold",
+        source.digest,
+        platform,
+        restore_mode="cross-machine",
+        source_isolated_confirmed=True,
+    )
+    assert result.ok is True
+    assert result.restore_mode == "cross_machine"
+    assert result.restore_epoch == 3
+    assert result.client_generation == stores.read().install_id
+    assert result.revoked_credentials_summary == revoked_counts
+    assert "WinCred/DPAPI" in result.client_reconnect_guidance
+    assert "outbox" in result.client_reconnect_guidance
+    assert result.details["source_isolated_confirmed"] is True
+    assert result.details["legacy_machine_material_required"] is False
+
+
+def test_r2_restore_refuses_target_with_existing_managed_connector_service(
+    tmp_path: Path,
+) -> None:
+    request = replace(make_install_request(tmp_path), command="restore", schema_revision="20261023_0002")
+    adapters = RecordingAdapterBundle()
+    stores = MemoryStores(adapters, request.app_dir, request.data_root)
+    stores.managed_connector_present = True
+    with pytest.raises(LifecycleError) as exc_info:
+        restore(
+            stores.as_lifecycle_stores(),
+            request,
+            tmp_path / "selected.tbxcold",
+            "a" * 64,
+            SimpleNamespace(),
+            restore_mode="cross-machine",
+            source_isolated_confirmed=True,
+        )
+    assert exc_info.value.code == "restore_target_not_empty"
+    assert stores.read() is None
+    assert stores.read_active() is None

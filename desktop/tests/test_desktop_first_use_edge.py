@@ -10,7 +10,7 @@ import pytest
 
 from backend_manager.desktop_shell import discover_edge_executable
 from tests._edge_cdp import evaluate_page
-from tests._manager_ui_test_support import _STARTUP_SCRIPT, _UI_HTML, _status
+from tests._manager_ui_test_support import _render_probe_page, _status
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Edge consumer gate")
@@ -19,10 +19,11 @@ def test_local_first_use_and_original_code_continuation(tmp_path: Path) -> None:
     assert edge is not None
     status = {**_status(degraded=False), "product_available": True}
     script = (Path(__file__).parent / "fixtures" / "desktop_first_use_probe.js").read_text(encoding="utf-8")
-    source = _UI_HTML.read_text(encoding="utf-8")
-    assert source.count(_STARTUP_SCRIPT) == 1
-    page = tmp_path / "first-use.html"
-    page.write_text(source.replace(_STARTUP_SCRIPT, f"window.firstUseStatus = {json.dumps(status)};\n{script}"), encoding="utf-8")
+    page = _render_probe_page(
+        tmp_path,
+        "first-use.html",
+        f"window.firstUseStatus = {json.dumps(status)};\n{script}",
+    )
     result = evaluate_page(
         edge, profile=tmp_path / "edge", prepare_url=lambda _attempt: page.as_uri(), width=390, height=844,
         expression="window.firstUseProbe",

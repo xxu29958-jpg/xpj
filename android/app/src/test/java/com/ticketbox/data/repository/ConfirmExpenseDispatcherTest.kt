@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -69,7 +70,88 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         val retained = expenseConfirmationReceiptSnapshot(row.copy(status = PendingMutationStatus.Done, receiptJson = result.receiptJson))
         assertEquals(original.confirmationReceipt?.toDomain(), retained)
         assertEquals(current, published.single().second)
-        assertEquals(9L, result.newRowVersion)
+        assertEquals(original.confirmationReceipt?.rowVersion, result.newRowVersion)
+    }
+
+    @Test
+    fun `replayed confirm publishes v9 to cache while cascading only receipt v5 onto queued sibling`() = runTest {
+        val firstConfirmed = confirmationResponse(
+            successExpenseDto().copy(
+                status = "confirmed",
+                originalAmountMinor = 12345L,
+                confirmedAt = "2026-05-20T13:00:00Z",
+                rowVersion = 5L,
+            ),
+        )
+        val currentAfterPeerCorrection = firstConfirmed.copy(
+            merchant = "Later correction",
+            amountCents = 9900L,
+            rowVersion = 9L,
+            factRevision = 2L,
+        )
+        val ackTokensSent = mutableListOf<Long>()
+        val api = object : ApiService by ApiServiceStub(confirmExpenseResult = ApiResult.Success(currentAfterPeerCorrection)) {
+            override suspend fun acknowledgeExpenseItemsMismatch(
+                id: String,
+                request: ExpenseStateTokenRequest,
+                idempotencyKey: String?,
+            ): com.ticketbox.data.remote.dto.ExpenseItemsResponseDto {
+                ackTokensSent += request.expectedRowVersion
+                if (request.expectedRowVersion != 9L) {
+                    throw httpException(409, """{"error":"state_conflict","message":"账单已被其它端修改"}""")
+                }
+                error("Queued mismatch ack must not inherit peer correction v9")
+            }
+        }
+        val payloadJson = moshi().adapter(ExpenseStateTokenRequest::class.java)
+            .toJson(ExpenseStateTokenRequest(expectedRowVersion = 0L))
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao)
+        val confirmId = outbox.enqueue(
+            type = PendingMutationType.ConfirmExpense,
+            targetId = "expense:42",
+            payloadJson = payloadJson,
+            expectedRowVersion = 4L,
+            idempotencyKey = "original-confirm",
+        )
+        val ackId = outbox.enqueue(
+            type = PendingMutationType.AcknowledgeItemsMismatch,
+            targetId = "expense:42",
+            payloadJson = payloadJson,
+            expectedRowVersion = 4L,
+            idempotencyKey = "original-ack",
+        )
+        dao.tokenCascadeIds += listOf(ackId)
+        dao.runnableBatches += listOf(confirmId)
+        val engine = OutboxDrainEngine(
+            outbox,
+            listOf(
+                dispatcherFor(api),
+                AcknowledgeItemsMismatchDispatcher({ api }, moshi().adapter(ExpenseStateTokenRequest::class.java)),
+            ),
+        )
+
+        assertEquals(1, engine.drainOnce().done)
+        assertEquals(9L, published.single().second.rowVersion)
+        assertEquals(5L, dao.tokenCascadeCalls.single().freshToken)
+        assertEquals(5L, dao.rows.getValue(ackId).expectedRowVersion)
+
+        dao.runnableBatches += listOf(ackId)
+        assertEquals(1, engine.drainOnce().conflicts)
+        assertEquals(listOf(5L), ackTokensSent)
+        assertEquals(PendingMutationStatus.Conflict.wireValue, dao.rows.getValue(ackId).status)
+
+        val cacheFailureResult = dispatcherFor(ApiServiceStub(confirmExpenseResult = ApiResult.Success(currentAfterPeerCorrection))) { _, _ ->
+            throw IllegalStateException("cache unavailable")
+        }.dispatch(confirmRow(idempotencyKey = "original-confirm"))
+        assertEquals(
+            DispatchResult.Success(
+                newRowVersion = 5L,
+                cacheRefreshVersion = 9L,
+                receiptJson = expenseAcceptanceReceiptJson(requireNotNull(firstConfirmed.confirmationReceipt)),
+            ),
+            cacheFailureResult,
+        )
     }
 
     @Test
@@ -212,6 +294,39 @@ internal class ConfirmExpenseDispatcherTest : ExpensePendingRepositoryOutboxTest
         assertEquals(DispatchResult.Conflict("请选择分类。"), dispatcherFor(stub).dispatch(row))
         assertTrue(row.copy(status = PendingMutationStatus.Conflict).canReviewFunding())
         assertEquals(changes, row.confirmationChanges())
+        assertTrue(published.isEmpty())
+    }
+
+    @Test
+    fun `404 rejection never settles as receiptless DONE in OutboxDrainEngine`() = runTest {
+        val body = """{"error":"expense_not_found","message":"账单不存在。"}"""
+        val directResult = dispatcherFor(ApiServiceStub(confirmExpenseResult = ApiResult.Throw(httpException(404, body))))
+            .dispatch(confirmRow(idempotencyKey = "key-404"))
+        assertEquals(DispatchResult.Failure("账单不存在。", definitelyRejected = true), directResult)
+
+        val dao = FakePendingMutationDao()
+        val outbox = testOutboxRepository(dao)
+        val payloadJson = moshi().adapter(ExpenseStateTokenRequest::class.java)
+            .toJson(ExpenseStateTokenRequest(expectedRowVersion = 0L))
+        val rowId = outbox.enqueue(
+            type = PendingMutationType.ConfirmExpense,
+            targetId = "expense:42",
+            payloadJson = payloadJson,
+            expectedRowVersion = 1L,
+            idempotencyKey = "key-404",
+        )
+        dao.runnableBatches += listOf(rowId)
+
+        val stub = ApiServiceStub(confirmExpenseResult = ApiResult.Throw(httpException(404, body)))
+        val summary = OutboxDrainEngine(outbox, listOf(dispatcherFor(stub))).drainOnce()
+        assertEquals(1, summary.failures)
+        assertEquals(0, summary.done)
+        assertEquals(0, summary.discarded)
+        val failedRow = dao.rows.getValue(rowId)
+        assertEquals(PendingMutationStatus.Failed.wireValue, failedRow.status)
+        assertEquals("账单不存在。", failedRow.lastError)
+        assertNull(failedRow.completedAt)
+        assertNull(failedRow.receiptJson)
         assertTrue(published.isEmpty())
     }
 }

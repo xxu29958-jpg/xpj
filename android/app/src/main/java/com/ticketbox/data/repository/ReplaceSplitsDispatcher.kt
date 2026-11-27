@@ -53,7 +53,7 @@ class ReplaceSplitsDispatcher(
             val response = apiProvider(row).replaceExpenseSplits(expenseRef, request, idempotencyKey)
             DispatchResult.Success(newRowVersion = response.rowVersion)
         } catch (e: HttpException) {
-            mapOutboxHttpException(e)
+            mapOutboxHttpException(e, discardable404ErrorCodes = setOf("expense_not_found"))
         } catch (e: IOException) {
             DispatchResult.RetryableFailure(e.message ?: "network IO failure")
         } catch (e: CancellationException) {

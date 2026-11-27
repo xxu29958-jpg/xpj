@@ -23,6 +23,23 @@ internal suspend fun PendingMutationDao.expireBoundIfOverAge(
     cutoffCreatedAtIso = cutoffIso,
 ) > 0
 
+private val expenseRecoveryCheckedTypes = listOf(
+    PendingMutationType.UndoExpense.wireValue,
+    PendingMutationType.RejectExpense.wireValue,
+    PendingMutationType.ConfirmExpense.wireValue,
+    PendingMutationType.SplitAgreement.wireValue,
+    PendingMutationType.ReplaceItems.wireValue,
+    PendingMutationType.ReplaceSplits.wireValue,
+    PendingMutationType.AcknowledgeItemsMismatch.wireValue,
+    PendingMutationType.VoidExpenseOffset.wireValue,
+)
+
+private val freshTokenForbiddenExpenseTypes = setOf(
+    PendingMutationType.VoidExpenseOffset.wireValue,
+    PendingMutationType.SplitAgreement.wireValue,
+    PendingMutationType.UndoExpense.wireValue,
+)
+
 internal suspend fun PendingMutationDao.refusesExpenseRecovery(
     binding: OutboxBinding,
     id: Long,
@@ -32,17 +49,31 @@ internal suspend fun PendingMutationDao.refusesExpenseRecovery(
     val original = observeActiveByTypes(
         binding.ownerStorageKey,
         binding.ledgerId,
-        listOf(PendingMutationType.UndoExpense.wireValue, PendingMutationType.RejectExpense.wireValue, PendingMutationType.ConfirmExpense.wireValue,
-            PendingMutationType.SplitAgreement.wireValue, PendingMutationType.ReplaceItems.wireValue,
-            PendingMutationType.ReplaceSplits.wireValue, PendingMutationType.AcknowledgeItemsMismatch.wireValue),
+        expenseRecoveryCheckedTypes,
         listOf(status.wireValue),
     ).first().firstOrNull { it.id == id } ?: return false
-    // Funding has independent account versions and currency intent; a generic Expense token rebase loses that review.
+    if (freshToken != null && original.type in freshTokenForbiddenExpenseTypes) return true
     if (freshToken != null && original.type == PendingMutationType.ConfirmExpense.wireValue &&
-        runCatching { original.toDomain().confirmationFunding().isNotEmpty() }.getOrDefault(true)) return true
-    return (original.type == PendingMutationType.SplitAgreement.wireValue &&
-        (freshToken != null || original.lastError in SPLIT_SHARE_REFUSALS)) ||
-        original.lastError in EXPENSE_ORIGINAL_REVIEW_ERRORS ||
-        (original.type == PendingMutationType.UndoExpense.wireValue &&
-            (freshToken != null || original.lastError == "expense_not_found"))
+        runCatching { original.toDomain().confirmationFunding().isNotEmpty() }.getOrDefault(true)
+    ) return true
+    return original.lastError in EXPENSE_ORIGINAL_REVIEW_ERRORS ||
+        (original.type == PendingMutationType.SplitAgreement.wireValue && original.lastError in SPLIT_SHARE_REFUSALS) ||
+        (original.type == PendingMutationType.UndoExpense.wireValue && original.lastError == "expense_not_found")
+}
+
+internal suspend fun PendingMutationDao.retryEligibleUploadRows(
+    binding: OutboxBinding,
+    eligible: List<OutboxRow>,
+    overAgeCutoffIso: () -> String,
+): Pair<Boolean, Int> {
+    var expired = false
+    var retried = 0
+    for (row in eligible) {
+        if (expireBoundIfOverAge(row.id, binding, PendingMutationStatus.Failed.wireValue, overAgeCutoffIso())) {
+            expired = true
+        } else {
+            retried += retryFailed(row.id, binding.ownerStorageKey, binding.ledgerId, NON_RETRYABLE_UPLOAD_ERRORS)
+        }
+    }
+    return (expired || retried > 0) to retried
 }

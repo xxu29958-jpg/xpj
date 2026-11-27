@@ -59,6 +59,13 @@ class CorrectExpenseDispatcher(
     private fun refusal(error: HttpException): DispatchResult {
         if (error.code() == 422) return DispatchResult.Failure("correction_requires_review", definitelyRejected = true)
         val parsed = errors.parseHttpError(error)
+        if (error.code() == 404) {
+            return if (parsed.errorCode in correctionUnavailable404ErrorCodes) {
+                DispatchResult.Failure("correction_target_unavailable", definitelyRejected = true)
+            } else {
+                mapOutboxHttpError(error.code(), parsed, discardable404ErrorCodes = emptySet())
+            }
+        }
         if (error.code() == 409 && parsed.errorCode == CORRECTION_RATE_PENDING) {
             return DispatchResult.Failure(parsed.correctionRateFailure())
         }
@@ -66,3 +73,9 @@ class CorrectExpenseDispatcher(
         return if (result is DispatchResult.Discarded) DispatchResult.Failure("correction_target_unavailable", definitelyRejected = true) else result
     }
 }
+
+private val correctionUnavailable404ErrorCodes = setOf(
+    "expense_not_found",
+    "not_found",
+    "ledger_not_found",
+)

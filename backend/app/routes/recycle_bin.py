@@ -61,7 +61,7 @@ def restore_recycle_bin(
     ),
 ) -> RecycleBinRestoreResponse:
     if payload.kind.strip() == "income_plan":
-        require_current_api_version(api_version)
+        require_current_api_version(api_version, write=True)
     message = restore_recycle_bin_item(
         db,
         tenant_id=auth.tenant_id,

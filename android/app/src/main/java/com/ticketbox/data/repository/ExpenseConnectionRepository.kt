@@ -1,7 +1,6 @@
 package com.ticketbox.data.repository
 
 import com.ticketbox.data.remote.ConfirmedExpensesApiQuery
-import com.ticketbox.data.remote.CURRENT_TICKETBOX_API_VERSION
 import com.ticketbox.data.remote.PageQuery
 import com.ticketbox.data.remote.UPLOAD_ORIGINAL_RECEIPT_VERSION
 import com.ticketbox.data.remote.dto.RuntimeWriteCompatibility
@@ -169,7 +168,7 @@ private fun RuntimeWriteCompatibility.requireSubmissionCompatibility() {
     val matchingReceipt = uploadOriginalReceiptVersion == UPLOAD_ORIGINAL_RECEIPT_VERSION
     if (canWrite && matchingReceipt) return
     val message = when {
-        apiVersion != CURRENT_TICKETBOX_API_VERSION ->
+        !writerVersionAccepted ->
             "请将手机应用与服务端更新到配套版本，再重新检测。"
         conclusion == "owner_action_required" ->
             "请让安装拥有者在电脑端确认本位币，再重新检测。未发送的操作仍保留在本机。"

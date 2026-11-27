@@ -1,21 +1,31 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
-import tempfile
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import asdict, fields
+from dataclasses import asdict
 from pathlib import Path
-from typing import cast
 
 from ticketbox_lifecycle.adapters.ports import AdapterBundle, Mutex
-from ticketbox_lifecycle.connector_schema import ConnectorOperation, parse_operation
+from ticketbox_lifecycle.connector_schema import ConnectorOperation
 from ticketbox_lifecycle.domain.operation import LifecycleStores
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.command import SubprocessCommandRunner
+from ticketbox_lifecycle.runtime.filesystem_store_io import (
+    _RELEASE_ID_PATTERN,
+    _reject_duplicate_json_keys,
+    _write_exact_temp_json,
+    _write_temp_json,
+    binding_from_payload,
+    operation_from_payload,
+)
+from ticketbox_lifecycle.runtime.filesystem_store_io import (
+    _managed_connector_present as _probe_managed_connector_present,
+)
 from ticketbox_lifecycle.runtime.mutex import os_mutex
 from ticketbox_lifecycle.runtime.windows_adapters import WindowsAdapterBundle
 from ticketbox_lifecycle.runtime.windows_file_security import WindowsFileSecurity
@@ -25,40 +35,41 @@ from ticketbox_lifecycle.runtime.windows_known_folders import (
     ticketbox_program_data_root,
 )
 from ticketbox_lifecycle.runtime.windows_scm_observation import NativeWindowsScmObserver
-from ticketbox_lifecycle.runtime.windows_security_native import (
-    reject_reparse_components,
-)
+from ticketbox_lifecycle.runtime.windows_security_native import reject_reparse_components
 from ticketbox_lifecycle.runtime.windows_services import service_registered
 from ticketbox_lifecycle.runtime.windows_shipment import WindowsShipmentVerifier
 from ticketbox_lifecycle.schemas import (
-    APPLY_SEQUENCE,
-    INSTALLATION_SCHEMA,
-    OPERATION_SCHEMA,
     ActiveOperation,
-    ApplyStepName,
     HostObservation,
     InstallationBinding,
     InstallRequest,
-    RestoreOperation,
+    UpgradeOperation,
 )
 
-_ACTIVE_OPERATION_FIELDS = frozenset(field.name for field in fields(ActiveOperation))
-_INSTALLATION_BINDING_FIELDS = frozenset(field.name for field in fields(InstallationBinding))
+__all__ = [
+    "FilesystemStores",
+    "_managed_connector_present",
+    "_reject_duplicate_json_keys",
+    "_write_exact_temp_json",
+    "_write_temp_json",
+]
 
 
-def _operation_type(payload: dict[str, object]):
-    restoring = payload.get("kind") == "restore"
-    expected = _ACTIVE_OPERATION_FIELDS | ({"expected_restore_epoch"} if restoring else set())
-    if set(payload) != expected:
-        raise LifecycleError("bad_operation_fields", "operation fields are not closed")
-    if payload.get("schema") != OPERATION_SCHEMA:
-        raise LifecycleError("bad_operation_schema", "operation schema is not v2")
-    if payload.get("kind") not in {"install", "restore"}:
-        raise LifecycleError("bad_operation_kind", "operation kind is unsupported")
-    if restoring and (type(payload["expected_restore_epoch"]) is not int or payload["expected_restore_epoch"] <= 0):
-        raise LifecycleError("bad_restore_epoch", "restore operation requires a positive target epoch")
-    operation_type = RestoreOperation if restoring else ActiveOperation
-    return operation_type, restoring
+def _managed_connector_present(
+    machine_root: Path,
+    *,
+    binding: InstallationBinding | None = None,
+    allowed_manifest_shas: frozenset[str] = frozenset(),
+    verify_state_file: Callable[[Path], None] | None = None,
+) -> bool:
+    return _probe_managed_connector_present(
+        machine_root,
+        binding=binding,
+        allowed_manifest_shas=allowed_manifest_shas,
+        verify_state_file=verify_state_file,
+        is_service_registered=service_registered,
+        reject_reparse=reject_reparse_components,
+    )
 
 
 class FilesystemStores:
@@ -68,6 +79,9 @@ class FilesystemStores:
         backend_service_name: str,
         adapters: AdapterBundle,
         mutex: Mutex,
+        *,
+        install_root: Path | None = None,
+        program_data_root: Path | None = None,
     ) -> None:
         self._machine_root = machine_root
         self._operations_dir = machine_root / "operations"
@@ -78,29 +92,76 @@ class FilesystemStores:
         self._backend_service_name = backend_service_name
         self._adapters = adapters
         self._mutex = mutex
+        self._install_root = install_root
+        self._program_data_root = program_data_root
 
     @classmethod
-    def from_installed(cls) -> FilesystemStores:
+    def from_installed(
+        cls,
+        *,
+        install_root: Path | None = None,
+        program_data_root: Path | None = None,
+    ) -> FilesystemStores:
         """Resolve installed authority without accepting Setup paths or commands."""
-        return cls(ticketbox_program_data_root() / "machine", "TicketboxBackend",
+        resolved_program_data = (
+            program_data_root if program_data_root is not None else ticketbox_program_data_root()
+        )
+        return cls(
+            resolved_program_data / "machine",
+            "TicketboxBackend",
             WindowsAdapterBundle(SubprocessCommandRunner(), WindowsFileSecurity(), NativeWindowsScmObserver()),
-            os_mutex(ticketbox_control_root() / "lifecycle.lock"))
+            os_mutex(ticketbox_control_root() / "lifecycle.lock"),
+            install_root=install_root,
+            program_data_root=resolved_program_data,
+        )
 
     @classmethod
-    def from_request(cls, request: InstallRequest) -> FilesystemStores:
+    def from_request(
+        cls,
+        request: InstallRequest,
+        *,
+        install_root: Path | None = None,
+        program_data_root: Path | None = None,
+    ) -> FilesystemStores:
         machine_root = Path(request.program_data_root) / "machine"
         runner = SubprocessCommandRunner()
         file_security = WindowsFileSecurity()
         adapters = WindowsAdapterBundle(runner, file_security, NativeWindowsScmObserver())
         mutex = os_mutex(ticketbox_control_root() / "lifecycle.lock")
-        return cls(machine_root, request.backend_service_name, adapters, mutex)
+        return cls(
+            machine_root,
+            request.backend_service_name,
+            adapters,
+            mutex,
+            install_root=install_root,
+            program_data_root=program_data_root,
+        )
 
-    def as_lifecycle_stores(self) -> LifecycleStores:
+    def as_lifecycle_stores(
+        self,
+        *,
+        install_root: Path | None = None,
+        program_data_root: Path | None = None,
+    ) -> LifecycleStores:
+        resolved_install = (
+            install_root
+            if install_root is not None
+            else (self._install_root if self._install_root is not None else ticketbox_install_root())
+        )
+        resolved_program_data = (
+            program_data_root
+            if program_data_root is not None
+            else (
+                self._program_data_root
+                if self._program_data_root is not None
+                else ticketbox_program_data_root()
+            )
+        )
         return LifecycleStores(
             mutex=self._mutex,
             shipment=WindowsShipmentVerifier(
-                ticketbox_install_root(),
-                ticketbox_program_data_root(),
+                resolved_install,
+                resolved_program_data,
             ),
             observer=self,
             operations_read=self,
@@ -114,6 +175,29 @@ class FilesystemStores:
         active = self.read_active()
         binding = self.read()
         pgdata = Path(request.data_root) / "pgdata" / "PG_VERSION"
+        allowed_connector_shas: set[str] = set()
+        if binding is not None:
+            allowed_connector_shas.add(binding.release_manifest_sha256)
+            if (
+                isinstance(active, UpgradeOperation)
+                and active.operation_id == request.operation_id
+                and binding.active_release_id == active.target_release_id
+                and active.previous_release_id
+            ):
+                if re.fullmatch(r"[0-9a-f]{64}", active.previous_release_manifest_sha256):
+                    allowed_connector_shas.add(active.previous_release_manifest_sha256)
+                prev_manifest = (
+                    Path(request.app_dir)
+                    / "releases"
+                    / active.previous_release_id
+                    / "release-manifest.json"
+                )
+                with suppress(OSError, LifecycleError):
+                    reject_reparse_components(prev_manifest)
+                    if prev_manifest.is_file():
+                        allowed_connector_shas.add(
+                            hashlib.sha256(prev_manifest.read_bytes()).hexdigest()
+                        )
         return HostObservation(
             installation_present=binding is not None,
             active_operation_present=active is not None,
@@ -124,12 +208,26 @@ class FilesystemStores:
             pgdata_present=pgdata.is_file(),
             pg_service_present=service_registered(request.pg_service_name),
             backend_service_present=service_registered(request.backend_service_name),
+            managed_connector_present=_managed_connector_present(
+                self._machine_root,
+                binding=binding,
+                allowed_manifest_shas=frozenset(allowed_connector_shas),
+                verify_state_file=lambda path: self._adapters.security.verify_machine_json(
+                    path,
+                    self._backend_service_name,
+                ),
+            ),
         )
 
     def read_active(self) -> ActiveOperation | ConnectorOperation | None:
         reject_reparse_components(self._active_path)
-        if not self._active_path.is_file():
+        if not os.path.lexists(self._active_path):
             return None
+        if not self._active_path.is_file():
+            raise LifecycleError(
+                "machine_state_invalid",
+                f"{self._active_path.name} must be a regular file",
+            )
         payload = self._read_verified_json(
             self._active_path,
             self._adapters.security.verify_machine_json,
@@ -144,8 +242,13 @@ class FilesystemStores:
             )
         path = self._history_dir / f"{operation_id}.json"
         reject_reparse_components(path)
-        if not path.is_file():
+        if not os.path.lexists(path):
             return None
+        if not path.is_file():
+            raise LifecycleError(
+                "machine_state_invalid",
+                f"{path.name} must be a regular file",
+            )
         operation = self._operation_from_payload(
             self._read_verified_json(
                 path,
@@ -159,35 +262,58 @@ class FilesystemStores:
             )
         return operation
 
+    def list_committed(self) -> tuple[ActiveOperation | ConnectorOperation, ...]:
+        reject_reparse_components(self._history_dir)
+        if not self._history_dir.is_dir():
+            return ()
+        records: list[ActiveOperation | ConnectorOperation] = []
+        for path in sorted(self._history_dir.glob("*.json"), key=lambda item: item.name.casefold()):
+            reject_reparse_components(path)
+            if not path.is_file():
+                continue
+            operation = self._operation_from_payload(
+                self._read_verified_json(
+                    path,
+                    self._adapters.security.verify_machine_json,
+                )
+            )
+            if operation.phase != "committed" or f"{operation.operation_id}.json" != path.name:
+                raise LifecycleError(
+                    "committed_history_invalid",
+                    "history contains an invalid committed operation",
+                )
+            records.append(operation)
+        return tuple(records)
+
+    def known_sibling_releases(
+        self,
+        binding: InstallationBinding | None,
+        *,
+        exclude_release_id: str | None = None,
+    ) -> frozenset[str]:
+        if binding is None:
+            return frozenset()
+        releases: set[str] = set()
+        for rid in (binding.active_release_id, binding.previous_release_id):
+            if isinstance(rid, str) and _RELEASE_ID_PATTERN.fullmatch(rid):
+                releases.add(rid)
+        for record in self.list_committed():
+            if not isinstance(record, ActiveOperation):
+                continue
+            if record.install_id != binding.install_id or record.dataset_id != binding.dataset_id:
+                continue
+            if _RELEASE_ID_PATTERN.fullmatch(record.target_release_id):
+                releases.add(record.target_release_id)
+            if isinstance(record, UpgradeOperation) and _RELEASE_ID_PATTERN.fullmatch(record.previous_release_id):
+                releases.add(record.previous_release_id)
+        if exclude_release_id:
+            excluded = exclude_release_id.casefold()
+            releases = {rid for rid in releases if rid.casefold() != excluded}
+        return frozenset(releases)
+
     @staticmethod
     def _operation_from_payload(payload: dict[str, object]) -> ActiveOperation | ConnectorOperation:
-        if payload.get("schema") == "ticketbox-lifecycle-operation-v3":
-            return parse_operation(payload)
-        operation_type, restoring = _operation_type(payload)
-        completed_step = payload.get("completed_step")
-        if completed_step is not None and completed_step not in APPLY_SEQUENCE:
-            raise LifecycleError("bad_operation_progress", "operation completed_step is invalid")
-        health_attestation_key = str(payload.get("health_attestation_key") or "")
-        if re.fullmatch(r"[0-9a-f]{64}", health_attestation_key) is None:
-            raise LifecycleError("bad_operation_attestation", "operation health attestation key is invalid")
-        return operation_type(
-            schema=OPERATION_SCHEMA,
-            operation_id=str(payload["operation_id"]),
-            kind=payload["kind"],
-            request_hash=str(payload["request_hash"]),
-            target_release_id=str(payload["target_release_id"]),
-            data_root=str(payload["data_root"]),
-            release_manifest_sha256=str(payload["release_manifest_sha256"]),
-            backend_port=int(payload["backend_port"]),
-            phase=payload["phase"],  # type: ignore[arg-type]
-            no_return_point=bool(payload["no_return_point"]),
-            completed_step=cast(ApplyStepName | None, completed_step),
-            install_id=str(payload.get("install_id") or ""),
-            dataset_id=str(payload.get("dataset_id") or ""),
-            schema_revision=str(payload.get("schema_revision") or ""),
-            health_attestation_key=health_attestation_key,
-            **({"expected_restore_epoch": payload["expected_restore_epoch"]} if restoring else {}),
-        )
+        return operation_from_payload(payload)
 
     def prepare(self, request: InstallRequest) -> None:
         self._adapters.security.prepare_operation_store(request)
@@ -198,6 +324,23 @@ class FilesystemStores:
     def publish_active(self, operation: ActiveOperation | ConnectorOperation) -> None:
         reject_reparse_components(self._active_path)
         reject_reparse_components(self._active_temp_path)
+        if operation.phase != "committed" and self._active_path.exists():
+            try:
+                current = self.read_active()
+            except (LifecycleError, OSError, ValueError) as exc:
+                raise LifecycleError(
+                    "active_state_unreadable",
+                    "refusing to overwrite unreadable active operation with non-committed state",
+                ) from exc
+            if (
+                current is not None
+                and current.operation_id == operation.operation_id
+                and current.phase == "committed"
+            ):
+                raise LifecycleViolation(
+                    "committed_operation_immutable",
+                    "refusing to overwrite a committed operation with non-committed state",
+                )
         self._operations_dir.mkdir(parents=True, exist_ok=True)
         tmp_path = _write_exact_temp_json(self._active_temp_path, asdict(operation))
         try:
@@ -250,38 +393,18 @@ class FilesystemStores:
 
     def read(self) -> InstallationBinding | None:
         reject_reparse_components(self._binding_path)
-        if not self._binding_path.is_file():
+        if not os.path.lexists(self._binding_path):
             return None
+        if not self._binding_path.is_file():
+            raise LifecycleError(
+                "machine_state_invalid",
+                f"{self._binding_path.name} must be a regular file",
+            )
         payload = self._read_verified_json(
             self._binding_path,
             self._adapters.security.verify_binding_json,
         )
-        if payload.get("schema") != INSTALLATION_SCHEMA:
-            raise LifecycleError("bad_binding_schema", "installation.json schema is not v1")
-        if set(payload) != _INSTALLATION_BINDING_FIELDS:
-            raise LifecycleError("bad_binding_fields", "installation.json fields are not closed")
-        health_attestation_key = str(payload["health_attestation_key"])
-        if re.fullmatch(r"[0-9a-f]{64}", health_attestation_key) is None:
-            raise LifecycleError(
-                "bad_binding_attestation",
-                "installation.json health attestation key is invalid",
-            )
-        return InstallationBinding(
-            schema=INSTALLATION_SCHEMA,
-            install_id=str(payload["install_id"]),
-            dataset_id=str(payload["dataset_id"]),
-            expected_restore_epoch=int(payload["expected_restore_epoch"]),
-            data_root=str(payload["data_root"]),
-            active_release_id=str(payload["active_release_id"]),
-            previous_release_id=payload.get("previous_release_id"),
-            release_manifest_sha256=str(payload["release_manifest_sha256"]),
-            postgres_major=int(payload["postgres_major"]),
-            pg_service_name=str(payload["pg_service_name"]),
-            backend_service_name=str(payload["backend_service_name"]),
-            pg_port=int(payload["pg_port"]),
-            backend_port=int(payload["backend_port"]),
-            health_attestation_key=health_attestation_key,
-        )
+        return binding_from_payload(payload)
 
     def publish(self, binding: InstallationBinding) -> None:
         reject_reparse_components(self._binding_path)
@@ -313,42 +436,7 @@ class FilesystemStores:
         verifier(path, self._backend_service_name)
         text = path.read_text(encoding="utf-8")
         verifier(path, self._backend_service_name)
-        payload = json.loads(text)
+        payload = json.loads(text, object_pairs_hook=_reject_duplicate_json_keys)
         if not isinstance(payload, dict):
             raise LifecycleError("machine_state_invalid", f"{path.name} must contain a JSON object")
         return payload
-
-
-def _write_temp_json(path: Path, payload: dict[str, object]) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=path.name, suffix=".tmp", dir=str(path.parent))
-    try:
-        _write_json_fd(fd, payload)
-        return Path(tmp_name)
-    except BaseException:
-        if os.path.exists(tmp_name):
-            os.unlink(tmp_name)
-        raise
-
-
-def _write_exact_temp_json(path: Path, payload: dict[str, object]) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
-    fd = os.open(path, flags, 0o600)
-    try:
-        _write_json_fd(fd, payload)
-        return path
-    except BaseException:
-        with suppress(OSError):
-            os.close(fd)
-        if os.path.exists(path):
-            os.unlink(path)
-        raise
-
-
-def _write_json_fd(fd: int, payload: dict[str, object]) -> None:
-    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
-        handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())

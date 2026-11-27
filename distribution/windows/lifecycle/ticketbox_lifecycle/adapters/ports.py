@@ -21,6 +21,7 @@ class Mutex(Protocol):
 class OperationReader(Protocol):
     def read_active(self) -> ActiveOperation | ConnectorOperation | None: ...
     def read_committed(self, operation_id: str) -> ActiveOperation | ConnectorOperation | None: ...
+    def list_committed(self) -> tuple[ActiveOperation | ConnectorOperation, ...]: ...
 
 
 class OperationPublisher(Protocol):
@@ -39,7 +40,12 @@ class BindingPublisher(Protocol):
 
 
 class ShipmentVerifier(Protocol):
-    def bind_and_verify(self, request: InstallRequest) -> InstallRequest: ...
+    def bind_and_verify(
+        self,
+        request: InstallRequest,
+        *,
+        allowed_sibling_releases: frozenset[str] = frozenset(),
+    ) -> InstallRequest: ...
 
 
 class HostObserver(Protocol):

@@ -199,7 +199,7 @@ def _query_info(
     ):
         _raise_query(f"QueryServiceConfig2W({level})")
     value = ctypes.cast(buffer, ctypes.POINTER(structure)).contents
-    value._buffer = buffer  # type: ignore[attr-defined]
+    setattr(value, "_buffer", buffer)
     return value
 
 

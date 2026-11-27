@@ -12,21 +12,9 @@ from typing import Literal
 
 from sqlalchemy.orm import Session
 
+from app import runtime_compatibility_contract as protocol
 from app.currency_binding_contract import (
     CURRENCY_CONTRACT_VERSION,
-)
-from app.runtime_compatibility_contract import (
-    ACCOUNTING_TIME_INPUT_VERSION,
-    CURRENT_API_VERSION,
-    DEBT_ACTIVITY_READ_VERSION,
-    DEBT_BILL_SOURCE_VERSION,
-    EXPENSE_CONFIRMATION_VERSION,
-    REPAYMENT_TIME_INPUT_VERSION,
-    RUNTIME_COMPATIBILITY_CONTRACT,
-    TICKETBOX_API_VERSION_HEADER,
-    TICKETBOX_CURRENCY_BINDING_HEADER,
-    UPLOAD_ORIGINAL_RECEIPT_VERSION,
-    format_currency_binding,
 )
 from app.services.currency_binding_service import CurrencyCapability, get_capability
 from app.services.time_service import now_utc, to_iso
@@ -60,6 +48,8 @@ class RuntimeCompatibilitySnapshot:
     observed_at: str
     api_version: str
     api_version_header: str
+    min_read_client_version: str
+    min_write_client_version: str
     read_compatibility: CompatibilityConclusion
     write_compatibility: CompatibilityConclusion
     legacy_write_compatibility: Literal["compatible", "client_upgrade_required"]
@@ -73,6 +63,18 @@ class RuntimeCompatibilitySnapshot:
     expense_confirmation_version: int
     notification_batch_version: int
     currency: RuntimeCurrencyCapability
+
+    @property
+    def supported_payload_revisions(self) -> dict[str, list[int]]:
+        """Wire payload families use independent revisions; Room journal formats are local."""
+        return {
+            "accounting_time_input": [self.accounting_time_input_version],
+            "repayment_time_input": [self.repayment_time_input_version],
+            "original_attachment_create": [self.original_attachment_create_version],
+            "debt_bill_source": [self.debt_bill_source_version],
+            "expense_confirmation": [self.expense_confirmation_version],
+            "notification_batch": [self.notification_batch_version],
+        }
 
 
 def _currency_read_compatibility(
@@ -103,22 +105,24 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
     write_compatibility = _currency_write_compatibility(capability)
     product_home_currency = capability.home_currency_code
     return RuntimeCompatibilitySnapshot(
-        contract=RUNTIME_COMPATIBILITY_CONTRACT,
+        contract=protocol.RUNTIME_COMPATIBILITY_CONTRACT,
         observed_at=to_iso(now_utc()) or "",
-        api_version=CURRENT_API_VERSION,
-        api_version_header=TICKETBOX_API_VERSION_HEADER,
+        api_version=protocol.CURRENT_API_VERSION,
+        api_version_header=protocol.TICKETBOX_API_VERSION_HEADER,
+        min_read_client_version=protocol.MIN_READ_CLIENT_VERSION,
+        min_write_client_version=protocol.MIN_WRITE_CLIENT_VERSION,
         read_compatibility=read_compatibility,
         write_compatibility=write_compatibility,
         legacy_write_compatibility="client_upgrade_required",
-        upload_original_receipt_version=UPLOAD_ORIGINAL_RECEIPT_VERSION,
-        accounting_time_input_version=ACCOUNTING_TIME_INPUT_VERSION,
-        repayment_time_input_version=REPAYMENT_TIME_INPUT_VERSION,
-        original_attachment_version=1,
-        original_attachment_create_version=1,
-        debt_activity_read_version=DEBT_ACTIVITY_READ_VERSION,
-        debt_bill_source_version=DEBT_BILL_SOURCE_VERSION,
-        expense_confirmation_version=EXPENSE_CONFIRMATION_VERSION,
-        notification_batch_version=1,
+        upload_original_receipt_version=protocol.UPLOAD_ORIGINAL_RECEIPT_VERSION,
+        accounting_time_input_version=protocol.ACCOUNTING_TIME_INPUT_VERSION,
+        repayment_time_input_version=protocol.REPAYMENT_TIME_INPUT_VERSION,
+        original_attachment_version=protocol.ORIGINAL_ATTACHMENT_VERSION,
+        original_attachment_create_version=protocol.ORIGINAL_ATTACHMENT_CREATE_VERSION,
+        debt_activity_read_version=protocol.DEBT_ACTIVITY_READ_VERSION,
+        debt_bill_source_version=protocol.DEBT_BILL_SOURCE_VERSION,
+        expense_confirmation_version=protocol.EXPENSE_CONFIRMATION_VERSION,
+        notification_batch_version=protocol.NOTIFICATION_BATCH_VERSION,
         currency=RuntimeCurrencyCapability(
             home_currency_code=product_home_currency,
             minor_unit_exponent=capability.minor_unit_exponent,
@@ -126,7 +130,7 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
             contract_version=capability.currency_contract_version,
             binding_revision=capability.binding_revision,
             request_binding=(
-                format_currency_binding(
+                protocol.format_currency_binding(
                     contract_version=capability.currency_contract_version,
                     binding_revision=capability.binding_revision,
                     home_currency_code=product_home_currency,
@@ -134,7 +138,7 @@ def runtime_compatibility_snapshot(db: Session) -> RuntimeCompatibilitySnapshot:
                 if product_home_currency is not None
                 else None
             ),
-            request_binding_header=TICKETBOX_CURRENCY_BINDING_HEADER,
+            request_binding_header=protocol.TICKETBOX_CURRENCY_BINDING_HEADER,
             initialization_offer=capability.initialization_offer,
             read_compatibility=read_compatibility,
             write_compatibility=write_compatibility,

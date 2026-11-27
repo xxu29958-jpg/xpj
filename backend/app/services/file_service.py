@@ -13,10 +13,21 @@ from pathlib import Path
 from fastapi import UploadFile
 
 from app.config import BACKEND_ROOT, get_settings
-from app.errors import AppError, PathTraversalError
+from app.errors import AppError
 from app.schemas.image_source import ImageSourceContext
 from app.services.image_source_evidence import image_source_evidence, original_image_context
-from app.tenants import DEFAULT_TENANT_ID
+from app.services.upload_path_resolver import (
+    MEDIA_TYPES as MEDIA_TYPES,
+)
+from app.services.upload_path_resolver import (
+    UPLOAD_REFERENCE_PREFIX as UPLOAD_REFERENCE_PREFIX,
+)
+from app.services.upload_path_resolver import (
+    resolve_protected_image_in_root,
+    resolve_upload_path_for_tenant_in_root,
+    resolve_upload_reference_in_root,
+    upload_reference_for_path_in_root,
+)
 
 # Pre-decode caps: PIL.verify() only checks magic bytes, so a tiny file
 # can still decode to billions of pixels and bomb the thumbnail step.
@@ -31,15 +42,7 @@ CONTENT_TYPE_EXTENSION = {
     "image/heic": "heic",
     "image/heif": "heic",
 }
-MEDIA_TYPES = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".webp": "image/webp",
-    ".heic": "image/heic",
-}
 HEIC_BRANDS = {b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1"}
-UPLOAD_REFERENCE_PREFIX = "uploads"
 
 
 @dataclass(frozen=True)
@@ -323,51 +326,21 @@ def require_upload_storage(*, bytes_to_write: int = 0) -> None:
 def upload_reference_for_path(path: Path) -> str:
     """Return the stable DB reference for a file under configured UPLOAD_DIR."""
 
-    settings = get_settings()
-    resolved = path.resolve()
-    try:
-        return resolved.relative_to(BACKEND_ROOT).as_posix()
-    except ValueError:
-        pass
-    try:
-        relative_to_upload_root = resolved.relative_to(settings.upload_dir.resolve())
-    except ValueError as exc:
-        raise PathTraversalError("Upload file escaped configured upload directory") from exc
-    return f"{UPLOAD_REFERENCE_PREFIX}/{relative_to_upload_root.as_posix()}"
-
-
-def _normalized_upload_parts(relative_path: str | None) -> tuple[str, ...] | None:
-    if not relative_path:
-        return None
-    raw = str(relative_path)
-    if raw.startswith(("/", "\\")) or (len(raw) >= 2 and raw[1] == ":"):
-        return None
-    normalized_parts = Path(raw.replace("\\", "/")).parts
-    if any(part == ".." for part in normalized_parts):
-        return None
-    return tuple(str(part) for part in normalized_parts)
+    return upload_reference_for_path_in_root(
+        path,
+        upload_root=get_settings().upload_dir.resolve(),
+        legacy_backend_root=BACKEND_ROOT,
+    )
 
 
 def _resolve_upload_reference(relative_path: str | None) -> Path | None:
-    parts = _normalized_upload_parts(relative_path)
-    if not parts:
+    if not relative_path:
         return None
-
-    settings = get_settings()
-    upload_dir = settings.upload_dir.resolve()
-    legacy_candidate = (BACKEND_ROOT / Path(*parts)).resolve()
-    if _is_under_path(legacy_candidate, upload_dir):
-        return legacy_candidate
-    # Legacy v0.2 rows stored paths relative to BACKEND_ROOT; new rows use
-    # the UPLOAD_REFERENCE_PREFIX prefix relative to settings.upload_dir.
-    candidate = (
-        (upload_dir / Path(*parts[1:])).resolve()
-        if parts[0] == UPLOAD_REFERENCE_PREFIX
-        else legacy_candidate
+    return resolve_upload_reference_in_root(
+        relative_path,
+        upload_root=get_settings().upload_dir.resolve(),
+        legacy_backend_root=BACKEND_ROOT,
     )
-    if not _is_under_path(candidate, upload_dir):
-        return None
-    return candidate
 
 
 def delete_relative_upload(relative_path: str | None) -> None:
@@ -384,52 +357,15 @@ def _tenant_upload_dir(tenant_id: str) -> Path:
     return (get_settings().upload_dir / tenant_id).resolve()
 
 
-def _is_under_path(candidate: Path, root: Path) -> bool:
-    try:
-        candidate.relative_to(root)
-    except ValueError:
-        return False
-    return True
-
-
-def _is_legacy_unscoped_upload(candidate: Path, upload_dir: Path, tenant_id: str) -> bool:
-    """Allow pre-v0.3 paths shaped as uploads/YYYY/MM/file.
-
-    New uploads are ledger-scoped under uploads/<ledger_id>/YYYY/MM. Legacy
-    rows without a ledger prefix only existed before family ledgers, so they
-    belong to the default legacy ledger. Non-default ledgers must migrate those
-    files into their own scoped directory before they are readable.
-    """
-    if tenant_id != DEFAULT_TENANT_ID:
-        return False
-    try:
-        parts = candidate.relative_to(upload_dir).parts
-    except ValueError:
-        return False
-    if len(parts) < 3:
-        return False
-    year, month = parts[0], parts[1]
-    return (
-        len(year) == 4
-        and year.isdigit()
-        and len(month) == 2
-        and month.isdigit()
-        and 1 <= int(month) <= 12
-    )
-
-
 def resolve_upload_path_for_tenant(relative_path: str | None, tenant_id: str) -> Path | None:
-    settings = get_settings()
-    candidate = _resolve_upload_reference(relative_path)
-    if candidate is None:
+    if not relative_path:
         return None
-
-    tenant_dir = _tenant_upload_dir(tenant_id)
-    if not _is_under_path(candidate, tenant_dir) and not _is_legacy_unscoped_upload(
-        candidate, settings.upload_dir.resolve(), tenant_id
-    ):
-        return None
-    return candidate
+    return resolve_upload_path_for_tenant_in_root(
+        relative_path,
+        tenant_id,
+        upload_root=get_settings().upload_dir.resolve(),
+        legacy_backend_root=BACKEND_ROOT,
+    )
 
 
 def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[Path, str]:
@@ -456,12 +392,9 @@ def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[
 
     if not relative_path:
         raise AppError("image_not_found", status_code=404)
-
-    candidate = resolve_upload_path_for_tenant(relative_path, tenant_id)
-    if candidate is None:
-        raise AppError("image_not_found", status_code=404)
-
-    if not candidate.is_file():
-        raise AppError("image_not_found", status_code=404)
-
-    return candidate, MEDIA_TYPES.get(candidate.suffix.lower(), "application/octet-stream")
+    return resolve_protected_image_in_root(
+        relative_path,
+        tenant_id,
+        upload_root=get_settings().upload_dir.resolve(),
+        legacy_backend_root=BACKEND_ROOT,
+    )

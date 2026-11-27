@@ -35,6 +35,8 @@ E:\projects\xiaopiaojia\
 
 ## backend
 
+下方 `packaging` 清单包含已退役的 C07 安装脚本。现行 Setup 的构建入口、Lifecycle 和恢复范围见[打包说明](../../backend/packaging/README.md)。
+
 ```text
 backend\
   app\
@@ -165,16 +167,16 @@ backend\
     ticketbox-installer.iss          # Inno 安装器定义
     ticketbox-installer-windows.isph # 安全 PowerShell 发现与 Inno 全周期持锁证明
     ticketbox-installer-flow.isph    # 端口、向导与安装/卸载事件流程
-    build_inno_installer.ps1         # 安装包输入校验与编译入口
+    build_inno_installer.ps1         # 历史 C07 构建入口（已退役）
     windows-build-toolchain.json     # Python/uv/PyInstaller 精确构建工具链合同
     windows-release-config.json      # 服务、端口、SCM/就绪策略与 bootstrap 的单一真源
     windows_release_config.ps1       # 构建/预检/安装/卸载共用的动态配置校验
     prepare_bundled_upgrade.ps1      # 复制新文件前的升级备份与服务准备
     windows_service_contract.ps1     # Windows 原生 argv 解析与 PG/Shawl 命令契约
     windows_service_lifecycle.ps1    # 服务归属与 SCM 稳定态/终态控制
-    windows_lifecycle_lock.ps1       # CommonProgramFiles 独占锁与父进程持锁校验
+    windows_lifecycle_lock.ps1       # 独占文件锁与目录保护仍引用的进程身份助手
     windows_lifecycle_receipt.ps1    # 四模式/四阶段受保护安装事务回执
-    windows_installation_safety.ps1  # 数据根 owner/ACL、持久 version floor/身份与防误删边界
+    windows_installation_safety.ps1  # PG 构建和路径测试使用的受保护文件、ACL 与目录原语
     windows_database_safety.ps1      # loopback libpq、口令隔离、数据根身份与 dump 防护
     windows_bundled_database.ps1     # PG 初始化、身份校验与升级备份
     windows_backend_bootstrap.ps1    # 后端 deadline 就绪探测与首次 owner bootstrap

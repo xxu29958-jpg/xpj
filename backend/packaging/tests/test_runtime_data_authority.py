@@ -617,3 +617,203 @@ def test_fresh_owner_helper_consumes_secret_on_stdin_and_returns_pairing(
     assert observed["disposed"] is True
     assert observed["machine_secret_released"] is True
     assert json.loads(output.getvalue())["pairing_code"] == "12345678"
+
+
+def test_frozen_runtime_admits_valid_previous_release_id_and_rejects_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    _write_authority(program_data, "installation.json", {**_binding(data_root), "previous_release_id": "1.1.0"})
+
+    assert launch.configure_environment() == data_dir.resolve()
+    assert os.environ["TICKETBOX_UPGRADE_VERIFY_ONLY"] == "0"
+    assert os.environ["TICKETBOX_RESTORE_VERIFY_ONLY"] == "0"
+
+    for invalid in (RELEASE_ID, "", "bad release!", 123):
+        _write_authority(program_data, "installation.json", {**_binding(data_root), "previous_release_id": invalid})
+        with pytest.raises(RuntimeError, match="unsupported release transition"):
+            launch.configure_environment()
+
+
+@pytest.mark.parametrize("phase,step,verify_only", [
+    ("data_ready", "scm", "1"),
+    ("committed", "health", "0"),
+])
+def test_upgrade_authority_controls_readonly_verification_even_with_forged_dotenv(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    phase: str,
+    step: str,
+    verify_only: str,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    old_binding = {
+        **_binding(data_root),
+        "expected_restore_epoch": 2,
+        "active_release_id": "1.1.0",
+        "previous_release_id": None,
+        "release_manifest_sha256": "d" * 64,
+        "health_attestation_key": "f" * 64,
+    }
+    committed_binding = {**_binding(data_root), "expected_restore_epoch": 2, "previous_release_id": "1.1.0"}
+    active = {
+        **_active(data_root),
+        "kind": "upgrade",
+        "phase": phase,
+        "completed_step": step,
+        "expected_restore_epoch": 2,
+        "previous_release_id": "1.1.0",
+        "previous_release_manifest_sha256": "d" * 64,
+        "source_schema_revision": "20261029_0002",
+        "backup_path": r"C:\ProgramData\Ticketbox\backups\pre.tbxcold",
+        "backup_sha256": "e" * 64,
+        "business_writes_opened": phase == "committed",
+    }
+    _write_authority(
+        program_data,
+        "installation.json",
+        committed_binding if phase == "committed" else old_binding,
+    )
+    _write_authority(program_data, "operations/active.json", active)
+    data_dir.mkdir(parents=True)
+    (data_dir / ".env").write_text("TICKETBOX_UPGRADE_VERIFY_ONLY=0\nTICKETBOX_EXPECTED_RESTORE_EPOCH=0\n")
+
+    assert launch.configure_environment() == data_dir.resolve()
+    assert os.environ["TICKETBOX_EXPECTED_RESTORE_EPOCH"] == "2"
+    assert os.environ["TICKETBOX_UPGRADE_VERIFY_ONLY"] == verify_only
+    assert os.environ["TICKETBOX_RESTORE_VERIFY_ONLY"] == "0"
+    assert os.environ["TICKETBOX_HEALTH_ATTESTATION_KEY"] == HEALTH_ATTESTATION_KEY
+
+
+@pytest.mark.parametrize("tamper", ["missing", "dataset_id", "epoch", "release_lineage"])
+def test_upgrade_candidate_requires_exact_existing_installation_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    old_binding = {
+        **_binding(data_root),
+        "expected_restore_epoch": 2,
+        "active_release_id": "1.1.0",
+        "previous_release_id": None,
+        "release_manifest_sha256": "d" * 64,
+        "health_attestation_key": "f" * 64,
+    }
+    active = {
+        **_active(data_root),
+        "kind": "upgrade",
+        "phase": "data_ready",
+        "completed_step": "scm",
+        "expected_restore_epoch": 2,
+        "previous_release_id": "1.1.0",
+        "previous_release_manifest_sha256": "d" * 64,
+        "source_schema_revision": "20261029_0002",
+        "backup_path": r"C:\ProgramData\Ticketbox\backups\pre.tbxcold",
+        "backup_sha256": "e" * 64,
+        "business_writes_opened": False,
+    }
+    _write_authority(program_data, "operations/active.json", active)
+    if tamper != "missing":
+        if tamper == "dataset_id":
+            old_binding["dataset_id"] = OPERATION_ID
+        elif tamper == "epoch":
+            old_binding["expected_restore_epoch"] = 0
+        elif tamper == "release_lineage":
+            old_binding["active_release_id"] = "1.0.0"
+        _write_authority(program_data, "installation.json", old_binding)
+    with pytest.raises(RuntimeError):
+        launch.configure_environment()
+    assert not (data_dir / "uploads").exists()
+
+
+@pytest.mark.parametrize("phase,step", [("prepared", "alembic"), ("failed_recoverable", "scm")])
+def test_interrupted_upgrade_cannot_start_business_with_existing_binding(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    phase: str,
+    step: str,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    _write_authority(program_data, "installation.json", {**_binding(data_root), "previous_release_id": "1.1.0"})
+    _write_authority(program_data, "operations/active.json", {
+        **_active(data_root),
+        "kind": "upgrade",
+        "phase": phase,
+        "completed_step": step,
+        "expected_restore_epoch": 0,
+        "previous_release_id": "1.1.0",
+        "source_schema_revision": "20261029_0002",
+        "backup_path": r"C:\ProgramData\Ticketbox\backups\pre.tbxcold",
+        "backup_sha256": "e" * 64,
+        "business_writes_opened": False,
+    })
+    with pytest.raises(RuntimeError):
+        launch.configure_environment()
+    assert not (data_dir / "uploads").exists()
+
+
+def test_upgrade_candidate_rejects_business_writes_opened_before_commit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    old_binding = {
+        **_binding(data_root),
+        "active_release_id": "1.1.0",
+        "release_manifest_sha256": "d" * 64,
+        "health_attestation_key": "f" * 64,
+    }
+    active = {
+        **_active(data_root),
+        "kind": "upgrade",
+        "phase": "data_ready",
+        "completed_step": "scm",
+        "expected_restore_epoch": 0,
+        "previous_release_id": "1.1.0",
+        "previous_release_manifest_sha256": "d" * 64,
+        "source_schema_revision": "20261029_0002",
+        "backup_path": r"C:\ProgramData\Ticketbox\backups\pre.tbxcold",
+        "backup_sha256": "e" * 64,
+        "business_writes_opened": True,
+    }
+    _write_authority(program_data, "installation.json", old_binding)
+    _write_authority(program_data, "operations/active.json", active)
+    with pytest.raises(RuntimeError, match="business writes opened"):
+        launch.configure_environment()
+    assert not (data_dir / "uploads").exists()
+
+
+@pytest.mark.parametrize("phase,step,verify_only", [
+    ("data_ready", "scm", "1"),
+    ("committed", "health", "0"),
+])
+def test_reinstall_authority_admits_verify_only_then_normal_preserving_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    phase: str,
+    step: str,
+    verify_only: str,
+) -> None:
+    launch = _load_launch_module()
+    program_data, data_root, data_dir = _configure_frozen(monkeypatch, launch, tmp_path)
+    binding = {**_binding(data_root), "expected_restore_epoch": 2}
+    active = {
+        **_active(data_root),
+        "kind": "reinstall",
+        "phase": phase,
+        "completed_step": step,
+        "expected_restore_epoch": 2,
+    }
+    _write_authority(program_data, "installation.json", binding)
+    _write_authority(program_data, "operations/active.json", active)
+    assert launch.configure_environment() == data_dir.resolve()
+    assert os.environ["TICKETBOX_EXPECTED_RESTORE_EPOCH"] == "2"
+    assert os.environ["TICKETBOX_UPGRADE_VERIFY_ONLY"] == verify_only
+    assert os.environ["TICKETBOX_RESTORE_VERIFY_ONLY"] == "0"

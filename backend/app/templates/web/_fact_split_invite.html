@@ -10,7 +10,9 @@
       <div class="product-panel-subtitle">发一份拆账邀请到家人自己的账本；对方接受后会在 TA 的账本里生成一笔独立账单，不影响这笔账。要只在本账本内记录分摊，请用「家庭拆账」。</div>
     </div>
   </div>
-  {% if not split_invite.members %}
+  {% if split_invite.is_reversed %}
+  <div class="meta">原账单已冲销，无法继续发起拆账邀请。</div>
+  {% elif not split_invite.members %}
   <div class="meta">本账本暂时只有你一个成员，先邀请家人加入，才能发起拆账。</div>
   {% else %}
   <form method="post" action="/web/expenses/{{ expense.id }}/split-invite" class="split-invite-form">

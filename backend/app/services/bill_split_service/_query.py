@@ -166,3 +166,17 @@ def get_invitation(db: Session, public_id: str) -> BillSplitInvitation:
     if inv is None:
         raise AppError("invitation_not_found", status_code=404)
     return inv
+
+
+def expense_has_active_reversal(db: Session, *, ledger_id: str, expense_id: int) -> bool:
+    return (
+        db.scalar(
+            select(ExpenseOffsetFact.id)
+            .where(ExpenseOffsetFact.tenant_id == ledger_id)
+            .where(ExpenseOffsetFact.expense_id == expense_id)
+            .where(ExpenseOffsetFact.kind == "reversal")
+            .where(ExpenseOffsetFact.status == "active")
+            .limit(1)
+        )
+        is not None
+    )

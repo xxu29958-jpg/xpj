@@ -12,6 +12,12 @@ from pathlib import Path
 
 import pytest
 
+from tests._database_maintenance_isolation_probe import (
+    _BARE_OPEN_AUDIT_PROBE,
+    _FROZEN_SEAM_PROBE,
+    _MAINTENANCE_ISOLATION_PROBE,
+)
+
 OPERATION_ID = "11111111-1111-4111-8111-111111111111"
 RESTORE_DATABASE = "ticketbox_generation_restore_11111111111141118111111111111111"
 MIGRATOR_URL = "postgresql+psycopg://ticketbox_migrator@127.0.0.1:5432/"
@@ -85,9 +91,11 @@ assert not any(name == "app.database" or name.startswith("app.database.") for na
 validation = launch._load_generation_program_validation_module()
 target = launch._load_database_generation_target_module()
 fresh = launch._load_fresh_schema_upgrade_module()
+upgrade = launch._load_existing_dataset_upgrade_module()
 assert callable(validation.validate_database_generation_program)
 assert callable(target.run_database_generation_target_verification_action)
 assert callable(fresh.run_fresh_schema_upgrade_action)
+assert callable(upgrade.run_existing_dataset_upgrade_action)
 assert not any(name == "app.database" or name.startswith("app.database.") for name in sys.modules)
 """
 
@@ -497,3 +505,118 @@ def test_target_verification_preserves_primary_and_engine_cleanup(tmp_path: Path
     assert isinstance(caught.value.primary.__cause__, KeyError)
     assert caught.value.primary.__cause__.args == ("target primary failed",)
     assert [str(error) for error in caught.value.cleanup] == ["target dispose failed"]
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "--validate-generation-program",
+        "--fresh-schema-upgrade",
+        "--database-generation-verify-target",
+        "--upgrade-existing-dataset",
+        "--fresh-owner-claim",
+        "--restore-cold-dataset",
+        "--verify-preserved-dataset",
+    ],
+)
+@pytest.mark.parametrize("with_installation_id", [False, True])
+def test_all_seven_maintenance_modes_never_import_config_or_runtime_db_facade(
+    tmp_path: Path,
+    mode: str,
+    with_installation_id: bool,
+) -> None:
+    backend_root = Path(__file__).resolve().parents[1]
+    ambient_app = tmp_path / "ambient" / "app"
+    explicit_data = tmp_path / "explicit" / "data"
+    (ambient_app / "runtime-settings").mkdir(parents=True)
+    (explicit_data / "app" / "runtime-settings").mkdir(parents=True)
+    (ambient_app / ".env").write_text("SENTINEL_DOTENV_LOADED=1\n", encoding="utf-8")
+    (explicit_data / "app" / ".env").write_text("SENTINEL_DOTENV_LOADED=1\n", encoding="utf-8")
+    # Corrupted/foreign-owned runtime-settings.json in both roots must never be read.
+    (ambient_app / "runtime-settings" / "runtime-settings.json").write_text("{not-json", encoding="utf-8")
+    (explicit_data / "app" / "runtime-settings" / "runtime-settings.json").write_text("{not-json", encoding="utf-8")
+    pgpass_path = tmp_path / "pgpass"
+    pgpass_path.write_text("127.0.0.1:5432:ticketbox:ticketbox_migrator:secret\n", encoding="utf-8")
+    backup_path = tmp_path / "backup.tbxcold"
+    program_file = tmp_path / "DATABASE_GENERATION_PROGRAM.json"
+    from scripts.build_database_generation_program import write_program
+
+    write_program(backend_root=backend_root, output=program_file)
+
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.upper().startswith("PG")
+        and key not in {"TICKETBOX_DATA_DIR", "UPLOAD_DIR", "TICKETBOX_INSTALLATION_ID", "SENTINEL_DOTENV_LOADED"}
+    }
+    env["PGPASSFILE"] = str(pgpass_path)
+    env["TICKETBOX_DATA_DIR"] = str(ambient_app)
+    env["UPLOAD_DIR"] = str(ambient_app / "uploads")
+    if with_installation_id:
+        env["TICKETBOX_INSTALLATION_ID"] = "99999999-9999-4999-8999-999999999999"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            _MAINTENANCE_ISOLATION_PROBE,
+            str(backend_root),
+            mode,
+            str(explicit_data),
+            str(pgpass_path),
+            str(backup_path),
+            str(program_file),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, f"{mode} failed:\nSTDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}"
+
+
+def test_standalone_database_package_works_in_frozen_meipass_without_init_py(tmp_path: Path) -> None:
+    backend_root = Path(__file__).resolve().parents[1]
+    fake_meipass = tmp_path / "meipass"
+    db_dir = fake_meipass / "app" / "database"
+    db_dir.mkdir(parents=True)
+    (db_dir / "_fresh_schema_upgrade.py").write_text("# shipped physical action\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", _FROZEN_SEAM_PROBE, str(backend_root), str(fake_meipass)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, f"frozen seam probe failed:\n{completed.stderr}"
+
+
+def test_resolve_protected_image_empty_reference_does_not_call_get_settings(monkeypatch) -> None:
+    from app.errors import AppError
+    from app.services import file_service
+
+    def _boom():
+        raise AssertionError("get_settings must not be called for empty image reference")
+
+    monkeypatch.setattr(file_service, "get_settings", _boom)
+    assert file_service.resolve_upload_path_for_tenant("", "owner") is None
+    assert file_service.resolve_upload_path_for_tenant(None, "owner") is None
+    with pytest.raises(AppError) as caught:
+        file_service.resolve_protected_image("", "owner")
+    assert caught.value.error == "image_not_found"
+    assert caught.value.status_code == 404
+
+
+@pytest.mark.parametrize("bare_name", [".env", "runtime-settings.json"])
+def test_forbidden_open_audit_catches_bare_relative_sensitive_files(tmp_path: Path, bare_name: str) -> None:
+    (tmp_path / bare_name).write_text("sentinel\n", encoding="utf-8")
+    completed = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", _BARE_OPEN_AUDIT_PROBE, bare_name, "negative-self-check"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, f"bare open audit probe failed for {bare_name}:\n{completed.stderr}"

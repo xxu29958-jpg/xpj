@@ -62,7 +62,10 @@ def inbox_rows(db: Session, account_id: int, invitations: list, *, status: str) 
     presented_at = now_utc()
     rows = []
     for inv in invitations:
-        sender_name, sender_context = bsplit.receiver_sender_presentation(inv.sender_display_name, names.get(inv.sender_ledger_id, ""))
+        sender_name, sender_context = bsplit.receiver_sender_presentation(
+            inv.sender_display_name,
+            names.get(inv.sender_ledger_id, ""),
+        )
         received = bsplit.to_received_bill_reference(inv, receiver_account_id=account_id, visible_ledger_names=names)
         rows.append({
             **invitation_facts(inv), "public_id": inv.public_id, "status": inv.status,
@@ -104,6 +107,10 @@ def _remaining_split_capacity(
         label="web_bill_split.remaining",
     )
     return currency_code, max(remaining, 0)
+
+
+def _expense_has_active_reversal(db: Session, *, ledger_id: str, expense_id: int) -> bool:
+    return bsplit.expense_has_active_reversal(db, ledger_id=ledger_id, expense_id=expense_id)
 
 
 def build_split_invite_context(
@@ -154,14 +161,26 @@ def build_split_invite_context(
     ]
 
     invitations = bsplit.list_sent_for_expense(db, sender_account_id=sender_account_id, expense_id=expense["id"])
-    debt_links = accepted_split_debt_links(db, invitations, selected_id=selected_ledger_id, account_id=sender_account_id)
+    debt_links = accepted_split_debt_links(
+        db,
+        invitations,
+        selected_id=selected_ledger_id,
+        account_id=sender_account_id,
+    )
     presented_at = now_utc()
+    is_reversed = _expense_has_active_reversal(
+        db,
+        ledger_id=selected_ledger_id,
+        expense_id=expense["id"],
+    )
     expense_currency, remaining_cents = _remaining_split_capacity(
         expense,
         invitations,
         presentation_currency=require_runtime_home_currency_code(db),
         presented_at=presented_at,
     )
+    if is_reversed:
+        remaining_cents = 0
     sent_rows = []
     for inv in invitations:
         is_expired = _is_expired(inv, presented_at)
@@ -183,7 +202,8 @@ def build_split_invite_context(
         "expected_row_version": expense["row_version"],
         "sent_rows": sent_rows,
         "remaining_yuan": _cents_to_yuan(remaining_cents, expense_currency),
-        "has_capacity": remaining_cents > 0,
+        "has_capacity": (not is_reversed) and remaining_cents > 0,
+        "is_reversed": is_reversed,
     }
 
 

@@ -70,7 +70,11 @@ def _read_body(response: HTTPResponse, *, deadline: float) -> bytes:
             )
 
 
-def fetch_installation_health(backend_port: int, *, challenge: str) -> tuple[int, bytes, str | None]:
+def fetch_installation_health_with_mode(
+    backend_port: int,
+    *,
+    challenge: str,
+) -> tuple[int, bytes, str | None, str | None, str | None]:
     deadline = time.monotonic() + _TOTAL_TIMEOUT_SECONDS
     connection = HTTPConnection("127.0.0.1", backend_port, timeout=_remaining_seconds(deadline))
     network_socket: socket.socket | None = None
@@ -94,7 +98,13 @@ def fetch_installation_health(backend_port: int, *, challenge: str) -> tuple[int
         response = HTTPResponse(_DeadlineSocket(network_socket, deadline), method="GET")
         response.begin()
         body = b"" if response.status != 200 else _read_body(response, deadline=deadline)
-        return response.status, body, response.getheader("X-Ticketbox-Health-Attestation")
+        return (
+            response.status,
+            body,
+            response.getheader("X-Ticketbox-Health-Attestation"),
+            response.getheader("X-Ticketbox-Runtime-Mode"),
+            response.getheader("X-Ticketbox-Runtime-Mode-Attestation"),
+        )
     except TimeoutError as exc:
         raise LifecycleError(
             "health_unreachable",
@@ -111,3 +121,11 @@ def fetch_installation_health(backend_port: int, *, challenge: str) -> tuple[int
         if network_socket is not None:
             network_socket.close()
         connection.close()
+
+
+def fetch_installation_health(backend_port: int, *, challenge: str) -> tuple[int, bytes, str | None]:
+    status, body, attestation, _mode, _mode_attestation = fetch_installation_health_with_mode(
+        backend_port,
+        challenge=challenge,
+    )
+    return status, body, attestation

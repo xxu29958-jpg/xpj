@@ -120,6 +120,95 @@ internal class ExpenseCorrectionRepositoryTest : ExpensePendingRepositoryOutboxT
     }
 
     @Test
+    fun `404 ledger_not_found preserves correction_target_unavailable no-retry and offline-discard contract`() = runTest {
+        val queue = FakePendingMutationDao()
+        val outbox = testOutboxRepository(queue)
+        var requests = 0
+        val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
+            override suspend fun expense(id: Long): com.ticketbox.data.remote.dto.ExpenseDto = error("Offline discard must not fetch expense")
+            override suspend fun correctExpense(id: String, request: ExpenseCorrectionRequestDto,
+                idempotencyKey: String?): ExpenseCorrectionResponseDto {
+                requests++
+                throw httpException(404, """{"error":"ledger_not_found","message":"账本不存在或没有访问权限。"}""")
+            }
+        }
+        val repo = harness.buildCorrectionRepository(api, outbox = outbox)
+        val id = harness.submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
+            ExpenseCorrectionDraft("原更正", note = "保留内容")).getOrThrow()
+        val binding = assertNotNull(repo.observeCorrections().first().access).binding
+        val dispatcher = CorrectExpenseDispatcher({ api }, OutboxAdapterGraph().correctionAdapter,
+            publishAuthoritativeProjection = { _, _ -> error("A refusal cannot publish a fact") },
+            onConfirmedCommitted = { error("A refusal is not committed") })
+        queue.runnableBatches += listOf(id)
+
+        assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().failures)
+        val pending = repo.observeCorrections().first().corrections.single()
+        assertEquals("correction_target_unavailable", pending.row.lastError)
+        assertFalse(pending.canRetry)
+        assertTrue(pending.canDiscard)
+        assertTrue(repo.recoverCorrection(binding, id, drop = false).isFailure)
+        repo.recoverCorrection(binding, id, drop = true).getOrThrow()
+        assertTrue(queue.rows.isEmpty())
+        assertEquals(1, requests)
+    }
+
+    @Test
+    fun `404 member_not_found preserves error message and stays retryable`() = runTest {
+        val queue = FakePendingMutationDao()
+        val outbox = testOutboxRepository(queue)
+        val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
+            override suspend fun correctExpense(id: String, request: ExpenseCorrectionRequestDto,
+                idempotencyKey: String?): ExpenseCorrectionResponseDto {
+                throw httpException(404, """{"error":"member_not_found","message":"找不到对应的家庭成员，请刷新成员列表后再试。"}""")
+            }
+        }
+        val repo = harness.buildCorrectionRepository(api, outbox = outbox)
+        val id = harness.submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
+            ExpenseCorrectionDraft("原更正", note = "保留内容")).getOrThrow()
+        val binding = assertNotNull(repo.observeCorrections().first().access).binding
+        val dispatcher = CorrectExpenseDispatcher({ api }, OutboxAdapterGraph().correctionAdapter,
+            publishAuthoritativeProjection = { _, _ -> error("A refusal cannot publish a fact") },
+            onConfirmedCommitted = { error("A refusal is not committed") })
+        queue.runnableBatches += listOf(id)
+
+        assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().failures)
+        val pending = repo.observeCorrections().first().corrections.single()
+        assertEquals("找不到对应的家庭成员，请刷新成员列表后再试。", pending.row.lastError)
+        assertTrue(pending.canRetry)
+        repo.recoverCorrection(binding, id, drop = false).getOrThrow()
+        assertEquals(com.ticketbox.data.local.PendingMutationStatus.Pending.wireValue, queue.rows.getValue(id).status)
+    }
+
+    @Test
+    fun `409 financial refusals retain exact recovery codes without blind retry`() = runTest {
+        for (code in listOf(EXPENSE_REVERSAL_ACTIVE, EXPENSE_REFUND_EXISTS, EXPENSE_REFUND_EXCEEDS_REMAINING)) {
+            val queue = FakePendingMutationDao()
+            val outbox = testOutboxRepository(queue)
+            val api = object : ApiService by FakeApiService(mutableListOf(), 0) {
+                override suspend fun correctExpense(id: String, request: ExpenseCorrectionRequestDto,
+                    idempotencyKey: String?): ExpenseCorrectionResponseDto {
+                    throw httpException(409, """{"error":"$code","message":"财务约束阻止更正"}""")
+                }
+            }
+            val repo = harness.buildCorrectionRepository(api, outbox = outbox)
+            val id = harness.submit(repo, baselineExpense().copy(status = "confirmed", rowVersion = 7),
+                ExpenseCorrectionDraft("原更正", note = "保留内容")).getOrThrow()
+            val binding = assertNotNull(repo.observeCorrections().first().access).binding
+            val dispatcher = CorrectExpenseDispatcher({ api }, OutboxAdapterGraph().correctionAdapter,
+                publishAuthoritativeProjection = { _, _ -> error("A refusal cannot publish a fact") },
+                onConfirmedCommitted = { error("A refusal is not committed") })
+            queue.runnableBatches += listOf(id)
+
+            assertEquals(1, OutboxDrainEngine(outbox, listOf(dispatcher)).drainOnce().failures)
+            val pending = repo.observeCorrections().first().corrections.single()
+            assertEquals(code, pending.row.lastError)
+            assertFalse(pending.canRetry)
+            assertTrue(pending.canDiscard)
+            assertTrue(repo.recoverCorrection(binding, id, drop = false).isFailure)
+        }
+    }
+
+    @Test
     fun `stored overlong original reason remains visible but cannot retry or change its command`() = runTest {
         for (character in listOf("改", "\uD83D\uDE42")) {
             val queue = FakePendingMutationDao()

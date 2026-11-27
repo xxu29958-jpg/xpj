@@ -230,6 +230,9 @@
     <string name="correction_submission_sending">正在发送原提交，内容已经保存在手机上。</string>
     <string name="correction_submission_failed">原提交尚未确认送达，内容已保留。可重试原提交或核对当前事实。</string>
     <string name="correction_submission_review_required">这份原提交不能直接重试，内容仍保留。请核对当前事实，或放弃这份本地提交。</string>
+    <string name="correction_submission_reversal_active">这笔账单已冲销，不能直接重试更正。请先撤销冲销记录后再核对并重新提交，或放弃这份本地提交。</string>
+    <string name="correction_submission_refund_exists">这笔账单已有生效的退回记录，不能直接更改原币币种。请先核对或撤销退回记录，或放弃这份本地提交。</string>
+    <string name="correction_submission_refund_exceeds_remaining">更正后的金额小于已退回金额，不能直接重试。请核对账单金额与退回记录，或放弃这份本地提交后重新提交。</string>
     <string name="correction_submission_clear">清空</string>
     <string name="correction_submission_original">提交时原金额：%1$s</string>
     <string name="correction_submission_amount">更正后的原币金额：%1$s</string>
@@ -248,6 +251,7 @@
     <string name="correction_field_items">替换后的明细条数</string>
     <string name="correction_field_splits">替换后的分摊条数</string>
     <string name="expense_offset_original_requires_review">原提交已保留。请打开账单核对原币和金额；如需修改，放弃原提交后重新登记。放弃不会撤销已生效的事实。</string>
+    <string name="expense_offset_void_requires_review">原提交已保留。请打开账单核对当前退回或冲销记录；如需撤销，放弃原提交后重新操作。放弃不会撤销已生效的事实。</string>
     <string name="expense_offset_review_current">打开账单核对</string>
     <string name="expense_offset_draft_root_changed">账单已更新，原输入仍按打开时的币种保留。请核对当前账单；币种变化后需重新填写金额。</string>
     <string name="expense_offset_review_draft">按当前账单核对</string>

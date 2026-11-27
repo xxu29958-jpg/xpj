@@ -121,6 +121,35 @@ internal class PendingViewModelReviewStateActionsTest : PendingViewModelReviewTe
     }
 
     @Test
+    fun confirmReadyExpensesNeverCountsRejectedOrReceiptlessRowsAsConfirmed() = review {
+        val confirmed = expense(id = 22L, amountCents = 100L, merchant = "星巴克")
+        val rejectedElsewhere = expense(id = 23L, amountCents = 100L, merchant = "麦当劳")
+        val receiptlessLegacy = expense(id = 24L, amountCents = 100L, merchant = "肯德基")
+        val fake = FakeReviewActions(pending = listOf(confirmed, rejectedElsewhere, receiptlessLegacy))
+        val vm = pendingViewModel(fake)
+        advanceUntilIdle()
+
+        vm.confirmReadyExpenses()
+        advanceUntilIdle()
+
+        fake.pending = listOf(rejectedElsewhere, receiptlessLegacy)
+        fake.publishCommand(confirmed.id, PendingMutationType.ConfirmExpense, PendingMutationStatus.Done)
+        fake.publishCommand(rejectedElsewhere.id, PendingMutationType.ConfirmExpense, PendingMutationStatus.Failed, error = "账单不存在。")
+        fake.publishCommand(
+            receiptlessLegacy.id,
+            PendingMutationType.ConfirmExpense,
+            PendingMutationStatus.Done,
+            confirmationReceipt = null,
+        )
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(1, state.bulkConfirm.succeeded)
+        assertEquals(2, state.bulkConfirm.failed)
+        assertEquals(UiText.res(R.string.expense_command_needs_attention), state.message)
+    }
+
+    @Test
     fun confirmReadyExpensesShowsHintWhenNoneReady() = review {
         val onlyDup = expense(
             id = 30L,

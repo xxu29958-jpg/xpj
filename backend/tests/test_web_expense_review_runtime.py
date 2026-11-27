@@ -36,6 +36,7 @@ from app.services import (
     expense_review_command_service,
     pending_review_bulk_service,
 )
+from app.services.category_preference_service import ensure_category_preference_for_name
 from app.services.currency_binding_service import resolve_write_capability
 from app.services.time_service import now_utc
 from tests import _web_browser_test_support as browser_runtime
@@ -441,10 +442,10 @@ def uncategorized_browser(review_browser, confirmation_store, monkeypatch):
     client.app.include_router(web_categories.router)
     monkeypatch.setattr(web_categories, "_list_ledger_options", web_pending._list_ledger_options)
     monkeypatch.setattr(web_categories, "_resolve_selected_ledger_id", lambda *args, **kwargs: "owner")
-    monkeypatch.setattr(web_categories, "list_ledger_category_options", lambda *args, **kwargs: [*category_service.DEFAULT_CATEGORIES, "自选分类"])
 
     with confirmation_store() as db:
         resolve_write_capability(db)
+        ensure_category_preference_for_name(db, tenant_id="owner", name="自选分类")
         row = db.get(Expense, 42)
         row.category = ""
         for identity, category, status, tenant in [(43, "其他", "pending", "owner"),

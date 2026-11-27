@@ -4,10 +4,28 @@ from __future__ import annotations
 
 from pathlib import Path
 
-_UI_HTML = Path(__file__).resolve().parents[1] / "backend_manager" / "ui.html"
+_UI_DIR = Path(__file__).resolve().parents[1] / "backend_manager"
+_UI_HTML = _UI_DIR / "ui.html"
+_UI_CSS = _UI_DIR / "ui.css"
+_UI_JS = _UI_DIR / "ui.js"
+_UI_CSS_LINK = '<link rel="stylesheet" href="/assets/ui.css">'
+_UI_JS_SCRIPT = '<script src="/assets/ui.js"></script>'
 
 
 _STARTUP_SCRIPT = "    refresh();\n    setInterval(refresh, 2500);"
+
+
+def _load_standalone_ui_html() -> str:
+    source = _UI_HTML.read_text(encoding="utf-8")
+    assert source.count(_UI_CSS_LINK) == 1
+    assert source.count(_UI_JS_SCRIPT) == 1
+    css = _UI_CSS.read_text(encoding="utf-8")
+    js = _UI_JS.read_text(encoding="utf-8")
+    return source.replace(_UI_CSS_LINK, f"<style>\n{css}\n  </style>", 1).replace(
+        _UI_JS_SCRIPT,
+        f"<script>\n{js}\n  </script>",
+        1,
+    )
 
 
 def _public_connectivity(*, degraded: bool) -> dict[str, object]:
@@ -84,7 +102,7 @@ def _status(*, degraded: bool) -> dict[str, object]:
 
 
 def _render_probe_page(tmp_path: Path, name: str, script: str) -> Path:
-    source = _UI_HTML.read_text(encoding="utf-8")
+    source = _load_standalone_ui_html()
     assert source.count(_STARTUP_SCRIPT) == 1
     page = tmp_path / name
     page.write_text(source.replace(_STARTUP_SCRIPT, script), encoding="utf-8")

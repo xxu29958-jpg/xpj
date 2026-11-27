@@ -177,8 +177,8 @@ def _recovery_loop(stop_event: threading.Event) -> None:
             if time.monotonic() >= next_upload_scan:
                 after_upload = queue_skipped_uploads(after_upload)
                 next_upload_scan = time.monotonic() + (2 if after_upload else 15)
-        except SQLAlchemyError as exc:
-            # The owned scanner must survive a transient database refusal.
+        except (SQLAlchemyError, OSError) as exc:
+            # The owned scanner must survive transient database or single-file IO refusals.
             report_error(logger, "background OCR recovery scan failed", error=exc)
         except Exception as exc:  # Terminal reporting boundary of the owned scanner thread.
             report_error(logger, "background OCR recovery scanner stopped", error=exc)

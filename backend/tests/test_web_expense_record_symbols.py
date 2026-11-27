@@ -347,7 +347,8 @@ def test_source_invitation_uses_parent_basis_for_input_and_each_agreement_for_se
         SimpleNamespace(public_id=code, status="cancelled", amount_cents=amount, home_currency_code=code,
             receiver_display_name_snapshot="家人", expires_at=now + timedelta(days=1))
         for code, amount in (("CNY", 500), ("JPY", 12))])
-    context["split_invite"] = invites.build_split_invite_context(object(), context["request"],
+    context["split_invite"] = invites.build_split_invite_context(
+        SimpleNamespace(scalar=lambda *_a, **_k: None), context["request"],
         selected_ledger_id="owner", expense=context["expense"], can_write=True)
     html = _render("_fact_split_invite.html", context)
     assert "分摊金额（¥）" in html and "本张账单还可分摊 ¥12.00" in html

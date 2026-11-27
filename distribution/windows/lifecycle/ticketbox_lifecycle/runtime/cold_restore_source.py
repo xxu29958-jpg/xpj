@@ -9,15 +9,18 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import re
 import shutil
 import stat
+import tempfile
 import zipfile
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
-from uuid import NAMESPACE_URL, UUID, uuid5
+from uuid import UUID
 
+from ticketbox_lifecycle.domain.cold_copy import cold_copy_backup_id
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime.cold_archive import _read_manifest, verify_archive
 from ticketbox_lifecycle.runtime.windows_security_native import reject_reparse_components
@@ -62,6 +65,35 @@ def _uuid(value: object) -> bool:
         return False
 
 
+def _upgrade_chain_reaches_origin(
+    origin: dict[str, object],
+    current: dict[str, object],
+    upgrades: list[dict[str, object]],
+) -> bool:
+    origin_release = origin.get("target_release_id") or origin.get("release_id")
+    if not isinstance(origin_release, str) or not origin_release:
+        return False
+    by_target: dict[str, dict[str, object]] = {}
+    for record in upgrades:
+        target = record.get("target_release_id")
+        previous = record.get("previous_release_id")
+        if not isinstance(target, str) or not isinstance(previous, str) or target in by_target:
+            return False
+        by_target[target] = record
+    visited: set[str] = set()
+    cursor: dict[str, object] | None = current
+    while cursor is not None:
+        target = cursor.get("target_release_id")
+        previous = cursor.get("previous_release_id")
+        if not isinstance(target, str) or not isinstance(previous, str) or not previous or target in visited:
+            return False
+        visited.add(target)
+        if previous == origin_release:
+            return True
+        cursor = by_target.get(previous)
+    return False
+
+
 class ColdRestoreSource:
     """An open, fully checked source; retain the same handle through extraction."""
 
@@ -84,7 +116,7 @@ class ColdRestoreSource:
         self.digest = digest
         self.manifest = manifest
         self.identity = dict(manifest["identity"])
-        self.backup_id = str(uuid5(NAMESPACE_URL, "ticketbox-cold-copy:sha256:" + digest))
+        self.backup_id = cold_copy_backup_id(digest)
 
     @staticmethod
     def _require_identity(archive: zipfile.ZipFile, manifest: dict, request: InstallRequest) -> str:
@@ -115,18 +147,54 @@ class ColdRestoreSource:
         ):
             raise LifecycleError("restore_cluster_unsupported", "restore requires a stopped local cluster without tablespaces")
     @staticmethod
+    def _load_committed_operations(archive: zipfile.ZipFile, manifest: dict) -> list[dict]:
+        identity = manifest["identity"]
+        history = [
+            json.loads(archive.read(name))
+            for name in manifest["entries"]
+            if name.startswith("machine/operations/history/") and name.endswith(".json")
+        ]
+        return [
+            record
+            for record in history
+            if isinstance(record, dict)
+            and record.get("schema") == "ticketbox-lifecycle-operation-v2"
+            and record.get("phase") == "committed"
+            and record.get("install_id") == identity["install_id"]
+            and record.get("dataset_id") == identity["dataset_id"]
+        ]
+
+    @staticmethod
     def _committed_owner_operation(archive: zipfile.ZipFile, manifest: dict) -> str:
         identity = manifest["identity"]
-        history = [json.loads(archive.read(name)) for name in manifest["entries"]
-            if name.startswith("machine/operations/history/") and name.endswith(".json")]
-        claims = [record for record in history if record.get("schema") == "ticketbox-lifecycle-operation-v2"
-            and record.get("kind") in {"install", "restore"}
-            and record.get("phase") == "committed" and record.get("install_id") == identity["install_id"]
-            and record.get("dataset_id") == identity["dataset_id"]
-            and record.get("release_manifest_sha256") == identity["release_manifest_sha256"]]
-        if len(claims) != 1 or not isinstance(claims[0].get("operation_id"), str):
-            raise LifecycleError("restore_recovery_material_missing", "cold copy lacks its exact committed owner recovery context")
-        return claims[0]["operation_id"]
+        committed = ColdRestoreSource._load_committed_operations(archive, manifest)
+        origins = [record for record in committed if record.get("kind") in {"install", "restore"}]
+        if len(origins) != 1 or not isinstance(origins[0].get("operation_id"), str) or not origins[0]["operation_id"]:
+            raise LifecycleError(
+                "restore_recovery_material_missing",
+                "cold copy lacks its exact committed owner recovery context",
+            )
+        origin = origins[0]
+        if origin.get("release_manifest_sha256") == identity["release_manifest_sha256"]:
+            return origin["operation_id"]
+        upgrades = [
+            record
+            for record in committed
+            if record.get("kind") == "upgrade"
+            and record.get("expected_restore_epoch") == identity["restore_epoch"]
+        ]
+        target_upgrades = [
+            record
+            for record in upgrades
+            if record.get("release_manifest_sha256") == identity["release_manifest_sha256"]
+            and record.get("target_release_id") == identity["release_id"]
+        ]
+        if len(target_upgrades) != 1 or not _upgrade_chain_reaches_origin(origin, target_upgrades[0], upgrades):
+            raise LifecycleError(
+                "restore_recovery_material_missing",
+                "cold copy lacks committed upgrade provenance for its current release",
+            )
+        return origin["operation_id"]
 
     def recovery_secret(self) -> str:
         """Use the existing machine bootstrap root, never OS identity as business authority."""
@@ -152,7 +220,8 @@ class ColdRestoreSource:
             hashlib.sha256(raw).hexdigest() != manifest["identity"]["release_manifest_sha256"]
             or release.get("max_schema_revision") != request.schema_revision
             or release.get("min_semantic_revision") != request.semantic_revision
-            or release.get("release_id") != request.target_release_id or actual != expected
+            or release.get("release_id") != request.target_release_id
+            or actual != expected
         ):
             raise LifecycleError("restore_program_mismatch", "cold copy program, schema or semantics are incompatible")
         # A physical PG copy is admitted only with the identical shipped PG tree.
@@ -200,3 +269,127 @@ class ColdRestoreSource:
         self.stream.seek(0)
         if hashlib.file_digest(self.stream, "sha256").hexdigest() != self.digest:
             raise LifecycleError("restore_source_changed", "source changed during copying; candidate cannot be published")
+
+    @staticmethod
+    def _existing_shared_file_matches(dest: Path, record: dict) -> bool:
+        if not dest.is_file() or dest.stat().st_size != record["size"]:
+            return False
+        with dest.open("rb") as existing_fh:
+            return hashlib.file_digest(existing_fh, "sha256").hexdigest() == record["sha256"]
+
+    @staticmethod
+    def _restore_one_shared_file(
+        archive: zipfile.ZipFile,
+        app_dir: Path,
+        rel: str,
+        record: dict,
+        *,
+        temp_root: Path,
+        publish_acl: Callable[..., None] | None,
+        verify_acl: Callable[..., None] | None,
+    ) -> bool:
+        dest = app_dir / Path(rel)
+        reject_reparse_components(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if ColdRestoreSource._existing_shared_file_matches(dest, record):
+            if publish_acl is not None:
+                publish_acl(dest, is_dir=False)
+            if verify_acl is not None:
+                verify_acl(dest, is_dir=False)
+            return False
+        fd, tmp_name = tempfile.mkstemp(prefix=dest.name, suffix=".tmp", dir=str(temp_root))
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "wb") as out, archive.open("program/" + rel) as inp:
+                shutil.copyfileobj(inp, out, length=1024 * 1024)
+                out.flush()
+                os.fsync(out.fileno())
+            with tmp_path.open("rb") as check_fh:
+                observed_sha = hashlib.file_digest(check_fh, "sha256").hexdigest()
+            if tmp_path.stat().st_size != record["size"] or observed_sha != record["sha256"]:
+                raise LifecycleError(
+                    "rollback_shared_payload_corrupt",
+                    f"restored shared program file checksum mismatch: {rel}",
+                )
+            if publish_acl is not None:
+                publish_acl(tmp_path, is_dir=False)
+            os.replace(tmp_path, dest)
+        except BaseException:
+            if tmp_path.exists():
+                tmp_path.unlink()
+            raise
+        if verify_acl is not None:
+            verify_acl(dest, is_dir=False)
+        return True
+
+    @staticmethod
+    def _prune_extra_lifecycle_files(app_dir: Path, expected_lifecycle: set[str]) -> None:
+        lifecycle_dir = app_dir / "bin" / "lifecycle"
+        if not lifecycle_dir.is_dir():
+            return
+        reject_reparse_components(lifecycle_dir)
+        for root_dir, dirs, files in os.walk(lifecycle_dir, topdown=False, followlinks=False):
+            root_path = Path(root_dir)
+            for filename in files:
+                candidate = root_path / filename
+                rel_lc = candidate.relative_to(lifecycle_dir).as_posix().casefold()
+                if rel_lc not in expected_lifecycle:
+                    reject_reparse_components(candidate)
+                    candidate.unlink()
+            for dirname in dirs:
+                candidate = root_path / dirname
+                reject_reparse_components(candidate)
+                if not any(candidate.iterdir()):
+                    candidate.rmdir()
+
+    def restore_shared_program_files(
+        self,
+        app_dir: Path,
+        *,
+        temp_root: Path,
+        publish_acl: Callable[..., None] | None = None,
+        verify_acl: Callable[..., None] | None = None,
+    ) -> list[str]:
+        """Restore non-release shared program files from this verified archive into app_dir."""
+        reject_reparse_components(app_dir)
+        reject_reparse_components(temp_root)
+        app_drive = os.path.splitdrive(os.path.abspath(os.fspath(app_dir)))[0].casefold()
+        tmp_drive = os.path.splitdrive(os.path.abspath(os.fspath(temp_root)))[0].casefold()
+        if app_drive != tmp_drive:
+            raise LifecycleError(
+                "rollback_temp_cross_volume",
+                "shared program restore staging directory must reside on the same volume as app_dir",
+            )
+        temp_root.mkdir(parents=True, exist_ok=True)
+        shared_entries = {
+            name[len("program/"):]: record
+            for name, record in self.manifest["entries"].items()
+            if name.startswith("program/")
+            and record is not None
+            and not name.startswith("program/releases/")
+            and not name.startswith("program/postgresql/")
+        }
+        expected_lifecycle = {
+            rel[len("bin/lifecycle/"):].casefold()
+            for rel in shared_entries
+            if rel.casefold().startswith("bin/lifecycle/")
+        }
+        restored: list[str] = []
+        self.stream.seek(0)
+        with zipfile.ZipFile(self.stream) as archive:
+            for rel, record in sorted(shared_entries.items(), key=lambda pair: pair[0].casefold()):
+                if self._restore_one_shared_file(
+                    archive,
+                    app_dir,
+                    rel,
+                    record,
+                    temp_root=temp_root,
+                    publish_acl=publish_acl,
+                    verify_acl=verify_acl,
+                ):
+                    restored.append(rel)
+        self._prune_extra_lifecycle_files(app_dir, expected_lifecycle)
+        self.stream.seek(0)
+        if hashlib.file_digest(self.stream, "sha256").hexdigest() != self.digest:
+            raise LifecycleError("restore_source_changed", "cold copy changed during shared payload restore")
+        return restored

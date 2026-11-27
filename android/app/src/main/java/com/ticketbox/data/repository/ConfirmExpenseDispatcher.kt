@@ -18,10 +18,10 @@ import retrofit2.HttpException
  * rebuilds the token from ``row.expectedRowVersion`` on replay (single
  * source of truth — the serialised payload carries a ``0L``
  * placeholder). Target encoding ``expense:<id>`` matches
- * [PatchExpenseDispatcher]; the confirm response is a full Expense so
- * the post-transition ``rowVersion`` cascades onto same-target PENDING
- * rows (a chained offline edit→confirm against the same expense
- * doesn't fake-conflict itself).
+ * [PatchExpenseDispatcher]; the verified confirmation receipt's
+ * ``rowVersion`` cascades onto same-target PENDING rows while the outer
+ * Expense refreshes local cache (a chained offline edit→confirm against
+ * the same expense doesn't fake-conflict itself or leak later edits' versions).
  */
 class ConfirmExpenseDispatcher(
     private val apiProvider: (OutboxRow) -> ApiService,
@@ -81,20 +81,20 @@ class ConfirmExpenseDispatcher(
             return DispatchResult.Failure(EXPENSE_CONFIRMATION_ORIGINAL_REQUIRES_REVIEW)
         }
         return publishAcceptedExpense(confirmed.id, confirmed.rowVersion) { publishExpense(row.ledgerId, confirmed) }
-            .copy(receiptJson = expenseAcceptanceReceiptJson(receipt))
+            .copy(
+                newRowVersion = receipt.rowVersion.takeIf { it > 0L },
+                receiptJson = expenseAcceptanceReceiptJson(receipt),
+            )
     }
 
     private fun confirmationFailure(e: HttpException, request: ExpenseStateTokenRequest): DispatchResult {
-            val result = mapOutboxHttpException(e)
-            return if ((request.changes != null || !request.funding.isNullOrEmpty()) && (result is DispatchResult.Discarded ||
-                    result is DispatchResult.Failure && result.definitelyRejected)) {
-                // A proven refusal returns all atomic edits to review, including an unfunded expense.
-                val message = when (result) {
-                    is DispatchResult.Discarded -> result.reason
-                    is DispatchResult.Failure -> result.message
-                    else -> null
-                }
-                DispatchResult.Conflict(message ?: "确认未被接受，请保留原输入重新核对。")
-            } else result
+        val result = mapOutboxHttpException(e, discardable404ErrorCodes = emptySet())
+        return if ((request.changes != null || !request.funding.isNullOrEmpty()) &&
+            result is DispatchResult.Failure && result.definitelyRejected
+        ) {
+            DispatchResult.Conflict(result.message)
+        } else {
+            result
+        }
     }
 }

@@ -11,18 +11,21 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
-from uuid import UUID
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL, Connection, Engine
 from sqlalchemy.pool import NullPool
 
-from app.database._database_generation_executor import execute_database_generation
+from app.database._database_generation_executor import (
+    DatabaseGenerationExecutionError,
+    execute_database_generation,
+    validate_generation_operation_id,
+)
 from app.database._database_generation_program import (
     DatabaseGenerationProgram,
 )
@@ -39,7 +42,10 @@ from app.database._postgres_operation_failures import (
     exit_postgres_owned_context,
     raise_postgres_operation_failures,
 )
-from app.services.secure_file import hold_protected_file_for_read
+from app.services.secure_file import (
+    hold_installer_machine_secret_for_read,
+    hold_protected_file_for_read,
+)
 
 _ROLE_NAME = re.compile(r"[a-z][a-z0-9_]{0,62}\Z")
 class ManagedPostgresMigrationRuntimeError(RuntimeError):
@@ -264,17 +270,18 @@ class ManagedPostgresMigrationRuntimeV1:
         source_revision: str,
         target_revision: str,
         generation_operation_id: str,
+        expected_dataset_id: str | None = None,
+        expected_restore_epoch: int | None = None,
+        expected_installation_id: str | None = None,
+        seal_runtime_authority: bool = False,
+        machine_secret: bool = False,
+        backup_archive_sha256: str | None = None,
+        pre_migration_check: Callable[[Connection], None] | None = None,
     ) -> str:
         try:
-            parsed_operation = UUID(generation_operation_id)
-        except (AttributeError, TypeError, ValueError) as exc:
-            raise ManagedPostgresMigrationRuntimeError(
-                "managed migration operation id is invalid"
-            ) from exc
-        if parsed_operation.int == 0 or str(parsed_operation) != generation_operation_id:
-            raise ManagedPostgresMigrationRuntimeError(
-                "managed migration operation id is not canonical"
-            )
+            validated_operation = validate_generation_operation_id(generation_operation_id)
+        except DatabaseGenerationExecutionError as exc:
+            raise ManagedPostgresMigrationRuntimeError(str(exc)) from exc
         parsed_url = _validated_migrator_url(database_url, contract=self._contract)
         if not isinstance(pgpassfile, Path) or not pgpassfile.is_absolute():
             raise ManagedPostgresMigrationRuntimeError("managed migration pgpass path must be absolute")
@@ -283,8 +290,13 @@ class ManagedPostgresMigrationRuntimeV1:
         cleanup: list[BaseException] = []
         result: str | None = None
         entered_contexts: list[AbstractContextManager[Any]] = []
+        hold_secret = (
+            hold_installer_machine_secret_for_read
+            if machine_secret
+            else hold_protected_file_for_read
+        )
         try:
-            protected_context = hold_protected_file_for_read(pgpassfile)
+            protected_context = hold_secret(pgpassfile)
             protected_pgpass = protected_context.__enter__()
             entered_contexts.append(protected_context)
             environment_context = _temporary_pgpass_environment(protected_pgpass)
@@ -304,6 +316,13 @@ class ManagedPostgresMigrationRuntimeV1:
                     program=program,
                     source_revision=source_revision,
                     target_revision=target_revision,
+                    operation_id=validated_operation,
+                    expected_dataset_id=expected_dataset_id,
+                    expected_restore_epoch=expected_restore_epoch,
+                    expected_installation_id=expected_installation_id,
+                    seal_runtime_authority=seal_runtime_authority,
+                    backup_archive_sha256=backup_archive_sha256,
+                    pre_migration_check=pre_migration_check,
                 )
             result = (
                 "target_committed"
@@ -342,17 +361,32 @@ class ManagedPostgresMigrationRuntimeV1:
         program: DatabaseGenerationProgram,
         source_revision: str,
         target_revision: str,
+        operation_id: str,
+        expected_dataset_id: str | None = None,
+        expected_restore_epoch: int | None = None,
+        expected_installation_id: str | None = None,
+        seal_runtime_authority: bool = False,
+        backup_archive_sha256: str | None = None,
+        pre_migration_check: Callable[[Connection], None] | None = None,
     ) -> bool:
         self._assert_migrator_context(connection)
         assume_managed_postgres_schema_owner(
             connection,
             contract=self._contract,
         )
+        if pre_migration_check is not None:
+            pre_migration_check(connection)
         return execute_database_generation(
             connection,
             program=program,
             source_revision=source_revision,
             target_revision=target_revision,
+            operation_id=operation_id,
+            expected_dataset_id=expected_dataset_id,
+            expected_restore_epoch=expected_restore_epoch,
+            expected_installation_id=expected_installation_id,
+            seal_runtime_authority=seal_runtime_authority,
+            backup_archive_sha256=backup_archive_sha256,
         )
 
     def _assert_migrator_context(self, connection: Connection) -> None:

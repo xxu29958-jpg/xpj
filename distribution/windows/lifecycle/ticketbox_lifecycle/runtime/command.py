@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -28,7 +28,97 @@ class CommandRunner(Protocol):
     ) -> CompletedCommand: ...
 
 
+class _HasReturnCode(Protocol):
+    returncode: int
+
+
+class _ManagedJob(Protocol):
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        env: Mapping[str, str] | None = None,
+        timeout_s: int = 120,
+        input_text: str | None = None,
+        capture_output: bool = True,
+        on_timeout: Callable[[], None] | None = None,
+    ) -> _HasReturnCode: ...
+
+    def close(self) -> None: ...
+
+
+class _SubprocessManagedJob:
+    def __init__(self) -> None:
+        self._job: _ManagedJob | None = None
+
+    def __enter__(self) -> _SubprocessManagedJob:
+        from ticketbox_lifecycle.runtime.windows_process import PersistentKillOnCloseJob
+
+        try:
+            self._job = PersistentKillOnCloseJob()
+        except OSError as exc:
+            raise LifecycleError(
+                "command_start_failed",
+                "managed Windows process job could not be created",
+            ) from exc
+        return self
+
+    def run_background_starter(
+        self,
+        argv: Sequence[str],
+        *,
+        env: Mapping[str, str] | None = None,
+        timeout_s: int = 120,
+        on_timeout: Callable[[], None] | None = None,
+    ) -> CompletedCommand:
+        if not argv:
+            raise LifecycleError("empty_command", "adapter refused an empty platform command")
+        if self._job is None:
+            raise LifecycleError("command_start_failed", "managed Windows process job is not active")
+        from ticketbox_lifecycle.runtime.windows_process import ProcessTerminationUnconfirmedError
+
+        program = os.path.basename(str(argv[0])) or "platform command"
+        try:
+            completed = self._job.run(
+                argv,
+                env=env,
+                timeout_s=timeout_s,
+                input_text=None,
+                capture_output=False,
+                on_timeout=on_timeout,
+            )
+        except ProcessTerminationUnconfirmedError as exc:
+            raise LifecycleError(
+                "starter_process_not_exited",
+                f"{program} did not confirm exit after timeout termination",
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise LifecycleError(
+                "command_outcome_unknown",
+                f"{program} did not finish within {timeout_s}s; its external outcome must be re-observed",
+            ) from exc
+        except OSError as exc:
+            raise LifecycleError(
+                "command_start_failed",
+                f"{program} could not be started",
+            ) from exc
+        return CompletedCommand(
+            argv=tuple(str(part) for part in argv),
+            returncode=int(completed.returncode),
+            stdout="",
+            stderr="",
+        )
+
+    def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
+        job, self._job = self._job, None
+        if job is not None:
+            job.close()
+
+
 class SubprocessCommandRunner:
+    def open_managed_job(self) -> _SubprocessManagedJob:
+        return _SubprocessManagedJob()
+
     def run(
         self,
         argv: Sequence[str],
@@ -39,6 +129,8 @@ class SubprocessCommandRunner:
     ) -> CompletedCommand:
         if not argv:
             raise LifecycleError("empty_command", "adapter refused an empty platform command")
+        from ticketbox_lifecycle.runtime.windows_process import ProcessTerminationUnconfirmedError
+
         program = os.path.basename(str(argv[0])) or "platform command"
         try:
             completed = _run_process(
@@ -47,6 +139,11 @@ class SubprocessCommandRunner:
                 timeout_s=timeout_s,
                 input_text=input_text,
             )
+        except ProcessTerminationUnconfirmedError as exc:
+            raise LifecycleError(
+                "command_termination_unconfirmed",
+                f"{program} did not confirm exit after timeout",
+            ) from exc
         except subprocess.TimeoutExpired as exc:
             raise LifecycleError(
                 "command_outcome_unknown",

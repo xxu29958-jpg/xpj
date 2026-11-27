@@ -23,7 +23,7 @@ _TOKEN = "s3cr3t-token"
 _INSTANCE_SECRET = "instance-proof-secret"
 _ORIGIN = "http://127.0.0.1:8799"
 _CONTENT_SECURITY_POLICY = (
-    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+    "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
     "connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; "
     "frame-ancestors 'none'"
 )
@@ -1142,3 +1142,99 @@ def test_owner_links_hand_off_to_manager_actions_not_404(tmp_path) -> None:
         thread.join(timeout=2)
 
     assert opened == ["open_pairing"]
+
+
+def test_control_server_serves_manager_static_assets_only_to_authenticated_canonical_host(tmp_path) -> None:
+    class Controller:
+        def is_manager_shutting_down(self) -> bool:
+            return False
+
+    ui = tmp_path / "ui.html"
+    ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    (tmp_path / "ui.css").write_bytes(b"body { margin: 0; }\n")
+    (tmp_path / "ui.js").write_bytes(b"function refresh() {}\n")
+    server = ControlServer(
+        "127.0.0.1",
+        0,
+        controller=Controller(),
+        token=_TOKEN,
+        instance_secret=_INSTANCE_SECRET,
+        ui_html=ui,
+    )
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    port = server.server_address[1]
+    try:
+        cookie = _bootstrap_cookie_header(server, tmp_path)
+        web_only_cookie = "; ".join(
+            part for part in cookie.split("; ") if not part.startswith("ticketbox_manager_control=")
+        )
+        assert web_only_cookie and "ticketbox_manager_control=" not in web_only_cookie
+        for path, content_type, expected_body in (
+            ("/assets/ui.css", "text/css; charset=utf-8", b"body { margin: 0; }\n"),
+            ("/assets/ui.js", "text/javascript; charset=utf-8", b"function refresh() {}\n"),
+        ):
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            conn.putrequest("GET", path, skip_host=True)
+            conn.putheader("Host", f"evil.test:{port}")
+            conn.endheaders()
+            resp = conn.getresponse()
+            assert resp.status == 421
+            resp.read()
+            conn.close()
+
+            for forbidden_headers in ({}, {"Cookie": web_only_cookie}):
+                conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+                conn.request("GET", path, headers=forbidden_headers)
+                resp = conn.getresponse()
+                assert resp.status == 403
+                resp.read()
+                conn.close()
+
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            conn.request("GET", f"{path}?v=1", headers={"Cookie": cookie})
+            resp = conn.getresponse()
+            assert resp.status == 404
+            resp.read()
+            conn.close()
+
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            conn.request("GET", path, headers={"Cookie": cookie})
+            resp = conn.getresponse()
+            assert resp.status == 200
+            assert resp.getheader("Content-Type") == content_type
+            _assert_security_headers(resp)
+            body = resp.read()
+            assert body == expected_body
+            assert _TOKEN.encode() not in body
+            conn.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_control_server_falls_back_atomically_when_sibling_ui_assets_are_incomplete(tmp_path) -> None:
+    from pathlib import Path
+
+    class Controller:
+        def is_manager_shutting_down(self) -> bool:
+            return False
+
+    ui = tmp_path / "ui.html"
+    ui.write_text("token=__CONTROL_TOKEN__", encoding="utf-8")
+    (tmp_path / "ui.js").write_bytes(b"/* stale partial asset */\n")
+    packaged_dir = Path(__file__).resolve().parents[1] / "backend_manager"
+    server = ControlServer(
+        "127.0.0.1",
+        0,
+        controller=Controller(),
+        token=_TOKEN,
+        instance_secret=_INSTANCE_SECRET,
+        ui_html=ui,
+    )
+    try:
+        assert server.read_ui_asset("ui.css") == (packaged_dir / "ui.css").read_bytes()
+        assert server.read_ui_asset("ui.js") == (packaged_dir / "ui.js").read_bytes()
+    finally:
+        server.server_close()

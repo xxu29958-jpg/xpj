@@ -82,6 +82,58 @@
       return record;
     }
 
+    function classifyUnreadableScope(storageKey, scope) {
+      let raw;
+      try {
+        raw = window.localStorage.getItem(storageKey);
+      } catch (_error) {
+        return "unattributable";
+      }
+      if (!raw) return "unattributable";
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (_error) {
+        return "unattributable";
+      }
+      if (!parsed || typeof parsed !== "object" || !parsed.scope || typeof parsed.scope !== "object") {
+        return "unattributable";
+      }
+      const identityAxes = ["datasetId", "clientGeneration", "accountId", "ledgerId"];
+      let seen = 0;
+      for (const axis of identityAxes) {
+        const value = parsed.scope[axis];
+        if (typeof value === "string" && value && value.length <= 256) {
+          seen += 1;
+          if (value !== scope[axis]) return "other";
+        }
+      }
+      return seen === identityAxes.length ? "current" : "unattributable";
+    }
+
+    function inspect(scope) {
+      const records = [];
+      let unreadableCount = 0;
+      let unattributableErrorCount = 0;
+      const storage = window.localStorage;
+      for (let index = 0; index < storage.length; index += 1) {
+        const name = storage.key(index);
+        if (!name || !name.startsWith(prefix)) continue;
+        let record;
+        try {
+          record = read(name.slice(prefix.length));
+        } catch (_error) {
+          const kind = classifyUnreadableScope(name, scope);
+          if (kind === "current") unreadableCount += 1;
+          else if (kind === "unattributable") unattributableErrorCount += 1;
+          continue;
+        }
+        if (record && matches(record.scope, scope, false)) records.push(record);
+      }
+      records.sort((left, right) => right.updatedAt - left.updatedAt);
+      return {records, unreadableCount, unattributableErrorCount};
+    }
+
     function list(scope) {
       const records = [];
       const storage = window.localStorage;
@@ -138,7 +190,7 @@
       return true;
     }
 
-    return {fields, optionalFields, key, matches, read, save, list, acknowledge, canDiscardRejected, discardRejected, discardReviewed, discardLocal};
+    return {fields, optionalFields, key, matches, read, save, list, inspect, acknowledge, canDiscardRejected, discardRejected, discardReviewed, discardLocal};
   }
 
   window.TicketboxDraftStore = {createStore};

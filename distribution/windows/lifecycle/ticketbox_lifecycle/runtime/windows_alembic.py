@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+
+from ticketbox_lifecycle.adapters.upgrade import UpgradeMigrationResult
 from ticketbox_lifecycle.errors import LifecycleError, LifecycleViolation
 from ticketbox_lifecycle.policy.postgres_roles import (
     DATABASE_NAME,
@@ -11,6 +14,20 @@ from ticketbox_lifecycle.runtime import layout
 from ticketbox_lifecycle.runtime.command import CommandRunner, require_ok, sealed_pg_env
 from ticketbox_lifecycle.runtime.postgres_connection import maintenance_database_url, run_psql
 from ticketbox_lifecycle.schemas import InstallRequest
+
+_MIGRATION_RESULT_SCHEMA = "ticketbox-existing-dataset-upgrade-result-v1"
+_MIGRATION_RESULT_FIELDS = frozenset({
+    "schema",
+    "operation_id",
+    "dataset_id",
+    "installation_id",
+    "restore_epoch",
+    "source_revision",
+    "target_revision",
+    "alembic_revision",
+    "backup_archive_sha256",
+    "result",
+})
 
 
 class WindowsAlembicAdapter:
@@ -78,3 +95,112 @@ class WindowsAlembicAdapter:
         expected = expected_alembic_probe()
         if completed.returncode != 0 or observed not in {expected, f"SET\n{expected}"}:
             raise LifecycleError("postcondition_missing", "alembic_version is not the exact release target")
+
+    @staticmethod
+    def _parse_upgrade_migration_payload(
+        stdout: str,
+        *,
+        request: InstallRequest,
+        source_revision: str,
+        target_revision: str,
+        expected_restore_epoch: int,
+        backup_sha256: str,
+    ) -> UpgradeMigrationResult:
+        try:
+            payload = json.loads(stdout)
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise LifecycleError("upgrade_migration_failed", "upgrade helper did not return JSON") from exc
+        expected_values = {
+            "schema": _MIGRATION_RESULT_SCHEMA,
+            "operation_id": request.operation_id,
+            "dataset_id": request.dataset_id,
+            "installation_id": request.install_id,
+            "restore_epoch": expected_restore_epoch,
+            "source_revision": source_revision,
+            "target_revision": target_revision,
+            "alembic_revision": target_revision,
+            "backup_archive_sha256": backup_sha256,
+        }
+        valid_outcome = (
+            isinstance(payload, dict)
+            and set(payload) == _MIGRATION_RESULT_FIELDS
+            and all(payload.get(key) == val for key, val in expected_values.items())
+            and payload.get("result") in {"target_committed", "target_observed_after_interruption"}
+        )
+        if not valid_outcome:
+            raise LifecycleViolation(
+                "upgrade_migration_mismatch",
+                "upgrade helper result does not match the exact upgrade contract",
+            )
+        return UpgradeMigrationResult(
+            outcome=payload["result"],
+            source_revision=source_revision,
+            target_revision=target_revision,
+            operation_id=request.operation_id,
+        )
+
+
+    def upgrade_existing_dataset(
+        self,
+        request: InstallRequest,
+        *,
+        source_revision: str,
+        target_revision: str,
+        expected_restore_epoch: int,
+        backup_path: str,
+        backup_sha256: str,
+    ) -> UpgradeMigrationResult:
+        helper = layout.maintenance_helper(request)
+        if not helper.is_file():
+            raise LifecycleError(
+                "missing_platform_binary",
+                "ticketbox-database-maintenance.exe is not installed",
+            )
+        if not backup_path or not backup_sha256:
+            raise LifecycleViolation(
+                "upgrade_backup_missing",
+                "offline migration requires both backup archive path and sha256",
+            )
+        argv = [
+            str(helper),
+            "--upgrade-existing-dataset",
+            "--database-url",
+            maintenance_database_url(request),
+            "--pgpassfile",
+            str(layout.pg_passfile(request)),
+            "--source-revision",
+            source_revision,
+            "--target-revision",
+            target_revision,
+            "--dataset-id",
+            request.dataset_id,
+            "--installation-id",
+            request.install_id,
+            "--expected-restore-epoch",
+            str(expected_restore_epoch),
+            "--operation-id",
+            request.operation_id,
+            "--data-root",
+            request.data_root,
+            "--backup-archive",
+            backup_path,
+            "--backup-archive-sha256",
+            backup_sha256,
+            "--app-dir",
+            request.app_dir,
+        ]
+        completed = self._runner.run(
+            argv,
+            env=sealed_pg_env(str(layout.pg_passfile(request))),
+            timeout_s=1200,
+            input_text="",
+        )
+        require_ok(completed, code="upgrade_migration_failed")
+        return self._parse_upgrade_migration_payload(
+            completed.stdout,
+            request=request,
+            source_revision=source_revision,
+            target_revision=target_revision,
+            expected_restore_epoch=expected_restore_epoch,
+            backup_sha256=backup_sha256,
+        )

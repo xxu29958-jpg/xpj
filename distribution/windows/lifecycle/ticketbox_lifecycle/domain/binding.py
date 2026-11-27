@@ -73,3 +73,50 @@ def binding_from_request(request: InstallRequest) -> InstallationBinding:
         backend_port=request.backend_port,
         health_attestation_key=request.health_attestation_key,
     )
+
+
+_RELEASE_ID_PATTERN = re.compile(r"[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}\Z")
+
+
+def upgrade_binding(
+    current: InstallationBinding,
+    request: InstallRequest,
+    *,
+    previous_release_id: str | None = None,
+) -> InstallationBinding:
+    previous = previous_release_id if previous_release_id is not None else current.active_release_id
+    if (
+        not isinstance(previous, str)
+        or _RELEASE_ID_PATTERN.fullmatch(previous) is None
+        or previous == request.target_release_id
+    ):
+        raise LifecycleViolation(
+            "invalid_release_transition",
+            "upgrade requires a valid distinct previous_release_id",
+        )
+    if request.install_id != current.install_id or request.dataset_id != current.dataset_id:
+        raise LifecycleViolation(
+            "identity_conflict",
+            "upgrade must preserve existing install_id and dataset_id",
+        )
+    if re.fullmatch(r"[0-9a-f]{64}", request.health_attestation_key) is None:
+        raise LifecycleViolation(
+            "missing_health_attestation",
+            "health attestation key must be bound before publication",
+        )
+    return InstallationBinding(
+        schema=INSTALLATION_SCHEMA,
+        install_id=current.install_id,
+        dataset_id=current.dataset_id,
+        expected_restore_epoch=current.expected_restore_epoch,
+        data_root=current.data_root,
+        active_release_id=request.target_release_id,
+        previous_release_id=previous,
+        release_manifest_sha256=request.release_manifest_sha256,
+        postgres_major=current.postgres_major,
+        pg_service_name=current.pg_service_name,
+        backend_service_name=current.backend_service_name,
+        pg_port=current.pg_port,
+        backend_port=current.backend_port,
+        health_attestation_key=request.health_attestation_key,
+    )

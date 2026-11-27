@@ -26,7 +26,7 @@ class CreateExpenseOffsetDispatcher(
             ?: return DispatchResult.Failure("offset_create_requires_review", definitelyRejected = true)
         val key = row.idempotencyKey
             ?: return DispatchResult.Failure("CreateExpenseOffset row missing idempotency key", definitelyRejected = true)
-        val result = dispatchOffsetCommand {
+        val result = dispatchOffsetCommand(notFoundFailureMessage = "offset_create_requires_review") {
             val bundle = apiProvider(row).createExpenseOffset(expenseRef, request, key)
             publishAcceptedExpense(bundle.root.id, bundle.root.rowVersion) { publishBundle(row.ledgerId, bundle) }
         }
@@ -69,10 +69,13 @@ private fun <T> decode(adapter: JsonAdapter<T>, row: OutboxRow, freshToken: (T) 
     null
 }
 
-private suspend fun dispatchOffsetCommand(block: suspend () -> DispatchResult): DispatchResult = try {
+private suspend fun dispatchOffsetCommand(
+    notFoundFailureMessage: String? = null,
+    block: suspend () -> DispatchResult,
+): DispatchResult = try {
     block()
 } catch (error: HttpException) {
-    mapOffsetHttpException(error)
+    mapOffsetHttpException(error, notFoundFailureMessage)
 } catch (error: IOException) {
     DispatchResult.RetryableFailure(error.message ?: "network or cache IO failure")
 } catch (cancelled: CancellationException) {
@@ -81,7 +84,10 @@ private suspend fun dispatchOffsetCommand(block: suspend () -> DispatchResult): 
     DispatchResult.RetryableFailure(error.message ?: "expense offset publication failed")
 }
 
-private fun mapOffsetHttpException(error: HttpException): DispatchResult {
+private fun mapOffsetHttpException(
+    error: HttpException,
+    notFoundFailureMessage: String? = null,
+): DispatchResult {
     val body = error.response()?.errorBody()?.string().orEmpty()
     val message = extractOffsetServerMessage(body) ?: error.message().orEmpty()
     val parsed = NetworkErrorHandler({ null }, "ExpenseOffset").parseErrorMessage(
@@ -91,19 +97,32 @@ private fun mapOffsetHttpException(error: HttpException): DispatchResult {
         return DispatchResult.Failure(parsed.correctionRateFailure())
     }
     return when (error.code()) {
-        409 -> when {
-            "state_conflict" in body -> DispatchResult.Conflict(message)
-            "idempotency_key_in_progress" in body -> DispatchResult.RetryableFailure(message)
-            "expense_offset_not_active" in body -> DispatchResult.Discarded(message)
+        409 -> when (parsed.errorCode) {
+            "state_conflict" -> DispatchResult.Conflict(message)
+            "idempotency_key_in_progress" -> DispatchResult.RetryableFailure(message)
+            "expense_offset_not_active" -> DispatchResult.Discarded(message)
             else -> DispatchResult.Failure(message)
         }
-        404 -> DispatchResult.Discarded(message)
+        404 -> {
+            val failureMessage = if (notFoundFailureMessage != null && parsed.errorCode in offsetTargetUnavailable404ErrorCodes) {
+                notFoundFailureMessage
+            } else {
+                parsed.outboxFailureMessage().ifBlank { message.ifEmpty { "HTTP 404" } }
+            }
+            DispatchResult.Failure(failureMessage, definitelyRejected = true)
+        }
         408, 429, in 500..599 -> DispatchResult.RetryableFailure(message)
         else -> DispatchResult.Failure(message.ifEmpty { "HTTP ${error.code()}" },
             definitelyRejected = error.code() in setOf(400, 401, 403, 405, 410, 412, 422),
             credentialRejected = error.code() == 401)
     }
 }
+
+private val offsetTargetUnavailable404ErrorCodes = setOf(
+    "expense_not_found",
+    "not_found",
+    "ledger_not_found",
+)
 
 private fun extractOffsetServerMessage(body: String): String? {
     val key = "\"message\":\""

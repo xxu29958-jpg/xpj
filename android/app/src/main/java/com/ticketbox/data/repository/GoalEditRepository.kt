@@ -67,7 +67,9 @@ class GoalEditRepository(
 
     override suspend fun currency(binding: LogicalSessionBinding): Result<CurrencyCode> = errors.safeCall {
         guard.bindExact(binding).call { api ->
-            val capability = api.runtimeCompatibility().capabilities.currency
+            val runtime = api.runtimeCompatibility()
+            check(runtime.readerVersionAccepted) { "请将手机应用与服务端更新到配套版本。" }
+            val capability = runtime.capabilities.currency
             val currency = CurrencyCode.fromStorageKeyOrNull(capability.homeCurrencyCode)
             require(currency != null && capability.minorUnitExponent == currency.minorUnitDigits &&
                 capability.readCompatibility == "compatible") { "暂时无法确认目标币种，请重试连接。" }

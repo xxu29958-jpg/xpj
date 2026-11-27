@@ -30,7 +30,13 @@ def diagnostic_build_identity() -> str:
     root = Path(__file__).resolve().parents[1]
     digest = hashlib.sha256()
     try:
-        for path in sorted([*(root / "app").rglob("*.py"), root / "packaging/launch.py"]):
+        source_files = [
+            *(root / "app").rglob("*.py"),
+            root / "packaging/launch.py",
+            root / "packaging/_database_maintenance_cli.py",
+            root / "packaging/_runtime_authority_contract.py",
+        ]
+        for path in sorted(source_files):
             digest.update(path.relative_to(root).as_posix().encode("utf-8") + b"\0")
             digest.update(path.read_bytes() + b"\0")
     except OSError:

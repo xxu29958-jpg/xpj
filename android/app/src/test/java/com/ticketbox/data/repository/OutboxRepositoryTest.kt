@@ -254,6 +254,39 @@ class OutboxRepositoryTest {
     }
 
     @Test
+    fun voidExpenseOffsetRefusesFreshTokenRebaseWhileKeepingPlainRetryAndDrop() = runTest {
+        val dao = FakePendingMutationDao()
+        val repo = testOutboxRepository(dao = dao, clock = fixedClock("2026-05-04T00:00:00Z"))
+        val id = repo.enqueue(
+            PendingMutationType.VoidExpenseOffset,
+            "expense:42",
+            """{"offsetPublicId":"refund-1","voidReason":"撤销误记"}""",
+            3L,
+            "void-key",
+        )
+        repo.markConflict(id, "state_conflict")
+
+        assertEquals(false, repo.resolveConflict(id, ConflictResolution.KeepMine(freshToken = 9L)))
+        assertEquals(PendingMutationStatus.Conflict.wireValue, dao.rows.getValue(id).status)
+        assertEquals(3L, dao.rows.getValue(id).expectedRowVersion)
+        assertEquals("void-key", dao.rows.getValue(id).idempotencyKey)
+
+        repo.markFailed(id, "network")
+        assertEquals(false, repo.resolveFailed(id, FailedResolution.Retry(freshToken = 9L)))
+        assertEquals(PendingMutationStatus.Failed.wireValue, dao.rows.getValue(id).status)
+        assertEquals(3L, dao.rows.getValue(id).expectedRowVersion)
+
+        assertTrue(repo.resolveFailed(id, FailedResolution.Retry()))
+        assertEquals(PendingMutationStatus.Pending.wireValue, dao.rows.getValue(id).status)
+        assertEquals(3L, dao.rows.getValue(id).expectedRowVersion)
+        assertEquals("void-key", dao.rows.getValue(id).idempotencyKey)
+
+        repo.markConflict(id, "state_conflict")
+        assertTrue(repo.resolveConflict(id, ConflictResolution.DropMine))
+        assertTrue(dao.rows.isEmpty())
+    }
+
+    @Test
     fun dequeuePassesTheCurrentBindingWithoutRewritingAnEarlierLedgerOriginal() = runTest {
         val dao = FakePendingMutationDao()
         var binding = testOutboxBinding().copy(serverUrl = "https://old.example.com", ledgerId = "ledger-a")

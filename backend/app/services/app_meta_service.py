@@ -9,12 +9,19 @@ from sqlalchemy.orm import Session
 
 from app.errors import AppError
 from app.models import AppMeta
+from app.models.app_meta import MANAGED_UPGRADE_ATTESTATION_KEY
 from app.services.dataset_authority_service import read_dataset_authority
 from app.services.time_service import now_utc
 from app.version import BACKEND_VERSION
 
 V09_DEFAULT_VERSION = "0.9"
-_RETIRED_DATASET_KEYS = frozenset({"server_id", "data_generation", "schema_version", "schema_min_compatible"})
+_RETIRED_DATASET_KEYS = frozenset({
+    "server_id",
+    "data_generation",
+    "schema_version",
+    "schema_min_compatible",
+    MANAGED_UPGRADE_ATTESTATION_KEY,
+})
 _VERSION_PATTERN = re.compile(
     r"^\s*[vV]?(?P<release>\d+(?:\.\d+)*)"
     r"(?:(?:[-.]?)(?P<label>preview|alpha|beta|pre|dev|rc|a|b)"

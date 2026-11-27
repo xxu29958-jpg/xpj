@@ -24,9 +24,9 @@ from app.models import (
     InstallationCurrencyBinding,
 )
 from app.runtime_compatibility_contract import (
-    CURRENT_API_VERSION,
     RUNTIME_COMPATIBILITY_SESSION_KEY,
     RuntimeCompatibilityRequest,
+    client_version_supported,
     parse_currency_binding,
 )
 
@@ -171,7 +171,7 @@ def _http_runtime_request(db: Session) -> RuntimeCompatibilityRequest | None:
 
 
 def _required_http_currency_binding(db: Session, request: RuntimeCompatibilityRequest) -> str:
-    if request.api_version != CURRENT_API_VERSION:
+    if not client_version_supported(request.api_version, write=True):
         raise AppError("client_upgrade_required", status_code=409)
     if request.currency_binding is not None:
         return request.currency_binding
@@ -204,7 +204,7 @@ def _currency_write_expectation(
             except ValueError:
                 raise AppError("client_upgrade_required", status_code=409) from None
             if (
-                request.api_version != CURRENT_API_VERSION
+                not client_version_supported(request.api_version, write=True)
                 or header_contract != contract_version
                 or header_revision != expected_revision
             ):

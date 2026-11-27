@@ -5,10 +5,55 @@ from pathlib import Path
 from ticketbox_lifecycle.errors import LifecycleError
 from ticketbox_lifecycle.runtime import windows_security_native as native
 
+_OWNER_INFORMATION = 0x00000001
 _DACL_INFORMATION = 0x00000004
 _PROTECTED_DACL_INFORMATION = 0x80000000
 _SE_FILE_OBJECT = 1
 _SDDL_REVISION_1 = 1
+
+
+def set_owner_sid(path: Path, owner_sid: str, *, code: str) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    native.require_windows()
+    native.reject_reparse_components(path)
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    local_free = kernel.LocalFree
+    local_free.argtypes = [wintypes.HLOCAL]
+    local_free.restype = wintypes.HLOCAL
+    convert_sid = advapi.ConvertStringSidToSidW
+    convert_sid.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p)]
+    convert_sid.restype = wintypes.BOOL
+    set_named = advapi.SetNamedSecurityInfoW
+    set_named.argtypes = [
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    ]
+    set_named.restype = wintypes.DWORD
+    sid = ctypes.c_void_p()
+    if not convert_sid(owner_sid, ctypes.byref(sid)):
+        raise LifecycleError(code, f"cannot parse owner SID: {ctypes.get_last_error()}")
+    try:
+        result = set_named(
+            str(path),
+            _SE_FILE_OBJECT,
+            _OWNER_INFORMATION,
+            sid,
+            None,
+            None,
+            None,
+        )
+        if result != 0:
+            raise LifecycleError(code, f"SetNamedSecurityInfoW owner failed for {path.name}: {result}")
+    finally:
+        local_free(sid)
 
 
 def apply_protected_dacl(path: Path, dacl_sddl: str, *, code: str) -> None:

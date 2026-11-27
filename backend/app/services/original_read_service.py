@@ -12,8 +12,8 @@ from tempfile import TemporaryDirectory
 from typing import Self
 
 from app.errors import AppError
-from app.services.file_service import resolve_protected_image
 from app.services.stable_file_reader import hold_stable_file_for_read
+from app.services.upload_path_resolver import resolve_protected_image_in_root
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +60,62 @@ def recorded_original_digest(value: str | None) -> str | None:
     return expected if re.fullmatch(r"[0-9a-f]{64}", expected) is not None else None
 
 
+def resolve_protected_image(relative_path: str | None, tenant_id: str) -> tuple[Path, str]:
+    """Runtime wrapper resolving against configured settings without import-time config loading."""
+    from app.services.file_service import resolve_protected_image as _resolve_protected_image
+
+    return _resolve_protected_image(relative_path, tenant_id)
+
+
+def _capture_original_snapshot(
+    *,
+    source: Path,
+    media_type: str,
+    expected_sha256: str | None,
+) -> OriginalSnapshot:
+    expected = recorded_original_digest(expected_sha256)
+    try:
+        with ExitStack() as cleanup:
+            directory = cleanup.enter_context(TemporaryDirectory(prefix="ticketbox-original-"))
+            path = Path(directory) / f"original{source.suffix}"
+            digest, size, modified_at = _copy_original(source, path)
+            if expected is not None and digest != expected:
+                raise AppError("image_integrity_mismatch", status_code=409)
+            return OriginalSnapshot(
+                path=path,
+                media_type=media_type,
+                sha256=digest,
+                size_bytes=size,
+                verified=expected is not None,
+                source_modified_at=modified_at,
+                _cleanup=cleanup.pop_all(),
+            )
+    except OSError as exc:
+        # The resolver owns definite missing references. A failed capture can
+        # also mean unavailable temporary storage; it is not proof of lost data.
+        raise AppError("image_read_failed", status_code=503) from exc
+
+
+def read_original_snapshot_in_root(
+    *,
+    relative_path: str | None,
+    tenant_id: str,
+    expected_sha256: str | None,
+    upload_root: Path,
+) -> OriginalSnapshot:
+    """Copy once from a protected handle confined strictly to ``upload_root``."""
+    source, media_type = resolve_protected_image_in_root(
+        relative_path,
+        tenant_id,
+        upload_root=upload_root,
+    )
+    return _capture_original_snapshot(
+        source=source,
+        media_type=media_type,
+        expected_sha256=expected_sha256,
+    )
+
+
 def read_original_snapshot(
     *,
     relative_path: str | None,
@@ -72,19 +128,8 @@ def read_original_snapshot(
     absent/unusable digests permit an unverified read, never a metadata write.
     """
     source, media_type = resolve_protected_image(relative_path, tenant_id)
-    expected = recorded_original_digest(expected_sha256)
-    try:
-        with ExitStack() as cleanup:
-            directory = cleanup.enter_context(TemporaryDirectory(prefix="ticketbox-original-"))
-            path = Path(directory) / f"original{source.suffix}"
-            digest, size, modified_at = _copy_original(source, path)
-            if expected is not None and digest != expected:
-                raise AppError("image_integrity_mismatch", status_code=409)
-            return OriginalSnapshot(
-                path=path, media_type=media_type, sha256=digest, size_bytes=size,
-                verified=expected is not None, source_modified_at=modified_at, _cleanup=cleanup.pop_all(),
-            )
-    except OSError as exc:
-        # The resolver owns definite missing references. A failed capture can
-        # also mean unavailable temporary storage; it is not proof of lost data.
-        raise AppError("image_read_failed", status_code=503) from exc
+    return _capture_original_snapshot(
+        source=source,
+        media_type=media_type,
+        expected_sha256=expected_sha256,
+    )

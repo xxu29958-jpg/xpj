@@ -7,6 +7,19 @@ import com.ticketbox.data.local.PendingMutationStatus
 import com.ticketbox.data.remote.dto.ExpenseCorrectionRequestDto
 import java.io.IOException
 
+internal const val EXPENSE_REVERSAL_ACTIVE = "expense_reversal_active"
+internal const val EXPENSE_REFUND_EXISTS = "expense_refund_exists"
+internal const val EXPENSE_REFUND_EXCEEDS_REMAINING = "expense_refund_exceeds_remaining"
+
+private val nonRetryableCorrectionErrors = setOf(
+    "outbox_row_expired",
+    "correction_target_unavailable",
+    "correction_requires_review",
+    EXPENSE_REVERSAL_ACTIVE,
+    EXPENSE_REFUND_EXISTS,
+    EXPENSE_REFUND_EXCEEDS_REMAINING,
+)
+
 /** Frozen command and original display context. Room owns the key and delivery state. */
 @JsonClass(generateAdapter = true)
 data class ExpenseCorrectionPayload(
@@ -40,7 +53,7 @@ data class PendingExpenseCorrection(
     val delivered: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Done
     val refreshRequired: Boolean get() = delivered && row.lastError?.startsWith(EXPENSE_REFRESH_PREFIX) == true
     val canRetry: Boolean get() = hasSupportedIntent && row.status == PendingMutationStatus.Failed &&
-        row.lastError !in setOf("outbox_row_expired", "correction_target_unavailable", "correction_requires_review")
+        row.lastError !in nonRetryableCorrectionErrors
     val canDiscard: Boolean get() = row.status == PendingMutationStatus.Failed ||
         row.status == PendingMutationStatus.Conflict || (!hasSupportedIntent && row.status in setOf(PendingMutationStatus.Done, PendingMutationStatus.Pending))
 }

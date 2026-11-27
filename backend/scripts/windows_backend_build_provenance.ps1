@@ -1104,6 +1104,8 @@ function Get-TicketboxBackendSourcePaths([string]$BackendRoot) {
         $script:TicketboxBuildToolchainConfigRelativePath,
         "packaging\prepare_windows_build_toolchain.ps1",
         "packaging\launch.py",
+        "packaging\_database_maintenance_cli.py",
+        "packaging\_runtime_authority_contract.py",
         "packaging\ticketbox-backend.spec",
         "packaging\launch_ocr.py",
         "packaging\ticketbox-ocr.spec",

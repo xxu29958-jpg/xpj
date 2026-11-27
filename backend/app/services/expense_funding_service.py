@@ -44,13 +44,22 @@ def publish_expense_funding(db: Session, *, expense: Expense, parts: list[Fundin
         return
     total = _review_unfunded_expense(db, expense, parts, actor_account_id)
     accounts, debts = _review_funding_accounts(db, expense, parts, actor_account_id)
-    event, allocated_home = str(uuid4()), 0
+    event, allocated_original, allocated_home = str(uuid4()), 0, 0
     for index, part in enumerate(parts):
         row = accounts[part.account_public_id]
         currency = expense.original_currency_code or expense.home_currency_code
-        home = expense.amount_cents - allocated_home if index == len(parts) - 1 else round_minor_ratio_half_up(
-            expense.amount_cents * part.expense_amount_minor, total, label="funding.home_allocation")
-        allocated_home += home
+        allocated_original += part.expense_amount_minor
+        target_home = (
+            expense.amount_cents
+            if index == len(parts) - 1
+            else round_minor_ratio_half_up(
+                expense.amount_cents * allocated_original,
+                total,
+                label="funding.home_allocation",
+            )
+        )
+        home = target_home - allocated_home
+        allocated_home = target_home
         funding = ExpenseFunding(tenant_id=expense.tenant_id, expense_id=expense.id, account_id=row.id,
             component_id=part.component_id, expense_amount_minor=part.expense_amount_minor,
             account_amount_minor=part.account_amount_minor, expense_row_version=expense.row_version,

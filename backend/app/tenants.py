@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import TypeAlias
 
-from app.config import get_settings
 from app.errors import AppError
 from app.tenant_contract import DEFAULT_TENANT_ID, DEFAULT_TENANT_NAME, TENANT_ID_PATTERN
 
@@ -86,6 +85,8 @@ def _tenant_from_mapping(raw: TenantConfigEntry) -> Tenant:
 
 
 def _legacy_tenant() -> Tenant:
+    from app.config import get_settings
+
     settings = get_settings()
     return Tenant(
         id=DEFAULT_TENANT_ID,
@@ -108,6 +109,8 @@ def reset_tenant_cache() -> None:
 
 @lru_cache
 def configured_tenants() -> tuple[Tenant, ...]:
+    from app.config import get_settings
+
     settings = get_settings()
     if not settings.tenants_json:
         return (_legacy_tenant(),)

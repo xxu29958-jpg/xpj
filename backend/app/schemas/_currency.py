@@ -51,6 +51,11 @@ class RuntimeCompatibilitySnapshotResponse(BaseModel):
     observed_at: str
     api_version: str
     api_version_header: Literal["Ticketbox-Api-Version"]
+    min_read_client_version: str = Field(description="Minimum reader protocol date (YYYY-MM-DD).")
+    min_write_client_version: str = Field(description="Minimum writer protocol date (YYYY-MM-DD).")
+    supported_payload_revisions: dict[str, list[int]] = Field(
+        description="Accepted revisions by versioned request payload family."
+    )
     read_compatibility: RuntimeCompatibilityConclusion
     write_compatibility: RuntimeCompatibilityConclusion
     legacy_write_compatibility: Literal[

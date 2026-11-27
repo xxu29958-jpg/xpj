@@ -169,6 +169,10 @@ class MemoryStores:
         self.operation_store_prepared = False
         self.fresh_inputs_check_count = 0
         self.reject_fresh_inputs = False
+        self.pgdata_present = False
+        self.pg_service_present = False
+        self.backend_service_present = False
+        self.managed_connector_present = False
 
     def as_lifecycle_stores(self) -> LifecycleStores:
         return LifecycleStores(
@@ -190,6 +194,10 @@ class MemoryStores:
             active_phase=None if self._active is None else self._active.phase,
             program_files_present=Path(self._app_dir).exists(),
             data_root_present=Path(self._data_root).exists(),
+            pgdata_present=self.pgdata_present,
+            pg_service_present=self.pg_service_present,
+            backend_service_present=self.backend_service_present,
+            managed_connector_present=self.managed_connector_present,
         )
 
     def read_active(self) -> ActiveOperation | None:
@@ -199,7 +207,16 @@ class MemoryStores:
         matches = [item for item in self._history if item.operation_id == operation_id]
         return matches[-1] if matches else None
 
-    def bind_and_verify(self, request: InstallRequest) -> InstallRequest:
+    def list_committed(self) -> tuple[ActiveOperation, ...]:
+        return tuple(self._history)
+
+    def bind_and_verify(
+        self,
+        request: InstallRequest,
+        *,
+        allowed_sibling_releases: frozenset[str] = frozenset(),
+    ) -> InstallRequest:
+        del allowed_sibling_releases
         manifest_path = (
             Path(request.app_dir)
             / "releases"
@@ -250,11 +267,45 @@ class MemoryStores:
     def read(self) -> InstallationBinding | None:
         return self._binding
 
+    @staticmethod
+    def _is_same_identity_upgrade(current: InstallationBinding, binding: InstallationBinding) -> bool:
+        return (
+            binding.install_id == current.install_id
+            and binding.dataset_id == current.dataset_id
+            and binding.expected_restore_epoch == current.expected_restore_epoch
+            and binding.previous_release_id == current.active_release_id
+            and binding.active_release_id != current.active_release_id
+        )
+
+    @staticmethod
+    def _is_rollback_restore(current: InstallationBinding, binding: InstallationBinding) -> bool:
+        return (
+            binding.dataset_id == current.dataset_id
+            and binding.install_id != current.install_id
+            and binding.expected_restore_epoch > current.expected_restore_epoch
+        )
+
+    @staticmethod
+    def _is_preserved_reinstall(current: InstallationBinding, binding: InstallationBinding) -> bool:
+        return (
+            binding.install_id == current.install_id
+            and binding.dataset_id == current.dataset_id
+            and binding.expected_restore_epoch == current.expected_restore_epoch
+            and binding.active_release_id == current.active_release_id
+            and binding.release_manifest_sha256 == current.release_manifest_sha256
+        )
+
     def publish(self, binding: InstallationBinding) -> None:
         if binding.schema != INSTALLATION_SCHEMA:
             raise LifecycleViolation("bad_binding_schema", "installation schema")
         if self._binding is not None:
-            raise LifecycleViolation("second_writer", "installation.json publisher must be unique")
+            allowed = (
+                self._is_same_identity_upgrade(self._binding, binding)
+                or self._is_rollback_restore(self._binding, binding)
+                or self._is_preserved_reinstall(self._binding, binding)
+            )
+            if not allowed:
+                raise LifecycleViolation("second_writer", "installation.json publisher must be unique")
         self._binding = binding
         self.binding_publish_count += 1
 

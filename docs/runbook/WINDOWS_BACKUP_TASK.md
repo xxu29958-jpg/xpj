@@ -10,7 +10,7 @@
 
 ## R1 同环境受控恢复
 
-R1 复用安装包中的 Lifecycle、数据库维护程序与 Manager。仅支持原安装已隔离、完整停机 `.tbxcold` 副本及可信安装包的组合：相同 release id、schema 与语义版本，PostgreSQL 随包目录逐文件相同；目标是没有 Ticketbox 服务、数据或绑定的干净 Windows 环境。它不覆盖原安装，不执行归档中的程序，不迁移 WinCred/Keystore/Tunnel，不执行 schema 升级。R2 异机恢复、U1 升级失败恢复与 C1 独立加密副本仍 HOLD。
+R1 复用安装包中的 Lifecycle、数据库维护程序与 Manager。仅支持原安装已隔离、完整停机 `.tbxcold` 副本及可信安装包的组合：相同 release id、schema 与语义版本，PostgreSQL 随包目录逐文件相同；目标是没有 Ticketbox 服务、数据或绑定的干净 Windows 环境。它不覆盖原安装，不执行归档中的程序，不迁移 WinCred/Keystore/Tunnel，不执行 schema 升级。R2 异机恢复、U1 受管升级失败恢复、C1 独立加密冷备与受控卸载/重装/永久删除均已在 Rev3.2 源码中实现（见下文），其打包 EXE 发行资格留待干净 Windows VM 的 exact-HEAD 演练。
 
 管理员在隔离目标上运行匹配的可信 Setup；摘要必须来自此前保管的冷备回执。`SOURCEISOLATED=YES` 表示已停用原安装，避免同时接受新账务：
 
@@ -30,9 +30,18 @@ R1 复用安装包中的 Lifecycle、数据库维护程序与 Manager。仅支�
 
 2026-10-25 已在 Windows 11 Pro 10.0.26200 x64、随包 PostgreSQL 17.11、schema `20261023_0002` 上完成 R1 的有界完整恢复资格。实际恢复使用独立 main `f8191b5112acc79943d75e67a0a4b1dd79158488` 的 Setup；原事实、历史、原件、Owner/角色、普通桌面与 Web 入口、原 Android Release 客户端重连、旧意图隔离、新业务恰好一次及宿主重启均已核对。源副本来自 `edad37ef`，恢复点是 2026-10-25 10:24:24.808（Asia/Shanghai）停机检查点完成时；它不是后续新候选的备份。完整身份、反例来源和未验证范围见 [R1 资格记录](../qualification/2026-10-25-r1-same-environment.md)。这不代表全产品 RC 退出。
 
+## 同机受管升级（`1.2.1 → 1.3.0`）、U1 失败恢复与 R2 异机恢复
+
+- **受管升级与 U1 验收前失败恢复**：管理员显式运行目标版本 Setup（`& '.\Ticketbox-Setup-1.3.0.exe' /UPGRADE=YES`），支持 `1.2.1 → 1.3.0`（拒绝降级与无凭据同版覆盖）。升级前须先在“管理小票夹”暂停并移除受管公网连接器，升级完成后重配。若在迁移或候选验收边界失败且尚未开放正常业务写入（`business_writes_opened=False`），Lifecycle 隔离保全失败候选并从已验证的 `%ProgramData%\Ticketbox\backups` 升级前冷备受控恢复旧版本并重开服务（返回 `ok=false`、`phase=rolled_back_to_previous`、`code=upgrade_failed_restored_previous`，亦支持独立命令 `TicketboxLifecycle.exe rollback-upgrade`）；一旦正常业务放写已开放或状态不可判定，强拒旧点覆盖（`upgrade_rollback_refused_writes_may_have_opened`）。
+- **两类冷备位置与 §9.2/§9.3 清单/空间预检**：升级前自动写入 `%ProgramData%\Ticketbox\backups` 的 `.tbxcold` 是**同机受管升级恢复材料**；管理员通过 `TicketboxLifecycle.exe cold-copy` 生成的**独立冷备副本**必须存放在程序根与 `%ProgramData%\Ticketbox` 之外，归档前执行目标卷空间预算预检并在 `COLD_COPY.json` 写入脱敏 `recovery_point` 清单（`verify-cold-copy` 输出完整摘要）。
+- **R2 异机受控恢复**：Setup 与 `TicketboxLifecycle.exe restore` 支持显式 `/RESTOREMODE=cross-machine`（`--restore-mode cross-machine --source-isolated`），零旧机 WinCred/DPAPI/MachineGuid 依赖，复用同一凭据轮换与旧会话/设备/链接撤销事务，输出 `restore_mode=cross_machine`、`client_generation`、`restore_epoch`、`revoked_credentials_summary` 与客户端重连/outbox 隔离指引。
+- **C1 本地认证加密独立冷备副本**：管理员可使用 `TicketboxLifecycle.exe` 的 `encrypt-cold-copy`、`verify-encrypted-cold-copy`（零明文落盘）与 `decrypt-cold-copy` 基于 Argon2id + AES-256-GCM 流式分块容器制作、核验与还原独立密文副本；口令或密钥文件须与备份副本及受管安装/数据目录分离保管。
+- **受控默认卸载、保留数据重装与独立永久删除（§9.6–§9.8）**：默认卸载（`Uninstallable=yes`）在确认后通过 `CurUninstallStepChanged(usUninstall)` 调用 `TicketboxLifecycle.exe uninstall --from-installed` 停服并注销归属服务，严格保留 `data/`、`backups/` 与 `machine/installation.json`；保留数据重装通过显式 `/REINSTALL=YES`（`TicketboxLifecycle.exe reinstall`）核验 `installation.json`、`pgdata`、`DatasetAuthority` 与原件完整性（不执行 `initdb`，Fresh 与 R1/R2 干净目标红线不变）；永久删数据由独立管理员命令 `TicketboxLifecycle.exe purge-data` 经双确认 `--dataset-id` / `--confirm-dataset-id` 与 `--external-backups-status` 精确执行，绝不触碰外部/云端备份。
+- **洁净 VM 资格边界**：源码测试通过不替代洁净 Windows VM 上基于 clean exact HEAD 构建真实安装包的正式分发资格验证。
+
 ## 其他不可用能力
 
-当前 Manager 不暴露 `/api/backup`、`/api/backups` 或 `/api/restore` mutation。R1 使用上述离线管理员安装入口，不增加高权限 HTTP 通道。完整恢复 GUI、其他恢复组合以及 repair/upgrade/uninstall 生命周期仍为 `HOLD`。
+当前 Manager 不暴露 `/api/backup`、`/api/backups` 或 `/api/restore` mutation。R1/R2、受管升级、C1 加密冷备与受控卸载/重装/永久删除均使用上述离线管理员安装或 CLI 入口，不增加高权限 HTTP 通道。完整恢复 GUI、任意 repair 与原地降级（downgrade）仍不可用；上述 Rev3.2 全部新能力的正式发行资格仍须以洁净 Windows VM 的 exact-HEAD 真实打包 EXE 演练为准。
 
 未发布的 complete-dataset/restore 原型及专属源码演练已经退役；历史 Windows 脚本、旧 ADR 和旧验收记录只作审计背景。既有有界冷备和只读库存保留。单独 `pg_dump`、手工复制 uploads、`pg_restore --list`、CI green 或旧源码历史都不能冒充上述 R1 的完整恢复证据。以下 #484 记录保留其原始冷备范围，不覆盖本次 R1 授权。
 

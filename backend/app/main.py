@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC
 from pathlib import Path
@@ -145,7 +146,10 @@ from app.services.budget_advisor_audit_cleanup_scheduler import (
 )
 from app.services.device_cleanup_scheduler import start_device_cleanup_scheduler
 from app.services.fx_rate_scheduler import start_fx_rate_scheduler
-from app.services.installation_health_attestation import sign_health_challenge
+from app.services.installation_health_attestation import (
+    sign_health_challenge,
+    sign_runtime_mode_challenge,
+)
 from app.services.installation_health_service import (
     InstallationDatabaseIdentityError,
     assert_installation_database_ready,
@@ -174,7 +178,10 @@ _logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    if os.environ.get("TICKETBOX_RESTORE_VERIFY_ONLY") == "1":
+    if (
+        os.environ.get("TICKETBOX_RESTORE_VERIFY_ONLY") == "1"
+        or os.environ.get("TICKETBOX_UPGRADE_VERIFY_ONLY") == "1"
+    ):
         wait_for_db()
         init_db()
         yield
@@ -379,12 +386,30 @@ app.middleware("http")(security_headers)
 
 
 @app.middleware("http")
-async def restore_candidate_admission(request: Request, call_next):
-    if os.environ.get("TICKETBOX_RESTORE_VERIFY_ONLY") == "1" and (
+async def restore_candidate_admission(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    restore_verify = os.environ.get("TICKETBOX_RESTORE_VERIFY_ONLY") == "1"
+    upgrade_verify = os.environ.get("TICKETBOX_UPGRADE_VERIFY_ONLY") == "1"
+    if (restore_verify or upgrade_verify) and (
         request.method != "GET" or request.url.path != "/api/health/installation"
     ):
-        return Utf8JSONResponse(status_code=503, content={"error": "restore_verification_in_progress",
-            "message": "恢复候选正在核验，尚未开放业务。"})
+        if restore_verify:
+            return Utf8JSONResponse(
+                status_code=503,
+                content={
+                    "error": "restore_verification_in_progress",
+                    "message": "恢复候选正在核验，尚未开放业务。",
+                },
+            )
+        return Utf8JSONResponse(
+            status_code=503,
+            content={
+                "error": "upgrade_verification_in_progress",
+                "message": "升级候选正在核验，尚未开放业务。",
+            },
+        )
     return await call_next(request)
 
 app.include_router(auth.router)
@@ -501,6 +526,14 @@ def health() -> StatusResponse:
     return StatusResponse()
 
 
+def _current_installation_runtime_mode() -> str:
+    if os.environ.get("TICKETBOX_RESTORE_VERIFY_ONLY") == "1":
+        return "restore_verify_only"
+    if os.environ.get("TICKETBOX_UPGRADE_VERIFY_ONLY") == "1":
+        return "upgrade_verify_only"
+    return "normal"
+
+
 @app.get("/api/health/installation", response_model=InstallationHealthResponse, tags=["health"])
 def installation_health(
     request: Request,
@@ -518,6 +551,8 @@ def installation_health(
             detail="Ticketbox database is not ready for installed-service traffic.",
         ) from exc
     mobile = installation_mobile_capabilities(settings.public_base_url)
+    runtime_mode = _current_installation_runtime_mode()
+    response.headers["X-Ticketbox-Runtime-Mode"] = runtime_mode
     attestation_key = os.environ.get("TICKETBOX_HEALTH_ATTESTATION_KEY", "").strip()
     if attestation_key:
         challenge = request.headers.get("X-Ticketbox-Health-Challenge", "").strip()
@@ -525,6 +560,11 @@ def installation_health(
             response.headers["X-Ticketbox-Health-Attestation"] = sign_health_challenge(
                 attestation_key,
                 challenge,
+            )
+            response.headers["X-Ticketbox-Runtime-Mode-Attestation"] = sign_runtime_mode_challenge(
+                attestation_key,
+                challenge,
+                runtime_mode,
             )
         except ValueError as exc:
             raise HTTPException(

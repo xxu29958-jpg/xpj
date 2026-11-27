@@ -208,11 +208,13 @@ class _WebSocket:
                 frame = params.get("frame", {})
                 if frame.get("id") == frame_id:
                     loader_id = frame.get("loaderId") if frame.get("url", "").startswith(url_prefix) else None
-            elif event.get("method") == "Page.lifecycleEvent" and loader_id is not None:
-                if (params.get("frameId"), params.get("loaderId"), params.get("name")) == (
-                    frame_id, loader_id, "load",
-                ):
-                    return True
+            elif (
+                event.get("method") == "Page.lifecycleEvent"
+                and loader_id is not None
+                and (params.get("frameId"), params.get("loaderId"), params.get("name"))
+                == (frame_id, loader_id, "load")
+            ):
+                return True
         return False
 
 
@@ -331,7 +333,15 @@ def _layout_timeout_diagnostic(
     for name, allowed in _READY_DIAGNOSTIC_VALUES.items():
         value = snapshot.get(name)
         diagnostic[name] = value if isinstance(value, str) and value in allowed else "unknown"
-    for name in ("mainContent", "renderProbeStarted", "renderProbeResultReady", "domContentLoaded", "stylesReady", "imagesReady", "fontsReady"):
+    for name in (
+        "mainContent",
+        "renderProbeStarted",
+        "renderProbeResultReady",
+        "domContentLoaded",
+        "stylesReady",
+        "imagesReady",
+        "fontsReady",
+    ):
         value = snapshot.get(name)
         diagnostic[name] = value if isinstance(value, bool) else "unknown"
     return diagnostic

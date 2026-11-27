@@ -219,10 +219,12 @@ def get_confirmed_expenses(
 
 @router.get("/categories", response_model=CategoriesResponse)
 def get_expense_categories(
+    query: str = Query(default="", max_length=64),
+    selected: str | None = Query(default=None, max_length=64),
     auth: AuthContext = Depends(get_current_app_context),
     db: Session = Depends(get_db),
 ) -> CategoriesResponse:
-    return CategoriesResponse(items=list_categories(db, auth.tenant_id))
+    return CategoriesResponse(items=list_categories(db, auth.tenant_id, query=query, selected=selected))
 
 
 @router.get("/categories/preferences", response_model=CategoryPreferenceListResponse)

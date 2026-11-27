@@ -43,6 +43,7 @@ def split_page(monkeypatch):
             **edit_navigation_view(return_context, expense_id=41, ledger_id="family"),
             "split_invite": {"members": [{"account_id": 9, "account_name": "家人", "role": "member"}],
                 "receiver_account_id": 9, "remaining_yuan": "30.00", "requires_review": True,
+                "is_reversed": False,
                 "idempotency_key": "original-key", "expected_row_version": 7,
                 "sent_rows": [{"public_id": "invitation-1", "receiver_display_name": "家人", "amount_label": "¥10.00",
                     "status": "invited", "expires_at": datetime(2026, 5, 31, tzinfo=UTC), "is_cancellable": True, "debt_href": ""}]}}

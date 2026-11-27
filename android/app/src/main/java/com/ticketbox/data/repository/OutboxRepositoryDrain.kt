@@ -2,6 +2,7 @@ package com.ticketbox.data.repository
 
 import com.ticketbox.data.local.PendingMutationDao
 import com.ticketbox.data.local.PendingMutationStatus
+import com.ticketbox.data.local.PendingMutationTokenCascade
 import com.ticketbox.data.local.PendingMutationType
 
 /**
@@ -55,6 +56,32 @@ internal suspend fun PendingMutationDao.nextRunnableRows(
     return runnable
 }
 
+private val PRESERVED_TOKEN_TYPES = listOf(
+    PendingMutationType.SplitAgreement.wireValue,
+    PendingMutationType.UndoExpense.wireValue,
+    PendingMutationType.VoidExpenseOffset.wireValue,
+    PendingMutationType.CreateBillSplitInvitation.wireValue,
+    PendingMutationType.AcceptBillSplitInvitation.wireValue,
+    PendingMutationType.CorrectExpense.wireValue,
+    PendingMutationType.CreateExpenseOffset.wireValue,
+    PendingMutationType.UploadScreenshot.wireValue,
+    PendingMutationType.OriginalAttachment.wireValue,
+    PendingMutationType.CaptureDebtBill.wireValue,
+)
+
+internal fun preservedTokenCascade(
+    ownerKey: String,
+    ledgerId: String,
+    targetId: String,
+    newToken: Long,
+): PendingMutationTokenCascade = PendingMutationTokenCascade(
+    ownerKey = ownerKey,
+    ledgerId = ledgerId,
+    targetId = targetId,
+    preservedTokenTypes = PRESERVED_TOKEN_TYPES,
+    freshToken = newToken,
+)
+
 internal suspend fun PendingMutationDao.cascadePreservedTokens(
     binding: OutboxBinding,
     targetId: String,
@@ -63,18 +90,7 @@ internal suspend fun PendingMutationDao.cascadePreservedTokens(
     ownerKey = binding.ownerStorageKey,
     ledgerId = binding.ledgerId,
     targetId = targetId,
-    preservedTokenTypes = listOf(
-        PendingMutationType.SplitAgreement.wireValue,
-        PendingMutationType.UndoExpense.wireValue,
-        PendingMutationType.VoidExpenseOffset.wireValue,
-        PendingMutationType.CreateBillSplitInvitation.wireValue,
-        PendingMutationType.AcceptBillSplitInvitation.wireValue,
-        PendingMutationType.CorrectExpense.wireValue,
-        PendingMutationType.CreateExpenseOffset.wireValue,
-        PendingMutationType.UploadScreenshot.wireValue,
-        PendingMutationType.OriginalAttachment.wireValue,
-        PendingMutationType.CaptureDebtBill.wireValue,
-    ),
+    preservedTokenTypes = PRESERVED_TOKEN_TYPES,
     freshToken = newToken,
 )
 
